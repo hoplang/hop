@@ -6,7 +6,6 @@ use crate::dop::parser::Parameter;
 use crate::hop::module_name::ModuleName;
 use crate::hop::parse_error::ParseError;
 use crate::hop::parser::parse;
-use crate::hop::pretty::Pretty;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{Attribute, AttributeValue, Token, Tokenizer};
 use itertools::Itertools as _;

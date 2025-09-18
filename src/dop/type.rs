@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use pretty::RcDoc;
 
-use crate::{document::document_cursor::DocumentRange, hop::pretty::Pretty};
+use crate::document::document_cursor::DocumentRange;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
@@ -61,8 +61,8 @@ impl fmt::Display for Type {
     }
 }
 
-impl Pretty for Type {
-    fn to_doc(&self) -> RcDoc<'static> {
+impl Type {
+    pub fn to_doc(&self) -> RcDoc<'static> {
         match self {
             Type::String => RcDoc::text("string"),
             Type::Number => RcDoc::text("number"),

@@ -2,7 +2,6 @@ use std::fmt::{self, Display};
 
 use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::var_name::VarName;
-use crate::hop::pretty::Pretty;
 use pretty::RcDoc;
 
 use super::Type;
@@ -100,7 +99,7 @@ impl Ranged for Expr<DocumentRange> {
     }
 }
 
-impl<T> Pretty for Expr<T> {
+impl<T> Expr<T> {
     fn to_doc(&self) -> RcDoc<'static> {
         match self {
             Expr::Var { value, .. } => RcDoc::text(value.to_string()),

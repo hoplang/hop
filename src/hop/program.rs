@@ -8,9 +8,9 @@ use crate::hop::parser::parse;
 use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
-use crate::ir::orchestrator::orchestrate;
 use crate::hop::type_error::TypeError;
 use crate::ir;
+use crate::ir::orchestrator::orchestrate;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
@@ -409,7 +409,10 @@ impl Program {
         hop_mode: &str,
     ) -> Result<String> {
         // Use orchestrate to handle inlining and compilation - use Production mode for evaluation
-        let ir_entrypoints = orchestrate(self.get_typed_modules().clone(), ir::CompilationMode::Production);
+        let ir_entrypoints = orchestrate(
+            self.get_typed_modules().clone(),
+            ir::CompilationMode::Production,
+        );
 
         // Get the entrypoint
         let entrypoint = ir_entrypoints
