@@ -15,71 +15,46 @@ impl DeadCodeEliminationPass {
     fn transform_statements(statements: Vec<IrStatement>) -> Vec<IrStatement> {
         statements
             .into_iter()
-            .flat_map(Self::transform_statement)
-            .collect()
-    }
+            .flat_map(|stmt| match stmt {
+                // If with constant true condition - replace with body
+                IrStatement::If {
+                    condition: IrExpr::BooleanLiteral { value: true, .. },
+                    body,
+                    ..
+                } => body,
 
-    fn transform_statement(statement: IrStatement) -> Vec<IrStatement> {
-        match statement {
-            IrStatement::If {
-                id,
-                condition,
-                body,
-            } => {
-                // Check if condition is a constant boolean
-                match &condition {
-                    IrExpr::BooleanLiteral { value: true, .. } => {
-                        // If always true, replace with body
-                        Self::transform_statements(body)
-                    }
-                    IrExpr::BooleanLiteral { value: false, .. } => {
-                        // If always false, remove entirely
-                        vec![]
-                    }
-                    _ => {
-                        // Dynamic condition, keep if but transform body
-                        vec![IrStatement::If {
-                            id,
-                            condition,
-                            body: Self::transform_statements(body),
-                        }]
-                    }
-                }
-            }
-            IrStatement::For {
-                id,
-                var,
-                array,
-                body,
-            } => vec![IrStatement::For {
-                id,
-                var,
-                array,
-                body: Self::transform_statements(body),
-            }],
-            IrStatement::Let {
-                id,
-                var,
-                value,
-                body,
-            } => vec![IrStatement::Let {
-                id,
-                var,
-                value,
-                body: Self::transform_statements(body),
-            }],
-            // Leaf statements (Write, WriteExpr) pass through unchanged
-            statement => vec![statement],
-        }
+                // If with constant false condition - remove entirely
+                IrStatement::If {
+                    condition: IrExpr::BooleanLiteral { value: false, .. },
+                    ..
+                } => vec![],
+
+                // All other statements (including dynamic If) pass through unchanged
+                other => vec![other],
+            })
+            .collect()
     }
 }
 
 impl Pass for DeadCodeEliminationPass {
-    fn run(&mut self, entrypoint: IrEntrypoint) -> IrEntrypoint {
-        IrEntrypoint {
-            parameters: entrypoint.parameters,
-            body: Self::transform_statements(entrypoint.body),
+    fn run(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
+        // First, recursively process all nested bodies using visit_mut
+        for stmt in &mut entrypoint.body {
+            stmt.visit_mut(&mut |s| {
+                match s {
+                    IrStatement::If { body, .. }
+                    | IrStatement::For { body, .. }
+                    | IrStatement::Let { body, .. } => {
+                        *body = Self::transform_statements(std::mem::take(body));
+                    }
+                    _ => {}
+                }
+            });
         }
+
+        // Then transform top-level statements
+        entrypoint.body = Self::transform_statements(entrypoint.body);
+        entrypoint
     }
 }
 

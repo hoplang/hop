@@ -218,30 +218,31 @@ impl Transpiler for GoTranspiler {
         }
 
         // Function body
-        let mut body = BoxDoc::nil();
+        let mut body = Vec::new();
 
         // Extract parameters into local variables
-        if !entrypoint.parameters.is_empty() {
-            for (param_name, _) in &entrypoint.parameters {
-                let field_name = CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
-                body = body
+        for (param_name, _) in &entrypoint.parameters {
+            let field_name = CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
+            body.push(
+                BoxDoc::nil()
                     .append(BoxDoc::text(param_name.as_str()))
                     .append(BoxDoc::text(" := params."))
-                    .append(BoxDoc::as_string(field_name))
-                    .append(BoxDoc::line());
-            }
+                    .append(BoxDoc::as_string(field_name)),
+            )
         }
 
-        body = body
-            .append(BoxDoc::text("var output strings.Builder"))
-            .append(BoxDoc::line())
-            .append(self.transpile_statements(&entrypoint.body))
-            .append(BoxDoc::line())
-            .append(BoxDoc::text("return output.String()"));
+        body.push(BoxDoc::text("var output strings.Builder"));
+        body.push(self.transpile_statements(&entrypoint.body));
+        body.push(BoxDoc::text("return output.String()"));
 
         result
-            .append(BoxDoc::line().append(body).nest(1))
-            .append(BoxDoc::line())
+            .append(
+                BoxDoc::nil()
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::intersperse(body, BoxDoc::line()))
+                    .append(BoxDoc::line())
+                    .nest(1),
+            )
             .append(BoxDoc::text("}"))
             .append(BoxDoc::line())
     }
