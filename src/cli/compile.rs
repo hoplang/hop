@@ -1,11 +1,10 @@
 use crate::CompileLanguage;
 use crate::document::DocumentAnnotator;
 use crate::filesystem::files::ProjectRoot;
-use crate::ir::inliner::Inliner;
 use crate::hop::program::Program;
 use crate::ir::{
-    CompilationMode, Compiler, GoTranspiler, JsTranspiler, LanguageMode, Transpiler,
-    optimizer::Optimizer,
+    CompilationMode, GoTranspiler, JsTranspiler, LanguageMode, Transpiler,
+    orchestrator::orchestrate,
 };
 use crate::tui::timing;
 use anyhow::{Context, Result};
@@ -90,18 +89,9 @@ pub fn execute(
         CompilationMode::Production
     };
 
-    timer.start_phase("inlining components");
-    // Inline entrypoint components
-    let inlined_entrypoints = Inliner::inline_entrypoints(program.get_typed_modules().clone());
-
     timer.start_phase("compiling to IR");
-    // Compile to IR with the appropriate mode
-    let mut ir_module = Compiler::compile(inlined_entrypoints, compilation_mode);
-
-    timer.start_phase("optimizing");
-    // Run optimization passes
-    let mut optimizer = Optimizer::default_optimization_pipeline();
-    optimizer.run(&mut ir_module);
+    // Use orchestrate to handle inlining, compilation, and optimization
+    let ir_module = orchestrate(program.get_typed_modules().clone(), compilation_mode);
 
     // Generate code based on target language
     let generated_code = match language {

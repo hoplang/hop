@@ -5,10 +5,9 @@ use crate::dop::expr::TypedExpr;
 use crate::dop::{Type, VarName};
 use crate::hop::ast::{AttributeValue, InlinedEntryPoint, TypedAttribute};
 use crate::hop::node::{InlinedNode, Node};
-use crate::ir::transforms::TransformPipeline;
 use std::collections::BTreeMap;
 
-use super::ast::{ExprId, IrEntrypoint, IrExpr, IrModule, IrStatement, StatementId};
+use super::ast::{ExprId, IrEntrypoint, IrExpr, IrStatement, StatementId};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CompilationMode {
@@ -17,7 +16,6 @@ pub enum CompilationMode {
 }
 
 pub struct Compiler {
-    ir_module: IrModule,
     compilation_mode: CompilationMode,
 
     // Expression ID generation
@@ -29,64 +27,38 @@ pub struct Compiler {
 
 impl Compiler {
     pub fn compile(
-        entrypoints: Vec<InlinedEntryPoint>,
+        entrypoint: &InlinedEntryPoint,
         compilation_mode: CompilationMode,
-    ) -> IrModule {
-        // Clone entrypoints for transformation (keeping originals intact)
-        let mut transformed_entrypoints = entrypoints;
-
-        // Apply transformations only in production mode
-        if compilation_mode == CompilationMode::Production {
-            let mut pipeline = TransformPipeline::new();
-            for component in &mut transformed_entrypoints {
-                // Apply transformations to each component
-                pipeline.run(component);
-            }
-        }
-
+    ) -> IrEntrypoint {
         let mut compiler = Compiler {
-            ir_module: IrModule::new(),
             compilation_mode,
             expr_id_counter: 0,
             node_id_counter: 0,
         };
 
-        // Compile all entrypoint components
-        for component_def in &transformed_entrypoints {
-            compiler.compile_entrypoint(component_def);
-        }
-
-        compiler.ir_module
-    }
-
-    fn compile_entrypoint(&mut self, component: &InlinedEntryPoint) {
         // Extract parameter information
-        let param_info = component
+        let param_info = entrypoint
             .params
             .iter()
             .map(|param| (param.var_name.clone(), param.var_type.clone()))
             .collect::<Vec<_>>();
 
-        let body = match self.compilation_mode {
+        let body = match compiler.compilation_mode {
             CompilationMode::Production => {
                 // Compile component body normally for production
-                self.compile_nodes(&component.children, None)
+                compiler.compile_nodes(&entrypoint.children, None)
             }
             CompilationMode::Development => {
                 // Generate development mode bootstrap HTML
-                let component_name = component.tag_name.as_str();
-                self.generate_development_mode_body(component_name, &param_info)
+                let component_name = entrypoint.tag_name.as_str();
+                compiler.generate_development_mode_body(component_name, &param_info)
             }
         };
 
-        let entrypoint = IrEntrypoint {
+        IrEntrypoint {
             parameters: param_info,
             body,
-        };
-
-        self.ir_module
-            .entry_points
-            .insert(component.tag_name.as_str().to_string(), entrypoint);
+        }
     }
 
     fn generate_development_mode_body(
@@ -428,6 +400,7 @@ mod tests {
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
     use crate::hop::type_checker::TypeChecker;
+    use crate::ir::ast::IrModule;
     use expect_test::{Expect, expect};
 
     fn compile_hop_to_ir(source: &str, mode: CompilationMode) -> IrModule {
@@ -451,12 +424,8 @@ mod tests {
             typechecker.type_errors
         );
 
-        // Inline entrypoint components
-        let inlined_entrypoints =
-            crate::ir::inliner::Inliner::inline_entrypoints(typechecker.typed_asts);
-
-        // Compile to IR with specified mode
-        Compiler::compile(inlined_entrypoints, mode)
+        // Use orchestrate to handle inlining and compilation
+        crate::ir::orchestrator::orchestrate(typechecker.typed_asts, mode)
     }
 
     fn check_ir(source: &str, expected: Expect) {
@@ -632,12 +601,10 @@ mod tests {
                         Write("<div")
                         Write(" data-hop-id=\"test/card-comp\"")
                         Write(">")
-                        Let(var: title, value: "Hello") {
-                          Write("<h2")
-                          Write(">")
-                          WriteExpr(expr: title, escape: true)
-                          Write("</h2>")
-                        }
+                        Write("<h2")
+                        Write(">")
+                        Write("Hello")
+                        Write("</h2>")
                         Write("</div>")
                       }
                     }
@@ -962,18 +929,14 @@ mod tests {
                         Write("<div")
                         Write(" data-hop-id=\"test/outer-comp\"")
                         Write(">")
-                        Let(var: text, value: "Hello") {
-                          Write("<div")
-                          Write(" data-hop-id=\"test/inner-comp\"")
-                          Write(">")
-                          Let(var: msg, value: text) {
-                            Write("<span")
-                            Write(">")
-                            WriteExpr(expr: msg, escape: true)
-                            Write("</span>")
-                          }
-                          Write("</div>")
-                        }
+                        Write("<div")
+                        Write(" data-hop-id=\"test/inner-comp\"")
+                        Write(">")
+                        Write("<span")
+                        Write(">")
+                        Write("Hello")
+                        Write("</span>")
+                        Write("</div>")
                         Write("</div>")
                       }
                     }
@@ -1006,11 +969,11 @@ mod tests {
                         Write("<div")
                         Write(" data-hop-id=\"test/child-comp\"")
                         Write(">")
-                        Let(var: x, value: x) {
+                        Let(var: x_1, value: x) {
                           Write("<div")
                           Write(">")
                           Write("Value: ")
-                          WriteExpr(expr: x, escape: true)
+                          WriteExpr(expr: x_1, escape: true)
                           Write("</div>")
                         }
                         Write("</div>")
@@ -1046,22 +1009,22 @@ mod tests {
                         Write("<div")
                         Write(" data-hop-id=\"test/child-comp\"")
                         Write(">")
-                        Let(var: x, value: x) {
+                        Let(var: x_1, value: x) {
                           Write("<div")
                           Write(">")
                           Write("Value: ")
-                          WriteExpr(expr: x, escape: true)
+                          WriteExpr(expr: x_1, escape: true)
                           Write("</div>")
                         }
                         Write("</div>")
                         Write("<div")
                         Write(" data-hop-id=\"test/child-comp\"")
                         Write(">")
-                        Let(var: x, value: x) {
+                        Let(var: x_2, value: x) {
                           Write("<div")
                           Write(">")
                           Write("Value: ")
-                          WriteExpr(expr: x, escape: true)
+                          WriteExpr(expr: x_2, escape: true)
                           Write("</div>")
                         }
                         Write("</div>")
@@ -1149,10 +1112,10 @@ mod tests {
                           WriteExpr(expr: x, escape: true)
                           Write("</div>")
                         }
-                        For(var: x, array: ["c", "d"]) {
+                        For(var: x_1, array: ["c", "d"]) {
                           Write("<span")
                           Write(">")
-                          WriteExpr(expr: x, escape: true)
+                          WriteExpr(expr: x_1, escape: true)
                           Write("</span>")
                         }
                       }

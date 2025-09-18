@@ -8,7 +8,7 @@ use crate::hop::parser::parse;
 use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
-use crate::ir::inliner::Inliner;
+use crate::ir::orchestrator::orchestrate;
 use crate::hop::type_error::TypeError;
 use crate::ir;
 use anyhow::Result;
@@ -408,12 +408,8 @@ impl Program {
         args: HashMap<String, serde_json::Value>,
         hop_mode: &str,
     ) -> Result<String> {
-        // Inline entrypoint components
-        let inlined_entrypoints =
-            Inliner::inline_entrypoints(self.get_typed_modules().clone());
-
-        // Compile to IR - use Production mode for evaluation
-        let ir_module = ir::Compiler::compile(inlined_entrypoints, ir::CompilationMode::Production);
+        // Use orchestrate to handle inlining and compilation - use Production mode for evaluation
+        let ir_module = orchestrate(self.get_typed_modules().clone(), ir::CompilationMode::Production);
 
         // Get the entrypoint
         let entrypoint = ir_module

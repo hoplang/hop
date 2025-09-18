@@ -1,18 +1,12 @@
 use crate::document::document_cursor::StringSpan;
 use crate::hop::ast::InlinedEntryPoint;
-use crate::hop::node::{InlinedNode, Node};
+use crate::hop::node::InlinedNode;
 
-use super::ComponentTransform;
-
-/// Transform that injects <!DOCTYPE html> at the beginning of entrypoint components
+/// Transform that injects <!DOCTYPE html> at the beginning of entrypoints
 /// that don't already have a doctype declaration
 pub struct DoctypeInjector;
 
 impl DoctypeInjector {
-    pub fn new() -> Self {
-        Self
-    }
-
     /// Check if a list of nodes starts with a DOCTYPE declaration (ignoring leading whitespace)
     fn has_doctype(nodes: &[InlinedNode]) -> bool {
         for node in nodes {
@@ -46,20 +40,18 @@ impl DoctypeInjector {
         // All nodes are whitespace or list is empty
         nodes.len()
     }
-}
 
-impl ComponentTransform for DoctypeInjector {
-    fn transform(&mut self, component: &mut InlinedEntryPoint) {
-        // Only inject DOCTYPE for entrypoint components
-        if !Self::has_doctype(&component.children) {
+    pub fn transform(entrypoint: &mut InlinedEntryPoint) {
+        // Only inject DOCTYPE for entrypoints
+        if !Self::has_doctype(&entrypoint.children) {
             // Create a synthetic DOCTYPE node
             let doctype_node = InlinedNode::Doctype {
                 value: StringSpan::new("<!DOCTYPE html>".to_string()),
             };
 
             // Find the right position to insert (after any leading whitespace)
-            let insert_pos = Self::find_doctype_insert_position(&component.children);
-            component.children.insert(insert_pos, doctype_node);
+            let insert_pos = Self::find_doctype_insert_position(&entrypoint.children);
+            entrypoint.children.insert(insert_pos, doctype_node);
         }
     }
 }
@@ -68,17 +60,17 @@ impl ComponentTransform for DoctypeInjector {
 mod tests {
     use super::*;
     use crate::error_collector::ErrorCollector;
-    use crate::ir::inliner::Inliner;
     use crate::hop::module_name::ModuleName;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
     use crate::hop::type_checker::TypeChecker;
+    use crate::ir::inliner::Inliner;
     use expect_test::expect;
 
-    /// Helper to pretty-print component children for testing
-    fn format_component_children(component: &InlinedEntryPoint) -> String {
+    /// Helper to pretty-print entrypoint children for testing
+    fn format_entrypoint_children(entrypoint: &InlinedEntryPoint) -> String {
         let mut output = String::new();
-        for (i, node) in component.children.iter().enumerate() {
+        for (i, node) in entrypoint.children.iter().enumerate() {
             if i > 0 {
                 output.push('\n');
             }
@@ -146,24 +138,23 @@ mod tests {
         Inliner::inline_entrypoints(typechecker.typed_asts)
     }
 
-    /// Helper to check DOCTYPE injection for entrypoint components
+    /// Helper to check DOCTYPE injection for entrypoint
     fn check_entrypoint(input: &str, expected: expect_test::Expect) {
         let ast = create_typed_ast(input);
 
-        // Format output for all entrypoint components
+        // Format output for all entrypoints
         let mut output = String::new();
-        for component in ast {
-            let mut component_clone = component.clone();
+        for entrypoint in ast {
+            let mut entrypoint_clone = entrypoint.clone();
 
             // Apply transform
-            let mut injector = DoctypeInjector::new();
-            injector.transform(&mut component_clone);
+            DoctypeInjector::transform(&mut entrypoint_clone);
 
             if !output.is_empty() {
                 output.push_str("\n\n");
             }
-            output.push_str(&format!("=== {} ===\n", component_clone.tag_name.as_str()));
-            output.push_str(&format_component_children(&component_clone));
+            output.push_str(&format!("=== {} ===\n", entrypoint_clone.tag_name.as_str()));
+            output.push_str(&format_entrypoint_children(&entrypoint_clone));
         }
 
         expected.assert_eq(&output);
