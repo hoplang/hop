@@ -1,5 +1,5 @@
 use super::Type;
-use super::expr::{BinaryOp, Expr, TypedExpr, UnaryOp};
+use super::expr::{BinaryOp, Expr, TypedExpr, UnaryOp, UntypedExpr};
 use super::type_error::TypeError;
 use crate::document::document_cursor::Ranged as _;
 use crate::hop::environment::Environment;
@@ -7,7 +7,7 @@ use crate::hop::type_checker::TypeAnnotation;
 use std::collections::BTreeMap;
 
 pub fn typecheck_expr(
-    expr: &Expr,
+    expr: &UntypedExpr,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> Result<TypedExpr, TypeError> {

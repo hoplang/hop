@@ -7,6 +7,7 @@ use pretty::RcDoc;
 
 use super::Type;
 
+pub type UntypedExpr = Expr<DocumentRange>;
 pub type TypedExpr = Expr<Type>;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -20,7 +21,7 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expr<A = DocumentRange> {
+pub enum Expr<A> {
     /// A variable expression, e.g. foo
     Var { value: VarName, annotation: A },
 

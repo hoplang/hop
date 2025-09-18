@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::expr::TypedExpr;
+use crate::dop::expr::{TypedExpr, UntypedExpr};
 use crate::dop::{Argument, Expr, Parameter, VarName};
 use crate::hop::module_name::ModuleName;
 
@@ -14,7 +14,7 @@ pub struct StaticAttribute {
 }
 
 #[derive(Debug, Clone)]
-pub enum AttributeValue<T = Expr> {
+pub enum AttributeValue<T = UntypedExpr> {
     Expression(T),
     String(DocumentRange),
 }
@@ -25,7 +25,7 @@ pub type TypedAttribute = Attribute<TypedExpr>;
 /// be empty, an expression or a string value.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct Attribute<T = Expr> {
+pub struct Attribute<T = UntypedExpr> {
     pub name: DocumentRange,
     pub value: Option<AttributeValue<T>>,
     pub range: DocumentRange,
@@ -34,7 +34,7 @@ pub struct Attribute<T = Expr> {
 pub type TypedAst = Ast<TypedExpr>;
 
 #[derive(Debug, Clone)]
-pub struct Ast<T = Expr> {
+pub struct Ast<T = UntypedExpr> {
     pub name: ModuleName,
     imports: Vec<Import>,
     component_definitions: Vec<ComponentDefinition<T>>,
@@ -141,7 +141,7 @@ impl Import {
 pub type TypedComponentDefinition = ComponentDefinition<TypedExpr>;
 
 #[derive(Debug, Clone)]
-pub struct ComponentDefinition<T = Expr> {
+pub struct ComponentDefinition<T = UntypedExpr> {
     pub tag_name: DocumentRange,
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<Parameter>, DocumentRange)>,
@@ -168,7 +168,7 @@ impl<T> ComponentDefinition<T> {
 pub type TypedNode = Node<TypedExpr>;
 
 #[derive(Debug, Clone)]
-pub enum Node<E = Expr> {
+pub enum Node<E = UntypedExpr> {
     /// A Text node represents text in the document.
     /// E.g. <div>hello world</div>
     ///           ^^^^^^^^^^^

@@ -10,6 +10,7 @@ use crate::dop::token::Token;
 use crate::dop::tokenizer::Tokenizer;
 use crate::dop::var_name::VarName;
 
+use super::expr::UntypedExpr;
 use super::r#type::RangedType;
 
 /// A Parameter represents a parsed parameter with type annotation.
@@ -31,7 +32,7 @@ impl Display for Parameter {
 /// E.g. <my-comp {x: [1,2], y: 2}>
 ///                ^^^^^^^^
 #[derive(Debug, Clone)]
-pub struct Argument<T = Expr<DocumentRange>> {
+pub struct Argument<T = UntypedExpr> {
     pub var_name: VarName,
     pub var_expr: T,
 }
@@ -190,14 +191,14 @@ impl Parser {
     }
 
     // expr = equality Eof
-    pub fn parse_expr(&mut self) -> Result<Expr, ParseError> {
+    pub fn parse_expr(&mut self) -> Result<UntypedExpr, ParseError> {
         let result = self.parse_equality()?;
         self.expect_eof()?;
         Ok(result)
     }
 
     // loop_header = Identifier "in" equality Eof
-    pub fn parse_loop_header(&mut self) -> Result<(VarName, Expr), ParseError> {
+    pub fn parse_loop_header(&mut self) -> Result<(VarName, UntypedExpr), ParseError> {
         let var_name = self.expect_variable_name()?;
         self.expect_token(&Token::In)?;
         let array_expr = self.parse_equality()?;
@@ -325,7 +326,7 @@ impl Parser {
     }
 
     // equality = unary ( "==" unary )*
-    fn parse_equality(&mut self) -> Result<Expr, ParseError> {
+    fn parse_equality(&mut self) -> Result<UntypedExpr, ParseError> {
         let mut expr = self.parse_unary()?;
         while self.advance_if(Token::Equal).is_some() {
             let right = self.parse_unary()?;
@@ -340,7 +341,7 @@ impl Parser {
     }
 
     // unary = ( "!" )* primary
-    fn parse_unary(&mut self) -> Result<Expr, ParseError> {
+    fn parse_unary(&mut self) -> Result<UntypedExpr, ParseError> {
         if let Some(operator_range) = self.advance_if(Token::Not) {
             let expr = self.parse_unary()?; // Right associative for multiple !
             Ok(Expr::UnaryOp {
@@ -354,7 +355,10 @@ impl Parser {
     }
 
     // array_literal = "[" ( equality ("," equality)* )? "]"
-    fn parse_array_literal(&mut self, left_bracket: DocumentRange) -> Result<Expr, ParseError> {
+    fn parse_array_literal(
+        &mut self,
+        left_bracket: DocumentRange,
+    ) -> Result<UntypedExpr, ParseError> {
         let mut elements = Vec::new();
         let right_bracket =
             self.parse_delimited_list(&Token::LeftBracket, &left_bracket, |this| {
@@ -367,7 +371,10 @@ impl Parser {
         })
     }
 
-    fn parse_object_literal(&mut self, left_brace: DocumentRange) -> Result<Expr, ParseError> {
+    fn parse_object_literal(
+        &mut self,
+        left_brace: DocumentRange,
+    ) -> Result<UntypedExpr, ParseError> {
         let mut properties = Vec::new();
         let mut seen_names = HashSet::new();
         let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
@@ -388,7 +395,10 @@ impl Parser {
         })
     }
 
-    fn parse_property_access(&mut self, identifier: DocumentRange) -> Result<Expr, ParseError> {
+    fn parse_property_access(
+        &mut self,
+        identifier: DocumentRange,
+    ) -> Result<UntypedExpr, ParseError> {
         let var_name = VarName::new(identifier)?;
         let mut expr = Expr::Var {
             annotation: var_name.range().clone(),
@@ -418,7 +428,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_primary(&mut self) -> Result<Expr, ParseError> {
+    fn parse_primary(&mut self) -> Result<UntypedExpr, ParseError> {
         match self.iter.next().transpose()? {
             Some((Token::Identifier(name), _)) => self.parse_property_access(name),
             Some((Token::StringLiteral(value), range)) => Ok(Expr::StringLiteral {
