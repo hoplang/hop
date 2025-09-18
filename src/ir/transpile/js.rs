@@ -3,7 +3,7 @@ use pretty::BoxDoc;
 use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::cased_string::CasedString;
 use crate::dop::r#type::Type;
-use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
+use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy)]
@@ -419,13 +419,12 @@ mod tests {
     use crate::ir::test_utils::IrTestBuilder;
     use expect_test::{Expect, expect};
 
-    // Helper function to convert IrModule to Vec<IrEntrypoint> for tests
-    fn module_to_entrypoints(ir_module: &IrModule) -> Vec<IrEntrypoint> {
-        ir_module.entry_points.iter().map(|(name, entrypoint)| {
-            let mut ep = entrypoint.clone();
-            ep.name = name.clone();
-            ep
-        }).collect()
+    // Helper function to create a single entrypoint for tests
+    fn create_entrypoint(name: &str, statements: Vec<IrStatement>, parameters: Vec<(String, Type)>) -> IrEntrypoint {
+        let t = IrTestBuilder::new(parameters);
+        let mut entrypoint = t.build(statements);
+        entrypoint.name = name.to_string();
+        entrypoint
     }
 
     fn transpile_with_pretty(entrypoints: &[IrEntrypoint], mode: LanguageMode) -> String {
@@ -446,15 +445,12 @@ mod tests {
     #[test]
     fn test_simple_component() {
         let t = IrTestBuilder::new(vec![]);
-
-        let mut ir_module = IrModule::new();
-        ir_module.entry_points.insert(
-            "hello-world".to_string(),
-            t.build(vec![t.write("<h1>Hello, World!</h1>\n")]),
-        );
+        let entrypoints = vec![
+            create_entrypoint("hello-world", vec![t.write("<h1>Hello, World!</h1>\n")], vec![])
+        ];
 
         check_js(
-            &module_to_entrypoints(&ir_module),
+            &entrypoints,
             expect![[r#"
                 export default {
                     helloWorld: () => {
@@ -474,10 +470,8 @@ mod tests {
             ("age".to_string(), Type::String),
         ]);
 
-        let mut ir_module = IrModule::new();
-        ir_module.entry_points.insert(
-            "user-info".to_string(),
-            t.build(vec![
+        let entrypoints = vec![
+            create_entrypoint("user-info", vec![
                 t.write("<div>\n"),
                 t.write("<h2>Name: "),
                 t.write_expr(t.var("name"), true),
@@ -486,11 +480,14 @@ mod tests {
                 t.write_expr(t.var("age"), false),
                 t.write("</p>\n"),
                 t.write("</div>\n"),
-            ]),
-        );
+            ], vec![
+                ("name".to_string(), Type::String),
+                ("age".to_string(), Type::String),
+            ])
+        ];
 
         check_js(
-            &module_to_entrypoints(&ir_module),
+            &entrypoints,
             expect![[r#"
                 function escapeHtml(str) {
                     return str
@@ -526,21 +523,22 @@ mod tests {
             ("show".to_string(), Type::Bool),
         ]);
 
-        let mut ir_module = IrModule::new();
-        ir_module.entry_points.insert(
-            "conditional-display".to_string(),
-            t.build(vec![t.if_stmt(
+        let entrypoints = vec![
+            create_entrypoint("conditional-display", vec![t.if_stmt(
                 t.var("show"),
                 vec![
                     t.write("<h1>"),
                     t.write_expr(t.var("title"), true),
                     t.write("</h1>\n"),
                 ],
-            )]),
-        );
+            )], vec![
+                ("title".to_string(), Type::String),
+                ("show".to_string(), Type::Bool),
+            ])
+        ];
 
         check_ts(
-            &module_to_entrypoints(&ir_module),
+            &entrypoints,
             expect![[r#"
                 function escapeHtml(str: string): string {
                     return str
@@ -573,10 +571,8 @@ mod tests {
             Type::Array(Some(Box::new(Type::String))),
         )]);
 
-        let mut ir_module = IrModule::new();
-        ir_module.entry_points.insert(
-            "list-items".to_string(),
-            t.build(vec![
+        let entrypoints = vec![
+            create_entrypoint("list-items", vec![
                 t.write("<ul>\n"),
                 t.for_loop("item", t.var("items"), |t| {
                     vec![
@@ -586,11 +582,14 @@ mod tests {
                     ]
                 }),
                 t.write("</ul>\n"),
-            ]),
-        );
+            ], vec![(
+                "items".to_string(),
+                Type::Array(Some(Box::new(Type::String))),
+            )])
+        ];
 
         check_js(
-            &module_to_entrypoints(&ir_module),
+            &entrypoints,
             expect![[r#"
                 function escapeHtml(str) {
                     return str
@@ -622,10 +621,8 @@ mod tests {
     fn test_let_binding() {
         let t = IrTestBuilder::new(vec![]);
 
-        let mut ir_module = IrModule::new();
-        ir_module.entry_points.insert(
-            "greeting-card".to_string(),
-            t.build(vec![t.let_stmt(
+        let entrypoints = vec![
+            create_entrypoint("greeting-card", vec![t.let_stmt(
                 "greeting",
                 t.str("Hello from hop!"),
                 |t| {
@@ -637,11 +634,11 @@ mod tests {
                         t.write("</div>\n"),
                     ]
                 },
-            )]),
-        );
+            )], vec![])
+        ];
 
         check_js(
-            &module_to_entrypoints(&ir_module),
+            &entrypoints,
             expect![[r#"
                 function escapeHtml(str) {
                     return str
@@ -672,11 +669,8 @@ mod tests {
     fn test_nested_components_with_let_bindings() {
         let t = IrTestBuilder::new(vec![]);
 
-        let mut ir_module = IrModule::new();
-        // Note: In the IR, nested components are already inlined, so we simulate the result
-        ir_module.entry_points.insert(
-            "test-main-comp".to_string(),
-            t.build(vec![
+        let entrypoints = vec![
+            create_entrypoint("test-main-comp", vec![
                 t.write("<div data-hop-id=\"test/card-comp\">"),
                 t.let_stmt("title", t.str("Hello World"), |t| {
                     vec![
@@ -686,11 +680,11 @@ mod tests {
                     ]
                 }),
                 t.write("</div>"),
-            ]),
-        );
+            ], vec![])
+        ];
 
         check_js(
-            &module_to_entrypoints(&ir_module),
+            &entrypoints,
             expect![[r#"
                 function escapeHtml(str) {
                     return str
@@ -721,10 +715,8 @@ mod tests {
     fn test_complex_literals_and_property_access() {
         let t = IrTestBuilder::new(vec![]);
 
-        let mut ir_module = IrModule::new();
-        ir_module.entry_points.insert(
-            "test-product-list".to_string(),
-            t.build(vec![
+        let entrypoints = vec![
+            create_entrypoint("test-product-list", vec![
                     t.write("<div class=\"products\">\n"),
                     t.for_loop(
                         "product",
@@ -780,12 +772,11 @@ mod tests {
                         )],
                     ),
                     t.write("</div>\n"),
-                ],
-            ),
-        );
+                ], vec![])
+        ];
 
         check_js(
-            &module_to_entrypoints(&ir_module),
+            &entrypoints,
             expect![[r#"
                 function escapeHtml(str) {
                     return str
@@ -831,7 +822,7 @@ mod tests {
 
     #[test]
     fn test_typescript_with_complex_parameters() {
-        let t = IrTestBuilder::new(vec![
+        let parameters = vec![
             (
                 "users".to_string(),
                 Type::Array(Some(Box::new(Type::Object({
@@ -843,12 +834,12 @@ mod tests {
                 })))),
             ),
             ("title".to_string(), Type::String),
-        ]);
+        ];
 
-        let mut ir_module = IrModule::new();
-        ir_module.entry_points.insert(
-            "test-user-list".to_string(),
-            t.build(vec![
+        let t = IrTestBuilder::new(parameters.clone());
+
+        let entrypoints = vec![
+            create_entrypoint("test-user-list", vec![
                 t.write("<div>\n"),
                 t.write("<h1>\n"),
                 t.write_expr(t.var("title"), true),
@@ -872,11 +863,11 @@ mod tests {
                 }),
                 t.write("</ul>\n"),
                 t.write("</div>\n"),
-            ]),
-        );
+            ], parameters)
+        ];
 
         check_ts(
-            &module_to_entrypoints(&ir_module),
+            &entrypoints,
             expect![[r#"
                 function escapeHtml(str: string): string {
                     return str
