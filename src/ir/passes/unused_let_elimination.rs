@@ -117,6 +117,7 @@ mod tests {
                     write("Hello")
                   }
                 }
+
                 -- after --
                 test() {
                   write("Hello")
@@ -139,13 +140,14 @@ mod tests {
                 -- before --
                 test() {
                   let message = "Hello" in {
-                    write(message)
+                    write_expr(message)
                   }
                 }
+
                 -- after --
                 test() {
                   let message = "Hello" in {
-                    write(message)
+                    write_expr(message)
                   }
                 }
             "#]],
@@ -170,6 +172,7 @@ mod tests {
                     }
                   }
                 }
+
                 -- after --
                 test() {
                   write("No variables used")
@@ -194,6 +197,7 @@ mod tests {
                     }
                   }
                 }
+
                 -- after --
                 test() {
                   let cond = true in {
@@ -223,6 +227,7 @@ mod tests {
                     }
                   }
                 }
+
                 -- after --
                 test() {
                   if true {
@@ -251,14 +256,15 @@ mod tests {
                 test() {
                   for item in ["a", "b"] {
                     let unused = "value" in {
-                      write(item)
+                      write_expr(item)
                     }
                   }
                 }
+
                 -- after --
                 test() {
                   for item in ["a", "b"] {
-                    write(item)
+                    write_expr(item)
                   }
                 }
             "#]],
@@ -285,6 +291,7 @@ mod tests {
                     }
                   }
                 }
+
                 -- after --
                 test() {
                   let x = true in {
@@ -319,6 +326,7 @@ mod tests {
                   }
                   write("Third")
                 }
+
                 -- after --
                 test() {
                   write("First")
@@ -347,15 +355,16 @@ mod tests {
                 test() {
                   let items = ["a", "b"] in {
                     for item in items {
-                      write(item)
+                      write_expr(item)
                     }
                   }
                 }
+
                 -- after --
                 test() {
                   let items = ["a", "b"] in {
                     for item in items {
-                      write(item)
+                      write_expr(item)
                     }
                   }
                 }
@@ -376,13 +385,14 @@ mod tests {
                 -- before --
                 test() {
                   let obj = {name: "value"} in {
-                    write(obj.name)
+                    write_expr(obj.name)
                   }
                 }
+
                 -- after --
                 test() {
                   let obj = {name: "value"} in {
-                    write(obj.name)
+                    write_expr(obj.name)
                   }
                 }
             "#]],
@@ -405,16 +415,17 @@ mod tests {
                 -- before --
                 test() {
                   let x = "first x" in {
-                    write(x)
+                    write_expr(x)
                   }
                   let x = "second x" in {
                     write("No reference to x here")
                   }
                 }
+
                 -- after --
                 test() {
                   let x = "first x" in {
-                    write(x)
+                    write_expr(x)
                   }
                   write("No reference to x here")
                 }

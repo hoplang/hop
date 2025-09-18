@@ -207,7 +207,7 @@ impl IrStatement {
                     .append(BoxDoc::text(")"))
             }
             IrStatement::WriteExpr { expr, escape, .. } => {
-                let write_fn = if *escape { "write_escaped" } else { "write" };
+                let write_fn = if *escape { "write_escaped" } else { "write_expr" };
                 BoxDoc::text(write_fn)
                     .append(BoxDoc::text("("))
                     .append(expr.to_doc())

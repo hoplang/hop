@@ -36,8 +36,11 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
+        let before = entrypoint.to_string();
         let result = WriteExprSimplificationPass::run(entrypoint);
-        expected.assert_eq(&result.to_string());
+        let after = result.to_string();
+        let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
+        expected.assert_eq(&output);
     }
 
     #[test]
@@ -49,6 +52,12 @@ mod tests {
                 t.write_expr(t.str("Hello, World!"), false),
             ]),
             expect![[r#"
+                -- before --
+                test() {
+                  write_expr("Hello, World!")
+                }
+
+                -- after --
                 test() {
                   write("Hello, World!")
                 }
@@ -65,6 +74,12 @@ mod tests {
                 t.write_expr(t.str("<div>Hello & Goodbye</div>"), true),
             ]),
             expect![[r#"
+                -- before --
+                test() {
+                  write_escaped("<div>Hello & Goodbye</div>")
+                }
+
+                -- after --
                 test() {
                   write("&lt;div&gt;Hello &amp; Goodbye&lt;/div&gt;")
                 }
@@ -91,6 +106,20 @@ mod tests {
                 }),
             ]),
             expect![[r#"
+                -- before --
+                test() {
+                  if true {
+                    write_expr("Inside if")
+                    for item in ["foo"] {
+                      write_expr("Inside for")
+                    }
+                  }
+                  let x = "value" in {
+                    write_expr("Inside let")
+                  }
+                }
+
+                -- after --
                 test() {
                   if true {
                     write("Inside if")
@@ -116,10 +145,18 @@ mod tests {
                 t.write_expr(t.var("x"), false),
             ]),
             expect![[r#"
+                -- before --
+                test(x: string) {
+                  write("Already a Write statement")
+                  write_expr("Will become Write")
+                  write_expr(x)
+                }
+
+                -- after --
                 test(x: string) {
                   write("Already a Write statement")
                   write("Will become Write")
-                  write(x)
+                  write_expr(x)
                 }
             "#]],
         );

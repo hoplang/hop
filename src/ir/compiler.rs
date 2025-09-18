@@ -1003,7 +1003,7 @@ mod tests {
                 {"entrypoint": "")
                   write("test-comp")
                   write("", "params": ")
-                  write(JsonEncode({name: name, count: count}))
+                  write_expr(JsonEncode({name: name, count: count}))
                   write("}
                 </script>
                 <script type="module" src="http://localhost:33861/dev.js"></script>
