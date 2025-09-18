@@ -34,7 +34,7 @@ impl<'a> Inliner<'a> {
                     result.push(InlinedEntryPoint {
                         tag_name: component.tag_name.to_string_span(),
                         children: inliner.inline_nodes(&component.children),
-                        params: component.params.clone(),
+                        params: component.params.clone().map(|p| p.0).unwrap_or_default(),
                     });
                 }
             }
@@ -478,7 +478,7 @@ mod tests {
                 [
                     InlinedEntryPoint {
                         tag_name: "main-comp",
-                        params: None,
+                        params: [],
                         children: [
                             Text {
                                 value: "\n                        ",
@@ -631,7 +631,7 @@ mod tests {
                 [
                     InlinedEntryPoint {
                         tag_name: "main-comp",
-                        params: None,
+                        params: [],
                         children: [
                             Text {
                                 value: "\n                        ",

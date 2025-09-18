@@ -63,14 +63,9 @@ impl Compiler {
         // Extract parameter information
         let param_info = component
             .params
-            .as_ref()
-            .map(|(params, _)| {
-                params
-                    .iter()
-                    .map(|param| (param.var_name.clone(), param.var_type.clone()))
-                    .collect()
-            })
-            .unwrap_or_else(Vec::new);
+            .iter()
+            .map(|param| (param.var_name.clone(), param.var_type.clone()))
+            .collect::<Vec<_>>();
 
         let body = match self.compilation_mode {
             CompilationMode::Production => {

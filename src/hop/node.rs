@@ -13,20 +13,23 @@ use crate::{
 
 use super::{ast::Attribute, module_name::ModuleName};
 
-pub type UntypedNode = Node<UntypedExpr, DocumentRange>;
-pub type TypedNode = Node<TypedExpr, DocumentRange>;
+pub type UntypedNode = Node<UntypedExpr>;
+pub type TypedNode = Node<TypedExpr>;
 
 #[derive(Debug, Clone)]
-pub enum Node<E, R> {
+pub enum Node<E> {
     /// A Text node represents text in the document.
     /// E.g. <div>hello world</div>
     ///           ^^^^^^^^^^^
-    Text { value: StringSpan, range: R },
+    Text {
+        value: StringSpan,
+        range: DocumentRange,
+    },
 
     /// A TextExpression represents an expression that occurs in a text position.
     /// E.g. <div>hello {world}</div>
     ///                 ^^^^^^^
-    TextExpression { expression: E, range: R },
+    TextExpression { expression: E, range: DocumentRange },
 
     /// A ComponentReference represents a reference to a component.
     /// E.g.
@@ -41,7 +44,7 @@ pub enum Node<E, R> {
         args: Option<(Vec<Argument<E>>, DocumentRange)>,
         attributes: BTreeMap<StringSpan, Attribute<E>>,
         children: Vec<Self>,
-        range: R,
+        range: DocumentRange,
     },
 
     /// A SlotDefinition node represents the definition of a slot, e.g.
@@ -50,14 +53,14 @@ pub enum Node<E, R> {
     /// <my-component>
     ///   <slot-default/>
     /// </my-component>
-    SlotDefinition { range: R },
+    SlotDefinition { range: DocumentRange },
 
     /// An If node contains content that is only evaluated when its condition
     /// expression evaluates to true.
     If {
         condition: E,
         children: Vec<Self>,
-        range: R,
+        range: DocumentRange,
     },
 
     /// A For node contains content that is evaluated once for each item of
@@ -66,11 +69,14 @@ pub enum Node<E, R> {
         var_name: VarName,
         array_expr: E,
         children: Vec<Self>,
-        range: R,
+        range: DocumentRange,
     },
 
     /// A Doctype node represents a doctype, e.g. a <!DOCTYPE html>
-    Doctype { value: StringSpan, range: R },
+    Doctype {
+        value: StringSpan,
+        range: DocumentRange,
+    },
 
     /// An HTML node represents a plain HTML node.
     /// E.g. <div>...</div>
@@ -80,7 +86,7 @@ pub enum Node<E, R> {
         closing_tag_name: Option<DocumentRange>,
         attributes: BTreeMap<StringSpan, Attribute<E>>,
         children: Vec<Self>,
-        range: R,
+        range: DocumentRange,
     },
 
     /// A Placeholder node represents a node that could not be constructed (because
@@ -88,7 +94,10 @@ pub enum Node<E, R> {
     ///
     /// We use Placeholder nodes to be able to construct the child nodes of the node that could not be
     /// constructed. This is useful for e.g. go-to-definition in the language server.
-    Placeholder { children: Vec<Self>, range: R },
+    Placeholder {
+        children: Vec<Self>,
+        range: DocumentRange,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -123,7 +132,7 @@ pub enum InlinedNode {
     },
 }
 
-impl<T, R> Node<T, R> {
+impl<T> Node<T> {
     /// Get the direct children of a node.
     pub fn children(&self) -> &[Self] {
         match self {
@@ -139,7 +148,7 @@ impl<T, R> Node<T, R> {
         }
     }
 
-    pub fn iter_depth_first(&self) -> DepthFirstIterator<T, R> {
+    pub fn iter_depth_first(&self) -> DepthFirstIterator<T> {
         DepthFirstIterator::new(self)
     }
 
@@ -183,7 +192,7 @@ impl<T, R> Node<T, R> {
     }
 }
 
-impl<T> Node<T, DocumentRange> {
+impl<T> Node<T> {
     pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&Self> {
         if !self.range().contains_position(position) {
             return None;
@@ -197,7 +206,7 @@ impl<T> Node<T, DocumentRange> {
     }
 }
 
-impl<T> Ranged for Node<T, DocumentRange> {
+impl<T> Ranged for Node<T> {
     fn range(&self) -> &DocumentRange {
         match self {
             Node::Text { range, .. }
@@ -213,18 +222,18 @@ impl<T> Ranged for Node<T, DocumentRange> {
     }
 }
 
-pub struct DepthFirstIterator<'a, T, A> {
-    stack: Vec<&'a Node<T, A>>,
+pub struct DepthFirstIterator<'a, T> {
+    stack: Vec<&'a Node<T>>,
 }
 
-impl<'a, T, A> DepthFirstIterator<'a, T, A> {
-    fn new(root: &'a Node<T, A>) -> Self {
+impl<'a, T> DepthFirstIterator<'a, T> {
+    fn new(root: &'a Node<T>) -> Self {
         Self { stack: vec![root] }
     }
 }
 
-impl<'a, T, A> Iterator for DepthFirstIterator<'a, T, A> {
-    type Item = &'a Node<T, A>;
+impl<'a, T> Iterator for DepthFirstIterator<'a, T> {
+    type Item = &'a Node<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let current = self.stack.pop()?;

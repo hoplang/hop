@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::dop::Parameter;
 use crate::dop::expr::{TypedExpr, UntypedExpr};
-use crate::dop::{Argument, Parameter, VarName};
 use crate::hop::module_name::ModuleName;
 
 use super::node::{InlinedNode, Node};
@@ -40,13 +40,13 @@ pub type TypedAst = Ast<TypedExpr>;
 pub struct Ast<T> {
     pub name: ModuleName,
     imports: Vec<Import>,
-    component_definitions: Vec<ComponentDefinition<T, DocumentRange>>,
+    component_definitions: Vec<ComponentDefinition<T>>,
 }
 
 impl<T> Ast<T> {
     pub fn new(
         name: ModuleName,
-        component_definitions: Vec<ComponentDefinition<T, DocumentRange>>,
+        component_definitions: Vec<ComponentDefinition<T>>,
         imports: Vec<Import>,
     ) -> Self {
         Self {
@@ -56,24 +56,19 @@ impl<T> Ast<T> {
         }
     }
 
-    pub fn get_component_definition(
-        &self,
-        name: &str,
-    ) -> Option<&ComponentDefinition<T, DocumentRange>> {
+    pub fn get_component_definition(&self, name: &str) -> Option<&ComponentDefinition<T>> {
         self.component_definitions
             .iter()
             .find(|&n| n.tag_name.as_str() == name)
     }
 
     /// Returns a reference to all component definition nodes in the AST.
-    pub fn get_component_definitions(&self) -> &[ComponentDefinition<T, DocumentRange>] {
+    pub fn get_component_definitions(&self) -> &[ComponentDefinition<T>] {
         &self.component_definitions
     }
 
     /// Returns a mutable reference to all component definition nodes in the AST.
-    pub fn get_component_definitions_mut(
-        &mut self,
-    ) -> &mut [ComponentDefinition<T, DocumentRange>] {
+    pub fn get_component_definitions_mut(&mut self) -> &mut [ComponentDefinition<T>] {
         &mut self.component_definitions
     }
 
@@ -83,7 +78,7 @@ impl<T> Ast<T> {
     }
 
     /// Returns an iterator over all nodes in the AST, iterating depth-first.
-    pub fn iter_all_nodes(&self) -> impl Iterator<Item = &Node<T, DocumentRange>> {
+    pub fn iter_all_nodes(&self) -> impl Iterator<Item = &Node<T>> {
         self.component_definitions
             .iter()
             .flat_map(|n| &n.children)
@@ -108,10 +103,7 @@ impl<T> Ast<T> {
     ///     ^^^^^^^^^^^^^^^^^
     /// </div>
     ///
-    pub fn find_node_at_position(
-        &self,
-        position: DocumentPosition,
-    ) -> Option<&Node<T, DocumentRange>> {
+    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&Node<T>> {
         for n in &self.component_definitions {
             if n.range.contains_position(position) {
                 for child in &n.children {
@@ -149,26 +141,26 @@ impl Import {
     }
 }
 
-pub type TypedComponentDefinition = ComponentDefinition<TypedExpr>;
-
 #[derive(Debug, Clone)]
 pub struct InlinedEntryPoint {
     pub tag_name: StringSpan,
-    pub params: Option<(Vec<Parameter>, DocumentRange)>,
+    pub params: Vec<Parameter>,
     pub children: Vec<InlinedNode>,
 }
 
+pub type UntypedComponentDefinition = ComponentDefinition<UntypedExpr>;
+
 #[derive(Debug, Clone)]
-pub struct ComponentDefinition<E = UntypedExpr, R = DocumentRange> {
+pub struct ComponentDefinition<E> {
     pub tag_name: DocumentRange,
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<Parameter>, DocumentRange)>,
     pub as_attr: Option<StaticAttribute>,
     pub attributes: BTreeMap<StringSpan, Attribute<E>>,
-    pub children: Vec<Node<E, R>>,
+    pub children: Vec<Node<E>>,
     pub is_entrypoint: bool,
     pub has_slot: bool,
-    pub range: R,
+    pub range: DocumentRange,
 }
 
 impl<T> Ranged for ComponentDefinition<T> {

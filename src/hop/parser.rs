@@ -7,7 +7,7 @@ use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{Token, Tokenizer};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use super::ast::{self, UntypedAst};
+use super::ast::{self, UntypedAst, UntypedComponentDefinition};
 use super::module_name::ModuleName;
 use super::node::{Node, UntypedNode};
 use super::tokenizer;
@@ -178,7 +178,7 @@ impl AttributeValidator {
 
 enum TopLevelNode {
     Import(Import),
-    ComponentDefinition(ComponentDefinition),
+    ComponentDefinition(UntypedComponentDefinition),
 }
 
 pub fn parse(
@@ -572,6 +572,7 @@ mod tests {
     use super::*;
     use crate::document::{DocumentAnnotator, document_cursor::Ranged};
     use crate::error_collector::ErrorCollector;
+    use crate::hop::ast::UntypedComponentDefinition;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -605,7 +606,7 @@ mod tests {
         }
     }
 
-    pub fn format_component_definition(d: &ComponentDefinition) -> String {
+    pub fn format_component_definition(d: &UntypedComponentDefinition) -> String {
         let mut lines = Vec::new();
         for child in &d.children {
             write_node(child, 0, &mut lines);
