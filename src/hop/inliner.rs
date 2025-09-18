@@ -5,6 +5,8 @@ use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition, Node}
 use crate::hop::module_name::ModuleName;
 use std::collections::{BTreeMap, HashMap};
 
+use super::ast::TypedNode;
+
 /// The Inliner transforms ASTs by replacing ComponentReference nodes with their
 /// inlined component definitions, using Let nodes for parameter binding and
 /// StringConcat for class attribute merging.
@@ -41,12 +43,12 @@ impl<'a> Inliner<'a> {
     }
 
     /// Recursively inline nodes in a list
-    fn inline_nodes(&self, nodes: &[Node<TypedExpr>]) -> Vec<Node<TypedExpr>> {
+    fn inline_nodes(&self, nodes: &[TypedNode]) -> Vec<TypedNode> {
         nodes.iter().map(|node| self.inline_node(node)).collect()
     }
 
     /// Inline a single node (and its children)
-    fn inline_node(&self, node: &Node<TypedExpr>) -> Node<TypedExpr> {
+    fn inline_node(&self, node: &TypedNode) -> TypedNode {
         match node {
             Node::ComponentReference {
                 tag_name,
@@ -150,9 +152,9 @@ impl<'a> Inliner<'a> {
         component: &ComponentDefinition<TypedExpr>,
         args: Option<&(Vec<Argument<TypedExpr>>, DocumentRange)>,
         extra_attributes: &BTreeMap<StringSpan, Attribute<TypedExpr>>,
-        slot_children: &[Node<TypedExpr>],
+        slot_children: &[TypedNode],
         range: &DocumentRange,
-    ) -> Node<TypedExpr> {
+    ) -> TypedNode {
         // Determine wrapper tag
         let wrapper_tag = component
             .as_attr
@@ -335,9 +337,9 @@ impl<'a> Inliner<'a> {
     /// Inline nodes, replacing slot definitions with the provided slot content
     fn inline_nodes_with_slot(
         &self,
-        nodes: &[Node<TypedExpr>],
-        slot_content: &[Node<TypedExpr>],
-    ) -> Vec<Node<TypedExpr>> {
+        nodes: &[TypedNode],
+        slot_content: &[TypedNode],
+    ) -> Vec<TypedNode> {
         let mut result = Vec::new();
 
         for node in nodes {
@@ -357,11 +359,7 @@ impl<'a> Inliner<'a> {
     }
 
     /// Inline a single node, replacing slots with the provided content
-    fn inline_node_with_slot(
-        &self,
-        node: &Node<TypedExpr>,
-        slot_content: &[Node<TypedExpr>],
-    ) -> Node<TypedExpr> {
+    fn inline_node_with_slot(&self, node: &TypedNode, slot_content: &[TypedNode]) -> TypedNode {
         match node {
             Node::ComponentReference { .. } => self.inline_node(node),
 
@@ -519,7 +517,6 @@ mod tests {
                         params: None,
                         as_attr: None,
                         attributes: {},
-                        range: "<main-comp entrypoint>\n                        <card-comp {title: \"Hello\"}/>\n                    </main-comp>",
                         children: [
                             Text {
                                 value: "\n                        ",
@@ -591,6 +588,7 @@ mod tests {
                         ],
                         is_entrypoint: true,
                         has_slot: false,
+                        range: "<main-comp entrypoint>\n                        <card-comp {title: \"Hello\"}/>\n                    </main-comp>",
                     },
                 ]"#]],
         );
@@ -625,7 +623,6 @@ mod tests {
                         params: None,
                         as_attr: None,
                         attributes: {},
-                        range: "<main-comp entrypoint>\n                        <card-comp>\n                            <p>Slot content</p>\n                        </card-comp>\n                    </main-comp>",
                         children: [
                             Text {
                                 value: "\n                        ",
@@ -716,6 +713,7 @@ mod tests {
                         ],
                         is_entrypoint: true,
                         has_slot: false,
+                        range: "<main-comp entrypoint>\n                        <card-comp>\n                            <p>Slot content</p>\n                        </card-comp>\n                    </main-comp>",
                     },
                 ]"#]],
         );

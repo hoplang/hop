@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::expr::{TypedExpr, UntypedExpr};
-use crate::dop::{Argument, Expr, Parameter, VarName};
+use crate::dop::{Argument, Parameter, VarName};
 use crate::hop::module_name::ModuleName;
 
 /// A StaticAttribute is an attribute that must
@@ -37,13 +37,13 @@ pub type TypedAst = Ast<TypedExpr>;
 pub struct Ast<T = UntypedExpr> {
     pub name: ModuleName,
     imports: Vec<Import>,
-    component_definitions: Vec<ComponentDefinition<T>>,
+    component_definitions: Vec<ComponentDefinition<T, DocumentRange>>,
 }
 
 impl<T> Ast<T> {
     pub fn new(
         name: ModuleName,
-        component_definitions: Vec<ComponentDefinition<T>>,
+        component_definitions: Vec<ComponentDefinition<T, DocumentRange>>,
         imports: Vec<Import>,
     ) -> Self {
         Self {
@@ -53,19 +53,24 @@ impl<T> Ast<T> {
         }
     }
 
-    pub fn get_component_definition(&self, name: &str) -> Option<&ComponentDefinition<T>> {
+    pub fn get_component_definition(
+        &self,
+        name: &str,
+    ) -> Option<&ComponentDefinition<T, DocumentRange>> {
         self.component_definitions
             .iter()
             .find(|&n| n.tag_name.as_str() == name)
     }
 
     /// Returns a reference to all component definition nodes in the AST.
-    pub fn get_component_definitions(&self) -> &[ComponentDefinition<T>] {
+    pub fn get_component_definitions(&self) -> &[ComponentDefinition<T, DocumentRange>] {
         &self.component_definitions
     }
 
     /// Returns a mutable reference to all component definition nodes in the AST.
-    pub fn get_component_definitions_mut(&mut self) -> &mut [ComponentDefinition<T>] {
+    pub fn get_component_definitions_mut(
+        &mut self,
+    ) -> &mut [ComponentDefinition<T, DocumentRange>] {
         &mut self.component_definitions
     }
 
@@ -75,7 +80,7 @@ impl<T> Ast<T> {
     }
 
     /// Returns an iterator over all nodes in the AST, iterating depth-first.
-    pub fn iter_all_nodes(&self) -> impl Iterator<Item = &Node<T>> {
+    pub fn iter_all_nodes(&self) -> impl Iterator<Item = &Node<T, DocumentRange>> {
         self.component_definitions
             .iter()
             .flat_map(|n| &n.children)
@@ -100,7 +105,10 @@ impl<T> Ast<T> {
     ///     ^^^^^^^^^^^^^^^^^
     /// </div>
     ///
-    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&Node<T>> {
+    pub fn find_node_at_position(
+        &self,
+        position: DocumentPosition,
+    ) -> Option<&Node<T, DocumentRange>> {
         for n in &self.component_definitions {
             if n.range.contains_position(position) {
                 for child in &n.children {
@@ -141,16 +149,16 @@ impl Import {
 pub type TypedComponentDefinition = ComponentDefinition<TypedExpr>;
 
 #[derive(Debug, Clone)]
-pub struct ComponentDefinition<T = UntypedExpr> {
+pub struct ComponentDefinition<T = UntypedExpr, A = DocumentRange> {
     pub tag_name: DocumentRange,
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<Parameter>, DocumentRange)>,
     pub as_attr: Option<StaticAttribute>,
     pub attributes: BTreeMap<StringSpan, Attribute<T>>,
-    pub range: DocumentRange,
-    pub children: Vec<Node<T>>,
+    pub children: Vec<Node<T, A>>,
     pub is_entrypoint: bool,
     pub has_slot: bool,
+    pub range: DocumentRange,
 }
 
 impl<T> Ranged for ComponentDefinition<T> {
@@ -165,22 +173,20 @@ impl<T> ComponentDefinition<T> {
     }
 }
 
-pub type TypedNode = Node<TypedExpr>;
+pub type UntypedNode = Node<UntypedExpr, DocumentRange>;
+pub type TypedNode = Node<TypedExpr, DocumentRange>;
 
 #[derive(Debug, Clone)]
-pub enum Node<E = UntypedExpr> {
+pub enum Node<E, A> {
     /// A Text node represents text in the document.
     /// E.g. <div>hello world</div>
     ///           ^^^^^^^^^^^
-    Text {
-        value: StringSpan,
-        range: DocumentRange,
-    },
+    Text { value: StringSpan, range: A },
 
     /// A TextExpression represents an expression that occurs in a text position.
     /// E.g. <div>hello {world}</div>
     ///                 ^^^^^^^
-    TextExpression { expression: E, range: DocumentRange },
+    TextExpression { expression: E, range: A },
 
     /// A ComponentReference represents a reference to a component.
     /// E.g.
@@ -194,7 +200,7 @@ pub enum Node<E = UntypedExpr> {
         closing_tag_name: Option<DocumentRange>,
         args: Option<(Vec<Argument<E>>, DocumentRange)>,
         attributes: BTreeMap<StringSpan, Attribute<E>>,
-        children: Vec<Node<E>>,
+        children: Vec<Self>,
         range: DocumentRange,
     },
 
@@ -210,7 +216,7 @@ pub enum Node<E = UntypedExpr> {
     /// expression evaluates to true.
     If {
         condition: E,
-        children: Vec<Node<E>>,
+        children: Vec<Self>,
         range: DocumentRange,
     },
 
@@ -219,7 +225,7 @@ pub enum Node<E = UntypedExpr> {
     For {
         var_name: VarName,
         array_expr: E,
-        children: Vec<Node<E>>,
+        children: Vec<Self>,
         range: DocumentRange,
     },
 
@@ -236,7 +242,7 @@ pub enum Node<E = UntypedExpr> {
         tag_name: DocumentRange,
         closing_tag_name: Option<DocumentRange>,
         attributes: BTreeMap<StringSpan, Attribute<E>>,
-        children: Vec<Node<E>>,
+        children: Vec<Self>,
         range: DocumentRange,
     },
 
@@ -246,7 +252,7 @@ pub enum Node<E = UntypedExpr> {
     /// We use Placeholder nodes to be able to construct the child nodes of the node that could not be
     /// constructed. This is useful for e.g. go-to-definition in the language server.
     Placeholder {
-        children: Vec<Node<E>>,
+        children: Vec<Self>,
         range: DocumentRange,
     },
 
@@ -255,14 +261,14 @@ pub enum Node<E = UntypedExpr> {
     Let {
         var: VarName,
         value: E,
-        children: Vec<Node<E>>,
+        children: Vec<Self>,
         range: DocumentRange,
     },
 }
 
-impl<T> Node<T> {
+impl<T, A> Node<T, A> {
     /// Get the direct children of a node.
-    pub fn children(&self) -> &[Node<T>] {
+    pub fn children(&self) -> &[Self] {
         match self {
             Node::ComponentReference { children, .. } => children,
             Node::If { children, .. } => children,
@@ -277,20 +283,8 @@ impl<T> Node<T> {
         }
     }
 
-    pub fn iter_depth_first(&self) -> DepthFirstIterator<T> {
+    pub fn iter_depth_first(&self) -> DepthFirstIterator<T, A> {
         DepthFirstIterator::new(self)
-    }
-
-    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&Node<T>> {
-        if !self.range().contains_position(position) {
-            return None;
-        }
-        for child in self.children() {
-            if let Some(node) = child.find_node_at_position(position) {
-                return Some(node);
-            }
-        }
-        Some(self)
     }
 
     /// Get the range for the opening tag of a node.
@@ -333,7 +327,21 @@ impl<T> Node<T> {
     }
 }
 
-impl<T> Ranged for Node<T> {
+impl<T> Node<T, DocumentRange> {
+    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&Self> {
+        if !self.range().contains_position(position) {
+            return None;
+        }
+        for child in self.children() {
+            if let Some(node) = child.find_node_at_position(position) {
+                return Some(node);
+            }
+        }
+        Some(self)
+    }
+}
+
+impl<T> Ranged for Node<T, DocumentRange> {
     fn range(&self) -> &DocumentRange {
         match self {
             Node::Text { range, .. }
@@ -350,18 +358,18 @@ impl<T> Ranged for Node<T> {
     }
 }
 
-pub struct DepthFirstIterator<'a, T> {
-    stack: Vec<&'a Node<T>>,
+pub struct DepthFirstIterator<'a, T, A> {
+    stack: Vec<&'a Node<T, A>>,
 }
 
-impl<'a, T> DepthFirstIterator<'a, T> {
-    fn new(root: &'a Node<T>) -> Self {
+impl<'a, T, A> DepthFirstIterator<'a, T, A> {
+    fn new(root: &'a Node<T, A>) -> Self {
         Self { stack: vec![root] }
     }
 }
 
-impl<'a, T> Iterator for DepthFirstIterator<'a, T> {
-    type Item = &'a Node<T>;
+impl<'a, T, A> Iterator for DepthFirstIterator<'a, T, A> {
+    type Item = &'a Node<T, A>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let current = self.stack.pop()?;

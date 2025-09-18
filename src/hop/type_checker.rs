@@ -9,7 +9,7 @@ use crate::hop::type_error::TypeError;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
-use super::ast::{AttributeValue, TypedAttribute};
+use super::ast::{AttributeValue, TypedAttribute, TypedNode, UntypedNode};
 use super::module_name::ModuleName;
 
 #[derive(Debug, Clone)]
@@ -289,12 +289,12 @@ fn typecheck_module(
 }
 
 fn typecheck_node(
-    node: &Node,
+    node: &UntypedNode,
     state: &State,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
-) -> Option<Node<TypedExpr>> {
+) -> Option<TypedNode> {
     match node {
         Node::If {
             condition,

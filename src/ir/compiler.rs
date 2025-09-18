@@ -174,7 +174,7 @@ impl Compiler {
 
     fn compile_nodes(
         &mut self,
-        nodes: &[Node<TypedExpr>],
+        nodes: &[TypedNode],
         slot_content: Option<Vec<IrStatement>>,
     ) -> Vec<IrStatement> {
         let mut result = Vec::new();
@@ -186,7 +186,7 @@ impl Compiler {
 
     fn compile_node(
         &mut self,
-        node: &Node<TypedExpr>,
+        node: &TypedNode,
         slot_content: Option<&Vec<IrStatement>>,
         output: &mut Vec<IrStatement>,
     ) {

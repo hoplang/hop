@@ -7,7 +7,7 @@ use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{Token, Tokenizer};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use super::ast::{self};
+use super::ast::{self, UntypedNode};
 use super::module_name::ModuleName;
 use super::tokenizer;
 
@@ -194,7 +194,7 @@ pub fn parse(
     let mut imported_components = HashMap::new();
 
     for mut tree in trees {
-        let children: Vec<Node> = std::mem::take(&mut tree.children)
+        let children: Vec<UntypedNode> = std::mem::take(&mut tree.children)
             .into_iter()
             .filter_map(|child| {
                 construct_node(
@@ -243,7 +243,7 @@ pub fn parse(
 
 fn parse_top_level_node(
     tree: TokenTree,
-    children: Vec<Node>,
+    children: Vec<UntypedNode>,
     errors: &mut ErrorCollector<ParseError>,
 ) -> Option<TopLevelNode> {
     match tree.token {
@@ -361,8 +361,8 @@ fn construct_node(
     module_name: &ModuleName,
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, ModuleName>,
-) -> Option<Node> {
-    let children: Vec<Node> = tree
+) -> Option<UntypedNode> {
+    let children: Vec<_> = tree
         .children
         .into_iter()
         .filter_map(|child| {
@@ -574,7 +574,7 @@ mod tests {
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
-    fn node_name(node: &Node) -> &str {
+    fn node_name(node: &UntypedNode) -> &str {
         match node {
             Node::Doctype { .. } => "doctype",
             Node::ComponentReference { .. } => "component_reference",
@@ -589,7 +589,7 @@ mod tests {
         }
     }
 
-    fn write_node(node: &Node, depth: usize, lines: &mut Vec<String>) {
+    fn write_node(node: &UntypedNode, depth: usize, lines: &mut Vec<String>) {
         if matches!(node, Node::Text { .. }) {
             return;
         }
