@@ -623,6 +623,11 @@ impl Compiler<'_> {
                 value: Box::new(self.compile_expr(value)),
                 annotation,
             },
+            Expr::StringConcat { left, right, .. } => Expr::StringConcat {
+                left: Box::new(self.compile_expr(left)),
+                right: Box::new(self.compile_expr(right)),
+                annotation,
+            },
         }
     }
 }

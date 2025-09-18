@@ -71,6 +71,15 @@ fn evaluate_ir_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value
             let json_str = serde_json::to_string(&val)?;
             Ok(Value::String(json_str))
         }
+        IrExpr::StringConcat { left, right, .. } => {
+            let left_val = evaluate_ir_expr(left, env)?;
+            let right_val = evaluate_ir_expr(right, env)?;
+
+            match (left_val, right_val) {
+                (Value::String(l), Value::String(r)) => Ok(Value::String(format!("{}{}", l, r))),
+                _ => panic!("String concatenation requires two strings"),
+            }
+        }
     }
 }
 

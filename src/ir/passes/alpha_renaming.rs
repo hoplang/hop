@@ -163,6 +163,15 @@ impl AlphaRenamingPass {
                 value: Box::new(self.rename_expr(*value)),
                 annotation,
             },
+            Expr::StringConcat {
+                left,
+                right,
+                annotation,
+            } => Expr::StringConcat {
+                left: Box::new(self.rename_expr(*left)),
+                right: Box::new(self.rename_expr(*right)),
+                annotation,
+            },
             // Literals don't contain variables
             Expr::StringLiteral { .. } => expr,
             Expr::BooleanLiteral { .. } => expr,

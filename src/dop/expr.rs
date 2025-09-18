@@ -69,6 +69,13 @@ pub enum Expr<T = DocumentRange> {
 
     /// JSON encode expression for converting values to JSON strings
     JsonEncode { value: Box<Expr<T>>, annotation: T },
+
+    /// String concatenation expression for joining two string expressions
+    StringConcat {
+        left: Box<Expr<T>>,
+        right: Box<Expr<T>>,
+        annotation: T,
+    },
 }
 
 impl<T> Expr<T> {
@@ -83,7 +90,8 @@ impl<T> Expr<T> {
             | Expr::ObjectLiteral { annotation, .. }
             | Expr::BinaryOp { annotation, .. }
             | Expr::UnaryOp { annotation, .. }
-            | Expr::JsonEncode { annotation, .. } => annotation,
+            | Expr::JsonEncode { annotation, .. }
+            | Expr::StringConcat { annotation, .. } => annotation,
         }
     }
 
@@ -103,6 +111,7 @@ impl<T> Expr<T> {
                 properties.iter().map(|(_, value)| value).collect()
             }
             Expr::JsonEncode { value, .. } => vec![value],
+            Expr::StringConcat { left, right, .. } => vec![left, right],
             // Leaf nodes have no children
             Expr::Var { .. }
             | Expr::StringLiteral { .. }
@@ -221,6 +230,12 @@ impl<T> Pretty for Expr<T> {
             Expr::JsonEncode { value, .. } => RcDoc::nil()
                 .append(RcDoc::text("JsonEncode("))
                 .append(value.to_doc())
+                .append(RcDoc::text(")")),
+            Expr::StringConcat { left, right, .. } => RcDoc::nil()
+                .append(RcDoc::text("("))
+                .append(left.to_doc())
+                .append(RcDoc::text(" + "))
+                .append(right.to_doc())
                 .append(RcDoc::text(")")),
         }
     }

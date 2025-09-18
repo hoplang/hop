@@ -181,6 +181,19 @@ pub fn typecheck_expr(
                 annotation: Type::String,
             })
         }
+        Expr::StringConcat { left, right, .. } => {
+            let typed_left = typecheck_expr(left, env, annotations)?;
+            let typed_right = typecheck_expr(right, env, annotations)?;
+
+            // Both operands should be strings - for now we'll just proceed
+            // TODO: Add proper type checking for string concatenation
+
+            Ok(Expr::StringConcat {
+                left: Box::new(typed_left),
+                right: Box::new(typed_right),
+                annotation: Type::String,
+            })
+        }
     }
 }
 
