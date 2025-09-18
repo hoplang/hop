@@ -36,27 +36,30 @@ impl Compiler {
             node_id_counter: 0,
         };
 
-        // Extract parameter information
+        // Extract parameter information by moving
         let param_info = entrypoint
             .params
-            .iter()
-            .map(|param| (param.var_name.clone(), param.var_type.clone()))
+            .into_iter()
+            .map(|param| (param.var_name, param.var_type))
             .collect::<Vec<_>>();
+
+        let tag_name = entrypoint.tag_name;
+        let children = entrypoint.children;
 
         let body = match compiler.compilation_mode {
             CompilationMode::Production => {
                 // Compile component body normally for production
-                compiler.compile_nodes(&entrypoint.children, None)
+                compiler.compile_nodes(children, None)
             }
             CompilationMode::Development => {
                 // Generate development mode bootstrap HTML
-                let component_name = entrypoint.tag_name.as_str();
+                let component_name = tag_name.as_str();
                 compiler.generate_development_mode_body(component_name, &param_info)
             }
         };
 
         IrEntrypoint {
-            name: entrypoint.tag_name.as_str().to_string(),
+            name: tag_name.as_str().to_string(),
             parameters: param_info,
             body,
         }
@@ -141,7 +144,7 @@ impl Compiler {
 
     fn compile_nodes(
         &mut self,
-        nodes: &[InlinedNode],
+        nodes: Vec<InlinedNode>,
         slot_content: Option<Vec<IrStatement>>,
     ) -> Vec<IrStatement> {
         let mut result = Vec::new();
@@ -153,7 +156,7 @@ impl Compiler {
 
     fn compile_node(
         &mut self,
-        node: &InlinedNode,
+        node: InlinedNode,
         slot_content: Option<&Vec<IrStatement>>,
         output: &mut Vec<IrStatement>,
     ) {
@@ -168,7 +171,7 @@ impl Compiler {
             InlinedNode::TextExpression { expression } => {
                 output.push(IrStatement::WriteExpr {
                     id: self.next_node_id(),
-                    expr: self.compile_expr(expression),
+                    expr: self.compile_expr(&expression),
                     escape: true,
                 });
             }
@@ -178,7 +181,7 @@ impl Compiler {
                 attributes,
                 children,
             } => {
-                self.compile_html_node(tag_name, attributes, children, slot_content, output);
+                self.compile_html_node(&tag_name, &attributes, children, slot_content, output);
             }
 
             InlinedNode::If {
@@ -188,7 +191,7 @@ impl Compiler {
             } => {
                 output.push(IrStatement::If {
                     id: self.next_node_id(),
-                    condition: self.compile_expr(condition),
+                    condition: self.compile_expr(&condition),
                     body: self.compile_nodes(children, slot_content.cloned()),
                 });
             }
@@ -201,8 +204,8 @@ impl Compiler {
             } => {
                 output.push(IrStatement::For {
                     id: self.next_node_id(),
-                    var: var_name.clone(),
-                    array: self.compile_expr(array_expr),
+                    var: var_name,
+                    array: self.compile_expr(&array_expr),
                     body: self.compile_nodes(children, slot_content.cloned()),
                 });
             }
@@ -221,8 +224,8 @@ impl Compiler {
             } => {
                 output.push(IrStatement::Let {
                     id: self.next_node_id(),
-                    var: var.clone(),
-                    value: self.compile_expr(value),
+                    var: var,
+                    value: self.compile_expr(&value),
                     body: self.compile_nodes(children, slot_content.cloned()),
                 });
             }
@@ -233,7 +236,7 @@ impl Compiler {
         &mut self,
         tag_name: &StringSpan,
         attributes: &BTreeMap<StringSpan, TypedAttribute>,
-        children: &[InlinedNode],
+        children: Vec<InlinedNode>,
         slot_content: Option<&Vec<IrStatement>>,
         output: &mut Vec<IrStatement>,
     ) {
