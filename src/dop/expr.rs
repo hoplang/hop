@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 
 use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::var_name::VarName;
-use pretty::RcDoc;
+use pretty::BoxDoc;
 
 use super::Type;
 
@@ -99,60 +99,60 @@ impl Ranged for Expr<DocumentRange> {
     }
 }
 
-impl<T> Expr<T> {
-    fn to_doc(&self) -> RcDoc<'static> {
+impl<'a, T> Expr<T> {
+    fn to_doc(&'a self) -> BoxDoc<'a> {
         match self {
-            Expr::Var { value, .. } => RcDoc::text(value.to_string()),
+            Expr::Var { value, .. } => BoxDoc::text(value.as_str()),
             Expr::PropertyAccess {
                 object, property, ..
             } => object
                 .to_doc()
-                .append(RcDoc::text("."))
-                .append(RcDoc::text(property.to_string())),
-            Expr::StringLiteral { value, .. } => RcDoc::text(format!("\"{}\"", value)),
-            Expr::BooleanLiteral { value, .. } => RcDoc::text(value.to_string()),
-            Expr::NumberLiteral { value, .. } => RcDoc::text(value.to_string()),
+                .append(BoxDoc::text("."))
+                .append(BoxDoc::text(property.as_str())),
+            Expr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
+            Expr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            Expr::NumberLiteral { value, .. } => BoxDoc::text(value.to_string()),
             Expr::ArrayLiteral { elements, .. } => {
                 if elements.is_empty() {
-                    RcDoc::text("[]")
+                    BoxDoc::text("[]")
                 } else {
-                    RcDoc::text("[")
+                    BoxDoc::text("[")
                         .append(
-                            RcDoc::line_()
-                                .append(RcDoc::intersperse(
+                            BoxDoc::line_()
+                                .append(BoxDoc::intersperse(
                                     elements.iter().map(|e| e.to_doc()),
-                                    RcDoc::text(",").append(RcDoc::line()),
+                                    BoxDoc::text(",").append(BoxDoc::line()),
                                 ))
-                                .append(RcDoc::text(",").flat_alt(RcDoc::nil()))
-                                .append(RcDoc::line_())
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                .append(BoxDoc::line_())
                                 .nest(2)
                                 .group(),
                         )
-                        .append(RcDoc::text("]"))
+                        .append(BoxDoc::text("]"))
                 }
             }
             Expr::ObjectLiteral { properties, .. } => {
                 if properties.is_empty() {
-                    RcDoc::text("{}")
+                    BoxDoc::text("{}")
                 } else {
-                    RcDoc::nil()
-                        .append(RcDoc::text("{"))
+                    BoxDoc::nil()
+                        .append(BoxDoc::text("{"))
                         .append(
-                            RcDoc::line_()
-                                .append(RcDoc::intersperse(
+                            BoxDoc::line_()
+                                .append(BoxDoc::intersperse(
                                     properties.iter().map(|(key, value)| {
-                                        RcDoc::text(key.to_string())
-                                            .append(RcDoc::text(": "))
+                                        BoxDoc::text(key.as_str())
+                                            .append(BoxDoc::text(": "))
                                             .append(value.to_doc())
                                     }),
-                                    RcDoc::text(",").append(RcDoc::line()),
+                                    BoxDoc::text(",").append(BoxDoc::line()),
                                 ))
-                                .append(RcDoc::text(",").flat_alt(RcDoc::nil()))
-                                .append(RcDoc::line_())
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                .append(BoxDoc::line_())
                                 .nest(2)
                                 .group(),
                         )
-                        .append(RcDoc::text("}"))
+                        .append(BoxDoc::text("}"))
                 }
             }
             Expr::BinaryOp {
@@ -160,29 +160,29 @@ impl<T> Expr<T> {
                 operator,
                 right,
                 ..
-            } => RcDoc::nil()
-                .append(RcDoc::text("("))
+            } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
                 .append(left.to_doc())
-                .append(RcDoc::text(format!(" {} ", operator)))
+                .append(BoxDoc::text(format!(" {} ", operator)))
                 .append(right.to_doc())
-                .append(RcDoc::text(")")),
+                .append(BoxDoc::text(")")),
             Expr::UnaryOp {
                 operator, operand, ..
-            } => RcDoc::nil()
-                .append(RcDoc::text("("))
-                .append(RcDoc::text(operator.to_string()))
+            } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(BoxDoc::text(operator.to_string()))
                 .append(operand.to_doc())
-                .append(RcDoc::text(")")),
-            Expr::JsonEncode { value, .. } => RcDoc::nil()
-                .append(RcDoc::text("JsonEncode("))
+                .append(BoxDoc::text(")")),
+            Expr::JsonEncode { value, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("JsonEncode("))
                 .append(value.to_doc())
-                .append(RcDoc::text(")")),
-            Expr::StringConcat { left, right, .. } => RcDoc::nil()
-                .append(RcDoc::text("("))
+                .append(BoxDoc::text(")")),
+            Expr::StringConcat { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
                 .append(left.to_doc())
-                .append(RcDoc::text(" + "))
+                .append(BoxDoc::text(" + "))
                 .append(right.to_doc())
-                .append(RcDoc::text(")")),
+                .append(BoxDoc::text(")")),
         }
     }
 }
