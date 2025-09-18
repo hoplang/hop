@@ -181,7 +181,7 @@ impl Compiler {
                 attributes,
                 children,
             } => {
-                self.compile_html_node(&tag_name, &attributes, children, slot_content, output);
+                self.compile_html_node(&tag_name, attributes, children, slot_content, output);
             }
 
             InlinedNode::If {
@@ -235,7 +235,7 @@ impl Compiler {
     fn compile_html_node(
         &mut self,
         tag_name: &StringSpan,
-        attributes: &BTreeMap<StringSpan, TypedAttribute>,
+        attributes: BTreeMap<StringSpan, TypedAttribute>,
         children: Vec<InlinedNode>,
         slot_content: Option<&Vec<IrStatement>>,
         output: &mut Vec<IrStatement>,
@@ -256,8 +256,8 @@ impl Compiler {
 
         // Push attributes
         for (name, attr) in attributes {
-            if let Some(val) = &attr.value {
-                self.compile_attribute(name.as_str(), val, output);
+            if let Some(val) = attr.value {
+                self.compile_attribute(name.as_str(), &val, output);
             } else {
                 // Boolean attribute
                 output.push(IrStatement::Write {
