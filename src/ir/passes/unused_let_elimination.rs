@@ -77,78 +77,39 @@ impl UnusedLetEliminationPass {
     ) -> Vec<IrStatement> {
         statements
             .into_iter()
-            .flat_map(|statement| Self::transform_statement(statement, unused_lets))
-            .collect()
-    }
+            .flat_map(|stmt| match stmt {
+                // Unused let - replace with its body
+                IrStatement::Let { body, id, .. } if unused_lets.contains(&id) => body,
 
-    /// Transform a single statement, returning a list of statements (to allow flattening)
-    fn transform_statement(
-        statement: IrStatement,
-        unused_lets: &HashSet<StatementId>,
-    ) -> Vec<IrStatement> {
-        match statement {
-            IrStatement::Let {
-                var,
-                value,
-                body,
-                id,
-            } => {
-                // Check if this let is marked as unused
-                if unused_lets.contains(&id) {
-                    // Variable is unused, eliminate the let and just return the transformed body
-                    Self::transform_statements(body, unused_lets)
-                } else {
-                    // Variable is used, keep the let but transform the body
-                    vec![IrStatement::Let {
-                        id,
-                        var,
-                        value,
-                        body: Self::transform_statements(body, unused_lets),
-                    }]
-                }
-            }
-            IrStatement::If {
-                id,
-                condition,
-                body,
-            } => {
-                vec![IrStatement::If {
-                    id,
-                    condition,
-                    body: Self::transform_statements(body, unused_lets),
-                }]
-            }
-            IrStatement::For {
-                id,
-                var,
-                array,
-                body,
-            } => {
-                vec![IrStatement::For {
-                    id,
-                    var,
-                    array,
-                    body: Self::transform_statements(body, unused_lets),
-                }]
-            }
-            // Write and WriteExpr statements remain unchanged
-            statement @ (IrStatement::Write { .. } | IrStatement::WriteExpr { .. }) => {
-                vec![statement]
-            }
-        }
+                // All other statements pass through
+                other => vec![other],
+            })
+            .collect()
     }
 }
 
 impl Pass for UnusedLetEliminationPass {
-    fn run(&mut self, entrypoint: IrEntrypoint) -> IrEntrypoint {
+    fn run(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
         // First collect which let statements have unused variables
         let unused_lets = Self::collect_unused_lets(&entrypoint);
 
-        // Then transform the entrypoint, eliminating unused lets
-        IrEntrypoint {
-            parameters: entrypoint.parameters,
-            body: Self::transform_statements(entrypoint.body, &unused_lets),
+        // Use visit_mut to recursively process nested bodies
+        for stmt in &mut entrypoint.body {
+            stmt.visit_mut(&mut |s| {
+                match s {
+                    IrStatement::If { body, .. }
+                    | IrStatement::For { body, .. }
+                    | IrStatement::Let { body, .. } => {
+                        *body = Self::transform_statements(std::mem::take(body), &unused_lets);
+                    }
+                    _ => {}
+                }
+            });
         }
+
+        // Then transform top-level statements
+        entrypoint.body = Self::transform_statements(entrypoint.body, &unused_lets);
+        entrypoint
     }
 }
 
