@@ -540,7 +540,6 @@ mod tests {
                                         range: "<card-comp {title: \"Hello\"}/>",
                                     },
                                 },
-                                range: "<card-comp {title: \"Hello\"}/>",
                                 children: [
                                     Let {
                                         var: VarName {
@@ -560,7 +559,6 @@ mod tests {
                                                     "h2",
                                                 ),
                                                 attributes: {},
-                                                range: "<h2>{title}</h2>",
                                                 children: [
                                                     TextExpression {
                                                         expression: Var {
@@ -572,6 +570,7 @@ mod tests {
                                                         range: "{title}",
                                                     },
                                                 ],
+                                                range: "<h2>{title}</h2>",
                                             },
                                             Text {
                                                 range: "\n                    ",
@@ -580,6 +579,7 @@ mod tests {
                                         range: "<card-comp {title: \"Hello\"}/>",
                                     },
                                 ],
+                                range: "<card-comp {title: \"Hello\"}/>",
                             },
                             Text {
                                 range: "\n                    ",
@@ -642,7 +642,6 @@ mod tests {
                                         range: "<card-comp>\n                            <p>Slot content</p>\n                        </card-comp>",
                                     },
                                 },
-                                range: "<card-comp>\n                            <p>Slot content</p>\n                        </card-comp>",
                                 children: [
                                     Text {
                                         range: "\n                        ",
@@ -663,7 +662,6 @@ mod tests {
                                                 range: "class=\"card\"",
                                             },
                                         },
-                                        range: "<div class=\"card\">\n                            <slot-default/>\n                        </div>",
                                         children: [
                                             Text {
                                                 range: "\n                            ",
@@ -677,12 +675,12 @@ mod tests {
                                                     "p",
                                                 ),
                                                 attributes: {},
-                                                range: "<p>Slot content</p>",
                                                 children: [
                                                     Text {
                                                         range: "Slot content",
                                                     },
                                                 ],
+                                                range: "<p>Slot content</p>",
                                             },
                                             Text {
                                                 range: "\n                        ",
@@ -691,11 +689,13 @@ mod tests {
                                                 range: "\n                        ",
                                             },
                                         ],
+                                        range: "<div class=\"card\">\n                            <slot-default/>\n                        </div>",
                                     },
                                     Text {
                                         range: "\n                    ",
                                     },
                                 ],
+                                range: "<card-comp>\n                            <p>Slot content</p>\n                        </card-comp>",
                             },
                             Text {
                                 range: "\n                    ",

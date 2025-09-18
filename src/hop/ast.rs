@@ -191,8 +191,8 @@ pub enum Node<E = Expr> {
         closing_tag_name: Option<DocumentRange>,
         args: Option<(Vec<Argument<E>>, DocumentRange)>,
         attributes: BTreeMap<StringSpan, Attribute<E>>,
-        range: DocumentRange,
         children: Vec<Node<E>>,
+        range: DocumentRange,
     },
 
     /// A SlotDefinition node represents the definition of a slot, e.g.
@@ -207,8 +207,8 @@ pub enum Node<E = Expr> {
     /// expression evaluates to true.
     If {
         condition: E,
-        range: DocumentRange,
         children: Vec<Node<E>>,
+        range: DocumentRange,
     },
 
     /// A For node contains content that is evaluated once for each item of
@@ -216,8 +216,8 @@ pub enum Node<E = Expr> {
     For {
         var_name: VarName,
         array_expr: E,
-        range: DocumentRange,
         children: Vec<Node<E>>,
+        range: DocumentRange,
     },
 
     /// A Doctype node represents a doctype, e.g. a <!DOCTYPE html>
@@ -230,8 +230,8 @@ pub enum Node<E = Expr> {
         tag_name: DocumentRange,
         closing_tag_name: Option<DocumentRange>,
         attributes: BTreeMap<StringSpan, Attribute<E>>,
-        range: DocumentRange,
         children: Vec<Node<E>>,
+        range: DocumentRange,
     },
 
     /// A Placeholder node represents a node that could not be constructed (because
@@ -240,8 +240,8 @@ pub enum Node<E = Expr> {
     /// We use Placeholder nodes to be able to construct the child nodes of the node that could not be
     /// constructed. This is useful for e.g. go-to-definition in the language server.
     Placeholder {
-        range: DocumentRange,
         children: Vec<Node<E>>,
+        range: DocumentRange,
     },
 
     /// A Let node introduces a variable binding in its children's scope.
