@@ -21,63 +21,48 @@ impl ConstantPropagationPass {
     pub fn new() -> Self {
         Self
     }
+}
 
-    /// Collect all expressions from the entrypoint
-    fn collect_all_expressions(entrypoint: &IrEntrypoint) -> Vec<&IrExpr> {
-        let mut expressions = Vec::new();
+impl Pass for ConstantPropagationPass {
+    fn run(&mut self, entrypoint: IrEntrypoint) -> IrEntrypoint {
+        let mut iteration = Iteration::new();
 
-        // Collect expressions from all statements
-        for stmt in &entrypoint.body {
-            Self::collect_expressions_from_stmt(stmt, &mut expressions);
-        }
-
-        expressions
-    }
-
-    fn collect_expressions_from_stmt<'a>(stmt: &'a IrStatement, expressions: &mut Vec<&'a IrExpr>) {
-        match stmt {
-            IrStatement::If {
-                condition, body, ..
-            } => {
-                expressions.extend(condition.dfs_iter());
-                for s in body {
-                    Self::collect_expressions_from_stmt(s, expressions);
-                }
-            }
-            IrStatement::WriteExpr { expr, .. } => {
-                expressions.extend(expr.dfs_iter());
-            }
-            IrStatement::For { array, body, .. } => {
-                expressions.extend(array.dfs_iter());
-                for s in body {
-                    Self::collect_expressions_from_stmt(s, expressions);
-                }
-            }
-            IrStatement::Let { value, body, .. } => {
-                expressions.extend(value.dfs_iter());
-                for s in body {
-                    Self::collect_expressions_from_stmt(s, expressions);
-                }
-            }
-            IrStatement::Write { .. } => {}
-        }
-    }
-
-    /// Collect variable bindings with proper scoping
-    /// Returns (defining_expr_id, referencing_expr_id) pairs
-    fn collect_variable_references(entrypoint: &IrEntrypoint) -> Vec<(ExprId, ExprId)> {
-        let mut var_bindings = Vec::new();
+        let mut initial_constants = Vec::new();
+        let mut not_relations = Vec::new();
+        let mut eq_left_relations = Vec::new();
+        let mut eq_right_relations = Vec::new();
+        let mut var_references = Vec::new();
 
         for stmt in &entrypoint.body {
             stmt.traverse_with_scope(&mut |s, scope| {
-                if let Some(primary_expr) = s.expr() {
-                    primary_expr.traverse(&mut |expr| {
-                        if let IrExpr::Var {
-                            value: name,
-                            annotation,
+                let Some(primary_expr) = s.expr() else {
+                    return;
+                };
+                primary_expr.traverse(&mut |expr| {
+                    match expr {
+                        IrExpr::BooleanLiteral { value, .. } => {
+                            initial_constants.push((expr.id(), Const::Bool(*value)));
+                        }
+                        IrExpr::StringLiteral { value, .. } => {
+                            initial_constants.push((expr.id(), Const::String(value.clone())));
+                        }
+                        IrExpr::UnaryOp {
+                            operator: UnaryOp::Not,
+                            operand,
                             ..
-                        } = expr
-                        {
+                        } => {
+                            not_relations.push((operand.id(), expr.id()));
+                        }
+                        IrExpr::BinaryOp {
+                            operator: BinaryOp::Eq,
+                            left,
+                            right,
+                            ..
+                        } => {
+                            eq_left_relations.push((left.id(), expr.id()));
+                            eq_right_relations.push((right.id(), expr.id()));
+                        }
+                        IrExpr::Var { value: name, .. } => {
                             // Check if this variable is defined by a Let or For statement
                             if let Some(defining_stmt) = scope.get(&name.to_string()) {
                                 let def_expr_id = match defining_stmt {
@@ -85,40 +70,18 @@ impl ConstantPropagationPass {
                                     IrStatement::For { array, .. } => array.id(),
                                     _ => return,
                                 };
-                                // Record: (defining_expr_id, referencing_expr_id)
-                                var_bindings.push((def_expr_id, annotation.0));
+                                var_references.push((def_expr_id, expr.id()));
                             }
                         }
-                    });
-                }
+                        _ => {}
+                    }
+                });
             });
         }
 
-        var_bindings
-    }
-}
-
-impl Pass for ConstantPropagationPass {
-    fn run(&mut self, entrypoint: IrEntrypoint) -> IrEntrypoint {
-        let all_expressions = Self::collect_all_expressions(&entrypoint);
-        let references = Self::collect_variable_references(&entrypoint);
-        let mut iteration = Iteration::new();
-
         // Constant values of expressions: (expr_id => const_value)
         let const_value = iteration.variable::<(ExprId, Const)>("const_value");
-        const_value.extend(all_expressions.iter().filter_map(|n| match n {
-            IrExpr::BooleanLiteral {
-                value,
-                annotation: (id, _),
-                ..
-            } => Some((*id, Const::Bool(*value))),
-            IrExpr::StringLiteral {
-                value,
-                annotation: (id, _),
-                ..
-            } => Some((*id, Const::String(value.clone()))),
-            _ => None,
-        }));
+        const_value.extend(initial_constants);
 
         // Values of left operands in equality expressions: (eq_expr_id => left_value)
         let eq_left_value = iteration.variable::<(ExprId, Const)>("eq_left_value");
@@ -127,42 +90,16 @@ impl Pass for ConstantPropagationPass {
         let eq_right_value = iteration.variable::<(ExprId, Const)>("eq_right_value");
 
         // Not operations keyed by operand: (operand_id => expr_id)
-        let not_rel = Relation::from_iter(all_expressions.iter().filter_map(|n| match n {
-            IrExpr::UnaryOp {
-                operator: UnaryOp::Not,
-                operand,
-                annotation,
-                ..
-            } => Some((operand.id(), annotation.0)),
-            _ => None,
-        }));
+        let not_rel = Relation::from_iter(not_relations);
 
         // Equality operations - left operand: (left_operand_id => expr_id)
-        let eq_left = Relation::from_iter(all_expressions.iter().filter_map(|n| match n {
-            IrExpr::BinaryOp {
-                operator: BinaryOp::Eq,
-                left,
-                right: _,
-                annotation,
-                ..
-            } => Some((left.id(), annotation.0)),
-            _ => None,
-        }));
+        let eq_left = Relation::from_iter(eq_left_relations);
 
         // Equality operations - right operand: (right_operand_id => expr_id)
-        let eq_right = Relation::from_iter(all_expressions.iter().filter_map(|n| match n {
-            IrExpr::BinaryOp {
-                operator: BinaryOp::Eq,
-                left: _,
-                right,
-                annotation,
-                ..
-            } => Some((right.id(), annotation.0)),
-            _ => None,
-        }));
+        let eq_right = Relation::from_iter(eq_right_relations);
 
         // Variable bindings: (defining_expr_id => referencing_expr_id)
-        let def_to_ref = Relation::from_iter(references.iter().cloned());
+        let def_to_ref = Relation::from_iter(var_references);
 
         while iteration.changed() {
             // const_value(exp, !b) :- not_rel(op, exp), const_value(op, Bool(b)).
