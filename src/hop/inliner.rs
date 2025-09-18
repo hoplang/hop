@@ -1,11 +1,12 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::expr::TypedExpr;
 use crate::dop::{Argument, Expr, Type};
-use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition, Node};
+use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition};
 use crate::hop::module_name::ModuleName;
 use std::collections::{BTreeMap, HashMap};
 
-use super::ast::{InlinedComponentDefinition, InlinedNode, TypedNode};
+use super::ast::InlinedComponentDefinition;
+use super::node::{InlinedNode, Node, TypedNode};
 
 /// The Inliner transforms ASTs by replacing ComponentReference nodes with their
 /// inlined component definitions, using Let nodes for parameter binding and

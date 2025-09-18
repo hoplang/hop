@@ -1,6 +1,5 @@
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::Type;
 use crate::dop::expr::TypedExpr;
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::Ast;
@@ -14,8 +13,9 @@ use crate::ir;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
-use super::ast::{Node, UntypedAst};
+use super::ast::UntypedAst;
 use super::module_name::ModuleName;
+use super::node::Node;
 use super::type_checker::TypeChecker;
 
 /// HoverInfo is a message that should be displayed when the user hovers

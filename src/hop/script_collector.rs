@@ -1,6 +1,4 @@
-use crate::hop::ast::Node;
-
-use super::ast::UntypedAst;
+use super::{ast::UntypedAst, node::Node};
 
 pub struct ScriptCollector {
     scripts: Vec<String>,

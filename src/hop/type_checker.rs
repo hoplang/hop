@@ -1,16 +1,16 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::expr::TypedExpr;
 use crate::dop::{self, Argument, Parameter, Type};
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::Ast;
-use crate::hop::ast::{Attribute, ComponentDefinition, Node};
+use crate::hop::ast::{Attribute, ComponentDefinition};
 use crate::hop::environment::Environment;
 use crate::hop::type_error::TypeError;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
-use super::ast::{AttributeValue, TypedAst, TypedAttribute, TypedNode, UntypedAst, UntypedNode};
+use super::ast::{AttributeValue, TypedAst, TypedAttribute, UntypedAst};
 use super::module_name::ModuleName;
+use super::node::{Node, TypedNode, UntypedNode};
 
 #[derive(Debug, Clone)]
 pub struct TypeAnnotation {

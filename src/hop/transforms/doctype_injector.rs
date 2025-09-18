@@ -1,9 +1,6 @@
-use crate::document::document_cursor::{DocumentRange, StringSpan};
-use crate::dop::Type;
-use crate::hop::ast::{
-    ComponentDefinition, InlinedComponentDefinition, InlinedNode, Node, TypedComponentDefinition,
-    TypedNode,
-};
+use crate::document::document_cursor::StringSpan;
+use crate::hop::ast::InlinedComponentDefinition;
+use crate::hop::node::{InlinedNode, Node};
 
 use super::ComponentTransform;
 
@@ -72,7 +69,6 @@ impl ComponentTransform for DoctypeInjector {
 mod tests {
     use super::*;
     use crate::error_collector::ErrorCollector;
-    use crate::hop::ast::Node;
     use crate::hop::inliner::Inliner;
     use crate::hop::module_name::ModuleName;
     use crate::hop::parser::parse;

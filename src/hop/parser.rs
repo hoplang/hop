@@ -1,14 +1,15 @@
 use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::Parser;
 use crate::error_collector::ErrorCollector;
-use crate::hop::ast::{Ast, ComponentDefinition, Import, Node};
+use crate::hop::ast::{Ast, ComponentDefinition, Import};
 use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{Token, Tokenizer};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use super::ast::{self, UntypedAst, UntypedNode};
+use super::ast::{self, UntypedAst};
 use super::module_name::ModuleName;
+use super::node::{Node, UntypedNode};
 use super::tokenizer;
 
 struct AttributeValidator {

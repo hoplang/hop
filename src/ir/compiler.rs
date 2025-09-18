@@ -3,9 +3,8 @@ use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::Expr;
 use crate::dop::expr::TypedExpr;
 use crate::dop::{Type, VarName};
-use crate::hop::ast::{
-    AttributeValue, InlinedComponentDefinition, InlinedNode, Node, TypedAttribute,
-};
+use crate::hop::ast::{AttributeValue, InlinedComponentDefinition, TypedAttribute};
+use crate::hop::node::{InlinedNode, Node};
 use crate::hop::transforms::TransformPipeline;
 use std::collections::BTreeMap;
 
