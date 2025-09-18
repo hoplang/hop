@@ -240,14 +240,6 @@ impl AlphaRenamingPass {
         // Return it unchanged
         name.clone()
     }
-
-    /// Reset the pass state for a new entrypoint
-    fn reset(&mut self) {
-        self.var_counter = 0;
-        self.scope_stack.clear();
-        self.scope_stack.push(HashMap::new());
-        self.all_used_names.clear();
-    }
 }
 
 impl Pass for AlphaRenamingPass {
