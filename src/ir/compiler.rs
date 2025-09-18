@@ -257,7 +257,7 @@ impl Compiler {
         // Push attributes
         for (name, attr) in attributes {
             if let Some(val) = attr.value {
-                self.compile_attribute(name.as_str(), &val, output);
+                self.compile_attribute(name, val, output);
             } else {
                 // Boolean attribute
                 output.push(IrStatement::Write {
@@ -298,8 +298,8 @@ impl Compiler {
     /// Helper to compile an attribute to IR statements
     fn compile_attribute(
         &mut self,
-        name: &str,
-        value: &AttributeValue<TypedExpr>,
+        name: StringSpan,
+        value: AttributeValue<TypedExpr>,
         output: &mut Vec<IrStatement>,
     ) {
         match value {
@@ -316,7 +316,7 @@ impl Compiler {
                 });
                 output.push(IrStatement::WriteExpr {
                     id: self.next_node_id(),
-                    expr: self.compile_expr(expr.clone()),
+                    expr: self.compile_expr(expr),
                     escape: true,
                 });
                 output.push(IrStatement::Write {
