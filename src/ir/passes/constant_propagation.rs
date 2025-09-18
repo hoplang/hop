@@ -70,27 +70,27 @@ impl ConstantPropagationPass {
 
         for stmt in &entrypoint.body {
             stmt.traverse_with_scope(&mut |s, scope| {
-                // Process all expressions in this statement
-                // TODO: This is O(n^2)
-                s.traverse_exprs(&mut |expr| {
-                    if let IrExpr::Var {
-                        value: name,
-                        annotation,
-                        ..
-                    } = expr
-                    {
-                        // Check if this variable is defined by a Let or For statement
-                        if let Some(defining_stmt) = scope.get(&name.to_string()) {
-                            let def_expr_id = match defining_stmt {
-                                IrStatement::Let { value, .. } => value.id(),
-                                IrStatement::For { array, .. } => array.id(),
-                                _ => return,
-                            };
-                            // Record: (defining_expr_id, referencing_expr_id)
-                            var_bindings.push((def_expr_id, annotation.0));
+                if let Some(primary_expr) = s.expr() {
+                    primary_expr.traverse(&mut |expr| {
+                        if let IrExpr::Var {
+                            value: name,
+                            annotation,
+                            ..
+                        } = expr
+                        {
+                            // Check if this variable is defined by a Let or For statement
+                            if let Some(defining_stmt) = scope.get(&name.to_string()) {
+                                let def_expr_id = match defining_stmt {
+                                    IrStatement::Let { value, .. } => value.id(),
+                                    IrStatement::For { array, .. } => array.id(),
+                                    _ => return,
+                                };
+                                // Record: (defining_expr_id, referencing_expr_id)
+                                var_bindings.push((def_expr_id, annotation.0));
+                            }
                         }
-                    }
-                });
+                    });
+                }
             });
         }
 
@@ -215,18 +215,22 @@ impl Pass for ConstantPropagationPass {
 
         let mut result = entrypoint;
         for stmt in &mut result.body {
-            stmt.traverse_exprs_mut(&mut |expr| {
-                if let Some(const_val) = const_map.get(&expr.id()) {
-                    *expr = match const_val {
-                        Const::Bool(b) => IrExpr::BooleanLiteral {
-                            value: *b,
-                            annotation: (expr.id(), expr.typ().clone()),
-                        },
-                        Const::String(s) => IrExpr::StringLiteral {
-                            value: s.clone(),
-                            annotation: (expr.id(), expr.typ().clone()),
-                        },
-                    };
+            stmt.traverse_mut(&mut |s| {
+                if let Some(expr) = s.expr_mut() {
+                    expr.traverse_mut(&mut |e| {
+                        if let Some(const_val) = const_map.get(&e.id()) {
+                            *e = match const_val {
+                                Const::Bool(b) => IrExpr::BooleanLiteral {
+                                    value: *b,
+                                    annotation: (e.id(), e.typ().clone()),
+                                },
+                                Const::String(s) => IrExpr::StringLiteral {
+                                    value: s.clone(),
+                                    annotation: (e.id(), e.typ().clone()),
+                                },
+                            };
+                        }
+                    });
                 }
             });
         }

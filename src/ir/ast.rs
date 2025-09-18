@@ -73,6 +73,28 @@ pub enum IrStatement {
 pub type IrExpr = Expr<(ExprId, Type)>;
 
 impl IrStatement {
+    /// Get the primary expression from this statement, if any
+    pub fn expr(&self) -> Option<&IrExpr> {
+        match self {
+            IrStatement::Write { .. } => None,
+            IrStatement::WriteExpr { expr, .. } => Some(expr),
+            IrStatement::If { condition, .. } => Some(condition),
+            IrStatement::For { array, .. } => Some(array),
+            IrStatement::Let { value, .. } => Some(value),
+        }
+    }
+
+    /// Get a mutable reference to the primary expression from this statement, if any
+    pub fn expr_mut(&mut self) -> Option<&mut IrExpr> {
+        match self {
+            IrStatement::Write { .. } => None,
+            IrStatement::WriteExpr { expr, .. } => Some(expr),
+            IrStatement::If { condition, .. } => Some(condition),
+            IrStatement::For { array, .. } => Some(array),
+            IrStatement::Let { value, .. } => Some(value),
+        }
+    }
+
     /// Traverse this statement and all nested statements with a closure
     pub fn traverse<F>(&self, f: &mut F)
     where
@@ -178,71 +200,6 @@ impl IrStatement {
         }
     }
 
-    /// Traverse all expressions in this statement and nested statements recursively
-    pub fn traverse_exprs<F>(&self, f: &mut F)
-    where
-        F: FnMut(&IrExpr),
-    {
-        match self {
-            IrStatement::Write { .. } => {}
-            IrStatement::WriteExpr { expr, .. } => {
-                expr.traverse(f);
-            }
-            IrStatement::If {
-                condition, body, ..
-            } => {
-                condition.traverse(f);
-                for stmt in body {
-                    stmt.traverse_exprs(f);
-                }
-            }
-            IrStatement::For { array, body, .. } => {
-                array.traverse(f);
-                for stmt in body {
-                    stmt.traverse_exprs(f);
-                }
-            }
-            IrStatement::Let { value, body, .. } => {
-                value.traverse(f);
-                for stmt in body {
-                    stmt.traverse_exprs(f);
-                }
-            }
-        }
-    }
-
-    /// Traverses all expressions in this statement and nested statements with mutable access recursively
-    pub fn traverse_exprs_mut<F>(&mut self, f: &mut F)
-    where
-        F: FnMut(&mut IrExpr),
-    {
-        match self {
-            IrStatement::Write { .. } => {}
-            IrStatement::WriteExpr { expr, .. } => {
-                expr.traverse_mut(f);
-            }
-            IrStatement::If {
-                condition, body, ..
-            } => {
-                condition.traverse_mut(f);
-                for stmt in body {
-                    stmt.traverse_exprs_mut(f);
-                }
-            }
-            IrStatement::For { array, body, .. } => {
-                array.traverse_mut(f);
-                for stmt in body {
-                    stmt.traverse_exprs_mut(f);
-                }
-            }
-            IrStatement::Let { value, body, .. } => {
-                value.traverse_mut(f);
-                for stmt in body {
-                    stmt.traverse_exprs_mut(f);
-                }
-            }
-        }
-    }
 }
 
 impl IrExpr {

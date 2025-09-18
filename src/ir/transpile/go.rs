@@ -47,9 +47,13 @@ impl GoTranspiler {
             });
 
             // Check expressions for other imports (like json)
-            stmt.traverse_exprs(&mut |expr| {
-                if let IrExpr::JsonEncode { .. } = expr {
-                    imports.insert("encoding/json".to_string());
+            stmt.traverse(&mut |s| {
+                if let Some(primary_expr) = s.expr() {
+                    primary_expr.traverse(&mut |expr| {
+                        if let IrExpr::JsonEncode { .. } = expr {
+                            imports.insert("encoding/json".to_string());
+                        }
+                    });
                 }
             });
         }

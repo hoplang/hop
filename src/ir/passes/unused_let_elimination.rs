@@ -31,15 +31,18 @@ impl UnusedLetEliminationPass {
         // Now traverse with scope tracking to find used lets
         for stmt in &entrypoint.body {
             stmt.traverse_with_scope(&mut |s, scope| {
-                // TODO: This is O(n^2) due to traverse_expr being recursive over statements
-                s.traverse_exprs(&mut |expr| {
-                    if let IrExpr::Var { value: name, .. } = expr {
-                        // If this variable is in scope and was defined by a Let, mark it as used
-                        if let Some(IrStatement::Let { id, .. }) = scope.get(&name.to_string()) {
-                            used_lets.insert(*id);
+                // Process only the primary expression of this statement (not nested ones)
+                // This avoids O(n²) behavior from traverse_exprs
+                if let Some(primary_expr) = s.expr() {
+                    primary_expr.traverse(&mut |expr| {
+                        if let IrExpr::Var { value: name, .. } = expr {
+                            // If this variable is in scope and was defined by a Let, mark it as used
+                            if let Some(IrStatement::Let { id, .. }) = scope.get(&name.to_string()) {
+                                used_lets.insert(*id);
+                            }
                         }
-                    }
-                });
+                    });
+                }
             });
         }
 
