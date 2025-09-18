@@ -6,33 +6,21 @@ use super::Pass;
 pub struct WriteCoalescingPass;
 
 impl WriteCoalescingPass {
-    fn next_id(next_id: &mut StatementId) -> StatementId {
-        let id = *next_id;
-        *next_id += 1;
-        id
-    }
-
     /// Transform a list of statements, coalescing consecutive Write statements
-    fn transform_statements(
-        statements: Vec<IrStatement>,
-        next_id: &mut StatementId,
-    ) -> Vec<IrStatement> {
+    fn transform_statements(statements: Vec<IrStatement>) -> Vec<IrStatement> {
         let mut result = Vec::new();
-        let mut pending_write: Option<String> = None;
+        let mut pending_write: Option<(StatementId, String)> = None;
 
         for statement in statements {
             match statement {
-                IrStatement::Write {
-                    id: _,
-                    content: text,
-                } => {
+                IrStatement::Write { id, content: text } => {
                     // Accumulate consecutive writes
                     match pending_write {
-                        Some(ref mut accumulated) => {
+                        Some((_, ref mut accumulated)) => {
                             accumulated.push_str(&text);
                         }
                         None => {
-                            pending_write = Some(text);
+                            pending_write = Some((id, text));
                         }
                     }
                 }
@@ -42,9 +30,9 @@ impl WriteCoalescingPass {
                     body,
                 } => {
                     // Flush any pending write before a control flow statement
-                    if let Some(text) = pending_write.take() {
+                    if let Some((write_id, text)) = pending_write.take() {
                         result.push(IrStatement::Write {
-                            id: Self::next_id(next_id),
+                            id: write_id,
                             content: text,
                         });
                     }
@@ -52,7 +40,7 @@ impl WriteCoalescingPass {
                     result.push(IrStatement::If {
                         id,
                         condition,
-                        body: Self::transform_statements(body, next_id),
+                        body: Self::transform_statements(body),
                     });
                 }
                 IrStatement::For {
@@ -62,9 +50,9 @@ impl WriteCoalescingPass {
                     body,
                 } => {
                     // Flush any pending write before a control flow statement
-                    if let Some(text) = pending_write.take() {
+                    if let Some((write_id, text)) = pending_write.take() {
                         result.push(IrStatement::Write {
-                            id: Self::next_id(next_id),
+                            id: write_id,
                             content: text,
                         });
                     }
@@ -73,7 +61,7 @@ impl WriteCoalescingPass {
                         id,
                         var,
                         array,
-                        body: Self::transform_statements(body, next_id),
+                        body: Self::transform_statements(body),
                     });
                 }
                 IrStatement::Let {
@@ -83,9 +71,9 @@ impl WriteCoalescingPass {
                     body,
                 } => {
                     // Flush any pending write before a control flow statement
-                    if let Some(text) = pending_write.take() {
+                    if let Some((write_id, text)) = pending_write.take() {
                         result.push(IrStatement::Write {
-                            id: Self::next_id(next_id),
+                            id: write_id,
                             content: text,
                         });
                     }
@@ -94,15 +82,15 @@ impl WriteCoalescingPass {
                         id,
                         var,
                         value,
-                        body: Self::transform_statements(body, next_id),
+                        body: Self::transform_statements(body),
                     });
                 }
                 IrStatement::WriteExpr { .. } => {
                     // WriteExpr can't be coalesced with Write statements
                     // Flush any pending write
-                    if let Some(text) = pending_write.take() {
+                    if let Some((write_id, text)) = pending_write.take() {
                         result.push(IrStatement::Write {
-                            id: Self::next_id(next_id),
+                            id: write_id,
                             content: text,
                         });
                     }
@@ -112,9 +100,9 @@ impl WriteCoalescingPass {
         }
 
         // Flush any remaining pending write
-        if let Some(text) = pending_write {
+        if let Some((write_id, text)) = pending_write {
             result.push(IrStatement::Write {
-                id: Self::next_id(next_id),
+                id: write_id,
                 content: text,
             });
         }
@@ -125,8 +113,7 @@ impl WriteCoalescingPass {
 
 impl Pass for WriteCoalescingPass {
     fn run(mut entrypoint: IrEntrypoint) -> IrEntrypoint {
-        let mut next_id = 1;
-        entrypoint.body = Self::transform_statements(entrypoint.body, &mut next_id);
+        entrypoint.body = Self::transform_statements(entrypoint.body);
         entrypoint
     }
 }
