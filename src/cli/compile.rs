@@ -1,7 +1,7 @@
 use crate::CompileLanguage;
 use crate::document::DocumentAnnotator;
 use crate::filesystem::files::ProjectRoot;
-use crate::hop::inliner::Inliner;
+use crate::ir::inliner::Inliner;
 use crate::hop::program::Program;
 use crate::ir::{
     CompilationMode, Compiler, GoTranspiler, JsTranspiler, LanguageMode, Transpiler,

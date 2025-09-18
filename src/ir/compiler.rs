@@ -5,7 +5,7 @@ use crate::dop::expr::TypedExpr;
 use crate::dop::{Type, VarName};
 use crate::hop::ast::{AttributeValue, InlinedEntryPoint, TypedAttribute};
 use crate::hop::node::{InlinedNode, Node};
-use crate::hop::transforms::TransformPipeline;
+use crate::ir::transforms::TransformPipeline;
 use std::collections::BTreeMap;
 
 use super::ast::{ExprId, IrEntrypoint, IrExpr, IrModule, IrStatement, StatementId};
@@ -453,7 +453,7 @@ mod tests {
 
         // Inline entrypoint components
         let inlined_entrypoints =
-            crate::hop::inliner::Inliner::inline_entrypoints(typechecker.typed_asts);
+            crate::ir::inliner::Inliner::inline_entrypoints(typechecker.typed_asts);
 
         // Compile to IR with specified mode
         Compiler::compile(inlined_entrypoints, mode)

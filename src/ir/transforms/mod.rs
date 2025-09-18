@@ -2,7 +2,7 @@ pub mod doctype_injector;
 
 pub use doctype_injector::DoctypeInjector;
 
-use super::ast::InlinedEntryPoint;
+use crate::hop::ast::InlinedEntryPoint;
 
 /// A transformation that can be applied to a component definition
 pub trait ComponentTransform {

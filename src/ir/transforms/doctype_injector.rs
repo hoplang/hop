@@ -68,7 +68,7 @@ impl ComponentTransform for DoctypeInjector {
 mod tests {
     use super::*;
     use crate::error_collector::ErrorCollector;
-    use crate::hop::inliner::Inliner;
+    use crate::ir::inliner::Inliner;
     use crate::hop::module_name::ModuleName;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;

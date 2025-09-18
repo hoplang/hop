@@ -1,6 +1,5 @@
 pub mod ast;
 pub mod environment;
-pub mod inliner;
 pub mod module_name;
 pub mod node;
 pub mod parse_error;
@@ -12,6 +11,5 @@ pub mod script_collector;
 pub mod token_tree;
 pub mod tokenizer;
 pub mod toposorter;
-pub mod transforms;
 pub mod type_checker;
 pub mod type_error;

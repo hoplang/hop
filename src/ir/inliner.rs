@@ -6,10 +6,10 @@ use crate::hop::ast::{Ast, Attribute, AttributeValue};
 use crate::hop::module_name::ModuleName;
 use std::collections::{BTreeMap, HashMap};
 
-use super::ast::{
+use crate::hop::ast::{
     InlinedEntryPoint, TypedAttribute, TypedAttributeValue, TypedComponentDefinition,
 };
-use super::node::{InlinedNode, Node, TypedNode};
+use crate::hop::node::{InlinedNode, Node, TypedNode};
 
 /// The Inliner transforms ASTs by replacing ComponentReference nodes with their
 /// inlined component definitions, using Let nodes for parameter binding and

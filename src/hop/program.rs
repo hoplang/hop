@@ -8,6 +8,7 @@ use crate::hop::parser::parse;
 use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
+use crate::ir::inliner::Inliner;
 use crate::hop::type_error::TypeError;
 use crate::ir;
 use anyhow::Result;
@@ -409,7 +410,7 @@ impl Program {
     ) -> Result<String> {
         // Inline entrypoint components
         let inlined_entrypoints =
-            crate::hop::inliner::Inliner::inline_entrypoints(self.get_typed_modules().clone());
+            Inliner::inline_entrypoints(self.get_typed_modules().clone());
 
         // Compile to IR - use Production mode for evaluation
         let ir_module = ir::Compiler::compile(inlined_entrypoints, ir::CompilationMode::Production);
