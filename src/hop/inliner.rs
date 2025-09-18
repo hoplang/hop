@@ -33,7 +33,7 @@ impl<'a> Inliner<'a> {
                 if component.is_entrypoint {
                     result.push(InlinedEntryPoint {
                         tag_name: component.tag_name.to_string_span(),
-                        children: inliner.inline_nodes(&component.children),
+                        children: inliner.inline_nodes(&component.children, None),
                         params: component.params.clone().map(|p| p.0).unwrap_or_default(),
                     });
                 }
@@ -41,93 +41,6 @@ impl<'a> Inliner<'a> {
         }
 
         result
-    }
-
-    /// Recursively inline nodes in a list
-    fn inline_nodes(&self, nodes: &[TypedNode]) -> Vec<InlinedNode> {
-        nodes.iter().map(|node| self.inline_node(node)).collect()
-    }
-
-    /// Inline a single node (and its children)
-    fn inline_node(&self, node: &TypedNode) -> InlinedNode {
-        match node {
-            Node::ComponentReference {
-                tag_name,
-                definition_module,
-                args,
-                attributes,
-                children,
-                range,
-                ..
-            } => {
-                // Get the component definition
-                let module = definition_module
-                    .as_ref()
-                    .expect("Component reference should have module");
-                let ast = self
-                    .asts
-                    .get(module)
-                    .expect("Component module should exist");
-                let component = ast
-                    .get_component_definition(tag_name.as_str())
-                    .expect("Component definition should exist");
-
-                // Inline the component
-                self.inline_component_reference(
-                    tag_name,
-                    module,
-                    component,
-                    args.as_ref(),
-                    attributes,
-                    children,
-                    range,
-                )
-            }
-
-            Node::Html {
-                tag_name,
-                attributes,
-                children,
-                ..
-            } => InlinedNode::Html {
-                tag_name: tag_name.to_string_span(),
-                attributes: attributes.clone(),
-                children: self.inline_nodes(children),
-            },
-
-            Node::If {
-                condition,
-                children,
-                ..
-            } => InlinedNode::If {
-                condition: condition.clone(),
-                children: self.inline_nodes(children),
-            },
-
-            Node::For {
-                var_name,
-                array_expr,
-                children,
-                ..
-            } => InlinedNode::For {
-                var_name: var_name.clone(),
-                array_expr: array_expr.clone(),
-                children: self.inline_nodes(children),
-            },
-
-            Node::Text { value, .. } => InlinedNode::Text {
-                value: value.clone(),
-            },
-            Node::TextExpression { expression, .. } => InlinedNode::TextExpression {
-                expression: expression.clone(),
-            },
-            Node::SlotDefinition { .. } => panic!(),
-            Node::Doctype { value, .. } => InlinedNode::Doctype {
-                value: value.clone(),
-            },
-
-            Node::Placeholder { .. } => panic!(),
-        }
     }
 
     /// Inline a component reference
@@ -172,11 +85,12 @@ impl<'a> Inliner<'a> {
         );
 
         // Process component children with slot replacement
-        let inlined_children = if component.has_slot && !slot_children.is_empty() {
-            self.inline_nodes_with_slot(&component.children, slot_children)
+        let slot_content = if component.has_slot && !slot_children.is_empty() {
+            Some(slot_children)
         } else {
-            self.inline_nodes(&component.children)
+            None
         };
+        let inlined_children = self.inline_nodes(&component.children, slot_content);
 
         // Build parameter bindings
         let mut body = inlined_children;
@@ -317,23 +231,23 @@ impl<'a> Inliner<'a> {
         AttributeValue::Expression(final_concat)
     }
 
-    /// Inline nodes, replacing slot definitions with the provided slot content
-    fn inline_nodes_with_slot(
+    /// Inline nodes, optionally replacing slot definitions with the provided slot content
+    fn inline_nodes(
         &self,
         nodes: &[TypedNode],
-        slot_content: &[TypedNode],
+        slot_content: Option<&[TypedNode]>,
     ) -> Vec<InlinedNode> {
         let mut result = Vec::new();
 
         for node in nodes {
             match node {
-                Node::SlotDefinition { .. } => {
+                Node::SlotDefinition { .. } if slot_content.is_some() => {
                     // Replace slot with the provided content
-                    result.extend(self.inline_nodes(slot_content));
+                    result.extend(self.inline_nodes(slot_content.unwrap(), None));
                 }
                 // For other nodes, process recursively
                 _ => {
-                    result.push(self.inline_node_with_slot(node, slot_content));
+                    result.push(self.inline_node(node, slot_content));
                 }
             }
         }
@@ -341,10 +255,41 @@ impl<'a> Inliner<'a> {
         result
     }
 
-    /// Inline a single node, replacing slots with the provided content
-    fn inline_node_with_slot(&self, node: &TypedNode, slot_content: &[TypedNode]) -> InlinedNode {
+    /// Inline a single node, optionally replacing slots with the provided content
+    fn inline_node(&self, node: &TypedNode, slot_content: Option<&[TypedNode]>) -> InlinedNode {
         match node {
-            Node::ComponentReference { .. } => self.inline_node(node),
+            Node::ComponentReference {
+                tag_name,
+                definition_module,
+                args,
+                attributes,
+                children,
+                range,
+                ..
+            } => {
+                // Get the component definition
+                let module = definition_module
+                    .as_ref()
+                    .expect("Component reference should have module");
+                let ast = self
+                    .asts
+                    .get(module)
+                    .expect("Component module should exist");
+                let component = ast
+                    .get_component_definition(tag_name.as_str())
+                    .expect("Component definition should exist");
+
+                // Inline the component
+                self.inline_component_reference(
+                    tag_name,
+                    module,
+                    component,
+                    args.as_ref(),
+                    attributes,
+                    children,
+                    range,
+                )
+            }
 
             Node::Html {
                 tag_name,
@@ -354,7 +299,7 @@ impl<'a> Inliner<'a> {
             } => InlinedNode::Html {
                 tag_name: tag_name.to_string_span(),
                 attributes: attributes.clone(),
-                children: self.inline_nodes_with_slot(children, slot_content),
+                children: self.inline_nodes(children, slot_content),
             },
 
             Node::If {
@@ -363,7 +308,7 @@ impl<'a> Inliner<'a> {
                 ..
             } => InlinedNode::If {
                 condition: condition.clone(),
-                children: self.inline_nodes_with_slot(children, slot_content),
+                children: self.inline_nodes(children, slot_content),
             },
 
             Node::For {
@@ -374,7 +319,7 @@ impl<'a> Inliner<'a> {
             } => InlinedNode::For {
                 var_name: var_name.clone(),
                 array_expr: array_expr.clone(),
-                children: self.inline_nodes_with_slot(children, slot_content),
+                children: self.inline_nodes(children, slot_content),
             },
 
             Node::SlotDefinition { .. } => {
