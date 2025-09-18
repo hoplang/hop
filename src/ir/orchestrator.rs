@@ -29,7 +29,7 @@ pub fn orchestrate(
     let mut ir_entrypoints = Vec::new();
 
     for entrypoint in inlined_entrypoints {
-        let mut ir_entrypoint = Compiler::compile(&entrypoint, mode);
+        let mut ir_entrypoint = Compiler::compile(entrypoint, mode);
 
         // Step 4: Run optimization passes (only in production mode)
         if mode == CompilationMode::Production {

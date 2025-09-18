@@ -27,7 +27,7 @@ pub struct Compiler {
 
 impl Compiler {
     pub fn compile(
-        entrypoint: &InlinedEntryPoint,
+        entrypoint: InlinedEntryPoint,
         compilation_mode: CompilationMode,
     ) -> IrEntrypoint {
         let mut compiler = Compiler {
