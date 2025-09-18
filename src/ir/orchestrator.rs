@@ -18,7 +18,7 @@ pub fn orchestrate(
     Inliner::inline_entrypoints(typed_asts)
         .into_iter()
         // transform ASTs
-        .map(DoctypeInjector::transform)
+        .map(DoctypeInjector::run)
         // compile to IR
         .map(|entrypoint| Compiler::compile(entrypoint, mode))
         // optimize IR

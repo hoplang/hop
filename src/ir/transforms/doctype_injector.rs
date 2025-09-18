@@ -41,7 +41,7 @@ impl DoctypeInjector {
         nodes.len()
     }
 
-    pub fn transform(mut entrypoint: InlinedEntryPoint) -> InlinedEntryPoint {
+    pub fn run(mut entrypoint: InlinedEntryPoint) -> InlinedEntryPoint {
         // Only inject DOCTYPE for entrypoints
         if !Self::has_doctype(&entrypoint.children) {
             // Create a synthetic DOCTYPE node
@@ -147,12 +147,15 @@ mod tests {
         let mut output = String::new();
         for entrypoint in ast {
             // Apply transform
-            let transformed_entrypoint = DoctypeInjector::transform(entrypoint);
+            let transformed_entrypoint = DoctypeInjector::run(entrypoint);
 
             if !output.is_empty() {
                 output.push_str("\n\n");
             }
-            output.push_str(&format!("=== {} ===\n", transformed_entrypoint.tag_name.as_str()));
+            output.push_str(&format!(
+                "=== {} ===\n",
+                transformed_entrypoint.tag_name.as_str()
+            ));
             output.push_str(&format_entrypoint_children(&transformed_entrypoint));
         }
 

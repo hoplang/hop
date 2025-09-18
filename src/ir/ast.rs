@@ -17,7 +17,6 @@ pub type ExprId = u32;
 /// Unique identifier for each node in the IR
 pub type StatementId = u32;
 
-
 #[derive(Debug, Default, Clone)]
 pub struct IrEntrypoint {
     /// Component name (e.g. my-component)
@@ -200,83 +199,78 @@ impl IrStatement {
 
     pub fn to_doc(&self) -> BoxDoc {
         match self {
-            IrStatement::Write { content, .. } => {
-                BoxDoc::text("write")
-                    .append(BoxDoc::text("("))
-                    .append(BoxDoc::text(format!("\"{}\"", content)))
-                    .append(BoxDoc::text(")"))
-            }
+            IrStatement::Write { content, .. } => BoxDoc::text("write")
+                .append(BoxDoc::text("("))
+                .append(BoxDoc::text(format!("\"{}\"", content)))
+                .append(BoxDoc::text(")")),
             IrStatement::WriteExpr { expr, escape, .. } => {
-                let write_fn = if *escape { "write_escaped" } else { "write_expr" };
+                let write_fn = if *escape {
+                    "write_escaped"
+                } else {
+                    "write_expr"
+                };
                 BoxDoc::text(write_fn)
                     .append(BoxDoc::text("("))
                     .append(expr.to_doc())
                     .append(BoxDoc::text(")"))
             }
-            IrStatement::If { condition, body, .. } => {
-                BoxDoc::text("if ")
-                    .append(condition.to_doc())
-                    .append(BoxDoc::text(" {"))
-                    .append(
-                        if body.is_empty() {
-                            BoxDoc::nil()
-                        } else {
-                            BoxDoc::line()
-                                .append(BoxDoc::intersperse(
-                                    body.iter().map(|stmt| stmt.to_doc()),
-                                    BoxDoc::line(),
-                                ))
-                                .append(BoxDoc::line())
-                                .nest(2)
-                        }
-                    )
-                    .append(BoxDoc::text("}"))
-            }
-            IrStatement::For { var, array, body, .. } => {
-                BoxDoc::text("for ")
-                    .append(BoxDoc::text(var.as_str()))
-                    .append(BoxDoc::text(" in "))
-                    .append(array.to_doc())
-                    .append(BoxDoc::text(" {"))
-                    .append(
-                        if body.is_empty() {
-                            BoxDoc::nil()
-                        } else {
-                            BoxDoc::line()
-                                .append(BoxDoc::intersperse(
-                                    body.iter().map(|stmt| stmt.to_doc()),
-                                    BoxDoc::line(),
-                                ))
-                                .append(BoxDoc::line())
-                                .nest(2)
-                        }
-                    )
-                    .append(BoxDoc::text("}"))
-            }
-            IrStatement::Let { var, value, body, .. } => {
-                BoxDoc::text("let ")
-                    .append(BoxDoc::text(var.as_str()))
-                    .append(BoxDoc::text(" = "))
-                    .append(value.to_doc())
-                    .append(BoxDoc::text(" in {"))
-                    .append(
-                        if body.is_empty() {
-                            BoxDoc::nil()
-                        } else {
-                            BoxDoc::line()
-                                .append(BoxDoc::intersperse(
-                                    body.iter().map(|stmt| stmt.to_doc()),
-                                    BoxDoc::line(),
-                                ))
-                                .append(BoxDoc::line())
-                                .nest(2)
-                        }
-                    )
-                    .append(BoxDoc::text("}"))
-            }
+            IrStatement::If {
+                condition, body, ..
+            } => BoxDoc::text("if ")
+                .append(condition.to_doc())
+                .append(BoxDoc::text(" {"))
+                .append(if body.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            body.iter().map(|stmt| stmt.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .append(BoxDoc::line())
+                        .nest(2)
+                })
+                .append(BoxDoc::text("}")),
+            IrStatement::For {
+                var, array, body, ..
+            } => BoxDoc::text("for ")
+                .append(BoxDoc::text(var.as_str()))
+                .append(BoxDoc::text(" in "))
+                .append(array.to_doc())
+                .append(BoxDoc::text(" {"))
+                .append(if body.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            body.iter().map(|stmt| stmt.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .append(BoxDoc::line())
+                        .nest(2)
+                })
+                .append(BoxDoc::text("}")),
+            IrStatement::Let {
+                var, value, body, ..
+            } => BoxDoc::text("let ")
+                .append(BoxDoc::text(var.as_str()))
+                .append(BoxDoc::text(" = "))
+                .append(value.to_doc())
+                .append(BoxDoc::text(" in {"))
+                .append(if body.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            body.iter().map(|stmt| stmt.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .append(BoxDoc::line())
+                        .nest(2)
+                })
+                .append(BoxDoc::text("}")),
         }
     }
-
 }
 
 impl IrExpr {
@@ -363,34 +357,30 @@ impl IrEntrypoint {
     pub fn to_doc(&self) -> BoxDoc {
         BoxDoc::text(&self.name)
             .append(BoxDoc::text("("))
-            .append(
-                if self.parameters.is_empty() {
-                    BoxDoc::nil()
-                } else {
-                    BoxDoc::intersperse(
-                        self.parameters.iter().map(|(name, typ)| {
-                            BoxDoc::text(name.as_str())
-                                .append(BoxDoc::text(": "))
-                                .append(BoxDoc::text(typ.to_string()))
-                        }),
-                        BoxDoc::text(", "),
-                    )
-                }
-            )
+            .append(if self.parameters.is_empty() {
+                BoxDoc::nil()
+            } else {
+                BoxDoc::intersperse(
+                    self.parameters.iter().map(|(name, typ)| {
+                        BoxDoc::text(name.as_str())
+                            .append(BoxDoc::text(": "))
+                            .append(BoxDoc::text(typ.to_string()))
+                    }),
+                    BoxDoc::text(", "),
+                )
+            })
             .append(BoxDoc::text(") {"))
-            .append(
-                if self.body.is_empty() {
-                    BoxDoc::nil()
-                } else {
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            self.body.iter().map(|stmt| stmt.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .append(BoxDoc::line())
-                        .nest(2)
-                }
-            )
+            .append(if self.body.is_empty() {
+                BoxDoc::nil()
+            } else {
+                BoxDoc::line()
+                    .append(BoxDoc::intersperse(
+                        self.body.iter().map(|stmt| stmt.to_doc()),
+                        BoxDoc::line(),
+                    ))
+                    .append(BoxDoc::line())
+                    .nest(2)
+            })
             .append(BoxDoc::text("}"))
     }
 }

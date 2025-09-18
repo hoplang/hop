@@ -121,9 +121,9 @@ impl Transpiler for JsTranspiler {
                 BoxDoc::nil()
                     .append(BoxDoc::hardline())
                     .append(BoxDoc::intersperse(
-                        entrypoints
-                            .iter()
-                            .map(|entrypoint| self.transpile_entrypoint(&entrypoint.name, entrypoint)),
+                        entrypoints.iter().map(|entrypoint| {
+                            self.transpile_entrypoint(&entrypoint.name, entrypoint)
+                        }),
                         BoxDoc::text(",").append(BoxDoc::hardline()),
                     ))
                     .append(BoxDoc::hardline())
@@ -420,7 +420,11 @@ mod tests {
     use expect_test::{Expect, expect};
 
     // Helper function to create a single entrypoint for tests
-    fn create_entrypoint(name: &str, statements: Vec<IrStatement>, parameters: Vec<(String, Type)>) -> IrEntrypoint {
+    fn create_entrypoint(
+        name: &str,
+        statements: Vec<IrStatement>,
+        parameters: Vec<(String, Type)>,
+    ) -> IrEntrypoint {
         let t = IrTestBuilder::new(parameters);
         let mut entrypoint = t.build(statements);
         entrypoint.name = name.to_string();
@@ -445,9 +449,11 @@ mod tests {
     #[test]
     fn test_simple_component() {
         let t = IrTestBuilder::new(vec![]);
-        let entrypoints = vec![
-            create_entrypoint("hello-world", vec![t.write("<h1>Hello, World!</h1>\n")], vec![])
-        ];
+        let entrypoints = vec![create_entrypoint(
+            "hello-world",
+            vec![t.write("<h1>Hello, World!</h1>\n")],
+            vec![],
+        )];
 
         check_js(
             &entrypoints,
@@ -470,8 +476,9 @@ mod tests {
             ("age".to_string(), Type::String),
         ]);
 
-        let entrypoints = vec![
-            create_entrypoint("user-info", vec![
+        let entrypoints = vec![create_entrypoint(
+            "user-info",
+            vec![
                 t.write("<div>\n"),
                 t.write("<h2>Name: "),
                 t.write_expr(t.var("name"), true),
@@ -480,11 +487,12 @@ mod tests {
                 t.write_expr(t.var("age"), false),
                 t.write("</p>\n"),
                 t.write("</div>\n"),
-            ], vec![
+            ],
+            vec![
                 ("name".to_string(), Type::String),
                 ("age".to_string(), Type::String),
-            ])
-        ];
+            ],
+        )];
 
         check_js(
             &entrypoints,
@@ -523,19 +531,21 @@ mod tests {
             ("show".to_string(), Type::Bool),
         ]);
 
-        let entrypoints = vec![
-            create_entrypoint("conditional-display", vec![t.if_stmt(
+        let entrypoints = vec![create_entrypoint(
+            "conditional-display",
+            vec![t.if_stmt(
                 t.var("show"),
                 vec![
                     t.write("<h1>"),
                     t.write_expr(t.var("title"), true),
                     t.write("</h1>\n"),
                 ],
-            )], vec![
+            )],
+            vec![
                 ("title".to_string(), Type::String),
                 ("show".to_string(), Type::Bool),
-            ])
-        ];
+            ],
+        )];
 
         check_ts(
             &entrypoints,
@@ -571,8 +581,9 @@ mod tests {
             Type::Array(Some(Box::new(Type::String))),
         )]);
 
-        let entrypoints = vec![
-            create_entrypoint("list-items", vec![
+        let entrypoints = vec![create_entrypoint(
+            "list-items",
+            vec![
                 t.write("<ul>\n"),
                 t.for_loop("item", t.var("items"), |t| {
                     vec![
@@ -582,11 +593,12 @@ mod tests {
                     ]
                 }),
                 t.write("</ul>\n"),
-            ], vec![(
+            ],
+            vec![(
                 "items".to_string(),
                 Type::Array(Some(Box::new(Type::String))),
-            )])
-        ];
+            )],
+        )];
 
         check_js(
             &entrypoints,
@@ -621,21 +633,19 @@ mod tests {
     fn test_let_binding() {
         let t = IrTestBuilder::new(vec![]);
 
-        let entrypoints = vec![
-            create_entrypoint("greeting-card", vec![t.let_stmt(
-                "greeting",
-                t.str("Hello from hop!"),
-                |t| {
-                    vec![
-                        t.write("<div class=\"card\">\n"),
-                        t.write("<p>"),
-                        t.write_expr(t.var("greeting"), true),
-                        t.write("</p>\n"),
-                        t.write("</div>\n"),
-                    ]
-                },
-            )], vec![])
-        ];
+        let entrypoints = vec![create_entrypoint(
+            "greeting-card",
+            vec![t.let_stmt("greeting", t.str("Hello from hop!"), |t| {
+                vec![
+                    t.write("<div class=\"card\">\n"),
+                    t.write("<p>"),
+                    t.write_expr(t.var("greeting"), true),
+                    t.write("</p>\n"),
+                    t.write("</div>\n"),
+                ]
+            })],
+            vec![],
+        )];
 
         check_js(
             &entrypoints,
@@ -669,8 +679,9 @@ mod tests {
     fn test_nested_components_with_let_bindings() {
         let t = IrTestBuilder::new(vec![]);
 
-        let entrypoints = vec![
-            create_entrypoint("test-main-comp", vec![
+        let entrypoints = vec![create_entrypoint(
+            "test-main-comp",
+            vec![
                 t.write("<div data-hop-id=\"test/card-comp\">"),
                 t.let_stmt("title", t.str("Hello World"), |t| {
                     vec![
@@ -680,8 +691,9 @@ mod tests {
                     ]
                 }),
                 t.write("</div>"),
-            ], vec![])
-        ];
+            ],
+            vec![],
+        )];
 
         check_js(
             &entrypoints,
@@ -838,8 +850,9 @@ mod tests {
 
         let t = IrTestBuilder::new(parameters.clone());
 
-        let entrypoints = vec![
-            create_entrypoint("test-user-list", vec![
+        let entrypoints = vec![create_entrypoint(
+            "test-user-list",
+            vec![
                 t.write("<div>\n"),
                 t.write("<h1>\n"),
                 t.write_expr(t.var("title"), true),
@@ -863,8 +876,9 @@ mod tests {
                 }),
                 t.write("</ul>\n"),
                 t.write("</div>\n"),
-            ], parameters)
-        ];
+            ],
+            parameters,
+        )];
 
         check_ts(
             &entrypoints,

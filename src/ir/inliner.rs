@@ -63,9 +63,9 @@ impl Inliner {
             data_hop_id_span,
             Attribute {
                 name: Self::create_synthetic_range("data-hop-id"),
-                value: Some(AttributeValue::String(
-                    Self::create_synthetic_range(&data_hop_id),
-                )),
+                value: Some(AttributeValue::String(Self::create_synthetic_range(
+                    &data_hop_id,
+                ))),
                 range: range.clone(),
             },
         );
@@ -240,9 +240,7 @@ impl Inliner {
                 let module = definition_module
                     .as_ref()
                     .expect("Component reference should have module");
-                let ast = asts
-                    .get(module)
-                    .expect("Component module should exist");
+                let ast = asts.get(module).expect("Component module should exist");
                 let component = ast
                     .get_component_definition(tag_name.as_str())
                     .expect("Component definition should exist");
