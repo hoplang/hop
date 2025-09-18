@@ -1,6 +1,7 @@
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::Type;
+use crate::dop::expr::TypedExpr;
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::Ast;
 use crate::hop::parse_error::ParseError;
@@ -407,11 +408,11 @@ impl Program {
         hop_mode: &str,
     ) -> Result<String> {
         // Inline entrypoint components
-        let inlined_entrypoints = crate::hop::inliner::Inliner::inline_entrypoints(self.get_typed_modules().clone());
+        let inlined_entrypoints =
+            crate::hop::inliner::Inliner::inline_entrypoints(self.get_typed_modules().clone());
 
         // Compile to IR - use Production mode for evaluation
-        let ir_module =
-            ir::Compiler::compile(inlined_entrypoints, ir::CompilationMode::Production);
+        let ir_module = ir::Compiler::compile(inlined_entrypoints, ir::CompilationMode::Production);
 
         // Get the entrypoint
         let entrypoint = ir_module
@@ -429,7 +430,7 @@ impl Program {
     }
 
     /// Get all typed modules for compilation
-    pub fn get_typed_modules(&self) -> &HashMap<ModuleName, Ast<Type>> {
+    pub fn get_typed_modules(&self) -> &HashMap<ModuleName, Ast<TypedExpr>> {
         &self.type_checker.typed_asts
     }
 }

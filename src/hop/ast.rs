@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::dop::expr::TypedExpr;
 use crate::dop::{Argument, Expr, Parameter, VarName};
 use crate::hop::module_name::ModuleName;
 
@@ -13,23 +14,27 @@ pub struct StaticAttribute {
 }
 
 #[derive(Debug, Clone)]
-pub enum AttributeValue<T = DocumentRange> {
-    Expression(Expr<T>),
+pub enum AttributeValue<T = Expr> {
+    Expression(T),
     String(DocumentRange),
 }
+
+pub type TypedAttribute = Attribute<TypedExpr>;
 
 /// An Attribute is an attribute on a node, it can either
 /// be empty, an expression or a string value.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct Attribute<T = DocumentRange> {
+pub struct Attribute<T = Expr> {
     pub name: DocumentRange,
     pub value: Option<AttributeValue<T>>,
     pub range: DocumentRange,
 }
 
+pub type TypedAst = Ast<TypedExpr>;
+
 #[derive(Debug, Clone)]
-pub struct Ast<T = DocumentRange> {
+pub struct Ast<T = Expr> {
     pub name: ModuleName,
     imports: Vec<Import>,
     component_definitions: Vec<ComponentDefinition<T>>,
@@ -133,8 +138,10 @@ impl Import {
     }
 }
 
+pub type TypedComponentDefinition = ComponentDefinition<TypedExpr>;
+
 #[derive(Debug, Clone)]
-pub struct ComponentDefinition<T = DocumentRange> {
+pub struct ComponentDefinition<T = Expr> {
     pub tag_name: DocumentRange,
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<Parameter>, DocumentRange)>,
@@ -158,8 +165,10 @@ impl<T> ComponentDefinition<T> {
     }
 }
 
+pub type TypedNode = Node<TypedExpr>;
+
 #[derive(Debug, Clone)]
-pub enum Node<T = DocumentRange> {
+pub enum Node<E = Expr> {
     /// A Text node represents text in the document.
     /// E.g. <div>hello world</div>
     ///           ^^^^^^^^^^^
@@ -168,10 +177,7 @@ pub enum Node<T = DocumentRange> {
     /// A TextExpression represents an expression that occurs in a text position.
     /// E.g. <div>hello {world}</div>
     ///                 ^^^^^^^
-    TextExpression {
-        expression: Expr<T>,
-        range: DocumentRange,
-    },
+    TextExpression { expression: E, range: DocumentRange },
 
     /// A ComponentReference represents a reference to a component.
     /// E.g.
@@ -183,10 +189,10 @@ pub enum Node<T = DocumentRange> {
         tag_name: DocumentRange,
         definition_module: Option<ModuleName>,
         closing_tag_name: Option<DocumentRange>,
-        args: Option<(Vec<Argument<T>>, DocumentRange)>,
-        attributes: BTreeMap<StringSpan, Attribute<T>>,
+        args: Option<(Vec<Argument<E>>, DocumentRange)>,
+        attributes: BTreeMap<StringSpan, Attribute<E>>,
         range: DocumentRange,
-        children: Vec<Node<T>>,
+        children: Vec<Node<E>>,
     },
 
     /// A SlotDefinition node represents the definition of a slot, e.g.
@@ -200,18 +206,18 @@ pub enum Node<T = DocumentRange> {
     /// An If node contains content that is only evaluated when its condition
     /// expression evaluates to true.
     If {
-        condition: Expr<T>,
+        condition: E,
         range: DocumentRange,
-        children: Vec<Node<T>>,
+        children: Vec<Node<E>>,
     },
 
     /// A For node contains content that is evaluated once for each item of
     /// an array.
     For {
         var_name: VarName,
-        array_expr: Expr<T>,
+        array_expr: E,
         range: DocumentRange,
-        children: Vec<Node<T>>,
+        children: Vec<Node<E>>,
     },
 
     /// A Doctype node represents a doctype, e.g. a <!DOCTYPE html>
@@ -223,9 +229,9 @@ pub enum Node<T = DocumentRange> {
     Html {
         tag_name: DocumentRange,
         closing_tag_name: Option<DocumentRange>,
-        attributes: BTreeMap<StringSpan, Attribute<T>>,
+        attributes: BTreeMap<StringSpan, Attribute<E>>,
         range: DocumentRange,
-        children: Vec<Node<T>>,
+        children: Vec<Node<E>>,
     },
 
     /// A Placeholder node represents a node that could not be constructed (because
@@ -235,15 +241,15 @@ pub enum Node<T = DocumentRange> {
     /// constructed. This is useful for e.g. go-to-definition in the language server.
     Placeholder {
         range: DocumentRange,
-        children: Vec<Node<T>>,
+        children: Vec<Node<E>>,
     },
 
     /// A Let node introduces a variable binding in its children's scope.
     /// This is used during component inlining to bind component parameters.
     Let {
         var: VarName,
-        value: Expr<T>,
-        children: Vec<Node<T>>,
+        value: E,
+        children: Vec<Node<E>>,
         range: DocumentRange,
     },
 }

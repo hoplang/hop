@@ -1,4 +1,5 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::dop::expr::TypedExpr;
 use crate::dop::{self, Argument, Parameter, Type};
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::Ast;
@@ -8,7 +9,7 @@ use crate::hop::type_error::TypeError;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
-use super::ast::AttributeValue;
+use super::ast::{AttributeValue, TypedAttribute};
 use super::module_name::ModuleName;
 
 #[derive(Debug, Clone)]
@@ -118,7 +119,7 @@ pub struct TypeChecker {
     state: State,
     pub type_errors: HashMap<ModuleName, ErrorCollector<TypeError>>,
     pub type_annotations: HashMap<ModuleName, Vec<TypeAnnotation>>,
-    pub typed_asts: HashMap<ModuleName, Ast<Type>>,
+    pub typed_asts: HashMap<ModuleName, Ast<TypedExpr>>,
 }
 
 impl TypeChecker {
@@ -158,7 +159,7 @@ impl TypeChecker {
     }
 
     /// Get the typed AST for a given module name, if it exists
-    pub fn get_typed_ast(&self, module_name: &ModuleName) -> Option<&Ast<Type>> {
+    pub fn get_typed_ast(&self, module_name: &ModuleName) -> Option<&Ast<TypedExpr>> {
         self.typed_asts.get(module_name)
     }
 }
@@ -168,7 +169,7 @@ fn typecheck_module(
     state: &mut State,
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
-) -> Ast<Type> {
+) -> Ast<TypedExpr> {
     // Validate imports
     for import in module.get_imports() {
         let imported_module = import.imported_module();
@@ -236,7 +237,7 @@ fn typecheck_module(
         let typed_attributes = typecheck_attributes(attributes, &mut env, annotations, errors);
 
         // Typecheck children and collect typed versions
-        let typed_children: Vec<Node<Type>> = children
+        let typed_children: Vec<_> = children
             .iter()
             .filter_map(|child| typecheck_node(child, state, &mut env, annotations, errors))
             .collect();
@@ -293,7 +294,7 @@ fn typecheck_node(
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
-) -> Option<Node<Type>> {
+) -> Option<Node<TypedExpr>> {
     match node {
         Node::If {
             condition,
@@ -640,11 +641,11 @@ fn typecheck_node(
 }
 
 fn typecheck_attributes(
-    attributes: &BTreeMap<StringSpan, Attribute<DocumentRange>>,
+    attributes: &BTreeMap<StringSpan, Attribute>,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
-) -> BTreeMap<StringSpan, Attribute<Type>> {
+) -> BTreeMap<StringSpan, TypedAttribute> {
     let mut typed_attributes = BTreeMap::new();
 
     for (key, attr) in attributes {

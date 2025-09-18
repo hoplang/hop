@@ -1,8 +1,11 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::Expr;
+use crate::dop::expr::TypedExpr;
 use crate::dop::{Type, VarName};
-use crate::hop::ast::{Attribute, AttributeValue, ComponentDefinition, Node};
+use crate::hop::ast::{
+    Attribute, AttributeValue, ComponentDefinition, Node, TypedAttribute, TypedNode,
+};
 use crate::hop::transforms::TransformPipeline;
 use std::collections::BTreeMap;
 
@@ -27,7 +30,7 @@ pub struct Compiler {
 
 impl Compiler {
     pub fn compile(
-        entrypoints: Vec<ComponentDefinition<Type>>,
+        entrypoints: Vec<ComponentDefinition<TypedExpr>>,
         compilation_mode: CompilationMode,
     ) -> IrModule {
         // Clone entrypoints for transformation (keeping originals intact)
@@ -57,7 +60,7 @@ impl Compiler {
         compiler.ir_module
     }
 
-    fn compile_entrypoint(&mut self, component: &ComponentDefinition<Type>) {
+    fn compile_entrypoint(&mut self, component: &ComponentDefinition<TypedExpr>) {
         // Extract parameter information
         let param_info = component
             .params
@@ -171,7 +174,7 @@ impl Compiler {
 
     fn compile_nodes(
         &mut self,
-        nodes: &[Node<Type>],
+        nodes: &[Node<TypedExpr>],
         slot_content: Option<Vec<IrStatement>>,
     ) -> Vec<IrStatement> {
         let mut result = Vec::new();
@@ -183,7 +186,7 @@ impl Compiler {
 
     fn compile_node(
         &mut self,
-        node: &Node<Type>,
+        node: &Node<TypedExpr>,
         slot_content: Option<&Vec<IrStatement>>,
         output: &mut Vec<IrStatement>,
     ) {
@@ -281,8 +284,8 @@ impl Compiler {
     fn compile_html_node(
         &mut self,
         tag_name: &DocumentRange,
-        attributes: &BTreeMap<StringSpan, Attribute<Type>>,
-        children: &[Node<Type>],
+        attributes: &BTreeMap<StringSpan, TypedAttribute>,
+        children: &[TypedNode],
         slot_content: Option<&Vec<IrStatement>>,
         output: &mut Vec<IrStatement>,
     ) {
@@ -345,7 +348,7 @@ impl Compiler {
     fn compile_attribute(
         &mut self,
         name: &str,
-        value: &AttributeValue<Type>,
+        value: &AttributeValue<TypedExpr>,
         output: &mut Vec<IrStatement>,
     ) {
         match value {
@@ -373,7 +376,7 @@ impl Compiler {
         }
     }
 
-    fn compile_expr(&mut self, expr: &Expr<Type>) -> IrExpr {
+    fn compile_expr(&mut self, expr: &TypedExpr) -> IrExpr {
         let annotation = (self.next_expr_id(), expr.annotation().clone());
 
         match expr {
@@ -474,7 +477,8 @@ mod tests {
         );
 
         // Inline entrypoint components
-        let inlined_entrypoints = crate::hop::inliner::Inliner::inline_entrypoints(typechecker.typed_asts);
+        let inlined_entrypoints =
+            crate::hop::inliner::Inliner::inline_entrypoints(typechecker.typed_asts);
 
         // Compile to IR with specified mode
         Compiler::compile(inlined_entrypoints, mode)

@@ -1,6 +1,6 @@
 use crate::document::document_cursor::DocumentRange;
 use crate::dop::Type;
-use crate::hop::ast::{ComponentDefinition, Node};
+use crate::hop::ast::{ComponentDefinition, Node, TypedComponentDefinition, TypedNode};
 
 use super::ComponentTransform;
 
@@ -14,7 +14,7 @@ impl DoctypeInjector {
     }
 
     /// Check if a list of nodes starts with a DOCTYPE declaration (ignoring leading whitespace)
-    fn has_doctype(nodes: &[Node<Type>]) -> bool {
+    fn has_doctype(nodes: &[TypedNode]) -> bool {
         for node in nodes {
             match node {
                 Node::Doctype { .. } => return true,
@@ -32,7 +32,7 @@ impl DoctypeInjector {
     }
 
     /// Find the position to insert DOCTYPE (after leading whitespace)
-    fn find_doctype_insert_position(nodes: &[Node<Type>]) -> usize {
+    fn find_doctype_insert_position(nodes: &[TypedNode]) -> usize {
         for (i, node) in nodes.iter().enumerate() {
             if let Node::Text { range } = node {
                 if range.as_str().trim().is_empty() {
@@ -49,7 +49,7 @@ impl DoctypeInjector {
 }
 
 impl ComponentTransform for DoctypeInjector {
-    fn transform(&mut self, component: &mut ComponentDefinition<Type>) {
+    fn transform(&mut self, component: &mut TypedComponentDefinition) {
         // Only inject DOCTYPE for entrypoint components
         if component.is_entrypoint && !Self::has_doctype(&component.children) {
             // Create a synthetic DOCTYPE node
@@ -67,9 +67,9 @@ impl ComponentTransform for DoctypeInjector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dop::Type;
+    use crate::dop::expr::TypedExpr;
     use crate::error_collector::ErrorCollector;
-    use crate::hop::ast::{Ast, ComponentDefinition, Node};
+    use crate::hop::ast::{Ast, Node};
     use crate::hop::module_name::ModuleName;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
@@ -77,7 +77,7 @@ mod tests {
     use expect_test::expect;
 
     /// Helper to pretty-print component children for testing
-    fn format_component_children(component: &ComponentDefinition<Type>) -> String {
+    fn format_component_children(component: &TypedComponentDefinition) -> String {
         let mut output = String::new();
         for (i, node) in component.children.iter().enumerate() {
             if i > 0 {
@@ -137,7 +137,7 @@ mod tests {
     }
 
     /// Helper to create a typed AST from Hop source code
-    fn create_typed_ast(source: &str) -> Ast<Type> {
+    fn create_typed_ast(source: &str) -> Ast<TypedExpr> {
         let mut errors = ErrorCollector::new();
         let module_name = ModuleName::new("test".to_string()).unwrap();
         let tokenizer = Tokenizer::new(source.to_string());
@@ -411,4 +411,3 @@ mod tests {
         .assert_eq(&once);
     }
 }
-

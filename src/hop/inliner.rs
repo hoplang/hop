@@ -1,4 +1,5 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::dop::expr::TypedExpr;
 use crate::dop::{Argument, Expr, Type};
 use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition, Node};
 use crate::hop::module_name::ModuleName;
@@ -8,20 +9,20 @@ use std::collections::{BTreeMap, HashMap};
 /// inlined component definitions, using Let nodes for parameter binding and
 /// StringConcat for class attribute merging.
 pub struct Inliner<'a> {
-    asts: &'a HashMap<ModuleName, Ast<Type>>,
+    asts: &'a HashMap<ModuleName, Ast<TypedExpr>>,
 }
 
 impl<'a> Inliner<'a> {
     /// Create a new Inliner with the given ASTs
-    pub fn new(asts: &'a HashMap<ModuleName, Ast<Type>>) -> Self {
+    pub fn new(asts: &'a HashMap<ModuleName, Ast<TypedExpr>>) -> Self {
         Inliner { asts }
     }
 
     /// Inline all component references in entrypoint components only
     /// Returns a vector of inlined entrypoint components
     pub fn inline_entrypoints(
-        asts: HashMap<ModuleName, Ast<Type>>,
-    ) -> Vec<ComponentDefinition<Type>> {
+        asts: HashMap<ModuleName, Ast<TypedExpr>>,
+    ) -> Vec<ComponentDefinition<TypedExpr>> {
         let inliner = Inliner::new(&asts);
         let mut result = Vec::new();
 
@@ -40,12 +41,12 @@ impl<'a> Inliner<'a> {
     }
 
     /// Recursively inline nodes in a list
-    fn inline_nodes(&self, nodes: &[Node<Type>]) -> Vec<Node<Type>> {
+    fn inline_nodes(&self, nodes: &[Node<TypedExpr>]) -> Vec<Node<TypedExpr>> {
         nodes.iter().map(|node| self.inline_node(node)).collect()
     }
 
     /// Inline a single node (and its children)
-    fn inline_node(&self, node: &Node<Type>) -> Node<Type> {
+    fn inline_node(&self, node: &Node<TypedExpr>) -> Node<TypedExpr> {
         match node {
             Node::ComponentReference {
                 tag_name,
@@ -146,12 +147,12 @@ impl<'a> Inliner<'a> {
         &self,
         tag_name: &DocumentRange,
         module: &ModuleName,
-        component: &ComponentDefinition<Type>,
-        args: Option<&(Vec<Argument<Type>>, DocumentRange)>,
-        extra_attributes: &BTreeMap<StringSpan, Attribute<Type>>,
-        slot_children: &[Node<Type>],
+        component: &ComponentDefinition<TypedExpr>,
+        args: Option<&(Vec<Argument<TypedExpr>>, DocumentRange)>,
+        extra_attributes: &BTreeMap<StringSpan, Attribute<TypedExpr>>,
+        slot_children: &[Node<TypedExpr>],
         range: &DocumentRange,
-    ) -> Node<Type> {
+    ) -> Node<TypedExpr> {
         // Determine wrapper tag
         let wrapper_tag = component
             .as_attr
@@ -241,9 +242,9 @@ impl<'a> Inliner<'a> {
     /// Merge attributes from component definition and reference, handling class concatenation
     fn merge_attributes(
         &self,
-        target: &mut BTreeMap<StringSpan, Attribute<Type>>,
-        def_attributes: &BTreeMap<StringSpan, Attribute<Type>>,
-        ref_attributes: &BTreeMap<StringSpan, Attribute<Type>>,
+        target: &mut BTreeMap<StringSpan, Attribute<TypedExpr>>,
+        def_attributes: &BTreeMap<StringSpan, Attribute<TypedExpr>>,
+        ref_attributes: &BTreeMap<StringSpan, Attribute<TypedExpr>>,
         range: &DocumentRange,
     ) {
         // First add component's attributes
@@ -281,10 +282,10 @@ impl<'a> Inliner<'a> {
     /// Create a concatenated class attribute value using StringConcat
     fn create_concatenated_class_value(
         &self,
-        def_attr: &Attribute<Type>,
-        ref_attr: &Attribute<Type>,
+        def_attr: &Attribute<TypedExpr>,
+        ref_attr: &Attribute<TypedExpr>,
         _range: &DocumentRange,
-    ) -> AttributeValue<Type> {
+    ) -> AttributeValue<TypedExpr> {
         let def_expr = match &def_attr.value {
             Some(AttributeValue::String(s)) => Expr::StringLiteral {
                 value: s.as_str().to_string(),
@@ -334,9 +335,9 @@ impl<'a> Inliner<'a> {
     /// Inline nodes, replacing slot definitions with the provided slot content
     fn inline_nodes_with_slot(
         &self,
-        nodes: &[Node<Type>],
-        slot_content: &[Node<Type>],
-    ) -> Vec<Node<Type>> {
+        nodes: &[Node<TypedExpr>],
+        slot_content: &[Node<TypedExpr>],
+    ) -> Vec<Node<TypedExpr>> {
         let mut result = Vec::new();
 
         for node in nodes {
@@ -356,7 +357,11 @@ impl<'a> Inliner<'a> {
     }
 
     /// Inline a single node, replacing slots with the provided content
-    fn inline_node_with_slot(&self, node: &Node<Type>, slot_content: &[Node<Type>]) -> Node<Type> {
+    fn inline_node_with_slot(
+        &self,
+        node: &Node<TypedExpr>,
+        slot_content: &[Node<TypedExpr>],
+    ) -> Node<TypedExpr> {
         match node {
             Node::ComponentReference { .. } => self.inline_node(node),
 
@@ -448,7 +453,7 @@ mod tests {
 
     fn create_typed_asts_from_sources(
         sources: Vec<(&str, &str)>,
-    ) -> HashMap<ModuleName, Ast<Type>> {
+    ) -> HashMap<ModuleName, Ast<TypedExpr>> {
         let mut errors = ErrorCollector::new();
 
         // Parse all sources first
@@ -703,4 +708,3 @@ mod tests {
         );
     }
 }
-

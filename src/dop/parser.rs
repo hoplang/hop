@@ -31,12 +31,12 @@ impl Display for Parameter {
 /// E.g. <my-comp {x: [1,2], y: 2}>
 ///                ^^^^^^^^
 #[derive(Debug, Clone)]
-pub struct Argument<T = DocumentRange> {
+pub struct Argument<T = Expr<DocumentRange>> {
     pub var_name: VarName,
-    pub var_expr: Expr<T>,
+    pub var_expr: T,
 }
 
-impl<T> Display for Argument<T> {
+impl<T: Display> Display for Argument<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.var_name, self.var_expr)
     }
