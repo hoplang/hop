@@ -1,6 +1,9 @@
 use super::Pass;
-use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement, StatementEvent, StatementId};
-use std::collections::{HashMap, HashSet};
+use crate::ir::{
+    IrExpr,
+    ast::{IrEntrypoint, IrStatement, StatementId},
+};
+use std::collections::HashSet;
 
 /// A pass that eliminates unused let statements
 /// If a variable is never referenced in the body of the let, the let statement is replaced with its body
@@ -13,61 +16,35 @@ impl UnusedLetEliminationPass {
 
     /// Collect which let statements have unused variables
     fn collect_unused_lets(entrypoint: &IrEntrypoint) -> HashSet<StatementId> {
-        let mut unused_lets = HashSet::new();
-        let mut scope_stack: HashMap<String, bool> = HashMap::new();
+        let mut all_lets = HashSet::new();
+        let mut used_lets = HashSet::new();
 
-        for event in entrypoint.visit_statements() {
-            match event {
-                StatementEvent::Enter(statement) => {
-                    match statement {
-                        IrStatement::If { condition, .. } => {
-                            Self::mark_vars_used_in_expr(condition, &mut scope_stack);
-                        }
-                        IrStatement::WriteExpr { expr, .. } => {
-                            Self::mark_vars_used_in_expr(expr, &mut scope_stack);
-                        }
-                        IrStatement::For { array, .. } => {
-                            Self::mark_vars_used_in_expr(array, &mut scope_stack);
-                        }
-                        IrStatement::Let { var, value, .. } => {
-                            // Mark variables used in the value expression (before the new variable is in scope)
-                            Self::mark_vars_used_in_expr(value, &mut scope_stack);
-                            // Add this variable to scope, initially unused
-                            scope_stack.insert(var.to_string(), false);
-                        }
-                        IrStatement::Write { .. } => {}
-                    }
+        // First collect all let statement IDs
+        for stmt in &entrypoint.body {
+            stmt.traverse(&mut |s| {
+                if let IrStatement::Let { id, .. } = s {
+                    all_lets.insert(*id);
                 }
-                StatementEvent::Exit(statement) => {
-                    if let IrStatement::Let { id, var, .. } = statement {
-                        // Check if this variable was used
-                        if let Some(&used) = scope_stack.get(var.as_str()) {
-                            if !used {
-                                // Variable was never used, mark this let for elimination
-                                unused_lets.insert(*id);
-                            }
-                        }
-                        // Remove from scope
-                        scope_stack.remove(var.as_str());
-                    }
-                }
-            }
+            });
         }
 
-        unused_lets
-    }
-
-    /// Mark variables as used in an expression
-    fn mark_vars_used_in_expr(expr: &IrExpr, scope_stack: &mut HashMap<String, bool>) {
-        // Use dfs_iter to traverse all sub-expressions
-        for e in expr.dfs_iter() {
-            if let IrExpr::Var { value: name, .. } = e {
-                // Mark this variable as used if it's in scope
-                if let Some(used) = scope_stack.get_mut(name.as_str()) {
-                    *used = true;
-                }
-            }
+        // Now traverse with scope tracking to find used lets
+        for stmt in &entrypoint.body {
+            stmt.traverse_with_scope(&mut |s, scope| {
+                // TODO: This is O(n^2) due to traverse_expr being recursive over statements
+                s.traverse_exprs(&mut |expr| {
+                    if let IrExpr::Var { value: name, .. } = expr {
+                        // If this variable is in scope and was defined by a Let, mark it as used
+                        if let Some(IrStatement::Let { id, .. }) = scope.get(&name.to_string()) {
+                            used_lets.insert(*id);
+                        }
+                    }
+                });
+            });
         }
+
+        // Return the set of unused lets (all - used)
+        all_lets.difference(&used_lets).cloned().collect()
     }
 
     /// Transform a list of statements, eliminating unused lets

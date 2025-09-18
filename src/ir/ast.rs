@@ -100,6 +100,57 @@ impl IrStatement {
         }
     }
 
+    /// Traverse this statement and all nested statements with a closure that receives
+    /// the current scope (variables mapped to the statement that defined them)
+    pub fn traverse_with_scope<'a, F>(&'a self, f: &mut F)
+    where
+        F: FnMut(&'a IrStatement, &HashMap<String, &'a IrStatement>),
+    {
+        let mut scope = HashMap::new();
+        self.traverse_with_scope_impl(&mut scope, f);
+    }
+
+    fn traverse_with_scope_impl<'a, F>(
+        &'a self,
+        scope: &mut HashMap<String, &'a IrStatement>,
+        f: &mut F,
+    ) where
+        F: FnMut(&'a IrStatement, &HashMap<String, &'a IrStatement>),
+    {
+        f(self, scope);
+        match self {
+            IrStatement::Write { .. } => {}
+            IrStatement::WriteExpr { .. } => {}
+            IrStatement::If { body, .. } => {
+                for stmt in body {
+                    stmt.traverse_with_scope_impl(scope, f);
+                }
+            }
+            IrStatement::For { var, body, .. } => {
+                let prev_value = scope.insert(var.to_string(), self);
+                for stmt in body {
+                    stmt.traverse_with_scope_impl(scope, f);
+                }
+                if let Some(prev) = prev_value {
+                    scope.insert(var.to_string(), prev);
+                } else {
+                    scope.remove(&var.to_string());
+                }
+            }
+            IrStatement::Let { var, body, .. } => {
+                let prev_value = scope.insert(var.to_string(), self);
+                for stmt in body {
+                    stmt.traverse_with_scope_impl(scope, f);
+                }
+                if let Some(prev) = prev_value {
+                    scope.insert(var.to_string(), prev);
+                } else {
+                    scope.remove(&var.to_string());
+                }
+            }
+        }
+    }
+
     /// Traverse this statement and all nested statements with a mutable closure
     pub fn traverse_mut<F>(&mut self, f: &mut F)
     where
@@ -518,74 +569,5 @@ impl fmt::Display for IrEntrypoint {
         writeln!(f, "  }}")?;
         writeln!(f, "}}")?;
         Ok(())
-    }
-}
-
-/// Event for node traversal
-#[derive(Debug, Clone)]
-pub enum StatementEvent<'a> {
-    Enter(&'a IrStatement),
-    Exit(&'a IrStatement),
-}
-
-/// Iterator over statements with enter/exit events
-pub struct StatementVisitor<'a> {
-    stack: Vec<NodeVisitState<'a>>,
-}
-
-enum NodeVisitState<'a> {
-    Enter(&'a IrStatement),
-    Exit(&'a IrStatement),
-    VisitChildren(&'a [IrStatement]),
-}
-
-impl<'a> Iterator for StatementVisitor<'a> {
-    type Item = StatementEvent<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some(state) = self.stack.pop() {
-            match state {
-                NodeVisitState::Enter(node) => {
-                    // Push exit event for later
-                    self.stack.push(NodeVisitState::Exit(node));
-
-                    // Push children to visit
-                    match node {
-                        IrStatement::If { body, .. }
-                        | IrStatement::For { body, .. }
-                        | IrStatement::Let { body, .. } => {
-                            self.stack.push(NodeVisitState::VisitChildren(body));
-                        }
-                        IrStatement::Write { .. } | IrStatement::WriteExpr { .. } => {
-                            // Leaf nodes - no children
-                        }
-                    }
-
-                    return Some(StatementEvent::Enter(node));
-                }
-                NodeVisitState::Exit(node) => {
-                    return Some(StatementEvent::Exit(node));
-                }
-                NodeVisitState::VisitChildren(statements) => {
-                    // Push children in reverse order so they're visited in correct order
-                    for statement in statements.iter().rev() {
-                        self.stack.push(NodeVisitState::Enter(statement));
-                    }
-                }
-            }
-        }
-        None
-    }
-}
-
-impl IrEntrypoint {
-    /// Returns an iterator over all statements with enter/exit events
-    pub fn visit_statements(&self) -> StatementVisitor {
-        let mut stack = Vec::new();
-        // Push children in reverse order
-        for node in self.body.iter().rev() {
-            stack.push(NodeVisitState::Enter(node));
-        }
-        StatementVisitor { stack }
     }
 }

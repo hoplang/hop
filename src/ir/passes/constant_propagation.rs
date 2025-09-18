@@ -1,7 +1,7 @@
 use super::Pass;
 use crate::ir::{
     IrExpr,
-    ast::{BinaryOp, ExprId, StatementEvent, UnaryOp},
+    ast::{BinaryOp, ExprId, UnaryOp},
     ast::{IrEntrypoint, IrStatement},
 };
 use datafrog::{Iteration, Relation};
@@ -67,39 +67,31 @@ impl ConstantPropagationPass {
     /// Returns (defining_expr_id, referencing_expr_id) pairs
     fn collect_variable_references(entrypoint: &IrEntrypoint) -> Vec<(ExprId, ExprId)> {
         let mut var_bindings = Vec::new();
-        let mut scope: HashMap<String, ExprId> = HashMap::new();
 
-        for event in entrypoint.visit_statements() {
-            match event {
-                StatementEvent::Enter(statement) => {
-                    // Process expressions in this statement
-                    statement.visit_exprs(&mut |expr| {
-                        // Look for variable references and record their bindings
-                        if let IrExpr::Var {
-                            value: name,
-                            annotation,
-                            ..
-                        } = expr
-                        {
-                            if let Some(&def_expr_id) = scope.get(name.as_str()) {
-                                // Record: (defining_expr_id, referencing_expr_id)
-                                var_bindings.push((def_expr_id, annotation.0));
-                            }
+        for stmt in &entrypoint.body {
+            stmt.traverse_with_scope(&mut |s, scope| {
+                // Process all expressions in this statement
+                // TODO: This is O(n^2)
+                s.traverse_exprs(&mut |expr| {
+                    if let IrExpr::Var {
+                        value: name,
+                        annotation,
+                        ..
+                    } = expr
+                    {
+                        // Check if this variable is defined by a Let or For statement
+                        if let Some(defining_stmt) = scope.get(&name.to_string()) {
+                            let def_expr_id = match defining_stmt {
+                                IrStatement::Let { value, .. } => value.id(),
+                                IrStatement::For { array, .. } => array.id(),
+                                _ => return,
+                            };
+                            // Record: (defining_expr_id, referencing_expr_id)
+                            var_bindings.push((def_expr_id, annotation.0));
                         }
-                    });
-
-                    // Add Let variable to scope after processing its value
-                    if let IrStatement::Let { var, value, .. } = statement {
-                        scope.insert(var.to_string(), value.id());
                     }
-                }
-                StatementEvent::Exit(statement) => {
-                    // Remove Let variable from scope
-                    if let IrStatement::Let { var, .. } = statement {
-                        scope.remove(var.as_str());
-                    }
-                }
-            }
+                });
+            });
         }
 
         var_bindings
@@ -223,7 +215,7 @@ impl Pass for ConstantPropagationPass {
 
         let mut result = entrypoint;
         for stmt in &mut result.body {
-            stmt.visit_exprs_mut(&mut |expr| {
+            stmt.traverse_exprs_mut(&mut |expr| {
                 if let Some(const_val) = const_map.get(&expr.id()) {
                     *expr = match const_val {
                         Const::Bool(b) => IrExpr::BooleanLiteral {
