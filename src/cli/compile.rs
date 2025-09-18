@@ -1,6 +1,7 @@
 use crate::CompileLanguage;
 use crate::document::DocumentAnnotator;
 use crate::filesystem::files::ProjectRoot;
+use crate::hop::inliner::Inliner;
 use crate::hop::program::Program;
 use crate::ir::{
     CompilationMode, Compiler, GoTranspiler, JsTranspiler, LanguageMode, Transpiler,
@@ -89,8 +90,13 @@ pub fn execute(
         CompilationMode::Production
     };
 
+    timer.start_phase("inlining components");
+    // Inline entrypoint components
+    let inlined_entrypoints = Inliner::inline_entrypoints(program.get_typed_modules().clone());
+
+    timer.start_phase("compiling to IR");
     // Compile to IR with the appropriate mode
-    let mut ir_module = Compiler::compile(program.get_typed_modules(), compilation_mode);
+    let mut ir_module = Compiler::compile(inlined_entrypoints, compilation_mode);
 
     timer.start_phase("optimizing");
     // Run optimization passes

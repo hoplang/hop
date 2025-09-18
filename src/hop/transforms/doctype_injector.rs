@@ -1,8 +1,8 @@
 use crate::document::document_cursor::DocumentRange;
 use crate::dop::Type;
-use crate::hop::ast::{Ast, Node};
+use crate::hop::ast::{ComponentDefinition, Node};
 
-use super::AstTransform;
+use super::ComponentTransform;
 
 /// Transform that injects <!DOCTYPE html> at the beginning of entrypoint components
 /// that don't already have a doctype declaration
@@ -48,20 +48,18 @@ impl DoctypeInjector {
     }
 }
 
-impl AstTransform for DoctypeInjector {
-    fn transform(&mut self, ast: &mut Ast<Type>) {
-        for component in ast.get_component_definitions_mut() {
-            // Only inject DOCTYPE for entrypoint components
-            if component.is_entrypoint && !Self::has_doctype(&component.children) {
-                // Create a synthetic DOCTYPE node
-                let doctype_node = Node::Doctype {
-                    range: DocumentRange::new("<!DOCTYPE html>".to_string()),
-                };
+impl ComponentTransform for DoctypeInjector {
+    fn transform(&mut self, component: &mut ComponentDefinition<Type>) {
+        // Only inject DOCTYPE for entrypoint components
+        if component.is_entrypoint && !Self::has_doctype(&component.children) {
+            // Create a synthetic DOCTYPE node
+            let doctype_node = Node::Doctype {
+                range: DocumentRange::new("<!DOCTYPE html>".to_string()),
+            };
 
-                // Find the right position to insert (after any leading whitespace)
-                let insert_pos = Self::find_doctype_insert_position(&component.children);
-                component.children.insert(insert_pos, doctype_node);
-            }
+            // Find the right position to insert (after any leading whitespace)
+            let insert_pos = Self::find_doctype_insert_position(&component.children);
+            component.children.insert(insert_pos, doctype_node);
         }
     }
 }
@@ -71,7 +69,7 @@ mod tests {
     use super::*;
     use crate::dop::Type;
     use crate::error_collector::ErrorCollector;
-    use crate::hop::ast::{ComponentDefinition, Node};
+    use crate::hop::ast::{Ast, ComponentDefinition, Node};
     use crate::hop::module_name::ModuleName;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
@@ -97,11 +95,23 @@ mod tests {
                         output.push_str(&format!("Text: {:?}", text));
                     }
                 }
-                Node::Html { tag_name, children, .. } => {
-                    output.push_str(&format!("Html: <{}> ({} children)", tag_name.as_str(), children.len()));
+                Node::Html {
+                    tag_name, children, ..
+                } => {
+                    output.push_str(&format!(
+                        "Html: <{}> ({} children)",
+                        tag_name.as_str(),
+                        children.len()
+                    ));
                 }
-                Node::ComponentReference { tag_name, children, .. } => {
-                    output.push_str(&format!("Component: <{}> ({} children)", tag_name.as_str(), children.len()));
+                Node::ComponentReference {
+                    tag_name, children, ..
+                } => {
+                    output.push_str(&format!(
+                        "Component: <{}> ({} children)",
+                        tag_name.as_str(),
+                        children.len()
+                    ));
                 }
                 Node::If { children, .. } => {
                     output.push_str(&format!("If: ({} children)", children.len()));
@@ -139,7 +149,11 @@ mod tests {
         let mut typechecker = TypeChecker::default();
         typechecker.typecheck(&[&ast]);
         assert!(
-            typechecker.type_errors.get(&module_name).unwrap().is_empty(),
+            typechecker
+                .type_errors
+                .get(&module_name)
+                .unwrap()
+                .is_empty(),
             "Type errors: {:?}",
             typechecker.type_errors
         );
@@ -150,21 +164,23 @@ mod tests {
 
     /// Helper to check DOCTYPE injection for entrypoint components
     fn check_entrypoint(input: &str, expected: expect_test::Expect) {
-        let mut ast = create_typed_ast(input);
-
-        // Apply transform
-        let mut injector = DoctypeInjector::new();
-        injector.transform(&mut ast);
+        let ast = create_typed_ast(input);
 
         // Format output for all entrypoint components
         let mut output = String::new();
-        for (i, component) in ast.get_component_definitions().iter().enumerate() {
+        for (_i, component) in ast.get_component_definitions().iter().enumerate() {
             if component.is_entrypoint {
+                let mut component_clone = component.clone();
+
+                // Apply transform
+                let mut injector = DoctypeInjector::new();
+                injector.transform(&mut component_clone);
+
                 if !output.is_empty() {
                     output.push_str("\n\n");
                 }
-                output.push_str(&format!("=== {} ===\n", component.tag_name.as_str()));
-                output.push_str(&format_component_children(component));
+                output.push_str(&format!("=== {} ===\n", component_clone.tag_name.as_str()));
+                output.push_str(&format_component_children(&component_clone));
             }
         }
 
@@ -173,21 +189,23 @@ mod tests {
 
     /// Helper to check that non-entrypoints are not modified
     fn check_non_entrypoint(input: &str, expected: expect_test::Expect) {
-        let mut ast = create_typed_ast(input);
-
-        // Apply transform
-        let mut injector = DoctypeInjector::new();
-        injector.transform(&mut ast);
+        let ast = create_typed_ast(input);
 
         // Format output for all non-entrypoint components
         let mut output = String::new();
-        for (i, component) in ast.get_component_definitions().iter().enumerate() {
+        for (_i, component) in ast.get_component_definitions().iter().enumerate() {
             if !component.is_entrypoint {
+                let mut component_clone = component.clone();
+
+                // Apply transform (should do nothing for non-entrypoints)
+                let mut injector = DoctypeInjector::new();
+                injector.transform(&mut component_clone);
+
                 if !output.is_empty() {
                     output.push_str("\n\n");
                 }
-                output.push_str(&format!("=== {} ===\n", component.tag_name.as_str()));
-                output.push_str(&format_component_children(component));
+                output.push_str(&format!("=== {} ===\n", component_clone.tag_name.as_str()));
+                output.push_str(&format_component_children(&component_clone));
             }
         }
 
@@ -365,18 +383,21 @@ mod tests {
             </main-comp>
         "#;
 
-        let mut ast1 = create_typed_ast(source);
-        let mut ast2 = create_typed_ast(source);
+        let ast = create_typed_ast(source);
+        let component = &ast.get_component_definitions()[0];
+
+        let mut component1 = component.clone();
+        let mut component2 = component.clone();
         let mut injector = DoctypeInjector::new();
 
         // Apply once
-        injector.transform(&mut ast1);
-        let once = format_component_children(&ast1.get_component_definitions()[0]);
+        injector.transform(&mut component1);
+        let once = format_component_children(&component1);
 
         // Apply twice
-        injector.transform(&mut ast2);
-        injector.transform(&mut ast2);
-        let twice = format_component_children(&ast2.get_component_definitions()[0]);
+        injector.transform(&mut component2);
+        injector.transform(&mut component2);
+        let twice = format_component_children(&component2);
 
         // Should be identical
         assert_eq!(once, twice, "Transform should be idempotent");
@@ -390,3 +411,4 @@ mod tests {
         .assert_eq(&once);
     }
 }
+

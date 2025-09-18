@@ -62,7 +62,7 @@ impl Iterator for DocumentCursor {
 ///
 /// It is always non-empty, i.e. start < end and as_str().len() > 0
 /// always holds.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DocumentRange {
     /// The source info containing the document text and line starts.
     source: Arc<DocumentInfo>,
@@ -70,6 +70,13 @@ pub struct DocumentRange {
     start: usize,
     /// the end byte offset for this range in the document (exclusive).
     end: usize,
+}
+
+impl fmt::Debug for DocumentRange {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Show a compact representation: just the text content
+        write!(f, "{:?}", self.as_str())
+    }
 }
 
 impl DocumentRange {
@@ -234,7 +241,7 @@ impl Ranged for DocumentRange {
 /// A StringSpan is an owned smart pointer to a string.
 /// It has the same semantics as an owned string but does not require
 /// a heap allocation.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct StringSpan {
     /// The source info containing the document text and line starts.
     source: Arc<DocumentInfo>,
@@ -242,6 +249,13 @@ pub struct StringSpan {
     start: usize,
     /// the end byte offset for this span in the document (exclusive).
     end: usize,
+}
+
+impl fmt::Debug for StringSpan {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Show a compact representation: just the text content
+        write!(f, "{:?}", self.as_str())
+    }
 }
 
 impl StringSpan {

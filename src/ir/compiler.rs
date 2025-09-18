@@ -1,11 +1,10 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::{DocumentRange, StringSpan};
-use crate::dop::{Argument, Expr};
+use crate::dop::Expr;
 use crate::dop::{Type, VarName};
-use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition, Node};
-use crate::hop::module_name::ModuleName;
+use crate::hop::ast::{Attribute, AttributeValue, ComponentDefinition, Node};
 use crate::hop::transforms::TransformPipeline;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use super::ast::{ExprId, IrEntrypoint, IrExpr, IrModule, IrStatement, StatementId};
 
@@ -15,8 +14,7 @@ pub enum CompilationMode {
     Development,
 }
 
-pub struct Compiler<'a> {
-    asts: &'a HashMap<ModuleName, Ast<Type>>,
+pub struct Compiler {
     ir_module: IrModule,
     compilation_mode: CompilationMode,
 
@@ -27,24 +25,24 @@ pub struct Compiler<'a> {
     node_id_counter: u32,
 }
 
-impl Compiler<'_> {
+impl Compiler {
     pub fn compile(
-        asts: &HashMap<ModuleName, Ast<Type>>,
+        entrypoints: Vec<ComponentDefinition<Type>>,
         compilation_mode: CompilationMode,
     ) -> IrModule {
-        // Clone ASTs for transformation (keeping originals intact)
-        let mut transformed_asts = asts.clone();
+        // Clone entrypoints for transformation (keeping originals intact)
+        let mut transformed_entrypoints = entrypoints;
 
         // Apply transformations only in production mode
         if compilation_mode == CompilationMode::Production {
             let mut pipeline = TransformPipeline::new();
-            for ast in transformed_asts.values_mut() {
-                pipeline.run(ast);
+            for component in &mut transformed_entrypoints {
+                // Apply transformations to each component
+                pipeline.run(component);
             }
         }
 
         let mut compiler = Compiler {
-            asts: &transformed_asts,
             ir_module: IrModule::new(),
             compilation_mode,
             expr_id_counter: 0,
@@ -52,12 +50,8 @@ impl Compiler<'_> {
         };
 
         // Compile all entrypoint components
-        for ast in transformed_asts.values() {
-            for component_def in ast.get_component_definitions() {
-                if component_def.is_entrypoint {
-                    compiler.compile_entrypoint(component_def);
-                }
-            }
+        for component_def in &transformed_entrypoints {
+            compiler.compile_entrypoint(component_def);
         }
 
         compiler.ir_module
@@ -250,23 +244,10 @@ impl Compiler<'_> {
                 }
             }
 
-            Node::ComponentReference {
-                tag_name,
-                definition_module,
-                args,
-                attributes,
-                children,
-                ..
-            } => {
-                self.compile_component_reference(
-                    tag_name.as_str(),
-                    definition_module
-                        .as_ref()
-                        .expect("Component reference should have module"),
-                    args.as_ref(),
-                    attributes,
-                    children,
-                    output,
+            Node::ComponentReference { tag_name, .. } => {
+                panic!(
+                    "Unexpected ComponentReference '{}' in IR compiler. Components should be inlined before compilation.",
+                    tag_name.as_str()
                 );
             }
 
@@ -346,191 +327,6 @@ impl Compiler<'_> {
                 content: format!("</{}>", tag_name.as_str()),
             });
         }
-    }
-
-    fn compile_component_reference(
-        &mut self,
-        tag_name: &str,
-        module: &ModuleName,
-        args: Option<&(Vec<Argument<Type>>, DocumentRange)>,
-        extra_attributes: &BTreeMap<StringSpan, Attribute<Type>>,
-        children: &[Node<Type>],
-        output: &mut Vec<IrStatement>,
-    ) {
-        let ast = self
-            .asts
-            .get(module)
-            .expect("Component module should exist");
-        let component = ast
-            .get_component_definition(tag_name)
-            .expect("Component definition should exist");
-
-        // Determine wrapper tag
-        let wrapper_tag = component
-            .as_attr
-            .as_ref()
-            .map(|a| a.value.as_str())
-            .unwrap_or("div");
-
-        // Push opening tag with data-hop-id
-        output.push(IrStatement::Write {
-            id: self.next_node_id(),
-            content: format!(
-                "<{} data-hop-id=\"{}/{}\"",
-                wrapper_tag,
-                module.as_str(),
-                tag_name
-            ),
-        });
-
-        // Merge attributes from component definition and reference
-        // Use itertools to merge the two sorted maps
-        use itertools::{EitherOrBoth, Itertools};
-
-        let merged_attrs = extra_attributes
-            .iter()
-            .merge_join_by(&component.attributes, |a, b| a.0.cmp(b.0))
-            .collect::<Vec<_>>();
-
-        for attr_pair in merged_attrs {
-            match attr_pair {
-                EitherOrBoth::Both((name, ref_attr), (_, def_attr)) if name.as_str() == "class" => {
-                    // Special handling for class attribute - concatenate values
-                    output.push(IrStatement::Write {
-                        id: self.next_node_id(),
-                        content: " class=\"".to_string(),
-                    });
-
-                    // First add the definition's class (if any)
-                    if let Some(def_val) = &def_attr.value {
-                        match def_val {
-                            AttributeValue::String(s) => {
-                                output.push(IrStatement::Write {
-                                    id: self.next_node_id(),
-                                    content: s.as_str().to_string(),
-                                });
-                            }
-                            AttributeValue::Expression(expr) => {
-                                // Dynamic class from definition
-                                output.push(IrStatement::WriteExpr {
-                                    id: self.next_node_id(),
-                                    expr: self.compile_expr(expr),
-                                    escape: true,
-                                });
-                            }
-                        }
-                    }
-
-                    // Then add the reference's class (if any)
-                    if let Some(ref_val) = &ref_attr.value {
-                        if def_attr.value.is_some() {
-                            output.push(IrStatement::Write {
-                                id: self.next_node_id(),
-                                content: " ".to_string(),
-                            });
-                        }
-                        match ref_val {
-                            AttributeValue::String(s) => {
-                                output.push(IrStatement::Write {
-                                    id: self.next_node_id(),
-                                    content: s.as_str().to_string(),
-                                });
-                            }
-                            AttributeValue::Expression(expr) => {
-                                // Dynamic class from reference
-                                output.push(IrStatement::WriteExpr {
-                                    id: self.next_node_id(),
-                                    expr: self.compile_expr(expr),
-                                    escape: true,
-                                });
-                            }
-                        }
-                    }
-
-                    output.push(IrStatement::Write {
-                        id: self.next_node_id(),
-                        content: "\"".to_string(),
-                    });
-                }
-                EitherOrBoth::Both((name, attr), (_, _))
-                | EitherOrBoth::Left((name, attr))
-                | EitherOrBoth::Right((name, attr)) => {
-                    if let Some(val) = &attr.value {
-                        self.compile_attribute(name.as_str(), val, output);
-                    } else {
-                        // Boolean attribute
-                        output.push(IrStatement::Write {
-                            id: self.next_node_id(),
-                            content: format!(" {}", name.as_str()),
-                        });
-                    }
-                }
-            }
-        }
-
-        output.push(IrStatement::Write {
-            id: self.next_node_id(),
-            content: ">".to_string(),
-        });
-
-        // Build bindings for component parameters
-        let mut param_bindings = Vec::new();
-
-        if let Some((params, _)) = &component.params {
-            for param in params {
-                let param_name = param.var_name.clone();
-
-                // Find corresponding argument value
-                let value = if let Some((args, _)) = args {
-                    args.iter()
-                        .find(|a| a.var_name.as_str() == param_name.as_str())
-                        .map(|a| self.compile_expr(&a.var_expr))
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "Missing required parameter '{}' for component '{}' in module '{}'.",
-                                param_name,
-                                tag_name,
-                                module.as_str()
-                            )
-                        })
-                } else {
-                    panic!(
-                        "No arguments provided for component '{}' in module '{}', but it requires parameter '{}'.",
-                        tag_name,
-                        module.as_str(),
-                        param_name
-                    )
-                };
-
-                param_bindings.push((param_name, value));
-            }
-        }
-
-        // Compile slot content if needed
-        let slot_content = if component.has_slot && !children.is_empty() {
-            Some(self.compile_nodes(children, None))
-        } else {
-            None
-        };
-
-        // Compile component body
-        let mut component_body = self.compile_nodes(&component.children, slot_content);
-
-        // Wrap body with Let bindings (in reverse order for nesting)
-        for (param_name, value) in param_bindings.into_iter().rev() {
-            component_body = vec![IrStatement::Let {
-                id: self.next_node_id(),
-                var: param_name,
-                value,
-                body: component_body,
-            }];
-        }
-
-        output.extend(component_body);
-        output.push(IrStatement::Write {
-            id: self.next_node_id(),
-            content: format!("</{}>", wrapper_tag),
-        });
     }
 
     fn next_expr_id(&mut self) -> ExprId {
@@ -677,8 +473,11 @@ mod tests {
             typechecker.type_errors
         );
 
-        // Compile to IR with specified mode using typed AST
-        Compiler::compile(&typechecker.typed_asts, mode)
+        // Inline entrypoint components
+        let inlined_entrypoints = crate::hop::inliner::Inliner::inline_entrypoints(typechecker.typed_asts);
+
+        // Compile to IR with specified mode
+        Compiler::compile(inlined_entrypoints, mode)
     }
 
     fn check_ir(source: &str, expected: Expect) {
@@ -851,7 +650,8 @@ mod tests {
                       parameters: []
                       body: {
                         Write("<!DOCTYPE html>")
-                        Write("<div data-hop-id=\"test/card-comp\"")
+                        Write("<div")
+                        Write(" data-hop-id=\"test/card-comp\"")
                         Write(">")
                         Let(var: title, value: "Hello") {
                           Write("<h2")
@@ -1136,7 +936,8 @@ mod tests {
                       parameters: []
                       body: {
                         Write("<!DOCTYPE html>")
-                        Write("<div data-hop-id=\"test/card-comp\"")
+                        Write("<div")
+                        Write(" data-hop-id=\"test/card-comp\"")
                         Write(">")
                         Write("<div")
                         Write(" class=\"card\"")
@@ -1179,10 +980,12 @@ mod tests {
                       parameters: []
                       body: {
                         Write("<!DOCTYPE html>")
-                        Write("<div data-hop-id=\"test/outer-comp\"")
+                        Write("<div")
+                        Write(" data-hop-id=\"test/outer-comp\"")
                         Write(">")
                         Let(var: text, value: "Hello") {
-                          Write("<div data-hop-id=\"test/inner-comp\"")
+                          Write("<div")
+                          Write(" data-hop-id=\"test/inner-comp\"")
                           Write(">")
                           Let(var: msg, value: text) {
                             Write("<span")
@@ -1221,7 +1024,8 @@ mod tests {
                       parameters: [x: string]
                       body: {
                         Write("<!DOCTYPE html>")
-                        Write("<div data-hop-id=\"test/child-comp\"")
+                        Write("<div")
+                        Write(" data-hop-id=\"test/child-comp\"")
                         Write(">")
                         Let(var: x, value: x) {
                           Write("<div")
@@ -1260,7 +1064,8 @@ mod tests {
                       parameters: [x: string]
                       body: {
                         Write("<!DOCTYPE html>")
-                        Write("<div data-hop-id=\"test/child-comp\"")
+                        Write("<div")
+                        Write(" data-hop-id=\"test/child-comp\"")
                         Write(">")
                         Let(var: x, value: x) {
                           Write("<div")
@@ -1270,7 +1075,8 @@ mod tests {
                           Write("</div>")
                         }
                         Write("</div>")
-                        Write("<div data-hop-id=\"test/child-comp\"")
+                        Write("<div")
+                        Write(" data-hop-id=\"test/child-comp\"")
                         Write(">")
                         Let(var: x, value: x) {
                           Write("<div")

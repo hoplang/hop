@@ -406,9 +406,12 @@ impl Program {
         args: HashMap<String, serde_json::Value>,
         hop_mode: &str,
     ) -> Result<String> {
+        // Inline entrypoint components
+        let inlined_entrypoints = crate::hop::inliner::Inliner::inline_entrypoints(self.get_typed_modules().clone());
+
         // Compile to IR - use Production mode for evaluation
         let ir_module =
-            ir::Compiler::compile(self.get_typed_modules(), ir::CompilationMode::Production);
+            ir::Compiler::compile(inlined_entrypoints, ir::CompilationMode::Production);
 
         // Get the entrypoint
         let entrypoint = ir_module

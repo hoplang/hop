@@ -1,19 +1,19 @@
 use crate::dop::Type;
-use crate::hop::ast::Ast;
+use crate::hop::ast::ComponentDefinition;
 
 pub mod doctype_injector;
 
 pub use doctype_injector::DoctypeInjector;
 
-/// A transformation that can be applied to a Hop AST
-pub trait AstTransform {
-    /// Apply the transformation to the AST
-    fn transform(&mut self, ast: &mut Ast<Type>);
+/// A transformation that can be applied to a component definition
+pub trait ComponentTransform {
+    /// Apply the transformation to the component definition
+    fn transform(&mut self, component: &mut ComponentDefinition<Type>);
 }
 
-/// Pipeline for running AST transformations
+/// Pipeline for running component transformations
 pub struct TransformPipeline {
-    transforms: Vec<Box<dyn AstTransform>>,
+    transforms: Vec<Box<dyn ComponentTransform>>,
 }
 
 impl TransformPipeline {
@@ -26,10 +26,10 @@ impl TransformPipeline {
         }
     }
 
-    /// Run all transforms on the given AST
-    pub fn run(&mut self, ast: &mut Ast<Type>) {
+    /// Run all transforms on the given component
+    pub fn run(&mut self, component: &mut ComponentDefinition<Type>) {
         for transform in &mut self.transforms {
-            transform.transform(ast);
+            transform.transform(component);
         }
     }
 }
