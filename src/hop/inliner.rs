@@ -5,7 +5,9 @@ use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition};
 use crate::hop::module_name::ModuleName;
 use std::collections::{BTreeMap, HashMap};
 
-use super::ast::InlinedEntryPoint;
+use super::ast::{
+    InlinedEntryPoint, TypedAttribute, TypedAttributeValue, TypedComponentDefinition,
+};
 use super::node::{InlinedNode, Node, TypedNode};
 
 /// The Inliner transforms ASTs by replacing ComponentReference nodes with their
@@ -48,9 +50,9 @@ impl<'a> Inliner<'a> {
         &self,
         tag_name: &DocumentRange,
         module: &ModuleName,
-        component: &ComponentDefinition<TypedExpr>,
+        component: &TypedComponentDefinition,
         args: Option<&(Vec<Argument<TypedExpr>>, DocumentRange)>,
-        extra_attributes: &BTreeMap<StringSpan, Attribute<TypedExpr>>,
+        extra_attributes: &BTreeMap<StringSpan, TypedAttribute>,
         slot_children: &[TypedNode],
         range: &DocumentRange,
     ) -> InlinedNode {
@@ -64,7 +66,7 @@ impl<'a> Inliner<'a> {
         // Create data-hop-id attribute
         let mut attributes = BTreeMap::new();
         let data_hop_id = format!("{}/{}", module.as_str(), tag_name.as_str());
-        let data_hop_id_span = DocumentRange::new("data-hop-id".to_string()).to_string_span();
+        let data_hop_id_span = StringSpan::new("data-hop-id".to_string());
         attributes.insert(
             data_hop_id_span,
             Attribute {
@@ -77,12 +79,7 @@ impl<'a> Inliner<'a> {
         );
 
         // Merge attributes from component definition and reference
-        self.merge_attributes(
-            &mut attributes,
-            &component.attributes,
-            extra_attributes,
-            range,
-        );
+        self.merge_attributes(&mut attributes, &component.attributes, extra_attributes);
 
         // Process component children with slot replacement
         let slot_content = if component.has_slot && !slot_children.is_empty() {
@@ -141,10 +138,9 @@ impl<'a> Inliner<'a> {
     /// Merge attributes from component definition and reference, handling class concatenation
     fn merge_attributes(
         &self,
-        target: &mut BTreeMap<StringSpan, Attribute<TypedExpr>>,
-        def_attributes: &BTreeMap<StringSpan, Attribute<TypedExpr>>,
-        ref_attributes: &BTreeMap<StringSpan, Attribute<TypedExpr>>,
-        range: &DocumentRange,
+        target: &mut BTreeMap<StringSpan, TypedAttribute>,
+        def_attributes: &BTreeMap<StringSpan, TypedAttribute>,
+        ref_attributes: &BTreeMap<StringSpan, TypedAttribute>,
     ) {
         // First add component's attributes
         for (name, attr) in def_attributes {
@@ -158,7 +154,7 @@ impl<'a> Inliner<'a> {
                 if let Some(def_attr) = def_attributes.get(name) {
                     // Both definition and reference have class attributes - concatenate them
                     let concatenated_value =
-                        self.create_concatenated_class_value(def_attr, ref_attr, range);
+                        self.create_concatenated_class_value(def_attr, ref_attr);
                     target.insert(
                         name.clone(),
                         Attribute {
@@ -183,8 +179,7 @@ impl<'a> Inliner<'a> {
         &self,
         def_attr: &Attribute<TypedExpr>,
         ref_attr: &Attribute<TypedExpr>,
-        _range: &DocumentRange,
-    ) -> AttributeValue<TypedExpr> {
+    ) -> TypedAttributeValue {
         let def_expr = match &def_attr.value {
             Some(AttributeValue::String(s)) => Expr::StringLiteral {
                 value: s.as_str().to_string(),

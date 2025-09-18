@@ -15,6 +15,8 @@ pub struct StaticAttribute {
     pub value: DocumentRange,
 }
 
+pub type TypedAttributeValue = AttributeValue<TypedExpr>;
+
 #[derive(Debug, Clone)]
 pub enum AttributeValue<T = UntypedExpr> {
     Expression(T),
@@ -149,6 +151,7 @@ pub struct InlinedEntryPoint {
 }
 
 pub type UntypedComponentDefinition = ComponentDefinition<UntypedExpr>;
+pub type TypedComponentDefinition = ComponentDefinition<TypedExpr>;
 
 #[derive(Debug, Clone)]
 pub struct ComponentDefinition<E> {
