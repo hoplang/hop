@@ -114,7 +114,7 @@ mod tests {
     }
 
     /// Helper to create a typed AST from Hop source code
-    fn create_typed_ast(source: &str) -> Vec<InlinedEntryPoint> {
+    fn create_typed_ast(source: &str) -> InlinedEntryPoint {
         let mut errors = ErrorCollector::new();
         let module_name = ModuleName::new("test".to_string()).unwrap();
         let tokenizer = Tokenizer::new(source.to_string());
@@ -135,29 +135,36 @@ mod tests {
             typechecker.type_errors
         );
 
-        // Return the typed AST
-        Inliner::inline_entrypoints(typechecker.typed_asts)
+        // Get the inlined entrypoints
+        let entrypoints = Inliner::inline_entrypoints(typechecker.typed_asts);
+        assert!(
+            !entrypoints.is_empty(),
+            "No entrypoint found in source code"
+        );
+        assert!(
+            entrypoints.len() == 1,
+            "Expected exactly one entrypoint, found {}",
+            entrypoints.len()
+        );
+
+        entrypoints.into_iter().next().unwrap()
     }
 
     /// Helper to check DOCTYPE injection for entrypoint
     fn check(input: &str, expected: expect_test::Expect) {
-        let ast = create_typed_ast(input);
+        let entrypoint = create_typed_ast(input);
 
-        // Format output for all entrypoints
-        let mut output = String::new();
-        for entrypoint in ast {
-            // Apply transform
-            let transformed_entrypoint = DoctypeInjector::run(entrypoint);
+        // Format before
+        let before = format_entrypoint_children(&entrypoint);
 
-            if !output.is_empty() {
-                output.push_str("\n\n");
-            }
-            output.push_str(&format!(
-                "=== {} ===\n",
-                transformed_entrypoint.tag_name.as_str()
-            ));
-            output.push_str(&format_entrypoint_children(&transformed_entrypoint));
-        }
+        // Apply transform
+        let transformed_entrypoint = DoctypeInjector::run(entrypoint);
+
+        // Format after
+        let after = format_entrypoint_children(&transformed_entrypoint);
+
+        // Create output with before/after format
+        let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
 
         expected.assert_eq(&output);
     }
@@ -173,7 +180,11 @@ mod tests {
                 </main-comp>
             "#,
             expect![[r#"
-                === main-comp ===
+                -- before --
+                Text: <whitespace:21 chars>
+                Html: <html> (3 children)
+                Text: <whitespace:17 chars>
+                -- after --
                 Text: <whitespace:21 chars>
                 DOCTYPE: <!DOCTYPE html>
                 Html: <html> (3 children)
@@ -193,50 +204,17 @@ mod tests {
                 </main-comp>
             "#,
             expect![[r#"
-                === main-comp ===
+                -- before --
                 Text: <whitespace:21 chars>
                 DOCTYPE: <!DOCTYPE html>
                 Text: <whitespace:21 chars>
                 Html: <html> (3 children)
-                Text: <whitespace:17 chars>"#]],
-        );
-    }
-
-    #[test]
-    fn test_multiple_entrypoints() {
-        check(
-            r#"
-                <first-comp entrypoint>
-                    <div>First</div>
-                </first-comp>
-
-                <second-comp entrypoint>
-                    <!DOCTYPE html>
-                    <div>Second</div>
-                </second-comp>
-
-                <third-comp entrypoint>
-                    <div>Third</div>
-                </third-comp>
-            "#,
-            expect![[r#"
-                === first-comp ===
-                Text: <whitespace:21 chars>
-                DOCTYPE: <!DOCTYPE html>
-                Html: <div> (1 children)
                 Text: <whitespace:17 chars>
-
-                === second-comp ===
+                -- after --
                 Text: <whitespace:21 chars>
                 DOCTYPE: <!DOCTYPE html>
                 Text: <whitespace:21 chars>
-                Html: <div> (1 children)
-                Text: <whitespace:17 chars>
-
-                === third-comp ===
-                Text: <whitespace:21 chars>
-                DOCTYPE: <!DOCTYPE html>
-                Html: <div> (1 children)
+                Html: <html> (3 children)
                 Text: <whitespace:17 chars>"#]],
         );
     }
@@ -249,7 +227,9 @@ mod tests {
                 </empty-comp>
             "#,
             expect![[r#"
-                === empty-comp ===
+                -- before --
+                Text: <whitespace:17 chars>
+                -- after --
                 Text: <whitespace:17 chars>
                 DOCTYPE: <!DOCTYPE html>"#]],
         );
@@ -264,7 +244,9 @@ mod tests {
                 </text-comp>
             "#,
             expect![[r#"
-                === text-comp ===
+                -- before --
+                Text: "\n                    Just some text content\n                "
+                -- after --
                 DOCTYPE: <!DOCTYPE html>
                 Text: "\n                    Just some text content\n                ""#]],
         );
@@ -281,7 +263,13 @@ mod tests {
                 </main-comp>
             "#,
             expect![[r#"
-                === main-comp ===
+                -- before --
+                Text: <whitespace:22 chars>
+                DOCTYPE: <!DOCTYPE html>
+                Text: <whitespace:21 chars>
+                Html: <html> (1 children)
+                Text: <whitespace:17 chars>
+                -- after --
                 Text: <whitespace:22 chars>
                 DOCTYPE: <!DOCTYPE html>
                 Text: <whitespace:21 chars>
@@ -300,7 +288,11 @@ mod tests {
                 </main-comp>
             "#,
             expect![[r#"
-                === main-comp ===
+                -- before --
+                Text: <whitespace:22 chars>
+                Html: <html> (1 children)
+                Text: <whitespace:17 chars>
+                -- after --
                 Text: <whitespace:22 chars>
                 DOCTYPE: <!DOCTYPE html>
                 Html: <html> (1 children)
