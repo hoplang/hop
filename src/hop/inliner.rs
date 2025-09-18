@@ -5,7 +5,7 @@ use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition, Node}
 use crate::hop::module_name::ModuleName;
 use std::collections::{BTreeMap, HashMap};
 
-use super::ast::TypedNode;
+use super::ast::{InlinedComponentDefinition, InlinedNode, TypedNode};
 
 /// The Inliner transforms ASTs by replacing ComponentReference nodes with their
 /// inlined component definitions, using Let nodes for parameter binding and
@@ -24,7 +24,7 @@ impl<'a> Inliner<'a> {
     /// Returns a vector of inlined entrypoint components
     pub fn inline_entrypoints(
         asts: HashMap<ModuleName, Ast<TypedExpr>>,
-    ) -> Vec<ComponentDefinition<TypedExpr>> {
+    ) -> Vec<InlinedComponentDefinition> {
         let inliner = Inliner::new(&asts);
         let mut result = Vec::new();
 
@@ -32,9 +32,17 @@ impl<'a> Inliner<'a> {
             // Only process entrypoint components
             for component in ast.get_component_definitions() {
                 if component.is_entrypoint {
-                    let mut inlined_component = component.clone();
-                    inlined_component.children = inliner.inline_nodes(&component.children);
-                    result.push(inlined_component);
+                    result.push(ComponentDefinition {
+                        tag_name: component.tag_name.clone(),
+                        children: inliner.inline_nodes(&component.children),
+                        is_entrypoint: true,
+                        closing_tag_name: None,
+                        params: component.params.clone(),
+                        as_attr: None,
+                        attributes: BTreeMap::new(),
+                        has_slot: false,
+                        range: (),
+                    });
                 }
             }
         }
@@ -43,12 +51,12 @@ impl<'a> Inliner<'a> {
     }
 
     /// Recursively inline nodes in a list
-    fn inline_nodes(&self, nodes: &[TypedNode]) -> Vec<TypedNode> {
+    fn inline_nodes(&self, nodes: &[TypedNode]) -> Vec<InlinedNode> {
         nodes.iter().map(|node| self.inline_node(node)).collect()
     }
 
     /// Inline a single node (and its children)
-    fn inline_node(&self, node: &TypedNode) -> TypedNode {
+    fn inline_node(&self, node: &TypedNode) -> InlinedNode {
         match node {
             Node::ComponentReference {
                 tag_name,
@@ -88,58 +96,66 @@ impl<'a> Inliner<'a> {
                 closing_tag_name,
                 attributes,
                 children,
-                range,
+                ..
             } => Node::Html {
                 tag_name: tag_name.clone(),
                 closing_tag_name: closing_tag_name.clone(),
                 attributes: attributes.clone(),
                 children: self.inline_nodes(children),
-                range: range.clone(),
+                range: (),
             },
 
             Node::If {
                 condition,
                 children,
-                range,
+                ..
             } => Node::If {
                 condition: condition.clone(),
                 children: self.inline_nodes(children),
-                range: range.clone(),
+                range: (),
             },
 
             Node::For {
                 var_name,
                 array_expr,
                 children,
-                range,
+                ..
             } => Node::For {
                 var_name: var_name.clone(),
                 array_expr: array_expr.clone(),
                 children: self.inline_nodes(children),
-                range: range.clone(),
+                range: (),
             },
 
             Node::Let {
                 var,
                 value,
                 children,
-                range,
+                ..
             } => Node::Let {
                 var: var.clone(),
                 value: value.clone(),
                 children: self.inline_nodes(children),
-                range: range.clone(),
+                range: (),
             },
 
-            // Leaf nodes - return as is
-            Node::Text { .. }
-            | Node::TextExpression { .. }
-            | Node::SlotDefinition { .. }
-            | Node::Doctype { .. } => node.clone(),
+            Node::Text { value, .. } => Node::Text {
+                value: value.clone(),
+                range: (),
+            },
+            Node::TextExpression { expression, .. } => Node::TextExpression {
+                expression: expression.clone(),
+                range: (),
+            },
+            Node::SlotDefinition { .. } => Node::SlotDefinition { range: () },
+            Node::Doctype { value, .. } => Node::Doctype {
+                value: value.clone(),
+                range: (),
+            },
 
-            Node::Placeholder { children, range } => Node::Placeholder {
+            Node::Placeholder { children, .. } => Node::Placeholder {
                 children: self.inline_nodes(children),
-                range: range.clone(),
+                range: (),
             },
         }
     }
@@ -154,7 +170,7 @@ impl<'a> Inliner<'a> {
         extra_attributes: &BTreeMap<StringSpan, Attribute<TypedExpr>>,
         slot_children: &[TypedNode],
         range: &DocumentRange,
-    ) -> TypedNode {
+    ) -> InlinedNode {
         // Determine wrapper tag
         let wrapper_tag = component
             .as_attr
@@ -226,7 +242,7 @@ impl<'a> Inliner<'a> {
                     var: param_name,
                     value,
                     children: body,
-                    range: range.clone(),
+                    range: (),
                 }];
             }
         }
@@ -237,7 +253,7 @@ impl<'a> Inliner<'a> {
             closing_tag_name: Some(wrapper_tag),
             attributes,
             children: body,
-            range: range.clone(),
+            range: (),
         }
     }
 
@@ -339,7 +355,7 @@ impl<'a> Inliner<'a> {
         &self,
         nodes: &[TypedNode],
         slot_content: &[TypedNode],
-    ) -> Vec<TypedNode> {
+    ) -> Vec<InlinedNode> {
         let mut result = Vec::new();
 
         for node in nodes {
@@ -359,7 +375,7 @@ impl<'a> Inliner<'a> {
     }
 
     /// Inline a single node, replacing slots with the provided content
-    fn inline_node_with_slot(&self, node: &TypedNode, slot_content: &[TypedNode]) -> TypedNode {
+    fn inline_node_with_slot(&self, node: &TypedNode, slot_content: &[TypedNode]) -> InlinedNode {
         match node {
             Node::ComponentReference { .. } => self.inline_node(node),
 
@@ -368,64 +384,71 @@ impl<'a> Inliner<'a> {
                 closing_tag_name,
                 attributes,
                 children,
-                range,
+                ..
             } => Node::Html {
                 tag_name: tag_name.clone(),
                 closing_tag_name: closing_tag_name.clone(),
                 attributes: attributes.clone(),
                 children: self.inline_nodes_with_slot(children, slot_content),
-                range: range.clone(),
+                range: (),
             },
 
             Node::If {
                 condition,
                 children,
-                range,
+                ..
             } => Node::If {
                 condition: condition.clone(),
                 children: self.inline_nodes_with_slot(children, slot_content),
-                range: range.clone(),
+                range: (),
             },
 
             Node::For {
                 var_name,
                 array_expr,
                 children,
-                range,
+                ..
             } => Node::For {
                 var_name: var_name.clone(),
                 array_expr: array_expr.clone(),
                 children: self.inline_nodes_with_slot(children, slot_content),
-                range: range.clone(),
+                range: (),
             },
 
             Node::Let {
                 var,
                 value,
                 children,
-                range,
+                ..
             } => Node::Let {
                 var: var.clone(),
                 value: value.clone(),
                 children: self.inline_nodes_with_slot(children, slot_content),
-                range: range.clone(),
+                range: (),
             },
 
             Node::SlotDefinition { .. } => {
-                // This case should be handled by inline_nodes_with_slot
-                // but if we encounter it here, replace it
-                Node::Placeholder {
-                    children: self.inline_nodes(slot_content),
-                    range: node.range().clone(),
-                }
+                panic!()
             }
 
             // Leaf nodes - return as is
-            Node::Text { .. } | Node::TextExpression { .. } | Node::Doctype { .. } => node.clone(),
+            Node::Text { value, .. } => Node::Text {
+                value: value.clone(),
+                range: (),
+            },
+            Node::TextExpression { expression, .. } => Node::TextExpression {
+                expression: expression.clone(),
+                range: (),
+            },
 
-            Node::Placeholder { children, range } => Node::Placeholder {
+            Node::Doctype { value, .. } => Node::Doctype {
+                value: value.clone(),
+                range: (),
+            },
+
+            Node::Placeholder { children, .. } => Node::Placeholder {
                 children: self.inline_nodes_with_slot(children, slot_content),
-                range: range.clone(),
+                range: (),
             },
         }
     }
@@ -471,7 +494,7 @@ mod tests {
         typechecker.typecheck(&untyped_asts_refs);
 
         // Check for type errors
-        for (module_name, _) in &untyped_asts {
+        for module_name in untyped_asts.keys() {
             assert!(
                 typechecker.type_errors.get(module_name).unwrap().is_empty(),
                 "Type errors in {}: {:?}",
@@ -510,38 +533,123 @@ mod tests {
             expect![[r#"
                 [
                     ComponentDefinition {
-                        tag_name: "main-comp",
-                        closing_tag_name: Some(
-                            "main-comp",
-                        ),
+                        tag_name: DocumentRange {
+                            source: DocumentInfo {
+                                text: "\n                    <card-comp {title: string}>\n                        <h2>{title}</h2>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp {title: \"Hello\"}/>\n                    </main-comp>\n                ",
+                                line_starts: [
+                                    0,
+                                    1,
+                                    49,
+                                    90,
+                                    123,
+                                    124,
+                                    167,
+                                    221,
+                                    254,
+                                ],
+                            },
+                            start: 145,
+                            end: 154,
+                        },
+                        closing_tag_name: None,
                         params: None,
                         as_attr: None,
                         attributes: {},
                         children: [
                             Text {
                                 value: "\n                        ",
-                                range: "\n                        ",
+                                range: (),
                             },
                             Html {
-                                tag_name: "div",
+                                tag_name: DocumentRange {
+                                    source: DocumentInfo {
+                                        text: "div",
+                                        line_starts: [
+                                            0,
+                                        ],
+                                    },
+                                    start: 0,
+                                    end: 3,
+                                },
                                 closing_tag_name: Some(
-                                    "div",
+                                    DocumentRange {
+                                        source: DocumentInfo {
+                                            text: "div",
+                                            line_starts: [
+                                                0,
+                                            ],
+                                        },
+                                        start: 0,
+                                        end: 3,
+                                    },
                                 ),
                                 attributes: {
                                     "data-hop-id": Attribute {
-                                        name: "data-hop-id",
+                                        name: DocumentRange {
+                                            source: DocumentInfo {
+                                                text: "data-hop-id",
+                                                line_starts: [
+                                                    0,
+                                                ],
+                                            },
+                                            start: 0,
+                                            end: 11,
+                                        },
                                         value: Some(
                                             String(
-                                                "main/card-comp",
+                                                DocumentRange {
+                                                    source: DocumentInfo {
+                                                        text: "main/card-comp",
+                                                        line_starts: [
+                                                            0,
+                                                        ],
+                                                    },
+                                                    start: 0,
+                                                    end: 14,
+                                                },
                                             ),
                                         ),
-                                        range: "<card-comp {title: \"Hello\"}/>",
+                                        range: DocumentRange {
+                                            source: DocumentInfo {
+                                                text: "\n                    <card-comp {title: string}>\n                        <h2>{title}</h2>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp {title: \"Hello\"}/>\n                    </main-comp>\n                ",
+                                                line_starts: [
+                                                    0,
+                                                    1,
+                                                    49,
+                                                    90,
+                                                    123,
+                                                    124,
+                                                    167,
+                                                    221,
+                                                    254,
+                                                ],
+                                            },
+                                            start: 191,
+                                            end: 220,
+                                        },
                                     },
                                 },
                                 children: [
                                     Let {
                                         var: VarName {
-                                            value: "title",
+                                            value: DocumentRange {
+                                                source: DocumentInfo {
+                                                    text: "\n                    <card-comp {title: string}>\n                        <h2>{title}</h2>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp {title: \"Hello\"}/>\n                    </main-comp>\n                ",
+                                                    line_starts: [
+                                                        0,
+                                                        1,
+                                                        49,
+                                                        90,
+                                                        123,
+                                                        124,
+                                                        167,
+                                                        221,
+                                                        254,
+                                                    ],
+                                                },
+                                                start: 33,
+                                                end: 38,
+                                            },
                                         },
                                         value: StringLiteral {
                                             value: "Hello",
@@ -550,45 +658,96 @@ mod tests {
                                         children: [
                                             Text {
                                                 value: "\n                        ",
-                                                range: "\n                        ",
+                                                range: (),
                                             },
                                             Html {
-                                                tag_name: "h2",
+                                                tag_name: DocumentRange {
+                                                    source: DocumentInfo {
+                                                        text: "\n                    <card-comp {title: string}>\n                        <h2>{title}</h2>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp {title: \"Hello\"}/>\n                    </main-comp>\n                ",
+                                                        line_starts: [
+                                                            0,
+                                                            1,
+                                                            49,
+                                                            90,
+                                                            123,
+                                                            124,
+                                                            167,
+                                                            221,
+                                                            254,
+                                                        ],
+                                                    },
+                                                    start: 74,
+                                                    end: 76,
+                                                },
                                                 closing_tag_name: Some(
-                                                    "h2",
+                                                    DocumentRange {
+                                                        source: DocumentInfo {
+                                                            text: "\n                    <card-comp {title: string}>\n                        <h2>{title}</h2>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp {title: \"Hello\"}/>\n                    </main-comp>\n                ",
+                                                            line_starts: [
+                                                                0,
+                                                                1,
+                                                                49,
+                                                                90,
+                                                                123,
+                                                                124,
+                                                                167,
+                                                                221,
+                                                                254,
+                                                            ],
+                                                        },
+                                                        start: 86,
+                                                        end: 88,
+                                                    },
                                                 ),
                                                 attributes: {},
                                                 children: [
                                                     TextExpression {
                                                         expression: Var {
                                                             value: VarName {
-                                                                value: "title",
+                                                                value: DocumentRange {
+                                                                    source: DocumentInfo {
+                                                                        text: "\n                    <card-comp {title: string}>\n                        <h2>{title}</h2>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp {title: \"Hello\"}/>\n                    </main-comp>\n                ",
+                                                                        line_starts: [
+                                                                            0,
+                                                                            1,
+                                                                            49,
+                                                                            90,
+                                                                            123,
+                                                                            124,
+                                                                            167,
+                                                                            221,
+                                                                            254,
+                                                                        ],
+                                                                    },
+                                                                    start: 78,
+                                                                    end: 83,
+                                                                },
                                                             },
                                                             annotation: String,
                                                         },
-                                                        range: "{title}",
+                                                        range: (),
                                                     },
                                                 ],
-                                                range: "<h2>{title}</h2>",
+                                                range: (),
                                             },
                                             Text {
                                                 value: "\n                    ",
-                                                range: "\n                    ",
+                                                range: (),
                                             },
                                         ],
-                                        range: "<card-comp {title: \"Hello\"}/>",
+                                        range: (),
                                     },
                                 ],
-                                range: "<card-comp {title: \"Hello\"}/>",
+                                range: (),
                             },
                             Text {
                                 value: "\n                    ",
-                                range: "\n                    ",
+                                range: (),
                             },
                         ],
                         is_entrypoint: true,
                         has_slot: false,
-                        range: "<main-comp entrypoint>\n                        <card-comp {title: \"Hello\"}/>\n                    </main-comp>",
+                        range: (),
                     },
                 ]"#]],
         );
@@ -616,104 +775,327 @@ mod tests {
             expect![[r#"
                 [
                     ComponentDefinition {
-                        tag_name: "main-comp",
-                        closing_tag_name: Some(
-                            "main-comp",
-                        ),
+                        tag_name: DocumentRange {
+                            source: DocumentInfo {
+                                text: "\n                    <card-comp>\n                        <div class=\"card\">\n                            <slot-default/>\n                        </div>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp>\n                            <p>Slot content</p>\n                        </card-comp>\n                    </main-comp>\n                ",
+                                line_starts: [
+                                    0,
+                                    1,
+                                    33,
+                                    76,
+                                    120,
+                                    151,
+                                    184,
+                                    185,
+                                    228,
+                                    264,
+                                    312,
+                                    349,
+                                    382,
+                                ],
+                            },
+                            start: 206,
+                            end: 215,
+                        },
+                        closing_tag_name: None,
                         params: None,
                         as_attr: None,
                         attributes: {},
                         children: [
                             Text {
                                 value: "\n                        ",
-                                range: "\n                        ",
+                                range: (),
                             },
                             Html {
-                                tag_name: "div",
+                                tag_name: DocumentRange {
+                                    source: DocumentInfo {
+                                        text: "div",
+                                        line_starts: [
+                                            0,
+                                        ],
+                                    },
+                                    start: 0,
+                                    end: 3,
+                                },
                                 closing_tag_name: Some(
-                                    "div",
+                                    DocumentRange {
+                                        source: DocumentInfo {
+                                            text: "div",
+                                            line_starts: [
+                                                0,
+                                            ],
+                                        },
+                                        start: 0,
+                                        end: 3,
+                                    },
                                 ),
                                 attributes: {
                                     "data-hop-id": Attribute {
-                                        name: "data-hop-id",
+                                        name: DocumentRange {
+                                            source: DocumentInfo {
+                                                text: "data-hop-id",
+                                                line_starts: [
+                                                    0,
+                                                ],
+                                            },
+                                            start: 0,
+                                            end: 11,
+                                        },
                                         value: Some(
                                             String(
-                                                "main/card-comp",
+                                                DocumentRange {
+                                                    source: DocumentInfo {
+                                                        text: "main/card-comp",
+                                                        line_starts: [
+                                                            0,
+                                                        ],
+                                                    },
+                                                    start: 0,
+                                                    end: 14,
+                                                },
                                             ),
                                         ),
-                                        range: "<card-comp>\n                            <p>Slot content</p>\n                        </card-comp>",
+                                        range: DocumentRange {
+                                            source: DocumentInfo {
+                                                text: "\n                    <card-comp>\n                        <div class=\"card\">\n                            <slot-default/>\n                        </div>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp>\n                            <p>Slot content</p>\n                        </card-comp>\n                    </main-comp>\n                ",
+                                                line_starts: [
+                                                    0,
+                                                    1,
+                                                    33,
+                                                    76,
+                                                    120,
+                                                    151,
+                                                    184,
+                                                    185,
+                                                    228,
+                                                    264,
+                                                    312,
+                                                    349,
+                                                    382,
+                                                ],
+                                            },
+                                            start: 252,
+                                            end: 348,
+                                        },
                                     },
                                 },
                                 children: [
                                     Text {
                                         value: "\n                        ",
-                                        range: "\n                        ",
+                                        range: (),
                                     },
                                     Html {
-                                        tag_name: "div",
+                                        tag_name: DocumentRange {
+                                            source: DocumentInfo {
+                                                text: "\n                    <card-comp>\n                        <div class=\"card\">\n                            <slot-default/>\n                        </div>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp>\n                            <p>Slot content</p>\n                        </card-comp>\n                    </main-comp>\n                ",
+                                                line_starts: [
+                                                    0,
+                                                    1,
+                                                    33,
+                                                    76,
+                                                    120,
+                                                    151,
+                                                    184,
+                                                    185,
+                                                    228,
+                                                    264,
+                                                    312,
+                                                    349,
+                                                    382,
+                                                ],
+                                            },
+                                            start: 58,
+                                            end: 61,
+                                        },
                                         closing_tag_name: Some(
-                                            "div",
+                                            DocumentRange {
+                                                source: DocumentInfo {
+                                                    text: "\n                    <card-comp>\n                        <div class=\"card\">\n                            <slot-default/>\n                        </div>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp>\n                            <p>Slot content</p>\n                        </card-comp>\n                    </main-comp>\n                ",
+                                                    line_starts: [
+                                                        0,
+                                                        1,
+                                                        33,
+                                                        76,
+                                                        120,
+                                                        151,
+                                                        184,
+                                                        185,
+                                                        228,
+                                                        264,
+                                                        312,
+                                                        349,
+                                                        382,
+                                                    ],
+                                                },
+                                                start: 146,
+                                                end: 149,
+                                            },
                                         ),
                                         attributes: {
                                             "class": Attribute {
-                                                name: "class",
+                                                name: DocumentRange {
+                                                    source: DocumentInfo {
+                                                        text: "\n                    <card-comp>\n                        <div class=\"card\">\n                            <slot-default/>\n                        </div>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp>\n                            <p>Slot content</p>\n                        </card-comp>\n                    </main-comp>\n                ",
+                                                        line_starts: [
+                                                            0,
+                                                            1,
+                                                            33,
+                                                            76,
+                                                            120,
+                                                            151,
+                                                            184,
+                                                            185,
+                                                            228,
+                                                            264,
+                                                            312,
+                                                            349,
+                                                            382,
+                                                        ],
+                                                    },
+                                                    start: 62,
+                                                    end: 67,
+                                                },
                                                 value: Some(
                                                     String(
-                                                        "card",
+                                                        DocumentRange {
+                                                            source: DocumentInfo {
+                                                                text: "\n                    <card-comp>\n                        <div class=\"card\">\n                            <slot-default/>\n                        </div>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp>\n                            <p>Slot content</p>\n                        </card-comp>\n                    </main-comp>\n                ",
+                                                                line_starts: [
+                                                                    0,
+                                                                    1,
+                                                                    33,
+                                                                    76,
+                                                                    120,
+                                                                    151,
+                                                                    184,
+                                                                    185,
+                                                                    228,
+                                                                    264,
+                                                                    312,
+                                                                    349,
+                                                                    382,
+                                                                ],
+                                                            },
+                                                            start: 69,
+                                                            end: 73,
+                                                        },
                                                     ),
                                                 ),
-                                                range: "class=\"card\"",
+                                                range: DocumentRange {
+                                                    source: DocumentInfo {
+                                                        text: "\n                    <card-comp>\n                        <div class=\"card\">\n                            <slot-default/>\n                        </div>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp>\n                            <p>Slot content</p>\n                        </card-comp>\n                    </main-comp>\n                ",
+                                                        line_starts: [
+                                                            0,
+                                                            1,
+                                                            33,
+                                                            76,
+                                                            120,
+                                                            151,
+                                                            184,
+                                                            185,
+                                                            228,
+                                                            264,
+                                                            312,
+                                                            349,
+                                                            382,
+                                                        ],
+                                                    },
+                                                    start: 62,
+                                                    end: 74,
+                                                },
                                             },
                                         },
                                         children: [
                                             Text {
                                                 value: "\n                            ",
-                                                range: "\n                            ",
+                                                range: (),
                                             },
                                             Text {
                                                 value: "\n                            ",
-                                                range: "\n                            ",
+                                                range: (),
                                             },
                                             Html {
-                                                tag_name: "p",
+                                                tag_name: DocumentRange {
+                                                    source: DocumentInfo {
+                                                        text: "\n                    <card-comp>\n                        <div class=\"card\">\n                            <slot-default/>\n                        </div>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp>\n                            <p>Slot content</p>\n                        </card-comp>\n                    </main-comp>\n                ",
+                                                        line_starts: [
+                                                            0,
+                                                            1,
+                                                            33,
+                                                            76,
+                                                            120,
+                                                            151,
+                                                            184,
+                                                            185,
+                                                            228,
+                                                            264,
+                                                            312,
+                                                            349,
+                                                            382,
+                                                        ],
+                                                    },
+                                                    start: 293,
+                                                    end: 294,
+                                                },
                                                 closing_tag_name: Some(
-                                                    "p",
+                                                    DocumentRange {
+                                                        source: DocumentInfo {
+                                                            text: "\n                    <card-comp>\n                        <div class=\"card\">\n                            <slot-default/>\n                        </div>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp>\n                            <p>Slot content</p>\n                        </card-comp>\n                    </main-comp>\n                ",
+                                                            line_starts: [
+                                                                0,
+                                                                1,
+                                                                33,
+                                                                76,
+                                                                120,
+                                                                151,
+                                                                184,
+                                                                185,
+                                                                228,
+                                                                264,
+                                                                312,
+                                                                349,
+                                                                382,
+                                                            ],
+                                                        },
+                                                        start: 309,
+                                                        end: 310,
+                                                    },
                                                 ),
                                                 attributes: {},
                                                 children: [
                                                     Text {
                                                         value: "Slot content",
-                                                        range: "Slot content",
+                                                        range: (),
                                                     },
                                                 ],
-                                                range: "<p>Slot content</p>",
+                                                range: (),
                                             },
                                             Text {
                                                 value: "\n                        ",
-                                                range: "\n                        ",
+                                                range: (),
                                             },
                                             Text {
                                                 value: "\n                        ",
-                                                range: "\n                        ",
+                                                range: (),
                                             },
                                         ],
-                                        range: "<div class=\"card\">\n                            <slot-default/>\n                        </div>",
+                                        range: (),
                                     },
                                     Text {
                                         value: "\n                    ",
-                                        range: "\n                    ",
+                                        range: (),
                                     },
                                 ],
-                                range: "<card-comp>\n                            <p>Slot content</p>\n                        </card-comp>",
+                                range: (),
                             },
                             Text {
                                 value: "\n                    ",
-                                range: "\n                    ",
+                                range: (),
                             },
                         ],
                         is_entrypoint: true,
                         has_slot: false,
-                        range: "<main-comp entrypoint>\n                        <card-comp>\n                            <p>Slot content</p>\n                        </card-comp>\n                    </main-comp>",
+                        range: (),
                     },
                 ]"#]],
         );

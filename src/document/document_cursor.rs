@@ -62,7 +62,7 @@ impl Iterator for DocumentCursor {
 ///
 /// It is always non-empty, i.e. start < end and as_str().len() > 0
 /// always holds.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DocumentRange {
     /// The source info containing the document text and line starts.
     source: Arc<DocumentInfo>,
@@ -70,13 +70,6 @@ pub struct DocumentRange {
     start: usize,
     /// the end byte offset for this range in the document (exclusive).
     end: usize,
-}
-
-impl fmt::Debug for DocumentRange {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Show a compact representation: just the text content
-        write!(f, "{:?}", self.as_str())
-    }
 }
 
 impl DocumentRange {
@@ -259,6 +252,13 @@ impl fmt::Debug for StringSpan {
 }
 
 impl StringSpan {
+    pub fn new(s: String) -> Self {
+        Self {
+            end: s.len(),
+            source: Arc::new(DocumentInfo::new(s)),
+            start: 0,
+        }
+    }
     /// Get the underlying string slice for this span.
     pub fn as_str(&self) -> &str {
         &self.source.text[self.start..self.end]

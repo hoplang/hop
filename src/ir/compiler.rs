@@ -4,7 +4,7 @@ use crate::dop::Expr;
 use crate::dop::expr::TypedExpr;
 use crate::dop::{Type, VarName};
 use crate::hop::ast::{
-    Attribute, AttributeValue, ComponentDefinition, Node, TypedAttribute, TypedNode,
+    AttributeValue, InlinedComponentDefinition, InlinedNode, Node, TypedAttribute,
 };
 use crate::hop::transforms::TransformPipeline;
 use std::collections::BTreeMap;
@@ -30,7 +30,7 @@ pub struct Compiler {
 
 impl Compiler {
     pub fn compile(
-        entrypoints: Vec<ComponentDefinition<TypedExpr>>,
+        entrypoints: Vec<InlinedComponentDefinition>,
         compilation_mode: CompilationMode,
     ) -> IrModule {
         // Clone entrypoints for transformation (keeping originals intact)
@@ -60,7 +60,7 @@ impl Compiler {
         compiler.ir_module
     }
 
-    fn compile_entrypoint(&mut self, component: &ComponentDefinition<TypedExpr>) {
+    fn compile_entrypoint(&mut self, component: &InlinedComponentDefinition) {
         // Extract parameter information
         let param_info = component
             .params
@@ -174,7 +174,7 @@ impl Compiler {
 
     fn compile_nodes(
         &mut self,
-        nodes: &[TypedNode],
+        nodes: &[InlinedNode],
         slot_content: Option<Vec<IrStatement>>,
     ) -> Vec<IrStatement> {
         let mut result = Vec::new();
@@ -186,7 +186,7 @@ impl Compiler {
 
     fn compile_node(
         &mut self,
-        node: &TypedNode,
+        node: &InlinedNode,
         slot_content: Option<&Vec<IrStatement>>,
         output: &mut Vec<IrStatement>,
     ) {
@@ -285,7 +285,7 @@ impl Compiler {
         &mut self,
         tag_name: &DocumentRange,
         attributes: &BTreeMap<StringSpan, TypedAttribute>,
-        children: &[TypedNode],
+        children: &[InlinedNode],
         slot_content: Option<&Vec<IrStatement>>,
         output: &mut Vec<IrStatement>,
     ) {

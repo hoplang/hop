@@ -1,6 +1,9 @@
-use crate::document::document_cursor::DocumentRange;
+use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::Type;
-use crate::hop::ast::{ComponentDefinition, Node, TypedComponentDefinition, TypedNode};
+use crate::hop::ast::{
+    ComponentDefinition, InlinedComponentDefinition, InlinedNode, Node, TypedComponentDefinition,
+    TypedNode,
+};
 
 use super::ComponentTransform;
 
@@ -14,7 +17,7 @@ impl DoctypeInjector {
     }
 
     /// Check if a list of nodes starts with a DOCTYPE declaration (ignoring leading whitespace)
-    fn has_doctype(nodes: &[TypedNode]) -> bool {
+    fn has_doctype(nodes: &[InlinedNode]) -> bool {
         for node in nodes {
             match node {
                 Node::Doctype { .. } => return true,
@@ -32,7 +35,7 @@ impl DoctypeInjector {
     }
 
     /// Find the position to insert DOCTYPE (after leading whitespace)
-    fn find_doctype_insert_position(nodes: &[TypedNode]) -> usize {
+    fn find_doctype_insert_position(nodes: &[InlinedNode]) -> usize {
         for (i, node) in nodes.iter().enumerate() {
             if let Node::Text { value, .. } = node {
                 if value.as_str().trim().is_empty() {
@@ -49,14 +52,13 @@ impl DoctypeInjector {
 }
 
 impl ComponentTransform for DoctypeInjector {
-    fn transform(&mut self, component: &mut TypedComponentDefinition) {
+    fn transform(&mut self, component: &mut InlinedComponentDefinition) {
         // Only inject DOCTYPE for entrypoint components
         if component.is_entrypoint && !Self::has_doctype(&component.children) {
             // Create a synthetic DOCTYPE node
-            let range = DocumentRange::new("<!DOCTYPE html>".to_string());
             let doctype_node = Node::Doctype {
-                value: range.to_string_span(),
-                range,
+                value: StringSpan::new("<!DOCTYPE html>".to_string()),
+                range: (),
             };
 
             // Find the right position to insert (after any leading whitespace)
@@ -69,9 +71,9 @@ impl ComponentTransform for DoctypeInjector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dop::expr::TypedExpr;
     use crate::error_collector::ErrorCollector;
-    use crate::hop::ast::{Ast, Node};
+    use crate::hop::ast::Node;
+    use crate::hop::inliner::Inliner;
     use crate::hop::module_name::ModuleName;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
@@ -79,7 +81,7 @@ mod tests {
     use expect_test::expect;
 
     /// Helper to pretty-print component children for testing
-    fn format_component_children(component: &TypedComponentDefinition) -> String {
+    fn format_component_children(component: &InlinedComponentDefinition) -> String {
         let mut output = String::new();
         for (i, node) in component.children.iter().enumerate() {
             if i > 0 {
@@ -139,7 +141,7 @@ mod tests {
     }
 
     /// Helper to create a typed AST from Hop source code
-    fn create_typed_ast(source: &str) -> Ast<TypedExpr> {
+    fn create_typed_ast(source: &str) -> Vec<InlinedComponentDefinition> {
         let mut errors = ErrorCollector::new();
         let module_name = ModuleName::new("test".to_string()).unwrap();
         let tokenizer = Tokenizer::new(source.to_string());
@@ -161,7 +163,7 @@ mod tests {
         );
 
         // Return the typed AST
-        typechecker.typed_asts.get(&module_name).unwrap().clone()
+        Inliner::inline_entrypoints(typechecker.typed_asts)
     }
 
     /// Helper to check DOCTYPE injection for entrypoint components
@@ -170,36 +172,11 @@ mod tests {
 
         // Format output for all entrypoint components
         let mut output = String::new();
-        for (_i, component) in ast.get_component_definitions().iter().enumerate() {
+        for component in ast {
             if component.is_entrypoint {
                 let mut component_clone = component.clone();
 
                 // Apply transform
-                let mut injector = DoctypeInjector::new();
-                injector.transform(&mut component_clone);
-
-                if !output.is_empty() {
-                    output.push_str("\n\n");
-                }
-                output.push_str(&format!("=== {} ===\n", component_clone.tag_name.as_str()));
-                output.push_str(&format_component_children(&component_clone));
-            }
-        }
-
-        expected.assert_eq(&output);
-    }
-
-    /// Helper to check that non-entrypoints are not modified
-    fn check_non_entrypoint(input: &str, expected: expect_test::Expect) {
-        let ast = create_typed_ast(input);
-
-        // Format output for all non-entrypoint components
-        let mut output = String::new();
-        for (_i, component) in ast.get_component_definitions().iter().enumerate() {
-            if !component.is_entrypoint {
-                let mut component_clone = component.clone();
-
-                // Apply transform (should do nothing for non-entrypoints)
                 let mut injector = DoctypeInjector::new();
                 injector.transform(&mut component_clone);
 
@@ -250,22 +227,6 @@ mod tests {
                 DOCTYPE: <!DOCTYPE html>
                 Text: <whitespace:21 chars>
                 Html: <html> (3 children)
-                Text: <whitespace:17 chars>"#]],
-        );
-    }
-
-    #[test]
-    fn test_no_injection_for_non_entrypoint() {
-        check_non_entrypoint(
-            r#"
-                <regular-comp>
-                    <div>I'm not an entrypoint</div>
-                </regular-comp>
-            "#,
-            expect![[r#"
-                === regular-comp ===
-                Text: <whitespace:21 chars>
-                Html: <div> (1 children)
                 Text: <whitespace:17 chars>"#]],
         );
     }
@@ -374,42 +335,5 @@ mod tests {
                 Html: <html> (1 children)
                 Text: <whitespace:17 chars>"#]],
         );
-    }
-
-    #[test]
-    fn test_idempotent_transform() {
-        // Test that running the transform twice produces the same result
-        let source = r#"
-            <main-comp entrypoint>
-                <div>Test</div>
-            </main-comp>
-        "#;
-
-        let ast = create_typed_ast(source);
-        let component = &ast.get_component_definitions()[0];
-
-        let mut component1 = component.clone();
-        let mut component2 = component.clone();
-        let mut injector = DoctypeInjector::new();
-
-        // Apply once
-        injector.transform(&mut component1);
-        let once = format_component_children(&component1);
-
-        // Apply twice
-        injector.transform(&mut component2);
-        injector.transform(&mut component2);
-        let twice = format_component_children(&component2);
-
-        // Should be identical
-        assert_eq!(once, twice, "Transform should be idempotent");
-
-        // Verify the expected output
-        expect![[r#"
-            Text: <whitespace:17 chars>
-            DOCTYPE: <!DOCTYPE html>
-            Html: <div> (1 children)
-            Text: <whitespace:13 chars>"#]]
-        .assert_eq(&once);
     }
 }

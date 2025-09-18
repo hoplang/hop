@@ -148,18 +148,19 @@ impl Import {
 }
 
 pub type TypedComponentDefinition = ComponentDefinition<TypedExpr>;
+pub type InlinedComponentDefinition = ComponentDefinition<TypedExpr, ()>;
 
 #[derive(Debug, Clone)]
-pub struct ComponentDefinition<T = UntypedExpr, A = DocumentRange> {
+pub struct ComponentDefinition<E = UntypedExpr, R = DocumentRange> {
     pub tag_name: DocumentRange,
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<Parameter>, DocumentRange)>,
     pub as_attr: Option<StaticAttribute>,
-    pub attributes: BTreeMap<StringSpan, Attribute<T>>,
-    pub children: Vec<Node<T, A>>,
+    pub attributes: BTreeMap<StringSpan, Attribute<E>>,
+    pub children: Vec<Node<E, R>>,
     pub is_entrypoint: bool,
     pub has_slot: bool,
-    pub range: DocumentRange,
+    pub range: R,
 }
 
 impl<T> Ranged for ComponentDefinition<T> {
@@ -176,18 +177,19 @@ impl<T> ComponentDefinition<T> {
 
 pub type UntypedNode = Node<UntypedExpr, DocumentRange>;
 pub type TypedNode = Node<TypedExpr, DocumentRange>;
+pub type InlinedNode = Node<TypedExpr, ()>;
 
 #[derive(Debug, Clone)]
-pub enum Node<E, A> {
+pub enum Node<E, R> {
     /// A Text node represents text in the document.
     /// E.g. <div>hello world</div>
     ///           ^^^^^^^^^^^
-    Text { value: StringSpan, range: A },
+    Text { value: StringSpan, range: R },
 
     /// A TextExpression represents an expression that occurs in a text position.
     /// E.g. <div>hello {world}</div>
     ///                 ^^^^^^^
-    TextExpression { expression: E, range: A },
+    TextExpression { expression: E, range: R },
 
     /// A ComponentReference represents a reference to a component.
     /// E.g.
@@ -202,7 +204,7 @@ pub enum Node<E, A> {
         args: Option<(Vec<Argument<E>>, DocumentRange)>,
         attributes: BTreeMap<StringSpan, Attribute<E>>,
         children: Vec<Self>,
-        range: DocumentRange,
+        range: R,
     },
 
     /// A SlotDefinition node represents the definition of a slot, e.g.
@@ -211,14 +213,14 @@ pub enum Node<E, A> {
     /// <my-component>
     ///   <slot-default/>
     /// </my-component>
-    SlotDefinition { range: DocumentRange },
+    SlotDefinition { range: R },
 
     /// An If node contains content that is only evaluated when its condition
     /// expression evaluates to true.
     If {
         condition: E,
         children: Vec<Self>,
-        range: DocumentRange,
+        range: R,
     },
 
     /// A For node contains content that is evaluated once for each item of
@@ -227,14 +229,11 @@ pub enum Node<E, A> {
         var_name: VarName,
         array_expr: E,
         children: Vec<Self>,
-        range: DocumentRange,
+        range: R,
     },
 
     /// A Doctype node represents a doctype, e.g. a <!DOCTYPE html>
-    Doctype {
-        value: StringSpan,
-        range: DocumentRange,
-    },
+    Doctype { value: StringSpan, range: R },
 
     /// An HTML node represents a plain HTML node.
     /// E.g. <div>...</div>
@@ -244,7 +243,7 @@ pub enum Node<E, A> {
         closing_tag_name: Option<DocumentRange>,
         attributes: BTreeMap<StringSpan, Attribute<E>>,
         children: Vec<Self>,
-        range: DocumentRange,
+        range: R,
     },
 
     /// A Placeholder node represents a node that could not be constructed (because
@@ -252,10 +251,7 @@ pub enum Node<E, A> {
     ///
     /// We use Placeholder nodes to be able to construct the child nodes of the node that could not be
     /// constructed. This is useful for e.g. go-to-definition in the language server.
-    Placeholder {
-        children: Vec<Self>,
-        range: DocumentRange,
-    },
+    Placeholder { children: Vec<Self>, range: R },
 
     /// A Let node introduces a variable binding in its children's scope.
     /// This is used during component inlining to bind component parameters.
@@ -263,11 +259,11 @@ pub enum Node<E, A> {
         var: VarName,
         value: E,
         children: Vec<Self>,
-        range: DocumentRange,
+        range: R,
     },
 }
 
-impl<T, A> Node<T, A> {
+impl<T, R> Node<T, R> {
     /// Get the direct children of a node.
     pub fn children(&self) -> &[Self] {
         match self {
@@ -284,7 +280,7 @@ impl<T, A> Node<T, A> {
         }
     }
 
-    pub fn iter_depth_first(&self) -> DepthFirstIterator<T, A> {
+    pub fn iter_depth_first(&self) -> DepthFirstIterator<T, R> {
         DepthFirstIterator::new(self)
     }
 
