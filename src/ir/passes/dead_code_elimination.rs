@@ -60,8 +60,11 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
+        let before = entrypoint.to_string();
         let result = DeadCodeEliminationPass::run(entrypoint);
-        expected.assert_eq(&result.to_string());
+        let after = result.to_string();
+        let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
+        expected.assert_eq(&output);
     }
 
     #[test]
@@ -70,6 +73,14 @@ mod tests {
         check(
             t.build(vec![t.if_stmt(t.bool(true), vec![t.write("Always shown")])]),
             expect![[r#"
+                -- before --
+                test() {
+                  if true {
+                    write("Always shown")
+                  }
+                }
+
+                -- after --
                 test() {
                   write("Always shown")
                 }
@@ -86,6 +97,15 @@ mod tests {
                 t.write("After if"),
             ]),
             expect![[r#"
+                -- before --
+                test() {
+                  if false {
+                    write("Never shown")
+                  }
+                  write("After if")
+                }
+
+                -- after --
                 test() {
                   write("After if")
                 }
@@ -103,11 +123,91 @@ mod tests {
                 t.if_stmt(t.bool(false), vec![t.write("Static false")]),
             ]),
             expect![[r#"
+                -- before --
+                test(show: boolean) {
+                  if show {
+                    write("Dynamic")
+                  }
+                  if true {
+                    write("Static true")
+                  }
+                  if false {
+                    write("Static false")
+                  }
+                }
+
+                -- after --
                 test(show: boolean) {
                   if show {
                     write("Dynamic")
                   }
                   write("Static true")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_nested_if_elimination() {
+        let t = IrTestBuilder::new(vec![("condition".to_string(), Type::Bool)]);
+        check(
+            t.build(vec![
+                t.if_stmt(
+                    t.var("condition"),
+                    vec![
+                        t.write("Before nested"),
+                        t.if_stmt(t.bool(true), vec![t.write("Nested always true")]),
+                        t.if_stmt(t.bool(false), vec![t.write("Nested never shown")]),
+                        t.write("After nested"),
+                    ],
+                ),
+                t.if_stmt(
+                    t.bool(true),
+                    vec![
+                        t.write("Outer true - before nested"),
+                        t.if_stmt(t.bool(false), vec![t.write("Inner false - never shown")]),
+                        t.if_stmt(t.var("condition"), vec![t.write("Inner dynamic")]),
+                        t.write("Outer true - after nested"),
+                    ],
+                ),
+            ]),
+            expect![[r#"
+                -- before --
+                test(condition: boolean) {
+                  if condition {
+                    write("Before nested")
+                    if true {
+                      write("Nested always true")
+                    }
+                    if false {
+                      write("Nested never shown")
+                    }
+                    write("After nested")
+                  }
+                  if true {
+                    write("Outer true - before nested")
+                    if false {
+                      write("Inner false - never shown")
+                    }
+                    if condition {
+                      write("Inner dynamic")
+                    }
+                    write("Outer true - after nested")
+                  }
+                }
+
+                -- after --
+                test(condition: boolean) {
+                  if condition {
+                    write("Before nested")
+                    write("Nested always true")
+                    write("After nested")
+                  }
+                  write("Outer true - before nested")
+                  if condition {
+                    write("Inner dynamic")
+                  }
+                  write("Outer true - after nested")
                 }
             "#]],
         );

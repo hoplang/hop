@@ -95,8 +95,11 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
+        let before = entrypoint.to_string();
         let result = UnusedLetEliminationPass::run(entrypoint);
-        expected.assert_eq(&result.to_string());
+        let after = result.to_string();
+        let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
+        expected.assert_eq(&output);
     }
 
     #[test]
@@ -108,6 +111,13 @@ mod tests {
                 t.let_stmt("unused", t.str("value"), |t| vec![t.write("Hello")]),
             ]),
             expect![[r#"
+                -- before --
+                test() {
+                  let unused = "value" in {
+                    write("Hello")
+                  }
+                }
+                -- after --
                 test() {
                   write("Hello")
                 }
@@ -126,6 +136,13 @@ mod tests {
                 }),
             ]),
             expect![[r#"
+                -- before --
+                test() {
+                  let message = "Hello" in {
+                    write(message)
+                  }
+                }
+                -- after --
                 test() {
                   let message = "Hello" in {
                     write(message)
@@ -145,6 +162,15 @@ mod tests {
                 })]
             })]),
             expect![[r#"
+                -- before --
+                test() {
+                  let outer = "outer_value" in {
+                    let inner = "inner_value" in {
+                      write("No variables used")
+                    }
+                  }
+                }
+                -- after --
                 test() {
                   write("No variables used")
                 }
@@ -160,6 +186,15 @@ mod tests {
                 vec![t.if_stmt(t.var("cond"), vec![t.write("Condition is true")])]
             })]),
             expect![[r#"
+                -- before --
+                test() {
+                  let cond = true in {
+                    if cond {
+                      write("Condition is true")
+                    }
+                  }
+                }
+                -- after --
                 test() {
                   let cond = true in {
                     if cond {
@@ -180,6 +215,15 @@ mod tests {
                 vec![t.let_stmt("unused", t.str("value"), |t| vec![t.write("Inside if")])],
             )]),
             expect![[r#"
+                -- before --
+                test() {
+                  if true {
+                    let unused = "value" in {
+                      write("Inside if")
+                    }
+                  }
+                }
+                -- after --
                 test() {
                   if true {
                     write("Inside if")
@@ -203,6 +247,15 @@ mod tests {
                 },
             )]),
             expect![[r#"
+                -- before --
+                test() {
+                  for item in ["a", "b"] {
+                    let unused = "value" in {
+                      write(item)
+                    }
+                  }
+                }
+                -- after --
                 test() {
                   for item in ["a", "b"] {
                     write(item)
@@ -222,6 +275,17 @@ mod tests {
                 })]
             })]),
             expect![[r#"
+                -- before --
+                test() {
+                  let x = true in {
+                    let y = false in {
+                      if (x == y) {
+                        write("Equal")
+                      }
+                    }
+                  }
+                }
+                -- after --
                 test() {
                   let x = true in {
                     let y = false in {
@@ -245,6 +309,17 @@ mod tests {
                 t.write("Third"),
             ]),
             expect![[r#"
+                -- before --
+                test() {
+                  let a = "a_value" in {
+                    write("First")
+                  }
+                  let b = "b_value" in {
+                    write("Second")
+                  }
+                  write("Third")
+                }
+                -- after --
                 test() {
                   write("First")
                   write("Second")
@@ -268,6 +343,15 @@ mod tests {
                 },
             )]),
             expect![[r#"
+                -- before --
+                test() {
+                  let items = ["a", "b"] in {
+                    for item in items {
+                      write(item)
+                    }
+                  }
+                }
+                -- after --
                 test() {
                   let items = ["a", "b"] in {
                     for item in items {
@@ -289,6 +373,13 @@ mod tests {
                 |t| vec![t.write_expr(t.prop_access(t.var("obj"), "name"), false)],
             )]),
             expect![[r#"
+                -- before --
+                test() {
+                  let obj = {name: "value"} in {
+                    write(obj.name)
+                  }
+                }
+                -- after --
                 test() {
                   let obj = {name: "value"} in {
                     write(obj.name)
@@ -311,6 +402,16 @@ mod tests {
                 }),
             ]),
             expect![[r#"
+                -- before --
+                test() {
+                  let x = "first x" in {
+                    write(x)
+                  }
+                  let x = "second x" in {
+                    write("No reference to x here")
+                  }
+                }
+                -- after --
                 test() {
                   let x = "first x" in {
                     write(x)
