@@ -486,7 +486,7 @@ impl TypeTranspiler for GoTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::test_utils::IrTestBuilder;
+    use crate::ir::test_utils::build_ir;
     use expect_test::{Expect, expect};
 
 
@@ -514,10 +514,10 @@ mod tests {
 
     #[test]
     fn test_simple_component() {
-        let t = IrTestBuilder::new(vec![]);
-        let entrypoints = vec![t.build(
+        let entrypoints = vec![build_ir(
             "test-main-comp",
-            vec![t.write("<div>Hello World</div>\n")],
+            vec![],
+            |t| vec![t.write("<div>Hello World</div>\n")],
         )];
 
         check(
@@ -546,14 +546,13 @@ mod tests {
 
     #[test]
     fn test_component_with_parameters() {
-        let t = IrTestBuilder::new(vec![
-            ("name".to_string(), Type::String),
-            ("message".to_string(), Type::String),
-        ]);
-
-        let entrypoints = vec![t.build(
+        let entrypoints = vec![build_ir(
             "test-greeting-comp",
             vec![
+                ("name".to_string(), Type::String),
+                ("message".to_string(), Type::String),
+            ],
+            |t| vec![
                 t.write("<h1>Hello "),
                 t.write_expr(t.var("name"), true),
                 t.write(", "),
@@ -604,11 +603,10 @@ mod tests {
 
     #[test]
     fn test_if_condition() {
-        let t = IrTestBuilder::new(vec![("show".to_string(), Type::Bool)]);
-
-        let entrypoints = vec![t.build(
+        let entrypoints = vec![build_ir(
             "test-main-comp",
-            vec![t.if_stmt(t.var("show"), vec![t.write("<div>Visible</div>\n")])],
+            vec![("show".to_string(), Type::Bool)],
+            |t| vec![t.if_stmt(t.var("show"), vec![t.write("<div>Visible</div>\n")])],
         )];
 
         check(
@@ -646,14 +644,13 @@ mod tests {
 
     #[test]
     fn test_for_loop() {
-        let t = IrTestBuilder::new(vec![(
-            "items".to_string(),
-            Type::Array(Some(Box::new(Type::String))),
-        )]);
-
-        let entrypoints = vec![t.build(
+        let entrypoints = vec![build_ir(
             "test-main-comp",
-            vec![t.for_loop("item", t.var("items"), |t| {
+            vec![(
+                "items".to_string(),
+                Type::Array(Some(Box::new(Type::String))),
+            )],
+            |t| vec![t.for_loop("item", t.var("items"), |t| {
                 vec![
                     t.write("<li>"),
                     t.write_expr(t.var("item"), true),
@@ -702,11 +699,10 @@ mod tests {
 
     #[test]
     fn test_object_literals() {
-        let t = IrTestBuilder::new(vec![]);
-
-        let entrypoints = vec![t.build(
+        let entrypoints = vec![build_ir(
             "test-objects",
-            vec![t.let_stmt(
+            vec![],
+            |t| vec![t.let_stmt(
                 "person",
                 t.object(vec![
                     ("name", t.str("Alice")),
@@ -782,11 +778,10 @@ mod tests {
             })))),
         )];
 
-        let t = IrTestBuilder::new(parameters.clone());
-
-        let entrypoints = vec![t.build(
+        let entrypoints = vec![build_ir(
             "test-nested",
-            vec![t.for_loop("user", t.var("users"), |t| {
+            parameters,
+            |t| vec![t.for_loop("user", t.var("users"), |t| {
                 vec![
                     t.write("<div>"),
                     t.write_expr(t.prop_access(t.var("user"), "name"), true),
@@ -844,11 +839,10 @@ mod tests {
 
     #[test]
     fn test_loop_over_array_literal() {
-        let t = IrTestBuilder::new(vec![]);
-
-        let entrypoints = vec![t.build(
+        let entrypoints = vec![build_ir(
             "test-array-literal-loop",
-            vec![
+            vec![],
+            |t| vec![
                 t.write("<ul>\n"),
                 t.for_loop(
                     "color",
@@ -904,11 +898,10 @@ mod tests {
 
     #[test]
     fn test_loop_over_object_array_literal() {
-        let t = IrTestBuilder::new(vec![]);
-
-        let entrypoints = vec![t.build(
+        let entrypoints = vec![build_ir(
             "test-products",
-            vec![t.for_loop(
+            vec![],
+            |t| vec![t.for_loop(
                 "product",
                 t.array(vec![
                     t.object(vec![
@@ -1025,14 +1018,13 @@ mod tests {
 
     #[test]
     fn test_string_comparison() {
-        let t = IrTestBuilder::new(vec![
-            ("user_role".to_string(), Type::String),
-            ("expected_role".to_string(), Type::String),
-        ]);
-
-        let entrypoints = vec![t.build(
+        let entrypoints = vec![build_ir(
             "test-auth-check",
             vec![
+                ("user_role".to_string(), Type::String),
+                ("expected_role".to_string(), Type::String),
+            ],
+            |t| vec![
                 t.if_stmt(
                     t.eq(t.var("user_role"), t.var("expected_role")),
                     vec![t.write("<div>Access granted</div>\n")],
@@ -1104,11 +1096,10 @@ mod tests {
             ),
         ];
 
-        let t = IrTestBuilder::new(parameters.clone());
-
-        let entrypoints = vec![t.build(
+        let entrypoints = vec![build_ir(
             "test-json",
-            vec![
+            parameters,
+            |t| vec![
                 t.write("<script>\n"),
                 t.write("const data = "),
                 t.write_expr(t.json_encode(t.var("data")), false),

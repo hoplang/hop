@@ -5,6 +5,20 @@ use crate::dop::{Type, VarName};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
+/// More ergonomic API for building IR entrypoints in tests
+pub fn build_ir<F>(
+    name: &str,
+    params: Vec<(String, Type)>,
+    body_fn: F,
+) -> IrEntrypoint
+where
+    F: FnOnce(&IrTestBuilder) -> Vec<IrStatement>,
+{
+    let builder = IrTestBuilder::new(params);
+    let body = body_fn(&builder);
+    builder.build(name, body)
+}
+
 pub struct IrTestBuilder {
     next_expr_id: RefCell<ExprId>,
     next_node_id: RefCell<StatementId>,
