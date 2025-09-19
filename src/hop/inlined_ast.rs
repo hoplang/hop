@@ -75,7 +75,9 @@ impl InlinedParameter {
 impl InlinedAttributeValue {
     pub fn to_doc(&self) -> BoxDoc {
         match self {
-            InlinedAttributeValue::Expression(expr) => expr.to_doc(),
+            InlinedAttributeValue::Expression(expr) => BoxDoc::text("{")
+                .append(expr.to_doc())
+                .append(BoxDoc::text("}")),
             InlinedAttributeValue::String(s) => BoxDoc::text(format!("\"{}\"", s)),
         }
     }

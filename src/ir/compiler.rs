@@ -389,6 +389,7 @@ impl Compiler {
 mod tests {
     use super::*;
     use expect_test::{Expect, expect};
+    use crate::ir::test_utils::InlinedTestBuilder;
 
     fn check(entrypoint: InlinedEntryPoint, mode: CompilationMode, expected: Expect) {
         let before = entrypoint.to_string();
@@ -400,8 +401,6 @@ mod tests {
 
     #[test]
     fn test_inlined_simple_text() {
-        use crate::ir::test_utils::InlinedTestBuilder;
-
         let t = InlinedTestBuilder::new(vec![]);
         let entrypoint = t.build("main-comp", vec![t.text("Hello World")]);
 
@@ -424,8 +423,6 @@ mod tests {
 
     #[test]
     fn test_inlined_text_expression() {
-        use crate::ir::test_utils::InlinedTestBuilder;
-
         let t = InlinedTestBuilder::new(vec![("name".to_string(), Type::String)]);
         let entrypoint = t.build(
             "main-comp",
@@ -453,8 +450,6 @@ mod tests {
 
     #[test]
     fn test_inlined_html_element() {
-        use crate::ir::test_utils::InlinedTestBuilder;
-
         let t = InlinedTestBuilder::new(vec![]);
         let entrypoint = t.build(
             "main-comp",
@@ -485,8 +480,6 @@ mod tests {
 
     #[test]
     fn test_inlined_if_statement() {
-        use crate::ir::test_utils::InlinedTestBuilder;
-
         let t = InlinedTestBuilder::new(vec![("show".to_string(), Type::Bool)]);
         let entrypoint = t.build(
             "main-comp",
@@ -524,8 +517,6 @@ mod tests {
 
     #[test]
     fn test_inlined_for_loop() {
-        use crate::ir::test_utils::InlinedTestBuilder;
-
         let t = InlinedTestBuilder::new(vec![(
             "items".to_string(),
             Type::Array(Some(Box::new(Type::String))),
@@ -565,8 +556,6 @@ mod tests {
 
     #[test]
     fn test_inlined_attributes_static() {
-        use crate::ir::test_utils::InlinedTestBuilder;
-
         let t = InlinedTestBuilder::new(vec![]);
         let entrypoint = t.build(
             "main-comp",
@@ -603,8 +592,6 @@ mod tests {
 
     #[test]
     fn test_inlined_attributes_dynamic() {
-        use crate::ir::test_utils::InlinedTestBuilder;
-
         let t = InlinedTestBuilder::new(vec![("cls".to_string(), Type::String)]);
         let entrypoint = t.build(
             "main-comp",
@@ -624,7 +611,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 <main-comp {cls: string}>
-                  <div class="base" data-value=cls>
+                  <div class="base" data-value={cls}>
                     "Content"
                   </div>
                 </main-comp>
@@ -646,8 +633,6 @@ mod tests {
 
     #[test]
     fn test_inlined_development_mode() {
-        use crate::ir::test_utils::InlinedTestBuilder;
-
         let t = InlinedTestBuilder::new(vec![
             ("name".to_string(), Type::String),
             ("count".to_string(), Type::String),
