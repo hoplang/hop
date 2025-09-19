@@ -407,6 +407,10 @@ impl Compiler {
                 right: Box::new(self.compile_expr(*right)),
                 annotation: expr_id,
             },
+            TypedExpr::Negation { operand, .. } => AnnotatedTypedExpr::Negation {
+                operand: Box::new(self.compile_expr(*operand)),
+                annotation: expr_id,
+            },
         }
     }
 }

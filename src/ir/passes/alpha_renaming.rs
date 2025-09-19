@@ -190,6 +190,13 @@ impl AlphaRenamingPass {
                 right: Box::new(self.rename_expr(*right)),
                 annotation,
             },
+            AnnotatedTypedExpr::Negation {
+                operand,
+                annotation,
+            } => AnnotatedTypedExpr::Negation {
+                operand: Box::new(self.rename_expr(*operand)),
+                annotation,
+            },
             // Literals don't contain variables
             AnnotatedTypedExpr::StringLiteral { .. } => expr,
             AnnotatedTypedExpr::BooleanLiteral { .. } => expr,

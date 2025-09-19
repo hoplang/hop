@@ -83,6 +83,12 @@ pub enum AnnotatedTypedExpr<A> {
         right: Box<Self>,
         annotation: A,
     },
+
+    /// Boolean negation expression for negating boolean values
+    Negation {
+        operand: Box<Self>,
+        annotation: A,
+    },
 }
 
 impl<A> AnnotatedTypedExpr<A> {
@@ -103,6 +109,7 @@ impl<A> AnnotatedTypedExpr<A> {
             AnnotatedTypedExpr::NumberLiteral { .. } => &NUMBER_TYPE,
             AnnotatedTypedExpr::JsonEncode { .. } => &STRING_TYPE,
             AnnotatedTypedExpr::StringConcat { .. } => &STRING_TYPE,
+            AnnotatedTypedExpr::Negation { .. } => &BOOL_TYPE,
         }
     }
 
@@ -118,7 +125,8 @@ impl<A> AnnotatedTypedExpr<A> {
             | AnnotatedTypedExpr::BinaryOp { annotation, .. }
             | AnnotatedTypedExpr::UnaryOp { annotation, .. }
             | AnnotatedTypedExpr::JsonEncode { annotation, .. }
-            | AnnotatedTypedExpr::StringConcat { annotation, .. } => annotation,
+            | AnnotatedTypedExpr::StringConcat { annotation, .. }
+            | AnnotatedTypedExpr::Negation { annotation, .. } => annotation,
         }
     }
 
@@ -207,6 +215,9 @@ impl<A> AnnotatedTypedExpr<A> {
                 .append(BoxDoc::text(" + "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
+            AnnotatedTypedExpr::Negation { operand, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("!"))
+                .append(operand.to_doc()),
         }
     }
 }

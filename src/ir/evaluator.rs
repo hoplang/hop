@@ -183,6 +183,11 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 _ => panic!("String concatenation requires two strings"),
             }
         }
+        IrExpr::Negation { operand, .. } => {
+            let val = evaluate_expr(operand, env)?;
+            let bool_val = val.as_bool().unwrap_or(false);
+            Ok(Value::Bool(!bool_val))
+        }
     }
 }
 

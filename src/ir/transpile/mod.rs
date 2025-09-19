@@ -135,6 +135,7 @@ pub trait ExpressionTranspiler {
             } => self.transpile_not(operand),
             IrExpr::JsonEncode { value, .. } => self.transpile_json_encode(value),
             IrExpr::StringConcat { left, right, .. } => self.transpile_string_concat(left, right),
+            IrExpr::Negation { operand, .. } => self.transpile_not(operand),
         }
     }
 }
