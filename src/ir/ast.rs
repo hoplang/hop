@@ -304,21 +304,22 @@ impl IrExpr {
                     value.traverse(f);
                 }
             }
-            AnnotatedTypedExpr::BinaryOp { left, right, .. } => {
-                left.traverse(f);
-                right.traverse(f);
-            }
             AnnotatedTypedExpr::Negation { operand, .. } => {
                 operand.traverse(f);
             }
             AnnotatedTypedExpr::JsonEncode { value, .. } => {
                 value.traverse(f);
             }
-            AnnotatedTypedExpr::StringConcat { left, right, .. } => {
+            AnnotatedTypedExpr::StringCompare { left, right, .. }
+            | AnnotatedTypedExpr::BoolCompare { left, right, .. }
+            | AnnotatedTypedExpr::StringConcat { left, right, .. } => {
                 left.traverse(f);
                 right.traverse(f);
             }
-            _ => {}
+            AnnotatedTypedExpr::Var { .. }
+            | AnnotatedTypedExpr::StringLiteral { .. }
+            | AnnotatedTypedExpr::BooleanLiteral { .. }
+            | AnnotatedTypedExpr::NumberLiteral { .. } => {}
         }
     }
 
@@ -341,10 +342,6 @@ impl IrExpr {
                 for (_, value) in properties {
                     value.traverse_mut(f);
                 }
-            }
-            AnnotatedTypedExpr::BinaryOp { left, right, .. } => {
-                left.traverse_mut(f);
-                right.traverse_mut(f);
             }
             AnnotatedTypedExpr::Negation { operand, .. } => {
                 operand.traverse_mut(f);

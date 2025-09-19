@@ -11,7 +11,6 @@ pub enum BinaryOp {
     Eq,
 }
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum AnnotatedExpr<A> {
     /// A variable expression, e.g. foo
@@ -52,10 +51,7 @@ pub enum AnnotatedExpr<A> {
     },
 
     /// Boolean negation expression for negating boolean values
-    Negation {
-        operand: Box<Self>,
-        annotation: A,
-    },
+    Negation { operand: Box<Self>, annotation: A },
 }
 
 impl<A> AnnotatedExpr<A> {
@@ -169,4 +165,3 @@ impl Display for BinaryOp {
         }
     }
 }
-

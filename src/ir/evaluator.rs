@@ -5,7 +5,7 @@ use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use super::ast::{BinaryOp, IrEntrypoint, IrStatement};
+use super::ast::{IrEntrypoint, IrStatement};
 
 /// Evaluate an IR entrypoint with the given arguments
 pub fn evaluate_entrypoint(
@@ -144,18 +144,6 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             }
             Ok(Value::Object(obj))
         }
-        IrExpr::BinaryOp {
-            left,
-            operator: op,
-            right,
-            ..
-        } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
-            match op {
-                BinaryOp::Eq => Ok(Value::Bool(left_val == right_val)),
-            }
-        }
         IrExpr::JsonEncode { value, .. } => {
             let val = evaluate_expr(value, env)?;
             let json_str = serde_json::to_string(&val)?;
@@ -174,6 +162,20 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             let val = evaluate_expr(operand, env)?;
             let bool_val = val.as_bool().unwrap_or(false);
             Ok(Value::Bool(!bool_val))
+        }
+        IrExpr::BoolCompare { left, right, .. } => {
+            let left_val = evaluate_expr(left, env)?;
+            let right_val = evaluate_expr(right, env)?;
+            let left_bool = left_val.as_bool().unwrap_or(false);
+            let right_bool = right_val.as_bool().unwrap_or(false);
+            Ok(Value::Bool(left_bool == right_bool))
+        }
+        IrExpr::StringCompare { left, right, .. } => {
+            let left_val = evaluate_expr(left, env)?;
+            let right_val = evaluate_expr(right, env)?;
+            let left_str = left_val.as_str().unwrap();
+            let right_str = right_val.as_str().unwrap();
+            Ok(Value::Bool(left_str == right_str))
         }
     }
 }

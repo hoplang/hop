@@ -573,14 +573,11 @@ mod tests {
             "conditional-display",
             vec![("title", Type::String), ("show", Type::Bool)],
             |t| {
-                t.if_stmt(
-                    t.var("show"),
-                    |t| {
-                        t.write("<h1>");
-                        t.write_expr_escaped(t.var("title"));
-                        t.write("</h1>\n");
-                    },
-                );
+                t.if_stmt(t.var("show"), |t| {
+                    t.write("<h1>");
+                    t.write_expr_escaped(t.var("title"));
+                    t.write("</h1>\n");
+                });
             },
         )];
 
@@ -915,23 +912,14 @@ mod tests {
                             t.write("<p>Category: ");
                             t.write_expr_escaped(t.prop_access(t.var("product"), "category"));
                             t.write("</p>\n");
-                            t.if_stmt(
-                                t.prop_access(t.var("displayInfo"), "showStock"),
-                                |t| {
-                                    t.if_stmt(
-                                        t.prop_access(t.var("product"), "inStock"),
-                                        |t| {
-                                            t.write("<span class=\"in-stock\">✓ In Stock</span>\n");
-                                        },
-                                    );
-                                    t.if_stmt(
-                                        t.not(t.prop_access(t.var("product"), "inStock")),
-                                        |t| {
-                                            t.write("<span class=\"out-of-stock\">✗ Out of Stock</span>\n");
-                                        },
-                                    );
-                                },
-                            );
+                            t.if_stmt(t.prop_access(t.var("displayInfo"), "showStock"), |t| {
+                                t.if_stmt(t.prop_access(t.var("product"), "inStock"), |t| {
+                                    t.write("<span class=\"in-stock\">✓ In Stock</span>\n");
+                                });
+                                t.if_stmt(t.not(t.prop_access(t.var("product"), "inStock")), |t| {
+                                    t.write("<span class=\"out-of-stock\">✗ Out of Stock</span>\n");
+                                });
+                            });
                             t.write("</article>\n");
                         },
                     );
@@ -1090,16 +1078,13 @@ mod tests {
             t.write("<ul>\n");
             t.for_loop("user", t.var("users"), |t| {
                 t.write("\n");
-                t.if_stmt(
-                    t.prop_access(t.var("user"), "active"),
-                    |t| {
-                        t.write("\n<li>User ");
-                        t.write_expr_escaped(t.prop_access(t.var("user"), "id"));
-                        t.write(": ");
-                        t.write_expr_escaped(t.prop_access(t.var("user"), "name"));
-                        t.write("</li>\n");
-                    },
-                );
+                t.if_stmt(t.prop_access(t.var("user"), "active"), |t| {
+                    t.write("\n<li>User ");
+                    t.write_expr_escaped(t.prop_access(t.var("user"), "id"));
+                    t.write(": ");
+                    t.write_expr_escaped(t.prop_access(t.var("user"), "name"));
+                    t.write("</li>\n");
+                });
                 t.write("\n");
             });
             t.write("</ul>\n");

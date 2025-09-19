@@ -345,19 +345,6 @@ impl Compiler {
                 kind,
                 annotation: expr_id,
             },
-            TypedExpr::BinaryOp {
-                left,
-                operator,
-                right,
-                kind,
-                ..
-            } => AnnotatedTypedExpr::BinaryOp {
-                left: Box::new(self.compile_expr(*left)),
-                operator,
-                right: Box::new(self.compile_expr(*right)),
-                kind,
-                annotation: expr_id,
-            },
             TypedExpr::Negation { operand, .. } => AnnotatedTypedExpr::Negation {
                 operand: Box::new(self.compile_expr(*operand)),
                 annotation: expr_id,
@@ -393,9 +380,17 @@ impl Compiler {
                 value: Box::new(self.compile_expr(*value)),
                 annotation: expr_id,
             },
-            TypedExpr::StringConcat {
-                left, right, ..
-            } => AnnotatedTypedExpr::StringConcat {
+            TypedExpr::StringConcat { left, right, .. } => AnnotatedTypedExpr::StringConcat {
+                left: Box::new(self.compile_expr(*left)),
+                right: Box::new(self.compile_expr(*right)),
+                annotation: expr_id,
+            },
+            TypedExpr::BoolCompare { left, right, .. } => AnnotatedTypedExpr::BoolCompare {
+                left: Box::new(self.compile_expr(*left)),
+                right: Box::new(self.compile_expr(*right)),
+                annotation: expr_id,
+            },
+            TypedExpr::StringCompare { left, right, .. } => AnnotatedTypedExpr::StringCompare {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 annotation: expr_id,

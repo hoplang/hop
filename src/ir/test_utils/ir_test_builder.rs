@@ -1,7 +1,7 @@
 use crate::dop::AnnotatedTypedExpr;
 use crate::dop::{Type, VarName};
 use crate::ir::ast::IrEntrypoint;
-use crate::ir::ast::{BinaryOp, ExprId, IrExpr, IrStatement, StatementId};
+use crate::ir::ast::{ExprId, IrExpr, IrStatement, StatementId};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
@@ -125,12 +125,21 @@ impl IrTestBuilder {
     }
 
     pub fn eq(&self, left: IrExpr, right: IrExpr) -> IrExpr {
-        AnnotatedTypedExpr::BinaryOp {
-            left: Box::new(left),
-            operator: BinaryOp::Eq,
-            right: Box::new(right),
-            kind: Type::Bool,
-            annotation: self.next_expr_id(),
+        match (left.kind(), right.kind()) {
+            (Type::Bool, Type::Bool) => AnnotatedTypedExpr::BoolCompare {
+                left: Box::new(left),
+                right: Box::new(right),
+                annotation: self.next_expr_id(),
+            },
+            (Type::String, Type::String) => AnnotatedTypedExpr::StringCompare {
+                left: Box::new(left),
+                right: Box::new(right),
+                annotation: self.next_expr_id(),
+            },
+            _ => panic!(
+                "Unsupported type for equality comparison: {:?}",
+                left.kind()
+            ),
         }
     }
 

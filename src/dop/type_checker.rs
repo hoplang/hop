@@ -87,7 +87,6 @@ pub fn typecheck_expr(
             let left_type = typed_left.kind();
             let right_type = typed_right.kind();
 
-            // Both operands should have the same type for equality comparison
             if left_type != right_type {
                 return Err(TypeError::CannotCompareTypes {
                     left: left_type.to_string(),
@@ -96,14 +95,27 @@ pub fn typecheck_expr(
                 });
             }
 
-            // The result of == is always boolean
-            Ok(TypedExpr::BinaryOp {
-                left: Box::new(typed_left),
-                operator: BinaryOp::Eq,
-                right: Box::new(typed_right),
-                kind: Type::Bool,
-                annotation: (),
-            })
+            match left_type {
+                Type::Bool => Ok(TypedExpr::BoolCompare {
+                    left: Box::new(typed_left),
+                    right: Box::new(typed_right),
+                    annotation: (),
+                }),
+                Type::String => Ok(TypedExpr::StringCompare {
+                    left: Box::new(typed_left),
+                    right: Box::new(typed_right),
+                    annotation: (),
+                }),
+                Type::Number => Err(TypeError::CannotCompareNumbers {
+                    range: expr.range().clone(),
+                }),
+                Type::Array(_) => Err(TypeError::CannotCompareArrays {
+                    range: expr.range().clone(),
+                }),
+                Type::Object(_) => Err(TypeError::CannotCompareObjects {
+                    range: expr.range().clone(),
+                }),
+            }
         }
         AnnotatedExpr::Negation { operand, .. } => {
             let typed_operand = typecheck_expr(operand, env, annotations)?;
@@ -398,7 +410,15 @@ mod tests {
 
     #[test]
     fn test_typecheck_equality_number() {
-        check("count: number", "count == 42", expect!["boolean"]);
+        check(
+            "count: number",
+            "count == 42",
+            expect![[r#"
+            error: Cannot compare numbers with == operator
+            count == 42
+            ^^^^^^^^^^^
+        "#]],
+        );
     }
 
     #[test]

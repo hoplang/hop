@@ -3436,28 +3436,11 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {foo: string}
-                  --> main.hop (line 1, col 13)
-                1 | <main-comp {params: {foo: string}}>
-                  |             ^^^^^^
-
-                params: {foo: string}
-                  --> main.hop (line 2, col 8)
-                1 | <main-comp {params: {foo: string}}>
-                2 |   <if {params.foo == "foo"}>
-                  |        ^^^^^^
-
-                params: {foo: string}
+                error: Cannot compare objects with == operator
                   --> main.hop (line 5, col 8)
                 4 |   </if>
                 5 |   <if {params == params}>
-                  |        ^^^^^^
-
-                params: {foo: string}
-                  --> main.hop (line 5, col 18)
-                4 |   </if>
-                5 |   <if {params == params}>
-                  |                  ^^^^^^
+                  |        ^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -3742,16 +3725,11 @@ mod tests {
                 </counter-comp>
             "#},
             expect![[r#"
-                count: number
-                  --> main.hop (line 1, col 16)
-                1 | <counter-comp {count: number}>
-                  |                ^^^^^
-
-                count: number
+                error: Cannot compare numbers with == operator
                   --> main.hop (line 2, col 7)
                 1 | <counter-comp {count: number}>
                 2 |     <if {count == 0}>
-                  |          ^^^^^
+                  |          ^^^^^^^^^^
             "#]],
         );
     }
@@ -3770,22 +3748,11 @@ mod tests {
                 </profile-comp>
             "#},
             expect![[r#"
-                profile: {user: {age: number, name: string}}
-                  --> main.hop (line 1, col 16)
-                1 | <profile-comp {profile: {user: {name: string, age: number}}}>
-                  |                ^^^^^^^
-
-                profile: {user: {age: number, name: string}}
-                  --> main.hop (line 2, col 8)
-                1 | <profile-comp {profile: {user: {name: string, age: number}}}>
-                2 |     <div>{profile.user.name}</div>
-                  |           ^^^^^^^
-
-                profile: {user: {age: number, name: string}}
+                error: Cannot compare numbers with == operator
                   --> main.hop (line 3, col 7)
                 2 |     <div>{profile.user.name}</div>
                 3 |     <if {profile.user.age == 25}>
-                  |          ^^^^^^^
+                  |          ^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -3807,40 +3774,11 @@ mod tests {
                 </matrix-comp>
             "#},
             expect![[r#"
-                matrix: array[array[number]]
-                  --> main.hop (line 1, col 15)
-                1 | <matrix-comp {matrix: array[array[number]]}>
-                  |               ^^^^^^
-
-                matrix: array[array[number]]
-                  --> main.hop (line 2, col 15)
-                1 | <matrix-comp {matrix: array[array[number]]}>
-                2 |     <for {row in matrix}>
-                  |                  ^^^^^^
-
-                row: array[number]
-                  --> main.hop (line 2, col 8)
-                1 | <matrix-comp {matrix: array[array[number]]}>
-                2 |     <for {row in matrix}>
-                  |           ^^^
-
-                row: array[number]
-                  --> main.hop (line 3, col 17)
-                2 |     <for {row in matrix}>
-                3 |         <for {cell in row}>
-                  |                       ^^^
-
-                cell: number
-                  --> main.hop (line 3, col 9)
-                2 |     <for {row in matrix}>
-                3 |         <for {cell in row}>
-                  |               ^^^^
-
-                cell: number
+                error: Cannot compare numbers with == operator
                   --> main.hop (line 4, col 9)
                 3 |         <for {cell in row}>
                 4 |             <if {cell == 1}>
-                  |                  ^^^^
+                  |                  ^^^^^^^^^
             "#]],
         );
     }
@@ -4003,76 +3941,11 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                item: {active: boolean, id: number, name: string}
-                  --> item-display.hop (line 1, col 16)
-                1 | <item-display {item: {id: number, name: string, active: boolean}}>
-                  |                ^^^^
-
-                item: {active: boolean, id: number, name: string}
-                  --> item-display.hop (line 2, col 8)
-                1 | <item-display {item: {id: number, name: string, active: boolean}}>
-                2 |     <div>{item.name}</div>
-                  |           ^^^^
-
-                item: {active: boolean, id: number, name: string}
-                  --> item-display.hop (line 3, col 7)
-                2 |     <div>{item.name}</div>
-                3 |     <if {item.active}>
-                  |          ^^^^
-
-                item: {active: boolean, id: number, name: string}
+                error: Cannot compare numbers with == operator
                   --> item-display.hop (line 6, col 7)
                 5 |     </if>
                 6 |     <if {item.id == 1}>
-                  |          ^^^^
-
-                items: array[{active: boolean, id: number, name: string}]
-                  --> data-list.hop (line 2, col 13)
-                1 | <import component="item-display" from="@/item-display">
-                2 | <data-list {items: array[{id: number, name: string, active: boolean}]}>
-                  |             ^^^^^
-
-                items: array[{active: boolean, id: number, name: string}]
-                  --> data-list.hop (line 3, col 16)
-                2 | <data-list {items: array[{id: number, name: string, active: boolean}]}>
-                3 |     <for {item in items}>
-                  |                   ^^^^^
-
-                item: {active: boolean, id: number, name: string}
-                  --> data-list.hop (line 3, col 8)
-                2 | <data-list {items: array[{id: number, name: string, active: boolean}]}>
-                3 |     <for {item in items}>
-                  |           ^^^^
-
-                item: {active: boolean, id: number, name: string}
-                  --> data-list.hop (line 4, col 24)
-                3 |     <for {item in items}>
-                4 |         <item-display {item: item}/>
-                  |                              ^^^^
-
-                item: {active: boolean, id: number, name: string}
-                  --> data-list.hop (line 4, col 24)
-                3 |     <for {item in items}>
-                4 |         <item-display {item: item}/>
-                  |                              ^^^^
-
-                items: array[{active: boolean, id: number, name: string}]
-                  --> main.hop (line 2, col 13)
-                1 | <import component="data-list" from="@/data-list">
-                2 | <main-comp {items: array[{id: number, name: string, active: boolean}]}>
-                  |             ^^^^^
-
-                items: array[{active: boolean, id: number, name: string}]
-                  --> main.hop (line 3, col 21)
-                2 | <main-comp {items: array[{id: number, name: string, active: boolean}]}>
-                3 |     <data-list {items: items}/>
-                  |                        ^^^^^
-
-                items: array[{active: boolean, id: number, name: string}]
-                  --> main.hop (line 3, col 21)
-                2 | <main-comp {items: array[{id: number, name: string, active: boolean}]}>
-                3 |     <data-list {items: items}/>
-                  |                        ^^^^^
+                  |          ^^^^^^^^^^^^
             "#]],
         );
     }

@@ -902,18 +902,12 @@ mod tests {
                     t.write("<p>$");
                     t.write_expr(t.prop_access(t.var("product"), "price"), false);
                     t.write("</p>\n");
-                    t.if_stmt(
-                        t.prop_access(t.var("product"), "in_stock"),
-                        |t| {
-                            t.write("<span class=\"available\">In Stock</span>\n");
-                        },
-                    );
-                    t.if_stmt(
-                        t.not(t.prop_access(t.var("product"), "in_stock")),
-                        |t| {
-                            t.write("<span class=\"sold-out\">Sold Out</span>\n");
-                        },
-                    );
+                    t.if_stmt(t.prop_access(t.var("product"), "in_stock"), |t| {
+                        t.write("<span class=\"available\">In Stock</span>\n");
+                    });
+                    t.if_stmt(t.not(t.prop_access(t.var("product"), "in_stock")), |t| {
+                        t.write("<span class=\"sold-out\">Sold Out</span>\n");
+                    });
                     t.write("</div>\n");
                 },
             );
@@ -1003,18 +997,12 @@ mod tests {
             "test-auth-check",
             vec![("user_role", Type::String), ("expected_role", Type::String)],
             |t| {
-                t.if_stmt(
-                    t.eq(t.var("user_role"), t.var("expected_role")),
-                    |t| {
-                        t.write("<div>Access granted</div>\n");
-                    },
-                );
-                t.if_stmt(
-                    t.eq(t.var("user_role"), t.str("admin")),
-                    |t| {
-                        t.write("<div>Admin panel available</div>\n");
-                    },
-                );
+                t.if_stmt(t.eq(t.var("user_role"), t.var("expected_role")), |t| {
+                    t.write("<div>Access granted</div>\n");
+                });
+                t.if_stmt(t.eq(t.var("user_role"), t.str("admin")), |t| {
+                    t.write("<div>Admin panel available</div>\n");
+                });
             },
         )];
 

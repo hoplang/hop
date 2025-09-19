@@ -89,15 +89,12 @@ mod tests {
     fn test_nested_transformations() {
         check(
             build_ir_auto("test", vec![], |t| {
-                t.if_stmt(
-                    t.bool(true),
-                    |t| {
-                        t.write_expr(t.str("Inside if"), false);
-                        t.for_loop("item", t.array(vec![t.str("foo")]), |t| {
-                            t.write_expr(t.str("Inside for"), false);
-                        });
-                    },
-                );
+                t.if_stmt(t.bool(true), |t| {
+                    t.write_expr(t.str("Inside if"), false);
+                    t.for_loop("item", t.array(vec![t.str("foo")]), |t| {
+                        t.write_expr(t.str("Inside for"), false);
+                    });
+                });
                 t.let_stmt("x", t.str("value"), |t| {
                     t.write_expr(t.str("Inside let"), false);
                 });

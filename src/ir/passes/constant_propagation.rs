@@ -1,19 +1,18 @@
 use super::Pass;
 use crate::ir::{
     IrExpr,
-    ast::{BinaryOp, ExprId},
+    ast::ExprId,
     ast::{IrEntrypoint, IrStatement},
 };
 use datafrog::{Iteration, Relation};
 use std::collections::HashMap;
 
 /// Constant values that can be tracked during constant folding
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 enum Const {
     Bool(bool),
     String(String),
 }
-
 /// A datafrog-based constant propagation pass that tracks and propagates constant values
 pub struct ConstantPropagationPass;
 
@@ -43,12 +42,8 @@ impl Pass for ConstantPropagationPass {
                         IrExpr::Negation { operand, .. } => {
                             not_relations.push((operand.id(), expr.id()));
                         }
-                        IrExpr::BinaryOp {
-                            operator: BinaryOp::Eq,
-                            left,
-                            right,
-                            ..
-                        } => {
+                        IrExpr::BoolCompare { left, right, .. }
+                        | IrExpr::StringCompare { left, right, .. } => {
                             eq_left_relations.push((left.id(), expr.id()));
                             eq_right_relations.push((right.id(), expr.id()));
                         }
@@ -260,18 +255,19 @@ mod tests {
 
     #[test]
     fn test_equality_folding() {
+        let ep = build_ir_auto("test", vec![], |t| {
+            t.if_stmt(t.eq(t.bool(true), t.bool(true)), |t| {
+                t.write("true == true");
+            });
+            t.if_stmt(t.eq(t.bool(false), t.bool(false)), |t| {
+                t.write("false == false");
+            });
+            t.if_stmt(t.eq(t.bool(true), t.bool(false)), |t| {
+                t.write("Should not appear");
+            });
+        });
         check(
-            build_ir_auto("test", vec![], |t| {
-                t.if_stmt(t.eq(t.bool(true), t.bool(true)), |t| {
-                    t.write("true == true");
-                });
-                t.if_stmt(t.eq(t.bool(false), t.bool(false)), |t| {
-                    t.write("false == false");
-                });
-                t.if_stmt(t.eq(t.bool(true), t.bool(false)), |t| {
-                    t.write("Should not appear");
-                });
-            }),
+            ep,
             expect![[r#"
                 -- before --
                 test() {
@@ -306,9 +302,12 @@ mod tests {
     fn test_complex_equality_with_negations() {
         check(
             build_ir_auto("test", vec![], |t| {
-                t.if_stmt(t.eq(t.not(t.not(t.bool(false))), t.not(t.bool(false))), |t| {
-                    t.write("Should not appear");
-                });
+                t.if_stmt(
+                    t.eq(t.not(t.not(t.bool(false))), t.not(t.bool(false))),
+                    |t| {
+                        t.write("Should not appear");
+                    },
+                );
             }),
             expect![[r#"
                 -- before --

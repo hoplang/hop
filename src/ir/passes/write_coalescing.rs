@@ -198,14 +198,11 @@ mod tests {
     fn test_coalesce_inside_if() {
         check(
             build_ir_auto("test", vec![], |t| {
-                t.if_stmt(
-                    t.bool(true),
-                    |t| {
-                        t.write("Line");
-                        t.write(" ");
-                        t.write("one");
-                    },
-                );
+                t.if_stmt(t.bool(true), |t| {
+                    t.write("Line");
+                    t.write(" ");
+                    t.write("one");
+                });
             }),
             expect![[r#"
                 -- before --
@@ -299,19 +296,16 @@ mod tests {
             build_ir_auto("test", vec![], |t| {
                 t.write("Start");
                 t.write(": ");
-                t.if_stmt(
-                    t.bool(true),
-                    |t| {
-                        t.write("In");
-                        t.write(" if");
-                        t.for_loop("i", t.array(vec![t.str("foo")]), |t| {
-                            t.write("Loop");
-                            t.write(" body");
-                        });
-                        t.write("After");
-                        t.write(" loop");
-                    },
-                );
+                t.if_stmt(t.bool(true), |t| {
+                    t.write("In");
+                    t.write(" if");
+                    t.for_loop("i", t.array(vec![t.str("foo")]), |t| {
+                        t.write("Loop");
+                        t.write(" body");
+                    });
+                    t.write("After");
+                    t.write(" loop");
+                });
                 t.write("End");
                 t.write(".");
             }),

@@ -160,32 +160,26 @@ mod tests {
     fn test_nested_if_elimination() {
         check(
             build_ir_auto("test", vec![("condition", Type::Bool)], |t| {
-                t.if_stmt(
-                    t.var("condition"),
-                    |t| {
-                        t.write("Before nested");
-                        t.if_stmt(t.bool(true), |t| {
-                            t.write("Nested always true");
-                        });
-                        t.if_stmt(t.bool(false), |t| {
-                            t.write("Nested never shown");
-                        });
-                        t.write("After nested");
-                    },
-                );
-                t.if_stmt(
-                    t.bool(true),
-                    |t| {
-                        t.write("Outer true - before nested");
-                        t.if_stmt(t.bool(false), |t| {
-                            t.write("Inner false - never shown");
-                        });
-                        t.if_stmt(t.var("condition"), |t| {
-                            t.write("Inner dynamic");
-                        });
-                        t.write("Outer true - after nested");
-                    },
-                );
+                t.if_stmt(t.var("condition"), |t| {
+                    t.write("Before nested");
+                    t.if_stmt(t.bool(true), |t| {
+                        t.write("Nested always true");
+                    });
+                    t.if_stmt(t.bool(false), |t| {
+                        t.write("Nested never shown");
+                    });
+                    t.write("After nested");
+                });
+                t.if_stmt(t.bool(true), |t| {
+                    t.write("Outer true - before nested");
+                    t.if_stmt(t.bool(false), |t| {
+                        t.write("Inner false - never shown");
+                    });
+                    t.if_stmt(t.var("condition"), |t| {
+                        t.write("Inner dynamic");
+                    });
+                    t.write("Outer true - after nested");
+                });
             }),
             expect![[r#"
                 -- before --

@@ -129,19 +129,6 @@ impl AlphaRenamingPass {
                 kind,
                 annotation,
             },
-            AnnotatedTypedExpr::BinaryOp {
-                left,
-                operator,
-                right,
-                kind,
-                annotation,
-            } => AnnotatedTypedExpr::BinaryOp {
-                left: Box::new(self.rename_expr(*left)),
-                operator,
-                right: Box::new(self.rename_expr(*right)),
-                kind,
-                annotation,
-            },
             AnnotatedTypedExpr::Negation {
                 operand,
                 annotation,
@@ -170,18 +157,35 @@ impl AlphaRenamingPass {
                 kind,
                 annotation,
             },
-            AnnotatedTypedExpr::JsonEncode {
-                value,
-                annotation,
-            } => AnnotatedTypedExpr::JsonEncode {
-                value: Box::new(self.rename_expr(*value)),
-                annotation,
-            },
+            AnnotatedTypedExpr::JsonEncode { value, annotation } => {
+                AnnotatedTypedExpr::JsonEncode {
+                    value: Box::new(self.rename_expr(*value)),
+                    annotation,
+                }
+            }
             AnnotatedTypedExpr::StringConcat {
                 left,
                 right,
                 annotation,
             } => AnnotatedTypedExpr::StringConcat {
+                left: Box::new(self.rename_expr(*left)),
+                right: Box::new(self.rename_expr(*right)),
+                annotation,
+            },
+            AnnotatedTypedExpr::BoolCompare {
+                left,
+                right,
+                annotation,
+            } => AnnotatedTypedExpr::BoolCompare {
+                left: Box::new(self.rename_expr(*left)),
+                right: Box::new(self.rename_expr(*right)),
+                annotation,
+            },
+            AnnotatedTypedExpr::StringCompare {
+                left,
+                right,
+                annotation,
+            } => AnnotatedTypedExpr::StringCompare {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 annotation,

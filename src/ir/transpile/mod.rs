@@ -6,7 +6,7 @@ pub use js::{JsTranspiler, LanguageMode};
 use pretty::BoxDoc;
 
 use crate::dop::r#type::Type;
-use crate::ir::ast::{BinaryOp, IrEntrypoint, IrExpr, IrStatement};
+use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use std::collections::BTreeMap;
 
 pub trait Transpiler {
@@ -114,23 +114,13 @@ pub trait ExpressionTranspiler {
                 Type::Object(fields) => self.transpile_object_literal(properties, fields),
                 _ => panic!("Object literal must have object type"),
             },
-            IrExpr::BinaryOp {
-                left,
-                operator: BinaryOp::Eq,
-                right,
-                ..
-            } => match (left.typ(), right.typ()) {
-                (Type::Bool, Type::Bool) => self.transpile_bool_equality(left, right),
-                (Type::String, Type::String) => self.transpile_string_equality(left, right),
-                _ => panic!(
-                    "Equality comparison only supported for matching bool or string types, got {:?} and {:?}",
-                    left.typ(),
-                    right.typ()
-                ),
-            },
             IrExpr::JsonEncode { value, .. } => self.transpile_json_encode(value),
             IrExpr::StringConcat { left, right, .. } => self.transpile_string_concat(left, right),
             IrExpr::Negation { operand, .. } => self.transpile_not(operand),
+            IrExpr::BoolCompare { left, right, .. } => self.transpile_bool_equality(left, right),
+            IrExpr::StringCompare { left, right, .. } => {
+                self.transpile_string_equality(left, right)
+            }
         }
     }
 }
