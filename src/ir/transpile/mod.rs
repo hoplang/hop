@@ -79,6 +79,7 @@ pub trait ExpressionTranspiler {
     fn transpile_string_literal<'a>(&self, value: &'a str) -> BoxDoc<'a>;
     fn transpile_boolean_literal<'a>(&self, value: bool) -> BoxDoc<'a>;
     fn transpile_number_literal<'a>(&self, value: &'a serde_json::Number) -> BoxDoc<'a>;
+    fn transpile_int_literal<'a>(&self, value: i64) -> BoxDoc<'a>;
     fn transpile_array_literal<'a>(
         &self,
         elements: &'a [IrExpr],
@@ -103,6 +104,7 @@ pub trait ExpressionTranspiler {
             IrExpr::StringLiteral { value, .. } => self.transpile_string_literal(value),
             IrExpr::BooleanLiteral { value, .. } => self.transpile_boolean_literal(*value),
             IrExpr::NumberLiteral { value, .. } => self.transpile_number_literal(value),
+            IrExpr::IntLiteral { value, .. } => self.transpile_int_literal(*value),
             IrExpr::ArrayLiteral { elements, .. } => match expr.as_type() {
                 Type::Array(elem_type) => self.transpile_array_literal(elements, elem_type),
                 _ => {

@@ -36,6 +36,9 @@ pub enum TypedExpr<A> {
         annotation: A,
     },
 
+    /// An integer literal expression, e.g. 42
+    IntLiteral { value: i64, annotation: A },
+
     /// An array literal expression, e.g. [1, 2, 3]
     ArrayLiteral {
         elements: Vec<Self>,
@@ -76,6 +79,7 @@ impl<A> TypedExpr<A> {
         static STRING_TYPE: Type = Type::String;
         static BOOL_TYPE: Type = Type::Bool;
         static NUMBER_TYPE: Type = Type::Number;
+        static INT_TYPE: Type = Type::Int;
 
         match self {
             TypedExpr::Var { kind, .. }
@@ -84,6 +88,7 @@ impl<A> TypedExpr<A> {
             | TypedExpr::ObjectLiteral { kind, .. } => kind,
 
             TypedExpr::NumberLiteral { .. } => &NUMBER_TYPE,
+            TypedExpr::IntLiteral { .. } => &INT_TYPE,
 
             TypedExpr::JsonEncode { .. }
             | TypedExpr::StringConcat { .. }
@@ -102,6 +107,7 @@ impl<A> TypedExpr<A> {
             | TypedExpr::StringLiteral { annotation, .. }
             | TypedExpr::BooleanLiteral { annotation, .. }
             | TypedExpr::NumberLiteral { annotation, .. }
+            | TypedExpr::IntLiteral { annotation, .. }
             | TypedExpr::ArrayLiteral { annotation, .. }
             | TypedExpr::ObjectLiteral { annotation, .. }
             | TypedExpr::JsonEncode { annotation, .. }
@@ -123,6 +129,7 @@ impl<A> TypedExpr<A> {
             TypedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
             TypedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
             TypedExpr::NumberLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            TypedExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
             TypedExpr::ArrayLiteral { elements, .. } => {
                 if elements.is_empty() {
                     BoxDoc::text("[]")

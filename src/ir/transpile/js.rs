@@ -300,6 +300,10 @@ impl ExpressionTranspiler for JsTranspiler {
         BoxDoc::as_string(value.to_string())
     }
 
+    fn transpile_int_literal<'a>(&self, value: i64) -> BoxDoc<'a> {
+        BoxDoc::as_string(format!("{}", value))
+    }
+
     fn transpile_array_literal<'a>(
         &self,
         elements: &'a [IrExpr],

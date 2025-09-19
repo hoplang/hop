@@ -185,6 +185,7 @@ impl AlphaRenamingPass {
             TypedExpr::StringLiteral { .. } => expr,
             TypedExpr::BooleanLiteral { .. } => expr,
             TypedExpr::NumberLiteral { .. } => expr,
+            TypedExpr::IntLiteral { .. } => expr,
         }
     }
 

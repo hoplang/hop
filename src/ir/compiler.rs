@@ -376,6 +376,10 @@ impl Compiler {
                 value,
                 annotation: expr_id,
             },
+            SimpleTypedExpr::IntLiteral { value, .. } => TypedExpr::IntLiteral {
+                value,
+                annotation: expr_id,
+            },
             SimpleTypedExpr::JsonEncode { value, .. } => TypedExpr::JsonEncode {
                 value: Box::new(self.compile_expr(*value)),
                 annotation: expr_id,

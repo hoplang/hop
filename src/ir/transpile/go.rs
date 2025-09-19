@@ -328,6 +328,10 @@ impl ExpressionTranspiler for GoTranspiler {
         }
     }
 
+    fn transpile_int_literal<'a>(&self, value: i64) -> BoxDoc<'a> {
+        BoxDoc::as_string(format!("{}", value))
+    }
+
     fn transpile_array_literal<'a>(
         &self,
         elements: &'a [IrExpr],
