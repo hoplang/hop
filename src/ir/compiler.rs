@@ -388,8 +388,8 @@ impl Compiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use expect_test::{Expect, expect};
     use crate::ir::test_utils::InlinedTestBuilder;
+    use expect_test::{Expect, expect};
 
     fn check(entrypoint: InlinedEntryPoint, mode: CompilationMode, expected: Expect) {
         let before = entrypoint.to_string();
@@ -400,7 +400,7 @@ mod tests {
     }
 
     #[test]
-    fn test_inlined_simple_text() {
+    fn test_simple_text() {
         let t = InlinedTestBuilder::new(vec![]);
         let entrypoint = t.build("main-comp", vec![t.text("Hello World")]);
 
@@ -422,7 +422,7 @@ mod tests {
     }
 
     #[test]
-    fn test_inlined_text_expression() {
+    fn test_text_expression() {
         let t = InlinedTestBuilder::new(vec![("name".to_string(), Type::String)]);
         let entrypoint = t.build(
             "main-comp",
@@ -449,7 +449,7 @@ mod tests {
     }
 
     #[test]
-    fn test_inlined_html_element() {
+    fn test_html_element() {
         let t = InlinedTestBuilder::new(vec![]);
         let entrypoint = t.build(
             "main-comp",
@@ -479,7 +479,7 @@ mod tests {
     }
 
     #[test]
-    fn test_inlined_if_statement() {
+    fn test_if_node() {
         let t = InlinedTestBuilder::new(vec![("show".to_string(), Type::Bool)]);
         let entrypoint = t.build(
             "main-comp",
@@ -516,7 +516,7 @@ mod tests {
     }
 
     #[test]
-    fn test_inlined_for_loop() {
+    fn test_for_node() {
         let t = InlinedTestBuilder::new(vec![(
             "items".to_string(),
             Type::Array(Some(Box::new(Type::String))),
@@ -632,7 +632,7 @@ mod tests {
     }
 
     #[test]
-    fn test_inlined_development_mode() {
+    fn test_development_mode() {
         let t = InlinedTestBuilder::new(vec![
             ("name".to_string(), Type::String),
             ("count".to_string(), Type::String),

@@ -436,14 +436,27 @@ mod tests {
         transpiler.transpile_module(entrypoints)
     }
 
-    fn check_js(entrypoints: &[IrEntrypoint], expected: Expect) {
-        let js = transpile_with_pretty(entrypoints, LanguageMode::JavaScript);
-        expected.assert_eq(&js);
-    }
+    fn check(entrypoints: &[IrEntrypoint], expected: Expect) {
+        // Format before (IR)
+        let before = entrypoints
+            .iter()
+            .map(|ep| ep.to_string())
+            .collect::<Vec<_>>()
+            .join("\n\n");
 
-    fn check_ts(entrypoints: &[IrEntrypoint], expected: Expect) {
-        let ts = transpile_with_pretty(entrypoints, LanguageMode::TypeScript);
-        expected.assert_eq(&ts);
+        // Format TypeScript output
+        let ts_output = transpile_with_pretty(entrypoints, LanguageMode::TypeScript);
+
+        // Format JavaScript output
+        let js_output = transpile_with_pretty(entrypoints, LanguageMode::JavaScript);
+
+        // Create output with before/ts/js format
+        let output = format!(
+            "-- before --\n{}\n-- ts --\n{}\n-- js --\n{}",
+            before, ts_output, js_output
+        );
+
+        expected.assert_eq(&output);
     }
 
     #[test]
@@ -455,9 +468,24 @@ mod tests {
             vec![],
         )];
 
-        check_js(
+        check(
             &entrypoints,
             expect![[r#"
+                -- before --
+                hello-world() {
+                  write("<h1>Hello, World!</h1>\n")
+                }
+
+                -- ts --
+                export default {
+                    helloWorld: (): string => {
+                        let output: string = "";
+                        output += "<h1>Hello, World!</h1>\n";
+                        return output;
+                    }
+                }
+
+                -- js --
                 export default {
                     helloWorld: () => {
                         let output = "";
@@ -494,9 +522,47 @@ mod tests {
             ],
         )];
 
-        check_js(
+        check(
             &entrypoints,
             expect![[r#"
+                -- before --
+                user-info(name: string, age: string) {
+                  write("<div>\n")
+                  write("<h2>Name: ")
+                  write_escaped(name)
+                  write("</h2>\n")
+                  write("<p>Age: ")
+                  write_expr(age)
+                  write("</p>\n")
+                  write("</div>\n")
+                }
+
+                -- ts --
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    userInfo: ({ name, age }: { name: string, age: string }): string => {
+                        let output: string = "";
+                        output += "<div>\n";
+                        output += "<h2>Name: ";
+                        output += escapeHtml(name);
+                        output += "</h2>\n";
+                        output += "<p>Age: ";
+                        output += age;
+                        output += "</p>\n";
+                        output += "</div>\n";
+                        return output;
+                    }
+                }
+
+                -- js --
                 function escapeHtml(str) {
                     return str
                         .replace(/&/g, '&amp;')
@@ -547,9 +613,19 @@ mod tests {
             ],
         )];
 
-        check_ts(
+        check(
             &entrypoints,
             expect![[r#"
+                -- before --
+                conditional-display(title: string, show: boolean) {
+                  if show {
+                    write("<h1>")
+                    write_escaped(title)
+                    write("</h1>\n")
+                  }
+                }
+
+                -- ts --
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -562,6 +638,28 @@ mod tests {
                 export default {
                     conditionalDisplay: ({ title, show }: { title: string, show: boolean }): string => {
                         let output: string = "";
+                        if (show) {
+                            output += "<h1>";
+                            output += escapeHtml(title);
+                            output += "</h1>\n";
+                        }
+                        return output;
+                    }
+                }
+
+                -- js --
+                function escapeHtml(str) {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    conditionalDisplay: ({ title, show }) => {
+                        let output = "";
                         if (show) {
                             output += "<h1>";
                             output += escapeHtml(title);
@@ -600,9 +698,45 @@ mod tests {
             )],
         )];
 
-        check_js(
+        check(
             &entrypoints,
             expect![[r#"
+                -- before --
+                list-items(items: array[string]) {
+                  write("<ul>\n")
+                  for item in items {
+                    write("<li>")
+                    write_escaped(item)
+                    write("</li>\n")
+                  }
+                  write("</ul>\n")
+                }
+
+                -- ts --
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    listItems: ({ items }: { items: string[] }): string => {
+                        let output: string = "";
+                        output += "<ul>\n";
+                        for (const item of items) {
+                            output += "<li>";
+                            output += escapeHtml(item);
+                            output += "</li>\n";
+                        }
+                        output += "</ul>\n";
+                        return output;
+                    }
+                }
+
+                -- js --
                 function escapeHtml(str) {
                     return str
                         .replace(/&/g, '&amp;')
@@ -647,9 +781,44 @@ mod tests {
             vec![],
         )];
 
-        check_js(
+        check(
             &entrypoints,
             expect![[r#"
+                -- before --
+                greeting-card() {
+                  let greeting = "Hello from hop!" in {
+                    write("<div class=\"card\">\n")
+                    write("<p>")
+                    write_escaped(greeting)
+                    write("</p>\n")
+                    write("</div>\n")
+                  }
+                }
+
+                -- ts --
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    greetingCard: (): string => {
+                        let output: string = "";
+                        const greeting = "Hello from hop!";
+                        output += "<div class=\"card\">\n";
+                        output += "<p>";
+                        output += escapeHtml(greeting);
+                        output += "</p>\n";
+                        output += "</div>\n";
+                        return output;
+                    }
+                }
+
+                -- js --
                 function escapeHtml(str) {
                     return str
                         .replace(/&/g, '&amp;')
@@ -695,9 +864,44 @@ mod tests {
             vec![],
         )];
 
-        check_js(
+        check(
             &entrypoints,
             expect![[r#"
+                -- before --
+                test-main-comp() {
+                  write("<div data-hop-id=\"test/card-comp\">")
+                  let title = "Hello World" in {
+                    write("<h2>")
+                    write_escaped(title)
+                    write("</h2>")
+                  }
+                  write("</div>")
+                }
+
+                -- ts --
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    testMainComp: (): string => {
+                        let output: string = "";
+                        output += "<div data-hop-id=\"test/card-comp\">";
+                        const title = "Hello World";
+                        output += "<h2>";
+                        output += escapeHtml(title);
+                        output += "</h2>";
+                        output += "</div>";
+                        return output;
+                    }
+                }
+
+                -- js --
                 function escapeHtml(str) {
                     return str
                         .replace(/&/g, '&amp;')
@@ -787,9 +991,90 @@ mod tests {
                 ], vec![])
         ];
 
-        check_js(
+        check(
             &entrypoints,
             expect![[r#"
+                -- before --
+                test-product-list() {
+                  write("<div class=\"products\">\n")
+                  for product in [
+                    {
+                      name: "Laptop",
+                      inStock: true,
+                      category: "electronics",
+                    },
+                    {name: "Book", inStock: false, category: "books"},
+                    {name: "T-Shirt", inStock: true, category: "clothing"},
+                  ] {
+                    let displayInfo = {
+                      currency: "$",
+                      showStock: true,
+                      prefix: "PROD-",
+                    } in {
+                      write("<article class=\"product\">\n")
+                      write("<h3>")
+                      write_expr(displayInfo.prefix)
+                      write_escaped(product.name)
+                      write("</h3>\n")
+                      write("</p>\n")
+                      write("<p>Category: ")
+                      write_escaped(product.category)
+                      write("</p>\n")
+                      if displayInfo.showStock {
+                        if product.inStock {
+                          write("<span class=\"in-stock\">✓ In Stock</span>\n")
+                        }
+                        if (!product.inStock) {
+                          write("<span class=\"out-of-stock\">✗ Out of Stock</span>\n")
+                        }
+                      }
+                      write("</article>\n")
+                    }
+                  }
+                  write("</div>\n")
+                }
+
+                -- ts --
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    testProductList: (): string => {
+                        let output: string = "";
+                        output += "<div class=\"products\">\n";
+                        for (const product of [{name: "Laptop", inStock: true, category: "electronics"}, {name: "Book", inStock: false, category: "books"}, {name: "T-Shirt", inStock: true, category: "clothing"}]) {
+                            const displayInfo = {currency: "$", showStock: true, prefix: "PROD-"};
+                            output += "<article class=\"product\">\n";
+                            output += "<h3>";
+                            output += displayInfo.prefix;
+                            output += escapeHtml(product.name);
+                            output += "</h3>\n";
+                            output += "</p>\n";
+                            output += "<p>Category: ";
+                            output += escapeHtml(product.category);
+                            output += "</p>\n";
+                            if (displayInfo.showStock) {
+                                if (product.inStock) {
+                                    output += "<span class=\"in-stock\">✓ In Stock</span>\n";
+                                }
+                                if (!(product.inStock)) {
+                                    output += "<span class=\"out-of-stock\">✗ Out of Stock</span>\n";
+                                }
+                            }
+                            output += "</article>\n";
+                        }
+                        output += "</div>\n";
+                        return output;
+                    }
+                }
+
+                -- js --
                 function escapeHtml(str) {
                     return str
                         .replace(/&/g, '&amp;')
@@ -880,9 +1165,32 @@ mod tests {
             parameters,
         )];
 
-        check_ts(
+        check(
             &entrypoints,
             expect![[r#"
+                -- before --
+                test-user-list(users: array[{active: boolean, id: string, name: string}], title: string) {
+                  write("<div>\n")
+                  write("<h1>\n")
+                  write_escaped(title)
+                  write("</h1>\n")
+                  write("<ul>\n")
+                  for user in users {
+                    write("\n")
+                    if user.active {
+                      write("\n<li>User ")
+                      write_escaped(user.id)
+                      write(": ")
+                      write_escaped(user.name)
+                      write("</li>\n")
+                    }
+                    write("\n")
+                  }
+                  write("</ul>\n")
+                  write("</div>\n")
+                }
+
+                -- ts --
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -895,6 +1203,41 @@ mod tests {
                 export default {
                     testUserList: ({ users, title }: { users: { active: boolean, id: string, name: string }[], title: string }): string => {
                         let output: string = "";
+                        output += "<div>\n";
+                        output += "<h1>\n";
+                        output += escapeHtml(title);
+                        output += "</h1>\n";
+                        output += "<ul>\n";
+                        for (const user of users) {
+                            output += "\n";
+                            if (user.active) {
+                                output += "\n<li>User ";
+                                output += escapeHtml(user.id);
+                                output += ": ";
+                                output += escapeHtml(user.name);
+                                output += "</li>\n";
+                            }
+                            output += "\n";
+                        }
+                        output += "</ul>\n";
+                        output += "</div>\n";
+                        return output;
+                    }
+                }
+
+                -- js --
+                function escapeHtml(str) {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    testUserList: ({ users, title }) => {
+                        let output = "";
                         output += "<div>\n";
                         output += "<h1>\n";
                         output += escapeHtml(title);

@@ -507,8 +507,20 @@ mod tests {
     }
 
     fn check(entrypoints: &[IrEntrypoint], expected: Expect) {
-        let go_code = transpile_with_pretty(entrypoints);
-        expected.assert_eq(&go_code);
+        // Format before (IR)
+        let before = entrypoints
+            .iter()
+            .map(|ep| ep.to_string())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        // Format after (Go code)
+        let after = transpile_with_pretty(entrypoints);
+
+        // Create output with before/after format
+        let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
+
+        expected.assert_eq(&output);
     }
 
     #[test]
@@ -523,6 +535,12 @@ mod tests {
         check(
             &entrypoints,
             expect![[r#"
+                -- before --
+                test-main-comp() {
+                  write("<div>Hello World</div>\n")
+                }
+
+                -- after --
                 package components
 
                 import (
@@ -563,6 +581,16 @@ mod tests {
         check(
             &entrypoints,
             expect![[r#"
+                -- before --
+                test-greeting-comp(name: string, message: string) {
+                  write("<h1>Hello ")
+                  write_escaped(name)
+                  write(", ")
+                  write_escaped(message)
+                  write("</h1>\n")
+                }
+
+                -- after --
                 package components
 
                 import (
@@ -603,6 +631,14 @@ mod tests {
         check(
             &entrypoints,
             expect![[r#"
+                -- before --
+                test-main-comp(show: boolean) {
+                  if show {
+                    write("<div>Visible</div>\n")
+                  }
+                }
+
+                -- after --
                 package components
 
                 import (
@@ -650,6 +686,16 @@ mod tests {
         check(
             &entrypoints,
             expect![[r#"
+                -- before --
+                test-main-comp(items: array[string]) {
+                  for item in items {
+                    write("<li>")
+                    write_escaped(item)
+                    write("</li>\n")
+                  }
+                }
+
+                -- after --
                 package components
 
                 import (
@@ -703,6 +749,21 @@ mod tests {
         check(
             &entrypoints,
             expect![[r#"
+                -- before --
+                test-objects() {
+                  let person = {
+                    name: "Alice",
+                    age: "30.0",
+                    active: true,
+                  } in {
+                    write_escaped(person.name)
+                    write(" is ")
+                    write_expr(person.age)
+                    write(" years old")
+                  }
+                }
+
+                -- after --
                 package components
 
                 import (
@@ -762,6 +823,18 @@ mod tests {
         check(
             &entrypoints,
             expect![[r#"
+                -- before --
+                test-nested(users: array[{id: string, name: string}]) {
+                  for user in users {
+                    write("<div>")
+                    write_escaped(user.name)
+                    write(" (ID: ")
+                    write_expr(user.id)
+                    write(")</div>\n")
+                  }
+                }
+
+                -- after --
                 package components
 
                 import (
@@ -819,6 +892,18 @@ mod tests {
         check(
             &entrypoints,
             expect![[r#"
+                -- before --
+                test-array-literal-loop() {
+                  write("<ul>\n")
+                  for color in ["red", "green", "blue"] {
+                    write("<li>")
+                    write_escaped(color)
+                    write("</li>\n")
+                  }
+                  write("</ul>\n")
+                }
+
+                -- after --
                 package components
 
                 import (
@@ -888,6 +973,30 @@ mod tests {
         check(
             &entrypoints,
             expect![[r#"
+                -- before --
+                test-products() {
+                  for product in [
+                    {name: "Laptop", price: "999.99", in_stock: true},
+                    {name: "Mouse", price: "29.99", in_stock: false},
+                  ] {
+                    write("<div class=\"product\">\n")
+                    write("<h3>")
+                    write_escaped(product.name)
+                    write("</h3>\n")
+                    write("<p>$")
+                    write_expr(product.price)
+                    write("</p>\n")
+                    if product.in_stock {
+                      write("<span class=\"available\">In Stock</span>\n")
+                    }
+                    if (!product.in_stock) {
+                      write("<span class=\"sold-out\">Sold Out</span>\n")
+                    }
+                    write("</div>\n")
+                  }
+                }
+
+                -- after --
                 package components
 
                 import (
@@ -967,6 +1076,17 @@ mod tests {
         check(
             &entrypoints,
             expect![[r#"
+                -- before --
+                test-auth-check(user_role: string, expected_role: string) {
+                  if (user_role == expected_role) {
+                    write("<div>Access granted</div>\n")
+                  }
+                  if (user_role == "admin") {
+                    write("<div>Admin panel available</div>\n")
+                  }
+                }
+
+                -- after --
                 package components
 
                 import (
@@ -1039,6 +1159,22 @@ mod tests {
         check(
             &entrypoints,
             expect![[r#"
+                -- before --
+                test-json(data: {active: boolean, count: number, title: string}, items: array[string]) {
+                  write("<script>\n")
+                  write("const data = ")
+                  write_expr(JsonEncode(data))
+                  write(";\n")
+                  write("const items = ")
+                  write_expr(JsonEncode(items))
+                  write(";\n")
+                  write("const config = ")
+                  write_expr(JsonEncode({debug: true, version: 1.5}))
+                  write(";\n")
+                  write("</script>\n")
+                }
+
+                -- after --
                 package components
 
                 import (
