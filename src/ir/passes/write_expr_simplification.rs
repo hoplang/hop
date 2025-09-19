@@ -32,7 +32,7 @@ impl Pass for WriteExprSimplificationPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{dop::Type, ir::test_utils::IrTestBuilder};
+    use crate::{dop::Type, ir::test_utils::build_ir};
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
@@ -45,9 +45,8 @@ mod tests {
 
     #[test]
     fn test_simplify_constant_string() {
-        let t = IrTestBuilder::new(vec![]);
         check(
-            t.build("test", vec![
+            build_ir("test", vec![], |t| vec![
                 // WriteExpr with constant string should become Write
                 t.write_expr(t.str("Hello, World!"), false),
             ]),
@@ -67,9 +66,8 @@ mod tests {
 
     #[test]
     fn test_simplify_with_escaping() {
-        let t = IrTestBuilder::new(vec![]);
         check(
-            t.build("test", vec![
+            build_ir("test", vec![], |t| vec![
                 // WriteExpr with escaping enabled
                 t.write_expr(t.str("<div>Hello & Goodbye</div>"), true),
             ]),
@@ -89,9 +87,8 @@ mod tests {
 
     #[test]
     fn test_nested_transformations() {
-        let t = IrTestBuilder::new(vec![]);
         check(
-            t.build("test", vec![
+            build_ir("test", vec![], |t| vec![
                 t.if_stmt(
                     t.bool(true),
                     vec![
@@ -137,9 +134,8 @@ mod tests {
 
     #[test]
     fn test_mixed_write_and_write_expr() {
-        let t = IrTestBuilder::new(vec![("x".to_string(), Type::String)]);
         check(
-            t.build("test", vec![
+            build_ir("test", vec![("x".to_string(), Type::String)], |t| vec![
                 t.write("Already a Write statement"),
                 t.write_expr(t.str("Will become Write"), false),
                 t.write_expr(t.var("x"), false),

@@ -287,10 +287,10 @@ impl Pass for AlphaRenamingPass {
 mod tests {
     use super::*;
     use crate::dop::Type;
-    use crate::ir::test_utils::IrTestBuilder;
+    use crate::ir::test_utils::build_ir;
     use expect_test::{Expect, expect};
 
-    fn check_renaming(input_entrypoint: IrEntrypoint, expected: Expect) {
+    fn check(input_entrypoint: IrEntrypoint, expected: Expect) {
         let before = input_entrypoint.to_string();
         let renamed = AlphaRenamingPass::run(input_entrypoint);
         let after = renamed.to_string();
@@ -300,12 +300,10 @@ mod tests {
 
     #[test]
     fn test_simple_no_renaming() {
-        let builder = IrTestBuilder::new(vec![("x".to_string(), Type::String)]);
-
-        let entrypoint = builder.build("test", vec![builder.write_expr(builder.var("x"), true)]);
-
-        check_renaming(
-            entrypoint,
+        check(
+            build_ir("test", vec![("x".to_string(), Type::String)], |builder| {
+                vec![builder.write_expr(builder.var("x"), true)]
+            }),
             expect![[r#"
                 -- before --
                 test(x: string) {
@@ -322,16 +320,14 @@ mod tests {
 
     #[test]
     fn test_shadowing_in_for_loop() {
-        let builder = IrTestBuilder::new(vec![("x".to_string(), Type::String)]);
-
-        let entrypoint = builder.build("test", vec![builder.for_loop(
-            "x",
-            builder.array(vec![builder.str("a")]),
-            |b| vec![b.write_expr(b.var("x"), true)],
-        )]);
-
-        check_renaming(
-            entrypoint,
+        check(
+            build_ir("test", vec![("x".to_string(), Type::String)], |builder| {
+                vec![
+                    builder.for_loop("x", builder.array(vec![builder.str("a")]), |b| {
+                        vec![b.write_expr(b.var("x"), true)]
+                    }),
+                ]
+            }),
             expect![[r#"
                 -- before --
                 test(x: string) {
@@ -352,19 +348,17 @@ mod tests {
 
     #[test]
     fn test_sibling_scopes() {
-        let builder = IrTestBuilder::new(vec![]);
-
-        let entrypoint = builder.build("test", vec![
-            builder.for_loop("x", builder.array(vec![builder.str("a")]), |b| {
-                vec![b.write_expr(b.var("x"), true)]
+        check(
+            build_ir("test", vec![], |builder| {
+                vec![
+                    builder.for_loop("x", builder.array(vec![builder.str("a")]), |b| {
+                        vec![b.write_expr(b.var("x"), true)]
+                    }),
+                    builder.for_loop("x", builder.array(vec![builder.str("b")]), |b| {
+                        vec![b.write_expr(b.var("x"), true)]
+                    }),
+                ]
             }),
-            builder.for_loop("x", builder.array(vec![builder.str("b")]), |b| {
-                vec![b.write_expr(b.var("x"), true)]
-            }),
-        ]);
-
-        check_renaming(
-            entrypoint,
             expect![[r#"
                 -- before --
                 test() {
@@ -391,19 +385,17 @@ mod tests {
 
     #[test]
     fn test_nested_let_bindings() {
-        let builder = IrTestBuilder::new(vec![]);
-
-        let entrypoint = builder.build("test", vec![builder.let_stmt("x", builder.str("hello"), |b| {
-            vec![
-                b.write_expr(b.var("x"), true),
-                b.let_stmt("x", builder.str("world"), |b2| {
-                    vec![b2.write_expr(b2.var("x"), true)]
-                }),
-            ]
-        })]);
-
-        check_renaming(
-            entrypoint,
+        check(
+            build_ir("test", vec![], |t| {
+                vec![t.let_stmt("x", t.str("hello"), |t| {
+                    vec![
+                        t.write_expr(t.var("x"), true),
+                        t.let_stmt("x", t.str("world"), |t| {
+                            vec![t.write_expr(t.var("x"), true)]
+                        }),
+                    ]
+                })]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -430,23 +422,25 @@ mod tests {
 
     #[test]
     fn test_multiple_parameters() {
-        let builder = IrTestBuilder::new(vec![
-            ("x".to_string(), Type::String),
-            ("y".to_string(), Type::String),
-        ]);
-
-        let entrypoint = builder.build("test", vec![
-            builder.write_expr(builder.var("x"), true),
-            builder.for_loop("y", builder.array(vec![builder.str("a")]), |b| {
+        check(
+            build_ir(
+                "test",
                 vec![
-                    b.write_expr(b.var("x"), true),
-                    b.write_expr(b.var("y"), true),
-                ]
-            }),
-        ]);
-
-        check_renaming(
-            entrypoint,
+                    ("x".to_string(), Type::String),
+                    ("y".to_string(), Type::String),
+                ],
+                |t| {
+                    vec![
+                        t.write_expr(t.var("x"), true),
+                        t.for_loop("y", t.array(vec![t.str("a")]), |t| {
+                            vec![
+                                t.write_expr(t.var("x"), true),
+                                t.write_expr(t.var("y"), true),
+                            ]
+                        }),
+                    ]
+                },
+            ),
             expect![[r#"
                 -- before --
                 test(x: string, y: string) {
@@ -471,19 +465,17 @@ mod tests {
 
     #[test]
     fn test_sibling_let_bindings() {
-        let builder = IrTestBuilder::new(vec![]);
-
-        let entrypoint = builder.build("test", vec![
-            builder.let_stmt("x", builder.str("first"), |b| {
-                vec![b.write_expr(b.var("x"), true)]
+        check(
+            build_ir("test", vec![], |builder| {
+                vec![
+                    builder.let_stmt("x", builder.str("first"), |b| {
+                        vec![b.write_expr(b.var("x"), true)]
+                    }),
+                    builder.let_stmt("x", builder.str("second"), |b| {
+                        vec![b.write_expr(b.var("x"), true)]
+                    }),
+                ]
             }),
-            builder.let_stmt("x", builder.str("second"), |b| {
-                vec![b.write_expr(b.var("x"), true)]
-            }),
-        ]);
-
-        check_renaming(
-            entrypoint,
             expect![[r#"
                 -- before --
                 test() {
@@ -510,29 +502,31 @@ mod tests {
 
     #[test]
     fn test_complex_nesting() {
-        let builder = IrTestBuilder::new(vec![(
-            "items".to_string(),
-            Type::Array(Some(Box::new(Type::String))),
-        )]);
-
-        let entrypoint = builder.build("test", vec![builder.for_loop("item", builder.var("items"), |b| {
-            vec![
-                b.write("<div>"),
-                b.for_loop("item", builder.array(vec![b.str("nested")]), |b2| {
-                    vec![
-                        b2.write_expr(b2.var("item"), true),
-                        b2.let_stmt("item", b2.str("let-value"), |b3| {
-                            vec![b3.write_expr(b3.var("item"), true)]
-                        }),
-                    ]
-                }),
-                b.write_expr(b.var("item"), true),
-                b.write("</div>"),
-            ]
-        })]);
-
-        check_renaming(
-            entrypoint,
+        check(
+            build_ir(
+                "test",
+                vec![(
+                    "items".to_string(),
+                    Type::Array(Some(Box::new(Type::String))),
+                )],
+                |t| {
+                    vec![t.for_loop("item", t.var("items"), |t| {
+                        vec![
+                            t.write("<div>"),
+                            t.for_loop("item", t.array(vec![t.str("nested")]), |t| {
+                                vec![
+                                    t.write_expr(t.var("item"), true),
+                                    t.let_stmt("item", t.str("let-value"), |t| {
+                                        vec![t.write_expr(t.var("item"), true)]
+                                    }),
+                                ]
+                            }),
+                            t.write_expr(t.var("item"), true),
+                            t.write("</div>"),
+                        ]
+                    })]
+                },
+            ),
             expect![[r#"
                 -- before --
                 test(items: array[string]) {

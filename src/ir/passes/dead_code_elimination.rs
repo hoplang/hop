@@ -56,7 +56,7 @@ impl Pass for DeadCodeEliminationPass {
 mod tests {
     use super::*;
     use crate::dop::Type;
-    use crate::ir::test_utils::IrTestBuilder;
+    use crate::ir::test_utils::build_ir;
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
@@ -69,9 +69,8 @@ mod tests {
 
     #[test]
     fn test_removes_always_true_if() {
-        let t = IrTestBuilder::new(vec![]);
         check(
-            t.build("test", vec![t.if_stmt(t.bool(true), vec![t.write("Always shown")])]),
+            build_ir("test", vec![], |t| vec![t.if_stmt(t.bool(true), vec![t.write("Always shown")])]),
             expect![[r#"
                 -- before --
                 test() {
@@ -90,9 +89,8 @@ mod tests {
 
     #[test]
     fn test_removes_always_false_if() {
-        let t = IrTestBuilder::new(vec![]);
         check(
-            t.build("test", vec![
+            build_ir("test", vec![], |t| vec![
                 t.if_stmt(t.bool(false), vec![t.write("Never shown")]),
                 t.write("After if"),
             ]),
@@ -115,9 +113,8 @@ mod tests {
 
     #[test]
     fn test_preserves_dynamic_conditions() {
-        let t = IrTestBuilder::new(vec![("show".to_string(), Type::Bool)]);
         check(
-            t.build("test", vec![
+            build_ir("test", vec![("show".to_string(), Type::Bool)], |t| vec![
                 t.if_stmt(t.var("show"), vec![t.write("Dynamic")]),
                 t.if_stmt(t.bool(true), vec![t.write("Static true")]),
                 t.if_stmt(t.bool(false), vec![t.write("Static false")]),
@@ -149,9 +146,8 @@ mod tests {
 
     #[test]
     fn test_nested_if_elimination() {
-        let t = IrTestBuilder::new(vec![("condition".to_string(), Type::Bool)]);
         check(
-            t.build("test", vec![
+            build_ir("test", vec![("condition".to_string(), Type::Bool)], |t| vec![
                 t.if_stmt(
                     t.var("condition"),
                     vec![

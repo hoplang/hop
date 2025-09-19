@@ -121,7 +121,7 @@ impl Pass for WriteCoalescingPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{dop::Type, ir::test_utils::IrTestBuilder};
+    use crate::{dop::Type, ir::test_utils::build_ir};
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
@@ -134,17 +134,13 @@ mod tests {
 
     #[test]
     fn test_coalesce_consecutive_writes() {
-        let t = IrTestBuilder::new(vec![]);
-
-        let entrypoint = t.build("test", vec![
-            t.write("Hello"),
-            t.write(" "),
-            t.write("World"),
-            t.write("!"),
-        ]);
-
         check(
-            entrypoint,
+            build_ir("test", vec![], |t| vec![
+                t.write("Hello"),
+                t.write(" "),
+                t.write("World"),
+                t.write("!"),
+            ]),
             expect![[r#"
                 -- before --
                 test() {
@@ -164,18 +160,14 @@ mod tests {
 
     #[test]
     fn test_coalesce_with_interruption() {
-        let t = IrTestBuilder::new(vec![]);
-
-        let entrypoint = t.build("test", vec![
-            t.write("Before"),
-            t.write(" if"),
-            t.if_stmt(t.bool(true), vec![t.write("Inside if")]),
-            t.write("After"),
-            t.write(" if"),
-        ]);
-
         check(
-            entrypoint,
+            build_ir("test", vec![], |t| vec![
+                t.write("Before"),
+                t.write(" if"),
+                t.if_stmt(t.bool(true), vec![t.write("Inside if")]),
+                t.write("After"),
+                t.write(" if"),
+            ]),
             expect![[r#"
                 -- before --
                 test() {
@@ -202,15 +194,11 @@ mod tests {
 
     #[test]
     fn test_coalesce_inside_if() {
-        let t = IrTestBuilder::new(vec![]);
-
-        let entrypoint = t.build("test", vec![t.if_stmt(
-            t.bool(true),
-            vec![t.write("Line"), t.write(" "), t.write("one")],
-        )]);
-
         check(
-            entrypoint,
+            build_ir("test", vec![], |t| vec![t.if_stmt(
+                t.bool(true),
+                vec![t.write("Line"), t.write(" "), t.write("one")],
+            )]),
             expect![[r#"
                 -- before --
                 test() {
@@ -233,20 +221,16 @@ mod tests {
 
     #[test]
     fn test_coalesce_inside_for() {
-        let t = IrTestBuilder::new(vec![]);
-
-        let entrypoint = t.build("test", vec![t.for_loop("item", t.array(vec![t.str("x")]), |t| {
-            vec![
-                t.write("Item"),
-                t.write(": "),
-                t.write_expr(t.var("item"), true),
-                t.write(" - "),
-                t.write("Done"),
-            ]
-        })]);
-
         check(
-            entrypoint,
+            build_ir("test", vec![], |t| vec![t.for_loop("item", t.array(vec![t.str("x")]), |t| {
+                vec![
+                    t.write("Item"),
+                    t.write(": "),
+                    t.write_expr(t.var("item"), true),
+                    t.write(" - "),
+                    t.write("Done"),
+                ]
+            })]),
             expect![[r#"
                 -- before --
                 test() {
@@ -273,14 +257,10 @@ mod tests {
 
     #[test]
     fn test_coalesce_inside_let() {
-        let t = IrTestBuilder::new(vec![]);
-
-        let entrypoint = t.build("test", vec![t.let_stmt("x", t.str("value"), |t| {
-            vec![t.write("The"), t.write(" value"), t.write(" is")]
-        })]);
-
         check(
-            entrypoint,
+            build_ir("test", vec![], |t| vec![t.let_stmt("x", t.str("value"), |t| {
+                vec![t.write("The"), t.write(" value"), t.write(" is")]
+            })]),
             expect![[r#"
                 -- before --
                 test() {
@@ -303,29 +283,25 @@ mod tests {
 
     #[test]
     fn test_nested_coalescing() {
-        let t = IrTestBuilder::new(vec![]);
-
-        let entrypoint = t.build("test", vec![
-            t.write("Start"),
-            t.write(": "),
-            t.if_stmt(
-                t.bool(true),
-                vec![
-                    t.write("In"),
-                    t.write(" if"),
-                    t.for_loop("i", t.array(vec![t.str("foo")]), |t| {
-                        vec![t.write("Loop"), t.write(" body")]
-                    }),
-                    t.write("After"),
-                    t.write(" loop"),
-                ],
-            ),
-            t.write("End"),
-            t.write("."),
-        ]);
-
         check(
-            entrypoint,
+            build_ir("test", vec![], |t| vec![
+                t.write("Start"),
+                t.write(": "),
+                t.if_stmt(
+                    t.bool(true),
+                    vec![
+                        t.write("In"),
+                        t.write(" if"),
+                        t.for_loop("i", t.array(vec![t.str("foo")]), |t| {
+                            vec![t.write("Loop"), t.write(" body")]
+                        }),
+                        t.write("After"),
+                        t.write(" loop"),
+                    ],
+                ),
+                t.write("End"),
+                t.write("."),
+            ]),
             expect![[r#"
                 -- before --
                 test() {
@@ -363,18 +339,14 @@ mod tests {
 
     #[test]
     fn test_no_coalescing_with_write_expr() {
-        let t = IrTestBuilder::new(vec![("x".to_string(), Type::String)]);
-
-        let entrypoint = t.build("test", vec![
-            t.write("Value"),
-            t.write(": "),
-            t.write_expr(t.var("x"), true),
-            t.write(" - "),
-            t.write("done"),
-        ]);
-
         check(
-            entrypoint,
+            build_ir("test", vec![("x".to_string(), Type::String)], |t| vec![
+                t.write("Value"),
+                t.write(": "),
+                t.write_expr(t.var("x"), true),
+                t.write(" - "),
+                t.write("done"),
+            ]),
             expect![[r#"
                 -- before --
                 test(x: string) {
@@ -417,12 +389,8 @@ mod tests {
 
     #[test]
     fn test_single_write() {
-        let t = IrTestBuilder::new(vec![]);
-
-        let entrypoint = t.build("test", vec![t.write("Single")]);
-
         check(
-            entrypoint,
+            build_ir("test", vec![], |t| vec![t.write("Single")]),
             expect![[r#"
                 -- before --
                 test() {

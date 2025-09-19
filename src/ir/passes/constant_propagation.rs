@@ -171,7 +171,7 @@ impl Pass for ConstantPropagationPass {
 
 #[cfg(test)]
 mod tests {
-    use crate::ir::test_utils::IrTestBuilder;
+    use crate::ir::test_utils::build_ir;
     use expect_test::{Expect, expect};
 
     use super::*;
@@ -186,9 +186,8 @@ mod tests {
 
     #[test]
     fn test_simple_not_folding() {
-        let t = IrTestBuilder::new(vec![]);
         check(
-            t.build("test", vec![
+            build_ir("test", vec![], |t| vec![
                 t.if_stmt(t.not(t.bool(false)), vec![t.write("Should be true")]),
             ]),
             expect![[r#"
@@ -211,9 +210,8 @@ mod tests {
 
     #[test]
     fn test_double_not_folding() {
-        let t = IrTestBuilder::new(vec![]);
         check(
-            t.build("test", vec![t.if_stmt(
+            build_ir("test", vec![], |t| vec![t.if_stmt(
                 t.not(t.not(t.bool(true))),
                 vec![t.write("Double negation")],
             )]),
@@ -237,9 +235,8 @@ mod tests {
 
     #[test]
     fn test_triple_not_folding() {
-        let t = IrTestBuilder::new(vec![]);
         check(
-            t.build("test", vec![t.if_stmt(
+            build_ir("test", vec![], |t| vec![t.if_stmt(
                 t.not(t.not(t.not(t.bool(false)))),
                 vec![t.write("Triple negation")],
             )]),
@@ -263,9 +260,8 @@ mod tests {
 
     #[test]
     fn test_equality_folding() {
-        let t = IrTestBuilder::new(vec![]);
         check(
-            t.build("test", vec![
+            build_ir("test", vec![], |t| vec![
                 t.if_stmt(
                     t.eq(t.bool(true), t.bool(true)),
                     vec![t.write("true == true")],
@@ -311,9 +307,8 @@ mod tests {
 
     #[test]
     fn test_complex_equality_with_negations() {
-        let t = IrTestBuilder::new(vec![]);
         check(
-            t.build("test", vec![t.if_stmt(
+            build_ir("test", vec![], |t| vec![t.if_stmt(
                 t.eq(t.not(t.not(t.bool(false))), t.not(t.bool(false))),
                 vec![t.write("Should not appear")],
             )]),
@@ -337,9 +332,8 @@ mod tests {
 
     #[test]
     fn test_variable_constant_propagation() {
-        let t = IrTestBuilder::new(vec![]);
         check(
-            t.build("test", vec![t.let_stmt("x", t.not(t.not(t.bool(true))), |t| {
+            build_ir("test", vec![], |t| vec![t.let_stmt("x", t.not(t.not(t.bool(true))), |t| {
                 vec![
                     t.if_stmt(t.var("x"), vec![t.write("x is true")]),
                     t.if_stmt(t.not(t.var("x")), vec![t.write("x is false")]),
@@ -375,9 +369,8 @@ mod tests {
 
     #[test]
     fn test_variable_in_equality() {
-        let t = IrTestBuilder::new(vec![]);
         check(
-            t.build("test", vec![t.let_stmt("x", t.bool(true), |t| {
+            build_ir("test", vec![], |t| vec![t.let_stmt("x", t.bool(true), |t| {
                 vec![t.let_stmt("y", t.not(t.bool(true)), |t| {
                     vec![
                         t.if_stmt(t.eq(t.var("x"), t.var("y")), vec![t.write("x equals y")]),
@@ -422,9 +415,8 @@ mod tests {
 
     #[test]
     fn test_string_constant_propagation() {
-        let t = IrTestBuilder::new(vec![]);
         check(
-            t.build("test", vec![t.let_stmt("message", t.str("Hello, World!"), |t| {
+            build_ir("test", vec![], |t| vec![t.let_stmt("message", t.str("Hello, World!"), |t| {
                 vec![t.write_expr(t.var("message"), true)]
             })]),
             expect![[r#"
@@ -447,9 +439,8 @@ mod tests {
 
     #[test]
     fn test_nested_string_variable_propagation() {
-        let t = IrTestBuilder::new(vec![]);
         check(
-            t.build("test", vec![t.let_stmt("greeting", t.str("Hello"), |t| {
+            build_ir("test", vec![], |t| vec![t.let_stmt("greeting", t.str("Hello"), |t| {
                 vec![t.let_stmt("name", t.str("World"), |t| {
                     vec![
                         t.write_expr(t.var("greeting"), true),
@@ -483,9 +474,8 @@ mod tests {
 
     #[test]
     fn test_string_variable_multiple_uses() {
-        let t = IrTestBuilder::new(vec![]);
         check(
-            t.build("test", vec![t.let_stmt("title", t.str("Welcome"), |t| {
+            build_ir("test", vec![], |t| vec![t.let_stmt("title", t.str("Welcome"), |t| {
                 vec![
                     t.write_expr(t.var("title"), true),
                     t.write_expr(t.var("title"), true),
@@ -522,9 +512,8 @@ mod tests {
 
     #[test]
     fn test_string_equality_folding() {
-        let t = IrTestBuilder::new(vec![]);
         check(
-            t.build("test", vec![
+            build_ir("test", vec![], |t| vec![
                 t.if_stmt(
                     t.eq(t.str("hello"), t.str("hello")),
                     vec![t.write("Strings are equal")],
