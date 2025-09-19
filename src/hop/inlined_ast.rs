@@ -100,12 +100,12 @@ impl InlinedEntryPoint {
             .append(if self.params.is_empty() {
                 BoxDoc::nil()
             } else {
-                BoxDoc::text("(")
+                BoxDoc::text(" {")
                     .append(BoxDoc::intersperse(
                         self.params.iter().map(|param| param.to_doc()),
                         BoxDoc::text(", "),
                     ))
-                    .append(BoxDoc::text(")"))
+                    .append(BoxDoc::text("}"))
             })
             .append(BoxDoc::text(">"))
             .append(if self.children.is_empty() {
@@ -137,9 +137,9 @@ impl InlinedNode {
                     .append(BoxDoc::text("}"))
             }
             InlinedNode::If { condition, children } => {
-                BoxDoc::text("if ")
+                BoxDoc::text("<if {")
                     .append(condition.to_doc())
-                    .append(BoxDoc::text(" {"))
+                    .append(BoxDoc::text("}>"))
                     .append(if children.is_empty() {
                         BoxDoc::nil()
                     } else {
@@ -151,14 +151,14 @@ impl InlinedNode {
                             .append(BoxDoc::line())
                             .nest(2)
                     })
-                    .append(BoxDoc::text("}"))
+                    .append(BoxDoc::text("</if>"))
             }
             InlinedNode::For { var_name, array_expr, children } => {
-                BoxDoc::text("for ")
+                BoxDoc::text("<for {")
                     .append(BoxDoc::text(var_name.as_str()))
                     .append(BoxDoc::text(" in "))
                     .append(array_expr.to_doc())
-                    .append(BoxDoc::text(" {"))
+                    .append(BoxDoc::text("}>"))
                     .append(if children.is_empty() {
                         BoxDoc::nil()
                     } else {
@@ -170,7 +170,7 @@ impl InlinedNode {
                             .append(BoxDoc::line())
                             .nest(2)
                     })
-                    .append(BoxDoc::text("}"))
+                    .append(BoxDoc::text("</for>"))
             }
             InlinedNode::Doctype { value } => {
                 BoxDoc::text(value.as_str())
@@ -206,11 +206,11 @@ impl InlinedNode {
                 }
             }
             InlinedNode::Let { var, value, children } => {
-                BoxDoc::text("let ")
+                BoxDoc::text("<let {")
                     .append(BoxDoc::text(var.as_str()))
                     .append(BoxDoc::text(" = "))
                     .append(value.to_doc())
-                    .append(BoxDoc::text(" in {"))
+                    .append(BoxDoc::text("}>"))
                     .append(if children.is_empty() {
                         BoxDoc::nil()
                     } else {
@@ -222,7 +222,7 @@ impl InlinedNode {
                             .append(BoxDoc::line())
                             .nest(2)
                     })
-                    .append(BoxDoc::text("}"))
+                    .append(BoxDoc::text("</let>"))
             }
         }
     }
@@ -248,7 +248,7 @@ impl fmt::Display for InlinedAttribute {
 
 impl fmt::Display for InlinedEntryPoint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(60))
+        writeln!(f, "{}", self.to_doc().pretty(60))
     }
 }
 

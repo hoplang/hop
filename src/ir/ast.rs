@@ -201,7 +201,7 @@ impl IrStatement {
         match self {
             IrStatement::Write { content, .. } => BoxDoc::text("write")
                 .append(BoxDoc::text("("))
-                .append(BoxDoc::text(format!("\"{}\"", content)))
+                .append(BoxDoc::text(format!("{:?}", content)))
                 .append(BoxDoc::text(")")),
             IrStatement::WriteExpr { expr, escape, .. } => {
                 let write_fn = if *escape {

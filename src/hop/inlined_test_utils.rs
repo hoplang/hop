@@ -192,7 +192,10 @@ impl InlinedTestBuilder {
     }
 
     pub fn html(&self, tag_name: &str, attributes: Vec<(&str, InlinedAttribute)>, children: Vec<InlinedNode>) -> InlinedNode {
-        let attr_map = attributes.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+        let attr_map = attributes.into_iter().map(|(k, mut v)| {
+            v.name = k.to_string(); // Set the attribute name
+            (k.to_string(), v)
+        }).collect();
 
         InlinedNode::Html {
             tag_name: StringSpan::new(tag_name.to_string()),

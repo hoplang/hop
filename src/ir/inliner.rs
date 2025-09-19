@@ -260,7 +260,6 @@ impl Inliner {
                 args,
                 attributes,
                 children,
-                range,
                 ..
             } => {
                 // Get the component definition
@@ -385,9 +384,14 @@ mod tests {
         let typed_asts = create_typed_asts_from_sources(sources);
         let inlined_entrypoints = Inliner::inline_entrypoints(typed_asts);
 
-        // For now, just test that it doesn't crash and produces some output
-        // In a real implementation, we'd want more detailed verification
-        expected.assert_eq(&format!("{:#?}", inlined_entrypoints));
+        // Format using Display implementation for better readability
+        let output = inlined_entrypoints
+            .iter()
+            .map(|ep| ep.to_string())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        expected.assert_eq(&output);
     }
 
     #[test]
@@ -406,66 +410,20 @@ mod tests {
                 "#,
             )],
             expect![[r#"
-                [
-                    InlinedEntryPoint {
-                        tag_name: "main-comp",
-                        params: [],
-                        children: [
-                            Text {
-                                value: "\n                        ",
-                            },
-                            Html {
-                                tag_name: "div",
-                                attributes: {
-                                    "data-hop-id": InlinedAttribute {
-                                        name: "data-hop-id",
-                                        value: Some(
-                                            String(
-                                                "main/card-comp",
-                                            ),
-                                        ),
-                                    },
-                                },
-                                children: [
-                                    Let {
-                                        var: VarName {
-                                            value: "title",
-                                        },
-                                        value: StringLiteral {
-                                            value: "Hello",
-                                            annotation: String,
-                                        },
-                                        children: [
-                                            Text {
-                                                value: "\n                        ",
-                                            },
-                                            Html {
-                                                tag_name: "h2",
-                                                attributes: {},
-                                                children: [
-                                                    TextExpression {
-                                                        expression: Var {
-                                                            value: VarName {
-                                                                value: "title",
-                                                            },
-                                                            annotation: String,
-                                                        },
-                                                    },
-                                                ],
-                                            },
-                                            Text {
-                                                value: "\n                    ",
-                                            },
-                                        ],
-                                    },
-                                ],
-                            },
-                            Text {
-                                value: "\n                    ",
-                            },
-                        ],
-                    },
-                ]"#]],
+                <main-comp>
+                  "\n                        "
+                  <div data-hop-id="main/card-comp">
+                    <let {title = "Hello"}>
+                      "\n                        "
+                      <h2>
+                        {title}
+                      </h2>
+                      "\n                    "
+                    </let>
+                  </div>
+                  "\n                    "
+                </main-comp>
+            "#]],
         );
     }
 
@@ -489,77 +447,24 @@ mod tests {
                 "#,
             )],
             expect![[r#"
-                [
-                    InlinedEntryPoint {
-                        tag_name: "main-comp",
-                        params: [],
-                        children: [
-                            Text {
-                                value: "\n                        ",
-                            },
-                            Html {
-                                tag_name: "div",
-                                attributes: {
-                                    "data-hop-id": InlinedAttribute {
-                                        name: "data-hop-id",
-                                        value: Some(
-                                            String(
-                                                "main/card-comp",
-                                            ),
-                                        ),
-                                    },
-                                },
-                                children: [
-                                    Text {
-                                        value: "\n                        ",
-                                    },
-                                    Html {
-                                        tag_name: "div",
-                                        attributes: {
-                                            "class": InlinedAttribute {
-                                                name: "class",
-                                                value: Some(
-                                                    String(
-                                                        "card",
-                                                    ),
-                                                ),
-                                            },
-                                        },
-                                        children: [
-                                            Text {
-                                                value: "\n                            ",
-                                            },
-                                            Text {
-                                                value: "\n                            ",
-                                            },
-                                            Html {
-                                                tag_name: "p",
-                                                attributes: {},
-                                                children: [
-                                                    Text {
-                                                        value: "Slot content",
-                                                    },
-                                                ],
-                                            },
-                                            Text {
-                                                value: "\n                        ",
-                                            },
-                                            Text {
-                                                value: "\n                        ",
-                                            },
-                                        ],
-                                    },
-                                    Text {
-                                        value: "\n                    ",
-                                    },
-                                ],
-                            },
-                            Text {
-                                value: "\n                    ",
-                            },
-                        ],
-                    },
-                ]"#]],
+                <main-comp>
+                  "\n                        "
+                  <div data-hop-id="main/card-comp">
+                    "\n                        "
+                    <div class="card">
+                      "\n                            "
+                      "\n                            "
+                      <p>
+                        "Slot content"
+                      </p>
+                      "\n                        "
+                      "\n                        "
+                    </div>
+                    "\n                    "
+                  </div>
+                  "\n                    "
+                </main-comp>
+            "#]],
         );
     }
 }

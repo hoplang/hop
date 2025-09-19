@@ -390,9 +390,12 @@ mod tests {
     use super::*;
     use expect_test::{Expect, expect};
 
-    fn check_inlined(entrypoint: InlinedEntryPoint, mode: CompilationMode, expected: Expect) {
+    fn check(entrypoint: InlinedEntryPoint, mode: CompilationMode, expected: Expect) {
+        let before = entrypoint.to_string();
         let ir = Compiler::compile(entrypoint, mode);
-        expected.assert_eq(&ir.to_string());
+        let after = ir.to_string();
+        let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
+        expected.assert_eq(&output);
     }
 
     #[test]
@@ -402,14 +405,20 @@ mod tests {
         let t = InlinedTestBuilder::new(vec![]);
         let entrypoint = t.build("main-comp", vec![t.text("Hello World")]);
 
-        check_inlined(
+        check(
             entrypoint,
             CompilationMode::Production,
             expect![[r#"
-            main-comp() {
-              write("Hello World")
-            }
-        "#]],
+                -- before --
+                <main-comp>
+                  "Hello World"
+                </main-comp>
+
+                -- after --
+                main-comp() {
+                  write("Hello World")
+                }
+            "#]],
         );
     }
 
@@ -423,15 +432,22 @@ mod tests {
             vec![t.text("Hello "), t.text_expr(t.var_expr("name"))],
         );
 
-        check_inlined(
+        check(
             entrypoint,
             CompilationMode::Production,
             expect![[r#"
-            main-comp(name: string) {
-              write("Hello ")
-              write_escaped(name)
-            }
-        "#]],
+                -- before --
+                <main-comp {name: string}>
+                  "Hello "
+                  {name}
+                </main-comp>
+
+                -- after --
+                main-comp(name: string) {
+                  write("Hello ")
+                  write_escaped(name)
+                }
+            "#]],
         );
     }
 
@@ -445,17 +461,25 @@ mod tests {
             vec![t.html("div", vec![], vec![t.text("Content")])],
         );
 
-        check_inlined(
+        check(
             entrypoint,
             CompilationMode::Production,
             expect![[r#"
-            main-comp() {
-              write("<div")
-              write(">")
-              write("Content")
-              write("</div>")
-            }
-        "#]],
+                -- before --
+                <main-comp>
+                  <div>
+                    "Content"
+                  </div>
+                </main-comp>
+
+                -- after --
+                main-comp() {
+                  write("<div")
+                  write(">")
+                  write("Content")
+                  write("</div>")
+                }
+            "#]],
         );
     }
 
@@ -472,19 +496,29 @@ mod tests {
             )],
         );
 
-        check_inlined(
+        check(
             entrypoint,
             CompilationMode::Production,
             expect![[r#"
-            main-comp(show: boolean) {
-              if show {
-                write("<div")
-                write(">")
-                write("Visible")
-                write("</div>")
-              }
-            }
-        "#]],
+                -- before --
+                <main-comp {show: boolean}>
+                  <if {show}>
+                    <div>
+                      "Visible"
+                    </div>
+                  </if>
+                </main-comp>
+
+                -- after --
+                main-comp(show: boolean) {
+                  if show {
+                    write("<div")
+                    write(">")
+                    write("Visible")
+                    write("</div>")
+                  }
+                }
+            "#]],
         );
     }
 
@@ -503,19 +537,29 @@ mod tests {
             })],
         );
 
-        check_inlined(
+        check(
             entrypoint,
             CompilationMode::Production,
             expect![[r#"
-            main-comp(items: array[string]) {
-              for item in items {
-                write("<li")
-                write(">")
-                write_escaped(item)
-                write("</li>")
-              }
-            }
-        "#]],
+                -- before --
+                <main-comp {items: array[string]}>
+                  <for {item in items}>
+                    <li>
+                      {item}
+                    </li>
+                  </for>
+                </main-comp>
+
+                -- after --
+                main-comp(items: array[string]) {
+                  for item in items {
+                    write("<li")
+                    write(">")
+                    write_escaped(item)
+                    write("</li>")
+                  }
+                }
+            "#]],
         );
     }
 
@@ -533,19 +577,27 @@ mod tests {
             )],
         );
 
-        check_inlined(
+        check(
             entrypoint,
             CompilationMode::Production,
             expect![[r#"
-            main-comp() {
-              write("<div")
-              write(" class="base"")
-              write(" id="test"")
-              write(">")
-              write("Content")
-              write("</div>")
-            }
-        "#]],
+                -- before --
+                <main-comp>
+                  <div class="base" id="test">
+                    "Content"
+                  </div>
+                </main-comp>
+
+                -- after --
+                main-comp() {
+                  write("<div")
+                  write(" class=\"base\"")
+                  write(" id=\"test\"")
+                  write(">")
+                  write("Content")
+                  write("</div>")
+                }
+            "#]],
         );
     }
 
@@ -566,21 +618,29 @@ mod tests {
             )],
         );
 
-        check_inlined(
+        check(
             entrypoint,
             CompilationMode::Production,
             expect![[r#"
-            main-comp(cls: string) {
-              write("<div")
-              write(" class="base"")
-              write(" data-value="")
-              write_escaped(cls)
-              write(""")
-              write(">")
-              write("Content")
-              write("</div>")
-            }
-        "#]],
+                -- before --
+                <main-comp {cls: string}>
+                  <div class="base" data-value=cls>
+                    "Content"
+                  </div>
+                </main-comp>
+
+                -- after --
+                main-comp(cls: string) {
+                  write("<div")
+                  write(" class=\"base\"")
+                  write(" data-value=\"")
+                  write_escaped(cls)
+                  write("\"")
+                  write(">")
+                  write("Content")
+                  write("</div>")
+                }
+            "#]],
         );
     }
 
@@ -606,33 +666,31 @@ mod tests {
             )],
         );
 
-        check_inlined(
+        check(
             entrypoint,
             CompilationMode::Development,
             expect![[r#"
-            test-comp(name: string, count: string) {
-              write("<!DOCTYPE html>
-            <html>
-            <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>")
-              write("test-comp - Development Mode")
-              write("</title>
-            </head>
-            <body>
-            <script id="hop-config" type="application/json">
-            {"entrypoint": "")
-              write("test-comp")
-              write("", "params": ")
-              write_expr(JsonEncode({name: name, count: count}))
-              write("}
-            </script>
-            <script type="module" src="http://localhost:33861/dev.js"></script>
-            </body>
-            </html>")
-            }
-        "#]],
+                -- before --
+                <test-comp {name: string, count: string}>
+                  <div>
+                    "Hello "
+                    {name}
+                    ", count: "
+                    {count}
+                  </div>
+                </test-comp>
+
+                -- after --
+                test-comp(name: string, count: string) {
+                  write("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>")
+                  write("test-comp - Development Mode")
+                  write("</title>\n</head>\n<body>\n<script id=\"hop-config\" type=\"application/json\">\n{\"entrypoint\": \"")
+                  write("test-comp")
+                  write("\", \"params\": ")
+                  write_expr(JsonEncode({name: name, count: count}))
+                  write("}\n</script>\n<script type=\"module\" src=\"http://localhost:33861/dev.js\"></script>\n</body>\n</html>")
+                }
+            "#]],
         );
     }
 }
