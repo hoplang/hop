@@ -3,8 +3,7 @@ use crate::document::document_cursor::StringSpan;
 use crate::dop::Expr;
 use crate::dop::expr::TypedExpr;
 use crate::dop::{Type, VarName};
-use crate::hop::ast::{AttributeValue, TypedAttribute};
-use crate::hop::inlined_ast::{InlinedEntryPoint, InlinedNode};
+use crate::hop::inlined_ast::{InlinedEntryPoint, InlinedNode, InlinedAttribute, InlinedAttributeValue};
 use std::collections::BTreeMap;
 
 use super::ast::{ExprId, IrEntrypoint, IrExpr, IrStatement, StatementId};
@@ -235,7 +234,7 @@ impl Compiler {
     fn compile_html_node(
         &mut self,
         tag_name: &StringSpan,
-        attributes: BTreeMap<StringSpan, TypedAttribute>,
+        attributes: BTreeMap<String, InlinedAttribute>,
         children: Vec<InlinedNode>,
         slot_content: Option<&Vec<IrStatement>>,
         output: &mut Vec<IrStatement>,
@@ -262,7 +261,7 @@ impl Compiler {
                 // Boolean attribute
                 output.push(IrStatement::Write {
                     id: self.next_node_id(),
-                    content: format!(" {}", name.as_str()),
+                    content: format!(" {}", name),
                 });
             }
         }
@@ -298,18 +297,18 @@ impl Compiler {
     /// Helper to compile an attribute to IR statements
     fn compile_attribute(
         &mut self,
-        name: StringSpan,
-        value: AttributeValue<TypedExpr>,
+        name: String,
+        value: InlinedAttributeValue,
         output: &mut Vec<IrStatement>,
     ) {
         match value {
-            AttributeValue::String(s) => {
+            InlinedAttributeValue::String(s) => {
                 output.push(IrStatement::Write {
                     id: self.next_node_id(),
-                    content: format!(" {}=\"{}\"", name, s.as_str()),
+                    content: format!(" {}=\"{}\"", name, s),
                 });
             }
-            AttributeValue::Expression(expr) => {
+            InlinedAttributeValue::Expression(expr) => {
                 output.push(IrStatement::Write {
                     id: self.next_node_id(),
                     content: format!(" {}=\"", name),

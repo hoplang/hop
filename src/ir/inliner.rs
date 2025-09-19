@@ -1,13 +1,15 @@
-use crate::document::document_cursor::{DocumentRange, StringSpan};
+use crate::document::document_cursor::StringSpan;
 use crate::dop::expr::TypedExpr;
 use crate::dop::parser::TypedArgument;
 use crate::dop::{Expr, Type};
-use crate::hop::ast::{Ast, Attribute, AttributeValue};
-use crate::hop::inlined_ast::{InlinedEntryPoint, InlinedNode, InlinedParameter};
+use crate::hop::ast::{Ast, AttributeValue};
+use crate::hop::inlined_ast::{
+    InlinedAttribute, InlinedAttributeValue, InlinedEntryPoint, InlinedNode, InlinedParameter,
+};
 use crate::hop::module_name::ModuleName;
 use std::collections::{BTreeMap, HashMap};
 
-use crate::hop::ast::{TypedAttribute, TypedAttributeValue, TypedComponentDefinition};
+use crate::hop::ast::{TypedAttribute, TypedComponentDefinition};
 use crate::hop::node::{Node, TypedNode};
 
 /// The Inliner transforms ASTs by replacing ComponentReference nodes with their
@@ -16,6 +18,26 @@ use crate::hop::node::{Node, TypedNode};
 pub struct Inliner;
 
 impl Inliner {
+    /// Convert a TypedAttribute to InlinedAttribute
+    fn convert_attribute(attr: &TypedAttribute) -> InlinedAttribute {
+        InlinedAttribute {
+            name: attr.name.as_str().to_string(),
+            value: attr.value.as_ref().map(|v| match v {
+                AttributeValue::Expression(expr) => InlinedAttributeValue::Expression(expr.clone()),
+                AttributeValue::String(s) => InlinedAttributeValue::String(s.as_str().to_string()),
+            }),
+        }
+    }
+
+    /// Convert a BTreeMap of TypedAttributes to InlinedAttributes
+    fn convert_attributes(
+        attrs: &BTreeMap<StringSpan, TypedAttribute>,
+    ) -> BTreeMap<String, InlinedAttribute> {
+        attrs
+            .iter()
+            .map(|(key, attr)| (key.as_str().to_string(), Self::convert_attribute(attr)))
+            .collect()
+    }
     /// Inline all component references in entrypoint components only
     /// Returns a vector of inlined entrypoint components
     pub fn inline_entrypoints(asts: HashMap<ModuleName, Ast<TypedExpr>>) -> Vec<InlinedEntryPoint> {
@@ -28,11 +50,17 @@ impl Inliner {
                     result.push(InlinedEntryPoint {
                         tag_name: component.tag_name.to_string_span(),
                         children: Self::inline_nodes(&component.children, None, &asts),
-                        params: component.params.clone()
-                            .map(|p| p.0.into_iter().map(|param| InlinedParameter {
-                                var_name: param.var_name,
-                                var_type: param.var_type,
-                            }).collect())
+                        params: component
+                            .params
+                            .clone()
+                            .map(|p| {
+                                p.0.into_iter()
+                                    .map(|param| InlinedParameter {
+                                        var_name: param.var_name,
+                                        var_type: param.var_type,
+                                    })
+                                    .collect()
+                            })
                             .unwrap_or_default(),
                     });
                 }
@@ -49,7 +77,6 @@ impl Inliner {
         args: &[TypedArgument],
         reference_attributes: &BTreeMap<StringSpan, TypedAttribute>,
         slot_children: &[TypedNode],
-        range: &DocumentRange,
         asts: &HashMap<ModuleName, Ast<TypedExpr>>,
     ) -> InlinedNode {
         // Determine wrapper tag
@@ -62,15 +89,11 @@ impl Inliner {
         // Create data-hop-id attribute
         let mut attributes = BTreeMap::new();
         let data_hop_id = format!("{}/{}", module_name.as_str(), component.tag_name.as_str());
-        let data_hop_id_span = StringSpan::new("data-hop-id".to_string());
         attributes.insert(
-            data_hop_id_span,
-            Attribute {
-                name: Self::create_synthetic_range("data-hop-id"),
-                value: Some(AttributeValue::String(Self::create_synthetic_range(
-                    &data_hop_id,
-                ))),
-                range: range.clone(),
+            "data-hop-id".to_string(),
+            InlinedAttribute {
+                name: "data-hop-id".to_string(),
+                value: Some(InlinedAttributeValue::String(data_hop_id)),
             },
         );
 
@@ -125,38 +148,38 @@ impl Inliner {
 
     /// Merge attributes from component definition and reference, handling class concatenation
     fn merge_attributes(
-        target: &mut BTreeMap<StringSpan, TypedAttribute>,
+        target: &mut BTreeMap<String, InlinedAttribute>,
         definition_attributes: &BTreeMap<StringSpan, TypedAttribute>,
         reference_attributes: &BTreeMap<StringSpan, TypedAttribute>,
     ) {
         // First add component's attributes
         for (name, attr) in definition_attributes {
-            target.insert(name.clone(), attr.clone());
+            target.insert(name.as_str().to_string(), Self::convert_attribute(attr));
         }
 
         // Then override with reference's attributes, handling class specially
         for (name, ref_attr) in reference_attributes {
-            if name.as_str() == "class" {
+            let name_str = name.as_str();
+            if name_str == "class" {
                 // Special handling for class attribute - concatenation
                 if let Some(def_attr) = definition_attributes.get(name) {
                     // Both definition and reference have class attributes - concatenate them
                     let concatenated_value =
                         Self::create_concatenated_class_value(def_attr, ref_attr);
                     target.insert(
-                        name.clone(),
-                        Attribute {
-                            name: ref_attr.name.clone(),
+                        name_str.to_string(),
+                        InlinedAttribute {
+                            name: name_str.to_string(),
                             value: Some(concatenated_value),
-                            range: ref_attr.range.clone(),
                         },
                     );
                 } else {
                     // Only reference has class attribute
-                    target.insert(name.clone(), ref_attr.clone());
+                    target.insert(name_str.to_string(), Self::convert_attribute(ref_attr));
                 }
             } else {
                 // Non-class attributes: reference overrides definition
-                target.insert(name.clone(), ref_attr.clone());
+                target.insert(name_str.to_string(), Self::convert_attribute(ref_attr));
             }
         }
     }
@@ -165,7 +188,7 @@ impl Inliner {
     fn create_concatenated_class_value(
         def_attr: &TypedAttribute,
         ref_attr: &TypedAttribute,
-    ) -> TypedAttributeValue {
+    ) -> InlinedAttributeValue {
         let def_expr = match &def_attr.value {
             Some(AttributeValue::String(s)) => Expr::StringLiteral {
                 value: s.as_str().to_string(),
@@ -209,7 +232,7 @@ impl Inliner {
             annotation: Type::String,
         };
 
-        AttributeValue::Expression(final_concat)
+        InlinedAttributeValue::Expression(final_concat)
     }
 
     /// Inline nodes, optionally replacing slot definitions with the provided slot content
@@ -252,7 +275,7 @@ impl Inliner {
                 // Inline the component
                 let args_vec = args.as_ref().map(|(v, _)| v.as_slice()).unwrap_or(&[]);
                 vec![Self::inline_component_reference(
-                    module, component, args_vec, attributes, children, range, asts,
+                    module, component, args_vec, attributes, children, asts,
                 )]
             }
 
@@ -263,7 +286,7 @@ impl Inliner {
                 ..
             } => vec![InlinedNode::Html {
                 tag_name: tag_name.to_string_span(),
-                attributes: attributes.clone(),
+                attributes: Self::convert_attributes(attributes),
                 children: Self::inline_nodes(children, slot_content, asts),
             }],
 
@@ -311,14 +334,6 @@ impl Inliner {
 
             Node::Placeholder { .. } => panic!(),
         }
-    }
-
-    /// Helper to create synthetic DocumentRange for generated content
-    fn create_synthetic_range(content: &str) -> DocumentRange {
-        // In a real implementation, we'd want to create proper synthetic ranges
-        // For now, we'll create a placeholder range
-        // This is a limitation we'd need to address for proper source mapping
-        DocumentRange::new(content.to_string())
     }
 }
 
@@ -402,49 +417,13 @@ mod tests {
                             Html {
                                 tag_name: "div",
                                 attributes: {
-                                    "data-hop-id": Attribute {
-                                        name: DocumentRange {
-                                            source: DocumentInfo {
-                                                text: "data-hop-id",
-                                                line_starts: [
-                                                    0,
-                                                ],
-                                            },
-                                            start: 0,
-                                            end: 11,
-                                        },
+                                    "data-hop-id": InlinedAttribute {
+                                        name: "data-hop-id",
                                         value: Some(
                                             String(
-                                                DocumentRange {
-                                                    source: DocumentInfo {
-                                                        text: "main/card-comp",
-                                                        line_starts: [
-                                                            0,
-                                                        ],
-                                                    },
-                                                    start: 0,
-                                                    end: 14,
-                                                },
+                                                "main/card-comp",
                                             ),
                                         ),
-                                        range: DocumentRange {
-                                            source: DocumentInfo {
-                                                text: "\n                    <card-comp {title: string}>\n                        <h2>{title}</h2>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp {title: \"Hello\"}/>\n                    </main-comp>\n                ",
-                                                line_starts: [
-                                                    0,
-                                                    1,
-                                                    49,
-                                                    90,
-                                                    123,
-                                                    124,
-                                                    167,
-                                                    221,
-                                                    254,
-                                                ],
-                                            },
-                                            start: 191,
-                                            end: 220,
-                                        },
                                     },
                                 },
                                 children: [
@@ -521,53 +500,13 @@ mod tests {
                             Html {
                                 tag_name: "div",
                                 attributes: {
-                                    "data-hop-id": Attribute {
-                                        name: DocumentRange {
-                                            source: DocumentInfo {
-                                                text: "data-hop-id",
-                                                line_starts: [
-                                                    0,
-                                                ],
-                                            },
-                                            start: 0,
-                                            end: 11,
-                                        },
+                                    "data-hop-id": InlinedAttribute {
+                                        name: "data-hop-id",
                                         value: Some(
                                             String(
-                                                DocumentRange {
-                                                    source: DocumentInfo {
-                                                        text: "main/card-comp",
-                                                        line_starts: [
-                                                            0,
-                                                        ],
-                                                    },
-                                                    start: 0,
-                                                    end: 14,
-                                                },
+                                                "main/card-comp",
                                             ),
                                         ),
-                                        range: DocumentRange {
-                                            source: DocumentInfo {
-                                                text: "\n                    <card-comp>\n                        <div class=\"card\">\n                            <slot-default/>\n                        </div>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp>\n                            <p>Slot content</p>\n                        </card-comp>\n                    </main-comp>\n                ",
-                                                line_starts: [
-                                                    0,
-                                                    1,
-                                                    33,
-                                                    76,
-                                                    120,
-                                                    151,
-                                                    184,
-                                                    185,
-                                                    228,
-                                                    264,
-                                                    312,
-                                                    349,
-                                                    382,
-                                                ],
-                                            },
-                                            start: 252,
-                                            end: 348,
-                                        },
                                     },
                                 },
                                 children: [
@@ -577,77 +516,13 @@ mod tests {
                                     Html {
                                         tag_name: "div",
                                         attributes: {
-                                            "class": Attribute {
-                                                name: DocumentRange {
-                                                    source: DocumentInfo {
-                                                        text: "\n                    <card-comp>\n                        <div class=\"card\">\n                            <slot-default/>\n                        </div>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp>\n                            <p>Slot content</p>\n                        </card-comp>\n                    </main-comp>\n                ",
-                                                        line_starts: [
-                                                            0,
-                                                            1,
-                                                            33,
-                                                            76,
-                                                            120,
-                                                            151,
-                                                            184,
-                                                            185,
-                                                            228,
-                                                            264,
-                                                            312,
-                                                            349,
-                                                            382,
-                                                        ],
-                                                    },
-                                                    start: 62,
-                                                    end: 67,
-                                                },
+                                            "class": InlinedAttribute {
+                                                name: "class",
                                                 value: Some(
                                                     String(
-                                                        DocumentRange {
-                                                            source: DocumentInfo {
-                                                                text: "\n                    <card-comp>\n                        <div class=\"card\">\n                            <slot-default/>\n                        </div>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp>\n                            <p>Slot content</p>\n                        </card-comp>\n                    </main-comp>\n                ",
-                                                                line_starts: [
-                                                                    0,
-                                                                    1,
-                                                                    33,
-                                                                    76,
-                                                                    120,
-                                                                    151,
-                                                                    184,
-                                                                    185,
-                                                                    228,
-                                                                    264,
-                                                                    312,
-                                                                    349,
-                                                                    382,
-                                                                ],
-                                                            },
-                                                            start: 69,
-                                                            end: 73,
-                                                        },
+                                                        "card",
                                                     ),
                                                 ),
-                                                range: DocumentRange {
-                                                    source: DocumentInfo {
-                                                        text: "\n                    <card-comp>\n                        <div class=\"card\">\n                            <slot-default/>\n                        </div>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp>\n                            <p>Slot content</p>\n                        </card-comp>\n                    </main-comp>\n                ",
-                                                        line_starts: [
-                                                            0,
-                                                            1,
-                                                            33,
-                                                            76,
-                                                            120,
-                                                            151,
-                                                            184,
-                                                            185,
-                                                            228,
-                                                            264,
-                                                            312,
-                                                            349,
-                                                            382,
-                                                        ],
-                                                    },
-                                                    start: 62,
-                                                    end: 74,
-                                                },
                                             },
                                         },
                                         children: [

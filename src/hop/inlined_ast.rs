@@ -5,12 +5,23 @@ use crate::{
     dop::{VarName, expr::TypedExpr},
 };
 
-use super::ast::Attribute;
 
 #[derive(Debug, Clone)]
 pub struct InlinedParameter {
     pub var_name: VarName,
     pub var_type: crate::dop::Type,
+}
+
+#[derive(Debug, Clone)]
+pub enum InlinedAttributeValue {
+    Expression(TypedExpr),
+    String(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct InlinedAttribute {
+    pub name: String,
+    pub value: Option<InlinedAttributeValue>,
 }
 
 #[derive(Debug, Clone)]
@@ -42,7 +53,7 @@ pub enum InlinedNode {
     },
     Html {
         tag_name: StringSpan,
-        attributes: BTreeMap<StringSpan, Attribute<TypedExpr>>,
+        attributes: BTreeMap<String, InlinedAttribute>,
         children: Vec<Self>,
     },
     Let {
