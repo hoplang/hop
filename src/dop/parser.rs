@@ -19,6 +19,7 @@ use super::r#type::RangedType;
 #[derive(Debug, Clone)]
 pub struct Parameter {
     pub var_name: VarName,
+    pub var_name_range: DocumentRange,
     pub var_type: Type,
 }
 
@@ -36,6 +37,7 @@ pub type TypedArgument = Argument<TypedExpr>;
 #[derive(Debug, Clone)]
 pub struct Argument<T = UntypedExpr> {
     pub var_name: VarName,
+    pub var_name_range: DocumentRange,
     pub var_expr: T,
 }
 
@@ -117,14 +119,15 @@ impl Parser {
         }
     }
 
-    fn expect_variable_name(&mut self) -> Result<VarName, ParseError> {
+    fn expect_variable_name(&mut self) -> Result<(VarName, DocumentRange), ParseError> {
         match self.iter.next().transpose()? {
-            Some((Token::Identifier(name), _)) => {
-                VarName::new(name.clone()).map_err(|error| ParseError::InvalidVariableName {
+            Some((Token::Identifier(name), range)) => {
+                let var_name = VarName::new(name.as_str()).map_err(|error| ParseError::InvalidVariableName {
                     name: name.to_string_span(),
                     error,
-                    range: name,
-                })
+                    range: name.clone(),
+                })?;
+                Ok((var_name, range))
             }
             Some((actual, range)) => Err(ParseError::ExpectedVariableNameButGot { actual, range }),
             None => Err(ParseError::UnexpectedEof {
@@ -206,32 +209,34 @@ impl Parser {
     }
 
     // loop_header = Identifier "in" equality Eof
-    pub fn parse_loop_header(&mut self) -> Result<(VarName, UntypedExpr), ParseError> {
-        let var_name = self.expect_variable_name()?;
+    pub fn parse_loop_header(&mut self) -> Result<(VarName, DocumentRange, UntypedExpr), ParseError> {
+        let (var_name, var_name_range) = self.expect_variable_name()?;
         self.expect_token(&Token::In)?;
         let array_expr = self.parse_equality()?;
         self.expect_eof()?;
-        Ok((var_name, array_expr))
+        Ok((var_name, var_name_range, array_expr))
     }
 
     // parameter_with_type = Identifier ":" type
     fn parse_parameter(&mut self) -> Result<Parameter, ParseError> {
-        let var_name = self.expect_variable_name()?;
+        let (var_name, var_name_range) = self.expect_variable_name()?;
         self.expect_token(&Token::Colon)?;
         let typ = self.parse_type()?;
         Ok(Parameter {
             var_name,
+            var_name_range,
             var_type: typ.dop_type,
         })
     }
 
     // named_argument = Identifier ":" expr
     fn parse_argument(&mut self) -> Result<Argument, ParseError> {
-        let var_name = self.expect_variable_name()?;
+        let (var_name, var_name_range) = self.expect_variable_name()?;
         self.expect_token(&Token::Colon)?;
         let expression = self.parse_equality()?;
         Ok(Argument {
             var_name,
+            var_name_range,
             var_expr: expression,
         })
     }
@@ -243,10 +248,10 @@ impl Parser {
         self.parse_comma_separated(
             |this| {
                 let param = this.parse_parameter()?;
-                if !seen_names.insert(param.var_name.range().to_string_span()) {
+                if !seen_names.insert(param.var_name.as_str().to_string()) {
                     return Err(ParseError::DuplicateParameter {
-                        name: param.var_name.to_string_span(),
-                        range: param.var_name.value().clone(),
+                        name: param.var_name_range.to_string_span(),
+                        range: param.var_name_range.clone(),
                     });
                 }
                 params.push(param);
@@ -265,10 +270,10 @@ impl Parser {
         self.parse_comma_separated(
             |this| {
                 let arg = this.parse_argument()?;
-                if !seen_names.insert(arg.var_name.to_string_span()) {
+                if !seen_names.insert(arg.var_name.as_str().to_string()) {
                     return Err(ParseError::DuplicateArgument {
-                        name: arg.var_name.to_string_span(),
-                        range: arg.var_name.value().clone(),
+                        name: arg.var_name_range.to_string_span(),
+                        range: arg.var_name_range.clone(),
                     });
                 }
                 args.push(arg);
@@ -407,13 +412,13 @@ impl Parser {
         &mut self,
         identifier: DocumentRange,
     ) -> Result<UntypedExpr, ParseError> {
-        let var_name = VarName::new(identifier.clone()).map_err(|error| ParseError::InvalidVariableName {
+        let var_name = VarName::new(identifier.as_str()).map_err(|error| ParseError::InvalidVariableName {
             name: identifier.to_string_span(),
             error,
             range: identifier.clone(),
         })?;
         let mut expr = Expr::Var {
-            annotation: var_name.range().clone(),
+            annotation: identifier.clone(),
             value: var_name,
         };
 

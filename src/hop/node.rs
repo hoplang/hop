@@ -67,6 +67,7 @@ pub enum Node<E> {
     /// an array.
     For {
         var_name: VarName,
+        var_name_range: DocumentRange,
         array_expr: E,
         children: Vec<Self>,
         range: DocumentRange,

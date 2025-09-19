@@ -458,7 +458,7 @@ fn construct_node(
                                 .parse_loop_header()
                                 .map_err(|err| err.into())
                         });
-                    let Some((var_name, array_expr)) = errors.ok_or_add(parse_result) else {
+                    let Some((var_name, var_name_range, array_expr)) = errors.ok_or_add(parse_result) else {
                         return Some(Node::Placeholder {
                             range: tree.range.clone(),
                             children,
@@ -466,6 +466,7 @@ fn construct_node(
                     };
                     Some(Node::For {
                         var_name,
+                        var_name_range,
                         array_expr,
                         range: tree.range.clone(),
                         children,

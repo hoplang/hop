@@ -225,7 +225,7 @@ fn typecheck_module(
         if let Some((params, _)) = params {
             for param in params {
                 annotations.push(TypeAnnotation {
-                    range: param.var_name.range().clone(),
+                    range: param.var_name_range.clone(),
                     typ: param.var_type.clone(),
                     name: param.var_name.to_string(),
                 });
@@ -249,7 +249,7 @@ fn typecheck_module(
                 let (_, _, accessed) = env.pop();
                 if !accessed {
                     errors.push(TypeError::UnusedVariable {
-                        var_name: param.var_name.range().clone(),
+                        var_name: param.var_name_range.clone(),
                     })
                 }
             }
@@ -326,6 +326,7 @@ fn typecheck_node(
 
         Node::For {
             var_name,
+            var_name_range,
             array_expr,
             children,
             range,
@@ -354,7 +355,7 @@ fn typecheck_node(
             let pushed = match env.push(var_name.to_string(), element_type.clone()) {
                 Ok(_) => {
                     annotations.push(TypeAnnotation {
-                        range: var_name.range().clone(),
+                        range: var_name_range.clone(),
                         typ: element_type.clone(),
                         name: var_name.to_string(),
                     });
@@ -363,7 +364,7 @@ fn typecheck_node(
                 Err(_) => {
                     errors.push(TypeError::VariableIsAlreadyDefined {
                         var: var_name.as_str().to_string(),
-                        range: var_name.range().clone(),
+                        range: var_name_range.clone(),
                     });
                     false
                 }
@@ -378,13 +379,14 @@ fn typecheck_node(
                 let (_, _, accessed) = env.pop();
                 if !accessed {
                     errors.push(TypeError::UnusedVariable {
-                        var_name: var_name.range().clone(),
+                        var_name: var_name_range.clone(),
                     })
                 }
             }
 
             Some(Node::For {
                 var_name: var_name.clone(),
+                var_name_range: var_name_range.clone(),
                 array_expr: typed_array,
                 range: range.clone(),
                 children: typed_children,
@@ -465,7 +467,7 @@ fn typecheck_node(
                             None => {
                                 errors.push(TypeError::UnexpectedArgument {
                                     arg: arg.var_name.as_str().to_string(),
-                                    range: arg.var_name.range().clone(),
+                                    range: arg.var_name_range.clone(),
                                 });
                                 continue;
                             }
@@ -486,7 +488,7 @@ fn typecheck_node(
                             errors.push(TypeError::ArgumentIsIncompatible {
                                 expected: param.var_type.clone(),
                                 found: arg_type.clone(),
-                                arg_name: arg.var_name.range().clone(),
+                                arg_name: arg.var_name_range.clone(),
                                 expr_range: arg.var_expr.range().clone(),
                             });
                             continue;
@@ -495,6 +497,7 @@ fn typecheck_node(
                         // Build the typed argument
                         typed_arguments.push(Argument {
                             var_name: arg.var_name.clone(),
+                            var_name_range: arg.var_name_range.clone(),
                             var_expr: typed_expr,
                         });
 

@@ -1,8 +1,6 @@
 use std::fmt::{self, Display};
 use thiserror::Error;
 
-use crate::document::document_cursor::{DocumentRange, StringSpan};
-
 /// Error type for invalid variable names
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum InvalidVarNameError {
@@ -22,21 +20,14 @@ pub enum InvalidVarNameError {
 /// A VarName represents a validated variable name in dop.
 #[derive(Debug, Clone)]
 pub struct VarName {
-    value: DocumentRange,
+    value: String,
 }
 
 impl VarName {
-    /// Create a new VarName from a DocumentRange, validating it
-    pub fn new(value: DocumentRange) -> Result<Self, InvalidVarNameError> {
-        Self::validate(value.as_str())?;
-        Ok(VarName { value })
-    }
-
     /// Create a new VarName from a string, validating it
-    pub fn from_string(name: String) -> Result<Self, InvalidVarNameError> {
-        Self::validate(&name)?;
-        let value = DocumentRange::new(name);
-        Ok(VarName { value })
+    pub fn new(name: &str) -> Result<Self, InvalidVarNameError> {
+        Self::validate(name)?;
+        Ok(VarName { value: name.to_string() })
     }
 
     /// Validate a variable name string
@@ -69,22 +60,13 @@ impl VarName {
         Ok(())
     }
     pub fn as_str(&self) -> &str {
-        self.value.as_str()
-    }
-    pub fn range(&self) -> &DocumentRange {
-        &self.value
-    }
-    pub fn to_string_span(&self) -> StringSpan {
-        self.value.to_string_span()
-    }
-    pub fn value(&self) -> &DocumentRange {
         &self.value
     }
 }
 
 impl Display for VarName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.value.as_str())
+        f.write_str(&self.value)
     }
 }
 
@@ -100,43 +82,42 @@ impl TryFrom<String> for VarName {
     type Error = InvalidVarNameError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
-        VarName::from_string(s)
+        VarName::new(&s)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::document_cursor::DocumentRange;
 
     #[test]
     fn test_valid_var_names() {
-        assert!(VarName::from_string("validName".to_string()).is_ok());
-        assert!(VarName::from_string("x".to_string()).is_ok());
-        assert!(VarName::from_string("name_with_underscores".to_string()).is_ok());
-        assert!(VarName::from_string("name123".to_string()).is_ok());
+        assert!(VarName::new("validName").is_ok());
+        assert!(VarName::new("x").is_ok());
+        assert!(VarName::new("name_with_underscores").is_ok());
+        assert!(VarName::new("name123").is_ok());
     }
 
     #[test]
     fn test_invalid_var_names() {
         assert_eq!(
-            VarName::from_string("123invalid".to_string()),
+            VarName::new("123invalid"),
             Err(InvalidVarNameError::StartsWithDigit)
         );
         assert_eq!(
-            VarName::from_string("_starts_with_underscore".to_string()),
+            VarName::new("_starts_with_underscore"),
             Err(InvalidVarNameError::StartsWithUnderscore)
         );
         assert_eq!(
-            VarName::from_string("has-dash".to_string()),
+            VarName::new("has-dash"),
             Err(InvalidVarNameError::InvalidCharacter('-'))
         );
         assert_eq!(
-            VarName::from_string("has space".to_string()),
+            VarName::new("has space"),
             Err(InvalidVarNameError::InvalidCharacter(' '))
         );
         assert_eq!(
-            VarName::from_string("".to_string()),
+            VarName::new(""),
             Err(InvalidVarNameError::Empty)
         );
     }

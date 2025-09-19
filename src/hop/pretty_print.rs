@@ -181,7 +181,7 @@ fn format_parameters(params: Vec<Parameter>) -> RcDoc<'static> {
         .append(RcDoc::line_())
         // format parameters
         .append(RcDoc::intersperse(
-            params.iter().map(|Parameter { var_name, var_type }| {
+            params.iter().map(|Parameter { var_name, var_type, .. }| {
                 RcDoc::nil()
                     // key
                     .append(RcDoc::text(var_name.to_string()))
