@@ -14,6 +14,7 @@ pub enum Type {
     String,
     Bool,
     Number,
+    Int,
     Object(BTreeMap<String, Type>),
     Array(Option<Box<Type>>),
 }
@@ -23,7 +24,7 @@ impl Type {
         match self {
             Type::Bool => Some(ComparableType::Bool),
             Type::String => Some(ComparableType::String),
-            Type::Object(_) | Type::Array(_) | Type::Number => None,
+            Type::Object(_) | Type::Array(_) | Type::Number | Type::Int => None,
         }
     }
     /// Check if `subtype` is a subtype of `supertype`
@@ -33,6 +34,7 @@ impl Type {
             (Type::Bool, Type::Bool) => true,
             (Type::String, Type::String) => true,
             (Type::Number, Type::Number) => true,
+            (Type::Int, Type::Int) => true,
 
             // Arrays are covariant in their element type
             (Type::Array(sub_elem), Type::Array(super_elem)) => {
@@ -70,6 +72,7 @@ impl<'a> Type {
         match self {
             Type::String => BoxDoc::text("string"),
             Type::Number => BoxDoc::text("number"),
+            Type::Int => BoxDoc::text("int"),
             Type::Bool => BoxDoc::text("boolean"),
             Type::Array(elem_type) => match elem_type {
                 Some(elem) => BoxDoc::nil()

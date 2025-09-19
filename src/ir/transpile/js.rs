@@ -387,6 +387,10 @@ impl TypeTranspiler for JsTranspiler {
         BoxDoc::text("number")
     }
 
+    fn transpile_int_type<'a>(&self) -> BoxDoc<'a> {
+        BoxDoc::text("number")
+    }
+
     fn transpile_array_type<'a>(&self, element_type: Option<&'a Type>) -> BoxDoc<'a> {
         match element_type {
             Some(elem) => self.transpile_type(elem).append(BoxDoc::text("[]")),

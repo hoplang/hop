@@ -424,6 +424,10 @@ impl TypeTranspiler for GoTranspiler {
         BoxDoc::text("float64")
     }
 
+    fn transpile_int_type<'a>(&self) -> BoxDoc<'a> {
+        BoxDoc::text("int64")
+    }
+
     fn transpile_array_type<'a>(&self, element_type: Option<&'a Type>) -> BoxDoc<'a> {
         match element_type {
             Some(elem) => BoxDoc::text("[]").append(self.transpile_type(elem)),
