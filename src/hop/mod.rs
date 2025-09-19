@@ -7,7 +7,6 @@ pub mod parse_error;
 pub mod parser;
 pub mod pretty_print;
 pub mod program;
-pub mod script_collector;
 pub mod token_tree;
 pub mod tokenizer;
 pub mod toposorter;

@@ -8,23 +8,6 @@ use crate::hop::inlined_ast::{
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-pub fn build_inlined<F>(
-    tag_name: &str,
-    params: Vec<(&str, Type)>,
-    children_fn: F,
-) -> InlinedEntrypoint
-where
-    F: FnOnce(&InlinedTestBuilder) -> Vec<InlinedNode>,
-{
-    let params_owned: Vec<(String, Type)> = params
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v))
-        .collect();
-    let builder = InlinedTestBuilder::new(params_owned);
-    let children = children_fn(&builder);
-    builder.build(tag_name, children)
-}
-
 pub fn build_inlined_auto<F>(
     tag_name: &str,
     params: Vec<(&str, Type)>,
@@ -48,6 +31,7 @@ pub struct InlinedTestBuilder {
     params: Vec<InlinedParameter>,
 }
 
+#[allow(dead_code)]
 impl InlinedTestBuilder {
     fn new(params: Vec<(String, Type)>) -> Self {
         let initial_vars = params.clone();
@@ -309,6 +293,7 @@ pub struct InlinedAutoBuilder {
     children: Vec<InlinedNode>,
 }
 
+#[allow(dead_code)]
 impl InlinedAutoBuilder {
     fn new(inner: InlinedTestBuilder) -> Self {
         Self {

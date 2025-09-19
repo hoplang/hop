@@ -16,8 +16,6 @@ pub struct StaticAttribute {
     pub value: DocumentRange,
 }
 
-pub type TypedAttributeValue = AttributeValue<SimpleTypedExpr>;
-
 #[derive(Debug, Clone)]
 pub enum AttributeValue<T = Expr> {
     Expression(T),
@@ -68,11 +66,6 @@ impl<T> Ast<T> {
     /// Returns a reference to all component definition nodes in the AST.
     pub fn get_component_definitions(&self) -> &[ComponentDefinition<T>] {
         &self.component_definitions
-    }
-
-    /// Returns a mutable reference to all component definition nodes in the AST.
-    pub fn get_component_definitions_mut(&mut self) -> &mut [ComponentDefinition<T>] {
-        &mut self.component_definitions
     }
 
     /// Returns a reference to all import nodes in the AST.

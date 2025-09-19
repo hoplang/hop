@@ -1,6 +1,5 @@
 use crate::document::document_cursor::StringSpan;
 use crate::dop::SimpleTypedExpr;
-use crate::dop::Type;
 use crate::dop::parser::TypedArgument;
 use crate::hop::ast::{Ast, AttributeValue};
 use crate::hop::inlined_ast::{

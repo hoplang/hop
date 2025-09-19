@@ -12,6 +12,7 @@ pub struct CasedString {
     words: Vec<String>,
 }
 
+#[allow(dead_code)]
 impl CasedString {
     /// Create a CasedString from a kebab-case string (e.g., "my-component-name")
     pub fn from_kebab_case(s: &str) -> Self {
@@ -39,11 +40,9 @@ impl CasedString {
         let mut current_word = String::new();
 
         for (i, ch) in s.chars().enumerate() {
-            if ch.is_uppercase() && i > 0 {
-                if !current_word.is_empty() {
-                    words.push(current_word.to_lowercase());
-                    current_word = String::new();
-                }
+            if ch.is_uppercase() && i > 0 && !current_word.is_empty() {
+                words.push(current_word.to_lowercase());
+                current_word = String::new();
             }
             current_word.push(ch);
         }

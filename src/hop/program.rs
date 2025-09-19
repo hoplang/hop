@@ -5,7 +5,6 @@ use crate::error_collector::ErrorCollector;
 use crate::hop::ast::Ast;
 use crate::hop::parse_error::ParseError;
 use crate::hop::parser::parse;
-use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
 use crate::hop::type_error::TypeError;
@@ -393,14 +392,6 @@ impl Program {
         diagnostics
     }
 
-    pub fn get_scripts(&self) -> String {
-        let mut script_collector = ScriptCollector::new();
-        for ast in self.modules.values() {
-            script_collector.process_module(ast);
-        }
-        script_collector.build()
-    }
-
     /// Evaluate an IR entrypoint by name
     pub fn evaluate_ir_entrypoint(
         &self,
@@ -422,11 +413,6 @@ impl Program {
 
         // Evaluate the entrypoint
         ir::evaluator::evaluate_entrypoint(entrypoint, args, hop_mode)
-    }
-
-    /// Get all modules for compilation
-    pub fn get_modules(&self) -> &HashMap<ModuleName, UntypedAst> {
-        &self.modules
     }
 
     /// Get all typed modules for compilation

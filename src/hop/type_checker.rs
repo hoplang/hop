@@ -157,11 +157,6 @@ impl TypeChecker {
             }
         }
     }
-
-    /// Get the typed AST for a given module name, if it exists
-    pub fn get_typed_ast(&self, module_name: &ModuleName) -> Option<&TypedAst> {
-        self.typed_asts.get(module_name)
-    }
 }
 
 fn typecheck_module(

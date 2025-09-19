@@ -27,12 +27,14 @@ pub fn temp_dir_from_archive(archive: &Archive) -> std::io::Result<PathBuf> {
 /// Recursively walks a directory and creates an Archive from all files found.
 ///
 /// Files are sorted by path to ensure deterministic output across different filesystems.
+#[allow(dead_code)]
 pub fn archive_from_dir(dir: &Path) -> std::io::Result<Archive> {
     let mut builder = Builder::new();
     archive_from_dir_recursive(dir, dir, &mut builder)?;
     Ok(builder.build())
 }
 
+#[allow(dead_code)]
 fn archive_from_dir_recursive(
     base_dir: &Path,
     current_dir: &Path,
