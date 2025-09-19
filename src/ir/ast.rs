@@ -279,11 +279,6 @@ impl IrExpr {
         *self.annotation()
     }
 
-    /// Get the type of this expression
-    pub fn typ(&self) -> &Type {
-        self.as_type()
-    }
-
     /// Recursively traverses this expression and all nested expressions
     pub fn traverse<F>(&self, f: &mut F)
     where

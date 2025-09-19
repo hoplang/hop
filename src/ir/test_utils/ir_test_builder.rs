@@ -152,7 +152,9 @@ impl IrTestBuilder {
 
     pub fn array(&self, elements: Vec<IrExpr>) -> IrExpr {
         // Determine the array element type from the first element
-        let element_type = elements.first().map(|first| Box::new(first.typ().clone()));
+        let element_type = elements
+            .first()
+            .map(|first| Box::new(first.as_type().clone()));
 
         AnnotatedTypedExpr::ArrayLiteral {
             elements,
@@ -165,7 +167,7 @@ impl IrTestBuilder {
         // Build a type map from the property types
         let mut type_map = BTreeMap::new();
         for (key, expr) in &props {
-            type_map.insert(key.to_string(), expr.typ().clone());
+            type_map.insert(key.to_string(), expr.as_type().clone());
         }
 
         AnnotatedTypedExpr::ObjectLiteral {
@@ -176,7 +178,7 @@ impl IrTestBuilder {
     }
 
     pub fn prop_access(&self, object: IrExpr, property: &str) -> IrExpr {
-        let property_type = match object.typ() {
+        let property_type = match object.as_type() {
             Type::Object(type_map) => type_map
                 .get(property)
                 .cloned()
@@ -201,7 +203,7 @@ impl IrTestBuilder {
     }
 
     pub fn write_expr(&self, expr: IrExpr, escape: bool) -> IrStatement {
-        assert_eq!(*expr.typ(), Type::String, "{}", expr);
+        assert_eq!(*expr.as_type(), Type::String, "{}", expr);
         IrStatement::WriteExpr {
             id: self.next_node_id(),
             expr,
@@ -210,7 +212,7 @@ impl IrTestBuilder {
     }
 
     pub fn if_stmt(&self, cond: IrExpr, body: Vec<IrStatement>) -> IrStatement {
-        assert_eq!(*cond.typ(), Type::Bool, "{}", cond);
+        assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
         IrStatement::If {
             id: self.next_node_id(),
             condition: cond,
@@ -223,7 +225,7 @@ impl IrTestBuilder {
         F: FnOnce(&Self) -> Vec<IrStatement>,
     {
         // Extract element type from array
-        let element_type = match array.typ() {
+        let element_type = match array.as_type() {
             Type::Array(Some(elem_type)) => *elem_type.clone(),
             Type::Array(None) => panic!("Cannot iterate over array with unknown element type"),
             _ => panic!("Cannot iterate over non-array type"),
@@ -253,7 +255,7 @@ impl IrTestBuilder {
         F: FnOnce(&Self) -> Vec<IrStatement>,
     {
         // Get the type from the value expression
-        let value_type = value.typ().clone();
+        let value_type = value.as_type().clone();
 
         // Push the variable onto the stack
         self.var_stack
@@ -339,7 +341,7 @@ impl IrAutoBuilder {
         F: FnOnce(&mut Self),
     {
         // Extract element type from array
-        let element_type = match array.typ() {
+        let element_type = match array.as_type() {
             Type::Array(Some(elem_type)) => *elem_type.clone(),
             Type::Array(None) => panic!("Cannot iterate over array with unknown element type"),
             _ => panic!("Cannot iterate over non-array type"),
@@ -368,7 +370,7 @@ impl IrAutoBuilder {
         F: FnOnce(&mut Self),
     {
         // Get the type from the value expression
-        let value_type = value.typ().clone();
+        let value_type = value.as_type().clone();
 
         // Push the variable onto the stack
         self.inner

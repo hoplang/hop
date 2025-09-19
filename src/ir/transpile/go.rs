@@ -24,7 +24,7 @@ impl GoTranspiler {
                 {
                     imports.insert("html".to_string());
                     // Check if we need fmt for type conversion
-                    match expr.typ() {
+                    match expr.as_type() {
                         Type::String => {}
                         _ => {
                             imports.insert("fmt".to_string());
@@ -37,7 +37,7 @@ impl GoTranspiler {
                 } = s
                 {
                     // Check if we need fmt for type conversion
-                    match expr.typ() {
+                    match expr.as_type() {
                         Type::String => {}
                         _ => {
                             imports.insert("fmt".to_string());
