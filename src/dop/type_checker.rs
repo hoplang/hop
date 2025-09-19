@@ -1,6 +1,5 @@
 use super::Type;
 use super::expr::{AnnotatedExpr, BinaryOp, Expr};
-use super::r#type::ComparableType;
 use super::type_error::TypeError;
 use super::typed_expr::SimpleTypedExpr;
 use crate::document::document_cursor::Ranged as _;
@@ -88,7 +87,21 @@ pub fn typecheck_expr(
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            if left_type != right_type {
+            let Some(left_comparable) = left_type.as_comparable_type() else {
+                return Err(TypeError::TypeIsNotComparable {
+                    t: left_type.clone(),
+                    range: left.range().clone(),
+                });
+            };
+
+            let Some(right_comparable) = right_type.as_comparable_type() else {
+                return Err(TypeError::TypeIsNotComparable {
+                    t: left_type.clone(),
+                    range: left.range().clone(),
+                });
+            };
+
+            if left_comparable != right_comparable {
                 return Err(TypeError::CannotCompareTypes {
                     left: left_type.to_string(),
                     right: right_type.to_string(),
@@ -96,29 +109,12 @@ pub fn typecheck_expr(
                 });
             }
 
-            match left_type {
-                Type::Bool => Ok(SimpleTypedExpr::Comparison {
-                    left: Box::new(typed_left),
-                    right: Box::new(typed_right),
-                    operand_types: ComparableType::Bool,
-                    annotation: (),
-                }),
-                Type::String => Ok(SimpleTypedExpr::Comparison {
-                    left: Box::new(typed_left),
-                    right: Box::new(typed_right),
-                    operand_types: ComparableType::String,
-                    annotation: (),
-                }),
-                Type::Number => Err(TypeError::CannotCompareNumbers {
-                    range: expr.range().clone(),
-                }),
-                Type::Array(_) => Err(TypeError::CannotCompareArrays {
-                    range: expr.range().clone(),
-                }),
-                Type::Object(_) => Err(TypeError::CannotCompareObjects {
-                    range: expr.range().clone(),
-                }),
-            }
+            Ok(SimpleTypedExpr::Comparison {
+                left: Box::new(typed_left),
+                right: Box::new(typed_right),
+                operand_types: left_comparable,
+                annotation: (),
+            })
         }
         AnnotatedExpr::Negation { operand, .. } => {
             let typed_operand = typecheck_expr(operand, env, annotations)?;
@@ -238,9 +234,9 @@ mod tests {
             "name: string, count: number",
             "name == count",
             expect![[r#"
-                error: Can not compare string to number
+                error: Type string is not comparable
                 name == count
-                ^^^^^^^^^^^^^
+                ^^^^
             "#]],
         );
     }
@@ -417,10 +413,10 @@ mod tests {
             "count: number",
             "count == 42",
             expect![[r#"
-            error: Cannot compare numbers with == operator
-            count == 42
-            ^^^^^^^^^^^
-        "#]],
+                error: Type number is not comparable
+                count == 42
+                ^^^^^
+            "#]],
         );
     }
 

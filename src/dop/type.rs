@@ -11,14 +11,21 @@ pub enum ComparableType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
+    String,
+    Bool,
+    Number,
     Object(BTreeMap<String, Type>),
     Array(Option<Box<Type>>),
-    Bool,
-    String,
-    Number,
 }
 
 impl Type {
+    pub fn as_comparable_type(&self) -> Option<ComparableType> {
+        match self {
+            Type::Bool => Some(ComparableType::Bool),
+            Type::String => Some(ComparableType::String),
+            Type::Object(_) | Type::Array(_) | Type::Number => None,
+        }
+    }
     /// Check if `subtype` is a subtype of `supertype`
     pub fn is_subtype(&self, supertype: &Type) -> bool {
         match (self, supertype) {

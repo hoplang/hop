@@ -34,14 +34,8 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Cannot compare numbers with == operator")]
-    CannotCompareNumbers { range: DocumentRange },
-
-    #[error("Cannot compare arrays with == operator")]
-    CannotCompareArrays { range: DocumentRange },
-
-    #[error("Cannot compare objects with == operator")]
-    CannotCompareObjects { range: DocumentRange },
+    #[error("Type {t} is not comparable")]
+    TypeIsNotComparable { t: Type, range: DocumentRange },
 }
 
 impl Ranged for TypeError {
@@ -53,9 +47,7 @@ impl Ranged for TypeError {
             | TypeError::CannotCompareTypes { range, .. }
             | TypeError::NegationRequiresBoolean { range, .. }
             | TypeError::ArrayTypeMismatch { range, .. }
-            | TypeError::CannotCompareNumbers { range, .. }
-            | TypeError::CannotCompareArrays { range, .. }
-            | TypeError::CannotCompareObjects { range, .. } => range,
+            | TypeError::TypeIsNotComparable { range, .. } => range,
         }
     }
 }

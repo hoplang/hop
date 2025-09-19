@@ -3261,11 +3261,11 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Can not compare number to string
+                error: Type number is not comparable
                   --> main.hop (line 2, col 8)
                 1 | <main-comp>
                 2 |   <if {1 == "approved"}>
-                  |        ^^^^^^^^^^^^^^^
+                  |        ^
             "#]],
         );
     }
@@ -3431,11 +3431,11 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Cannot compare objects with == operator
+                error: Type {foo: string} is not comparable
                   --> main.hop (line 5, col 8)
                 4 |   </if>
                 5 |   <if {params == params}>
-                  |        ^^^^^^^^^^^^^^^^
+                  |        ^^^^^^
             "#]],
         );
     }
@@ -3720,11 +3720,11 @@ mod tests {
                 </counter-comp>
             "#},
             expect![[r#"
-                error: Cannot compare numbers with == operator
+                error: Type number is not comparable
                   --> main.hop (line 2, col 7)
                 1 | <counter-comp {count: number}>
                 2 |     <if {count == 0}>
-                  |          ^^^^^^^^^^
+                  |          ^^^^^
             "#]],
         );
     }
@@ -3743,11 +3743,11 @@ mod tests {
                 </profile-comp>
             "#},
             expect![[r#"
-                error: Cannot compare numbers with == operator
+                error: Type number is not comparable
                   --> main.hop (line 3, col 7)
                 2 |     <div>{profile.user.name}</div>
                 3 |     <if {profile.user.age == 25}>
-                  |          ^^^^^^^^^^^^^^^^^^^^^^
+                  |          ^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -3769,11 +3769,11 @@ mod tests {
                 </matrix-comp>
             "#},
             expect![[r#"
-                error: Cannot compare numbers with == operator
+                error: Type number is not comparable
                   --> main.hop (line 4, col 9)
                 3 |         <for {cell in row}>
                 4 |             <if {cell == 1}>
-                  |                  ^^^^^^^^^
+                  |                  ^^^^
             "#]],
         );
     }
@@ -3936,11 +3936,11 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Cannot compare numbers with == operator
+                error: Type number is not comparable
                   --> item-display.hop (line 6, col 7)
                 5 |     </if>
                 6 |     <if {item.id == 1}>
-                  |          ^^^^^^^^^^^^
+                  |          ^^^^^^^
             "#]],
         );
     }
@@ -4075,17 +4075,17 @@ mod tests {
                 </foo-comp>
             "#},
             expect![[r#"
-                error: Can not compare number to string
+                error: Type number is not comparable
                   --> main.hop (line 5, col 20)
                 4 | <foo-comp>
                 5 |     <main-comp {a: 1 == "", b: 1 == ""}/>
-                  |                    ^^^^^^^
+                  |                    ^
 
-                error: Can not compare number to string
+                error: Type number is not comparable
                   --> main.hop (line 5, col 32)
                 4 | <foo-comp>
                 5 |     <main-comp {a: 1 == "", b: 1 == ""}/>
-                  |                                ^^^^^^^
+                  |                                ^
             "#]],
         );
     }
