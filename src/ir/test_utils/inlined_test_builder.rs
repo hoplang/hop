@@ -9,13 +9,17 @@ use std::collections::BTreeMap;
 
 pub fn build_inlined<F>(
     tag_name: &str,
-    params: Vec<(String, Type)>,
+    params: Vec<(&str, Type)>,
     children_fn: F,
 ) -> InlinedEntryPoint
 where
     F: FnOnce(&InlinedTestBuilder) -> Vec<InlinedNode>,
 {
-    let builder = InlinedTestBuilder::new(params);
+    let params_owned: Vec<(String, Type)> = params
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+    let builder = InlinedTestBuilder::new(params_owned);
     let children = children_fn(&builder);
     builder.build(tag_name, children)
 }

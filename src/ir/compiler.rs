@@ -421,7 +421,7 @@ mod tests {
     #[test]
     fn test_text_expression() {
         check(
-            build_inlined("main-comp", vec![("name".to_string(), Type::String)], |t| {
+            build_inlined("main-comp", vec![("name", Type::String)], |t| {
                 vec![t.text("Hello "), t.text_expr(t.var_expr("name"))]
             }),
             CompilationMode::Production,
@@ -470,7 +470,7 @@ mod tests {
     #[test]
     fn test_if_node() {
         check(
-            build_inlined("main-comp", vec![("show".to_string(), Type::Bool)], |t| {
+            build_inlined("main-comp", vec![("show", Type::Bool)], |t| {
                 vec![t.if_node(
                     t.var_expr("show"),
                     vec![t.div(vec![], vec![t.text("Visible")])],
@@ -506,7 +506,7 @@ mod tests {
             build_inlined(
                 "main-comp",
                 vec![(
-                    "items".to_string(),
+                    "items",
                     Type::Array(Some(Box::new(Type::String))),
                 )],
                 |t| {
@@ -581,7 +581,7 @@ mod tests {
     #[test]
     fn test_attributes_dynamic() {
         check(
-            build_inlined("main-comp", vec![("cls".to_string(), Type::String)], |t| {
+            build_inlined("main-comp", vec![("cls", Type::String)], |t| {
                 vec![t.div(
                     vec![
                         ("class", t.attr_str("base")),
@@ -620,8 +620,8 @@ mod tests {
             build_inlined(
                 "test-comp",
                 vec![
-                    ("name".to_string(), Type::String),
-                    ("count".to_string(), Type::String),
+                    ("name", Type::String),
+                    ("count", Type::String),
                 ],
                 |t| {
                     vec![t.div(
