@@ -5,7 +5,6 @@ use crate::ir::ast::{BinaryOp, ExprId, IrExpr, IrStatement, StatementId, UnaryOp
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-/// More ergonomic API for building IR entrypoints in tests
 pub fn build_ir<F>(name: &str, params: Vec<(String, Type)>, body_fn: F) -> IrEntrypoint
 where
     F: FnOnce(&IrTestBuilder) -> Vec<IrStatement>,
@@ -23,7 +22,7 @@ pub struct IrTestBuilder {
 }
 
 impl IrTestBuilder {
-    pub fn new(params: Vec<(String, Type)>) -> Self {
+    fn new(params: Vec<(String, Type)>) -> Self {
         let initial_vars = params.clone();
 
         Self {
@@ -37,7 +36,7 @@ impl IrTestBuilder {
         }
     }
 
-    pub fn build(&self, name: &str, body: Vec<IrStatement>) -> IrEntrypoint {
+    fn build(&self, name: &str, body: Vec<IrStatement>) -> IrEntrypoint {
         IrEntrypoint {
             name: name.to_string(),
             parameters: self.params.clone(),

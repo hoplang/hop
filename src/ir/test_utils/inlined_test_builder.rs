@@ -7,13 +7,26 @@ use crate::hop::inlined_ast::{
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
+pub fn build_inlined<F>(
+    tag_name: &str,
+    params: Vec<(String, Type)>,
+    children_fn: F,
+) -> InlinedEntryPoint
+where
+    F: FnOnce(&InlinedTestBuilder) -> Vec<InlinedNode>,
+{
+    let builder = InlinedTestBuilder::new(params);
+    let children = children_fn(&builder);
+    builder.build(tag_name, children)
+}
+
 pub struct InlinedTestBuilder {
     var_stack: RefCell<Vec<(String, Type)>>,
     params: Vec<InlinedParameter>,
 }
 
 impl InlinedTestBuilder {
-    pub fn new(params: Vec<(String, Type)>) -> Self {
+    fn new(params: Vec<(String, Type)>) -> Self {
         let initial_vars = params.clone();
 
         Self {
@@ -28,7 +41,7 @@ impl InlinedTestBuilder {
         }
     }
 
-    pub fn build(&self, tag_name: &str, children: Vec<InlinedNode>) -> InlinedEntryPoint {
+    fn build(&self, tag_name: &str, children: Vec<InlinedNode>) -> InlinedEntryPoint {
         InlinedEntryPoint {
             tag_name: StringSpan::new(tag_name.to_string()),
             params: self.params.clone(),
@@ -237,32 +250,4 @@ impl InlinedTestBuilder {
             value: None,
         }
     }
-}
-
-/// Ergonomic function for building inlined entrypoints in tests
-///
-/// This combines the creation of InlinedTestBuilder and building of the entrypoint into a single call.
-///
-/// # Arguments
-/// * `tag_name` - The tag name for the entrypoint
-/// * `params` - Vector of parameter (name, type) tuples
-/// * `children_fn` - Closure that takes an InlinedTestBuilder and returns a vector of InlinedNodes
-///
-/// # Example
-/// ```rust
-/// let entrypoint = build_inlined("test", vec![("x".to_string(), Type::String)], |t| {
-///     vec![t.text_expr(t.var_expr("x"))]
-/// });
-/// ```
-pub fn build_inlined<F>(
-    tag_name: &str,
-    params: Vec<(String, Type)>,
-    children_fn: F,
-) -> InlinedEntryPoint
-where
-    F: FnOnce(&InlinedTestBuilder) -> Vec<InlinedNode>,
-{
-    let builder = InlinedTestBuilder::new(params);
-    let children = children_fn(&builder);
-    builder.build(tag_name, children)
 }
