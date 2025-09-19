@@ -1,6 +1,6 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::StringSpan;
-use crate::dop::{AnnotatedTypedExpr, TypedExpr};
+use crate::dop::{SimpleTypedExpr, TypedExpr};
 use crate::dop::{Type, VarName};
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntryPoint, InlinedNode,
@@ -110,7 +110,7 @@ impl Compiler {
             for (name, typ) in params {
                 props.push((
                     name.to_string(),
-                    AnnotatedTypedExpr::Var {
+                    TypedExpr::Var {
                         value: name.clone(),
                         kind: typ.clone(),
                         annotation: self.next_expr_id(),
@@ -120,8 +120,8 @@ impl Compiler {
 
             body.push(IrStatement::WriteExpr {
                 id: self.next_node_id(),
-                expr: AnnotatedTypedExpr::JsonEncode {
-                    value: Box::new(AnnotatedTypedExpr::ObjectLiteral {
+                expr: TypedExpr::JsonEncode {
+                    value: Box::new(TypedExpr::ObjectLiteral {
                         properties: props,
                         kind: Type::Object(BTreeMap::new()),
                         annotation: self.next_expr_id(),
@@ -325,38 +325,38 @@ impl Compiler {
         }
     }
 
-    fn compile_expr(&mut self, expr: TypedExpr) -> IrExpr {
+    fn compile_expr(&mut self, expr: SimpleTypedExpr) -> IrExpr {
         let expr_id = self.next_expr_id();
 
         match expr {
-            TypedExpr::Var { value, kind, .. } => AnnotatedTypedExpr::Var {
+            SimpleTypedExpr::Var { value, kind, .. } => TypedExpr::Var {
                 value,
                 kind,
                 annotation: expr_id,
             },
-            TypedExpr::PropertyAccess {
+            SimpleTypedExpr::PropertyAccess {
                 object,
                 property,
                 kind,
                 ..
-            } => AnnotatedTypedExpr::PropertyAccess {
+            } => TypedExpr::PropertyAccess {
                 object: Box::new(self.compile_expr(*object)),
                 property,
                 kind,
                 annotation: expr_id,
             },
-            TypedExpr::Negation { operand, .. } => AnnotatedTypedExpr::Negation {
+            SimpleTypedExpr::Negation { operand, .. } => TypedExpr::Negation {
                 operand: Box::new(self.compile_expr(*operand)),
                 annotation: expr_id,
             },
-            TypedExpr::ArrayLiteral { elements, kind, .. } => AnnotatedTypedExpr::ArrayLiteral {
+            SimpleTypedExpr::ArrayLiteral { elements, kind, .. } => TypedExpr::ArrayLiteral {
                 elements: elements.into_iter().map(|e| self.compile_expr(e)).collect(),
                 kind,
                 annotation: expr_id,
             },
-            TypedExpr::ObjectLiteral {
+            SimpleTypedExpr::ObjectLiteral {
                 properties, kind, ..
-            } => AnnotatedTypedExpr::ObjectLiteral {
+            } => TypedExpr::ObjectLiteral {
                 properties: properties
                     .into_iter()
                     .map(|(k, v)| (k, self.compile_expr(v)))
@@ -364,33 +364,33 @@ impl Compiler {
                 kind,
                 annotation: expr_id,
             },
-            TypedExpr::StringLiteral { value, .. } => AnnotatedTypedExpr::StringLiteral {
+            SimpleTypedExpr::StringLiteral { value, .. } => TypedExpr::StringLiteral {
                 value,
                 annotation: expr_id,
             },
-            TypedExpr::BooleanLiteral { value, .. } => AnnotatedTypedExpr::BooleanLiteral {
+            SimpleTypedExpr::BooleanLiteral { value, .. } => TypedExpr::BooleanLiteral {
                 value,
                 annotation: expr_id,
             },
-            TypedExpr::NumberLiteral { value, .. } => AnnotatedTypedExpr::NumberLiteral {
+            SimpleTypedExpr::NumberLiteral { value, .. } => TypedExpr::NumberLiteral {
                 value,
                 annotation: expr_id,
             },
-            TypedExpr::JsonEncode { value, .. } => AnnotatedTypedExpr::JsonEncode {
+            SimpleTypedExpr::JsonEncode { value, .. } => TypedExpr::JsonEncode {
                 value: Box::new(self.compile_expr(*value)),
                 annotation: expr_id,
             },
-            TypedExpr::StringConcat { left, right, .. } => AnnotatedTypedExpr::StringConcat {
+            SimpleTypedExpr::StringConcat { left, right, .. } => TypedExpr::StringConcat {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 annotation: expr_id,
             },
-            TypedExpr::BoolCompare { left, right, .. } => AnnotatedTypedExpr::BoolCompare {
+            SimpleTypedExpr::BoolCompare { left, right, .. } => TypedExpr::BoolCompare {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 annotation: expr_id,
             },
-            TypedExpr::StringCompare { left, right, .. } => AnnotatedTypedExpr::StringCompare {
+            SimpleTypedExpr::StringCompare { left, right, .. } => TypedExpr::StringCompare {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 annotation: expr_id,

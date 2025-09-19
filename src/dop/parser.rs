@@ -12,7 +12,7 @@ use crate::dop::var_name::VarName;
 
 use super::Expr;
 use super::r#type::RangedType;
-use super::typed_expr::TypedExpr;
+use super::typed_expr::SimpleTypedExpr;
 
 /// A Parameter represents a parsed parameter with type annotation.
 /// E.g. <my-comp {x: string, y: string}>
@@ -30,7 +30,7 @@ impl Display for Parameter {
     }
 }
 
-pub type TypedArgument = Argument<TypedExpr>;
+pub type TypedArgument = Argument<SimpleTypedExpr>;
 
 /// An Argument represents a parsed argument with a name and a value.
 /// E.g. <my-comp {x: [1,2], y: 2}>

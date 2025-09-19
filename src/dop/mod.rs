@@ -16,5 +16,5 @@ pub use token::Token;
 pub use tokenizer::Tokenizer;
 pub use r#type::Type;
 pub use type_checker::typecheck_expr;
-pub use typed_expr::{AnnotatedTypedExpr, TypedExpr};
+pub use typed_expr::{SimpleTypedExpr, TypedExpr};
 pub use var_name::VarName;

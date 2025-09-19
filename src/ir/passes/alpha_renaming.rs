@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::dop::VarName;
 
-use crate::dop::typed_expr::AnnotatedTypedExpr;
+use crate::dop::typed_expr::TypedExpr;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 
 use super::Pass;
@@ -106,50 +106,50 @@ impl AlphaRenamingPass {
     /// Rename variables in an expression
     fn rename_expr(&mut self, expr: IrExpr) -> IrExpr {
         match expr {
-            AnnotatedTypedExpr::Var {
+            TypedExpr::Var {
                 value,
                 kind,
                 annotation,
             } => {
                 let renamed = self.lookup_var(&value);
-                AnnotatedTypedExpr::Var {
+                TypedExpr::Var {
                     value: renamed,
                     kind,
                     annotation,
                 }
             }
-            AnnotatedTypedExpr::PropertyAccess {
+            TypedExpr::PropertyAccess {
                 object,
                 property,
                 kind,
                 annotation,
-            } => AnnotatedTypedExpr::PropertyAccess {
+            } => TypedExpr::PropertyAccess {
                 object: Box::new(self.rename_expr(*object)),
                 property,
                 kind,
                 annotation,
             },
-            AnnotatedTypedExpr::Negation {
+            TypedExpr::Negation {
                 operand,
                 annotation,
-            } => AnnotatedTypedExpr::Negation {
+            } => TypedExpr::Negation {
                 operand: Box::new(self.rename_expr(*operand)),
                 annotation,
             },
-            AnnotatedTypedExpr::ArrayLiteral {
+            TypedExpr::ArrayLiteral {
                 elements,
                 kind,
                 annotation,
-            } => AnnotatedTypedExpr::ArrayLiteral {
+            } => TypedExpr::ArrayLiteral {
                 elements: elements.into_iter().map(|e| self.rename_expr(e)).collect(),
                 kind,
                 annotation,
             },
-            AnnotatedTypedExpr::ObjectLiteral {
+            TypedExpr::ObjectLiteral {
                 properties,
                 kind,
                 annotation,
-            } => AnnotatedTypedExpr::ObjectLiteral {
+            } => TypedExpr::ObjectLiteral {
                 properties: properties
                     .into_iter()
                     .map(|(k, v)| (k, self.rename_expr(v)))
@@ -157,43 +157,41 @@ impl AlphaRenamingPass {
                 kind,
                 annotation,
             },
-            AnnotatedTypedExpr::JsonEncode { value, annotation } => {
-                AnnotatedTypedExpr::JsonEncode {
-                    value: Box::new(self.rename_expr(*value)),
-                    annotation,
-                }
-            }
-            AnnotatedTypedExpr::StringConcat {
+            TypedExpr::JsonEncode { value, annotation } => TypedExpr::JsonEncode {
+                value: Box::new(self.rename_expr(*value)),
+                annotation,
+            },
+            TypedExpr::StringConcat {
                 left,
                 right,
                 annotation,
-            } => AnnotatedTypedExpr::StringConcat {
+            } => TypedExpr::StringConcat {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 annotation,
             },
-            AnnotatedTypedExpr::BoolCompare {
+            TypedExpr::BoolCompare {
                 left,
                 right,
                 annotation,
-            } => AnnotatedTypedExpr::BoolCompare {
+            } => TypedExpr::BoolCompare {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 annotation,
             },
-            AnnotatedTypedExpr::StringCompare {
+            TypedExpr::StringCompare {
                 left,
                 right,
                 annotation,
-            } => AnnotatedTypedExpr::StringCompare {
+            } => TypedExpr::StringCompare {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 annotation,
             },
             // Literals don't contain variables
-            AnnotatedTypedExpr::StringLiteral { .. } => expr,
-            AnnotatedTypedExpr::BooleanLiteral { .. } => expr,
-            AnnotatedTypedExpr::NumberLiteral { .. } => expr,
+            TypedExpr::StringLiteral { .. } => expr,
+            TypedExpr::BooleanLiteral { .. } => expr,
+            TypedExpr::NumberLiteral { .. } => expr,
         }
     }
 
@@ -287,7 +285,7 @@ impl Pass for AlphaRenamingPass {
                 result_body = vec![IrStatement::Let {
                     id: 0, // ID will be assigned later if needed
                     var: renamed,
-                    value: AnnotatedTypedExpr::Var {
+                    value: TypedExpr::Var {
                         value: original.clone(),
                         kind: typ.clone(),
                         annotation: 0,

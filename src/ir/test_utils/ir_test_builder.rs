@@ -1,4 +1,4 @@
-use crate::dop::AnnotatedTypedExpr;
+use crate::dop::TypedExpr;
 use crate::dop::{Type, VarName};
 use crate::ir::ast::IrEntrypoint;
 use crate::ir::ast::{ExprId, IrExpr, IrStatement, StatementId};
@@ -76,21 +76,21 @@ impl IrTestBuilder {
 
     // Expression builders
     pub fn str(&self, s: &str) -> IrExpr {
-        AnnotatedTypedExpr::StringLiteral {
+        TypedExpr::StringLiteral {
             value: s.to_string(),
             annotation: self.next_expr_id(),
         }
     }
 
     pub fn num(&self, n: f64) -> IrExpr {
-        AnnotatedTypedExpr::NumberLiteral {
+        TypedExpr::NumberLiteral {
             value: serde_json::Number::from_f64(n).unwrap_or_else(|| serde_json::Number::from(0)),
             annotation: self.next_expr_id(),
         }
     }
 
     pub fn bool(&self, b: bool) -> IrExpr {
-        AnnotatedTypedExpr::BooleanLiteral {
+        TypedExpr::BooleanLiteral {
             value: b,
             annotation: self.next_expr_id(),
         }
@@ -117,7 +117,7 @@ impl IrTestBuilder {
                 )
             });
 
-        AnnotatedTypedExpr::Var {
+        TypedExpr::Var {
             value: VarName::try_from(name.to_string()).unwrap(),
             kind: typ,
             annotation: self.next_expr_id(),
@@ -126,12 +126,12 @@ impl IrTestBuilder {
 
     pub fn eq(&self, left: IrExpr, right: IrExpr) -> IrExpr {
         match (left.as_type(), right.as_type()) {
-            (Type::Bool, Type::Bool) => AnnotatedTypedExpr::BoolCompare {
+            (Type::Bool, Type::Bool) => TypedExpr::BoolCompare {
                 left: Box::new(left),
                 right: Box::new(right),
                 annotation: self.next_expr_id(),
             },
-            (Type::String, Type::String) => AnnotatedTypedExpr::StringCompare {
+            (Type::String, Type::String) => TypedExpr::StringCompare {
                 left: Box::new(left),
                 right: Box::new(right),
                 annotation: self.next_expr_id(),
@@ -144,7 +144,7 @@ impl IrTestBuilder {
     }
 
     pub fn not(&self, operand: IrExpr) -> IrExpr {
-        AnnotatedTypedExpr::Negation {
+        TypedExpr::Negation {
             operand: Box::new(operand),
             annotation: self.next_expr_id(),
         }
@@ -156,7 +156,7 @@ impl IrTestBuilder {
             .first()
             .map(|first| Box::new(first.as_type().clone()));
 
-        AnnotatedTypedExpr::ArrayLiteral {
+        TypedExpr::ArrayLiteral {
             elements,
             kind: Type::Array(element_type),
             annotation: self.next_expr_id(),
@@ -170,7 +170,7 @@ impl IrTestBuilder {
             type_map.insert(key.to_string(), expr.as_type().clone());
         }
 
-        AnnotatedTypedExpr::ObjectLiteral {
+        TypedExpr::ObjectLiteral {
             properties: props.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             kind: Type::Object(type_map),
             annotation: self.next_expr_id(),
@@ -186,7 +186,7 @@ impl IrTestBuilder {
             _ => panic!("Cannot access property '{}' on non-object type", property),
         };
 
-        AnnotatedTypedExpr::PropertyAccess {
+        TypedExpr::PropertyAccess {
             object: Box::new(object),
             property: property.to_string(),
             kind: property_type,
@@ -277,7 +277,7 @@ impl IrTestBuilder {
     }
 
     pub fn json_encode(&self, value: IrExpr) -> IrExpr {
-        AnnotatedTypedExpr::JsonEncode {
+        TypedExpr::JsonEncode {
             value: Box::new(value),
             annotation: self.next_expr_id(),
         }

@@ -1,7 +1,7 @@
 use super::Type;
 use super::expr::{AnnotatedExpr, BinaryOp, Expr};
 use super::type_error::TypeError;
-use super::typed_expr::TypedExpr;
+use super::typed_expr::SimpleTypedExpr;
 use crate::document::document_cursor::Ranged as _;
 use crate::hop::environment::Environment;
 use crate::hop::type_checker::TypeAnnotation;
@@ -11,7 +11,7 @@ pub fn typecheck_expr(
     expr: &Expr,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
-) -> Result<TypedExpr, TypeError> {
+) -> Result<SimpleTypedExpr, TypeError> {
     match expr {
         AnnotatedExpr::Var { value: name, .. } => {
             if let Some(var_type) = env.lookup(name.as_str()) {
@@ -20,7 +20,7 @@ pub fn typecheck_expr(
                     typ: var_type.clone(),
                     name: name.to_string(),
                 });
-                Ok(TypedExpr::Var {
+                Ok(SimpleTypedExpr::Var {
                     value: name.clone(),
                     kind: var_type.clone(),
                     annotation: (),
@@ -32,15 +32,15 @@ pub fn typecheck_expr(
                 })
             }
         }
-        AnnotatedExpr::BooleanLiteral { value, .. } => Ok(TypedExpr::BooleanLiteral {
+        AnnotatedExpr::BooleanLiteral { value, .. } => Ok(SimpleTypedExpr::BooleanLiteral {
             value: *value,
             annotation: (),
         }),
-        AnnotatedExpr::StringLiteral { value, .. } => Ok(TypedExpr::StringLiteral {
+        AnnotatedExpr::StringLiteral { value, .. } => Ok(SimpleTypedExpr::StringLiteral {
             value: value.clone(),
             annotation: (),
         }),
-        AnnotatedExpr::NumberLiteral { value, .. } => Ok(TypedExpr::NumberLiteral {
+        AnnotatedExpr::NumberLiteral { value, .. } => Ok(SimpleTypedExpr::NumberLiteral {
             value: value.clone(),
             annotation: (),
         }),
@@ -51,15 +51,15 @@ pub fn typecheck_expr(
             ..
         } => {
             let typed_base = typecheck_expr(base_expr, env, annotations)?;
-            let base_type = typed_base.as_type().clone();
+            let base_type = typed_base.as_type();
 
             match &base_type {
                 Type::Object(props) => {
                     if let Some(prop_type) = props.get(property.as_str()) {
-                        Ok(TypedExpr::PropertyAccess {
+                        Ok(SimpleTypedExpr::PropertyAccess {
+                            kind: prop_type.clone(),
                             object: Box::new(typed_base),
                             property: property.clone(),
-                            kind: prop_type.clone(),
                             annotation: (),
                         })
                     } else {
@@ -96,12 +96,12 @@ pub fn typecheck_expr(
             }
 
             match left_type {
-                Type::Bool => Ok(TypedExpr::BoolCompare {
+                Type::Bool => Ok(SimpleTypedExpr::BoolCompare {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     annotation: (),
                 }),
-                Type::String => Ok(TypedExpr::StringCompare {
+                Type::String => Ok(SimpleTypedExpr::StringCompare {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     annotation: (),
@@ -129,7 +129,7 @@ pub fn typecheck_expr(
             }
 
             // The result of ! is always boolean
-            Ok(TypedExpr::Negation {
+            Ok(SimpleTypedExpr::Negation {
                 operand: Box::new(typed_operand),
                 annotation: (),
             })
@@ -137,7 +137,7 @@ pub fn typecheck_expr(
         AnnotatedExpr::ArrayLiteral { elements, .. } => {
             if elements.is_empty() {
                 // Empty array has unknown element type
-                Ok(TypedExpr::ArrayLiteral {
+                Ok(SimpleTypedExpr::ArrayLiteral {
                     elements: vec![],
                     kind: Type::Array(None),
                     annotation: (),
@@ -164,7 +164,7 @@ pub fn typecheck_expr(
                     typed_elements.push(typed_element);
                 }
 
-                Ok(TypedExpr::ArrayLiteral {
+                Ok(SimpleTypedExpr::ArrayLiteral {
                     elements: typed_elements,
                     kind: Type::Array(Some(Box::new(first_type))),
                     annotation: (),
@@ -182,7 +182,7 @@ pub fn typecheck_expr(
                 typed_properties.push((key.clone(), typed_value));
             }
 
-            Ok(TypedExpr::ObjectLiteral {
+            Ok(SimpleTypedExpr::ObjectLiteral {
                 properties: typed_properties,
                 kind: Type::Object(object_properties),
                 annotation: (),

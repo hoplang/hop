@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt};
 
-use crate::dop::{VarName, r#type::Type, typed_expr::AnnotatedTypedExpr};
+use crate::dop::{VarName, r#type::Type, typed_expr::TypedExpr};
 use pretty::BoxDoc;
 
 // This module contains the types and implementations for ASTs in
@@ -65,7 +65,7 @@ pub enum IrStatement {
 }
 
 /// Type alias for IR expressions with ExprId annotations
-pub type IrExpr = AnnotatedTypedExpr<ExprId>;
+pub type IrExpr = TypedExpr<ExprId>;
 
 impl IrStatement {
     /// Get the primary expression from this statement, if any
@@ -284,35 +284,35 @@ impl IrExpr {
     {
         f(self);
         match self {
-            AnnotatedTypedExpr::PropertyAccess { object, .. } => {
+            TypedExpr::PropertyAccess { object, .. } => {
                 object.traverse(f);
             }
-            AnnotatedTypedExpr::ArrayLiteral { elements, .. } => {
+            TypedExpr::ArrayLiteral { elements, .. } => {
                 for elem in elements {
                     elem.traverse(f);
                 }
             }
-            AnnotatedTypedExpr::ObjectLiteral { properties, .. } => {
+            TypedExpr::ObjectLiteral { properties, .. } => {
                 for (_, value) in properties {
                     value.traverse(f);
                 }
             }
-            AnnotatedTypedExpr::Negation { operand, .. } => {
+            TypedExpr::Negation { operand, .. } => {
                 operand.traverse(f);
             }
-            AnnotatedTypedExpr::JsonEncode { value, .. } => {
+            TypedExpr::JsonEncode { value, .. } => {
                 value.traverse(f);
             }
-            AnnotatedTypedExpr::StringCompare { left, right, .. }
-            | AnnotatedTypedExpr::BoolCompare { left, right, .. }
-            | AnnotatedTypedExpr::StringConcat { left, right, .. } => {
+            TypedExpr::StringCompare { left, right, .. }
+            | TypedExpr::BoolCompare { left, right, .. }
+            | TypedExpr::StringConcat { left, right, .. } => {
                 left.traverse(f);
                 right.traverse(f);
             }
-            AnnotatedTypedExpr::Var { .. }
-            | AnnotatedTypedExpr::StringLiteral { .. }
-            | AnnotatedTypedExpr::BooleanLiteral { .. }
-            | AnnotatedTypedExpr::NumberLiteral { .. } => {}
+            TypedExpr::Var { .. }
+            | TypedExpr::StringLiteral { .. }
+            | TypedExpr::BooleanLiteral { .. }
+            | TypedExpr::NumberLiteral { .. } => {}
         }
     }
 
@@ -323,26 +323,26 @@ impl IrExpr {
     {
         f(self);
         match self {
-            AnnotatedTypedExpr::PropertyAccess { object, .. } => {
+            TypedExpr::PropertyAccess { object, .. } => {
                 object.traverse_mut(f);
             }
-            AnnotatedTypedExpr::ArrayLiteral { elements, .. } => {
+            TypedExpr::ArrayLiteral { elements, .. } => {
                 for elem in elements {
                     elem.traverse_mut(f);
                 }
             }
-            AnnotatedTypedExpr::ObjectLiteral { properties, .. } => {
+            TypedExpr::ObjectLiteral { properties, .. } => {
                 for (_, value) in properties {
                     value.traverse_mut(f);
                 }
             }
-            AnnotatedTypedExpr::Negation { operand, .. } => {
+            TypedExpr::Negation { operand, .. } => {
                 operand.traverse_mut(f);
             }
-            AnnotatedTypedExpr::JsonEncode { value, .. } => {
+            TypedExpr::JsonEncode { value, .. } => {
                 value.traverse_mut(f);
             }
-            AnnotatedTypedExpr::StringConcat { left, right, .. } => {
+            TypedExpr::StringConcat { left, right, .. } => {
                 left.traverse_mut(f);
                 right.traverse_mut(f);
             }

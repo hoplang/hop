@@ -5,10 +5,10 @@ use pretty::BoxDoc;
 
 use super::Type;
 
-pub type TypedExpr = AnnotatedTypedExpr<()>;
+pub type SimpleTypedExpr = TypedExpr<()>;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AnnotatedTypedExpr<A> {
+pub enum TypedExpr<A> {
     /// A variable expression, e.g. foo
     Var {
         value: VarName,
@@ -77,60 +77,61 @@ pub enum AnnotatedTypedExpr<A> {
     },
 }
 
-impl<A> AnnotatedTypedExpr<A> {
+impl<A> TypedExpr<A> {
     pub fn as_type(&self) -> &Type {
         static STRING_TYPE: Type = Type::String;
         static BOOL_TYPE: Type = Type::Bool;
         static NUMBER_TYPE: Type = Type::Number;
 
         match self {
-            AnnotatedTypedExpr::Var { kind, .. }
-            | AnnotatedTypedExpr::PropertyAccess { kind, .. }
-            | AnnotatedTypedExpr::ArrayLiteral { kind, .. }
-            | AnnotatedTypedExpr::ObjectLiteral { kind, .. } => kind,
-            AnnotatedTypedExpr::NumberLiteral { .. } => &NUMBER_TYPE,
-            AnnotatedTypedExpr::JsonEncode { .. }
-            | AnnotatedTypedExpr::StringConcat { .. }
-            | AnnotatedTypedExpr::StringLiteral { .. } => &STRING_TYPE,
-            AnnotatedTypedExpr::BooleanLiteral { .. }
-            | AnnotatedTypedExpr::Negation { .. }
-            | AnnotatedTypedExpr::BoolCompare { .. }
-            | AnnotatedTypedExpr::StringCompare { .. } => &BOOL_TYPE,
+            TypedExpr::Var { kind, .. }
+            | TypedExpr::PropertyAccess { kind, .. }
+            | TypedExpr::ArrayLiteral { kind, .. }
+            | TypedExpr::ObjectLiteral { kind, .. } => kind,
+
+            TypedExpr::NumberLiteral { .. } => &NUMBER_TYPE,
+
+            TypedExpr::JsonEncode { .. }
+            | TypedExpr::StringConcat { .. }
+            | TypedExpr::StringLiteral { .. } => &STRING_TYPE,
+
+            TypedExpr::BooleanLiteral { .. }
+            | TypedExpr::Negation { .. }
+            | TypedExpr::BoolCompare { .. }
+            | TypedExpr::StringCompare { .. } => &BOOL_TYPE,
         }
     }
 
     pub fn annotation(&self) -> &A {
         match self {
-            AnnotatedTypedExpr::Var { annotation, .. }
-            | AnnotatedTypedExpr::PropertyAccess { annotation, .. }
-            | AnnotatedTypedExpr::StringLiteral { annotation, .. }
-            | AnnotatedTypedExpr::BooleanLiteral { annotation, .. }
-            | AnnotatedTypedExpr::NumberLiteral { annotation, .. }
-            | AnnotatedTypedExpr::ArrayLiteral { annotation, .. }
-            | AnnotatedTypedExpr::ObjectLiteral { annotation, .. }
-            | AnnotatedTypedExpr::JsonEncode { annotation, .. }
-            | AnnotatedTypedExpr::StringConcat { annotation, .. }
-            | AnnotatedTypedExpr::Negation { annotation, .. }
-            | AnnotatedTypedExpr::BoolCompare { annotation, .. }
-            | AnnotatedTypedExpr::StringCompare { annotation, .. } => annotation,
+            TypedExpr::Var { annotation, .. }
+            | TypedExpr::PropertyAccess { annotation, .. }
+            | TypedExpr::StringLiteral { annotation, .. }
+            | TypedExpr::BooleanLiteral { annotation, .. }
+            | TypedExpr::NumberLiteral { annotation, .. }
+            | TypedExpr::ArrayLiteral { annotation, .. }
+            | TypedExpr::ObjectLiteral { annotation, .. }
+            | TypedExpr::JsonEncode { annotation, .. }
+            | TypedExpr::StringConcat { annotation, .. }
+            | TypedExpr::Negation { annotation, .. }
+            | TypedExpr::BoolCompare { annotation, .. }
+            | TypedExpr::StringCompare { annotation, .. } => annotation,
         }
     }
 
     pub fn to_doc(&self) -> BoxDoc {
         match self {
-            AnnotatedTypedExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
-            AnnotatedTypedExpr::PropertyAccess {
+            TypedExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
+            TypedExpr::PropertyAccess {
                 object, property, ..
             } => object
                 .to_doc()
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(property.as_str())),
-            AnnotatedTypedExpr::StringLiteral { value, .. } => {
-                BoxDoc::text(format!("\"{}\"", value))
-            }
-            AnnotatedTypedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            AnnotatedTypedExpr::NumberLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            AnnotatedTypedExpr::ArrayLiteral { elements, .. } => {
+            TypedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
+            TypedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            TypedExpr::NumberLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            TypedExpr::ArrayLiteral { elements, .. } => {
                 if elements.is_empty() {
                     BoxDoc::text("[]")
                 } else {
@@ -149,7 +150,7 @@ impl<A> AnnotatedTypedExpr<A> {
                         .append(BoxDoc::text("]"))
                 }
             }
-            AnnotatedTypedExpr::ObjectLiteral { properties, .. } => {
+            TypedExpr::ObjectLiteral { properties, .. } => {
                 if properties.is_empty() {
                     BoxDoc::text("{}")
                 } else {
@@ -173,23 +174,23 @@ impl<A> AnnotatedTypedExpr<A> {
                         .append(BoxDoc::text("}"))
                 }
             }
-            AnnotatedTypedExpr::JsonEncode { value, .. } => BoxDoc::nil()
+            TypedExpr::JsonEncode { value, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("JsonEncode("))
                 .append(value.to_doc())
                 .append(BoxDoc::text(")")),
-            AnnotatedTypedExpr::StringConcat { left, right, .. } => BoxDoc::nil()
+            TypedExpr::StringConcat { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" + "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            AnnotatedTypedExpr::Negation { operand, .. } => BoxDoc::nil()
+            TypedExpr::Negation { operand, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::text("!"))
                 .append(operand.to_doc())
                 .append(BoxDoc::text(")")),
-            AnnotatedTypedExpr::StringCompare { left, right, .. }
-            | AnnotatedTypedExpr::BoolCompare { left, right, .. } => BoxDoc::nil()
+            TypedExpr::StringCompare { left, right, .. }
+            | TypedExpr::BoolCompare { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" == "))
@@ -199,7 +200,7 @@ impl<A> AnnotatedTypedExpr<A> {
     }
 }
 
-impl<A> Display for AnnotatedTypedExpr<A> {
+impl<A> Display for TypedExpr<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(60))
     }

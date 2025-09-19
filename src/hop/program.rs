@@ -1,6 +1,6 @@
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::TypedExpr;
+use crate::dop::SimpleTypedExpr;
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::Ast;
 use crate::hop::parse_error::ParseError;
@@ -430,7 +430,7 @@ impl Program {
     }
 
     /// Get all typed modules for compilation
-    pub fn get_typed_modules(&self) -> &HashMap<ModuleName, Ast<TypedExpr>> {
+    pub fn get_typed_modules(&self) -> &HashMap<ModuleName, Ast<SimpleTypedExpr>> {
         &self.type_checker.typed_asts
     }
 }

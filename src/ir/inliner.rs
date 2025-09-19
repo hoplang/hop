@@ -1,6 +1,6 @@
 use crate::document::document_cursor::StringSpan;
+use crate::dop::SimpleTypedExpr;
 use crate::dop::Type;
-use crate::dop::TypedExpr;
 use crate::dop::parser::TypedArgument;
 use crate::hop::ast::{Ast, AttributeValue};
 use crate::hop::inlined_ast::{
@@ -40,7 +40,9 @@ impl Inliner {
     }
     /// Inline all component references in entrypoint components only
     /// Returns a vector of inlined entrypoint components
-    pub fn inline_entrypoints(asts: HashMap<ModuleName, Ast<TypedExpr>>) -> Vec<InlinedEntryPoint> {
+    pub fn inline_entrypoints(
+        asts: HashMap<ModuleName, Ast<SimpleTypedExpr>>,
+    ) -> Vec<InlinedEntryPoint> {
         let mut result = Vec::new();
 
         for ast in asts.values() {
@@ -77,7 +79,7 @@ impl Inliner {
         args: &[TypedArgument],
         reference_attributes: &BTreeMap<StringSpan, TypedAttribute>,
         slot_children: &[TypedNode],
-        asts: &HashMap<ModuleName, Ast<TypedExpr>>,
+        asts: &HashMap<ModuleName, Ast<SimpleTypedExpr>>,
     ) -> InlinedNode {
         // Determine wrapper tag
         let tag_name = component
@@ -190,43 +192,43 @@ impl Inliner {
         ref_attr: &TypedAttribute,
     ) -> InlinedAttributeValue {
         let def_expr = match &def_attr.value {
-            Some(AttributeValue::String(s)) => TypedExpr::StringLiteral {
+            Some(AttributeValue::String(s)) => SimpleTypedExpr::StringLiteral {
                 value: s.as_str().to_string(),
                 annotation: (),
             },
             Some(AttributeValue::Expression(expr)) => expr.clone(),
-            None => TypedExpr::StringLiteral {
+            None => SimpleTypedExpr::StringLiteral {
                 value: "".to_string(),
                 annotation: (),
             },
         };
 
         let ref_expr = match &ref_attr.value {
-            Some(AttributeValue::String(s)) => TypedExpr::StringLiteral {
+            Some(AttributeValue::String(s)) => SimpleTypedExpr::StringLiteral {
                 value: s.as_str().to_string(),
                 annotation: (),
             },
             Some(AttributeValue::Expression(expr)) => expr.clone(),
-            None => TypedExpr::StringLiteral {
+            None => SimpleTypedExpr::StringLiteral {
                 value: "".to_string(),
                 annotation: (),
             },
         };
 
         // Create a space literal
-        let space_expr = TypedExpr::StringLiteral {
+        let space_expr = SimpleTypedExpr::StringLiteral {
             value: " ".to_string(),
             annotation: (),
         };
 
         // Concatenate: def_class + " " + ref_class
-        let def_plus_space = TypedExpr::StringConcat {
+        let def_plus_space = SimpleTypedExpr::StringConcat {
             left: Box::new(def_expr),
             right: Box::new(space_expr),
             annotation: (),
         };
 
-        let final_concat = TypedExpr::StringConcat {
+        let final_concat = SimpleTypedExpr::StringConcat {
             left: Box::new(def_plus_space),
             right: Box::new(ref_expr),
             annotation: (),
@@ -239,7 +241,7 @@ impl Inliner {
     fn inline_nodes(
         nodes: &[TypedNode],
         slot_content: Option<&[TypedNode]>,
-        asts: &HashMap<ModuleName, Ast<TypedExpr>>,
+        asts: &HashMap<ModuleName, Ast<SimpleTypedExpr>>,
     ) -> Vec<InlinedNode> {
         nodes
             .iter()
@@ -251,7 +253,7 @@ impl Inliner {
     fn inline_node(
         node: &TypedNode,
         slot_content: Option<&[TypedNode]>,
-        asts: &HashMap<ModuleName, Ast<TypedExpr>>,
+        asts: &HashMap<ModuleName, Ast<SimpleTypedExpr>>,
     ) -> Vec<InlinedNode> {
         match node {
             Node::ComponentReference {
@@ -348,7 +350,7 @@ mod tests {
 
     fn create_typed_asts_from_sources(
         sources: Vec<(&str, &str)>,
-    ) -> HashMap<ModuleName, Ast<TypedExpr>> {
+    ) -> HashMap<ModuleName, Ast<SimpleTypedExpr>> {
         let mut errors = ErrorCollector::new();
 
         // Parse all sources first

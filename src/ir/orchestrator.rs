@@ -1,4 +1,4 @@
-use crate::dop::TypedExpr;
+use crate::dop::SimpleTypedExpr;
 use crate::hop::ast::Ast;
 use crate::hop::module_name::ModuleName;
 use crate::ir::ast::IrEntrypoint;
@@ -12,7 +12,7 @@ use crate::ir::{CompilationMode, Compiler};
 use std::collections::HashMap;
 
 pub fn orchestrate(
-    typed_asts: HashMap<ModuleName, Ast<TypedExpr>>,
+    typed_asts: HashMap<ModuleName, Ast<SimpleTypedExpr>>,
     mode: CompilationMode,
 ) -> Vec<IrEntrypoint> {
     Inliner::inline_entrypoints(typed_asts)

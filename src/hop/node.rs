@@ -6,13 +6,13 @@ use crate::document::{
 };
 use crate::dop::Argument;
 use crate::dop::Expr;
-use crate::dop::TypedExpr;
+use crate::dop::SimpleTypedExpr;
 use crate::dop::VarName;
 
 use super::{ast::Attribute, module_name::ModuleName};
 
 pub type UntypedNode = Node<Expr>;
-pub type TypedNode = Node<TypedExpr>;
+pub type TypedNode = Node<SimpleTypedExpr>;
 
 #[derive(Debug, Clone)]
 pub enum Node<E> {

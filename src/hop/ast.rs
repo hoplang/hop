@@ -4,7 +4,7 @@ use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::Expr;
 use crate::dop::Parameter;
-use crate::dop::TypedExpr;
+use crate::dop::SimpleTypedExpr;
 use crate::hop::module_name::ModuleName;
 
 use super::node::Node;
@@ -16,7 +16,7 @@ pub struct StaticAttribute {
     pub value: DocumentRange,
 }
 
-pub type TypedAttributeValue = AttributeValue<TypedExpr>;
+pub type TypedAttributeValue = AttributeValue<SimpleTypedExpr>;
 
 #[derive(Debug, Clone)]
 pub enum AttributeValue<T = Expr> {
@@ -24,7 +24,7 @@ pub enum AttributeValue<T = Expr> {
     String(DocumentRange),
 }
 
-pub type TypedAttribute = Attribute<TypedExpr>;
+pub type TypedAttribute = Attribute<SimpleTypedExpr>;
 
 /// An Attribute is an attribute on a node, it can either
 /// be empty, an expression or a string value.
@@ -37,7 +37,7 @@ pub struct Attribute<T = Expr> {
 }
 
 pub type UntypedAst = Ast<Expr>;
-pub type TypedAst = Ast<TypedExpr>;
+pub type TypedAst = Ast<SimpleTypedExpr>;
 
 #[derive(Debug, Clone)]
 pub struct Ast<T> {
@@ -145,7 +145,7 @@ impl Import {
 }
 
 pub type UntypedComponentDefinition = ComponentDefinition<Expr>;
-pub type TypedComponentDefinition = ComponentDefinition<TypedExpr>;
+pub type TypedComponentDefinition = ComponentDefinition<SimpleTypedExpr>;
 
 #[derive(Debug, Clone)]
 pub struct ComponentDefinition<E> {
