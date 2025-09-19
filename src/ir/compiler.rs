@@ -388,7 +388,7 @@ impl Compiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::test_utils::build_inlined;
+    use crate::ir::test_utils::build_inlined_auto;
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: InlinedEntryPoint, mode: CompilationMode, expected: Expect) {
@@ -402,7 +402,9 @@ mod tests {
     #[test]
     fn test_simple_text() {
         check(
-            build_inlined("main-comp", vec![], |t| vec![t.text("Hello World")]),
+            build_inlined_auto("main-comp", vec![], |t| {
+                t.text("Hello World");
+            }),
             CompilationMode::Production,
             expect![[r#"
                 -- before --
@@ -421,8 +423,9 @@ mod tests {
     #[test]
     fn test_text_expression() {
         check(
-            build_inlined("main-comp", vec![("name", Type::String)], |t| {
-                vec![t.text("Hello "), t.text_expr(t.var_expr("name"))]
+            build_inlined_auto("main-comp", vec![("name", Type::String)], |t| {
+                t.text("Hello ");
+                t.text_expr(t.var_expr("name"));
             }),
             CompilationMode::Production,
             expect![[r#"
@@ -444,8 +447,10 @@ mod tests {
     #[test]
     fn test_html_element() {
         check(
-            build_inlined("main-comp", vec![], |t| {
-                vec![t.div(vec![], vec![t.text("Content")])]
+            build_inlined_auto("main-comp", vec![], |t| {
+                t.div(vec![], |t| {
+                    t.text("Content");
+                });
             }),
             CompilationMode::Production,
             expect![[r#"
@@ -470,11 +475,12 @@ mod tests {
     #[test]
     fn test_if_node() {
         check(
-            build_inlined("main-comp", vec![("show", Type::Bool)], |t| {
-                vec![t.if_node(
-                    t.var_expr("show"),
-                    vec![t.div(vec![], vec![t.text("Visible")])],
-                )]
+            build_inlined_auto("main-comp", vec![("show", Type::Bool)], |t| {
+                t.if_node(t.var_expr("show"), |t| {
+                    t.div(vec![], |t| {
+                        t.text("Visible");
+                    });
+                });
             }),
             CompilationMode::Production,
             expect![[r#"
@@ -503,19 +509,20 @@ mod tests {
     #[test]
     fn test_for_node() {
         check(
-            build_inlined(
+            build_inlined_auto(
                 "main-comp",
                 vec![(
                     "items",
                     Type::Array(Some(Box::new(Type::String))),
                 )],
                 |t| {
-                    vec![t.ul(
-                        vec![],
-                        vec![t.for_node("item", t.var_expr("items"), |t| {
-                            vec![t.li(vec![], vec![t.text_expr(t.var_expr("item"))])]
-                        })],
-                    )]
+                    t.ul(vec![], |t| {
+                        t.for_node("item", t.var_expr("items"), |t| {
+                            t.li(vec![], |t| {
+                                t.text_expr(t.var_expr("item"));
+                            });
+                        });
+                    });
                 },
             ),
             CompilationMode::Production,
@@ -550,11 +557,13 @@ mod tests {
     #[test]
     fn test_attributes_static() {
         check(
-            build_inlined("main-comp", vec![], |t| {
-                vec![t.div(
+            build_inlined_auto("main-comp", vec![], |t| {
+                t.div(
                     vec![("class", t.attr_str("base")), ("id", t.attr_str("test"))],
-                    vec![t.text("Content")],
-                )]
+                    |t| {
+                        t.text("Content");
+                    },
+                );
             }),
             CompilationMode::Production,
             expect![[r#"
@@ -581,14 +590,16 @@ mod tests {
     #[test]
     fn test_attributes_dynamic() {
         check(
-            build_inlined("main-comp", vec![("cls", Type::String)], |t| {
-                vec![t.div(
+            build_inlined_auto("main-comp", vec![("cls", Type::String)], |t| {
+                t.div(
                     vec![
                         ("class", t.attr_str("base")),
                         ("data-value", t.attr_expr(t.var_expr("cls"))),
                     ],
-                    vec![t.text("Content")],
-                )]
+                    |t| {
+                        t.text("Content");
+                    },
+                );
             }),
             CompilationMode::Production,
             expect![[r#"
@@ -617,22 +628,19 @@ mod tests {
     #[test]
     fn test_development_mode() {
         check(
-            build_inlined(
+            build_inlined_auto(
                 "test-comp",
                 vec![
                     ("name", Type::String),
                     ("count", Type::String),
                 ],
                 |t| {
-                    vec![t.div(
-                        vec![],
-                        vec![
-                            t.text("Hello "),
-                            t.text_expr(t.var_expr("name")),
-                            t.text(", count: "),
-                            t.text_expr(t.var_expr("count")),
-                        ],
-                    )]
+                    t.div(vec![], |t| {
+                        t.text("Hello ");
+                        t.text_expr(t.var_expr("name"));
+                        t.text(", count: ");
+                        t.text_expr(t.var_expr("count"));
+                    });
                 },
             ),
             CompilationMode::Development,
