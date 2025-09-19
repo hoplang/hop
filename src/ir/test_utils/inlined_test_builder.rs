@@ -1,4 +1,4 @@
-use super::inlined_ast::{InlinedAttribute, InlinedAttributeValue, InlinedEntryPoint, InlinedNode, InlinedParameter};
+use crate::hop::inlined_ast::{InlinedAttribute, InlinedAttributeValue, InlinedEntryPoint, InlinedNode, InlinedParameter};
 use crate::document::document_cursor::StringSpan;
 use crate::dop::expr::{Expr, TypedExpr};
 use crate::dop::{Type, VarName};

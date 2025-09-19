@@ -61,7 +61,7 @@ impl DoctypeInjector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hop::inlined_test_utils::InlinedTestBuilder;
+    use crate::ir::test_utils::InlinedTestBuilder;
     use expect_test::{Expect, expect};
 
     /// Helper to pretty-print entrypoint children for testing

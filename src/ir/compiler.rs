@@ -400,7 +400,7 @@ mod tests {
 
     #[test]
     fn test_inlined_simple_text() {
-        use crate::hop::inlined_test_utils::InlinedTestBuilder;
+        use crate::ir::test_utils::InlinedTestBuilder;
 
         let t = InlinedTestBuilder::new(vec![]);
         let entrypoint = t.build("main-comp", vec![t.text("Hello World")]);
@@ -424,7 +424,7 @@ mod tests {
 
     #[test]
     fn test_inlined_text_expression() {
-        use crate::hop::inlined_test_utils::InlinedTestBuilder;
+        use crate::ir::test_utils::InlinedTestBuilder;
 
         let t = InlinedTestBuilder::new(vec![("name".to_string(), Type::String)]);
         let entrypoint = t.build(
@@ -453,7 +453,7 @@ mod tests {
 
     #[test]
     fn test_inlined_html_element() {
-        use crate::hop::inlined_test_utils::InlinedTestBuilder;
+        use crate::ir::test_utils::InlinedTestBuilder;
 
         let t = InlinedTestBuilder::new(vec![]);
         let entrypoint = t.build(
@@ -485,7 +485,7 @@ mod tests {
 
     #[test]
     fn test_inlined_if_statement() {
-        use crate::hop::inlined_test_utils::InlinedTestBuilder;
+        use crate::ir::test_utils::InlinedTestBuilder;
 
         let t = InlinedTestBuilder::new(vec![("show".to_string(), Type::Bool)]);
         let entrypoint = t.build(
@@ -524,7 +524,7 @@ mod tests {
 
     #[test]
     fn test_inlined_for_loop() {
-        use crate::hop::inlined_test_utils::InlinedTestBuilder;
+        use crate::ir::test_utils::InlinedTestBuilder;
 
         let t = InlinedTestBuilder::new(vec![(
             "items".to_string(),
@@ -565,7 +565,7 @@ mod tests {
 
     #[test]
     fn test_inlined_attributes_static() {
-        use crate::hop::inlined_test_utils::InlinedTestBuilder;
+        use crate::ir::test_utils::InlinedTestBuilder;
 
         let t = InlinedTestBuilder::new(vec![]);
         let entrypoint = t.build(
@@ -603,7 +603,7 @@ mod tests {
 
     #[test]
     fn test_inlined_attributes_dynamic() {
-        use crate::hop::inlined_test_utils::InlinedTestBuilder;
+        use crate::ir::test_utils::InlinedTestBuilder;
 
         let t = InlinedTestBuilder::new(vec![("cls".to_string(), Type::String)]);
         let entrypoint = t.build(
@@ -646,7 +646,7 @@ mod tests {
 
     #[test]
     fn test_inlined_development_mode() {
-        use crate::hop::inlined_test_utils::InlinedTestBuilder;
+        use crate::ir::test_utils::InlinedTestBuilder;
 
         let t = InlinedTestBuilder::new(vec![
             ("name".to_string(), Type::String),

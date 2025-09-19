@@ -1,7 +1,6 @@
 pub mod ast;
 pub mod environment;
 pub mod inlined_ast;
-pub mod inlined_test_utils;
 pub mod module_name;
 pub mod node;
 pub mod parse_error;
