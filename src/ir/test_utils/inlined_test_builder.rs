@@ -77,21 +77,21 @@ impl InlinedTestBuilder {
     pub fn str_expr(&self, s: &str) -> TypedExpr {
         TypedExpr::StringLiteral {
             value: s.to_string(),
-            annotation: Type::String,
+            kind: Type::String,
         }
     }
 
     pub fn num_expr(&self, n: f64) -> TypedExpr {
         TypedExpr::NumberLiteral {
             value: serde_json::Number::from_f64(n).unwrap_or_else(|| serde_json::Number::from(0)),
-            annotation: Type::Number,
+            kind: Type::Number,
         }
     }
 
     pub fn bool_expr(&self, b: bool) -> TypedExpr {
         TypedExpr::BooleanLiteral {
             value: b,
-            annotation: Type::Bool,
+            kind: Type::Bool,
         }
     }
 
@@ -117,35 +117,33 @@ impl InlinedTestBuilder {
 
         TypedExpr::Var {
             value: VarName::try_from(name.to_string()).unwrap(),
-            annotation: typ,
+            kind: typ,
         }
     }
 
     pub fn array_expr(&self, elements: Vec<TypedExpr>) -> TypedExpr {
-        let element_type = elements
-            .first()
-            .map(|first| Box::new(first.annotation().clone()));
+        let element_type = elements.first().map(|first| Box::new(first.kind().clone()));
 
         TypedExpr::ArrayLiteral {
             elements,
-            annotation: Type::Array(element_type),
+            kind: Type::Array(element_type),
         }
     }
 
     pub fn object_expr(&self, props: Vec<(&str, TypedExpr)>) -> TypedExpr {
         let mut type_map = BTreeMap::new();
         for (key, expr) in &props {
-            type_map.insert(key.to_string(), expr.annotation().clone());
+            type_map.insert(key.to_string(), expr.kind().clone());
         }
 
         TypedExpr::ObjectLiteral {
             properties: props.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
-            annotation: Type::Object(type_map),
+            kind: Type::Object(type_map),
         }
     }
 
     pub fn prop_access_expr(&self, object: TypedExpr, property: &str) -> TypedExpr {
-        let property_type = match object.annotation() {
+        let property_type = match object.kind() {
             Type::Object(type_map) => type_map
                 .get(property)
                 .cloned()
@@ -156,7 +154,7 @@ impl InlinedTestBuilder {
         TypedExpr::PropertyAccess {
             object: Box::new(object),
             property: property.to_string(),
-            annotation: property_type,
+            kind: property_type,
         }
     }
 
@@ -168,12 +166,12 @@ impl InlinedTestBuilder {
     }
 
     pub fn text_expr(&self, expr: TypedExpr) -> InlinedNode {
-        assert_eq!(*expr.annotation(), Type::String, "{}", expr);
+        assert_eq!(*expr.kind(), Type::String, "{}", expr);
         InlinedNode::TextExpression { expression: expr }
     }
 
     pub fn if_node(&self, cond: TypedExpr, children: Vec<InlinedNode>) -> InlinedNode {
-        assert_eq!(*cond.annotation(), Type::Bool, "{}", cond);
+        assert_eq!(*cond.kind(), Type::Bool, "{}", cond);
         InlinedNode::If {
             condition: cond,
             children,
@@ -184,7 +182,7 @@ impl InlinedTestBuilder {
     where
         F: FnOnce(&Self) -> Vec<InlinedNode>,
     {
-        let element_type = match array.annotation() {
+        let element_type = match array.kind() {
             Type::Array(Some(elem_type)) => *elem_type.clone(),
             Type::Array(None) => panic!("Cannot iterate over array with unknown element type"),
             _ => panic!("Cannot iterate over non-array type"),
@@ -209,7 +207,7 @@ impl InlinedTestBuilder {
     where
         F: FnOnce(&Self) -> Vec<InlinedNode>,
     {
-        let value_type = value.annotation().clone();
+        let value_type = value.kind().clone();
 
         self.var_stack
             .borrow_mut()
@@ -352,7 +350,7 @@ impl InlinedAutoBuilder {
         F: FnOnce(&mut Self),
     {
         // Extract element type from array
-        let element_type = match array.annotation() {
+        let element_type = match array.kind() {
             Type::Array(Some(elem_type)) => *elem_type.clone(),
             Type::Array(None) => panic!("Cannot iterate over array with unknown element type"),
             _ => panic!("Cannot iterate over non-array type"),
@@ -381,7 +379,7 @@ impl InlinedAutoBuilder {
         F: FnOnce(&mut Self),
     {
         // Get the type from the value expression
-        let value_type = value.annotation().clone();
+        let value_type = value.kind().clone();
 
         // Push the variable onto the stack
         self.inner

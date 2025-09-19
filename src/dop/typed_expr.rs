@@ -3,78 +3,78 @@ use std::fmt::{self, Display};
 use crate::dop::var_name::VarName;
 use pretty::BoxDoc;
 
-use super::{expr::BinaryOp, expr::UnaryOp, Type};
+use super::{Type, expr::BinaryOp, expr::UnaryOp};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedExpr {
     /// A variable expression, e.g. foo
-    Var { value: VarName, annotation: Type },
+    Var { value: VarName, kind: Type },
 
     /// A property access expression, e.g. foo.bar
     PropertyAccess {
         object: Box<Self>,
         property: String,
-        annotation: Type,
+        kind: Type,
     },
 
     /// A string literal expression, e.g. "foo bar"
-    StringLiteral { value: String, annotation: Type },
+    StringLiteral { value: String, kind: Type },
 
     /// A boolean literal expression, e.g. true
-    BooleanLiteral { value: bool, annotation: Type },
+    BooleanLiteral { value: bool, kind: Type },
 
     /// A number literal expression, e.g. 2.5
     NumberLiteral {
         value: serde_json::Number,
-        annotation: Type,
+        kind: Type,
     },
 
     /// An array literal expression, e.g. [1, 2, 3]
-    ArrayLiteral { elements: Vec<Self>, annotation: Type },
+    ArrayLiteral { elements: Vec<Self>, kind: Type },
 
     ObjectLiteral {
         properties: Vec<(String, Self)>,
-        annotation: Type,
+        kind: Type,
     },
 
     BinaryOp {
         left: Box<Self>,
         operator: BinaryOp,
         right: Box<Self>,
-        annotation: Type,
+        kind: Type,
     },
 
     UnaryOp {
         operator: UnaryOp,
         operand: Box<Self>,
-        annotation: Type,
+        kind: Type,
     },
 
     /// JSON encode expression for converting values to JSON strings
-    JsonEncode { value: Box<Self>, annotation: Type },
+    JsonEncode { value: Box<Self>, kind: Type },
 
     /// String concatenation expression for joining two string expressions
     StringConcat {
         left: Box<Self>,
         right: Box<Self>,
-        annotation: Type,
+        kind: Type,
     },
 }
 
 impl TypedExpr {
-    pub fn annotation(&self) -> &Type {
+    pub fn kind(&self) -> &Type {
         match self {
-            TypedExpr::Var { annotation, .. }
-            | TypedExpr::PropertyAccess { annotation, .. }
-            | TypedExpr::StringLiteral { annotation, .. }
-            | TypedExpr::BooleanLiteral { annotation, .. }
-            | TypedExpr::NumberLiteral { annotation, .. }
-            | TypedExpr::ArrayLiteral { annotation, .. }
-            | TypedExpr::ObjectLiteral { annotation, .. }
-            | TypedExpr::BinaryOp { annotation, .. }
-            | TypedExpr::UnaryOp { annotation, .. }
-            | TypedExpr::JsonEncode { annotation, .. }
-            | TypedExpr::StringConcat { annotation, .. } => annotation,
+            TypedExpr::Var { kind, .. }
+            | TypedExpr::PropertyAccess { kind, .. }
+            | TypedExpr::StringLiteral { kind, .. }
+            | TypedExpr::BooleanLiteral { kind, .. }
+            | TypedExpr::NumberLiteral { kind, .. }
+            | TypedExpr::ArrayLiteral { kind, .. }
+            | TypedExpr::ObjectLiteral { kind, .. }
+            | TypedExpr::BinaryOp { kind, .. }
+            | TypedExpr::UnaryOp { kind, .. }
+            | TypedExpr::JsonEncode { kind, .. }
+            | TypedExpr::StringConcat { kind, .. } => kind,
         }
     }
 

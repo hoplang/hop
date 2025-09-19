@@ -329,7 +329,7 @@ impl Compiler {
     }
 
     fn compile_expr(&mut self, expr: TypedExpr) -> IrExpr {
-        let annotation = (self.next_expr_id(), expr.annotation().clone());
+        let annotation = (self.next_expr_id(), expr.kind().clone());
 
         match expr {
             TypedExpr::Var { value, .. } => Expr::Var { value, annotation },
