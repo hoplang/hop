@@ -303,7 +303,7 @@ impl ExpressionTranspiler for JsTranspiler {
     fn transpile_array_literal<'a>(
         &self,
         elements: &'a [IrExpr],
-        _elem_type: &'a Type,
+        _elem_type: &'a Option<Box<Type>>,
     ) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("["))

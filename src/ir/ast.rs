@@ -3,8 +3,6 @@ use std::{collections::HashMap, fmt};
 use crate::dop::{VarName, r#type::Type, typed_expr::AnnotatedTypedExpr};
 use pretty::BoxDoc;
 
-pub use crate::dop::expr::BinaryOp;
-
 // This module contains the types and implementations for ASTs in
 // the IR.
 //

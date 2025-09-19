@@ -80,7 +80,7 @@ pub trait ExpressionTranspiler {
     fn transpile_array_literal<'a>(
         &self,
         elements: &'a [IrExpr],
-        elem_type: &'a Type,
+        elem_type: &'a Option<Box<Type>>,
     ) -> BoxDoc<'a>;
     fn transpile_object_literal<'a>(
         &self,
@@ -101,18 +101,21 @@ pub trait ExpressionTranspiler {
             IrExpr::StringLiteral { value, .. } => self.transpile_string_literal(value),
             IrExpr::BooleanLiteral { value, .. } => self.transpile_boolean_literal(*value),
             IrExpr::NumberLiteral { value, .. } => self.transpile_number_literal(value),
-            IrExpr::ArrayLiteral {
-                elements,
-                kind: typ,
-                ..
-            } => self.transpile_array_literal(elements, typ),
+            IrExpr::ArrayLiteral { elements, .. } => match expr.as_type() {
+                Type::Array(elem_type) => self.transpile_array_literal(elements, elem_type),
+                _ => {
+                    unreachable!()
+                }
+            },
             IrExpr::ObjectLiteral {
                 properties,
                 kind: typ,
                 ..
             } => match typ {
                 Type::Object(fields) => self.transpile_object_literal(properties, fields),
-                _ => panic!("Object literal must have object type"),
+                _ => {
+                    unreachable!()
+                }
             },
             IrExpr::JsonEncode { value, .. } => self.transpile_json_encode(value),
             IrExpr::StringConcat { left, right, .. } => self.transpile_string_concat(left, right),

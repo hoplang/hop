@@ -354,12 +354,10 @@ impl ExpressionTranspiler for GoTranspiler {
     fn transpile_array_literal<'a>(
         &self,
         elements: &'a [IrExpr],
-        elem_type: &'a Type,
+        elem_type: &'a Option<Box<Type>>,
     ) -> BoxDoc<'a> {
-        let type_part = match elem_type {
-            Type::Array(Some(inner_type)) => {
-                BoxDoc::text("[]").append(self.transpile_type(inner_type))
-            }
+        let type_part = match elem_type.as_ref() {
+            Some(inner_type) => BoxDoc::text("[]").append(self.transpile_type(inner_type)),
             _ => BoxDoc::text("[]any"),
         };
 
@@ -589,6 +587,43 @@ mod tests {
                 	output.WriteString(", ")
                 	output.WriteString(html.EscapeString(message))
                 	output.WriteString("</h1>\n")
+                	return output.String()
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_json_encode_empty_array_literal() {
+        let entrypoints = vec![build_ir_auto("test-main-comp", vec![], |t| {
+            t.write_expr(t.json_encode(t.array(vec![])), false);
+        })];
+
+        // In Go, []any{} is the correct way to declare an empty slice.
+        check(
+            &entrypoints,
+            expect![[r#"
+                -- before --
+                test-main-comp() {
+                  write_expr(JsonEncode([]))
+                }
+
+                -- after --
+                package components
+
+                import (
+                	"encoding/json"
+                	"strings"
+                )
+
+                func mustJSONMarshal(v any) string {
+                	data, _ := json.Marshal(v)
+                	return string(data)
+                }
+
+                func TestMainComp() string {
+                	var output strings.Builder
+                	output.WriteString(mustJSONMarshal([]any{}))
                 	return output.String()
                 }
             "#]],
