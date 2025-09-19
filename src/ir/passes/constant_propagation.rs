@@ -1,7 +1,7 @@
 use super::Pass;
 use crate::ir::{
     IrExpr,
-    ast::{BinaryOp, ExprId, UnaryOp},
+    ast::{BinaryOp, ExprId},
     ast::{IrEntrypoint, IrStatement},
 };
 use datafrog::{Iteration, Relation};
@@ -40,11 +40,7 @@ impl Pass for ConstantPropagationPass {
                         IrExpr::StringLiteral { value, .. } => {
                             initial_constants.push((expr.id(), Const::String(value.clone())));
                         }
-                        IrExpr::UnaryOp {
-                            operator: UnaryOp::Not,
-                            operand,
-                            ..
-                        } => {
+                        IrExpr::Negation { operand, .. } => {
                             not_relations.push((operand.id(), expr.id()));
                         }
                         IrExpr::BinaryOp {

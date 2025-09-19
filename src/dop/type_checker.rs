@@ -1,5 +1,5 @@
 use super::Type;
-use super::expr::{AnnotatedExpr, BinaryOp, Expr, UnaryOp};
+use super::expr::{AnnotatedExpr, BinaryOp, Expr};
 use super::type_error::TypeError;
 use super::typed_expr::TypedExpr;
 use crate::document::document_cursor::Ranged as _;
@@ -105,11 +105,7 @@ pub fn typecheck_expr(
                 annotation: (),
             })
         }
-        AnnotatedExpr::UnaryOp {
-            operator: UnaryOp::Not,
-            operand,
-            ..
-        } => {
+        AnnotatedExpr::Negation { operand, .. } => {
             let typed_operand = typecheck_expr(operand, env, annotations)?;
             let operand_type = typed_operand.kind();
 
@@ -121,10 +117,8 @@ pub fn typecheck_expr(
             }
 
             // The result of ! is always boolean
-            Ok(TypedExpr::UnaryOp {
-                operator: UnaryOp::Not,
+            Ok(TypedExpr::Negation {
                 operand: Box::new(typed_operand),
-                kind: Type::Bool,
                 annotation: (),
             })
         }

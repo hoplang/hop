@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt};
 use crate::dop::{VarName, r#type::Type, typed_expr::AnnotatedTypedExpr};
 use pretty::BoxDoc;
 
-pub use crate::dop::expr::{BinaryOp, UnaryOp};
+pub use crate::dop::expr::BinaryOp;
 
 // This module contains the types and implementations for ASTs in
 // the IR.
@@ -308,7 +308,7 @@ impl IrExpr {
                 left.traverse(f);
                 right.traverse(f);
             }
-            AnnotatedTypedExpr::UnaryOp { operand, .. } => {
+            AnnotatedTypedExpr::Negation { operand, .. } => {
                 operand.traverse(f);
             }
             AnnotatedTypedExpr::JsonEncode { value, .. } => {
@@ -346,7 +346,7 @@ impl IrExpr {
                 left.traverse_mut(f);
                 right.traverse_mut(f);
             }
-            AnnotatedTypedExpr::UnaryOp { operand, .. } => {
+            AnnotatedTypedExpr::Negation { operand, .. } => {
                 operand.traverse_mut(f);
             }
             AnnotatedTypedExpr::JsonEncode { value, .. } => {

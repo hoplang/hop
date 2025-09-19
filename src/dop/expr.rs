@@ -11,10 +11,6 @@ pub enum BinaryOp {
     Eq,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum UnaryOp {
-    Not,
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AnnotatedExpr<A> {
@@ -55,8 +51,8 @@ pub enum AnnotatedExpr<A> {
         annotation: A,
     },
 
-    UnaryOp {
-        operator: UnaryOp,
+    /// Boolean negation expression for negating boolean values
+    Negation {
         operand: Box<Self>,
         annotation: A,
     },
@@ -73,7 +69,7 @@ impl<A> AnnotatedExpr<A> {
             | AnnotatedExpr::ArrayLiteral { annotation, .. }
             | AnnotatedExpr::ObjectLiteral { annotation, .. }
             | AnnotatedExpr::BinaryOp { annotation, .. }
-            | AnnotatedExpr::UnaryOp { annotation, .. } => annotation,
+            | AnnotatedExpr::Negation { annotation, .. } => annotation,
         }
     }
 }
@@ -151,11 +147,9 @@ impl<'a, T> AnnotatedExpr<T> {
                 .append(BoxDoc::text(format!(" {} ", operator)))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            AnnotatedExpr::UnaryOp {
-                operator, operand, ..
-            } => BoxDoc::nil()
+            AnnotatedExpr::Negation { operand, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
-                .append(BoxDoc::text(operator.to_string()))
+                .append(BoxDoc::text("!"))
                 .append(operand.to_doc())
                 .append(BoxDoc::text(")")),
         }
@@ -176,10 +170,3 @@ impl Display for BinaryOp {
     }
 }
 
-impl Display for UnaryOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            UnaryOp::Not => write!(f, "!"),
-        }
-    }
-}

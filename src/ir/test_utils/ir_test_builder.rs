@@ -1,7 +1,7 @@
 use crate::dop::AnnotatedTypedExpr;
 use crate::dop::{Type, VarName};
 use crate::ir::ast::IrEntrypoint;
-use crate::ir::ast::{BinaryOp, ExprId, IrExpr, IrStatement, StatementId, UnaryOp};
+use crate::ir::ast::{BinaryOp, ExprId, IrExpr, IrStatement, StatementId};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
@@ -135,10 +135,8 @@ impl IrTestBuilder {
     }
 
     pub fn not(&self, operand: IrExpr) -> IrExpr {
-        AnnotatedTypedExpr::UnaryOp {
-            operator: UnaryOp::Not,
+        AnnotatedTypedExpr::Negation {
             operand: Box::new(operand),
-            kind: Type::Bool,
             annotation: self.next_expr_id(),
         }
     }

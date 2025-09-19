@@ -6,7 +6,7 @@ pub use js::{JsTranspiler, LanguageMode};
 use pretty::BoxDoc;
 
 use crate::dop::r#type::Type;
-use crate::ir::ast::{BinaryOp, IrEntrypoint, IrExpr, IrStatement, UnaryOp};
+use crate::ir::ast::{BinaryOp, IrEntrypoint, IrExpr, IrStatement};
 use std::collections::BTreeMap;
 
 pub trait Transpiler {
@@ -128,11 +128,6 @@ pub trait ExpressionTranspiler {
                     right.typ()
                 ),
             },
-            IrExpr::UnaryOp {
-                operator: UnaryOp::Not,
-                operand,
-                ..
-            } => self.transpile_not(operand),
             IrExpr::JsonEncode { value, .. } => self.transpile_json_encode(value),
             IrExpr::StringConcat { left, right, .. } => self.transpile_string_concat(left, right),
             IrExpr::Negation { operand, .. } => self.transpile_not(operand),

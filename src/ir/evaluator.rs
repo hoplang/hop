@@ -5,7 +5,7 @@ use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use super::ast::{BinaryOp, IrEntrypoint, IrStatement, UnaryOp};
+use super::ast::{BinaryOp, IrEntrypoint, IrStatement};
 
 /// Evaluate an IR entrypoint with the given arguments
 pub fn evaluate_entrypoint(
@@ -154,19 +154,6 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             let right_val = evaluate_expr(right, env)?;
             match op {
                 BinaryOp::Eq => Ok(Value::Bool(left_val == right_val)),
-            }
-        }
-        IrExpr::UnaryOp {
-            operator: op,
-            operand,
-            ..
-        } => {
-            let val = evaluate_expr(operand, env)?;
-            match op {
-                UnaryOp::Not => {
-                    let bool_val = val.as_bool().unwrap_or(false);
-                    Ok(Value::Bool(!bool_val))
-                }
             }
         }
         IrExpr::JsonEncode { value, .. } => {

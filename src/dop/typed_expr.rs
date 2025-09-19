@@ -3,7 +3,7 @@ use std::fmt::{self, Display};
 use crate::dop::var_name::VarName;
 use pretty::BoxDoc;
 
-use super::{Type, expr::BinaryOp, expr::UnaryOp};
+use super::{Type, expr::BinaryOp};
 
 /// Type alias for TypedExpr without additional annotation (used in hop/ modules)
 pub type TypedExpr = AnnotatedTypedExpr<()>;
@@ -26,16 +26,10 @@ pub enum AnnotatedTypedExpr<A> {
     },
 
     /// A string literal expression, e.g. "foo bar"
-    StringLiteral {
-        value: String,
-        annotation: A,
-    },
+    StringLiteral { value: String, annotation: A },
 
     /// A boolean literal expression, e.g. true
-    BooleanLiteral {
-        value: bool,
-        annotation: A,
-    },
+    BooleanLiteral { value: bool, annotation: A },
 
     /// A number literal expression, e.g. 2.5
     NumberLiteral {
@@ -64,18 +58,8 @@ pub enum AnnotatedTypedExpr<A> {
         annotation: A,
     },
 
-    UnaryOp {
-        operator: UnaryOp,
-        operand: Box<Self>,
-        kind: Type,
-        annotation: A,
-    },
-
     /// JSON encode expression for converting values to JSON strings
-    JsonEncode {
-        value: Box<Self>,
-        annotation: A,
-    },
+    JsonEncode { value: Box<Self>, annotation: A },
 
     /// String concatenation expression for joining two string expressions
     StringConcat {
@@ -85,10 +69,7 @@ pub enum AnnotatedTypedExpr<A> {
     },
 
     /// Boolean negation expression for negating boolean values
-    Negation {
-        operand: Box<Self>,
-        annotation: A,
-    },
+    Negation { operand: Box<Self>, annotation: A },
 }
 
 impl<A> AnnotatedTypedExpr<A> {
@@ -102,8 +83,7 @@ impl<A> AnnotatedTypedExpr<A> {
             | AnnotatedTypedExpr::PropertyAccess { kind, .. }
             | AnnotatedTypedExpr::ArrayLiteral { kind, .. }
             | AnnotatedTypedExpr::ObjectLiteral { kind, .. }
-            | AnnotatedTypedExpr::BinaryOp { kind, .. }
-            | AnnotatedTypedExpr::UnaryOp { kind, .. } => kind,
+            | AnnotatedTypedExpr::BinaryOp { kind, .. } => kind,
             AnnotatedTypedExpr::StringLiteral { .. } => &STRING_TYPE,
             AnnotatedTypedExpr::BooleanLiteral { .. } => &BOOL_TYPE,
             AnnotatedTypedExpr::NumberLiteral { .. } => &NUMBER_TYPE,
@@ -123,7 +103,6 @@ impl<A> AnnotatedTypedExpr<A> {
             | AnnotatedTypedExpr::ArrayLiteral { annotation, .. }
             | AnnotatedTypedExpr::ObjectLiteral { annotation, .. }
             | AnnotatedTypedExpr::BinaryOp { annotation, .. }
-            | AnnotatedTypedExpr::UnaryOp { annotation, .. }
             | AnnotatedTypedExpr::JsonEncode { annotation, .. }
             | AnnotatedTypedExpr::StringConcat { annotation, .. }
             | AnnotatedTypedExpr::Negation { annotation, .. } => annotation,
@@ -198,13 +177,6 @@ impl<A> AnnotatedTypedExpr<A> {
                 .append(BoxDoc::text(format!(" {} ", operator)))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            AnnotatedTypedExpr::UnaryOp {
-                operator, operand, ..
-            } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(BoxDoc::text(operator.to_string()))
-                .append(operand.to_doc())
-                .append(BoxDoc::text(")")),
             AnnotatedTypedExpr::JsonEncode { value, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("JsonEncode("))
                 .append(value.to_doc())
@@ -216,8 +188,10 @@ impl<A> AnnotatedTypedExpr<A> {
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
             AnnotatedTypedExpr::Negation { operand, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
                 .append(BoxDoc::text("!"))
-                .append(operand.to_doc()),
+                .append(operand.to_doc())
+                .append(BoxDoc::text(")")),
         }
     }
 }

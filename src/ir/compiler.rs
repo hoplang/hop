@@ -358,15 +358,8 @@ impl Compiler {
                 kind,
                 annotation: expr_id,
             },
-            TypedExpr::UnaryOp {
-                operator,
-                operand,
-                kind,
-                ..
-            } => AnnotatedTypedExpr::UnaryOp {
-                operator,
+            TypedExpr::Negation { operand, .. } => AnnotatedTypedExpr::Negation {
                 operand: Box::new(self.compile_expr(*operand)),
-                kind,
                 annotation: expr_id,
             },
             TypedExpr::ArrayLiteral { elements, kind, .. } => AnnotatedTypedExpr::ArrayLiteral {
@@ -405,10 +398,6 @@ impl Compiler {
             } => AnnotatedTypedExpr::StringConcat {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
-                annotation: expr_id,
-            },
-            TypedExpr::Negation { operand, .. } => AnnotatedTypedExpr::Negation {
-                operand: Box::new(self.compile_expr(*operand)),
                 annotation: expr_id,
             },
         }

@@ -142,15 +142,11 @@ impl AlphaRenamingPass {
                 kind,
                 annotation,
             },
-            AnnotatedTypedExpr::UnaryOp {
-                operator,
+            AnnotatedTypedExpr::Negation {
                 operand,
-                kind,
                 annotation,
-            } => AnnotatedTypedExpr::UnaryOp {
-                operator,
+            } => AnnotatedTypedExpr::Negation {
                 operand: Box::new(self.rename_expr(*operand)),
-                kind,
                 annotation,
             },
             AnnotatedTypedExpr::ArrayLiteral {
@@ -188,13 +184,6 @@ impl AlphaRenamingPass {
             } => AnnotatedTypedExpr::StringConcat {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
-                annotation,
-            },
-            AnnotatedTypedExpr::Negation {
-                operand,
-                annotation,
-            } => AnnotatedTypedExpr::Negation {
-                operand: Box::new(self.rename_expr(*operand)),
                 annotation,
             },
             // Literals don't contain variables

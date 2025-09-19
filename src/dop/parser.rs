@@ -4,7 +4,7 @@ use std::iter::Peekable;
 
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _};
 use crate::dop::Type;
-use crate::dop::expr::{AnnotatedExpr, BinaryOp, UnaryOp};
+use crate::dop::expr::{AnnotatedExpr, BinaryOp};
 use crate::dop::parse_error::ParseError;
 use crate::dop::token::Token;
 use crate::dop::tokenizer::Tokenizer;
@@ -360,9 +360,8 @@ impl Parser {
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {
         if let Some(operator_range) = self.advance_if(Token::Not) {
             let expr = self.parse_unary()?; // Right associative for multiple !
-            Ok(AnnotatedExpr::UnaryOp {
+            Ok(AnnotatedExpr::Negation {
                 annotation: operator_range.to(expr.range().clone()),
-                operator: UnaryOp::Not,
                 operand: Box::new(expr),
             })
         } else {
