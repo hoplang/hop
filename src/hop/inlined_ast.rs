@@ -6,7 +6,6 @@ use crate::{
 };
 use pretty::BoxDoc;
 
-
 #[derive(Debug, Clone)]
 pub struct InlinedParameter {
     pub var_name: VarName,
@@ -87,9 +86,7 @@ impl InlinedAttribute {
     pub fn to_doc(&self) -> BoxDoc {
         let name_doc = BoxDoc::text(&self.name);
         match &self.value {
-            Some(value) => name_doc
-                .append(BoxDoc::text("="))
-                .append(value.to_doc()),
+            Some(value) => name_doc.append(BoxDoc::text("=")).append(value.to_doc()),
             None => name_doc,
         }
     }
@@ -130,56 +127,56 @@ impl InlinedEntryPoint {
 impl InlinedNode {
     pub fn to_doc(&self) -> BoxDoc {
         match self {
-            InlinedNode::Text { value } => {
-                BoxDoc::text(format!("{:?}", value.as_str()))
-            }
-            InlinedNode::TextExpression { expression } => {
-                BoxDoc::text("{")
-                    .append(expression.to_doc())
-                    .append(BoxDoc::text("}"))
-            }
-            InlinedNode::If { condition, children } => {
-                BoxDoc::text("<if {")
-                    .append(condition.to_doc())
-                    .append(BoxDoc::text("}>"))
-                    .append(if children.is_empty() {
-                        BoxDoc::nil()
-                    } else {
-                        BoxDoc::line()
-                            .append(BoxDoc::intersperse(
-                                children.iter().map(|child| child.to_doc()),
-                                BoxDoc::line(),
-                            ))
-                            .append(BoxDoc::line())
-                            .nest(2)
-                    })
-                    .append(BoxDoc::text("</if>"))
-            }
-            InlinedNode::For { var_name, array_expr, children } => {
-                BoxDoc::text("<for {")
-                    .append(BoxDoc::text(var_name.as_str()))
-                    .append(BoxDoc::text(" in "))
-                    .append(array_expr.to_doc())
-                    .append(BoxDoc::text("}>"))
-                    .append(if children.is_empty() {
-                        BoxDoc::nil()
-                    } else {
-                        BoxDoc::line()
-                            .append(BoxDoc::intersperse(
-                                children.iter().map(|child| child.to_doc()),
-                                BoxDoc::line(),
-                            ))
-                            .append(BoxDoc::line())
-                            .nest(2)
-                    })
-                    .append(BoxDoc::text("</for>"))
-            }
-            InlinedNode::Doctype { value } => {
-                BoxDoc::text(value.as_str())
-            }
-            InlinedNode::Html { tag_name, attributes, children } => {
-                let mut tag_doc = BoxDoc::text("<")
-                    .append(BoxDoc::text(tag_name.as_str()));
+            InlinedNode::Text { value } => BoxDoc::text(format!("{:?}", value.as_str())),
+            InlinedNode::TextExpression { expression } => BoxDoc::text("{")
+                .append(expression.to_doc())
+                .append(BoxDoc::text("}")),
+            InlinedNode::If {
+                condition,
+                children,
+            } => BoxDoc::text("<if {")
+                .append(condition.to_doc())
+                .append(BoxDoc::text("}>"))
+                .append(if children.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            children.iter().map(|child| child.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .append(BoxDoc::line())
+                        .nest(2)
+                })
+                .append(BoxDoc::text("</if>")),
+            InlinedNode::For {
+                var_name,
+                array_expr,
+                children,
+            } => BoxDoc::text("<for {")
+                .append(BoxDoc::text(var_name.as_str()))
+                .append(BoxDoc::text(" in "))
+                .append(array_expr.to_doc())
+                .append(BoxDoc::text("}>"))
+                .append(if children.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            children.iter().map(|child| child.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .append(BoxDoc::line())
+                        .nest(2)
+                })
+                .append(BoxDoc::text("</for>")),
+            InlinedNode::Doctype { value } => BoxDoc::text(value.as_str()),
+            InlinedNode::Html {
+                tag_name,
+                attributes,
+                children,
+            } => {
+                let mut tag_doc = BoxDoc::text("<").append(BoxDoc::text(tag_name.as_str()));
 
                 if !attributes.is_empty() {
                     tag_doc = tag_doc
@@ -207,25 +204,27 @@ impl InlinedNode {
                         .append(BoxDoc::text(">"))
                 }
             }
-            InlinedNode::Let { var, value, children } => {
-                BoxDoc::text("<let {")
-                    .append(BoxDoc::text(var.as_str()))
-                    .append(BoxDoc::text(" = "))
-                    .append(value.to_doc())
-                    .append(BoxDoc::text("}>"))
-                    .append(if children.is_empty() {
-                        BoxDoc::nil()
-                    } else {
-                        BoxDoc::line()
-                            .append(BoxDoc::intersperse(
-                                children.iter().map(|child| child.to_doc()),
-                                BoxDoc::line(),
-                            ))
-                            .append(BoxDoc::line())
-                            .nest(2)
-                    })
-                    .append(BoxDoc::text("</let>"))
-            }
+            InlinedNode::Let {
+                var,
+                value,
+                children,
+            } => BoxDoc::text("<let {")
+                .append(BoxDoc::text(var.as_str()))
+                .append(BoxDoc::text(" = "))
+                .append(value.to_doc())
+                .append(BoxDoc::text("}>"))
+                .append(if children.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            children.iter().map(|child| child.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .append(BoxDoc::line())
+                        .nest(2)
+                })
+                .append(BoxDoc::text("</let>")),
         }
     }
 }

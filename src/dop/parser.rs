@@ -122,10 +122,12 @@ impl Parser {
     fn expect_variable_name(&mut self) -> Result<(VarName, DocumentRange), ParseError> {
         match self.iter.next().transpose()? {
             Some((Token::Identifier(name), range)) => {
-                let var_name = VarName::new(name.as_str()).map_err(|error| ParseError::InvalidVariableName {
-                    name: name.to_string_span(),
-                    error,
-                    range: name.clone(),
+                let var_name = VarName::new(name.as_str()).map_err(|error| {
+                    ParseError::InvalidVariableName {
+                        name: name.to_string_span(),
+                        error,
+                        range: name.clone(),
+                    }
                 })?;
                 Ok((var_name, range))
             }
@@ -209,7 +211,9 @@ impl Parser {
     }
 
     // loop_header = Identifier "in" equality Eof
-    pub fn parse_loop_header(&mut self) -> Result<(VarName, DocumentRange, UntypedExpr), ParseError> {
+    pub fn parse_loop_header(
+        &mut self,
+    ) -> Result<(VarName, DocumentRange, UntypedExpr), ParseError> {
         let (var_name, var_name_range) = self.expect_variable_name()?;
         self.expect_token(&Token::In)?;
         let array_expr = self.parse_equality()?;
@@ -412,11 +416,12 @@ impl Parser {
         &mut self,
         identifier: DocumentRange,
     ) -> Result<UntypedExpr, ParseError> {
-        let var_name = VarName::new(identifier.as_str()).map_err(|error| ParseError::InvalidVariableName {
-            name: identifier.to_string_span(),
-            error,
-            range: identifier.clone(),
-        })?;
+        let var_name =
+            VarName::new(identifier.as_str()).map_err(|error| ParseError::InvalidVariableName {
+                name: identifier.to_string_span(),
+                error,
+                range: identifier.clone(),
+            })?;
         let mut expr = Expr::Var {
             annotation: identifier.clone(),
             value: var_name,

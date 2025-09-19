@@ -388,7 +388,7 @@ impl Compiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::test_utils::InlinedTestBuilder;
+    use crate::ir::test_utils::build_inlined;
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: InlinedEntryPoint, mode: CompilationMode, expected: Expect) {
@@ -401,11 +401,8 @@ mod tests {
 
     #[test]
     fn test_simple_text() {
-        let t = InlinedTestBuilder::new(vec![]);
-        let entrypoint = t.build("main-comp", vec![t.text("Hello World")]);
-
         check(
-            entrypoint,
+            build_inlined("main-comp", vec![], |t| vec![t.text("Hello World")]),
             CompilationMode::Production,
             expect![[r#"
                 -- before --
@@ -423,14 +420,10 @@ mod tests {
 
     #[test]
     fn test_text_expression() {
-        let t = InlinedTestBuilder::new(vec![("name".to_string(), Type::String)]);
-        let entrypoint = t.build(
-            "main-comp",
-            vec![t.text("Hello "), t.text_expr(t.var_expr("name"))],
-        );
-
         check(
-            entrypoint,
+            build_inlined("main-comp", vec![("name".to_string(), Type::String)], |t| {
+                vec![t.text("Hello "), t.text_expr(t.var_expr("name"))]
+            }),
             CompilationMode::Production,
             expect![[r#"
                 -- before --
@@ -450,14 +443,10 @@ mod tests {
 
     #[test]
     fn test_html_element() {
-        let t = InlinedTestBuilder::new(vec![]);
-        let entrypoint = t.build(
-            "main-comp",
-            vec![t.html("div", vec![], vec![t.text("Content")])],
-        );
-
         check(
-            entrypoint,
+            build_inlined("main-comp", vec![], |t| {
+                vec![t.html("div", vec![], vec![t.text("Content")])]
+            }),
             CompilationMode::Production,
             expect![[r#"
                 -- before --
@@ -480,17 +469,13 @@ mod tests {
 
     #[test]
     fn test_if_node() {
-        let t = InlinedTestBuilder::new(vec![("show".to_string(), Type::Bool)]);
-        let entrypoint = t.build(
-            "main-comp",
-            vec![t.if_node(
-                t.var_expr("show"),
-                vec![t.html("div", vec![], vec![t.text("Visible")])],
-            )],
-        );
-
         check(
-            entrypoint,
+            build_inlined("main-comp", vec![("show".to_string(), Type::Bool)], |t| {
+                vec![t.if_node(
+                    t.var_expr("show"),
+                    vec![t.html("div", vec![], vec![t.text("Visible")])],
+                )]
+            }),
             CompilationMode::Production,
             expect![[r#"
                 -- before --
@@ -517,19 +502,19 @@ mod tests {
 
     #[test]
     fn test_for_node() {
-        let t = InlinedTestBuilder::new(vec![(
-            "items".to_string(),
-            Type::Array(Some(Box::new(Type::String))),
-        )]);
-        let entrypoint = t.build(
-            "main-comp",
-            vec![t.for_node("item", t.var_expr("items"), |t| {
-                vec![t.html("li", vec![], vec![t.text_expr(t.var_expr("item"))])]
-            })],
-        );
-
         check(
-            entrypoint,
+            build_inlined(
+                "main-comp",
+                vec![(
+                    "items".to_string(),
+                    Type::Array(Some(Box::new(Type::String))),
+                )],
+                |t| {
+                    vec![t.for_node("item", t.var_expr("items"), |t| {
+                        vec![t.html("li", vec![], vec![t.text_expr(t.var_expr("item"))])]
+                    })]
+                },
+            ),
             CompilationMode::Production,
             expect![[r#"
                 -- before --
@@ -556,18 +541,14 @@ mod tests {
 
     #[test]
     fn test_inlined_attributes_static() {
-        let t = InlinedTestBuilder::new(vec![]);
-        let entrypoint = t.build(
-            "main-comp",
-            vec![t.html(
-                "div",
-                vec![("class", t.attr_str("base")), ("id", t.attr_str("test"))],
-                vec![t.text("Content")],
-            )],
-        );
-
         check(
-            entrypoint,
+            build_inlined("main-comp", vec![], |t| {
+                vec![t.html(
+                    "div",
+                    vec![("class", t.attr_str("base")), ("id", t.attr_str("test"))],
+                    vec![t.text("Content")],
+                )]
+            }),
             CompilationMode::Production,
             expect![[r#"
                 -- before --
@@ -592,21 +573,17 @@ mod tests {
 
     #[test]
     fn test_inlined_attributes_dynamic() {
-        let t = InlinedTestBuilder::new(vec![("cls".to_string(), Type::String)]);
-        let entrypoint = t.build(
-            "main-comp",
-            vec![t.html(
-                "div",
-                vec![
-                    ("class", t.attr_str("base")),
-                    ("data-value", t.attr_expr(t.var_expr("cls"))),
-                ],
-                vec![t.text("Content")],
-            )],
-        );
-
         check(
-            entrypoint,
+            build_inlined("main-comp", vec![("cls".to_string(), Type::String)], |t| {
+                vec![t.html(
+                    "div",
+                    vec![
+                        ("class", t.attr_str("base")),
+                        ("data-value", t.attr_expr(t.var_expr("cls"))),
+                    ],
+                    vec![t.text("Content")],
+                )]
+            }),
             CompilationMode::Production,
             expect![[r#"
                 -- before --
@@ -633,26 +610,26 @@ mod tests {
 
     #[test]
     fn test_development_mode() {
-        let t = InlinedTestBuilder::new(vec![
-            ("name".to_string(), Type::String),
-            ("count".to_string(), Type::String),
-        ]);
-        let entrypoint = t.build(
-            "test-comp",
-            vec![t.html(
-                "div",
-                vec![],
-                vec![
-                    t.text("Hello "),
-                    t.text_expr(t.var_expr("name")),
-                    t.text(", count: "),
-                    t.text_expr(t.var_expr("count")),
-                ],
-            )],
-        );
-
         check(
-            entrypoint,
+            build_inlined(
+                "test-comp",
+                vec![
+                    ("name".to_string(), Type::String),
+                    ("count".to_string(), Type::String),
+                ],
+                |t| {
+                    vec![t.html(
+                        "div",
+                        vec![],
+                        vec![
+                            t.text("Hello "),
+                            t.text_expr(t.var_expr("name")),
+                            t.text(", count: "),
+                            t.text_expr(t.var_expr("count")),
+                        ],
+                    )]
+                },
+            ),
             CompilationMode::Development,
             expect![[r#"
                 -- before --

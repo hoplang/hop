@@ -70,7 +70,9 @@ mod tests {
     #[test]
     fn test_removes_always_true_if() {
         check(
-            build_ir("test", vec![], |t| vec![t.if_stmt(t.bool(true), vec![t.write("Always shown")])]),
+            build_ir("test", vec![], |t| {
+                vec![t.if_stmt(t.bool(true), vec![t.write("Always shown")])]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -90,10 +92,12 @@ mod tests {
     #[test]
     fn test_removes_always_false_if() {
         check(
-            build_ir("test", vec![], |t| vec![
-                t.if_stmt(t.bool(false), vec![t.write("Never shown")]),
-                t.write("After if"),
-            ]),
+            build_ir("test", vec![], |t| {
+                vec![
+                    t.if_stmt(t.bool(false), vec![t.write("Never shown")]),
+                    t.write("After if"),
+                ]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -114,11 +118,13 @@ mod tests {
     #[test]
     fn test_preserves_dynamic_conditions() {
         check(
-            build_ir("test", vec![("show".to_string(), Type::Bool)], |t| vec![
-                t.if_stmt(t.var("show"), vec![t.write("Dynamic")]),
-                t.if_stmt(t.bool(true), vec![t.write("Static true")]),
-                t.if_stmt(t.bool(false), vec![t.write("Static false")]),
-            ]),
+            build_ir("test", vec![("show".to_string(), Type::Bool)], |t| {
+                vec![
+                    t.if_stmt(t.var("show"), vec![t.write("Dynamic")]),
+                    t.if_stmt(t.bool(true), vec![t.write("Static true")]),
+                    t.if_stmt(t.bool(false), vec![t.write("Static false")]),
+                ]
+            }),
             expect![[r#"
                 -- before --
                 test(show: boolean) {
@@ -147,26 +153,28 @@ mod tests {
     #[test]
     fn test_nested_if_elimination() {
         check(
-            build_ir("test", vec![("condition".to_string(), Type::Bool)], |t| vec![
-                t.if_stmt(
-                    t.var("condition"),
-                    vec![
-                        t.write("Before nested"),
-                        t.if_stmt(t.bool(true), vec![t.write("Nested always true")]),
-                        t.if_stmt(t.bool(false), vec![t.write("Nested never shown")]),
-                        t.write("After nested"),
-                    ],
-                ),
-                t.if_stmt(
-                    t.bool(true),
-                    vec![
-                        t.write("Outer true - before nested"),
-                        t.if_stmt(t.bool(false), vec![t.write("Inner false - never shown")]),
-                        t.if_stmt(t.var("condition"), vec![t.write("Inner dynamic")]),
-                        t.write("Outer true - after nested"),
-                    ],
-                ),
-            ]),
+            build_ir("test", vec![("condition".to_string(), Type::Bool)], |t| {
+                vec![
+                    t.if_stmt(
+                        t.var("condition"),
+                        vec![
+                            t.write("Before nested"),
+                            t.if_stmt(t.bool(true), vec![t.write("Nested always true")]),
+                            t.if_stmt(t.bool(false), vec![t.write("Nested never shown")]),
+                            t.write("After nested"),
+                        ],
+                    ),
+                    t.if_stmt(
+                        t.bool(true),
+                        vec![
+                            t.write("Outer true - before nested"),
+                            t.if_stmt(t.bool(false), vec![t.write("Inner false - never shown")]),
+                            t.if_stmt(t.var("condition"), vec![t.write("Inner dynamic")]),
+                            t.write("Outer true - after nested"),
+                        ],
+                    ),
+                ]
+            }),
             expect![[r#"
                 -- before --
                 test(condition: boolean) {

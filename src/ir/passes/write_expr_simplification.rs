@@ -46,10 +46,12 @@ mod tests {
     #[test]
     fn test_simplify_constant_string() {
         check(
-            build_ir("test", vec![], |t| vec![
-                // WriteExpr with constant string should become Write
-                t.write_expr(t.str("Hello, World!"), false),
-            ]),
+            build_ir("test", vec![], |t| {
+                vec![
+                    // WriteExpr with constant string should become Write
+                    t.write_expr(t.str("Hello, World!"), false),
+                ]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -67,10 +69,12 @@ mod tests {
     #[test]
     fn test_simplify_with_escaping() {
         check(
-            build_ir("test", vec![], |t| vec![
-                // WriteExpr with escaping enabled
-                t.write_expr(t.str("<div>Hello & Goodbye</div>"), true),
-            ]),
+            build_ir("test", vec![], |t| {
+                vec![
+                    // WriteExpr with escaping enabled
+                    t.write_expr(t.str("<div>Hello & Goodbye</div>"), true),
+                ]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -88,20 +92,22 @@ mod tests {
     #[test]
     fn test_nested_transformations() {
         check(
-            build_ir("test", vec![], |t| vec![
-                t.if_stmt(
-                    t.bool(true),
-                    vec![
-                        t.write_expr(t.str("Inside if"), false),
-                        t.for_loop("item", t.array(vec![t.str("foo")]), |t| {
-                            vec![t.write_expr(t.str("Inside for"), false)]
-                        }),
-                    ],
-                ),
-                t.let_stmt("x", t.str("value"), |t| {
-                    vec![t.write_expr(t.str("Inside let"), false)]
-                }),
-            ]),
+            build_ir("test", vec![], |t| {
+                vec![
+                    t.if_stmt(
+                        t.bool(true),
+                        vec![
+                            t.write_expr(t.str("Inside if"), false),
+                            t.for_loop("item", t.array(vec![t.str("foo")]), |t| {
+                                vec![t.write_expr(t.str("Inside for"), false)]
+                            }),
+                        ],
+                    ),
+                    t.let_stmt("x", t.str("value"), |t| {
+                        vec![t.write_expr(t.str("Inside let"), false)]
+                    }),
+                ]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -135,11 +141,13 @@ mod tests {
     #[test]
     fn test_mixed_write_and_write_expr() {
         check(
-            build_ir("test", vec![("x".to_string(), Type::String)], |t| vec![
-                t.write("Already a Write statement"),
-                t.write_expr(t.str("Will become Write"), false),
-                t.write_expr(t.var("x"), false),
-            ]),
+            build_ir("test", vec![("x".to_string(), Type::String)], |t| {
+                vec![
+                    t.write("Already a Write statement"),
+                    t.write_expr(t.str("Will become Write"), false),
+                    t.write_expr(t.var("x"), false),
+                ]
+            }),
             expect![[r#"
                 -- before --
                 test(x: string) {

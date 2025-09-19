@@ -105,10 +105,12 @@ mod tests {
     #[test]
     fn test_eliminate_unused_let() {
         check(
-            build_ir("test", vec![], |t| vec![
-                // Unused let should be eliminated
-                t.let_stmt("unused", t.str("value"), |t| vec![t.write("Hello")]),
-            ]),
+            build_ir("test", vec![], |t| {
+                vec![
+                    // Unused let should be eliminated
+                    t.let_stmt("unused", t.str("value"), |t| vec![t.write("Hello")]),
+                ]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -128,12 +130,14 @@ mod tests {
     #[test]
     fn test_preserve_used_let() {
         check(
-            build_ir("test", vec![], |t| vec![
-                // Used let should be preserved
-                t.let_stmt("message", t.str("Hello"), |t| {
-                    vec![t.write_expr(t.var("message"), false)]
-                }),
-            ]),
+            build_ir("test", vec![], |t| {
+                vec![
+                    // Used let should be preserved
+                    t.let_stmt("message", t.str("Hello"), |t| {
+                        vec![t.write_expr(t.var("message"), false)]
+                    }),
+                ]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -155,11 +159,13 @@ mod tests {
     #[test]
     fn test_nested_unused_lets() {
         check(
-            build_ir("test", vec![], |t| vec![t.let_stmt("outer", t.str("outer_value"), |t| {
-                vec![t.let_stmt("inner", t.str("inner_value"), |t| {
-                    vec![t.write("No variables used")]
+            build_ir("test", vec![], |t| {
+                vec![t.let_stmt("outer", t.str("outer_value"), |t| {
+                    vec![t.let_stmt("inner", t.str("inner_value"), |t| {
+                        vec![t.write("No variables used")]
+                    })]
                 })]
-            })]),
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -181,9 +187,11 @@ mod tests {
     #[test]
     fn test_used_in_nested_structure() {
         check(
-            build_ir("test", vec![], |t| vec![t.let_stmt("cond", t.bool(true), |t| {
-                vec![t.if_stmt(t.var("cond"), vec![t.write("Condition is true")])]
-            })]),
+            build_ir("test", vec![], |t| {
+                vec![t.let_stmt("cond", t.bool(true), |t| {
+                    vec![t.if_stmt(t.var("cond"), vec![t.write("Condition is true")])]
+                })]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -209,10 +217,12 @@ mod tests {
     #[test]
     fn test_eliminate_in_if_body() {
         check(
-            build_ir("test", vec![], |t| vec![t.if_stmt(
-                t.bool(true),
-                vec![t.let_stmt("unused", t.str("value"), |t| vec![t.write("Inside if")])],
-            )]),
+            build_ir("test", vec![], |t| {
+                vec![t.if_stmt(
+                    t.bool(true),
+                    vec![t.let_stmt("unused", t.str("value"), |t| vec![t.write("Inside if")])],
+                )]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -236,15 +246,15 @@ mod tests {
     #[test]
     fn test_eliminate_in_for_body() {
         check(
-            build_ir("test", vec![], |t| vec![t.for_loop(
-                "item",
-                t.array(vec![t.str("a"), t.str("b")]),
-                |t| {
-                    vec![t.let_stmt("unused", t.str("value"), |t| {
-                        vec![t.write_expr(t.var("item"), false)]
-                    })]
-                },
-            )]),
+            build_ir("test", vec![], |t| {
+                vec![
+                    t.for_loop("item", t.array(vec![t.str("a"), t.str("b")]), |t| {
+                        vec![t.let_stmt("unused", t.str("value"), |t| {
+                            vec![t.write_expr(t.var("item"), false)]
+                        })]
+                    }),
+                ]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -268,11 +278,13 @@ mod tests {
     #[test]
     fn test_used_in_binary_op() {
         check(
-            build_ir("test", vec![], |t| vec![t.let_stmt("x", t.bool(true), |t| {
-                vec![t.let_stmt("y", t.bool(false), |t| {
-                    vec![t.if_stmt(t.eq(t.var("x"), t.var("y")), vec![t.write("Equal")])]
+            build_ir("test", vec![], |t| {
+                vec![t.let_stmt("x", t.bool(true), |t| {
+                    vec![t.let_stmt("y", t.bool(false), |t| {
+                        vec![t.if_stmt(t.eq(t.var("x"), t.var("y")), vec![t.write("Equal")])]
+                    })]
                 })]
-            })]),
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -302,11 +314,13 @@ mod tests {
     #[test]
     fn test_multiple_unused_lets_in_sequence() {
         check(
-            build_ir("test", vec![], |t| vec![
-                t.let_stmt("a", t.str("a_value"), |t| vec![t.write("First")]),
-                t.let_stmt("b", t.str("b_value"), |t| vec![t.write("Second")]),
-                t.write("Third"),
-            ]),
+            build_ir("test", vec![], |t| {
+                vec![
+                    t.let_stmt("a", t.str("a_value"), |t| vec![t.write("First")]),
+                    t.let_stmt("b", t.str("b_value"), |t| vec![t.write("Second")]),
+                    t.write("Third"),
+                ]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -332,15 +346,15 @@ mod tests {
     #[test]
     fn test_variable_used_in_array() {
         check(
-            build_ir("test", vec![], |t| vec![t.let_stmt(
-                "items",
-                t.array(vec![t.str("a"), t.str("b")]),
-                |t| {
-                    vec![t.for_loop("item", t.var("items"), |t| {
-                        vec![t.write_expr(t.var("item"), false)]
-                    })]
-                },
-            )]),
+            build_ir("test", vec![], |t| {
+                vec![
+                    t.let_stmt("items", t.array(vec![t.str("a"), t.str("b")]), |t| {
+                        vec![t.for_loop("item", t.var("items"), |t| {
+                            vec![t.write_expr(t.var("item"), false)]
+                        })]
+                    }),
+                ]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -366,11 +380,13 @@ mod tests {
     #[test]
     fn test_variable_used_in_property_access() {
         check(
-            build_ir("test", vec![], |t| vec![t.let_stmt(
-                "obj",
-                t.object(vec![("name", t.str("value"))]),
-                |t| vec![t.write_expr(t.prop_access(t.var("obj"), "name"), false)],
-            )]),
+            build_ir("test", vec![], |t| {
+                vec![
+                    t.let_stmt("obj", t.object(vec![("name", t.str("value"))]), |t| {
+                        vec![t.write_expr(t.prop_access(t.var("obj"), "name"), false)]
+                    }),
+                ]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -392,14 +408,16 @@ mod tests {
     #[test]
     fn test_sibling_lets_same_name_first_used() {
         check(
-            build_ir("test", vec![], |t| vec![
-                t.let_stmt("x", t.str("first x"), |t| {
-                    vec![t.write_expr(t.var("x"), false)]
-                }),
-                t.let_stmt("x", t.str("second x"), |t| {
-                    vec![t.write("No reference to x here")]
-                }),
-            ]),
+            build_ir("test", vec![], |t| {
+                vec![
+                    t.let_stmt("x", t.str("first x"), |t| {
+                        vec![t.write_expr(t.var("x"), false)]
+                    }),
+                    t.let_stmt("x", t.str("second x"), |t| {
+                        vec![t.write("No reference to x here")]
+                    }),
+                ]
+            }),
             expect![[r#"
                 -- before --
                 test() {

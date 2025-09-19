@@ -61,12 +61,14 @@ impl DoctypeInjector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::test_utils::InlinedTestBuilder;
+    use crate::ir::test_utils::build_inlined;
     use expect_test::{Expect, expect};
 
     /// Helper to pretty-print entrypoint children for testing
     fn format_entrypoint_children(entrypoint: &InlinedEntryPoint) -> String {
-        entrypoint.children.iter()
+        entrypoint
+            .children
+            .iter()
             .map(|child| child.to_string())
             .collect::<Vec<_>>()
             .join("\n")
@@ -91,18 +93,25 @@ mod tests {
 
     #[test]
     fn test_inject_doctype_when_missing() {
-        let t = InlinedTestBuilder::new(vec![]);
-        let entrypoint = t.build("main-comp", vec![
-            t.text("                    "), // Leading whitespace
-            t.html("html", vec![], vec![
-                t.text("\n                        "),
-                t.html("body", vec![], vec![t.text("Hello World")]),
-                t.text("\n                    ")
-            ]),
-            t.text("\n                ") // Trailing whitespace
-        ]);
+        let entrypoint = build_inlined("main-comp", vec![], |t| {
+            vec![
+                t.text("                    "), // Leading whitespace
+                t.html(
+                    "html",
+                    vec![],
+                    vec![
+                        t.text("\n                        "),
+                        t.html("body", vec![], vec![t.text("Hello World")]),
+                        t.text("\n                    "),
+                    ],
+                ),
+                t.text("\n                "), // Trailing whitespace
+            ]
+        });
 
-        check_doctype_injection(entrypoint, expect![[r#"
+        check_doctype_injection(
+            entrypoint,
+            expect![[r#"
             -- before --
             "                    "
             <html>
@@ -124,25 +133,33 @@ mod tests {
               "\n                    "
             </html>
             "\n                "
-        "#]]);
+        "#]],
+        );
     }
 
     #[test]
     fn test_no_injection_when_doctype_present() {
-        let t = InlinedTestBuilder::new(vec![]);
-        let entrypoint = t.build("main-comp", vec![
-            t.text("                    "), // Leading whitespace
-            t.doctype("<!DOCTYPE html>"),
-            t.text("                    "), // Whitespace after doctype
-            t.html("html", vec![], vec![
-                t.text("\n                        "),
-                t.html("body", vec![], vec![t.text("Hello World")]),
-                t.text("\n                    ")
-            ]),
-            t.text("\n                ") // Trailing whitespace
-        ]);
+        let entrypoint = build_inlined("main-comp", vec![], |t| {
+            vec![
+                t.text("                    "), // Leading whitespace
+                t.doctype("<!DOCTYPE html>"),
+                t.text("                    "), // Whitespace after doctype
+                t.html(
+                    "html",
+                    vec![],
+                    vec![
+                        t.text("\n                        "),
+                        t.html("body", vec![], vec![t.text("Hello World")]),
+                        t.text("\n                    "),
+                    ],
+                ),
+                t.text("\n                "), // Trailing whitespace
+            ]
+        });
 
-        check_doctype_injection(entrypoint, expect![[r#"
+        check_doctype_injection(
+            entrypoint,
+            expect![[r#"
             -- before --
             "                    "
             <!DOCTYPE html>
@@ -167,53 +184,63 @@ mod tests {
               "\n                    "
             </html>
             "\n                "
-        "#]]);
+        "#]],
+        );
     }
 
     #[test]
     fn test_empty_entrypoint() {
-        let t = InlinedTestBuilder::new(vec![]);
-        let entrypoint = t.build("empty-comp", vec![
-            t.text("\n                ") // Only whitespace
-        ]);
+        let entrypoint = build_inlined("empty-comp", vec![], |t| {
+            vec![
+                t.text("\n                "), // Only whitespace
+            ]
+        });
 
-        check_doctype_injection(entrypoint, expect![[r#"
+        check_doctype_injection(
+            entrypoint,
+            expect![[r#"
             -- before --
             "\n                "
             -- after --
             "\n                "
             <!DOCTYPE html>
-        "#]]);
+        "#]],
+        );
     }
 
     #[test]
     fn test_entrypoint_with_text_only() {
-        let t = InlinedTestBuilder::new(vec![]);
-        let entrypoint = t.build("text-comp", vec![
-            t.text("\n                    Just some text content\n                ")
-        ]);
+        let entrypoint = build_inlined("text-comp", vec![], |t| {
+            vec![t.text("\n                    Just some text content\n                ")]
+        });
 
-        check_doctype_injection(entrypoint, expect![[r#"
+        check_doctype_injection(
+            entrypoint,
+            expect![[r#"
             -- before --
             "\n                    Just some text content\n                "
             -- after --
             <!DOCTYPE html>
             "\n                    Just some text content\n                "
-        "#]]);
+        "#]],
+        );
     }
 
     #[test]
     fn test_doctype_with_leading_whitespace() {
-        let t = InlinedTestBuilder::new(vec![]);
-        let entrypoint = t.build("main-comp", vec![
-            t.text("\n\n                    "), // Extra leading whitespace
-            t.doctype("<!DOCTYPE html>"),
-            t.text("\n                    "), // Whitespace after doctype
-            t.html("html", vec![], vec![t.text("Content")]),
-            t.text("\n                ") // Trailing whitespace
-        ]);
+        let entrypoint = build_inlined("main-comp", vec![], |t| {
+            vec![
+                t.text("\n\n                    "), // Extra leading whitespace
+                t.doctype("<!DOCTYPE html>"),
+                t.text("\n                    "), // Whitespace after doctype
+                t.html("html", vec![], vec![t.text("Content")]),
+                t.text("\n                "), // Trailing whitespace
+            ]
+        });
 
-        check_doctype_injection(entrypoint, expect![[r#"
+        check_doctype_injection(
+            entrypoint,
+            expect![[r#"
             -- before --
             "\n\n                    "
             <!DOCTYPE html>
@@ -230,19 +257,23 @@ mod tests {
               "Content"
             </html>
             "\n                "
-        "#]]);
+        "#]],
+        );
     }
 
     #[test]
     fn test_inject_preserves_leading_whitespace() {
-        let t = InlinedTestBuilder::new(vec![]);
-        let entrypoint = t.build("main-comp", vec![
-            t.text("\n\n                    "), // Extra leading whitespace
-            t.html("html", vec![], vec![t.text("Content")]),
-            t.text("\n                ") // Trailing whitespace
-        ]);
+        let entrypoint = build_inlined("main-comp", vec![], |t| {
+            vec![
+                t.text("\n\n                    "), // Extra leading whitespace
+                t.html("html", vec![], vec![t.text("Content")]),
+                t.text("\n                "), // Trailing whitespace
+            ]
+        });
 
-        check_doctype_injection(entrypoint, expect![[r#"
+        check_doctype_injection(
+            entrypoint,
+            expect![[r#"
             -- before --
             "\n\n                    "
             <html>
@@ -256,6 +287,7 @@ mod tests {
               "Content"
             </html>
             "\n                "
-        "#]]);
+        "#]],
+        );
     }
 }

@@ -1,16 +1,12 @@
-use crate::ir::ast::IrEntrypoint;
-use crate::ir::ast::{BinaryOp, ExprId, IrExpr, IrStatement, StatementId, UnaryOp};
 use crate::dop::expr::Expr;
 use crate::dop::{Type, VarName};
+use crate::ir::ast::IrEntrypoint;
+use crate::ir::ast::{BinaryOp, ExprId, IrExpr, IrStatement, StatementId, UnaryOp};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 /// More ergonomic API for building IR entrypoints in tests
-pub fn build_ir<F>(
-    name: &str,
-    params: Vec<(String, Type)>,
-    body_fn: F,
-) -> IrEntrypoint
+pub fn build_ir<F>(name: &str, params: Vec<(String, Type)>, body_fn: F) -> IrEntrypoint
 where
     F: FnOnce(&IrTestBuilder) -> Vec<IrStatement>,
 {

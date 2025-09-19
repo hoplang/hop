@@ -187,9 +187,9 @@ mod tests {
     #[test]
     fn test_simple_not_folding() {
         check(
-            build_ir("test", vec![], |t| vec![
-                t.if_stmt(t.not(t.bool(false)), vec![t.write("Should be true")]),
-            ]),
+            build_ir("test", vec![], |t| {
+                vec![t.if_stmt(t.not(t.bool(false)), vec![t.write("Should be true")])]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -211,10 +211,9 @@ mod tests {
     #[test]
     fn test_double_not_folding() {
         check(
-            build_ir("test", vec![], |t| vec![t.if_stmt(
-                t.not(t.not(t.bool(true))),
-                vec![t.write("Double negation")],
-            )]),
+            build_ir("test", vec![], |t| {
+                vec![t.if_stmt(t.not(t.not(t.bool(true))), vec![t.write("Double negation")])]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -236,10 +235,12 @@ mod tests {
     #[test]
     fn test_triple_not_folding() {
         check(
-            build_ir("test", vec![], |t| vec![t.if_stmt(
-                t.not(t.not(t.not(t.bool(false)))),
-                vec![t.write("Triple negation")],
-            )]),
+            build_ir("test", vec![], |t| {
+                vec![t.if_stmt(
+                    t.not(t.not(t.not(t.bool(false)))),
+                    vec![t.write("Triple negation")],
+                )]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -261,20 +262,22 @@ mod tests {
     #[test]
     fn test_equality_folding() {
         check(
-            build_ir("test", vec![], |t| vec![
-                t.if_stmt(
-                    t.eq(t.bool(true), t.bool(true)),
-                    vec![t.write("true == true")],
-                ),
-                t.if_stmt(
-                    t.eq(t.bool(false), t.bool(false)),
-                    vec![t.write("false == false")],
-                ),
-                t.if_stmt(
-                    t.eq(t.bool(true), t.bool(false)),
-                    vec![t.write("Should not appear")],
-                ),
-            ]),
+            build_ir("test", vec![], |t| {
+                vec![
+                    t.if_stmt(
+                        t.eq(t.bool(true), t.bool(true)),
+                        vec![t.write("true == true")],
+                    ),
+                    t.if_stmt(
+                        t.eq(t.bool(false), t.bool(false)),
+                        vec![t.write("false == false")],
+                    ),
+                    t.if_stmt(
+                        t.eq(t.bool(true), t.bool(false)),
+                        vec![t.write("Should not appear")],
+                    ),
+                ]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -308,10 +311,12 @@ mod tests {
     #[test]
     fn test_complex_equality_with_negations() {
         check(
-            build_ir("test", vec![], |t| vec![t.if_stmt(
-                t.eq(t.not(t.not(t.bool(false))), t.not(t.bool(false))),
-                vec![t.write("Should not appear")],
-            )]),
+            build_ir("test", vec![], |t| {
+                vec![t.if_stmt(
+                    t.eq(t.not(t.not(t.bool(false))), t.not(t.bool(false))),
+                    vec![t.write("Should not appear")],
+                )]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -333,12 +338,14 @@ mod tests {
     #[test]
     fn test_variable_constant_propagation() {
         check(
-            build_ir("test", vec![], |t| vec![t.let_stmt("x", t.not(t.not(t.bool(true))), |t| {
-                vec![
-                    t.if_stmt(t.var("x"), vec![t.write("x is true")]),
-                    t.if_stmt(t.not(t.var("x")), vec![t.write("x is false")]),
-                ]
-            })]),
+            build_ir("test", vec![], |t| {
+                vec![t.let_stmt("x", t.not(t.not(t.bool(true))), |t| {
+                    vec![
+                        t.if_stmt(t.var("x"), vec![t.write("x is true")]),
+                        t.if_stmt(t.not(t.var("x")), vec![t.write("x is false")]),
+                    ]
+                })]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -370,17 +377,19 @@ mod tests {
     #[test]
     fn test_variable_in_equality() {
         check(
-            build_ir("test", vec![], |t| vec![t.let_stmt("x", t.bool(true), |t| {
-                vec![t.let_stmt("y", t.not(t.bool(true)), |t| {
-                    vec![
-                        t.if_stmt(t.eq(t.var("x"), t.var("y")), vec![t.write("x equals y")]),
-                        t.if_stmt(
-                            t.eq(t.var("x"), t.not(t.var("y"))),
-                            vec![t.write("x equals not y")],
-                        ),
-                    ]
+            build_ir("test", vec![], |t| {
+                vec![t.let_stmt("x", t.bool(true), |t| {
+                    vec![t.let_stmt("y", t.not(t.bool(true)), |t| {
+                        vec![
+                            t.if_stmt(t.eq(t.var("x"), t.var("y")), vec![t.write("x equals y")]),
+                            t.if_stmt(
+                                t.eq(t.var("x"), t.not(t.var("y"))),
+                                vec![t.write("x equals not y")],
+                            ),
+                        ]
+                    })]
                 })]
-            })]),
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -416,9 +425,11 @@ mod tests {
     #[test]
     fn test_string_constant_propagation() {
         check(
-            build_ir("test", vec![], |t| vec![t.let_stmt("message", t.str("Hello, World!"), |t| {
-                vec![t.write_expr(t.var("message"), true)]
-            })]),
+            build_ir("test", vec![], |t| {
+                vec![t.let_stmt("message", t.str("Hello, World!"), |t| {
+                    vec![t.write_expr(t.var("message"), true)]
+                })]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -440,14 +451,16 @@ mod tests {
     #[test]
     fn test_nested_string_variable_propagation() {
         check(
-            build_ir("test", vec![], |t| vec![t.let_stmt("greeting", t.str("Hello"), |t| {
-                vec![t.let_stmt("name", t.str("World"), |t| {
-                    vec![
-                        t.write_expr(t.var("greeting"), true),
-                        t.write_expr(t.var("name"), true),
-                    ]
+            build_ir("test", vec![], |t| {
+                vec![t.let_stmt("greeting", t.str("Hello"), |t| {
+                    vec![t.let_stmt("name", t.str("World"), |t| {
+                        vec![
+                            t.write_expr(t.var("greeting"), true),
+                            t.write_expr(t.var("name"), true),
+                        ]
+                    })]
                 })]
-            })]),
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -475,15 +488,17 @@ mod tests {
     #[test]
     fn test_string_variable_multiple_uses() {
         check(
-            build_ir("test", vec![], |t| vec![t.let_stmt("title", t.str("Welcome"), |t| {
-                vec![
-                    t.write_expr(t.var("title"), true),
-                    t.write_expr(t.var("title"), true),
-                    t.let_stmt("subtitle", t.var("title"), |t| {
-                        vec![t.write_expr(t.var("subtitle"), true)]
-                    }),
-                ]
-            })]),
+            build_ir("test", vec![], |t| {
+                vec![t.let_stmt("title", t.str("Welcome"), |t| {
+                    vec![
+                        t.write_expr(t.var("title"), true),
+                        t.write_expr(t.var("title"), true),
+                        t.let_stmt("subtitle", t.var("title"), |t| {
+                            vec![t.write_expr(t.var("subtitle"), true)]
+                        }),
+                    ]
+                })]
+            }),
             expect![[r#"
                 -- before --
                 test() {
@@ -513,24 +528,26 @@ mod tests {
     #[test]
     fn test_string_equality_folding() {
         check(
-            build_ir("test", vec![], |t| vec![
-                t.if_stmt(
-                    t.eq(t.str("hello"), t.str("hello")),
-                    vec![t.write("Strings are equal")],
-                ),
-                t.if_stmt(
-                    t.eq(t.str("hello"), t.str("world")),
-                    vec![t.write("Should not appear")],
-                ),
-                t.let_stmt("greeting", t.str("hello"), |t| {
-                    vec![t.let_stmt("message", t.str("hello"), |t| {
-                        vec![t.if_stmt(
-                            t.eq(t.var("greeting"), t.var("message")),
-                            vec![t.write("Variables are equal")],
-                        )]
-                    })]
-                }),
-            ]),
+            build_ir("test", vec![], |t| {
+                vec![
+                    t.if_stmt(
+                        t.eq(t.str("hello"), t.str("hello")),
+                        vec![t.write("Strings are equal")],
+                    ),
+                    t.if_stmt(
+                        t.eq(t.str("hello"), t.str("world")),
+                        vec![t.write("Should not appear")],
+                    ),
+                    t.let_stmt("greeting", t.str("hello"), |t| {
+                        vec![t.let_stmt("message", t.str("hello"), |t| {
+                            vec![t.if_stmt(
+                                t.eq(t.var("greeting"), t.var("message")),
+                                vec![t.write("Variables are equal")],
+                            )]
+                        })]
+                    }),
+                ]
+            }),
             expect![[r#"
                 -- before --
                 test() {

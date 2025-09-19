@@ -419,7 +419,6 @@ mod tests {
     use crate::ir::test_utils::build_ir;
     use expect_test::{Expect, expect};
 
-
     fn transpile_with_pretty(entrypoints: &[IrEntrypoint], mode: LanguageMode) -> String {
         let transpiler = JsTranspiler::new(mode);
         transpiler.transpile_module(entrypoints)
@@ -450,11 +449,9 @@ mod tests {
 
     #[test]
     fn test_simple_component() {
-        let entrypoints = vec![build_ir(
-            "hello-world",
-            vec![],
-            |t| vec![t.write("<h1>Hello, World!</h1>\n")],
-        )];
+        let entrypoints = vec![build_ir("hello-world", vec![], |t| {
+            vec![t.write("<h1>Hello, World!</h1>\n")]
+        })];
 
         check(
             &entrypoints,
@@ -493,16 +490,18 @@ mod tests {
                 ("name".to_string(), Type::String),
                 ("age".to_string(), Type::String),
             ],
-            |t| vec![
-                t.write("<div>\n"),
-                t.write("<h2>Name: "),
-                t.write_expr(t.var("name"), true),
-                t.write("</h2>\n"),
-                t.write("<p>Age: "),
-                t.write_expr(t.var("age"), false),
-                t.write("</p>\n"),
-                t.write("</div>\n"),
-            ],
+            |t| {
+                vec![
+                    t.write("<div>\n"),
+                    t.write("<h2>Name: "),
+                    t.write_expr(t.var("name"), true),
+                    t.write("</h2>\n"),
+                    t.write("<p>Age: "),
+                    t.write_expr(t.var("age"), false),
+                    t.write("</p>\n"),
+                    t.write("</div>\n"),
+                ]
+            },
         )];
 
         check(
@@ -581,14 +580,16 @@ mod tests {
                 ("title".to_string(), Type::String),
                 ("show".to_string(), Type::Bool),
             ],
-            |t| vec![t.if_stmt(
-                t.var("show"),
-                vec![
-                    t.write("<h1>"),
-                    t.write_expr(t.var("title"), true),
-                    t.write("</h1>\n"),
-                ],
-            )],
+            |t| {
+                vec![t.if_stmt(
+                    t.var("show"),
+                    vec![
+                        t.write("<h1>"),
+                        t.write_expr(t.var("title"), true),
+                        t.write("</h1>\n"),
+                    ],
+                )]
+            },
         )];
 
         check(
@@ -658,17 +659,19 @@ mod tests {
                 "items".to_string(),
                 Type::Array(Some(Box::new(Type::String))),
             )],
-            |t| vec![
-                t.write("<ul>\n"),
-                t.for_loop("item", t.var("items"), |t| {
-                    vec![
-                        t.write("<li>"),
-                        t.write_expr(t.var("item"), true),
-                        t.write("</li>\n"),
-                    ]
-                }),
-                t.write("</ul>\n"),
-            ],
+            |t| {
+                vec![
+                    t.write("<ul>\n"),
+                    t.for_loop("item", t.var("items"), |t| {
+                        vec![
+                            t.write("<li>"),
+                            t.write_expr(t.var("item"), true),
+                            t.write("</li>\n"),
+                        ]
+                    }),
+                    t.write("</ul>\n"),
+                ]
+            },
         )];
 
         check(
@@ -738,10 +741,8 @@ mod tests {
 
     #[test]
     fn test_let_binding() {
-        let entrypoints = vec![build_ir(
-            "greeting-card",
-            vec![],
-            |t| vec![t.let_stmt("greeting", t.str("Hello from hop!"), |t| {
+        let entrypoints = vec![build_ir("greeting-card", vec![], |t| {
+            vec![t.let_stmt("greeting", t.str("Hello from hop!"), |t| {
                 vec![
                     t.write("<div class=\"card\">\n"),
                     t.write("<p>"),
@@ -749,8 +750,8 @@ mod tests {
                     t.write("</p>\n"),
                     t.write("</div>\n"),
                 ]
-            })],
-        )];
+            })]
+        })];
 
         check(
             &entrypoints,
@@ -817,10 +818,8 @@ mod tests {
 
     #[test]
     fn test_nested_components_with_let_bindings() {
-        let entrypoints = vec![build_ir(
-            "test-main-comp",
-            vec![],
-            |t| vec![
+        let entrypoints = vec![build_ir("test-main-comp", vec![], |t| {
+            vec![
                 t.write("<div data-hop-id=\"test/card-comp\">"),
                 t.let_stmt("title", t.str("Hello World"), |t| {
                     vec![
@@ -830,8 +829,8 @@ mod tests {
                     ]
                 }),
                 t.write("</div>"),
-            ],
-        )];
+            ]
+        })];
 
         check(
             &entrypoints,
@@ -898,8 +897,8 @@ mod tests {
 
     #[test]
     fn test_complex_literals_and_property_access() {
-        let entrypoints = vec![
-            build_ir("test-product-list", vec![], |t| vec![
+        let entrypoints = vec![build_ir("test-product-list", vec![], |t| {
+            vec![
                     t.write("<div class=\"products\">\n"),
                     t.for_loop(
                         "product",
@@ -955,8 +954,8 @@ mod tests {
                         )],
                     ),
                     t.write("</div>\n"),
-                ])
-        ];
+                ]
+        })];
 
         check(
             &entrypoints,
@@ -1100,11 +1099,7 @@ mod tests {
             ("title".to_string(), Type::String),
         ];
 
-
-        let entrypoints = vec![build_ir(
-            "test-user-list",
-            parameters,
-            |t|
+        let entrypoints = vec![build_ir("test-user-list", parameters, |t| {
             vec![
                 t.write("<div>\n"),
                 t.write("<h1>\n"),
@@ -1129,8 +1124,8 @@ mod tests {
                 }),
                 t.write("</ul>\n"),
                 t.write("</div>\n"),
-            ],
-        )];
+            ]
+        })];
 
         check(
             &entrypoints,

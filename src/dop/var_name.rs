@@ -27,7 +27,9 @@ impl VarName {
     /// Create a new VarName from a string, validating it
     pub fn new(name: &str) -> Result<Self, InvalidVarNameError> {
         Self::validate(name)?;
-        Ok(VarName { value: name.to_string() })
+        Ok(VarName {
+            value: name.to_string(),
+        })
     }
 
     /// Validate a variable name string
@@ -116,9 +118,6 @@ mod tests {
             VarName::new("has space"),
             Err(InvalidVarNameError::InvalidCharacter(' '))
         );
-        assert_eq!(
-            VarName::new(""),
-            Err(InvalidVarNameError::Empty)
-        );
+        assert_eq!(VarName::new(""), Err(InvalidVarNameError::Empty));
     }
 }

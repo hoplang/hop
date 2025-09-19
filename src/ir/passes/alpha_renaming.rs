@@ -301,8 +301,8 @@ mod tests {
     #[test]
     fn test_simple_no_renaming() {
         check(
-            build_ir("test", vec![("x".to_string(), Type::String)], |builder| {
-                vec![builder.write_expr(builder.var("x"), true)]
+            build_ir("test", vec![("x".to_string(), Type::String)], |t| {
+                vec![t.write_expr(t.var("x"), true)]
             }),
             expect![[r#"
                 -- before --
@@ -321,12 +321,10 @@ mod tests {
     #[test]
     fn test_shadowing_in_for_loop() {
         check(
-            build_ir("test", vec![("x".to_string(), Type::String)], |builder| {
-                vec![
-                    builder.for_loop("x", builder.array(vec![builder.str("a")]), |b| {
-                        vec![b.write_expr(b.var("x"), true)]
-                    }),
-                ]
+            build_ir("test", vec![("x".to_string(), Type::String)], |t| {
+                vec![t.for_loop("x", t.array(vec![t.str("a")]), |t| {
+                    vec![t.write_expr(t.var("x"), true)]
+                })]
             }),
             expect![[r#"
                 -- before --
@@ -349,13 +347,13 @@ mod tests {
     #[test]
     fn test_sibling_scopes() {
         check(
-            build_ir("test", vec![], |builder| {
+            build_ir("test", vec![], |t| {
                 vec![
-                    builder.for_loop("x", builder.array(vec![builder.str("a")]), |b| {
-                        vec![b.write_expr(b.var("x"), true)]
+                    t.for_loop("x", t.array(vec![t.str("a")]), |t| {
+                        vec![t.write_expr(t.var("x"), true)]
                     }),
-                    builder.for_loop("x", builder.array(vec![builder.str("b")]), |b| {
-                        vec![b.write_expr(b.var("x"), true)]
+                    t.for_loop("x", t.array(vec![t.str("b")]), |t| {
+                        vec![t.write_expr(t.var("x"), true)]
                     }),
                 ]
             }),
@@ -466,13 +464,13 @@ mod tests {
     #[test]
     fn test_sibling_let_bindings() {
         check(
-            build_ir("test", vec![], |builder| {
+            build_ir("test", vec![], |t| {
                 vec![
-                    builder.let_stmt("x", builder.str("first"), |b| {
-                        vec![b.write_expr(b.var("x"), true)]
+                    t.let_stmt("x", t.str("first"), |t| {
+                        vec![t.write_expr(t.var("x"), true)]
                     }),
-                    builder.let_stmt("x", builder.str("second"), |b| {
-                        vec![b.write_expr(b.var("x"), true)]
+                    t.let_stmt("x", t.str("second"), |t| {
+                        vec![t.write_expr(t.var("x"), true)]
                     }),
                 ]
             }),

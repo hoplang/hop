@@ -1,7 +1,9 @@
-use crate::hop::inlined_ast::{InlinedAttribute, InlinedAttributeValue, InlinedEntryPoint, InlinedNode, InlinedParameter};
 use crate::document::document_cursor::StringSpan;
 use crate::dop::expr::{Expr, TypedExpr};
 use crate::dop::{Type, VarName};
+use crate::hop::inlined_ast::{
+    InlinedAttribute, InlinedAttributeValue, InlinedEntryPoint, InlinedNode, InlinedParameter,
+};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
@@ -83,7 +85,9 @@ impl InlinedTestBuilder {
     }
 
     pub fn array_expr(&self, elements: Vec<TypedExpr>) -> TypedExpr {
-        let element_type = elements.first().map(|first| Box::new(first.annotation().clone()));
+        let element_type = elements
+            .first()
+            .map(|first| Box::new(first.annotation().clone()));
 
         Expr::ArrayLiteral {
             elements,
@@ -191,11 +195,19 @@ impl InlinedTestBuilder {
         }
     }
 
-    pub fn html(&self, tag_name: &str, attributes: Vec<(&str, InlinedAttribute)>, children: Vec<InlinedNode>) -> InlinedNode {
-        let attr_map = attributes.into_iter().map(|(k, mut v)| {
-            v.name = k.to_string(); // Set the attribute name
-            (k.to_string(), v)
-        }).collect();
+    pub fn html(
+        &self,
+        tag_name: &str,
+        attributes: Vec<(&str, InlinedAttribute)>,
+        children: Vec<InlinedNode>,
+    ) -> InlinedNode {
+        let attr_map = attributes
+            .into_iter()
+            .map(|(k, mut v)| {
+                v.name = k.to_string(); // Set the attribute name
+                (k.to_string(), v)
+            })
+            .collect();
 
         InlinedNode::Html {
             tag_name: StringSpan::new(tag_name.to_string()),
@@ -225,4 +237,32 @@ impl InlinedTestBuilder {
             value: None,
         }
     }
+}
+
+/// Ergonomic function for building inlined entrypoints in tests
+///
+/// This combines the creation of InlinedTestBuilder and building of the entrypoint into a single call.
+///
+/// # Arguments
+/// * `tag_name` - The tag name for the entrypoint
+/// * `params` - Vector of parameter (name, type) tuples
+/// * `children_fn` - Closure that takes an InlinedTestBuilder and returns a vector of InlinedNodes
+///
+/// # Example
+/// ```rust
+/// let entrypoint = build_inlined("test", vec![("x".to_string(), Type::String)], |t| {
+///     vec![t.text_expr(t.var_expr("x"))]
+/// });
+/// ```
+pub fn build_inlined<F>(
+    tag_name: &str,
+    params: Vec<(String, Type)>,
+    children_fn: F,
+) -> InlinedEntryPoint
+where
+    F: FnOnce(&InlinedTestBuilder) -> Vec<InlinedNode>,
+{
+    let builder = InlinedTestBuilder::new(params);
+    let children = children_fn(&builder);
+    builder.build(tag_name, children)
 }
