@@ -5,11 +5,15 @@ use crate::ir::ast::{BinaryOp, ExprId, IrExpr, IrStatement, StatementId, UnaryOp
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-pub fn build_ir<F>(name: &str, params: Vec<(String, Type)>, body_fn: F) -> IrEntrypoint
+pub fn build_ir<F>(name: &str, params: Vec<(&str, Type)>, body_fn: F) -> IrEntrypoint
 where
     F: FnOnce(&IrTestBuilder) -> Vec<IrStatement>,
 {
-    let builder = IrTestBuilder::new(params);
+    let params_owned: Vec<(String, Type)> = params
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+    let builder = IrTestBuilder::new(params_owned);
     let body = body_fn(&builder);
     builder.build(name, body)
 }

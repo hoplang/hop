@@ -486,10 +486,7 @@ mod tests {
     fn test_component_with_params_and_escaping() {
         let entrypoints = vec![build_ir(
             "user-info",
-            vec![
-                ("name".to_string(), Type::String),
-                ("age".to_string(), Type::String),
-            ],
+            vec![("name", Type::String), ("age", Type::String)],
             |t| {
                 vec![
                     t.write("<div>\n"),
@@ -576,10 +573,7 @@ mod tests {
     fn test_typescript_with_types() {
         let entrypoints = vec![build_ir(
             "conditional-display",
-            vec![
-                ("title".to_string(), Type::String),
-                ("show".to_string(), Type::Bool),
-            ],
+            vec![("title", Type::String), ("show", Type::Bool)],
             |t| {
                 vec![t.if_stmt(
                     t.var("show"),
@@ -655,10 +649,7 @@ mod tests {
     fn test_for_loop_with_array() {
         let entrypoints = vec![build_ir(
             "list-items",
-            vec![(
-                "items".to_string(),
-                Type::Array(Some(Box::new(Type::String))),
-            )],
+            vec![("items", Type::Array(Some(Box::new(Type::String))))],
             |t| {
                 vec![
                     t.write("<ul>\n"),
@@ -1087,7 +1078,7 @@ mod tests {
     fn test_typescript_with_complex_parameters() {
         let parameters = vec![
             (
-                "users".to_string(),
+                "users",
                 Type::Array(Some(Box::new(Type::Object({
                     let mut map = BTreeMap::new();
                     map.insert("name".to_string(), Type::String);
@@ -1096,7 +1087,7 @@ mod tests {
                     map
                 })))),
             ),
-            ("title".to_string(), Type::String),
+            ("title", Type::String),
         ];
 
         let entrypoints = vec![build_ir("test-user-list", parameters, |t| {

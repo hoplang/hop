@@ -141,7 +141,7 @@ mod tests {
     #[test]
     fn test_mixed_write_and_write_expr() {
         check(
-            build_ir("test", vec![("x".to_string(), Type::String)], |t| {
+            build_ir("test", vec![("x", Type::String)], |t| {
                 vec![
                     t.write("Already a Write statement"),
                     t.write_expr(t.str("Will become Write"), false),

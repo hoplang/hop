@@ -301,7 +301,7 @@ mod tests {
     #[test]
     fn test_simple_no_renaming() {
         check(
-            build_ir("test", vec![("x".to_string(), Type::String)], |t| {
+            build_ir("test", vec![("x", Type::String)], |t| {
                 vec![t.write_expr(t.var("x"), true)]
             }),
             expect![[r#"
@@ -321,7 +321,7 @@ mod tests {
     #[test]
     fn test_shadowing_in_for_loop() {
         check(
-            build_ir("test", vec![("x".to_string(), Type::String)], |t| {
+            build_ir("test", vec![("x", Type::String)], |t| {
                 vec![t.for_loop("x", t.array(vec![t.str("a")]), |t| {
                     vec![t.write_expr(t.var("x"), true)]
                 })]
@@ -423,10 +423,7 @@ mod tests {
         check(
             build_ir(
                 "test",
-                vec![
-                    ("x".to_string(), Type::String),
-                    ("y".to_string(), Type::String),
-                ],
+                vec![("x", Type::String), ("y", Type::String)],
                 |t| {
                     vec![
                         t.write_expr(t.var("x"), true),
@@ -503,10 +500,7 @@ mod tests {
         check(
             build_ir(
                 "test",
-                vec![(
-                    "items".to_string(),
-                    Type::Array(Some(Box::new(Type::String))),
-                )],
+                vec![("items", Type::Array(Some(Box::new(Type::String))))],
                 |t| {
                     vec![t.for_loop("item", t.var("items"), |t| {
                         vec![

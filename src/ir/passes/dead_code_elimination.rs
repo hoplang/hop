@@ -118,7 +118,7 @@ mod tests {
     #[test]
     fn test_preserves_dynamic_conditions() {
         check(
-            build_ir("test", vec![("show".to_string(), Type::Bool)], |t| {
+            build_ir("test", vec![("show", Type::Bool)], |t| {
                 vec![
                     t.if_stmt(t.var("show"), vec![t.write("Dynamic")]),
                     t.if_stmt(t.bool(true), vec![t.write("Static true")]),
@@ -153,7 +153,7 @@ mod tests {
     #[test]
     fn test_nested_if_elimination() {
         check(
-            build_ir("test", vec![("condition".to_string(), Type::Bool)], |t| {
+            build_ir("test", vec![("condition", Type::Bool)], |t| {
                 vec![
                     t.if_stmt(
                         t.var("condition"),

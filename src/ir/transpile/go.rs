@@ -545,10 +545,7 @@ mod tests {
     fn test_component_with_parameters() {
         let entrypoints = vec![build_ir(
             "test-greeting-comp",
-            vec![
-                ("name".to_string(), Type::String),
-                ("message".to_string(), Type::String),
-            ],
+            vec![("name", Type::String), ("message", Type::String)],
             |t| {
                 vec![
                     t.write("<h1>Hello "),
@@ -604,7 +601,7 @@ mod tests {
     fn test_if_condition() {
         let entrypoints = vec![build_ir(
             "test-main-comp",
-            vec![("show".to_string(), Type::Bool)],
+            vec![("show", Type::Bool)],
             |t| vec![t.if_stmt(t.var("show"), vec![t.write("<div>Visible</div>\n")])],
         )];
 
@@ -645,10 +642,7 @@ mod tests {
     fn test_for_loop() {
         let entrypoints = vec![build_ir(
             "test-main-comp",
-            vec![(
-                "items".to_string(),
-                Type::Array(Some(Box::new(Type::String))),
-            )],
+            vec![("items", Type::Array(Some(Box::new(Type::String))))],
             |t| {
                 vec![t.for_loop("item", t.var("items"), |t| {
                     vec![
@@ -768,7 +762,7 @@ mod tests {
     #[test]
     fn test_nested_arrays_and_objects() {
         let parameters = vec![(
-            "users".to_string(),
+            "users",
             Type::Array(Some(Box::new(Type::Object({
                 let mut map = BTreeMap::new();
                 map.insert("name".to_string(), Type::String);
@@ -1013,10 +1007,7 @@ mod tests {
     fn test_string_comparison() {
         let entrypoints = vec![build_ir(
             "test-auth-check",
-            vec![
-                ("user_role".to_string(), Type::String),
-                ("expected_role".to_string(), Type::String),
-            ],
+            vec![("user_role", Type::String), ("expected_role", Type::String)],
             |t| {
                 vec![
                     t.if_stmt(
@@ -1076,7 +1067,7 @@ mod tests {
     fn test_json_encode() {
         let parameters = vec![
             (
-                "data".to_string(),
+                "data",
                 Type::Object({
                     let mut map = BTreeMap::new();
                     map.insert("title".to_string(), Type::String);
@@ -1085,10 +1076,7 @@ mod tests {
                     map
                 }),
             ),
-            (
-                "items".to_string(),
-                Type::Array(Some(Box::new(Type::String))),
-            ),
+            ("items", Type::Array(Some(Box::new(Type::String)))),
         ];
 
         let entrypoints = vec![build_ir("test-json", parameters, |t| {

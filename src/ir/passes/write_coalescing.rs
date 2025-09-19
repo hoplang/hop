@@ -352,7 +352,7 @@ mod tests {
     #[test]
     fn test_no_coalescing_with_write_expr() {
         check(
-            build_ir("test", vec![("x".to_string(), Type::String)], |t| {
+            build_ir("test", vec![("x", Type::String)], |t| {
                 vec![
                     t.write("Value"),
                     t.write(": "),

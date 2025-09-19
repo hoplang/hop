@@ -233,7 +233,7 @@ mod tests {
     #[test]
     fn test_escape_html() {
         check(
-            build_ir("test", vec![("content".to_string(), Type::String)], |t| {
+            build_ir("test", vec![("content", Type::String)], |t| {
                 vec![t.write_expr(t.var("content"), true)]
             }),
             vec![("content", json!("<script>alert('xss')</script>"))],
@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn test_if_true() {
         check(
-            build_ir("test", vec![("show".to_string(), Type::Bool)], |t| {
+            build_ir("test", vec![("show", Type::Bool)], |t| {
                 vec![t.if_stmt(t.var("show"), vec![t.write("<div>Visible</div>")])]
             }),
             vec![("show", json!(true))],
@@ -273,7 +273,7 @@ mod tests {
     #[test]
     fn test_if_false() {
         check(
-            build_ir("test", vec![("show".to_string(), Type::Bool)], |t| {
+            build_ir("test", vec![("show", Type::Bool)], |t| {
                 vec![t.if_stmt(t.var("show"), vec![t.write("<div>Hidden</div>")])]
             }),
             vec![("show", json!(false))],
@@ -297,7 +297,7 @@ mod tests {
             build_ir(
                 "test",
                 vec![(
-                    "items".to_string(),
+                    "items",
                     Type::Array(Some(Box::new(Type::String))),
                 )],
                 |t| {
