@@ -66,47 +66,10 @@ mod tests {
 
     /// Helper to pretty-print entrypoint children for testing
     fn format_entrypoint_children(entrypoint: &InlinedEntryPoint) -> String {
-        let mut output = String::new();
-        for (i, node) in entrypoint.children.iter().enumerate() {
-            if i > 0 {
-                output.push('\n');
-            }
-            match node {
-                InlinedNode::Doctype { value, .. } => {
-                    output.push_str(&format!("DOCTYPE: {}", value.as_str()));
-                }
-                InlinedNode::Text { value, .. } => {
-                    let text = value.as_str();
-                    if text.trim().is_empty() {
-                        output.push_str(&format!("Text: <whitespace:{} chars>", text.len()));
-                    } else {
-                        output.push_str(&format!("Text: {:?}", text));
-                    }
-                }
-                InlinedNode::Html {
-                    tag_name, children, ..
-                } => {
-                    output.push_str(&format!(
-                        "Html: <{}> ({} children)",
-                        tag_name.as_str(),
-                        children.len()
-                    ));
-                }
-                InlinedNode::If { children, .. } => {
-                    output.push_str(&format!("If: ({} children)", children.len()));
-                }
-                InlinedNode::For { children, .. } => {
-                    output.push_str(&format!("For: ({} children)", children.len()));
-                }
-                InlinedNode::TextExpression { .. } => {
-                    output.push_str("TextExpression");
-                }
-                InlinedNode::Let { children, .. } => {
-                    output.push_str(&format!("Let: ({} children)", children.len()));
-                }
-            }
-        }
-        output
+        entrypoint.children.iter()
+            .map(|child| child.to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     /// Helper to check DOCTYPE injection for entrypoint
@@ -141,14 +104,26 @@ mod tests {
 
         check_doctype_injection(entrypoint, expect![[r#"
             -- before --
-            Text: <whitespace:20 chars>
-            Html: <html> (3 children)
-            Text: <whitespace:17 chars>
+            "                    "
+            <html>
+              "\n                        "
+              <body>
+                "Hello World"
+              </body>
+              "\n                    "
+            </html>
+            "\n                "
             -- after --
-            Text: <whitespace:20 chars>
-            DOCTYPE: <!DOCTYPE html>
-            Html: <html> (3 children)
-            Text: <whitespace:17 chars>
+            "                    "
+            <!DOCTYPE html>
+            <html>
+              "\n                        "
+              <body>
+                "Hello World"
+              </body>
+              "\n                    "
+            </html>
+            "\n                "
         "#]]);
     }
 
@@ -169,17 +144,29 @@ mod tests {
 
         check_doctype_injection(entrypoint, expect![[r#"
             -- before --
-            Text: <whitespace:20 chars>
-            DOCTYPE: <!DOCTYPE html>
-            Text: <whitespace:20 chars>
-            Html: <html> (3 children)
-            Text: <whitespace:17 chars>
+            "                    "
+            <!DOCTYPE html>
+            "                    "
+            <html>
+              "\n                        "
+              <body>
+                "Hello World"
+              </body>
+              "\n                    "
+            </html>
+            "\n                "
             -- after --
-            Text: <whitespace:20 chars>
-            DOCTYPE: <!DOCTYPE html>
-            Text: <whitespace:20 chars>
-            Html: <html> (3 children)
-            Text: <whitespace:17 chars>
+            "                    "
+            <!DOCTYPE html>
+            "                    "
+            <html>
+              "\n                        "
+              <body>
+                "Hello World"
+              </body>
+              "\n                    "
+            </html>
+            "\n                "
         "#]]);
     }
 
@@ -192,10 +179,10 @@ mod tests {
 
         check_doctype_injection(entrypoint, expect![[r#"
             -- before --
-            Text: <whitespace:17 chars>
+            "\n                "
             -- after --
-            Text: <whitespace:17 chars>
-            DOCTYPE: <!DOCTYPE html>
+            "\n                "
+            <!DOCTYPE html>
         "#]]);
     }
 
@@ -208,10 +195,10 @@ mod tests {
 
         check_doctype_injection(entrypoint, expect![[r#"
             -- before --
-            Text: "\n                    Just some text content\n                "
+            "\n                    Just some text content\n                "
             -- after --
-            DOCTYPE: <!DOCTYPE html>
-            Text: "\n                    Just some text content\n                "
+            <!DOCTYPE html>
+            "\n                    Just some text content\n                "
         "#]]);
     }
 
@@ -228,17 +215,21 @@ mod tests {
 
         check_doctype_injection(entrypoint, expect![[r#"
             -- before --
-            Text: <whitespace:22 chars>
-            DOCTYPE: <!DOCTYPE html>
-            Text: <whitespace:21 chars>
-            Html: <html> (1 children)
-            Text: <whitespace:17 chars>
+            "\n\n                    "
+            <!DOCTYPE html>
+            "\n                    "
+            <html>
+              "Content"
+            </html>
+            "\n                "
             -- after --
-            Text: <whitespace:22 chars>
-            DOCTYPE: <!DOCTYPE html>
-            Text: <whitespace:21 chars>
-            Html: <html> (1 children)
-            Text: <whitespace:17 chars>
+            "\n\n                    "
+            <!DOCTYPE html>
+            "\n                    "
+            <html>
+              "Content"
+            </html>
+            "\n                "
         "#]]);
     }
 
@@ -253,14 +244,18 @@ mod tests {
 
         check_doctype_injection(entrypoint, expect![[r#"
             -- before --
-            Text: <whitespace:22 chars>
-            Html: <html> (1 children)
-            Text: <whitespace:17 chars>
+            "\n\n                    "
+            <html>
+              "Content"
+            </html>
+            "\n                "
             -- after --
-            Text: <whitespace:22 chars>
-            DOCTYPE: <!DOCTYPE html>
-            Html: <html> (1 children)
-            Text: <whitespace:17 chars>
+            "\n\n                    "
+            <!DOCTYPE html>
+            <html>
+              "Content"
+            </html>
+            "\n                "
         "#]]);
     }
 }
