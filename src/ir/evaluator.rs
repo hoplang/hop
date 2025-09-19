@@ -198,18 +198,10 @@ mod tests {
         let before = entrypoint.to_string();
         let args_map: HashMap<String, Value> =
             args.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
-        let result =
+        let after =
             evaluate_entrypoint(&entrypoint, args_map, "dev").expect("Evaluation should succeed");
 
-        // Remove empty lines for cleaner test expectations
-        let cleaned = result
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .map(|line| line.trim())
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let output = format!("-- before --\n{}\n-- after --\n{}\n", before, cleaned);
+        let output = format!("-- before --\n{}\n-- after --\n{}\n", before, after);
         expected.assert_eq(&output);
     }
 
@@ -296,10 +288,7 @@ mod tests {
         check(
             build_ir(
                 "test",
-                vec![(
-                    "items",
-                    Type::Array(Some(Box::new(Type::String))),
-                )],
+                vec![("items", Type::Array(Some(Box::new(Type::String))))],
                 |t| {
                     vec![t.for_loop("item", t.var("items"), |t| {
                         vec![
@@ -325,6 +314,7 @@ mod tests {
                 <li>Apple</li>
                 <li>Banana</li>
                 <li>Cherry</li>
+
             "#]],
         );
     }
