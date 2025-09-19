@@ -1,6 +1,6 @@
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::expr::TypedExpr;
+use crate::dop::TypedExpr;
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::Ast;
 use crate::hop::parse_error::ParseError;

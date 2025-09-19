@@ -1,5 +1,6 @@
 use super::Type;
-use super::expr::{BinaryOp, Expr, TypedExpr, UnaryOp, UntypedExpr};
+use super::TypedExpr;
+use super::expr::{BinaryOp, Expr, UnaryOp, UntypedExpr};
 use super::type_error::TypeError;
 use crate::document::document_cursor::Ranged as _;
 use crate::hop::environment::Environment;

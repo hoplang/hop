@@ -1,15 +1,13 @@
 use std::collections::BTreeMap;
 
-use crate::{
-    document::{
-        DocumentPosition,
-        document_cursor::{DocumentRange, Ranged, StringSpan},
-    },
-    dop::{
-        Argument, VarName,
-        expr::{TypedExpr, UntypedExpr},
-    },
+use crate::document::{
+    DocumentPosition,
+    document_cursor::{DocumentRange, Ranged, StringSpan},
 };
+use crate::dop::Argument;
+use crate::dop::TypedExpr;
+use crate::dop::UntypedExpr;
+use crate::dop::VarName;
 
 use super::{ast::Attribute, module_name::ModuleName};
 

@@ -10,7 +10,8 @@ use crate::dop::token::Token;
 use crate::dop::tokenizer::Tokenizer;
 use crate::dop::var_name::VarName;
 
-use super::expr::{TypedExpr, UntypedExpr};
+use super::TypedExpr;
+use super::UntypedExpr;
 use super::r#type::RangedType;
 
 /// A Parameter represents a parsed parameter with type annotation.

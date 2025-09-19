@@ -1,7 +1,7 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::StringSpan;
 use crate::dop::Expr;
-use crate::dop::expr::TypedExpr;
+use crate::dop::TypedExpr;
 use crate::dop::{Type, VarName};
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntryPoint, InlinedNode,
@@ -511,10 +511,7 @@ mod tests {
         check(
             build_inlined_auto(
                 "main-comp",
-                vec![(
-                    "items",
-                    Type::Array(Some(Box::new(Type::String))),
-                )],
+                vec![("items", Type::Array(Some(Box::new(Type::String))))],
                 |t| {
                     t.ul(vec![], |t| {
                         t.for_node("item", t.var_expr("items"), |t| {
@@ -630,10 +627,7 @@ mod tests {
         check(
             build_inlined_auto(
                 "test-comp",
-                vec![
-                    ("name", Type::String),
-                    ("count", Type::String),
-                ],
+                vec![("name", Type::String), ("count", Type::String)],
                 |t| {
                     t.div(vec![], |t| {
                         t.text("Hello ");

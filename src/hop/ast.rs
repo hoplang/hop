@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::Parameter;
-use crate::dop::expr::{TypedExpr, UntypedExpr};
+use crate::dop::TypedExpr;
+use crate::dop::UntypedExpr;
 use crate::hop::module_name::ModuleName;
 
 use super::node::Node;

@@ -1,9 +1,8 @@
 use std::{collections::BTreeMap, fmt};
 
-use crate::{
-    document::document_cursor::StringSpan,
-    dop::{VarName, expr::TypedExpr},
-};
+use crate::document::document_cursor::StringSpan;
+use crate::dop::TypedExpr;
+use crate::dop::VarName;
 use pretty::BoxDoc;
 
 #[derive(Debug, Clone)]

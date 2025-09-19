@@ -1,4 +1,4 @@
-use crate::dop::expr::TypedExpr;
+use crate::dop::TypedExpr;
 use crate::hop::ast::Ast;
 use crate::hop::module_name::ModuleName;
 use crate::ir::ast::IrEntrypoint;

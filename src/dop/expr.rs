@@ -7,7 +7,6 @@ use pretty::BoxDoc;
 use super::Type;
 
 pub type UntypedExpr = Expr<DocumentRange>;
-pub type TypedExpr = Expr<Type>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {

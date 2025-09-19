@@ -1,6 +1,8 @@
 use crate::document::document_cursor::StringSpan;
-use crate::dop::expr::{Expr, TypedExpr};
-use crate::dop::{Type, VarName};
+use crate::dop::Type;
+use crate::dop::TypedExpr;
+use crate::dop::VarName;
+use crate::dop::expr::Expr;
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntryPoint, InlinedNode, InlinedParameter,
 };
@@ -357,7 +359,8 @@ impl InlinedAutoBuilder {
         };
 
         // Push the loop variable onto the stack
-        self.inner.var_stack
+        self.inner
+            .var_stack
             .borrow_mut()
             .push((var.to_string(), element_type));
 
@@ -369,7 +372,8 @@ impl InlinedAutoBuilder {
         // Pop the loop variable from the stack
         self.inner.var_stack.borrow_mut().pop();
 
-        self.children.push(self.inner.for_node(var, array, |_| children));
+        self.children
+            .push(self.inner.for_node(var, array, |_| children));
     }
 
     pub fn let_node<F>(&mut self, var: &str, value: TypedExpr, body_fn: F)
@@ -380,7 +384,8 @@ impl InlinedAutoBuilder {
         let value_type = value.annotation().clone();
 
         // Push the variable onto the stack
-        self.inner.var_stack
+        self.inner
+            .var_stack
             .borrow_mut()
             .push((var.to_string(), value_type));
 
@@ -392,7 +397,8 @@ impl InlinedAutoBuilder {
         // Pop the variable from the stack
         self.inner.var_stack.borrow_mut().pop();
 
-        self.children.push(self.inner.let_node(var, value, |_| children));
+        self.children
+            .push(self.inner.let_node(var, value, |_| children));
     }
 
     pub fn doctype(&mut self, value: &str) {
@@ -404,14 +410,14 @@ impl InlinedAutoBuilder {
         tag_name: &str,
         attributes: Vec<(&str, InlinedAttribute)>,
         children_fn: F,
-    )
-    where
+    ) where
         F: FnOnce(&mut Self),
     {
         let mut inner_builder = self.new_scoped();
         children_fn(&mut inner_builder);
         let children = inner_builder.children;
-        self.children.push(self.inner.html(tag_name, attributes, children));
+        self.children
+            .push(self.inner.html(tag_name, attributes, children));
     }
 
     // Convenience methods for common HTML elements
