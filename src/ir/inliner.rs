@@ -191,43 +191,43 @@ impl Inliner {
         ref_attr: &TypedAttribute,
     ) -> InlinedAttributeValue {
         let def_expr = match &def_attr.value {
-            Some(AttributeValue::String(s)) => Expr::StringLiteral {
+            Some(AttributeValue::String(s)) => TypedExpr::StringLiteral {
                 value: s.as_str().to_string(),
                 annotation: Type::String,
             },
             Some(AttributeValue::Expression(expr)) => expr.clone(),
-            None => Expr::StringLiteral {
+            None => TypedExpr::StringLiteral {
                 value: "".to_string(),
                 annotation: Type::String,
             },
         };
 
         let ref_expr = match &ref_attr.value {
-            Some(AttributeValue::String(s)) => Expr::StringLiteral {
+            Some(AttributeValue::String(s)) => TypedExpr::StringLiteral {
                 value: s.as_str().to_string(),
                 annotation: Type::String,
             },
             Some(AttributeValue::Expression(expr)) => expr.clone(),
-            None => Expr::StringLiteral {
+            None => TypedExpr::StringLiteral {
                 value: "".to_string(),
                 annotation: Type::String,
             },
         };
 
         // Create a space literal
-        let space_expr = Expr::StringLiteral {
+        let space_expr = TypedExpr::StringLiteral {
             value: " ".to_string(),
             annotation: Type::String,
         };
 
         // Concatenate: def_class + " " + ref_class
-        let def_plus_space = Expr::StringConcat {
+        let def_plus_space = TypedExpr::StringConcat {
             left: Box::new(def_expr),
             right: Box::new(space_expr),
             annotation: Type::String,
         };
 
-        let final_concat = Expr::StringConcat {
+        let final_concat = TypedExpr::StringConcat {
             left: Box::new(def_plus_space),
             right: Box::new(ref_expr),
             annotation: Type::String,

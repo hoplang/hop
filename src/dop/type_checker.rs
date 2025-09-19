@@ -20,7 +20,7 @@ pub fn typecheck_expr(
                     typ: var_type.clone(),
                     name: name.to_string(),
                 });
-                Ok(Expr::Var {
+                Ok(TypedExpr::Var {
                     value: name.clone(),
                     annotation: var_type.clone(),
                 })
@@ -31,15 +31,15 @@ pub fn typecheck_expr(
                 })
             }
         }
-        Expr::BooleanLiteral { value, .. } => Ok(Expr::BooleanLiteral {
+        Expr::BooleanLiteral { value, .. } => Ok(TypedExpr::BooleanLiteral {
             value: *value,
             annotation: Type::Bool,
         }),
-        Expr::StringLiteral { value, .. } => Ok(Expr::StringLiteral {
+        Expr::StringLiteral { value, .. } => Ok(TypedExpr::StringLiteral {
             value: value.clone(),
             annotation: Type::String,
         }),
-        Expr::NumberLiteral { value, .. } => Ok(Expr::NumberLiteral {
+        Expr::NumberLiteral { value, .. } => Ok(TypedExpr::NumberLiteral {
             value: value.clone(),
             annotation: Type::Number,
         }),
@@ -55,7 +55,7 @@ pub fn typecheck_expr(
             match &base_type {
                 Type::Object(props) => {
                     if let Some(prop_type) = props.get(property.as_str()) {
-                        Ok(Expr::PropertyAccess {
+                        Ok(TypedExpr::PropertyAccess {
                             object: Box::new(typed_base),
                             property: property.clone(),
                             annotation: prop_type.clone(),
@@ -95,7 +95,7 @@ pub fn typecheck_expr(
             }
 
             // The result of == is always boolean
-            Ok(Expr::BinaryOp {
+            Ok(TypedExpr::BinaryOp {
                 left: Box::new(typed_left),
                 operator: BinaryOp::Eq,
                 right: Box::new(typed_right),
@@ -118,7 +118,7 @@ pub fn typecheck_expr(
             }
 
             // The result of ! is always boolean
-            Ok(Expr::UnaryOp {
+            Ok(TypedExpr::UnaryOp {
                 operator: UnaryOp::Not,
                 operand: Box::new(typed_operand),
                 annotation: Type::Bool,
@@ -127,7 +127,7 @@ pub fn typecheck_expr(
         Expr::ArrayLiteral { elements, .. } => {
             if elements.is_empty() {
                 // Empty array has unknown element type
-                Ok(Expr::ArrayLiteral {
+                Ok(TypedExpr::ArrayLiteral {
                     elements: vec![],
                     annotation: Type::Array(None),
                 })
@@ -153,7 +153,7 @@ pub fn typecheck_expr(
                     typed_elements.push(typed_element);
                 }
 
-                Ok(Expr::ArrayLiteral {
+                Ok(TypedExpr::ArrayLiteral {
                     elements: typed_elements,
                     annotation: Type::Array(Some(Box::new(first_type))),
                 })
@@ -170,14 +170,14 @@ pub fn typecheck_expr(
                 typed_properties.push((key.clone(), typed_value));
             }
 
-            Ok(Expr::ObjectLiteral {
+            Ok(TypedExpr::ObjectLiteral {
                 properties: typed_properties,
                 annotation: Type::Object(object_properties),
             })
         }
         Expr::JsonEncode { value, .. } => {
             let typed_value = typecheck_expr(value, env, annotations)?;
-            Ok(Expr::JsonEncode {
+            Ok(TypedExpr::JsonEncode {
                 value: Box::new(typed_value),
                 annotation: Type::String,
             })
@@ -189,7 +189,7 @@ pub fn typecheck_expr(
             // Both operands should be strings - for now we'll just proceed
             // TODO: Add proper type checking for string concatenation
 
-            Ok(Expr::StringConcat {
+            Ok(TypedExpr::StringConcat {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 annotation: Type::String,

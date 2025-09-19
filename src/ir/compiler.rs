@@ -332,15 +332,15 @@ impl Compiler {
         let annotation = (self.next_expr_id(), expr.annotation().clone());
 
         match expr {
-            Expr::Var { value, .. } => Expr::Var { value, annotation },
-            Expr::PropertyAccess {
+            TypedExpr::Var { value, .. } => Expr::Var { value, annotation },
+            TypedExpr::PropertyAccess {
                 object, property, ..
             } => Expr::PropertyAccess {
                 object: Box::new(self.compile_expr(*object)),
                 property,
                 annotation,
             },
-            Expr::BinaryOp {
+            TypedExpr::BinaryOp {
                 left,
                 operator,
                 right,
@@ -351,32 +351,32 @@ impl Compiler {
                 right: Box::new(self.compile_expr(*right)),
                 annotation,
             },
-            Expr::UnaryOp {
+            TypedExpr::UnaryOp {
                 operator, operand, ..
             } => Expr::UnaryOp {
                 operator,
                 operand: Box::new(self.compile_expr(*operand)),
                 annotation,
             },
-            Expr::ArrayLiteral { elements, .. } => Expr::ArrayLiteral {
+            TypedExpr::ArrayLiteral { elements, .. } => Expr::ArrayLiteral {
                 elements: elements.into_iter().map(|e| self.compile_expr(e)).collect(),
                 annotation,
             },
-            Expr::ObjectLiteral { properties, .. } => Expr::ObjectLiteral {
+            TypedExpr::ObjectLiteral { properties, .. } => Expr::ObjectLiteral {
                 properties: properties
                     .into_iter()
                     .map(|(k, v)| (k, self.compile_expr(v)))
                     .collect(),
                 annotation,
             },
-            Expr::StringLiteral { value, .. } => Expr::StringLiteral { value, annotation },
-            Expr::BooleanLiteral { value, .. } => Expr::BooleanLiteral { value, annotation },
-            Expr::NumberLiteral { value, .. } => Expr::NumberLiteral { value, annotation },
-            Expr::JsonEncode { value, .. } => Expr::JsonEncode {
+            TypedExpr::StringLiteral { value, .. } => Expr::StringLiteral { value, annotation },
+            TypedExpr::BooleanLiteral { value, .. } => Expr::BooleanLiteral { value, annotation },
+            TypedExpr::NumberLiteral { value, .. } => Expr::NumberLiteral { value, annotation },
+            TypedExpr::JsonEncode { value, .. } => Expr::JsonEncode {
                 value: Box::new(self.compile_expr(*value)),
                 annotation,
             },
-            Expr::StringConcat { left, right, .. } => Expr::StringConcat {
+            TypedExpr::StringConcat { left, right, .. } => Expr::StringConcat {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 annotation,

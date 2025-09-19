@@ -75,21 +75,21 @@ impl InlinedTestBuilder {
 
     // Expression builders for creating TypedExpr
     pub fn str_expr(&self, s: &str) -> TypedExpr {
-        Expr::StringLiteral {
+        TypedExpr::StringLiteral {
             value: s.to_string(),
             annotation: Type::String,
         }
     }
 
     pub fn num_expr(&self, n: f64) -> TypedExpr {
-        Expr::NumberLiteral {
+        TypedExpr::NumberLiteral {
             value: serde_json::Number::from_f64(n).unwrap_or_else(|| serde_json::Number::from(0)),
             annotation: Type::Number,
         }
     }
 
     pub fn bool_expr(&self, b: bool) -> TypedExpr {
-        Expr::BooleanLiteral {
+        TypedExpr::BooleanLiteral {
             value: b,
             annotation: Type::Bool,
         }
@@ -115,7 +115,7 @@ impl InlinedTestBuilder {
                 )
             });
 
-        Expr::Var {
+        TypedExpr::Var {
             value: VarName::try_from(name.to_string()).unwrap(),
             annotation: typ,
         }
@@ -126,7 +126,7 @@ impl InlinedTestBuilder {
             .first()
             .map(|first| Box::new(first.annotation().clone()));
 
-        Expr::ArrayLiteral {
+        TypedExpr::ArrayLiteral {
             elements,
             annotation: Type::Array(element_type),
         }
@@ -138,7 +138,7 @@ impl InlinedTestBuilder {
             type_map.insert(key.to_string(), expr.annotation().clone());
         }
 
-        Expr::ObjectLiteral {
+        TypedExpr::ObjectLiteral {
             properties: props.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             annotation: Type::Object(type_map),
         }
@@ -153,7 +153,7 @@ impl InlinedTestBuilder {
             _ => panic!("Cannot access property '{}' on non-object type", property),
         };
 
-        Expr::PropertyAccess {
+        TypedExpr::PropertyAccess {
             object: Box::new(object),
             property: property.to_string(),
             annotation: property_type,
