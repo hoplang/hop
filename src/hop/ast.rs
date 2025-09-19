@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::dop::Expr;
 use crate::dop::Parameter;
 use crate::dop::TypedExpr;
-use crate::dop::UntypedExpr;
 use crate::hop::module_name::ModuleName;
 
 use super::node::Node;
@@ -19,7 +19,7 @@ pub struct StaticAttribute {
 pub type TypedAttributeValue = AttributeValue<TypedExpr>;
 
 #[derive(Debug, Clone)]
-pub enum AttributeValue<T = UntypedExpr> {
+pub enum AttributeValue<T = Expr> {
     Expression(T),
     String(DocumentRange),
 }
@@ -30,13 +30,13 @@ pub type TypedAttribute = Attribute<TypedExpr>;
 /// be empty, an expression or a string value.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct Attribute<T = UntypedExpr> {
+pub struct Attribute<T = Expr> {
     pub name: DocumentRange,
     pub value: Option<AttributeValue<T>>,
     pub range: DocumentRange,
 }
 
-pub type UntypedAst = Ast<UntypedExpr>;
+pub type UntypedAst = Ast<Expr>;
 pub type TypedAst = Ast<TypedExpr>;
 
 #[derive(Debug, Clone)]
@@ -144,7 +144,7 @@ impl Import {
     }
 }
 
-pub type UntypedComponentDefinition = ComponentDefinition<UntypedExpr>;
+pub type UntypedComponentDefinition = ComponentDefinition<Expr>;
 pub type TypedComponentDefinition = ComponentDefinition<TypedExpr>;
 
 #[derive(Debug, Clone)]

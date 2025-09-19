@@ -9,8 +9,8 @@ pub mod type_error;
 pub mod typed_expr;
 pub mod var_name;
 
+pub use expr::AnnotatedExpr;
 pub use expr::Expr;
-pub use expr::UntypedExpr;
 pub use parser::{Argument, Parameter, Parser};
 pub use token::Token;
 pub use tokenizer::Tokenizer;

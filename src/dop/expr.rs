@@ -4,9 +4,7 @@ use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::var_name::VarName;
 use pretty::BoxDoc;
 
-use super::Type;
-
-pub type UntypedExpr = Expr<DocumentRange>;
+pub type Expr = AnnotatedExpr<DocumentRange>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
@@ -19,7 +17,7 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expr<A> {
+pub enum AnnotatedExpr<A> {
     /// A variable expression, e.g. foo
     Var { value: VarName, annotation: A },
 
@@ -62,56 +60,44 @@ pub enum Expr<A> {
         operand: Box<Self>,
         annotation: A,
     },
-
-    /// JSON encode expression for converting values to JSON strings
-    JsonEncode { value: Box<Self>, annotation: A },
-
-    /// String concatenation expression for joining two string expressions
-    StringConcat {
-        left: Box<Self>,
-        right: Box<Self>,
-        annotation: A,
-    },
 }
 
-impl<A> Expr<A> {
+impl<A> AnnotatedExpr<A> {
     pub fn annotation(&self) -> &A {
         match self {
-            Expr::Var { annotation, .. }
-            | Expr::PropertyAccess { annotation, .. }
-            | Expr::StringLiteral { annotation, .. }
-            | Expr::BooleanLiteral { annotation, .. }
-            | Expr::NumberLiteral { annotation, .. }
-            | Expr::ArrayLiteral { annotation, .. }
-            | Expr::ObjectLiteral { annotation, .. }
-            | Expr::BinaryOp { annotation, .. }
-            | Expr::UnaryOp { annotation, .. }
-            | Expr::JsonEncode { annotation, .. }
-            | Expr::StringConcat { annotation, .. } => annotation,
+            AnnotatedExpr::Var { annotation, .. }
+            | AnnotatedExpr::PropertyAccess { annotation, .. }
+            | AnnotatedExpr::StringLiteral { annotation, .. }
+            | AnnotatedExpr::BooleanLiteral { annotation, .. }
+            | AnnotatedExpr::NumberLiteral { annotation, .. }
+            | AnnotatedExpr::ArrayLiteral { annotation, .. }
+            | AnnotatedExpr::ObjectLiteral { annotation, .. }
+            | AnnotatedExpr::BinaryOp { annotation, .. }
+            | AnnotatedExpr::UnaryOp { annotation, .. } => annotation,
         }
     }
 }
 
-impl Ranged for Expr<DocumentRange> {
+impl Ranged for AnnotatedExpr<DocumentRange> {
     fn range(&self) -> &DocumentRange {
         self.annotation()
     }
 }
 
-impl<'a, T> Expr<T> {
+impl<'a, T> AnnotatedExpr<T> {
     pub fn to_doc(&'a self) -> BoxDoc<'a> {
         match self {
-            Expr::Var { value, .. } => BoxDoc::text(value.as_str()),
-            Expr::PropertyAccess {
+            AnnotatedExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
+            AnnotatedExpr::PropertyAccess {
                 object, property, ..
             } => object
                 .to_doc()
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(property.as_str())),
-            Expr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
-            Expr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            Expr::NumberLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            Expr::ArrayLiteral { elements, .. } => {
+            AnnotatedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
+            AnnotatedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            AnnotatedExpr::NumberLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            AnnotatedExpr::ArrayLiteral { elements, .. } => {
                 if elements.is_empty() {
                     BoxDoc::text("[]")
                 } else {
@@ -130,7 +116,7 @@ impl<'a, T> Expr<T> {
                         .append(BoxDoc::text("]"))
                 }
             }
-            Expr::ObjectLiteral { properties, .. } => {
+            AnnotatedExpr::ObjectLiteral { properties, .. } => {
                 if properties.is_empty() {
                     BoxDoc::text("{}")
                 } else {
@@ -154,7 +140,7 @@ impl<'a, T> Expr<T> {
                         .append(BoxDoc::text("}"))
                 }
             }
-            Expr::BinaryOp {
+            AnnotatedExpr::BinaryOp {
                 left,
                 operator,
                 right,
@@ -165,28 +151,18 @@ impl<'a, T> Expr<T> {
                 .append(BoxDoc::text(format!(" {} ", operator)))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            Expr::UnaryOp {
+            AnnotatedExpr::UnaryOp {
                 operator, operand, ..
             } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::text(operator.to_string()))
                 .append(operand.to_doc())
                 .append(BoxDoc::text(")")),
-            Expr::JsonEncode { value, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("JsonEncode("))
-                .append(value.to_doc())
-                .append(BoxDoc::text(")")),
-            Expr::StringConcat { left, right, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" + "))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
         }
     }
 }
 
-impl<T> Display for Expr<T> {
+impl<T> Display for AnnotatedExpr<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(60))
     }

@@ -1,5 +1,5 @@
 use super::Type;
-use super::expr::{BinaryOp, Expr, UnaryOp, UntypedExpr};
+use super::expr::{AnnotatedExpr, BinaryOp, Expr, UnaryOp};
 use super::type_error::TypeError;
 use super::typed_expr::TypedExpr;
 use crate::document::document_cursor::Ranged as _;
@@ -8,12 +8,12 @@ use crate::hop::type_checker::TypeAnnotation;
 use std::collections::BTreeMap;
 
 pub fn typecheck_expr(
-    expr: &UntypedExpr,
+    expr: &Expr,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> Result<TypedExpr, TypeError> {
     match expr {
-        Expr::Var { value: name, .. } => {
+        AnnotatedExpr::Var { value: name, .. } => {
             if let Some(var_type) = env.lookup(name.as_str()) {
                 annotations.push(TypeAnnotation {
                     range: expr.range().clone(),
@@ -32,22 +32,22 @@ pub fn typecheck_expr(
                 })
             }
         }
-        Expr::BooleanLiteral { value, .. } => Ok(TypedExpr::BooleanLiteral {
+        AnnotatedExpr::BooleanLiteral { value, .. } => Ok(TypedExpr::BooleanLiteral {
             value: *value,
             kind: Type::Bool,
             annotation: (),
         }),
-        Expr::StringLiteral { value, .. } => Ok(TypedExpr::StringLiteral {
+        AnnotatedExpr::StringLiteral { value, .. } => Ok(TypedExpr::StringLiteral {
             value: value.clone(),
             kind: Type::String,
             annotation: (),
         }),
-        Expr::NumberLiteral { value, .. } => Ok(TypedExpr::NumberLiteral {
+        AnnotatedExpr::NumberLiteral { value, .. } => Ok(TypedExpr::NumberLiteral {
             value: value.clone(),
             kind: Type::Number,
             annotation: (),
         }),
-        Expr::PropertyAccess {
+        AnnotatedExpr::PropertyAccess {
             object: base_expr,
             property,
             annotation: range,
@@ -79,7 +79,7 @@ pub fn typecheck_expr(
                 }),
             }
         }
-        Expr::BinaryOp {
+        AnnotatedExpr::BinaryOp {
             left,
             operator: BinaryOp::Eq,
             right,
@@ -108,7 +108,7 @@ pub fn typecheck_expr(
                 annotation: (),
             })
         }
-        Expr::UnaryOp {
+        AnnotatedExpr::UnaryOp {
             operator: UnaryOp::Not,
             operand,
             ..
@@ -131,7 +131,7 @@ pub fn typecheck_expr(
                 annotation: (),
             })
         }
-        Expr::ArrayLiteral { elements, .. } => {
+        AnnotatedExpr::ArrayLiteral { elements, .. } => {
             if elements.is_empty() {
                 // Empty array has unknown element type
                 Ok(TypedExpr::ArrayLiteral {
@@ -168,7 +168,7 @@ pub fn typecheck_expr(
                 })
             }
         }
-        Expr::ObjectLiteral { properties, .. } => {
+        AnnotatedExpr::ObjectLiteral { properties, .. } => {
             let mut object_properties = BTreeMap::new();
             let mut typed_properties = Vec::new();
 
@@ -182,28 +182,6 @@ pub fn typecheck_expr(
             Ok(TypedExpr::ObjectLiteral {
                 properties: typed_properties,
                 kind: Type::Object(object_properties),
-                annotation: (),
-            })
-        }
-        Expr::JsonEncode { value, .. } => {
-            let typed_value = typecheck_expr(value, env, annotations)?;
-            Ok(TypedExpr::JsonEncode {
-                value: Box::new(typed_value),
-                kind: Type::String,
-                annotation: (),
-            })
-        }
-        Expr::StringConcat { left, right, .. } => {
-            let typed_left = typecheck_expr(left, env, annotations)?;
-            let typed_right = typecheck_expr(right, env, annotations)?;
-
-            // Both operands should be strings - for now we'll just proceed
-            // TODO: Add proper type checking for string concatenation
-
-            Ok(TypedExpr::StringConcat {
-                left: Box::new(typed_left),
-                right: Box::new(typed_right),
-                kind: Type::String,
                 annotation: (),
             })
         }

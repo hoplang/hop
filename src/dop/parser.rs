@@ -4,13 +4,13 @@ use std::iter::Peekable;
 
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _};
 use crate::dop::Type;
-use crate::dop::expr::{BinaryOp, Expr, UnaryOp};
+use crate::dop::expr::{AnnotatedExpr, BinaryOp, UnaryOp};
 use crate::dop::parse_error::ParseError;
 use crate::dop::token::Token;
 use crate::dop::tokenizer::Tokenizer;
 use crate::dop::var_name::VarName;
 
-use super::UntypedExpr;
+use super::Expr;
 use super::r#type::RangedType;
 use super::typed_expr::TypedExpr;
 
@@ -36,7 +36,7 @@ pub type TypedArgument = Argument<TypedExpr>;
 /// E.g. <my-comp {x: [1,2], y: 2}>
 ///                ^^^^^^^^
 #[derive(Debug, Clone)]
-pub struct Argument<T = UntypedExpr> {
+pub struct Argument<T = Expr> {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
     pub var_expr: T,
@@ -205,16 +205,14 @@ impl Parser {
     }
 
     // expr = equality Eof
-    pub fn parse_expr(&mut self) -> Result<UntypedExpr, ParseError> {
+    pub fn parse_expr(&mut self) -> Result<Expr, ParseError> {
         let result = self.parse_equality()?;
         self.expect_eof()?;
         Ok(result)
     }
 
     // loop_header = Identifier "in" equality Eof
-    pub fn parse_loop_header(
-        &mut self,
-    ) -> Result<(VarName, DocumentRange, UntypedExpr), ParseError> {
+    pub fn parse_loop_header(&mut self) -> Result<(VarName, DocumentRange, Expr), ParseError> {
         let (var_name, var_name_range) = self.expect_variable_name()?;
         self.expect_token(&Token::In)?;
         let array_expr = self.parse_equality()?;
@@ -344,11 +342,11 @@ impl Parser {
     }
 
     // equality = unary ( "==" unary )*
-    fn parse_equality(&mut self) -> Result<UntypedExpr, ParseError> {
+    fn parse_equality(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.parse_unary()?;
         while self.advance_if(Token::Equal).is_some() {
             let right = self.parse_unary()?;
-            expr = Expr::BinaryOp {
+            expr = AnnotatedExpr::BinaryOp {
                 annotation: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
                 operator: BinaryOp::Eq,
@@ -359,10 +357,10 @@ impl Parser {
     }
 
     // unary = ( "!" )* primary
-    fn parse_unary(&mut self) -> Result<UntypedExpr, ParseError> {
+    fn parse_unary(&mut self) -> Result<Expr, ParseError> {
         if let Some(operator_range) = self.advance_if(Token::Not) {
             let expr = self.parse_unary()?; // Right associative for multiple !
-            Ok(Expr::UnaryOp {
+            Ok(AnnotatedExpr::UnaryOp {
                 annotation: operator_range.to(expr.range().clone()),
                 operator: UnaryOp::Not,
                 operand: Box::new(expr),
@@ -373,26 +371,20 @@ impl Parser {
     }
 
     // array_literal = "[" ( equality ("," equality)* )? "]"
-    fn parse_array_literal(
-        &mut self,
-        left_bracket: DocumentRange,
-    ) -> Result<UntypedExpr, ParseError> {
+    fn parse_array_literal(&mut self, left_bracket: DocumentRange) -> Result<Expr, ParseError> {
         let mut elements = Vec::new();
         let right_bracket =
             self.parse_delimited_list(&Token::LeftBracket, &left_bracket, |this| {
                 elements.push(this.parse_equality()?);
                 Ok(())
             })?;
-        Ok(Expr::ArrayLiteral {
+        Ok(AnnotatedExpr::ArrayLiteral {
             elements,
             annotation: left_bracket.to(right_bracket),
         })
     }
 
-    fn parse_object_literal(
-        &mut self,
-        left_brace: DocumentRange,
-    ) -> Result<UntypedExpr, ParseError> {
+    fn parse_object_literal(&mut self, left_brace: DocumentRange) -> Result<Expr, ParseError> {
         let mut properties = Vec::new();
         let mut seen_names = HashSet::new();
         let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
@@ -407,23 +399,20 @@ impl Parser {
             properties.push((prop_name.to_string(), this.parse_equality()?));
             Ok(())
         })?;
-        Ok(Expr::ObjectLiteral {
+        Ok(AnnotatedExpr::ObjectLiteral {
             properties,
             annotation: left_brace.to(right_brace),
         })
     }
 
-    fn parse_property_access(
-        &mut self,
-        identifier: DocumentRange,
-    ) -> Result<UntypedExpr, ParseError> {
+    fn parse_property_access(&mut self, identifier: DocumentRange) -> Result<Expr, ParseError> {
         let var_name =
             VarName::new(identifier.as_str()).map_err(|error| ParseError::InvalidVariableName {
                 name: identifier.to_string_span(),
                 error,
                 range: identifier.clone(),
             })?;
-        let mut expr = Expr::Var {
+        let mut expr = AnnotatedExpr::Var {
             annotation: identifier.clone(),
             value: var_name,
         };
@@ -432,7 +421,7 @@ impl Parser {
             match self.iter.next().transpose()? {
                 Some((Token::Identifier(prop), _)) => {
                     let range = expr.range().clone().to(prop.clone());
-                    expr = Expr::PropertyAccess {
+                    expr = AnnotatedExpr::PropertyAccess {
                         object: Box::new(expr),
                         property: prop.to_string(),
                         annotation: range,
@@ -451,18 +440,18 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_primary(&mut self) -> Result<UntypedExpr, ParseError> {
+    fn parse_primary(&mut self) -> Result<Expr, ParseError> {
         match self.iter.next().transpose()? {
             Some((Token::Identifier(name), _)) => self.parse_property_access(name),
-            Some((Token::StringLiteral(value), range)) => Ok(Expr::StringLiteral {
+            Some((Token::StringLiteral(value), range)) => Ok(AnnotatedExpr::StringLiteral {
                 value,
                 annotation: range,
             }),
-            Some((Token::BooleanLiteral(value), range)) => Ok(Expr::BooleanLiteral {
+            Some((Token::BooleanLiteral(value), range)) => Ok(AnnotatedExpr::BooleanLiteral {
                 value,
                 annotation: range,
             }),
-            Some((Token::NumberLiteral(value), range)) => Ok(Expr::NumberLiteral {
+            Some((Token::NumberLiteral(value), range)) => Ok(AnnotatedExpr::NumberLiteral {
                 value,
                 annotation: range,
             }),
