@@ -3,7 +3,9 @@ use crate::document::document_cursor::StringSpan;
 use crate::dop::Expr;
 use crate::dop::expr::TypedExpr;
 use crate::dop::{Type, VarName};
-use crate::hop::inlined_ast::{InlinedEntryPoint, InlinedNode, InlinedAttribute, InlinedAttributeValue};
+use crate::hop::inlined_ast::{
+    InlinedAttribute, InlinedAttributeValue, InlinedEntryPoint, InlinedNode,
+};
 use std::collections::BTreeMap;
 
 use super::ast::{ExprId, IrEntrypoint, IrExpr, IrStatement, StatementId};
@@ -386,658 +388,251 @@ impl Compiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error_collector::ErrorCollector;
-    use crate::hop::module_name::ModuleName;
-    use crate::hop::parser::parse;
-    use crate::hop::tokenizer::Tokenizer;
-    use crate::hop::type_checker::TypeChecker;
     use expect_test::{Expect, expect};
 
-    fn compile_hop_to_ir(source: &str, mode: CompilationMode) -> Vec<IrEntrypoint> {
-        let mut errors = ErrorCollector::new();
-        let module_name = ModuleName::new("test".to_string()).unwrap();
-        let tokenizer = Tokenizer::new(source.to_string());
-        let ast = parse(module_name.clone(), tokenizer, &mut errors);
-
-        assert!(errors.is_empty(), "Parse errors: {:?}", errors);
-
-        // Type check
-        let mut typechecker = TypeChecker::default();
-        typechecker.typecheck(&[&ast]);
-        assert!(
-            typechecker
-                .type_errors
-                .get(&module_name)
-                .unwrap()
-                .is_empty(),
-            "Type errors: {:?}",
-            typechecker.type_errors
-        );
-
-        // Use orchestrate to handle inlining and compilation
-        crate::ir::orchestrator::orchestrate(typechecker.typed_asts, mode)
-    }
-
-    fn check_ir(source: &str, expected: Expect) {
-        let ir_entrypoints = compile_hop_to_ir(source, CompilationMode::Production);
-        // Use the first entrypoint's display format
-        expected.assert_eq(&ir_entrypoints[0].to_string());
-    }
-
-    fn check_ir_with_mode(source: &str, mode: CompilationMode, expected: Expect) {
-        let ir_entrypoints = compile_hop_to_ir(source, mode);
-        // Use the first entrypoint's display format
-        expected.assert_eq(&ir_entrypoints[0].to_string());
+    fn check_inlined(entrypoint: InlinedEntryPoint, mode: CompilationMode, expected: Expect) {
+        let ir = Compiler::compile(entrypoint, mode);
+        expected.assert_eq(&ir.to_string());
     }
 
     #[test]
-    fn test_compile_simple_text() {
-        check_ir(
-            &["<main-comp entrypoint>", "Hello World", "</main-comp>"].join(""),
+    fn test_inlined_simple_text() {
+        use crate::hop::inlined_test_utils::InlinedTestBuilder;
+
+        let t = InlinedTestBuilder::new(vec![]);
+        let entrypoint = t.build("main-comp", vec![t.text("Hello World")]);
+
+        check_inlined(
+            entrypoint,
+            CompilationMode::Production,
             expect![[r#"
-                main-comp() {
-                  write("<!DOCTYPE html>")
-                  write("Hello World")
-                }
-            "#]],
+            main-comp() {
+              write("Hello World")
+            }
+        "#]],
         );
     }
 
     #[test]
-    fn test_compile_text_expression() {
-        check_ir(
-            &[
-                "<main-comp entrypoint {name: string}>",
-                "Hello {name}",
-                "</main-comp>",
-            ]
-            .join(""),
+    fn test_inlined_text_expression() {
+        use crate::hop::inlined_test_utils::InlinedTestBuilder;
+
+        let t = InlinedTestBuilder::new(vec![("name".to_string(), Type::String)]);
+        let entrypoint = t.build(
+            "main-comp",
+            vec![t.text("Hello "), t.text_expr(t.var_expr("name"))],
+        );
+
+        check_inlined(
+            entrypoint,
+            CompilationMode::Production,
             expect![[r#"
-                main-comp(name: string) {
-                  write("<!DOCTYPE html>")
-                  write("Hello ")
-                  write_escaped(name)
-                }
-            "#]],
+            main-comp(name: string) {
+              write("Hello ")
+              write_escaped(name)
+            }
+        "#]],
         );
     }
 
     #[test]
-    fn test_compile_html_element() {
-        check_ir(
-            &[
-                "<main-comp entrypoint>",
-                "<div>",
-                "Content",
-                "</div>",
-                "</main-comp>",
-            ]
-            .join(""),
+    fn test_inlined_html_element() {
+        use crate::hop::inlined_test_utils::InlinedTestBuilder;
+
+        let t = InlinedTestBuilder::new(vec![]);
+        let entrypoint = t.build(
+            "main-comp",
+            vec![t.html("div", vec![], vec![t.text("Content")])],
+        );
+
+        check_inlined(
+            entrypoint,
+            CompilationMode::Production,
             expect![[r#"
-                main-comp() {
-                  write("<!DOCTYPE html>")
-                  write("<div")
-                  write(">")
-                  write("Content")
-                  write("</div>")
-                }
-            "#]],
+            main-comp() {
+              write("<div")
+              write(">")
+              write("Content")
+              write("</div>")
+            }
+        "#]],
         );
     }
 
     #[test]
-    fn test_compile_if_statement() {
-        check_ir(
-            &[
-                "<main-comp entrypoint {show: boolean}>",
-                "<if {show}>",
-                "<div>Visible</div>",
-                "</if>",
-                "</main-comp>",
-            ]
-            .join(""),
+    fn test_inlined_if_statement() {
+        use crate::hop::inlined_test_utils::InlinedTestBuilder;
+
+        let t = InlinedTestBuilder::new(vec![("show".to_string(), Type::Bool)]);
+        let entrypoint = t.build(
+            "main-comp",
+            vec![t.if_node(
+                t.var_expr("show"),
+                vec![t.html("div", vec![], vec![t.text("Visible")])],
+            )],
+        );
+
+        check_inlined(
+            entrypoint,
+            CompilationMode::Production,
             expect![[r#"
-                main-comp(show: boolean) {
-                  write("<!DOCTYPE html>")
-                  if show {
-                    write("<div")
-                    write(">")
-                    write("Visible")
-                    write("</div>")
-                  }
-                }
-            "#]],
+            main-comp(show: boolean) {
+              if show {
+                write("<div")
+                write(">")
+                write("Visible")
+                write("</div>")
+              }
+            }
+        "#]],
         );
     }
 
     #[test]
-    fn test_compile_for_loop() {
-        check_ir(
-            &[
-                "<main-comp entrypoint {items: array[string]}>",
-                "<for {item in items}>",
-                "<li>{item}</li>",
-                "</for>",
-                "</main-comp>",
-            ]
-            .join(""),
+    fn test_inlined_for_loop() {
+        use crate::hop::inlined_test_utils::InlinedTestBuilder;
+
+        let t = InlinedTestBuilder::new(vec![(
+            "items".to_string(),
+            Type::Array(Some(Box::new(Type::String))),
+        )]);
+        let entrypoint = t.build(
+            "main-comp",
+            vec![t.for_node("item", t.var_expr("items"), |t| {
+                vec![t.html("li", vec![], vec![t.text_expr(t.var_expr("item"))])]
+            })],
+        );
+
+        check_inlined(
+            entrypoint,
+            CompilationMode::Production,
             expect![[r#"
-                main-comp(items: array[string]) {
-                  write("<!DOCTYPE html>")
-                  for item in items {
-                    write("<li")
-                    write(">")
-                    write_escaped(item)
-                    write("</li>")
-                  }
-                }
-            "#]],
+            main-comp(items: array[string]) {
+              for item in items {
+                write("<li")
+                write(">")
+                write_escaped(item)
+                write("</li>")
+              }
+            }
+        "#]],
         );
     }
 
     #[test]
-    fn test_compile_component_reference() {
-        check_ir(
-            &[
-                "<card-comp {title: string}>",
-                "<h2>{title}</h2>",
-                "</card-comp>",
-                "",
-                "<main-comp entrypoint>",
-                "<card-comp {title: \"Hello\"}/>",
-                "</main-comp>",
-            ]
-            .join(""),
+    fn test_inlined_attributes_static() {
+        use crate::hop::inlined_test_utils::InlinedTestBuilder;
+
+        let t = InlinedTestBuilder::new(vec![]);
+        let entrypoint = t.build(
+            "main-comp",
+            vec![t.html(
+                "div",
+                vec![("class", t.attr_str("base")), ("id", t.attr_str("test"))],
+                vec![t.text("Content")],
+            )],
+        );
+
+        check_inlined(
+            entrypoint,
+            CompilationMode::Production,
             expect![[r#"
-                main-comp() {
-                  write("<!DOCTYPE html>")
-                  write("<div")
-                  write(" data-hop-id="test/card-comp"")
-                  write(">")
-                  write("<h2")
-                  write(">")
-                  write("Hello")
-                  write("</h2>")
-                  write("</div>")
-                }
-            "#]],
+            main-comp() {
+              write("<div")
+              write(" class="base"")
+              write(" id="test"")
+              write(">")
+              write("Content")
+              write("</div>")
+            }
+        "#]],
         );
     }
 
     #[test]
-    fn test_compile_attributes_static() {
-        check_ir(
-            &[
-                "<main-comp entrypoint>",
-                "<div class=\"base\" id=\"test\">Content</div>",
-                "</main-comp>",
-            ]
-            .join(""),
+    fn test_inlined_attributes_dynamic() {
+        use crate::hop::inlined_test_utils::InlinedTestBuilder;
+
+        let t = InlinedTestBuilder::new(vec![("cls".to_string(), Type::String)]);
+        let entrypoint = t.build(
+            "main-comp",
+            vec![t.html(
+                "div",
+                vec![
+                    ("class", t.attr_str("base")),
+                    ("data-value", t.attr_expr(t.var_expr("cls"))),
+                ],
+                vec![t.text("Content")],
+            )],
+        );
+
+        check_inlined(
+            entrypoint,
+            CompilationMode::Production,
             expect![[r#"
-                main-comp() {
-                  write("<!DOCTYPE html>")
-                  write("<div")
-                  write(" class="base"")
-                  write(" id="test"")
-                  write(">")
-                  write("Content")
-                  write("</div>")
-                }
-            "#]],
+            main-comp(cls: string) {
+              write("<div")
+              write(" class="base"")
+              write(" data-value="")
+              write_escaped(cls)
+              write(""")
+              write(">")
+              write("Content")
+              write("</div>")
+            }
+        "#]],
         );
     }
 
     #[test]
-    fn test_compile_attributes_dynamic() {
-        check_ir(
-            &[
-                "<main-comp entrypoint {cls: string}>",
-                "<div class=\"base\" data-value={cls}>Content</div>",
-                "</main-comp>",
-            ]
-            .join(""),
-            expect![[r#"
-                main-comp(cls: string) {
-                  write("<!DOCTYPE html>")
-                  write("<div")
-                  write(" class="base"")
-                  write(" data-value="")
-                  write_escaped(cls)
-                  write(""")
-                  write(">")
-                  write("Content")
-                  write("</div>")
-                }
-            "#]],
-        );
-    }
+    fn test_inlined_development_mode() {
+        use crate::hop::inlined_test_utils::InlinedTestBuilder;
 
-    #[test]
-    fn test_alpha_renaming_nested_scopes() {
-        check_ir(
-            &[
-                "<main-comp entrypoint {y: string}>",
-                "<for {x in [\"a\", \"b\"]}>",
-                "{x}",
-                "</for>",
-                "{y}",
-                "</main-comp>",
-            ]
-            .join(""),
-            expect![[r#"
-                main-comp(y: string) {
-                  write("<!DOCTYPE html>")
-                  for x in ["a", "b"] {
-                    write_escaped(x)
-                  }
-                  write_escaped(y)
-                }
-            "#]],
+        let t = InlinedTestBuilder::new(vec![
+            ("name".to_string(), Type::String),
+            ("count".to_string(), Type::String),
+        ]);
+        let entrypoint = t.build(
+            "test-comp",
+            vec![t.html(
+                "div",
+                vec![],
+                vec![
+                    t.text("Hello "),
+                    t.text_expr(t.var_expr("name")),
+                    t.text(", count: "),
+                    t.text_expr(t.var_expr("count")),
+                ],
+            )],
         );
-    }
 
-    #[test]
-    fn test_doctype_already_present() {
-        // When DOCTYPE is already present, it should not be duplicated
-        check_ir(
-            &[
-                "<main-comp entrypoint>",
-                "<!DOCTYPE html>",
-                "<html>Content</html>",
-                "</main-comp>",
-            ]
-            .join(""),
-            expect![[r#"
-                main-comp() {
-                  write("<!DOCTYPE html>")
-                  write("<html")
-                  write(">")
-                  write("Content")
-                  write("</html>")
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_doctype_injection() {
-        // When DOCTYPE is missing, it should be injected
-        check_ir(
-            &[
-                "<main-comp entrypoint>",
-                "<html>Content</html>",
-                "</main-comp>",
-            ]
-            .join(""),
-            expect![[r#"
-                main-comp() {
-                  write("<!DOCTYPE html>")
-                  write("<html")
-                  write(">")
-                  write("Content")
-                  write("</html>")
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_void_elements() {
-        check_ir(
-            &[
-                "<main-comp entrypoint>",
-                "<img src=\"test.jpg\" alt=\"test\">",
-                "<br>",
-                "</main-comp>",
-            ]
-            .join(""),
-            expect![[r#"
-                main-comp() {
-                  write("<!DOCTYPE html>")
-                  write("<img")
-                  write(" alt="test"")
-                  write(" src="test.jpg"")
-                  write(">")
-                  write("<br")
-                  write(">")
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_skip_style_and_script_tags() {
-        check_ir(
-            &[
-                "<main-comp entrypoint>",
-                "<div>Before</div>",
-                "<style>body { color: red; }</style>",
-                "<script>console.log(\"test\");</script>",
-                "<div>After</div>",
-                "</main-comp>",
-            ]
-            .join(""),
-            expect![[r#"
-                main-comp() {
-                  write("<!DOCTYPE html>")
-                  write("<div")
-                  write(">")
-                  write("Before")
-                  write("</div>")
-                  write("<div")
-                  write(">")
-                  write("After")
-                  write("</div>")
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_property_access_renaming() {
-        check_ir(
-            &[
-                "<main-comp entrypoint {user: {name: string}}>",
-                "Hello {user.name}",
-                "</main-comp>",
-            ]
-            .join(""),
-            expect![[r#"
-                main-comp(user: {name: string}) {
-                  write("<!DOCTYPE html>")
-                  write("Hello ")
-                  write_escaped(user.name)
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_component_with_slot() {
-        check_ir(
-            &[
-                "<card-comp>",
-                "<div class=\"card\">",
-                "<slot-default/>",
-                "</div>",
-                "</card-comp>",
-                "",
-                "<main-comp entrypoint>",
-                "<card-comp>",
-                "<p>Slot content</p>",
-                "</card-comp>",
-                "</main-comp>",
-            ]
-            .join(""),
-            expect![[r#"
-                main-comp() {
-                  write("<!DOCTYPE html>")
-                  write("<div")
-                  write(" data-hop-id="test/card-comp"")
-                  write(">")
-                  write("<div")
-                  write(" class="card"")
-                  write(">")
-                  write("<p")
-                  write(">")
-                  write("Slot content")
-                  write("</p>")
-                  write("</div>")
-                  write("</div>")
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_nested_components_with_parameters() {
-        check_ir(
-            &[
-                "<inner-comp {msg: string}>",
-                "<span>{msg}</span>",
-                "</inner-comp>",
-                "",
-                "<outer-comp {text: string}>",
-                "<inner-comp {msg: text}/>",
-                "</outer-comp>",
-                "",
-                "<main-comp entrypoint>",
-                "<outer-comp {text: \"Hello\"}/>",
-                "</main-comp>",
-            ]
-            .join(""),
-            expect![[r#"
-                main-comp() {
-                  write("<!DOCTYPE html>")
-                  write("<div")
-                  write(" data-hop-id="test/outer-comp"")
-                  write(">")
-                  write("<div")
-                  write(" data-hop-id="test/inner-comp"")
-                  write(">")
-                  write("<span")
-                  write(">")
-                  write("Hello")
-                  write("</span>")
-                  write("</div>")
-                  write("</div>")
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_entrypoint_passes_parameter_to_component_with_same_name() {
-        check_ir(
-            &[
-                "<child-comp {x: string}>",
-                "<div>Value: {x}</div>",
-                "</child-comp>",
-                "",
-                "<main-comp entrypoint {x: string}>",
-                "<child-comp {x: x}/>",
-                "</main-comp>",
-            ]
-            .join(""),
-            expect![[r#"
-                main-comp(x: string) {
-                  write("<!DOCTYPE html>")
-                  write("<div")
-                  write(" data-hop-id="test/child-comp"")
-                  write(">")
-                  let x_1 = x in {
-                    write("<div")
-                    write(">")
-                    write("Value: ")
-                    write_escaped(x_1)
-                    write("</div>")
-                  }
-                  write("</div>")
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_entrypoint_passes_parameter_to_component_with_same_name_twice() {
-        check_ir(
-            &[
-                "<child-comp {x: string}>",
-                "<div>Value: {x}</div>",
-                "</child-comp>",
-                "",
-                "<main-comp entrypoint {x: string}>",
-                "<child-comp {x: x}/>",
-                "<child-comp {x: x}/>",
-                "</main-comp>",
-            ]
-            .join(""),
-            expect![[r#"
-                main-comp(x: string) {
-                  write("<!DOCTYPE html>")
-                  write("<div")
-                  write(" data-hop-id="test/child-comp"")
-                  write(">")
-                  let x_1 = x in {
-                    write("<div")
-                    write(">")
-                    write("Value: ")
-                    write_escaped(x_1)
-                    write("</div>")
-                  }
-                  write("</div>")
-                  write("<div")
-                  write(" data-hop-id="test/child-comp"")
-                  write(">")
-                  let x_2 = x in {
-                    write("<div")
-                    write(">")
-                    write("Value: ")
-                    write_escaped(x_2)
-                    write("</div>")
-                  }
-                  write("</div>")
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_multiple_entrypoints() {
-        // Test compilation with multiple entrypoints (shows first entrypoint)
-        check_ir(
-            &[
-                "<first-comp entrypoint {x: string}>",
-                "<div>{x}</div>",
-                "</first-comp>",
-                "",
-                "<second-comp entrypoint {y: string}>",
-                "<span>Value: {y}</span>",
-                "</second-comp>",
-            ]
-            .join(""),
-            expect![[r#"
-                first-comp(x: string) {
-                  write("<!DOCTYPE html>")
-                  write("<div")
-                  write(">")
-                  write_escaped(x)
-                  write("</div>")
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_variable_reuse_bug_in_sibling_scopes() {
-        // This test demonstrates the bug where variables can be incorrectly reused
-        // in sibling scopes after a scope is popped
-        check_ir(
-            &[
-                "<main-comp entrypoint>",
-                // First for loop introduces 'x'
-                "<for {x in [\"a\", \"b\"]}>",
-                "<div>{x}</div>",
-                "</for>",
-                // Second for loop also introduces 'x' - should be renamed!
-                // But with the current bug, it might reuse 'x' since the first scope was popped
-                "<for {x in [\"c\", \"d\"]}>",
-                "<span>{x}</span>",
-                "</for>",
-                "</main-comp>",
-            ]
-            .join(""),
-            expect![[r#"
-                main-comp() {
-                  write("<!DOCTYPE html>")
-                  for x in ["a", "b"] {
-                    write("<div")
-                    write(">")
-                    write_escaped(x)
-                    write("</div>")
-                  }
-                  for x_1 in ["c", "d"] {
-                    write("<span")
-                    write(">")
-                    write_escaped(x_1)
-                    write("</span>")
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_development_mode_compilation() {
-        check_ir_with_mode(
-            &[
-                "<test-comp entrypoint {name: string, count: string}>",
-                "<div>Hello {name}, count: {count}</div>",
-                "</test-comp>",
-            ]
-            .join(""),
+        check_inlined(
+            entrypoint,
             CompilationMode::Development,
             expect![[r#"
-                test-comp(name: string, count: string) {
-                  write("<!DOCTYPE html>
-                <html>
-                <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>")
-                  write("test-comp - Development Mode")
-                  write("</title>
-                </head>
-                <body>
-                <script id="hop-config" type="application/json">
-                {"entrypoint": "")
-                  write("test-comp")
-                  write("", "params": ")
-                  write_expr(JsonEncode({name: name, count: count}))
-                  write("}
-                </script>
-                <script type="module" src="http://localhost:33861/dev.js"></script>
-                </body>
-                </html>")
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_development_mode_no_params() {
-        check_ir_with_mode(
-            &[
-                "<simple-comp entrypoint>",
-                "<div>Hello World</div>",
-                "</simple-comp>",
-            ]
-            .join(""),
-            CompilationMode::Development,
-            expect![[r#"
-                simple-comp() {
-                  write("<!DOCTYPE html>
-                <html>
-                <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>")
-                  write("simple-comp - Development Mode")
-                  write("</title>
-                </head>
-                <body>
-                <script id="hop-config" type="application/json">
-                {"entrypoint": "")
-                  write("simple-comp")
-                  write("", "params": ")
-                  write("{}")
-                  write("}
-                </script>
-                <script type="module" src="http://localhost:33861/dev.js"></script>
-                </body>
-                </html>")
-                }
-            "#]],
+            test-comp(name: string, count: string) {
+              write("<!DOCTYPE html>
+            <html>
+            <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>")
+              write("test-comp - Development Mode")
+              write("</title>
+            </head>
+            <body>
+            <script id="hop-config" type="application/json">
+            {"entrypoint": "")
+              write("test-comp")
+              write("", "params": ")
+              write_expr(JsonEncode({name: name, count: count}))
+              write("}
+            </script>
+            <script type="module" src="http://localhost:33861/dev.js"></script>
+            </body>
+            </html>")
+            }
+        "#]],
         );
     }
 }
