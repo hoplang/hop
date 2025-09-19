@@ -1,6 +1,6 @@
 use crate::{
     document::document_cursor::StringSpan,
-    hop::inlined_ast::{InlinedEntryPoint, InlinedNode},
+    hop::inlined_ast::{InlinedEntrypoint, InlinedNode},
 };
 
 /// Transform that injects <!DOCTYPE html> at the beginning of entrypoints
@@ -42,7 +42,7 @@ impl DoctypeInjector {
         nodes.len()
     }
 
-    pub fn run(mut entrypoint: InlinedEntryPoint) -> InlinedEntryPoint {
+    pub fn run(mut entrypoint: InlinedEntrypoint) -> InlinedEntrypoint {
         // Only inject DOCTYPE for entrypoints
         if !Self::has_doctype(&entrypoint.children) {
             // Create a synthetic DOCTYPE node
@@ -65,7 +65,7 @@ mod tests {
     use expect_test::{Expect, expect};
 
     /// Helper to pretty-print entrypoint children for testing
-    fn format_entrypoint_children(entrypoint: &InlinedEntryPoint) -> String {
+    fn format_entrypoint_children(entrypoint: &InlinedEntrypoint) -> String {
         entrypoint
             .children
             .iter()
@@ -75,7 +75,7 @@ mod tests {
     }
 
     /// Helper to check DOCTYPE injection for entrypoint
-    fn check_doctype_injection(entrypoint: InlinedEntryPoint, expected: Expect) {
+    fn check_doctype_injection(entrypoint: InlinedEntrypoint, expected: Expect) {
         // Format before
         let before = format_entrypoint_children(&entrypoint);
 

@@ -3,7 +3,7 @@ use crate::dop::SimpleTypedExpr;
 use crate::dop::Type;
 use crate::dop::VarName;
 use crate::hop::inlined_ast::{
-    InlinedAttribute, InlinedAttributeValue, InlinedEntryPoint, InlinedNode, InlinedParameter,
+    InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode, InlinedParameter,
 };
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -12,7 +12,7 @@ pub fn build_inlined<F>(
     tag_name: &str,
     params: Vec<(&str, Type)>,
     children_fn: F,
-) -> InlinedEntryPoint
+) -> InlinedEntrypoint
 where
     F: FnOnce(&InlinedTestBuilder) -> Vec<InlinedNode>,
 {
@@ -29,7 +29,7 @@ pub fn build_inlined_auto<F>(
     tag_name: &str,
     params: Vec<(&str, Type)>,
     children_fn: F,
-) -> InlinedEntryPoint
+) -> InlinedEntrypoint
 where
     F: FnOnce(&mut InlinedAutoBuilder),
 {
@@ -64,8 +64,8 @@ impl InlinedTestBuilder {
         }
     }
 
-    fn build(&self, tag_name: &str, children: Vec<InlinedNode>) -> InlinedEntryPoint {
-        InlinedEntryPoint {
+    fn build(&self, tag_name: &str, children: Vec<InlinedNode>) -> InlinedEntrypoint {
+        InlinedEntrypoint {
             tag_name: StringSpan::new(tag_name.to_string()),
             params: self.params.clone(),
             children,
@@ -327,7 +327,7 @@ impl InlinedAutoBuilder {
         }
     }
 
-    fn build(self, tag_name: &str) -> InlinedEntryPoint {
+    fn build(self, tag_name: &str) -> InlinedEntrypoint {
         self.inner.build(tag_name, self.children)
     }
 

@@ -24,7 +24,7 @@ pub struct InlinedAttribute {
 }
 
 #[derive(Debug, Clone)]
-pub struct InlinedEntryPoint {
+pub struct InlinedEntrypoint {
     pub tag_name: StringSpan,
     pub params: Vec<InlinedParameter>,
     pub children: Vec<InlinedNode>,
@@ -91,7 +91,7 @@ impl InlinedAttribute {
     }
 }
 
-impl InlinedEntryPoint {
+impl InlinedEntrypoint {
     pub fn to_doc(&self) -> BoxDoc {
         BoxDoc::text("<")
             .append(BoxDoc::text(self.tag_name.as_str()))
@@ -246,7 +246,7 @@ impl fmt::Display for InlinedAttribute {
     }
 }
 
-impl fmt::Display for InlinedEntryPoint {
+impl fmt::Display for InlinedEntrypoint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.to_doc().pretty(60))
     }

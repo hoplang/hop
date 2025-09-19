@@ -4,7 +4,7 @@ use crate::dop::Type;
 use crate::dop::parser::TypedArgument;
 use crate::hop::ast::{Ast, AttributeValue};
 use crate::hop::inlined_ast::{
-    InlinedAttribute, InlinedAttributeValue, InlinedEntryPoint, InlinedNode, InlinedParameter,
+    InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode, InlinedParameter,
 };
 use crate::hop::module_name::ModuleName;
 use std::collections::{BTreeMap, HashMap};
@@ -42,14 +42,14 @@ impl Inliner {
     /// Returns a vector of inlined entrypoint components
     pub fn inline_entrypoints(
         asts: HashMap<ModuleName, Ast<SimpleTypedExpr>>,
-    ) -> Vec<InlinedEntryPoint> {
+    ) -> Vec<InlinedEntrypoint> {
         let mut result = Vec::new();
 
         for ast in asts.values() {
             // Only process entrypoint components
             for component in ast.get_component_definitions() {
                 if component.is_entrypoint {
-                    result.push(InlinedEntryPoint {
+                    result.push(InlinedEntrypoint {
                         tag_name: component.tag_name.to_string_span(),
                         children: Self::inline_nodes(&component.children, None, &asts),
                         params: component

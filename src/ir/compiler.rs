@@ -3,7 +3,7 @@ use crate::document::document_cursor::StringSpan;
 use crate::dop::{SimpleTypedExpr, TypedExpr};
 use crate::dop::{Type, VarName};
 use crate::hop::inlined_ast::{
-    InlinedAttribute, InlinedAttributeValue, InlinedEntryPoint, InlinedNode,
+    InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode,
 };
 use std::collections::BTreeMap;
 
@@ -27,7 +27,7 @@ pub struct Compiler {
 
 impl Compiler {
     pub fn compile(
-        entrypoint: InlinedEntryPoint,
+        entrypoint: InlinedEntrypoint,
         compilation_mode: CompilationMode,
     ) -> IrEntrypoint {
         let mut compiler = Compiler {
@@ -405,7 +405,7 @@ mod tests {
     use crate::ir::test_utils::build_inlined_auto;
     use expect_test::{Expect, expect};
 
-    fn check(entrypoint: InlinedEntryPoint, mode: CompilationMode, expected: Expect) {
+    fn check(entrypoint: InlinedEntrypoint, mode: CompilationMode, expected: Expect) {
         let before = entrypoint.to_string();
         let ir = Compiler::compile(entrypoint, mode);
         let after = ir.to_string();
