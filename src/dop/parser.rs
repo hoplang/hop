@@ -10,9 +10,9 @@ use crate::dop::token::Token;
 use crate::dop::tokenizer::Tokenizer;
 use crate::dop::var_name::VarName;
 
-use super::TypedExpr;
 use super::UntypedExpr;
 use super::r#type::RangedType;
+use super::typed_expr::TypedExpr;
 
 /// A Parameter represents a parsed parameter with type annotation.
 /// E.g. <my-comp {x: string, y: string}>

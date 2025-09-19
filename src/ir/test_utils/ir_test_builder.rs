@@ -1,4 +1,4 @@
-use crate::dop::expr::Expr;
+use crate::dop::AnnotatedTypedExpr;
 use crate::dop::{Type, VarName};
 use crate::ir::ast::IrEntrypoint;
 use crate::ir::ast::{BinaryOp, ExprId, IrExpr, IrStatement, StatementId, UnaryOp};
@@ -76,23 +76,26 @@ impl IrTestBuilder {
 
     // Expression builders
     pub fn str(&self, s: &str) -> IrExpr {
-        Expr::StringLiteral {
+        AnnotatedTypedExpr::StringLiteral {
             value: s.to_string(),
-            annotation: (self.next_expr_id(), Type::String),
+            kind: Type::String,
+            annotation: self.next_expr_id(),
         }
     }
 
     pub fn num(&self, n: f64) -> IrExpr {
-        Expr::NumberLiteral {
+        AnnotatedTypedExpr::NumberLiteral {
             value: serde_json::Number::from_f64(n).unwrap_or_else(|| serde_json::Number::from(0)),
-            annotation: (self.next_expr_id(), Type::Number),
+            kind: Type::Number,
+            annotation: self.next_expr_id(),
         }
     }
 
     pub fn bool(&self, b: bool) -> IrExpr {
-        Expr::BooleanLiteral {
+        AnnotatedTypedExpr::BooleanLiteral {
             value: b,
-            annotation: (self.next_expr_id(), Type::Bool),
+            kind: Type::Bool,
+            annotation: self.next_expr_id(),
         }
     }
 
@@ -117,26 +120,29 @@ impl IrTestBuilder {
                 )
             });
 
-        Expr::Var {
+        AnnotatedTypedExpr::Var {
             value: VarName::try_from(name.to_string()).unwrap(),
-            annotation: (self.next_expr_id(), typ),
+            kind: typ,
+            annotation: self.next_expr_id(),
         }
     }
 
     pub fn eq(&self, left: IrExpr, right: IrExpr) -> IrExpr {
-        Expr::BinaryOp {
+        AnnotatedTypedExpr::BinaryOp {
             left: Box::new(left),
             operator: BinaryOp::Eq,
             right: Box::new(right),
-            annotation: (self.next_expr_id(), Type::Bool),
+            kind: Type::Bool,
+            annotation: self.next_expr_id(),
         }
     }
 
     pub fn not(&self, operand: IrExpr) -> IrExpr {
-        Expr::UnaryOp {
+        AnnotatedTypedExpr::UnaryOp {
             operator: UnaryOp::Not,
             operand: Box::new(operand),
-            annotation: (self.next_expr_id(), Type::Bool),
+            kind: Type::Bool,
+            annotation: self.next_expr_id(),
         }
     }
 
@@ -144,9 +150,10 @@ impl IrTestBuilder {
         // Determine the array element type from the first element
         let element_type = elements.first().map(|first| Box::new(first.typ().clone()));
 
-        Expr::ArrayLiteral {
+        AnnotatedTypedExpr::ArrayLiteral {
             elements,
-            annotation: (self.next_expr_id(), Type::Array(element_type)),
+            kind: Type::Array(element_type),
+            annotation: self.next_expr_id(),
         }
     }
 
@@ -157,9 +164,10 @@ impl IrTestBuilder {
             type_map.insert(key.to_string(), expr.typ().clone());
         }
 
-        Expr::ObjectLiteral {
+        AnnotatedTypedExpr::ObjectLiteral {
             properties: props.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
-            annotation: (self.next_expr_id(), Type::Object(type_map)),
+            kind: Type::Object(type_map),
+            annotation: self.next_expr_id(),
         }
     }
 
@@ -172,10 +180,11 @@ impl IrTestBuilder {
             _ => panic!("Cannot access property '{}' on non-object type", property),
         };
 
-        Expr::PropertyAccess {
+        AnnotatedTypedExpr::PropertyAccess {
             object: Box::new(object),
             property: property.to_string(),
-            annotation: (self.next_expr_id(), property_type),
+            kind: property_type,
+            annotation: self.next_expr_id(),
         }
     }
 
@@ -262,9 +271,10 @@ impl IrTestBuilder {
     }
 
     pub fn json_encode(&self, value: IrExpr) -> IrExpr {
-        Expr::JsonEncode {
+        AnnotatedTypedExpr::JsonEncode {
             value: Box::new(value),
-            annotation: (self.next_expr_id(), Type::String),
+            kind: Type::String,
+            annotation: self.next_expr_id(),
         }
     }
 }
@@ -333,7 +343,8 @@ impl IrAutoBuilder {
         };
 
         // Push the loop variable onto the stack
-        self.inner.var_stack
+        self.inner
+            .var_stack
             .borrow_mut()
             .push((var.to_string(), element_type));
 
@@ -345,7 +356,8 @@ impl IrAutoBuilder {
         // Pop the loop variable from the stack
         self.inner.var_stack.borrow_mut().pop();
 
-        self.statements.push(self.inner.for_loop(var, array, |_| body));
+        self.statements
+            .push(self.inner.for_loop(var, array, |_| body));
     }
 
     pub fn let_stmt<F>(&mut self, var: &str, value: IrExpr, body_fn: F)
@@ -356,7 +368,8 @@ impl IrAutoBuilder {
         let value_type = value.typ().clone();
 
         // Push the variable onto the stack
-        self.inner.var_stack
+        self.inner
+            .var_stack
             .borrow_mut()
             .push((var.to_string(), value_type));
 
@@ -368,7 +381,8 @@ impl IrAutoBuilder {
         // Pop the variable from the stack
         self.inner.var_stack.borrow_mut().pop();
 
-        self.statements.push(self.inner.let_stmt(var, value, |_| body));
+        self.statements
+            .push(self.inner.let_stmt(var, value, |_| body));
     }
 
     // Expression methods - delegate to inner builder

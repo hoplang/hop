@@ -1,7 +1,7 @@
 use super::Type;
-use super::TypedExpr;
 use super::expr::{BinaryOp, Expr, UnaryOp, UntypedExpr};
 use super::type_error::TypeError;
+use super::typed_expr::TypedExpr;
 use crate::document::document_cursor::Ranged as _;
 use crate::hop::environment::Environment;
 use crate::hop::type_checker::TypeAnnotation;
@@ -23,6 +23,7 @@ pub fn typecheck_expr(
                 Ok(TypedExpr::Var {
                     value: name.clone(),
                     kind: var_type.clone(),
+                    annotation: (),
                 })
             } else {
                 Err(TypeError::UndefinedVariable {
@@ -34,14 +35,17 @@ pub fn typecheck_expr(
         Expr::BooleanLiteral { value, .. } => Ok(TypedExpr::BooleanLiteral {
             value: *value,
             kind: Type::Bool,
+            annotation: (),
         }),
         Expr::StringLiteral { value, .. } => Ok(TypedExpr::StringLiteral {
             value: value.clone(),
             kind: Type::String,
+            annotation: (),
         }),
         Expr::NumberLiteral { value, .. } => Ok(TypedExpr::NumberLiteral {
             value: value.clone(),
             kind: Type::Number,
+            annotation: (),
         }),
         Expr::PropertyAccess {
             object: base_expr,
@@ -59,6 +63,7 @@ pub fn typecheck_expr(
                             object: Box::new(typed_base),
                             property: property.clone(),
                             kind: prop_type.clone(),
+                            annotation: (),
                         })
                     } else {
                         Err(TypeError::PropertyNotFoundInObject {
@@ -100,6 +105,7 @@ pub fn typecheck_expr(
                 operator: BinaryOp::Eq,
                 right: Box::new(typed_right),
                 kind: Type::Bool,
+                annotation: (),
             })
         }
         Expr::UnaryOp {
@@ -122,6 +128,7 @@ pub fn typecheck_expr(
                 operator: UnaryOp::Not,
                 operand: Box::new(typed_operand),
                 kind: Type::Bool,
+                annotation: (),
             })
         }
         Expr::ArrayLiteral { elements, .. } => {
@@ -130,6 +137,7 @@ pub fn typecheck_expr(
                 Ok(TypedExpr::ArrayLiteral {
                     elements: vec![],
                     kind: Type::Array(None),
+                    annotation: (),
                 })
             } else {
                 let mut typed_elements = Vec::new();
@@ -156,6 +164,7 @@ pub fn typecheck_expr(
                 Ok(TypedExpr::ArrayLiteral {
                     elements: typed_elements,
                     kind: Type::Array(Some(Box::new(first_type))),
+                    annotation: (),
                 })
             }
         }
@@ -173,6 +182,7 @@ pub fn typecheck_expr(
             Ok(TypedExpr::ObjectLiteral {
                 properties: typed_properties,
                 kind: Type::Object(object_properties),
+                annotation: (),
             })
         }
         Expr::JsonEncode { value, .. } => {
@@ -180,6 +190,7 @@ pub fn typecheck_expr(
             Ok(TypedExpr::JsonEncode {
                 value: Box::new(typed_value),
                 kind: Type::String,
+                annotation: (),
             })
         }
         Expr::StringConcat { left, right, .. } => {
@@ -193,6 +204,7 @@ pub fn typecheck_expr(
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 kind: Type::String,
+                annotation: (),
             })
         }
     }

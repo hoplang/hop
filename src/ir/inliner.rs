@@ -1,5 +1,4 @@
 use crate::document::document_cursor::StringSpan;
-use crate::dop::Expr;
 use crate::dop::Type;
 use crate::dop::TypedExpr;
 use crate::dop::parser::TypedArgument;
@@ -194,11 +193,13 @@ impl Inliner {
             Some(AttributeValue::String(s)) => TypedExpr::StringLiteral {
                 value: s.as_str().to_string(),
                 kind: Type::String,
+                annotation: (),
             },
             Some(AttributeValue::Expression(expr)) => expr.clone(),
             None => TypedExpr::StringLiteral {
                 value: "".to_string(),
                 kind: Type::String,
+                annotation: (),
             },
         };
 
@@ -206,11 +207,13 @@ impl Inliner {
             Some(AttributeValue::String(s)) => TypedExpr::StringLiteral {
                 value: s.as_str().to_string(),
                 kind: Type::String,
+                annotation: (),
             },
             Some(AttributeValue::Expression(expr)) => expr.clone(),
             None => TypedExpr::StringLiteral {
                 value: "".to_string(),
                 kind: Type::String,
+                annotation: (),
             },
         };
 
@@ -218,6 +221,7 @@ impl Inliner {
         let space_expr = TypedExpr::StringLiteral {
             value: " ".to_string(),
             kind: Type::String,
+            annotation: (),
         };
 
         // Concatenate: def_class + " " + ref_class
@@ -225,12 +229,14 @@ impl Inliner {
             left: Box::new(def_expr),
             right: Box::new(space_expr),
             kind: Type::String,
+            annotation: (),
         };
 
         let final_concat = TypedExpr::StringConcat {
             left: Box::new(def_plus_space),
             right: Box::new(ref_expr),
             kind: Type::String,
+            annotation: (),
         };
 
         InlinedAttributeValue::Expression(final_concat)

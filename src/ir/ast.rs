@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt};
 
-use crate::dop::{VarName, expr::Expr, r#type::Type};
+use crate::dop::{VarName, r#type::Type, typed_expr::AnnotatedTypedExpr};
 use pretty::BoxDoc;
 
 pub use crate::dop::expr::{BinaryOp, UnaryOp};
@@ -66,8 +66,8 @@ pub enum IrStatement {
     },
 }
 
-/// Type alias for IR expressions with ExprId and Type annotations
-pub type IrExpr = Expr<(ExprId, Type)>;
+/// Type alias for IR expressions with ExprId annotations
+pub type IrExpr = AnnotatedTypedExpr<ExprId>;
 
 impl IrStatement {
     /// Get the primary expression from this statement, if any
@@ -276,12 +276,12 @@ impl IrStatement {
 impl IrExpr {
     /// Get the id of this expression
     pub fn id(&self) -> ExprId {
-        self.annotation().0
+        *self.annotation()
     }
 
     /// Get the type of this expression
     pub fn typ(&self) -> &Type {
-        &self.annotation().1
+        self.kind()
     }
 
     /// Recursively traverses this expression and all nested expressions
@@ -291,28 +291,32 @@ impl IrExpr {
     {
         f(self);
         match self {
-            Expr::PropertyAccess { object, .. } => {
+            AnnotatedTypedExpr::PropertyAccess { object, .. } => {
                 object.traverse(f);
             }
-            Expr::ArrayLiteral { elements, .. } => {
+            AnnotatedTypedExpr::ArrayLiteral { elements, .. } => {
                 for elem in elements {
                     elem.traverse(f);
                 }
             }
-            Expr::ObjectLiteral { properties, .. } => {
+            AnnotatedTypedExpr::ObjectLiteral { properties, .. } => {
                 for (_, value) in properties {
                     value.traverse(f);
                 }
             }
-            Expr::BinaryOp { left, right, .. } => {
+            AnnotatedTypedExpr::BinaryOp { left, right, .. } => {
                 left.traverse(f);
                 right.traverse(f);
             }
-            Expr::UnaryOp { operand, .. } => {
+            AnnotatedTypedExpr::UnaryOp { operand, .. } => {
                 operand.traverse(f);
             }
-            Expr::JsonEncode { value, .. } => {
+            AnnotatedTypedExpr::JsonEncode { value, .. } => {
                 value.traverse(f);
+            }
+            AnnotatedTypedExpr::StringConcat { left, right, .. } => {
+                left.traverse(f);
+                right.traverse(f);
             }
             _ => {}
         }
@@ -325,28 +329,32 @@ impl IrExpr {
     {
         f(self);
         match self {
-            Expr::PropertyAccess { object, .. } => {
+            AnnotatedTypedExpr::PropertyAccess { object, .. } => {
                 object.traverse_mut(f);
             }
-            Expr::ArrayLiteral { elements, .. } => {
+            AnnotatedTypedExpr::ArrayLiteral { elements, .. } => {
                 for elem in elements {
                     elem.traverse_mut(f);
                 }
             }
-            Expr::ObjectLiteral { properties, .. } => {
+            AnnotatedTypedExpr::ObjectLiteral { properties, .. } => {
                 for (_, value) in properties {
                     value.traverse_mut(f);
                 }
             }
-            Expr::BinaryOp { left, right, .. } => {
+            AnnotatedTypedExpr::BinaryOp { left, right, .. } => {
                 left.traverse_mut(f);
                 right.traverse_mut(f);
             }
-            Expr::UnaryOp { operand, .. } => {
+            AnnotatedTypedExpr::UnaryOp { operand, .. } => {
                 operand.traverse_mut(f);
             }
-            Expr::JsonEncode { value, .. } => {
+            AnnotatedTypedExpr::JsonEncode { value, .. } => {
                 value.traverse_mut(f);
+            }
+            AnnotatedTypedExpr::StringConcat { left, right, .. } => {
+                left.traverse_mut(f);
+                right.traverse_mut(f);
             }
             _ => {}
         }

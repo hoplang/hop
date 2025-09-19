@@ -1,7 +1,6 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::StringSpan;
-use crate::dop::Expr;
-use crate::dop::TypedExpr;
+use crate::dop::{AnnotatedTypedExpr, TypedExpr};
 use crate::dop::{Type, VarName};
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntryPoint, InlinedNode,
@@ -111,25 +110,24 @@ impl Compiler {
             for (name, typ) in params {
                 props.push((
                     name.to_string(),
-                    Expr::Var {
+                    AnnotatedTypedExpr::Var {
                         value: name.clone(),
-                        annotation: (self.next_expr_id(), typ.clone()),
+                        kind: typ.clone(),
+                        annotation: self.next_expr_id(),
                     },
                 ));
             }
 
             body.push(IrStatement::WriteExpr {
                 id: self.next_node_id(),
-                expr: Expr::JsonEncode {
-                    value: Box::new(Expr::ObjectLiteral {
+                expr: AnnotatedTypedExpr::JsonEncode {
+                    value: Box::new(AnnotatedTypedExpr::ObjectLiteral {
                         properties: props,
-                        annotation: (
-                            self.next_expr_id(),
-                            // TODO: Do we need to construct the correct type here?
-                            Type::Object(BTreeMap::new()),
-                        ),
+                        kind: Type::Object(BTreeMap::new()),
+                        annotation: self.next_expr_id(),
                     }),
-                    annotation: (self.next_expr_id(), Type::String),
+                    kind: Type::String,
+                    annotation: self.next_expr_id(),
                 },
                 escape: false,
             });
@@ -329,57 +327,91 @@ impl Compiler {
     }
 
     fn compile_expr(&mut self, expr: TypedExpr) -> IrExpr {
-        let annotation = (self.next_expr_id(), expr.kind().clone());
+        let expr_id = self.next_expr_id();
 
         match expr {
-            TypedExpr::Var { value, .. } => Expr::Var { value, annotation },
+            TypedExpr::Var { value, kind, .. } => AnnotatedTypedExpr::Var {
+                value,
+                kind,
+                annotation: expr_id,
+            },
             TypedExpr::PropertyAccess {
-                object, property, ..
-            } => Expr::PropertyAccess {
+                object,
+                property,
+                kind,
+                ..
+            } => AnnotatedTypedExpr::PropertyAccess {
                 object: Box::new(self.compile_expr(*object)),
                 property,
-                annotation,
+                kind,
+                annotation: expr_id,
             },
             TypedExpr::BinaryOp {
                 left,
                 operator,
                 right,
+                kind,
                 ..
-            } => Expr::BinaryOp {
+            } => AnnotatedTypedExpr::BinaryOp {
                 left: Box::new(self.compile_expr(*left)),
                 operator,
                 right: Box::new(self.compile_expr(*right)),
-                annotation,
+                kind,
+                annotation: expr_id,
             },
             TypedExpr::UnaryOp {
-                operator, operand, ..
-            } => Expr::UnaryOp {
+                operator,
+                operand,
+                kind,
+                ..
+            } => AnnotatedTypedExpr::UnaryOp {
                 operator,
                 operand: Box::new(self.compile_expr(*operand)),
-                annotation,
+                kind,
+                annotation: expr_id,
             },
-            TypedExpr::ArrayLiteral { elements, .. } => Expr::ArrayLiteral {
+            TypedExpr::ArrayLiteral { elements, kind, .. } => AnnotatedTypedExpr::ArrayLiteral {
                 elements: elements.into_iter().map(|e| self.compile_expr(e)).collect(),
-                annotation,
+                kind,
+                annotation: expr_id,
             },
-            TypedExpr::ObjectLiteral { properties, .. } => Expr::ObjectLiteral {
+            TypedExpr::ObjectLiteral {
+                properties, kind, ..
+            } => AnnotatedTypedExpr::ObjectLiteral {
                 properties: properties
                     .into_iter()
                     .map(|(k, v)| (k, self.compile_expr(v)))
                     .collect(),
-                annotation,
+                kind,
+                annotation: expr_id,
             },
-            TypedExpr::StringLiteral { value, .. } => Expr::StringLiteral { value, annotation },
-            TypedExpr::BooleanLiteral { value, .. } => Expr::BooleanLiteral { value, annotation },
-            TypedExpr::NumberLiteral { value, .. } => Expr::NumberLiteral { value, annotation },
-            TypedExpr::JsonEncode { value, .. } => Expr::JsonEncode {
+            TypedExpr::StringLiteral { value, kind, .. } => AnnotatedTypedExpr::StringLiteral {
+                value,
+                kind,
+                annotation: expr_id,
+            },
+            TypedExpr::BooleanLiteral { value, kind, .. } => AnnotatedTypedExpr::BooleanLiteral {
+                value,
+                kind,
+                annotation: expr_id,
+            },
+            TypedExpr::NumberLiteral { value, kind, .. } => AnnotatedTypedExpr::NumberLiteral {
+                value,
+                kind,
+                annotation: expr_id,
+            },
+            TypedExpr::JsonEncode { value, kind, .. } => AnnotatedTypedExpr::JsonEncode {
                 value: Box::new(self.compile_expr(*value)),
-                annotation,
+                kind,
+                annotation: expr_id,
             },
-            TypedExpr::StringConcat { left, right, .. } => Expr::StringConcat {
+            TypedExpr::StringConcat {
+                left, right, kind, ..
+            } => AnnotatedTypedExpr::StringConcat {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
-                annotation,
+                kind,
+                annotation: expr_id,
             },
         }
     }

@@ -103,12 +103,12 @@ pub trait ExpressionTranspiler {
             IrExpr::NumberLiteral { value, .. } => self.transpile_number_literal(value),
             IrExpr::ArrayLiteral {
                 elements,
-                annotation: (_, typ),
+                kind: typ,
                 ..
             } => self.transpile_array_literal(elements, typ),
             IrExpr::ObjectLiteral {
                 properties,
-                annotation: (_, typ),
+                kind: typ,
                 ..
             } => match typ {
                 Type::Object(fields) => self.transpile_object_literal(properties, fields),

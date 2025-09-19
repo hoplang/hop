@@ -2,7 +2,6 @@ use crate::document::document_cursor::StringSpan;
 use crate::dop::Type;
 use crate::dop::TypedExpr;
 use crate::dop::VarName;
-use crate::dop::expr::Expr;
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntryPoint, InlinedNode, InlinedParameter,
 };
@@ -73,11 +72,12 @@ impl InlinedTestBuilder {
         }
     }
 
-    // Expression builders for creating TypedExpr
+    // Expression builders for creating SimpleTypedExpr
     pub fn str_expr(&self, s: &str) -> TypedExpr {
         TypedExpr::StringLiteral {
             value: s.to_string(),
             kind: Type::String,
+            annotation: (),
         }
     }
 
@@ -85,6 +85,7 @@ impl InlinedTestBuilder {
         TypedExpr::NumberLiteral {
             value: serde_json::Number::from_f64(n).unwrap_or_else(|| serde_json::Number::from(0)),
             kind: Type::Number,
+            annotation: (),
         }
     }
 
@@ -92,6 +93,7 @@ impl InlinedTestBuilder {
         TypedExpr::BooleanLiteral {
             value: b,
             kind: Type::Bool,
+            annotation: (),
         }
     }
 
@@ -118,6 +120,7 @@ impl InlinedTestBuilder {
         TypedExpr::Var {
             value: VarName::try_from(name.to_string()).unwrap(),
             kind: typ,
+            annotation: (),
         }
     }
 
@@ -127,6 +130,7 @@ impl InlinedTestBuilder {
         TypedExpr::ArrayLiteral {
             elements,
             kind: Type::Array(element_type),
+            annotation: (),
         }
     }
 
@@ -139,6 +143,7 @@ impl InlinedTestBuilder {
         TypedExpr::ObjectLiteral {
             properties: props.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             kind: Type::Object(type_map),
+            annotation: (),
         }
     }
 
@@ -155,6 +160,7 @@ impl InlinedTestBuilder {
             object: Box::new(object),
             property: property.to_string(),
             kind: property_type,
+            annotation: (),
         }
     }
 
