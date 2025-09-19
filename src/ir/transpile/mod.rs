@@ -85,7 +85,7 @@ pub trait ExpressionTranspiler {
     fn transpile_object_literal<'a>(
         &self,
         properties: &'a [(String, IrExpr)],
-        field_types: &'a BTreeMap<String, Type>,
+        property_types: &'a BTreeMap<String, Type>,
     ) -> BoxDoc<'a>;
     fn transpile_string_equality<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_bool_equality<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
@@ -112,7 +112,9 @@ pub trait ExpressionTranspiler {
                 kind: typ,
                 ..
             } => match typ {
-                Type::Object(fields) => self.transpile_object_literal(properties, fields),
+                Type::Object(property_types) => {
+                    self.transpile_object_literal(properties, property_types)
+                }
                 _ => {
                     unreachable!()
                 }

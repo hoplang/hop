@@ -18,31 +18,8 @@ impl GoTranspiler {
         for stmt in &entrypoint.body {
             // Check for HTML escaping in WriteExpr statements
             stmt.traverse(&mut |s| {
-                if let IrStatement::WriteExpr {
-                    expr, escape: true, ..
-                } = s
-                {
+                if let IrStatement::WriteExpr { escape: true, .. } = s {
                     imports.insert("html".to_string());
-                    // Check if we need fmt for type conversion
-                    match expr.as_type() {
-                        Type::String => {}
-                        _ => {
-                            imports.insert("fmt".to_string());
-                        }
-                    }
-                } else if let IrStatement::WriteExpr {
-                    expr,
-                    escape: false,
-                    ..
-                } = s
-                {
-                    // Check if we need fmt for type conversion
-                    match expr.as_type() {
-                        Type::String => {}
-                        _ => {
-                            imports.insert("fmt".to_string());
-                        }
-                    }
                 }
             });
 
