@@ -3,8 +3,6 @@ use std::collections::BTreeMap;
 
 use pretty::BoxDoc;
 
-use crate::document::document_cursor::DocumentRange;
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Object(BTreeMap<String, Type>),
@@ -46,13 +44,6 @@ impl Type {
             _ => false,
         }
     }
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub struct RangedType {
-    pub dop_type: Type,
-    pub range: DocumentRange,
 }
 
 impl fmt::Display for Type {

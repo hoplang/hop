@@ -11,7 +11,6 @@ use crate::dop::tokenizer::Tokenizer;
 use crate::dop::var_name::VarName;
 
 use super::Expr;
-use super::r#type::RangedType;
 use super::typed_expr::SimpleTypedExpr;
 
 /// A Parameter represents a parsed parameter with type annotation.
@@ -224,11 +223,11 @@ impl Parser {
     fn parse_parameter(&mut self) -> Result<Parameter, ParseError> {
         let (var_name, var_name_range) = self.expect_variable_name()?;
         self.expect_token(&Token::Colon)?;
-        let typ = self.parse_type()?;
+        let (var_type, _) = self.parse_type()?;
         Ok(Parameter {
             var_name,
             var_name_range,
-            var_type: typ.dop_type,
+            var_type,
         })
     }
 
@@ -289,49 +288,40 @@ impl Parser {
     }
 
     // object_type = "{" (Identifier ":" type ("," Identifier ":" type)*)? "}"
-    fn parse_object_type(&mut self, left_brace: DocumentRange) -> Result<RangedType, ParseError> {
+    fn parse_object_type(
+        &mut self,
+        left_brace: DocumentRange,
+    ) -> Result<(Type, DocumentRange), ParseError> {
         let mut properties = BTreeMap::new();
         let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
             let prop_name = this.expect_property_name()?;
             this.expect_token(&Token::Colon)?;
-            let t = this.parse_type()?;
+            let (typ, _range) = this.parse_type()?;
             if properties.contains_key(prop_name.as_str()) {
                 return Err(ParseError::DuplicateProperty {
                     name: prop_name.to_string_span(),
                     range: prop_name.clone(),
                 });
             }
-            properties.insert(prop_name.to_string(), t.dop_type);
+            properties.insert(prop_name.to_string(), typ);
             Ok(())
         })?;
-        Ok(RangedType {
-            dop_type: Type::Object(properties),
-            range: left_brace.to(right_brace),
-        })
+        Ok((Type::Object(properties), left_brace.to(right_brace)))
     }
 
-    fn parse_type(&mut self) -> Result<RangedType, ParseError> {
+    fn parse_type(&mut self) -> Result<(Type, DocumentRange), ParseError> {
         match self.iter.next().transpose()? {
-            Some((Token::TypeString, range)) => Ok(RangedType {
-                dop_type: Type::String,
-                range,
-            }),
-            Some((Token::TypeNumber, range)) => Ok(RangedType {
-                dop_type: Type::Number,
-                range,
-            }),
-            Some((Token::TypeBoolean, range)) => Ok(RangedType {
-                dop_type: Type::Bool,
-                range,
-            }),
+            Some((Token::TypeString, range)) => Ok((Type::String, range)),
+            Some((Token::TypeNumber, range)) => Ok((Type::Number, range)),
+            Some((Token::TypeBoolean, range)) => Ok((Type::Bool, range)),
             Some((Token::TypeArray, type_array)) => {
                 let left_bracket = self.expect_token(&Token::LeftBracket)?;
                 let inner_type = self.parse_type()?;
                 let right_bracket = self.expect_opposite(&Token::LeftBracket, &left_bracket)?;
-                Ok(RangedType {
-                    dop_type: Type::Array(Some(Box::new(inner_type.dop_type))),
-                    range: type_array.to(right_bracket),
-                })
+                Ok((
+                    Type::Array(Some(Box::new(inner_type.0))),
+                    type_array.to(right_bracket),
+                ))
             }
             Some((Token::LeftBrace, left_brace_range)) => self.parse_object_type(left_brace_range),
             Some((_, range)) => Err(ParseError::ExpectedTypeName { range }),
