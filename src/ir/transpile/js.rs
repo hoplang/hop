@@ -416,7 +416,7 @@ impl TypeTranspiler for JsTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::test_utils::build_ir;
+    use crate::ir::test_utils::build_ir_auto;
     use expect_test::{Expect, expect};
 
     fn transpile_with_pretty(entrypoints: &[IrEntrypoint], mode: LanguageMode) -> String {
@@ -449,8 +449,8 @@ mod tests {
 
     #[test]
     fn test_simple_component() {
-        let entrypoints = vec![build_ir("hello-world", vec![], |t| {
-            vec![t.write("<h1>Hello, World!</h1>\n")]
+        let entrypoints = vec![build_ir_auto("hello-world", vec![], |t| {
+            t.write("<h1>Hello, World!</h1>\n");
         })];
 
         check(
@@ -484,20 +484,18 @@ mod tests {
 
     #[test]
     fn test_component_with_params_and_escaping() {
-        let entrypoints = vec![build_ir(
+        let entrypoints = vec![build_ir_auto(
             "user-info",
             vec![("name", Type::String), ("age", Type::String)],
             |t| {
-                vec![
-                    t.write("<div>\n"),
-                    t.write("<h2>Name: "),
-                    t.write_expr(t.var("name"), true),
-                    t.write("</h2>\n"),
-                    t.write("<p>Age: "),
-                    t.write_expr(t.var("age"), false),
-                    t.write("</p>\n"),
-                    t.write("</div>\n"),
-                ]
+                t.write("<div>\n");
+                t.write("<h2>Name: ");
+                t.write_expr_escaped(t.var("name"));
+                t.write("</h2>\n");
+                t.write("<p>Age: ");
+                t.write_expr(t.var("age"), false);
+                t.write("</p>\n");
+                t.write("</div>\n");
             },
         )];
 
@@ -571,18 +569,18 @@ mod tests {
 
     #[test]
     fn test_typescript_with_types() {
-        let entrypoints = vec![build_ir(
+        let entrypoints = vec![build_ir_auto(
             "conditional-display",
             vec![("title", Type::String), ("show", Type::Bool)],
             |t| {
-                vec![t.if_stmt(
+                t.if_stmt(
                     t.var("show"),
-                    vec![
-                        t.write("<h1>"),
-                        t.write_expr(t.var("title"), true),
-                        t.write("</h1>\n"),
-                    ],
-                )]
+                    |t| {
+                        t.write("<h1>");
+                        t.write_expr_escaped(t.var("title"));
+                        t.write("</h1>\n");
+                    },
+                );
             },
         )];
 
@@ -647,21 +645,17 @@ mod tests {
 
     #[test]
     fn test_for_loop_with_array() {
-        let entrypoints = vec![build_ir(
+        let entrypoints = vec![build_ir_auto(
             "list-items",
             vec![("items", Type::Array(Some(Box::new(Type::String))))],
             |t| {
-                vec![
-                    t.write("<ul>\n"),
-                    t.for_loop("item", t.var("items"), |t| {
-                        vec![
-                            t.write("<li>"),
-                            t.write_expr(t.var("item"), true),
-                            t.write("</li>\n"),
-                        ]
-                    }),
-                    t.write("</ul>\n"),
-                ]
+                t.write("<ul>\n");
+                t.for_loop("item", t.var("items"), |t| {
+                    t.write("<li>");
+                    t.write_expr_escaped(t.var("item"));
+                    t.write("</li>\n");
+                });
+                t.write("</ul>\n");
             },
         )];
 
@@ -732,16 +726,14 @@ mod tests {
 
     #[test]
     fn test_let_binding() {
-        let entrypoints = vec![build_ir("greeting-card", vec![], |t| {
-            vec![t.let_stmt("greeting", t.str("Hello from hop!"), |t| {
-                vec![
-                    t.write("<div class=\"card\">\n"),
-                    t.write("<p>"),
-                    t.write_expr(t.var("greeting"), true),
-                    t.write("</p>\n"),
-                    t.write("</div>\n"),
-                ]
-            })]
+        let entrypoints = vec![build_ir_auto("greeting-card", vec![], |t| {
+            t.let_stmt("greeting", t.str("Hello from hop!"), |t| {
+                t.write("<div class=\"card\">\n");
+                t.write("<p>");
+                t.write_expr_escaped(t.var("greeting"));
+                t.write("</p>\n");
+                t.write("</div>\n");
+            });
         })];
 
         check(
@@ -809,18 +801,14 @@ mod tests {
 
     #[test]
     fn test_nested_components_with_let_bindings() {
-        let entrypoints = vec![build_ir("test-main-comp", vec![], |t| {
-            vec![
-                t.write("<div data-hop-id=\"test/card-comp\">"),
-                t.let_stmt("title", t.str("Hello World"), |t| {
-                    vec![
-                        t.write("<h2>"),
-                        t.write_expr(t.var("title"), true),
-                        t.write("</h2>"),
-                    ]
-                }),
-                t.write("</div>"),
-            ]
+        let entrypoints = vec![build_ir_auto("test-main-comp", vec![], |t| {
+            t.write("<div data-hop-id=\"test/card-comp\">");
+            t.let_stmt("title", t.str("Hello World"), |t| {
+                t.write("<h2>");
+                t.write_expr_escaped(t.var("title"));
+                t.write("</h2>");
+            });
+            t.write("</div>");
         })];
 
         check(
@@ -888,64 +876,68 @@ mod tests {
 
     #[test]
     fn test_complex_literals_and_property_access() {
-        let entrypoints = vec![build_ir("test-product-list", vec![], |t| {
-            vec![
-                    t.write("<div class=\"products\">\n"),
-                    t.for_loop(
-                        "product",
-                        t.array(vec![
-                            t.object(vec![
-                                ("name", t.str("Laptop")),
-                                ("inStock", t.bool(true)),
-                                ("category", t.str("electronics")),
-                            ]),
-                            t.object(vec![
-                                ("name", t.str("Book")),
-                                ("inStock", t.bool(false)),
-                                ("category", t.str("books")),
-                            ]),
-                            t.object(vec![
-                                ("name", t.str("T-Shirt")),
-                                ("inStock", t.bool(true)),
-                                ("category", t.str("clothing")),
-                            ]),
+        let entrypoints = vec![build_ir_auto("test-product-list", vec![], |t| {
+            t.write("<div class=\"products\">\n");
+            t.for_loop(
+                "product",
+                t.array(vec![
+                    t.object(vec![
+                        ("name", t.str("Laptop")),
+                        ("inStock", t.bool(true)),
+                        ("category", t.str("electronics")),
+                    ]),
+                    t.object(vec![
+                        ("name", t.str("Book")),
+                        ("inStock", t.bool(false)),
+                        ("category", t.str("books")),
+                    ]),
+                    t.object(vec![
+                        ("name", t.str("T-Shirt")),
+                        ("inStock", t.bool(true)),
+                        ("category", t.str("clothing")),
+                    ]),
+                ]),
+                |t| {
+                    t.let_stmt(
+                        "displayInfo",
+                        t.object(vec![
+                            ("currency", t.str("$")),
+                            ("showStock", t.bool(true)),
+                            ("prefix", t.str("PROD-")),
                         ]),
-                        |t| vec![t.let_stmt(
-                            "displayInfo",
-                            t.object(vec![
-                                ("currency", t.str("$")),
-                                ("showStock", t.bool(true)),
-                                ("prefix", t.str("PROD-")),
-                            ]),
-                            |t| vec![
-                                t.write("<article class=\"product\">\n"),
-                                t.write("<h3>"),
-                                t.write_expr(t.prop_access(t.var("displayInfo"), "prefix"), false),
-                                t.write_expr(t.prop_access(t.var("product"), "name"), true),
-                                t.write("</h3>\n"),
-                                t.write("</p>\n"),
-                                t.write("<p>Category: "),
-                                t.write_expr(t.prop_access(t.var("product"), "category"), true),
-                                t.write("</p>\n"),
-                                t.if_stmt(
-                                    t.prop_access(t.var("displayInfo"), "showStock"),
-                                    vec![
-                                        t.if_stmt(
-                                            t.prop_access(t.var("product"), "inStock"),
-                                            vec![t.write("<span class=\"in-stock\">✓ In Stock</span>\n")],
-                                        ),
-                                        t.if_stmt(
-                                            t.not(t.prop_access(t.var("product"), "inStock")),
-                                            vec![t.write("<span class=\"out-of-stock\">✗ Out of Stock</span>\n")],
-                                        ),
-                                    ],
-                                ),
-                                t.write("</article>\n"),
-                            ],
-                        )],
-                    ),
-                    t.write("</div>\n"),
-                ]
+                        |t| {
+                            t.write("<article class=\"product\">\n");
+                            t.write("<h3>");
+                            t.write_expr(t.prop_access(t.var("displayInfo"), "prefix"), false);
+                            t.write_expr_escaped(t.prop_access(t.var("product"), "name"));
+                            t.write("</h3>\n");
+                            t.write("</p>\n");
+                            t.write("<p>Category: ");
+                            t.write_expr_escaped(t.prop_access(t.var("product"), "category"));
+                            t.write("</p>\n");
+                            t.if_stmt(
+                                t.prop_access(t.var("displayInfo"), "showStock"),
+                                |t| {
+                                    t.if_stmt(
+                                        t.prop_access(t.var("product"), "inStock"),
+                                        |t| {
+                                            t.write("<span class=\"in-stock\">✓ In Stock</span>\n");
+                                        },
+                                    );
+                                    t.if_stmt(
+                                        t.not(t.prop_access(t.var("product"), "inStock")),
+                                        |t| {
+                                            t.write("<span class=\"out-of-stock\">✗ Out of Stock</span>\n");
+                                        },
+                                    );
+                                },
+                            );
+                            t.write("</article>\n");
+                        },
+                    );
+                },
+            );
+            t.write("</div>\n");
         })];
 
         check(
@@ -1090,32 +1082,28 @@ mod tests {
             ("title", Type::String),
         ];
 
-        let entrypoints = vec![build_ir("test-user-list", parameters, |t| {
-            vec![
-                t.write("<div>\n"),
-                t.write("<h1>\n"),
-                t.write_expr(t.var("title"), true),
-                t.write("</h1>\n"),
-                t.write("<ul>\n"),
-                t.for_loop("user", t.var("users"), |t| {
-                    vec![
-                        t.write("\n"),
-                        t.if_stmt(
-                            t.prop_access(t.var("user"), "active"),
-                            vec![
-                                t.write("\n<li>User "),
-                                t.write_expr(t.prop_access(t.var("user"), "id"), true),
-                                t.write(": "),
-                                t.write_expr(t.prop_access(t.var("user"), "name"), true),
-                                t.write("</li>\n"),
-                            ],
-                        ),
-                        t.write("\n"),
-                    ]
-                }),
-                t.write("</ul>\n"),
-                t.write("</div>\n"),
-            ]
+        let entrypoints = vec![build_ir_auto("test-user-list", parameters, |t| {
+            t.write("<div>\n");
+            t.write("<h1>\n");
+            t.write_expr_escaped(t.var("title"));
+            t.write("</h1>\n");
+            t.write("<ul>\n");
+            t.for_loop("user", t.var("users"), |t| {
+                t.write("\n");
+                t.if_stmt(
+                    t.prop_access(t.var("user"), "active"),
+                    |t| {
+                        t.write("\n<li>User ");
+                        t.write_expr_escaped(t.prop_access(t.var("user"), "id"));
+                        t.write(": ");
+                        t.write_expr_escaped(t.prop_access(t.var("user"), "name"));
+                        t.write("</li>\n");
+                    },
+                );
+                t.write("\n");
+            });
+            t.write("</ul>\n");
+            t.write("</div>\n");
         })];
 
         check(

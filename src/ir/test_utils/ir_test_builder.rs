@@ -18,6 +18,20 @@ where
     builder.build(name, body)
 }
 
+pub fn build_ir_auto<F>(name: &str, params: Vec<(&str, Type)>, body_fn: F) -> IrEntrypoint
+where
+    F: FnOnce(&mut IrAutoBuilder),
+{
+    let params_owned: Vec<(String, Type)> = params
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+    let inner_builder = IrTestBuilder::new(params_owned);
+    let mut builder = IrAutoBuilder::new(inner_builder);
+    body_fn(&mut builder);
+    builder.build(name)
+}
+
 pub struct IrTestBuilder {
     next_expr_id: RefCell<ExprId>,
     next_node_id: RefCell<StatementId>,
@@ -252,5 +266,149 @@ impl IrTestBuilder {
             value: Box::new(value),
             annotation: (self.next_expr_id(), Type::String),
         }
+    }
+}
+
+pub struct IrAutoBuilder {
+    inner: IrTestBuilder,
+    statements: Vec<IrStatement>,
+}
+
+impl IrAutoBuilder {
+    fn new(inner: IrTestBuilder) -> Self {
+        Self {
+            inner,
+            statements: Vec::new(),
+        }
+    }
+
+    fn new_scoped(&self) -> Self {
+        Self {
+            inner: IrTestBuilder {
+                next_expr_id: self.inner.next_expr_id.clone(),
+                next_node_id: self.inner.next_node_id.clone(),
+                var_stack: self.inner.var_stack.clone(),
+                params: self.inner.params.clone(),
+            },
+            statements: Vec::new(),
+        }
+    }
+
+    fn build(self, name: &str) -> IrEntrypoint {
+        self.inner.build(name, self.statements)
+    }
+
+    // Statement methods that auto-collect
+    pub fn write(&mut self, s: &str) {
+        self.statements.push(self.inner.write(s));
+    }
+
+    pub fn write_expr(&mut self, expr: IrExpr, escape: bool) {
+        self.statements.push(self.inner.write_expr(expr, escape));
+    }
+
+    pub fn write_expr_escaped(&mut self, expr: IrExpr) {
+        self.write_expr(expr, true);
+    }
+
+    pub fn if_stmt<F>(&mut self, cond: IrExpr, body_fn: F)
+    where
+        F: FnOnce(&mut Self),
+    {
+        let mut inner_builder = self.new_scoped();
+        body_fn(&mut inner_builder);
+        let body = inner_builder.statements;
+        self.statements.push(self.inner.if_stmt(cond, body));
+    }
+
+    pub fn for_loop<F>(&mut self, var: &str, array: IrExpr, body_fn: F)
+    where
+        F: FnOnce(&mut Self),
+    {
+        // Extract element type from array
+        let element_type = match array.typ() {
+            Type::Array(Some(elem_type)) => *elem_type.clone(),
+            Type::Array(None) => panic!("Cannot iterate over array with unknown element type"),
+            _ => panic!("Cannot iterate over non-array type"),
+        };
+
+        // Push the loop variable onto the stack
+        self.inner.var_stack
+            .borrow_mut()
+            .push((var.to_string(), element_type));
+
+        // Create scoped builder and evaluate the body
+        let mut inner_builder = self.new_scoped();
+        body_fn(&mut inner_builder);
+        let body = inner_builder.statements;
+
+        // Pop the loop variable from the stack
+        self.inner.var_stack.borrow_mut().pop();
+
+        self.statements.push(self.inner.for_loop(var, array, |_| body));
+    }
+
+    pub fn let_stmt<F>(&mut self, var: &str, value: IrExpr, body_fn: F)
+    where
+        F: FnOnce(&mut Self),
+    {
+        // Get the type from the value expression
+        let value_type = value.typ().clone();
+
+        // Push the variable onto the stack
+        self.inner.var_stack
+            .borrow_mut()
+            .push((var.to_string(), value_type));
+
+        // Create scoped builder and evaluate the body
+        let mut inner_builder = self.new_scoped();
+        body_fn(&mut inner_builder);
+        let body = inner_builder.statements;
+
+        // Pop the variable from the stack
+        self.inner.var_stack.borrow_mut().pop();
+
+        self.statements.push(self.inner.let_stmt(var, value, |_| body));
+    }
+
+    // Expression methods - delegate to inner builder
+    pub fn str(&self, s: &str) -> IrExpr {
+        self.inner.str(s)
+    }
+
+    pub fn num(&self, n: f64) -> IrExpr {
+        self.inner.num(n)
+    }
+
+    pub fn bool(&self, b: bool) -> IrExpr {
+        self.inner.bool(b)
+    }
+
+    pub fn var(&self, name: &str) -> IrExpr {
+        self.inner.var(name)
+    }
+
+    pub fn eq(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        self.inner.eq(left, right)
+    }
+
+    pub fn not(&self, operand: IrExpr) -> IrExpr {
+        self.inner.not(operand)
+    }
+
+    pub fn array(&self, elements: Vec<IrExpr>) -> IrExpr {
+        self.inner.array(elements)
+    }
+
+    pub fn object(&self, props: Vec<(&str, IrExpr)>) -> IrExpr {
+        self.inner.object(props)
+    }
+
+    pub fn prop_access(&self, object: IrExpr, property: &str) -> IrExpr {
+        self.inner.prop_access(object, property)
+    }
+
+    pub fn json_encode(&self, value: IrExpr) -> IrExpr {
+        self.inner.json_encode(value)
     }
 }

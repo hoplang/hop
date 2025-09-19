@@ -190,7 +190,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
 mod tests {
     use super::*;
     use crate::dop::Type;
-    use crate::ir::test_utils::build_ir;
+    use crate::ir::test_utils::build_ir_auto;
     use expect_test::{Expect, expect};
     use serde_json::json;
 
@@ -208,7 +208,9 @@ mod tests {
     #[test]
     fn test_simple_write() {
         check(
-            build_ir("test", vec![], |t| vec![t.write("<div>Hello World</div>")]),
+            build_ir_auto("test", vec![], |t| {
+                t.write("<div>Hello World</div>");
+            }),
             vec![],
             expect![[r#"
                 -- before --
@@ -225,8 +227,8 @@ mod tests {
     #[test]
     fn test_escape_html() {
         check(
-            build_ir("test", vec![("content", Type::String)], |t| {
-                vec![t.write_expr(t.var("content"), true)]
+            build_ir_auto("test", vec![("content", Type::String)], |t| {
+                t.write_expr_escaped(t.var("content"));
             }),
             vec![("content", json!("<script>alert('xss')</script>"))],
             expect![[r#"
@@ -244,8 +246,10 @@ mod tests {
     #[test]
     fn test_if_true() {
         check(
-            build_ir("test", vec![("show", Type::Bool)], |t| {
-                vec![t.if_stmt(t.var("show"), vec![t.write("<div>Visible</div>")])]
+            build_ir_auto("test", vec![("show", Type::Bool)], |t| {
+                t.if_stmt(t.var("show"), |t| {
+                    t.write("<div>Visible</div>");
+                });
             }),
             vec![("show", json!(true))],
             expect![[r#"
@@ -265,8 +269,10 @@ mod tests {
     #[test]
     fn test_if_false() {
         check(
-            build_ir("test", vec![("show", Type::Bool)], |t| {
-                vec![t.if_stmt(t.var("show"), vec![t.write("<div>Hidden</div>")])]
+            build_ir_auto("test", vec![("show", Type::Bool)], |t| {
+                t.if_stmt(t.var("show"), |t| {
+                    t.write("<div>Hidden</div>");
+                });
             }),
             vec![("show", json!(false))],
             expect![[r#"
@@ -286,17 +292,15 @@ mod tests {
     #[test]
     fn test_for_loop() {
         check(
-            build_ir(
+            build_ir_auto(
                 "test",
                 vec![("items", Type::Array(Some(Box::new(Type::String))))],
                 |t| {
-                    vec![t.for_loop("item", t.var("items"), |t| {
-                        vec![
-                            t.write("<li>"),
-                            t.write_expr(t.var("item"), true),
-                            t.write("</li>\n"),
-                        ]
-                    })]
+                    t.for_loop("item", t.var("items"), |t| {
+                        t.write("<li>");
+                        t.write_expr_escaped(t.var("item"));
+                        t.write("</li>\n");
+                    });
                 },
             ),
             vec![("items", json!(["Apple", "Banana", "Cherry"]))],

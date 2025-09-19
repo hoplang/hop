@@ -56,7 +56,7 @@ impl Pass for DeadCodeEliminationPass {
 mod tests {
     use super::*;
     use crate::dop::Type;
-    use crate::ir::test_utils::build_ir;
+    use crate::ir::test_utils::build_ir_auto;
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
@@ -70,8 +70,10 @@ mod tests {
     #[test]
     fn test_removes_always_true_if() {
         check(
-            build_ir("test", vec![], |t| {
-                vec![t.if_stmt(t.bool(true), vec![t.write("Always shown")])]
+            build_ir_auto("test", vec![], |t| {
+                t.if_stmt(t.bool(true), |t| {
+                    t.write("Always shown");
+                });
             }),
             expect![[r#"
                 -- before --
@@ -92,11 +94,11 @@ mod tests {
     #[test]
     fn test_removes_always_false_if() {
         check(
-            build_ir("test", vec![], |t| {
-                vec![
-                    t.if_stmt(t.bool(false), vec![t.write("Never shown")]),
-                    t.write("After if"),
-                ]
+            build_ir_auto("test", vec![], |t| {
+                t.if_stmt(t.bool(false), |t| {
+                    t.write("Never shown");
+                });
+                t.write("After if");
             }),
             expect![[r#"
                 -- before --
@@ -118,12 +120,16 @@ mod tests {
     #[test]
     fn test_preserves_dynamic_conditions() {
         check(
-            build_ir("test", vec![("show", Type::Bool)], |t| {
-                vec![
-                    t.if_stmt(t.var("show"), vec![t.write("Dynamic")]),
-                    t.if_stmt(t.bool(true), vec![t.write("Static true")]),
-                    t.if_stmt(t.bool(false), vec![t.write("Static false")]),
-                ]
+            build_ir_auto("test", vec![("show", Type::Bool)], |t| {
+                t.if_stmt(t.var("show"), |t| {
+                    t.write("Dynamic");
+                });
+                t.if_stmt(t.bool(true), |t| {
+                    t.write("Static true");
+                });
+                t.if_stmt(t.bool(false), |t| {
+                    t.write("Static false");
+                });
             }),
             expect![[r#"
                 -- before --
@@ -153,27 +159,33 @@ mod tests {
     #[test]
     fn test_nested_if_elimination() {
         check(
-            build_ir("test", vec![("condition", Type::Bool)], |t| {
-                vec![
-                    t.if_stmt(
-                        t.var("condition"),
-                        vec![
-                            t.write("Before nested"),
-                            t.if_stmt(t.bool(true), vec![t.write("Nested always true")]),
-                            t.if_stmt(t.bool(false), vec![t.write("Nested never shown")]),
-                            t.write("After nested"),
-                        ],
-                    ),
-                    t.if_stmt(
-                        t.bool(true),
-                        vec![
-                            t.write("Outer true - before nested"),
-                            t.if_stmt(t.bool(false), vec![t.write("Inner false - never shown")]),
-                            t.if_stmt(t.var("condition"), vec![t.write("Inner dynamic")]),
-                            t.write("Outer true - after nested"),
-                        ],
-                    ),
-                ]
+            build_ir_auto("test", vec![("condition", Type::Bool)], |t| {
+                t.if_stmt(
+                    t.var("condition"),
+                    |t| {
+                        t.write("Before nested");
+                        t.if_stmt(t.bool(true), |t| {
+                            t.write("Nested always true");
+                        });
+                        t.if_stmt(t.bool(false), |t| {
+                            t.write("Nested never shown");
+                        });
+                        t.write("After nested");
+                    },
+                );
+                t.if_stmt(
+                    t.bool(true),
+                    |t| {
+                        t.write("Outer true - before nested");
+                        t.if_stmt(t.bool(false), |t| {
+                            t.write("Inner false - never shown");
+                        });
+                        t.if_stmt(t.var("condition"), |t| {
+                            t.write("Inner dynamic");
+                        });
+                        t.write("Outer true - after nested");
+                    },
+                );
             }),
             expect![[r#"
                 -- before --
