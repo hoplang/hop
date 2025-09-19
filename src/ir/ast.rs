@@ -281,7 +281,7 @@ impl IrExpr {
 
     /// Get the type of this expression
     pub fn typ(&self) -> &Type {
-        self.kind()
+        self.as_type()
     }
 
     /// Recursively traverses this expression and all nested expressions

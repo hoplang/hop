@@ -125,7 +125,7 @@ impl IrTestBuilder {
     }
 
     pub fn eq(&self, left: IrExpr, right: IrExpr) -> IrExpr {
-        match (left.kind(), right.kind()) {
+        match (left.as_type(), right.as_type()) {
             (Type::Bool, Type::Bool) => AnnotatedTypedExpr::BoolCompare {
                 left: Box::new(left),
                 right: Box::new(right),
@@ -138,7 +138,7 @@ impl IrTestBuilder {
             },
             _ => panic!(
                 "Unsupported type for equality comparison: {:?}",
-                left.kind()
+                left.as_type()
             ),
         }
     }

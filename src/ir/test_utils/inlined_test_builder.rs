@@ -122,7 +122,9 @@ impl InlinedTestBuilder {
     }
 
     pub fn array_expr(&self, elements: Vec<TypedExpr>) -> TypedExpr {
-        let element_type = elements.first().map(|first| Box::new(first.kind().clone()));
+        let element_type = elements
+            .first()
+            .map(|first| Box::new(first.as_type().clone()));
 
         TypedExpr::ArrayLiteral {
             elements,
@@ -134,7 +136,7 @@ impl InlinedTestBuilder {
     pub fn object_expr(&self, props: Vec<(&str, TypedExpr)>) -> TypedExpr {
         let mut type_map = BTreeMap::new();
         for (key, expr) in &props {
-            type_map.insert(key.to_string(), expr.kind().clone());
+            type_map.insert(key.to_string(), expr.as_type().clone());
         }
 
         TypedExpr::ObjectLiteral {
@@ -145,7 +147,7 @@ impl InlinedTestBuilder {
     }
 
     pub fn prop_access_expr(&self, object: TypedExpr, property: &str) -> TypedExpr {
-        let property_type = match object.kind() {
+        let property_type = match object.as_type() {
             Type::Object(type_map) => type_map
                 .get(property)
                 .cloned()
@@ -169,12 +171,12 @@ impl InlinedTestBuilder {
     }
 
     pub fn text_expr(&self, expr: TypedExpr) -> InlinedNode {
-        assert_eq!(*expr.kind(), Type::String, "{}", expr);
+        assert_eq!(*expr.as_type(), Type::String, "{}", expr);
         InlinedNode::TextExpression { expression: expr }
     }
 
     pub fn if_node(&self, cond: TypedExpr, children: Vec<InlinedNode>) -> InlinedNode {
-        assert_eq!(*cond.kind(), Type::Bool, "{}", cond);
+        assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
         InlinedNode::If {
             condition: cond,
             children,
@@ -185,7 +187,7 @@ impl InlinedTestBuilder {
     where
         F: FnOnce(&Self) -> Vec<InlinedNode>,
     {
-        let element_type = match array.kind() {
+        let element_type = match array.as_type() {
             Type::Array(Some(elem_type)) => *elem_type.clone(),
             Type::Array(None) => panic!("Cannot iterate over array with unknown element type"),
             _ => panic!("Cannot iterate over non-array type"),
@@ -210,7 +212,7 @@ impl InlinedTestBuilder {
     where
         F: FnOnce(&Self) -> Vec<InlinedNode>,
     {
-        let value_type = value.kind().clone();
+        let value_type = value.as_type().clone();
 
         self.var_stack
             .borrow_mut()
@@ -353,7 +355,7 @@ impl InlinedAutoBuilder {
         F: FnOnce(&mut Self),
     {
         // Extract element type from array
-        let element_type = match array.kind() {
+        let element_type = match array.as_type() {
             Type::Array(Some(elem_type)) => *elem_type.clone(),
             Type::Array(None) => panic!("Cannot iterate over array with unknown element type"),
             _ => panic!("Cannot iterate over non-array type"),
@@ -382,7 +384,7 @@ impl InlinedAutoBuilder {
         F: FnOnce(&mut Self),
     {
         // Get the type from the value expression
-        let value_type = value.kind().clone();
+        let value_type = value.as_type().clone();
 
         // Push the variable onto the stack
         self.inner

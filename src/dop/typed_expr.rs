@@ -78,7 +78,7 @@ pub enum AnnotatedTypedExpr<A> {
 }
 
 impl<A> AnnotatedTypedExpr<A> {
-    pub fn kind(&self) -> &Type {
+    pub fn as_type(&self) -> &Type {
         static STRING_TYPE: Type = Type::String;
         static BOOL_TYPE: Type = Type::Bool;
         static NUMBER_TYPE: Type = Type::Number;
@@ -88,10 +88,10 @@ impl<A> AnnotatedTypedExpr<A> {
             | AnnotatedTypedExpr::PropertyAccess { kind, .. }
             | AnnotatedTypedExpr::ArrayLiteral { kind, .. }
             | AnnotatedTypedExpr::ObjectLiteral { kind, .. } => kind,
-            AnnotatedTypedExpr::StringLiteral { .. } => &STRING_TYPE,
             AnnotatedTypedExpr::NumberLiteral { .. } => &NUMBER_TYPE,
-            AnnotatedTypedExpr::JsonEncode { .. } => &STRING_TYPE,
-            AnnotatedTypedExpr::StringConcat { .. } => &STRING_TYPE,
+            AnnotatedTypedExpr::JsonEncode { .. }
+            | AnnotatedTypedExpr::StringConcat { .. }
+            | AnnotatedTypedExpr::StringLiteral { .. } => &STRING_TYPE,
             AnnotatedTypedExpr::BooleanLiteral { .. }
             | AnnotatedTypedExpr::Negation { .. }
             | AnnotatedTypedExpr::BoolCompare { .. }
