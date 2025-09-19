@@ -2,15 +2,21 @@ use std::collections::BTreeMap;
 
 use crate::{
     document::document_cursor::StringSpan,
-    dop::{Parameter, VarName, expr::TypedExpr},
+    dop::{VarName, expr::TypedExpr},
 };
 
 use super::ast::Attribute;
 
 #[derive(Debug, Clone)]
+pub struct InlinedParameter {
+    pub var_name: VarName,
+    pub var_type: crate::dop::Type,
+}
+
+#[derive(Debug, Clone)]
 pub struct InlinedEntryPoint {
     pub tag_name: StringSpan,
-    pub params: Vec<Parameter>,
+    pub params: Vec<InlinedParameter>,
     pub children: Vec<InlinedNode>,
 }
 

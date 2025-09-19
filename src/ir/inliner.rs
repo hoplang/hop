@@ -3,7 +3,7 @@ use crate::dop::expr::TypedExpr;
 use crate::dop::parser::TypedArgument;
 use crate::dop::{Expr, Type};
 use crate::hop::ast::{Ast, Attribute, AttributeValue};
-use crate::hop::inlined_ast::{InlinedEntryPoint, InlinedNode};
+use crate::hop::inlined_ast::{InlinedEntryPoint, InlinedNode, InlinedParameter};
 use crate::hop::module_name::ModuleName;
 use std::collections::{BTreeMap, HashMap};
 
@@ -28,7 +28,12 @@ impl Inliner {
                     result.push(InlinedEntryPoint {
                         tag_name: component.tag_name.to_string_span(),
                         children: Self::inline_nodes(&component.children, None, &asts),
-                        params: component.params.clone().map(|p| p.0).unwrap_or_default(),
+                        params: component.params.clone()
+                            .map(|p| p.0.into_iter().map(|param| InlinedParameter {
+                                var_name: param.var_name,
+                                var_type: param.var_type,
+                            }).collect())
+                            .unwrap_or_default(),
                     });
                 }
             }
@@ -445,24 +450,7 @@ mod tests {
                                 children: [
                                     Let {
                                         var: VarName {
-                                            value: DocumentRange {
-                                                source: DocumentInfo {
-                                                    text: "\n                    <card-comp {title: string}>\n                        <h2>{title}</h2>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp {title: \"Hello\"}/>\n                    </main-comp>\n                ",
-                                                    line_starts: [
-                                                        0,
-                                                        1,
-                                                        49,
-                                                        90,
-                                                        123,
-                                                        124,
-                                                        167,
-                                                        221,
-                                                        254,
-                                                    ],
-                                                },
-                                                start: 33,
-                                                end: 38,
-                                            },
+                                            value: "title",
                                         },
                                         value: StringLiteral {
                                             value: "Hello",
@@ -479,24 +467,7 @@ mod tests {
                                                     TextExpression {
                                                         expression: Var {
                                                             value: VarName {
-                                                                value: DocumentRange {
-                                                                    source: DocumentInfo {
-                                                                        text: "\n                    <card-comp {title: string}>\n                        <h2>{title}</h2>\n                    </card-comp>\n\n                    <main-comp entrypoint>\n                        <card-comp {title: \"Hello\"}/>\n                    </main-comp>\n                ",
-                                                                        line_starts: [
-                                                                            0,
-                                                                            1,
-                                                                            49,
-                                                                            90,
-                                                                            123,
-                                                                            124,
-                                                                            167,
-                                                                            221,
-                                                                            254,
-                                                                        ],
-                                                                    },
-                                                                    start: 78,
-                                                                    end: 83,
-                                                                },
+                                                                value: "title",
                                                             },
                                                             annotation: String,
                                                         },
