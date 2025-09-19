@@ -192,13 +192,11 @@ impl Inliner {
         let def_expr = match &def_attr.value {
             Some(AttributeValue::String(s)) => TypedExpr::StringLiteral {
                 value: s.as_str().to_string(),
-                kind: Type::String,
                 annotation: (),
             },
             Some(AttributeValue::Expression(expr)) => expr.clone(),
             None => TypedExpr::StringLiteral {
                 value: "".to_string(),
-                kind: Type::String,
                 annotation: (),
             },
         };
@@ -206,13 +204,11 @@ impl Inliner {
         let ref_expr = match &ref_attr.value {
             Some(AttributeValue::String(s)) => TypedExpr::StringLiteral {
                 value: s.as_str().to_string(),
-                kind: Type::String,
                 annotation: (),
             },
             Some(AttributeValue::Expression(expr)) => expr.clone(),
             None => TypedExpr::StringLiteral {
                 value: "".to_string(),
-                kind: Type::String,
                 annotation: (),
             },
         };
@@ -220,7 +216,6 @@ impl Inliner {
         // Create a space literal
         let space_expr = TypedExpr::StringLiteral {
             value: " ".to_string(),
-            kind: Type::String,
             annotation: (),
         };
 
@@ -228,14 +223,12 @@ impl Inliner {
         let def_plus_space = TypedExpr::StringConcat {
             left: Box::new(def_expr),
             right: Box::new(space_expr),
-            kind: Type::String,
             annotation: (),
         };
 
         let final_concat = TypedExpr::StringConcat {
             left: Box::new(def_plus_space),
             right: Box::new(ref_expr),
-            kind: Type::String,
             annotation: (),
         };
 

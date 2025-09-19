@@ -34,17 +34,14 @@ pub fn typecheck_expr(
         }
         AnnotatedExpr::BooleanLiteral { value, .. } => Ok(TypedExpr::BooleanLiteral {
             value: *value,
-            kind: Type::Bool,
             annotation: (),
         }),
         AnnotatedExpr::StringLiteral { value, .. } => Ok(TypedExpr::StringLiteral {
             value: value.clone(),
-            kind: Type::String,
             annotation: (),
         }),
         AnnotatedExpr::NumberLiteral { value, .. } => Ok(TypedExpr::NumberLiteral {
             value: value.clone(),
-            kind: Type::Number,
             annotation: (),
         }),
         AnnotatedExpr::PropertyAccess {

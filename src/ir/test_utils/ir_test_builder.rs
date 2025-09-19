@@ -78,7 +78,6 @@ impl IrTestBuilder {
     pub fn str(&self, s: &str) -> IrExpr {
         AnnotatedTypedExpr::StringLiteral {
             value: s.to_string(),
-            kind: Type::String,
             annotation: self.next_expr_id(),
         }
     }
@@ -86,7 +85,6 @@ impl IrTestBuilder {
     pub fn num(&self, n: f64) -> IrExpr {
         AnnotatedTypedExpr::NumberLiteral {
             value: serde_json::Number::from_f64(n).unwrap_or_else(|| serde_json::Number::from(0)),
-            kind: Type::Number,
             annotation: self.next_expr_id(),
         }
     }
@@ -94,7 +92,6 @@ impl IrTestBuilder {
     pub fn bool(&self, b: bool) -> IrExpr {
         AnnotatedTypedExpr::BooleanLiteral {
             value: b,
-            kind: Type::Bool,
             annotation: self.next_expr_id(),
         }
     }
@@ -273,7 +270,6 @@ impl IrTestBuilder {
     pub fn json_encode(&self, value: IrExpr) -> IrExpr {
         AnnotatedTypedExpr::JsonEncode {
             value: Box::new(value),
-            kind: Type::String,
             annotation: self.next_expr_id(),
         }
     }

@@ -126,7 +126,6 @@ impl Compiler {
                         kind: Type::Object(BTreeMap::new()),
                         annotation: self.next_expr_id(),
                     }),
-                    kind: Type::String,
                     annotation: self.next_expr_id(),
                 },
                 escape: false,
@@ -385,32 +384,27 @@ impl Compiler {
                 kind,
                 annotation: expr_id,
             },
-            TypedExpr::StringLiteral { value, kind, .. } => AnnotatedTypedExpr::StringLiteral {
+            TypedExpr::StringLiteral { value, .. } => AnnotatedTypedExpr::StringLiteral {
                 value,
-                kind,
                 annotation: expr_id,
             },
-            TypedExpr::BooleanLiteral { value, kind, .. } => AnnotatedTypedExpr::BooleanLiteral {
+            TypedExpr::BooleanLiteral { value, .. } => AnnotatedTypedExpr::BooleanLiteral {
                 value,
-                kind,
                 annotation: expr_id,
             },
-            TypedExpr::NumberLiteral { value, kind, .. } => AnnotatedTypedExpr::NumberLiteral {
+            TypedExpr::NumberLiteral { value, .. } => AnnotatedTypedExpr::NumberLiteral {
                 value,
-                kind,
                 annotation: expr_id,
             },
-            TypedExpr::JsonEncode { value, kind, .. } => AnnotatedTypedExpr::JsonEncode {
+            TypedExpr::JsonEncode { value, .. } => AnnotatedTypedExpr::JsonEncode {
                 value: Box::new(self.compile_expr(*value)),
-                kind,
                 annotation: expr_id,
             },
             TypedExpr::StringConcat {
-                left, right, kind, ..
+                left, right, ..
             } => AnnotatedTypedExpr::StringConcat {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
-                kind,
                 annotation: expr_id,
             },
         }

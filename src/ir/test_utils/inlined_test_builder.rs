@@ -76,7 +76,6 @@ impl InlinedTestBuilder {
     pub fn str_expr(&self, s: &str) -> TypedExpr {
         TypedExpr::StringLiteral {
             value: s.to_string(),
-            kind: Type::String,
             annotation: (),
         }
     }
@@ -84,7 +83,6 @@ impl InlinedTestBuilder {
     pub fn num_expr(&self, n: f64) -> TypedExpr {
         TypedExpr::NumberLiteral {
             value: serde_json::Number::from_f64(n).unwrap_or_else(|| serde_json::Number::from(0)),
-            kind: Type::Number,
             annotation: (),
         }
     }
@@ -92,7 +90,6 @@ impl InlinedTestBuilder {
     pub fn bool_expr(&self, b: bool) -> TypedExpr {
         TypedExpr::BooleanLiteral {
             value: b,
-            kind: Type::Bool,
             annotation: (),
         }
     }

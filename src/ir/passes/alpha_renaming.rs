@@ -176,22 +176,18 @@ impl AlphaRenamingPass {
             },
             AnnotatedTypedExpr::JsonEncode {
                 value,
-                kind,
                 annotation,
             } => AnnotatedTypedExpr::JsonEncode {
                 value: Box::new(self.rename_expr(*value)),
-                kind,
                 annotation,
             },
             AnnotatedTypedExpr::StringConcat {
                 left,
                 right,
-                kind,
                 annotation,
             } => AnnotatedTypedExpr::StringConcat {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
-                kind,
                 annotation,
             },
             // Literals don't contain variables

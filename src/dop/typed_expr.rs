@@ -28,21 +28,18 @@ pub enum AnnotatedTypedExpr<A> {
     /// A string literal expression, e.g. "foo bar"
     StringLiteral {
         value: String,
-        kind: Type,
         annotation: A,
     },
 
     /// A boolean literal expression, e.g. true
     BooleanLiteral {
         value: bool,
-        kind: Type,
         annotation: A,
     },
 
     /// A number literal expression, e.g. 2.5
     NumberLiteral {
         value: serde_json::Number,
-        kind: Type,
         annotation: A,
     },
 
@@ -77,7 +74,6 @@ pub enum AnnotatedTypedExpr<A> {
     /// JSON encode expression for converting values to JSON strings
     JsonEncode {
         value: Box<Self>,
-        kind: Type,
         annotation: A,
     },
 
@@ -85,25 +81,28 @@ pub enum AnnotatedTypedExpr<A> {
     StringConcat {
         left: Box<Self>,
         right: Box<Self>,
-        kind: Type,
         annotation: A,
     },
 }
 
 impl<A> AnnotatedTypedExpr<A> {
     pub fn kind(&self) -> &Type {
+        static STRING_TYPE: Type = Type::String;
+        static BOOL_TYPE: Type = Type::Bool;
+        static NUMBER_TYPE: Type = Type::Number;
+
         match self {
             AnnotatedTypedExpr::Var { kind, .. }
             | AnnotatedTypedExpr::PropertyAccess { kind, .. }
-            | AnnotatedTypedExpr::StringLiteral { kind, .. }
-            | AnnotatedTypedExpr::BooleanLiteral { kind, .. }
-            | AnnotatedTypedExpr::NumberLiteral { kind, .. }
             | AnnotatedTypedExpr::ArrayLiteral { kind, .. }
             | AnnotatedTypedExpr::ObjectLiteral { kind, .. }
             | AnnotatedTypedExpr::BinaryOp { kind, .. }
-            | AnnotatedTypedExpr::UnaryOp { kind, .. }
-            | AnnotatedTypedExpr::JsonEncode { kind, .. }
-            | AnnotatedTypedExpr::StringConcat { kind, .. } => kind,
+            | AnnotatedTypedExpr::UnaryOp { kind, .. } => kind,
+            AnnotatedTypedExpr::StringLiteral { .. } => &STRING_TYPE,
+            AnnotatedTypedExpr::BooleanLiteral { .. } => &BOOL_TYPE,
+            AnnotatedTypedExpr::NumberLiteral { .. } => &NUMBER_TYPE,
+            AnnotatedTypedExpr::JsonEncode { .. } => &STRING_TYPE,
+            AnnotatedTypedExpr::StringConcat { .. } => &STRING_TYPE,
         }
     }
 

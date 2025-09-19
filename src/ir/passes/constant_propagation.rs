@@ -153,12 +153,10 @@ impl Pass for ConstantPropagationPass {
                             *e = match const_val {
                                 Const::Bool(b) => IrExpr::BooleanLiteral {
                                     value: *b,
-                                    kind: e.typ().clone(),
                                     annotation: e.id(),
                                 },
                                 Const::String(s) => IrExpr::StringLiteral {
                                     value: s.clone(),
-                                    kind: e.typ().clone(),
                                     annotation: e.id(),
                                 },
                             };
