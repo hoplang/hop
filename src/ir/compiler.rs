@@ -385,14 +385,15 @@ impl Compiler {
                 right: Box::new(self.compile_expr(*right)),
                 annotation: expr_id,
             },
-            SimpleTypedExpr::BoolCompare { left, right, .. } => TypedExpr::BoolCompare {
+            SimpleTypedExpr::Comparison {
+                left,
+                right,
+                operand_types,
+                ..
+            } => TypedExpr::Comparison {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
-                annotation: expr_id,
-            },
-            SimpleTypedExpr::StringCompare { left, right, .. } => TypedExpr::StringCompare {
-                left: Box::new(self.compile_expr(*left)),
-                right: Box::new(self.compile_expr(*right)),
+                operand_types,
                 annotation: expr_id,
             },
         }

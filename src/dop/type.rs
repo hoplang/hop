@@ -4,6 +4,12 @@ use std::collections::BTreeMap;
 use pretty::BoxDoc;
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum ComparableType {
+    String,
+    Bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Object(BTreeMap<String, Type>),
     Array(Option<Box<Type>>),

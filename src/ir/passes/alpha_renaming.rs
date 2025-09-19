@@ -170,22 +170,15 @@ impl AlphaRenamingPass {
                 right: Box::new(self.rename_expr(*right)),
                 annotation,
             },
-            TypedExpr::BoolCompare {
+            TypedExpr::Comparison {
                 left,
                 right,
+                operand_types,
                 annotation,
-            } => TypedExpr::BoolCompare {
+            } => TypedExpr::Comparison {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
-                annotation,
-            },
-            TypedExpr::StringCompare {
-                left,
-                right,
-                annotation,
-            } => TypedExpr::StringCompare {
-                left: Box::new(self.rename_expr(*left)),
-                right: Box::new(self.rename_expr(*right)),
+                operand_types,
                 annotation,
             },
             // Literals don't contain variables

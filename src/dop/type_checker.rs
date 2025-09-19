@@ -1,5 +1,6 @@
 use super::Type;
 use super::expr::{AnnotatedExpr, BinaryOp, Expr};
+use super::r#type::ComparableType;
 use super::type_error::TypeError;
 use super::typed_expr::SimpleTypedExpr;
 use crate::document::document_cursor::Ranged as _;
@@ -96,14 +97,16 @@ pub fn typecheck_expr(
             }
 
             match left_type {
-                Type::Bool => Ok(SimpleTypedExpr::BoolCompare {
+                Type::Bool => Ok(SimpleTypedExpr::Comparison {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
+                    operand_types: ComparableType::Bool,
                     annotation: (),
                 }),
-                Type::String => Ok(SimpleTypedExpr::StringCompare {
+                Type::String => Ok(SimpleTypedExpr::Comparison {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
+                    operand_types: ComparableType::String,
                     annotation: (),
                 }),
                 Type::Number => Err(TypeError::CannotCompareNumbers {

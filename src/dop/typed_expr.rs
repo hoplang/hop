@@ -3,7 +3,7 @@ use std::fmt::{self, Display};
 use crate::dop::var_name::VarName;
 use pretty::BoxDoc;
 
-use super::Type;
+use super::{Type, r#type::ComparableType};
 
 pub type SimpleTypedExpr = TypedExpr<()>;
 
@@ -59,20 +59,14 @@ pub enum TypedExpr<A> {
         annotation: A,
     },
 
-    /// Boolean negation expression for negating boolean values
+    /// Boolean negation expression
     Negation { operand: Box<Self>, annotation: A },
 
-    /// Boolean comparison expression for comparing boolean values
-    BoolCompare {
+    /// Comparison expression
+    Comparison {
         left: Box<Self>,
         right: Box<Self>,
-        annotation: A,
-    },
-
-    /// String comparison expression for comparing string values
-    StringCompare {
-        left: Box<Self>,
-        right: Box<Self>,
+        operand_types: ComparableType,
         annotation: A,
     },
 }
@@ -97,8 +91,7 @@ impl<A> TypedExpr<A> {
 
             TypedExpr::BooleanLiteral { .. }
             | TypedExpr::Negation { .. }
-            | TypedExpr::BoolCompare { .. }
-            | TypedExpr::StringCompare { .. } => &BOOL_TYPE,
+            | TypedExpr::Comparison { .. } => &BOOL_TYPE,
         }
     }
 
@@ -114,8 +107,7 @@ impl<A> TypedExpr<A> {
             | TypedExpr::JsonEncode { annotation, .. }
             | TypedExpr::StringConcat { annotation, .. }
             | TypedExpr::Negation { annotation, .. }
-            | TypedExpr::BoolCompare { annotation, .. }
-            | TypedExpr::StringCompare { annotation, .. } => annotation,
+            | TypedExpr::Comparison { annotation, .. } => annotation,
         }
     }
 
@@ -189,8 +181,7 @@ impl<A> TypedExpr<A> {
                 .append(BoxDoc::text("!"))
                 .append(operand.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::StringCompare { left, right, .. }
-            | TypedExpr::BoolCompare { left, right, .. } => BoxDoc::nil()
+            TypedExpr::Comparison { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" == "))

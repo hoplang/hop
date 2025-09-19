@@ -5,7 +5,7 @@ pub use go::GoTranspiler;
 pub use js::{JsTranspiler, LanguageMode};
 use pretty::BoxDoc;
 
-use crate::dop::r#type::Type;
+use crate::dop::r#type::{ComparableType, Type};
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use std::collections::BTreeMap;
 
@@ -122,10 +122,15 @@ pub trait ExpressionTranspiler {
             IrExpr::JsonEncode { value, .. } => self.transpile_json_encode(value),
             IrExpr::StringConcat { left, right, .. } => self.transpile_string_concat(left, right),
             IrExpr::Negation { operand, .. } => self.transpile_not(operand),
-            IrExpr::BoolCompare { left, right, .. } => self.transpile_bool_equality(left, right),
-            IrExpr::StringCompare { left, right, .. } => {
-                self.transpile_string_equality(left, right)
-            }
+            IrExpr::Comparison {
+                left,
+                right,
+                operand_types,
+                ..
+            } => match operand_types {
+                ComparableType::Bool => self.transpile_bool_equality(left, right),
+                ComparableType::String => self.transpile_string_equality(left, right),
+            },
         }
     }
 }

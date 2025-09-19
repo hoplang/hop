@@ -1,6 +1,6 @@
-use crate::common::escape_html;
 use crate::hop::environment::Environment;
 use crate::ir::IrExpr;
+use crate::{common::escape_html, dop::r#type::ComparableType};
 use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -163,14 +163,24 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             let bool_val = val.as_bool().unwrap_or(false);
             Ok(Value::Bool(!bool_val))
         }
-        IrExpr::BoolCompare { left, right, .. } => {
+        IrExpr::Comparison {
+            left,
+            right,
+            operand_types: ComparableType::Bool,
+            ..
+        } => {
             let left_val = evaluate_expr(left, env)?;
             let right_val = evaluate_expr(right, env)?;
             let left_bool = left_val.as_bool().unwrap_or(false);
             let right_bool = right_val.as_bool().unwrap_or(false);
             Ok(Value::Bool(left_bool == right_bool))
         }
-        IrExpr::StringCompare { left, right, .. } => {
+        IrExpr::Comparison {
+            left,
+            right,
+            operand_types: ComparableType::String,
+            ..
+        } => {
             let left_val = evaluate_expr(left, env)?;
             let right_val = evaluate_expr(right, env)?;
             let left_str = left_val.as_str().unwrap();
