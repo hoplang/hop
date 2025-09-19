@@ -445,7 +445,7 @@ mod tests {
     fn test_html_element() {
         check(
             build_inlined("main-comp", vec![], |t| {
-                vec![t.html("div", vec![], vec![t.text("Content")])]
+                vec![t.div(vec![], vec![t.text("Content")])]
             }),
             CompilationMode::Production,
             expect![[r#"
@@ -473,7 +473,7 @@ mod tests {
             build_inlined("main-comp", vec![("show".to_string(), Type::Bool)], |t| {
                 vec![t.if_node(
                     t.var_expr("show"),
-                    vec![t.html("div", vec![], vec![t.text("Visible")])],
+                    vec![t.div(vec![], vec![t.text("Visible")])],
                 )]
             }),
             CompilationMode::Production,
@@ -510,41 +510,48 @@ mod tests {
                     Type::Array(Some(Box::new(Type::String))),
                 )],
                 |t| {
-                    vec![t.for_node("item", t.var_expr("items"), |t| {
-                        vec![t.html("li", vec![], vec![t.text_expr(t.var_expr("item"))])]
-                    })]
+                    vec![t.ul(
+                        vec![],
+                        vec![t.for_node("item", t.var_expr("items"), |t| {
+                            vec![t.li(vec![], vec![t.text_expr(t.var_expr("item"))])]
+                        })],
+                    )]
                 },
             ),
             CompilationMode::Production,
             expect![[r#"
                 -- before --
                 <main-comp {items: array[string]}>
-                  <for {item in items}>
-                    <li>
-                      {item}
-                    </li>
-                  </for>
+                  <ul>
+                    <for {item in items}>
+                      <li>
+                        {item}
+                      </li>
+                    </for>
+                  </ul>
                 </main-comp>
 
                 -- after --
                 main-comp(items: array[string]) {
+                  write("<ul")
+                  write(">")
                   for item in items {
                     write("<li")
                     write(">")
                     write_escaped(item)
                     write("</li>")
                   }
+                  write("</ul>")
                 }
             "#]],
         );
     }
 
     #[test]
-    fn test_inlined_attributes_static() {
+    fn test_attributes_static() {
         check(
             build_inlined("main-comp", vec![], |t| {
-                vec![t.html(
-                    "div",
+                vec![t.div(
                     vec![("class", t.attr_str("base")), ("id", t.attr_str("test"))],
                     vec![t.text("Content")],
                 )]
@@ -572,11 +579,10 @@ mod tests {
     }
 
     #[test]
-    fn test_inlined_attributes_dynamic() {
+    fn test_attributes_dynamic() {
         check(
             build_inlined("main-comp", vec![("cls".to_string(), Type::String)], |t| {
-                vec![t.html(
-                    "div",
+                vec![t.div(
                     vec![
                         ("class", t.attr_str("base")),
                         ("data-value", t.attr_expr(t.var_expr("cls"))),
@@ -618,8 +624,7 @@ mod tests {
                     ("count".to_string(), Type::String),
                 ],
                 |t| {
-                    vec![t.html(
-                        "div",
+                    vec![t.div(
                         vec![],
                         vec![
                             t.text("Hello "),

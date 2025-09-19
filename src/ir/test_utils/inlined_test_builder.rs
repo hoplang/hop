@@ -229,6 +229,31 @@ impl InlinedTestBuilder {
         }
     }
 
+    // Convenience methods for common HTML elements
+    pub fn div(
+        &self,
+        attributes: Vec<(&str, InlinedAttribute)>,
+        children: Vec<InlinedNode>,
+    ) -> InlinedNode {
+        self.html("div", attributes, children)
+    }
+
+    pub fn ul(
+        &self,
+        attributes: Vec<(&str, InlinedAttribute)>,
+        children: Vec<InlinedNode>,
+    ) -> InlinedNode {
+        self.html("ul", attributes, children)
+    }
+
+    pub fn li(
+        &self,
+        attributes: Vec<(&str, InlinedAttribute)>,
+        children: Vec<InlinedNode>,
+    ) -> InlinedNode {
+        self.html("li", attributes, children)
+    }
+
     // Attribute builders
     pub fn attr_str(&self, value: &str) -> InlinedAttribute {
         InlinedAttribute {
