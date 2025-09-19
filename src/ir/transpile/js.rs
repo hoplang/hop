@@ -1169,7 +1169,10 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-user-list(users: array[{active: boolean, id: string, name: string}], title: string) {
+                test-user-list(
+                  users: array[{active: boolean, id: string, name: string}],
+                  title: string,
+                ) {
                   write("<div>\n")
                   write("<h1>\n")
                   write_escaped(title)

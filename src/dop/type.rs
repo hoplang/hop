@@ -1,7 +1,7 @@
 use core::fmt;
 use std::collections::BTreeMap;
 
-use pretty::RcDoc;
+use pretty::BoxDoc;
 
 use crate::document::document_cursor::DocumentRange;
 
@@ -61,48 +61,48 @@ impl fmt::Display for Type {
     }
 }
 
-impl Type {
-    pub fn to_doc(&self) -> RcDoc<'static> {
+impl<'a> Type {
+    pub fn to_doc(&'a self) -> BoxDoc<'a> {
         match self {
-            Type::String => RcDoc::text("string"),
-            Type::Number => RcDoc::text("number"),
-            Type::Bool => RcDoc::text("boolean"),
+            Type::String => BoxDoc::text("string"),
+            Type::Number => BoxDoc::text("number"),
+            Type::Bool => BoxDoc::text("boolean"),
             Type::Array(elem_type) => match elem_type {
-                Some(elem) => RcDoc::nil()
-                    .append(RcDoc::text("array["))
+                Some(elem) => BoxDoc::nil()
+                    .append(BoxDoc::text("array["))
                     .append(elem.to_doc())
-                    .append(RcDoc::text("]")),
-                None => RcDoc::text("array"),
+                    .append(BoxDoc::text("]")),
+                None => BoxDoc::text("array"),
             },
             Type::Object(fields) => {
-                RcDoc::nil()
-                    .append(RcDoc::text("{"))
+                BoxDoc::nil()
+                    .append(BoxDoc::text("{"))
                     .append(
-                        RcDoc::nil()
+                        BoxDoc::nil()
                             // soft line break
-                            .append(RcDoc::line_())
-                            .append(RcDoc::intersperse(
+                            .append(BoxDoc::line_())
+                            .append(BoxDoc::intersperse(
                                 fields.iter().map(|(key, typ)| {
-                                    RcDoc::nil()
+                                    BoxDoc::nil()
                                         // key
-                                        .append(RcDoc::text(key.clone()))
+                                        .append(BoxDoc::text(key.clone()))
                                         // separator
-                                        .append(RcDoc::text(": "))
+                                        .append(BoxDoc::text(": "))
                                         // value
                                         .append(typ.to_doc())
                                 }),
                                 // intersperse with comma followed by line that acts
                                 // as space if laid out on a single line
-                                RcDoc::text(",").append(RcDoc::line()),
+                                BoxDoc::text(",").append(BoxDoc::line()),
                             ))
                             // trailing comma if laid out on multiple lines
-                            .append(RcDoc::text(",").flat_alt(RcDoc::nil()))
+                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
                             // soft line break
-                            .append(RcDoc::line_())
+                            .append(BoxDoc::line_())
                             .nest(2)
                             .group(),
                     )
-                    .append(RcDoc::text("}"))
+                    .append(BoxDoc::text("}"))
             }
         }
     }

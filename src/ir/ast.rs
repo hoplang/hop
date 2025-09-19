@@ -353,22 +353,29 @@ impl IrExpr {
     }
 }
 
-impl IrEntrypoint {
-    pub fn to_doc(&self) -> BoxDoc {
+impl<'a> IrEntrypoint {
+    pub fn to_doc(&'a self) -> BoxDoc<'a> {
         BoxDoc::text(&self.name)
             .append(BoxDoc::text("("))
-            .append(if self.parameters.is_empty() {
+            .append(
                 BoxDoc::nil()
-            } else {
-                BoxDoc::intersperse(
-                    self.parameters.iter().map(|(name, typ)| {
-                        BoxDoc::text(name.as_str())
-                            .append(BoxDoc::text(": "))
-                            .append(BoxDoc::text(typ.to_string()))
-                    }),
-                    BoxDoc::text(", "),
-                )
-            })
+                    // soft line break
+                    .append(BoxDoc::line_())
+                    .append(BoxDoc::intersperse(
+                        self.parameters.iter().map(|(name, typ)| {
+                            BoxDoc::text(name.to_string())
+                                .append(BoxDoc::text(": "))
+                                .append(typ.to_doc())
+                        }),
+                        BoxDoc::text(",").append(BoxDoc::line()),
+                    ))
+                    // trailing comma if laid out on multiple lines
+                    .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                    // soft line break
+                    .append(BoxDoc::line_())
+                    .nest(2)
+                    .group(),
+            )
             .append(BoxDoc::text(") {"))
             .append(if self.body.is_empty() {
                 BoxDoc::nil()

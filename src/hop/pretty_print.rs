@@ -181,15 +181,19 @@ fn format_parameters(params: Vec<Parameter>) -> RcDoc<'static> {
         .append(RcDoc::line_())
         // format parameters
         .append(RcDoc::intersperse(
-            params.iter().map(|Parameter { var_name, var_type, .. }| {
-                RcDoc::nil()
-                    // key
-                    .append(RcDoc::text(var_name.to_string()))
-                    // separator
-                    .append(RcDoc::text(": "))
-                    // value
-                    .append(var_type.to_doc())
-            }),
+            params.iter().map(
+                |Parameter {
+                     var_name, var_type, ..
+                 }| {
+                    RcDoc::nil()
+                        // key
+                        .append(RcDoc::text(var_name.to_string()))
+                        // separator
+                        .append(RcDoc::text(": "))
+                        // value
+                        .append(var_type.to_string())
+                },
+            ),
             // intersperse with comma followed by line that acts
             // as space if laid out on a single line
             RcDoc::text(",").append(RcDoc::line()),
@@ -591,12 +595,12 @@ mod tests {
                   users: array[{name: string}],
                   admins: array[{email: string, name: string}],
                   others: array[{
-                    bar: string,
-                    baz: string,
-                    email: string,
-                    foo: string,
-                    name: string,
-                  }],
+                  bar: string,
+                  baz: string,
+                  email: string,
+                  foo: string,
+                  name: string,
+                }],
                 }>
                   <div>
                     <h1>User List</h1>

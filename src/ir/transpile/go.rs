@@ -1160,7 +1160,10 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-json(data: {active: boolean, count: number, title: string}, items: array[string]) {
+                test-json(
+                  data: {active: boolean, count: number, title: string},
+                  items: array[string],
+                ) {
                   write("<script>\n")
                   write("const data = ")
                   write_expr(JsonEncode(data))
