@@ -214,7 +214,7 @@ mod tests {
     fn test_simple_write() {
         let t = IrTestBuilder::new(vec![]);
 
-        let entrypoint = t.build(vec![t.write("<div>Hello World</div>")]);
+        let entrypoint = t.build("test", vec![t.write("<div>Hello World</div>")]);
 
         check_eval(
             entrypoint,
@@ -227,7 +227,7 @@ mod tests {
     fn test_write_expr() {
         let t = IrTestBuilder::new(vec![("name".to_string(), Type::String)]);
 
-        let entrypoint = t.build(vec![
+        let entrypoint = t.build("test", vec![
             t.write("<h1>Hello "),
             t.write_expr(t.var("name"), true),
             t.write("</h1>"),
@@ -243,7 +243,7 @@ mod tests {
     fn test_escape_html() {
         let t = IrTestBuilder::new(vec![("content".to_string(), Type::String)]);
 
-        let entrypoint = t.build(vec![t.write_expr(t.var("content"), true)]);
+        let entrypoint = t.build("test", vec![t.write_expr(t.var("content"), true)]);
 
         let mut args = HashMap::new();
         args.insert(
@@ -262,7 +262,7 @@ mod tests {
     fn test_if_true() {
         let t = IrTestBuilder::new(vec![("show".to_string(), Type::Bool)]);
 
-        let entrypoint = t.build(vec![
+        let entrypoint = t.build("test", vec![
             t.if_stmt(t.var("show"), vec![t.write("<div>Visible</div>")]),
         ]);
 
@@ -276,7 +276,7 @@ mod tests {
     fn test_if_false() {
         let t = IrTestBuilder::new(vec![("show".to_string(), Type::Bool)]);
 
-        let entrypoint = t.build(vec![
+        let entrypoint = t.build("test", vec![
             t.if_stmt(t.var("show"), vec![t.write("<div>Hidden</div>")]),
         ]);
 
@@ -293,7 +293,7 @@ mod tests {
             Type::Array(Some(Box::new(Type::String))),
         )]);
 
-        let entrypoint = t.build(vec![t.for_loop("item", t.var("items"), |t| {
+        let entrypoint = t.build("test", vec![t.for_loop("item", t.var("items"), |t| {
             vec![
                 t.write("<li>"),
                 t.write_expr(t.var("item"), true),
@@ -319,7 +319,7 @@ mod tests {
         let t = IrTestBuilder::new(vec![]);
 
         // In IR, nested components are inlined with Let bindings
-        let entrypoint = t.build(vec![
+        let entrypoint = t.build("test", vec![
             t.write("<div data-hop-id=\"test/card-comp\">\n"),
             t.let_stmt("title", t.str("Hello World"), |t| {
                 vec![
@@ -346,7 +346,7 @@ mod tests {
         let t = IrTestBuilder::new(vec![]);
 
         // In IR, attributes are already merged
-        let entrypoint = t.build(vec![
+        let entrypoint = t.build("test", vec![
             t.write(
                 "<div data-hop-id=\"test/button-comp\" class=\"btn btn-default btn-primary\">\n",
             ),
@@ -369,7 +369,7 @@ mod tests {
         let t = IrTestBuilder::new(vec![]);
 
         // In IR, attributes are already processed (overridden for non-class)
-        let entrypoint = t.build(vec![
+        let entrypoint = t.build("test", vec![
             t.write("<div data-hop-id=\"test/button-comp\" class=\"btn\" data-id=\"custom\">\n"),
             t.write("Click me\n"),
             t.write("</div>"),
@@ -390,7 +390,7 @@ mod tests {
         let t = IrTestBuilder::new(vec![]);
 
         // In IR, nested components are fully inlined with Let bindings
-        let entrypoint = t.build(vec![
+        let entrypoint = t.build("test", vec![
             t.write("<div data-hop-id=\"test/outer-comp\">\n"),
             t.let_stmt("a", t.str("outer"), |t| {
                 vec![

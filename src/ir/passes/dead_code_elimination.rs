@@ -71,7 +71,7 @@ mod tests {
     fn test_removes_always_true_if() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![t.if_stmt(t.bool(true), vec![t.write("Always shown")])]),
+            t.build("test", vec![t.if_stmt(t.bool(true), vec![t.write("Always shown")])]),
             expect![[r#"
                 -- before --
                 test() {
@@ -92,7 +92,7 @@ mod tests {
     fn test_removes_always_false_if() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![
+            t.build("test", vec![
                 t.if_stmt(t.bool(false), vec![t.write("Never shown")]),
                 t.write("After if"),
             ]),
@@ -117,7 +117,7 @@ mod tests {
     fn test_preserves_dynamic_conditions() {
         let t = IrTestBuilder::new(vec![("show".to_string(), Type::Bool)]);
         check(
-            t.build(vec![
+            t.build("test", vec![
                 t.if_stmt(t.var("show"), vec![t.write("Dynamic")]),
                 t.if_stmt(t.bool(true), vec![t.write("Static true")]),
                 t.if_stmt(t.bool(false), vec![t.write("Static false")]),
@@ -151,7 +151,7 @@ mod tests {
     fn test_nested_if_elimination() {
         let t = IrTestBuilder::new(vec![("condition".to_string(), Type::Bool)]);
         check(
-            t.build(vec![
+            t.build("test", vec![
                 t.if_stmt(
                     t.var("condition"),
                     vec![

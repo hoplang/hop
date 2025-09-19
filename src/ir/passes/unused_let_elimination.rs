@@ -106,7 +106,7 @@ mod tests {
     fn test_eliminate_unused_let() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![
+            t.build("test", vec![
                 // Unused let should be eliminated
                 t.let_stmt("unused", t.str("value"), |t| vec![t.write("Hello")]),
             ]),
@@ -130,7 +130,7 @@ mod tests {
     fn test_preserve_used_let() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![
+            t.build("test", vec![
                 // Used let should be preserved
                 t.let_stmt("message", t.str("Hello"), |t| {
                     vec![t.write_expr(t.var("message"), false)]
@@ -158,7 +158,7 @@ mod tests {
     fn test_nested_unused_lets() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![t.let_stmt("outer", t.str("outer_value"), |t| {
+            t.build("test", vec![t.let_stmt("outer", t.str("outer_value"), |t| {
                 vec![t.let_stmt("inner", t.str("inner_value"), |t| {
                     vec![t.write("No variables used")]
                 })]
@@ -185,7 +185,7 @@ mod tests {
     fn test_used_in_nested_structure() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![t.let_stmt("cond", t.bool(true), |t| {
+            t.build("test", vec![t.let_stmt("cond", t.bool(true), |t| {
                 vec![t.if_stmt(t.var("cond"), vec![t.write("Condition is true")])]
             })]),
             expect![[r#"
@@ -214,7 +214,7 @@ mod tests {
     fn test_eliminate_in_if_body() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![t.if_stmt(
+            t.build("test", vec![t.if_stmt(
                 t.bool(true),
                 vec![t.let_stmt("unused", t.str("value"), |t| vec![t.write("Inside if")])],
             )]),
@@ -242,7 +242,7 @@ mod tests {
     fn test_eliminate_in_for_body() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![t.for_loop(
+            t.build("test", vec![t.for_loop(
                 "item",
                 t.array(vec![t.str("a"), t.str("b")]),
                 |t| {
@@ -275,7 +275,7 @@ mod tests {
     fn test_used_in_binary_op() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![t.let_stmt("x", t.bool(true), |t| {
+            t.build("test", vec![t.let_stmt("x", t.bool(true), |t| {
                 vec![t.let_stmt("y", t.bool(false), |t| {
                     vec![t.if_stmt(t.eq(t.var("x"), t.var("y")), vec![t.write("Equal")])]
                 })]
@@ -310,7 +310,7 @@ mod tests {
     fn test_multiple_unused_lets_in_sequence() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![
+            t.build("test", vec![
                 t.let_stmt("a", t.str("a_value"), |t| vec![t.write("First")]),
                 t.let_stmt("b", t.str("b_value"), |t| vec![t.write("Second")]),
                 t.write("Third"),
@@ -341,7 +341,7 @@ mod tests {
     fn test_variable_used_in_array() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![t.let_stmt(
+            t.build("test", vec![t.let_stmt(
                 "items",
                 t.array(vec![t.str("a"), t.str("b")]),
                 |t| {
@@ -376,7 +376,7 @@ mod tests {
     fn test_variable_used_in_property_access() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![t.let_stmt(
+            t.build("test", vec![t.let_stmt(
                 "obj",
                 t.object(vec![("name", t.str("value"))]),
                 |t| vec![t.write_expr(t.prop_access(t.var("obj"), "name"), false)],
@@ -403,7 +403,7 @@ mod tests {
     fn test_sibling_lets_same_name_first_used() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![
+            t.build("test", vec![
                 t.let_stmt("x", t.str("first x"), |t| {
                     vec![t.write_expr(t.var("x"), false)]
                 }),

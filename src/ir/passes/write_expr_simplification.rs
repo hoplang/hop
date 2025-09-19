@@ -47,7 +47,7 @@ mod tests {
     fn test_simplify_constant_string() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![
+            t.build("test", vec![
                 // WriteExpr with constant string should become Write
                 t.write_expr(t.str("Hello, World!"), false),
             ]),
@@ -69,7 +69,7 @@ mod tests {
     fn test_simplify_with_escaping() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![
+            t.build("test", vec![
                 // WriteExpr with escaping enabled
                 t.write_expr(t.str("<div>Hello & Goodbye</div>"), true),
             ]),
@@ -91,7 +91,7 @@ mod tests {
     fn test_nested_transformations() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![
+            t.build("test", vec![
                 t.if_stmt(
                     t.bool(true),
                     vec![
@@ -139,7 +139,7 @@ mod tests {
     fn test_mixed_write_and_write_expr() {
         let t = IrTestBuilder::new(vec![("x".to_string(), Type::String)]);
         check(
-            t.build(vec![
+            t.build("test", vec![
                 t.write("Already a Write statement"),
                 t.write_expr(t.str("Will become Write"), false),
                 t.write_expr(t.var("x"), false),

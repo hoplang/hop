@@ -136,7 +136,7 @@ mod tests {
     fn test_coalesce_consecutive_writes() {
         let t = IrTestBuilder::new(vec![]);
 
-        let entrypoint = t.build(vec![
+        let entrypoint = t.build("test", vec![
             t.write("Hello"),
             t.write(" "),
             t.write("World"),
@@ -166,7 +166,7 @@ mod tests {
     fn test_coalesce_with_interruption() {
         let t = IrTestBuilder::new(vec![]);
 
-        let entrypoint = t.build(vec![
+        let entrypoint = t.build("test", vec![
             t.write("Before"),
             t.write(" if"),
             t.if_stmt(t.bool(true), vec![t.write("Inside if")]),
@@ -204,7 +204,7 @@ mod tests {
     fn test_coalesce_inside_if() {
         let t = IrTestBuilder::new(vec![]);
 
-        let entrypoint = t.build(vec![t.if_stmt(
+        let entrypoint = t.build("test", vec![t.if_stmt(
             t.bool(true),
             vec![t.write("Line"), t.write(" "), t.write("one")],
         )]);
@@ -235,7 +235,7 @@ mod tests {
     fn test_coalesce_inside_for() {
         let t = IrTestBuilder::new(vec![]);
 
-        let entrypoint = t.build(vec![t.for_loop("item", t.array(vec![t.str("x")]), |t| {
+        let entrypoint = t.build("test", vec![t.for_loop("item", t.array(vec![t.str("x")]), |t| {
             vec![
                 t.write("Item"),
                 t.write(": "),
@@ -275,7 +275,7 @@ mod tests {
     fn test_coalesce_inside_let() {
         let t = IrTestBuilder::new(vec![]);
 
-        let entrypoint = t.build(vec![t.let_stmt("x", t.str("value"), |t| {
+        let entrypoint = t.build("test", vec![t.let_stmt("x", t.str("value"), |t| {
             vec![t.write("The"), t.write(" value"), t.write(" is")]
         })]);
 
@@ -305,7 +305,7 @@ mod tests {
     fn test_nested_coalescing() {
         let t = IrTestBuilder::new(vec![]);
 
-        let entrypoint = t.build(vec![
+        let entrypoint = t.build("test", vec![
             t.write("Start"),
             t.write(": "),
             t.if_stmt(
@@ -365,7 +365,7 @@ mod tests {
     fn test_no_coalescing_with_write_expr() {
         let t = IrTestBuilder::new(vec![("x".to_string(), Type::String)]);
 
-        let entrypoint = t.build(vec![
+        let entrypoint = t.build("test", vec![
             t.write("Value"),
             t.write(": "),
             t.write_expr(t.var("x"), true),
@@ -419,7 +419,7 @@ mod tests {
     fn test_single_write() {
         let t = IrTestBuilder::new(vec![]);
 
-        let entrypoint = t.build(vec![t.write("Single")]);
+        let entrypoint = t.build("test", vec![t.write("Single")]);
 
         check(
             entrypoint,

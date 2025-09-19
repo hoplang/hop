@@ -302,7 +302,7 @@ mod tests {
     fn test_simple_no_renaming() {
         let builder = IrTestBuilder::new(vec![("x".to_string(), Type::String)]);
 
-        let entrypoint = builder.build(vec![builder.write_expr(builder.var("x"), true)]);
+        let entrypoint = builder.build("test", vec![builder.write_expr(builder.var("x"), true)]);
 
         check_renaming(
             entrypoint,
@@ -324,7 +324,7 @@ mod tests {
     fn test_shadowing_in_for_loop() {
         let builder = IrTestBuilder::new(vec![("x".to_string(), Type::String)]);
 
-        let entrypoint = builder.build(vec![builder.for_loop(
+        let entrypoint = builder.build("test", vec![builder.for_loop(
             "x",
             builder.array(vec![builder.str("a")]),
             |b| vec![b.write_expr(b.var("x"), true)],
@@ -354,7 +354,7 @@ mod tests {
     fn test_sibling_scopes() {
         let builder = IrTestBuilder::new(vec![]);
 
-        let entrypoint = builder.build(vec![
+        let entrypoint = builder.build("test", vec![
             builder.for_loop("x", builder.array(vec![builder.str("a")]), |b| {
                 vec![b.write_expr(b.var("x"), true)]
             }),
@@ -393,7 +393,7 @@ mod tests {
     fn test_nested_let_bindings() {
         let builder = IrTestBuilder::new(vec![]);
 
-        let entrypoint = builder.build(vec![builder.let_stmt("x", builder.str("hello"), |b| {
+        let entrypoint = builder.build("test", vec![builder.let_stmt("x", builder.str("hello"), |b| {
             vec![
                 b.write_expr(b.var("x"), true),
                 b.let_stmt("x", builder.str("world"), |b2| {
@@ -435,7 +435,7 @@ mod tests {
             ("y".to_string(), Type::String),
         ]);
 
-        let entrypoint = builder.build(vec![
+        let entrypoint = builder.build("test", vec![
             builder.write_expr(builder.var("x"), true),
             builder.for_loop("y", builder.array(vec![builder.str("a")]), |b| {
                 vec![
@@ -473,7 +473,7 @@ mod tests {
     fn test_sibling_let_bindings() {
         let builder = IrTestBuilder::new(vec![]);
 
-        let entrypoint = builder.build(vec![
+        let entrypoint = builder.build("test", vec![
             builder.let_stmt("x", builder.str("first"), |b| {
                 vec![b.write_expr(b.var("x"), true)]
             }),
@@ -515,7 +515,7 @@ mod tests {
             Type::Array(Some(Box::new(Type::String))),
         )]);
 
-        let entrypoint = builder.build(vec![builder.for_loop("item", builder.var("items"), |b| {
+        let entrypoint = builder.build("test", vec![builder.for_loop("item", builder.var("items"), |b| {
             vec![
                 b.write("<div>"),
                 b.for_loop("item", builder.array(vec![b.str("nested")]), |b2| {

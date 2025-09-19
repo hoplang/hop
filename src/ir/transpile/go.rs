@@ -489,17 +489,6 @@ mod tests {
     use crate::ir::test_utils::IrTestBuilder;
     use expect_test::{Expect, expect};
 
-    // Helper function to create a single entrypoint for tests
-    fn create_entrypoint(
-        name: &str,
-        statements: Vec<IrStatement>,
-        parameters: Vec<(String, Type)>,
-    ) -> IrEntrypoint {
-        let t = IrTestBuilder::new(parameters);
-        let mut entrypoint = t.build(statements);
-        entrypoint.name = name.to_string();
-        entrypoint
-    }
 
     fn transpile_with_pretty(entrypoints: &[IrEntrypoint]) -> String {
         let transpiler = GoTranspiler::new();
@@ -526,10 +515,9 @@ mod tests {
     #[test]
     fn test_simple_component() {
         let t = IrTestBuilder::new(vec![]);
-        let entrypoints = vec![create_entrypoint(
+        let entrypoints = vec![t.build(
             "test-main-comp",
             vec![t.write("<div>Hello World</div>\n")],
-            vec![],
         )];
 
         check(
@@ -563,7 +551,7 @@ mod tests {
             ("message".to_string(), Type::String),
         ]);
 
-        let entrypoints = vec![create_entrypoint(
+        let entrypoints = vec![t.build(
             "test-greeting-comp",
             vec![
                 t.write("<h1>Hello "),
@@ -571,10 +559,6 @@ mod tests {
                 t.write(", "),
                 t.write_expr(t.var("message"), true),
                 t.write("</h1>\n"),
-            ],
-            vec![
-                ("name".to_string(), Type::String),
-                ("message".to_string(), Type::String),
             ],
         )];
 
@@ -622,10 +606,9 @@ mod tests {
     fn test_if_condition() {
         let t = IrTestBuilder::new(vec![("show".to_string(), Type::Bool)]);
 
-        let entrypoints = vec![create_entrypoint(
+        let entrypoints = vec![t.build(
             "test-main-comp",
             vec![t.if_stmt(t.var("show"), vec![t.write("<div>Visible</div>\n")])],
-            vec![("show".to_string(), Type::Bool)],
         )];
 
         check(
@@ -668,7 +651,7 @@ mod tests {
             Type::Array(Some(Box::new(Type::String))),
         )]);
 
-        let entrypoints = vec![create_entrypoint(
+        let entrypoints = vec![t.build(
             "test-main-comp",
             vec![t.for_loop("item", t.var("items"), |t| {
                 vec![
@@ -677,10 +660,6 @@ mod tests {
                     t.write("</li>\n"),
                 ]
             })],
-            vec![(
-                "items".to_string(),
-                Type::Array(Some(Box::new(Type::String))),
-            )],
         )];
 
         check(
@@ -725,7 +704,7 @@ mod tests {
     fn test_object_literals() {
         let t = IrTestBuilder::new(vec![]);
 
-        let entrypoints = vec![create_entrypoint(
+        let entrypoints = vec![t.build(
             "test-objects",
             vec![t.let_stmt(
                 "person",
@@ -743,7 +722,6 @@ mod tests {
                     ]
                 },
             )],
-            vec![],
         )];
 
         check(
@@ -806,7 +784,7 @@ mod tests {
 
         let t = IrTestBuilder::new(parameters.clone());
 
-        let entrypoints = vec![create_entrypoint(
+        let entrypoints = vec![t.build(
             "test-nested",
             vec![t.for_loop("user", t.var("users"), |t| {
                 vec![
@@ -817,7 +795,6 @@ mod tests {
                     t.write(")</div>\n"),
                 ]
             })],
-            parameters,
         )];
 
         check(
@@ -869,7 +846,7 @@ mod tests {
     fn test_loop_over_array_literal() {
         let t = IrTestBuilder::new(vec![]);
 
-        let entrypoints = vec![create_entrypoint(
+        let entrypoints = vec![t.build(
             "test-array-literal-loop",
             vec![
                 t.write("<ul>\n"),
@@ -886,7 +863,6 @@ mod tests {
                 ),
                 t.write("</ul>\n"),
             ],
-            vec![],
         )];
 
         check(
@@ -930,7 +906,7 @@ mod tests {
     fn test_loop_over_object_array_literal() {
         let t = IrTestBuilder::new(vec![]);
 
-        let entrypoints = vec![create_entrypoint(
+        let entrypoints = vec![t.build(
             "test-products",
             vec![t.for_loop(
                 "product",
@@ -967,7 +943,6 @@ mod tests {
                     ]
                 },
             )],
-            vec![],
         )];
 
         check(
@@ -1055,7 +1030,7 @@ mod tests {
             ("expected_role".to_string(), Type::String),
         ]);
 
-        let entrypoints = vec![create_entrypoint(
+        let entrypoints = vec![t.build(
             "test-auth-check",
             vec![
                 t.if_stmt(
@@ -1066,10 +1041,6 @@ mod tests {
                     t.eq(t.var("user_role"), t.str("admin")),
                     vec![t.write("<div>Admin panel available</div>\n")],
                 ),
-            ],
-            vec![
-                ("user_role".to_string(), Type::String),
-                ("expected_role".to_string(), Type::String),
             ],
         )];
 
@@ -1135,7 +1106,7 @@ mod tests {
 
         let t = IrTestBuilder::new(parameters.clone());
 
-        let entrypoints = vec![create_entrypoint(
+        let entrypoints = vec![t.build(
             "test-json",
             vec![
                 t.write("<script>\n"),
@@ -1153,7 +1124,6 @@ mod tests {
                 t.write(";\n"),
                 t.write("</script>\n"),
             ],
-            parameters,
         )];
 
         check(
