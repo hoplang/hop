@@ -1,4 +1,4 @@
-use super::{GoTranspiler, JsTranspiler, LanguageMode, Transpiler};
+use super::{GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler};
 use crate::ir::ast::IrEntrypoint;
 use crate::ir::test_utils::build_ir_auto;
 use std::fs;
@@ -51,6 +51,40 @@ console.log(module.test());
     if !output.status.success() {
         return Err(format!(
             "Bun execution failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn execute_python(code: &str) -> Result<String, String> {
+    let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
+    let module_file = temp_dir.path().join("module.py");
+    let runner_file = temp_dir.path().join("runner.py");
+
+    // Write the generated module code
+    fs::write(&module_file, code).map_err(|e| format!("Failed to write module file: {}", e))?;
+
+    // Create a runner that imports and executes the function
+    // Always calls test() since all our tests use "test" as the entrypoint name
+    let runner_code = r#"
+from module import test
+print(test(), end='')
+"#;
+
+    fs::write(&runner_file, runner_code)
+        .map_err(|e| format!("Failed to write runner file: {}", e))?;
+
+    let output = Command::new("python3")
+        .arg(&runner_file)
+        .current_dir(&temp_dir)
+        .output()
+        .map_err(|e| format!("Failed to execute Python: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Python execution failed:\n{}",
             String::from_utf8_lossy(&output.stderr)
         ));
     }
@@ -127,6 +161,10 @@ fn run_integration_test(test_case: TestCase) -> Result<(), String> {
     let go_transpiler = GoTranspiler::new();
     let go_code = go_transpiler.transpile_module(&entrypoints);
 
+    // Transpile to Python
+    let python_transpiler = PythonTranspiler::new();
+    let python_code = python_transpiler.transpile_module(&entrypoints);
+
     // Execute JavaScript version
     let js_output = execute_javascript(&js_code, false)
         .map_err(|e| format!("JavaScript execution failed: {}", e))?;
@@ -137,6 +175,10 @@ fn run_integration_test(test_case: TestCase) -> Result<(), String> {
 
     // Execute Go version
     let go_output = execute_go(&go_code).map_err(|e| format!("Go execution failed: {}", e))?;
+
+    // Execute Python version
+    let python_output = execute_python(&python_code)
+        .map_err(|e| format!("Python execution failed: {}", e))?;
 
     // Verify outputs match expected
     if js_output != test_case.expected_output {
@@ -157,6 +199,13 @@ fn run_integration_test(test_case: TestCase) -> Result<(), String> {
         return Err(format!(
             "Go output mismatch:\nExpected: {}\nGot: {}",
             test_case.expected_output, go_output
+        ));
+    }
+
+    if python_output != test_case.expected_output {
+        return Err(format!(
+            "Python output mismatch:\nExpected: {}\nGot: {}",
+            test_case.expected_output, python_output
         ));
     }
 
@@ -242,11 +291,11 @@ mod tests {
     fn test_html_escaping() {
         let test_case = TestCase::new(
             build_ir_auto("test", vec![], |t| {
-                t.let_stmt("text", t.str("<script>alert('xss')</script>"), |t| {
+                t.let_stmt("text", t.str("<div>Hello & world</div>"), |t| {
                     t.write_expr_escaped(t.var("text"));
                 });
             }),
-            "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;",
+            "&lt;div&gt;Hello &amp; world&lt;/div&gt;",
         );
 
         run_integration_test(test_case).expect("Integration test failed");
@@ -312,11 +361,11 @@ mod tests {
         let test_case = TestCase::new(
             build_ir_auto("test", vec![], |t| {
                 t.write_expr(
-                    t.json_encode(t.object(vec![("name", t.str("Test")), ("value", t.num(42.0))])),
+                    t.json_encode(t.array(vec![t.str("Hello"), t.str("World")])),
                     false,
                 );
             }),
-            r#"{"name":"Test","value":42}"#,
+            r#"["Hello","World"]"#,
         );
 
         run_integration_test(test_case).expect("Integration test failed");

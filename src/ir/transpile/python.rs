@@ -297,7 +297,7 @@ impl ExpressionTranspiler for PythonTranspiler {
     fn transpile_json_encode<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("json.dumps(")
             .append(self.transpile_expr(value))
-            .append(BoxDoc::text(")"))
+            .append(BoxDoc::text(", separators=(',', ':'))"))
     }
 
     fn transpile_string_concat<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
@@ -585,7 +585,7 @@ mod tests {
                     output = []
                     output.append("<script>\n")
                     output.append("const data = ")
-                    output.append(str(json.dumps(data)))
+                    output.append(str(json.dumps(data, separators=(',', ':'))))
                     output.append(";\n")
                     output.append("</script>\n")
                     return ''.join(output)
