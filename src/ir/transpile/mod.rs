@@ -1,11 +1,13 @@
 pub mod go;
 pub mod js;
+pub mod python;
 
 #[cfg(test)]
 pub mod integration_tests;
 
 pub use go::GoTranspiler;
 pub use js::{JsTranspiler, LanguageMode};
+pub use python::PythonTranspiler;
 use pretty::BoxDoc;
 
 use crate::dop::r#type::{ComparableType, Type};

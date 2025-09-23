@@ -21,6 +21,7 @@
             pkgs.rustfmt
             pkgs.typescript-language-server
 			pkgs.bun
+			pkgs.python3
 			pkgs.go
             pkgs.just
           ];
