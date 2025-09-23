@@ -1,4 +1,4 @@
-use super::{GoTranspiler, Transpiler};
+use super::{GoTranspiler, JsTranspiler, LanguageMode, Transpiler};
 use crate::ir::ast::IrEntrypoint;
 use crate::ir::test_utils::build_ir_auto;
 use std::fs;
@@ -22,54 +22,36 @@ impl TestCase {
     }
 }
 
-#[allow(dead_code)]
-fn execute_javascript(
-    code: &str,
-    function_name: &str,
-    params: Option<&serde_json::Value>,
-) -> Result<String, String> {
+fn execute_javascript(code: &str, function_name: &str, is_typescript: bool) -> Result<String, String> {
     let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
-    let js_file = temp_dir.path().join("test.mjs"); // Use .mjs extension for ES modules
+    let extension = if is_typescript { "ts" } else { "js" };
+    let module_file = temp_dir.path().join(format!("module.{}", extension));
+    let runner_file = temp_dir.path().join(format!("runner.{}", extension));
 
-    // Create a wrapper that calls the function and prints the result
-    let params_str = if let Some(p) = params {
-        p.to_string()
-    } else {
-        "{}".to_string()
-    };
+    // Write the generated module code
+    fs::write(&module_file, code).map_err(|e| format!("Failed to write module file: {}", e))?;
 
-    let _wrapper_code = format!(
+    // Create a runner that imports and executes the function
+    let runner_code = format!(
         r#"
-{}
-
-const result = (export default).{}({});
+import module from './module.{}';
+const result = module.{}();
 console.log(result);
 "#,
-        code, function_name, params_str
+        extension, function_name
     );
 
-    // Actually, let's convert to CommonJS format since that's easier to execute
-    let commonjs_code = code.replace("export default {", "module.exports = {");
-    let wrapper_code = format!(
-        r#"
-{}
+    fs::write(&runner_file, runner_code).map_err(|e| format!("Failed to write runner file: {}", e))?;
 
-const result = module.exports.{}({});
-console.log(result);
-"#,
-        commonjs_code, function_name, params_str
-    );
-
-    fs::write(&js_file, wrapper_code).map_err(|e| format!("Failed to write JS file: {}", e))?;
-
-    let output = Command::new("node")
-        .arg(&js_file)
+    let output = Command::new("bun")
+        .arg("run")
+        .arg(&runner_file)
         .output()
-        .map_err(|e| format!("Failed to execute Node.js: {}", e))?;
+        .map_err(|e| format!("Failed to execute Bun: {}", e))?;
 
     if !output.status.success() {
         return Err(format!(
-            "Node.js execution failed:\n{}",
+            "Bun execution failed:\n{}",
             String::from_utf8_lossy(&output.stderr)
         ));
     }
@@ -145,7 +127,6 @@ fn snake_to_pascal_case(s: &str) -> String {
         .collect()
 }
 
-#[allow(dead_code)]
 fn camel_case(s: &str) -> String {
     let pascal = snake_to_pascal_case(s);
     let mut chars = pascal.chars();
@@ -158,51 +139,48 @@ fn camel_case(s: &str) -> String {
 fn run_integration_test(test_case: TestCase) -> Result<(), String> {
     let entrypoints = vec![test_case.entrypoint];
 
-    // Transpile to JavaScript (commented out for now)
-    // let js_transpiler = JsTranspiler::new(LanguageMode::JavaScript);
-    // let _js_code = js_transpiler.transpile_module(&entrypoints);
+    // Transpile to JavaScript
+    let js_transpiler = JsTranspiler::new(LanguageMode::JavaScript);
+    let js_code = js_transpiler.transpile_module(&entrypoints);
 
-    // Transpile to TypeScript (commented out for now)
-    // let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
-    // let _ts_code = ts_transpiler.transpile_module(&entrypoints);
+    // Transpile to TypeScript
+    let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
+    let ts_code = ts_transpiler.transpile_module(&entrypoints);
 
     // Transpile to Go
     let go_transpiler = GoTranspiler::new();
     let go_code = go_transpiler.transpile_module(&entrypoints);
 
     // Convert kebab-case name to appropriate format for each language
-    // let _js_function_name = camel_case(&test_case.name.replace('-', "_"));
+    let js_function_name = camel_case(&test_case.name.replace('-', "_"));
     let go_function_name = snake_to_pascal_case(&test_case.name.replace('-', "_"));
 
     // Execute JavaScript version
-    // TODO: Fix ESM module loading
-    // let js_output = execute_javascript(&js_code, &js_function_name, test_case.params.as_ref())
-    //     .map_err(|e| format!("JavaScript execution failed for '{}': {}", test_case.name, e))?;
+    let js_output = execute_javascript(&js_code, &js_function_name, false)
+        .map_err(|e| format!("JavaScript execution failed for '{}': {}", test_case.name, e))?;
 
-    // Execute TypeScript version (using Node.js with type checking disabled for simplicity)
-    // TODO: Fix ESM module loading
-    // let ts_output = execute_javascript(&ts_code, &js_function_name, test_case.params.as_ref())
-    //     .map_err(|e| format!("TypeScript execution failed for '{}': {}", test_case.name, e))?;
+    // Execute TypeScript version
+    let ts_output = execute_javascript(&ts_code, &js_function_name, true)
+        .map_err(|e| format!("TypeScript execution failed for '{}': {}", test_case.name, e))?;
 
     // Execute Go version
     let go_output = execute_go(&go_code, &go_function_name)
         .map_err(|e| format!("Go execution failed for '{}': {}", test_case.name, e))?;
 
     // Verify outputs match expected
-    // TODO: Re-enable when JS/TS execution is fixed
-    // if js_output != test_case.expected_output {
-    //     return Err(format!(
-    //         "JavaScript output mismatch for '{}':\nExpected: {}\nGot: {}",
-    //         test_case.name, test_case.expected_output, js_output
-    //     ));
-    // }
+    if js_output != test_case.expected_output {
+        return Err(format!(
+            "JavaScript output mismatch for '{}':\nExpected: {}\nGot: {}",
+            test_case.name, test_case.expected_output, js_output
+        ));
+    }
 
-    // if ts_output != test_case.expected_output {
-    //     return Err(format!(
-    //         "TypeScript output mismatch for '{}':\nExpected: {}\nGot: {}",
-    //         test_case.name, test_case.expected_output, ts_output
-    //     ));
-    // }
+    if ts_output != test_case.expected_output {
+        return Err(format!(
+            "TypeScript output mismatch for '{}':\nExpected: {}\nGot: {}",
+            test_case.name, test_case.expected_output, ts_output
+        ));
+    }
 
     if go_output != test_case.expected_output {
         return Err(format!(
