@@ -272,6 +272,14 @@ impl IrTestBuilder {
             annotation: self.next_expr_id(),
         }
     }
+
+    pub fn string_concat(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        TypedExpr::StringConcat {
+            left: Box::new(left),
+            right: Box::new(right),
+            annotation: self.next_expr_id(),
+        }
+    }
 }
 
 pub struct IrAutoBuilder {
@@ -419,5 +427,9 @@ impl IrAutoBuilder {
 
     pub fn json_encode(&self, value: IrExpr) -> IrExpr {
         self.inner.json_encode(value)
+    }
+
+    pub fn string_concat(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        self.inner.string_concat(left, right)
     }
 }

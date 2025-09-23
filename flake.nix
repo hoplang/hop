@@ -20,6 +20,8 @@
             pkgs.rust-analyzer
             pkgs.rustfmt
             pkgs.typescript-language-server
+			pkgs.bun
+			pkgs.go
             pkgs.just
           ];
         };

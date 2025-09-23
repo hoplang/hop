@@ -1,6 +1,9 @@
 pub mod go;
 pub mod js;
 
+#[cfg(test)]
+pub mod integration_tests;
+
 pub use go::GoTranspiler;
 pub use js::{JsTranspiler, LanguageMode};
 use pretty::BoxDoc;
