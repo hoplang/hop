@@ -203,6 +203,17 @@ impl AlphaRenamingPass {
                 operand_types,
                 annotation,
             },
+            TypedExpr::GreaterThan {
+                left,
+                right,
+                operand_types,
+                annotation,
+            } => TypedExpr::GreaterThan {
+                left: Box::new(self.rename_expr(*left)),
+                right: Box::new(self.rename_expr(*right)),
+                operand_types,
+                annotation,
+            },
             // Literals don't contain variables
             TypedExpr::StringLiteral { .. } => expr,
             TypedExpr::BooleanLiteral { .. } => expr,

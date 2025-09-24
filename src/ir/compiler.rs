@@ -422,6 +422,17 @@ impl Compiler {
                 operand_types,
                 annotation: expr_id,
             },
+            SimpleTypedExpr::GreaterThan {
+                left,
+                right,
+                operand_types,
+                ..
+            } => TypedExpr::GreaterThan {
+                left: Box::new(self.compile_expr(*left)),
+                right: Box::new(self.compile_expr(*right)),
+                operand_types,
+                annotation: expr_id,
+            },
         }
     }
 }

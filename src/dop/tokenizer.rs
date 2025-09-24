@@ -62,6 +62,7 @@ impl Iterator for Tokenizer {
                     None => Ok((Token::Not, start)),
                 },
                 '<' => Ok((Token::LessThan, start)),
+                '>' => Ok((Token::GreaterThan, start)),
                 '=' => match self.iter.next_if(|s| s.ch() == '=') {
                     Some(end) => Ok((Token::Eq, start.to(end))),
                     None => Err(ParseError::ExpectedDoubleEqButGotSingleEq { range: start }),
@@ -351,27 +352,35 @@ mod tests {
     #[test]
     fn test_tokenize_simple_punctuation() {
         check(
-            "( ) . ! ==",
+            "( ) . ! == < >",
             expect![[r#"
                 token: (
-                ( ) . ! ==
+                ( ) . ! == < >
                 ^
 
                 token: )
-                ( ) . ! ==
+                ( ) . ! == < >
                   ^
 
                 token: .
-                ( ) . ! ==
+                ( ) . ! == < >
                     ^
 
                 token: !
-                ( ) . ! ==
+                ( ) . ! == < >
                       ^
 
                 token: ==
-                ( ) . ! ==
+                ( ) . ! == < >
                         ^^
+
+                token: <
+                ( ) . ! == < >
+                           ^
+
+                token: >
+                ( ) . ! == < >
+                             ^
             "#]],
         );
     }

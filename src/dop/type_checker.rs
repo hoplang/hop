@@ -201,6 +201,48 @@ pub fn typecheck_expr(
                 annotation: (),
             })
         }
+
+        AnnotatedExpr::BinaryOp {
+            left,
+            operator: BinaryOp::GreaterThan,
+            right,
+            ..
+        } => {
+            let typed_left = typecheck_expr(left, env, annotations)?;
+            let typed_right = typecheck_expr(right, env, annotations)?;
+            let left_type = typed_left.as_type();
+            let right_type = typed_right.as_type();
+
+            let left_comparable = left_type.as_comparable_type().ok_or_else(|| {
+                TypeError::TypeIsNotComparable {
+                    t: left_type.clone(),
+                    range: left.range().clone(),
+                }
+            })?;
+
+            let right_comparable = right_type.as_comparable_type().ok_or_else(|| {
+                TypeError::TypeIsNotComparable {
+                    t: right_type.clone(),
+                    range: right.range().clone(),
+                }
+            })?;
+
+            // Both operands must be the same comparable type
+            if left_comparable != right_comparable {
+                return Err(TypeError::CannotCompareTypes {
+                    left: left_type.to_string(),
+                    right: right_type.to_string(),
+                    range: expr.range().clone(),
+                });
+            }
+
+            Ok(SimpleTypedExpr::GreaterThan {
+                left: Box::new(typed_left),
+                right: Box::new(typed_right),
+                operand_types: left_comparable,
+                annotation: (),
+            })
+        }
         AnnotatedExpr::BinaryOp {
             left,
             operator: BinaryOp::Plus,
@@ -573,6 +615,29 @@ mod tests {
     #[test]
     fn test_typecheck_negation_false() {
         check("", "!false", expect!["boolean"]);
+    }
+
+    #[test]
+    fn test_typecheck_greater_than_int() {
+        check("x: int, y: int", "x > y", expect!["boolean"]);
+    }
+
+    #[test]
+    fn test_typecheck_greater_than_float() {
+        check("x: float, y: float", "x > y", expect!["boolean"]);
+    }
+
+    #[test]
+    fn test_typecheck_greater_than_mixed_error() {
+        check(
+            "x: int, y: float",
+            "x > y",
+            expect![[r#"
+                error: Can not compare int to float
+                x > y
+                ^^^^^
+            "#]],
+        );
     }
 
     #[test]
