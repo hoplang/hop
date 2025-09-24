@@ -660,4 +660,22 @@ mod tests {
 
         run_integration_test(test_case).expect("Integration test failed");
     }
+
+    #[test]
+    #[ignore]
+    fn test_float_equality() {
+        let test_case = TestCase::new(
+            build_ir_auto("test", vec![], |t| {
+                t.if_stmt(t.eq(t.float(1.5), t.float(1.5)), |t| {
+                    t.write("1.5 == 1.5");
+                });
+                t.if_stmt(t.eq(t.float(1.5), t.float(2.5)), |t| {
+                    t.write("1.5 == 2.5");
+                });
+            }),
+            "1.5 == 1.5",
+        );
+
+        run_integration_test(test_case).expect("Integration test failed");
+    }
 }

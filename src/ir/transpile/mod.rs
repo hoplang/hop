@@ -98,9 +98,11 @@ pub trait ExpressionTranspiler {
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_bool_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_float_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_string_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_bool_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_float_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_not<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a>;
@@ -146,6 +148,7 @@ pub trait ExpressionTranspiler {
                 EquatableType::Bool => self.transpile_bool_equals(left, right),
                 EquatableType::String => self.transpile_string_equals(left, right),
                 EquatableType::Int => self.transpile_int_equals(left, right),
+                EquatableType::Float => self.transpile_float_equals(left, right),
             },
             IrExpr::NotEquals {
                 left,
@@ -156,6 +159,7 @@ pub trait ExpressionTranspiler {
                 EquatableType::Bool => self.transpile_bool_not_equals(left, right),
                 EquatableType::String => self.transpile_string_not_equals(left, right),
                 EquatableType::Int => self.transpile_int_not_equals(left, right),
+                EquatableType::Float => self.transpile_float_not_equals(left, right),
             },
             IrExpr::LessThan {
                 left,

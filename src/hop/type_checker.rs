@@ -3720,11 +3720,11 @@ mod tests {
                 </counter-comp>
             "#},
             expect![[r#"
-                error: Type number is not comparable
+                error: Can not compare float to int
                   --> main.hop (line 2, col 7)
                 1 | <counter-comp {count: number}>
                 2 |     <if {count == 0}>
-                  |          ^^^^^
+                  |          ^^^^^^^^^^
             "#]],
         );
     }
@@ -3743,11 +3743,11 @@ mod tests {
                 </profile-comp>
             "#},
             expect![[r#"
-                error: Type number is not comparable
+                error: Can not compare float to int
                   --> main.hop (line 3, col 7)
                 2 |     <div>{profile.user.name}</div>
                 3 |     <if {profile.user.age == 25}>
-                  |          ^^^^^^^^^^^^^^^^
+                  |          ^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -3769,11 +3769,11 @@ mod tests {
                 </matrix-comp>
             "#},
             expect![[r#"
-                error: Type number is not comparable
+                error: Can not compare float to int
                   --> main.hop (line 4, col 9)
                 3 |         <for {cell in row}>
                 4 |             <if {cell == 1}>
-                  |                  ^^^^
+                  |                  ^^^^^^^^^
             "#]],
         );
     }
@@ -3936,11 +3936,11 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Type number is not comparable
+                error: Can not compare float to int
                   --> item-display.hop (line 6, col 7)
                 5 |     </if>
                 6 |     <if {item.id == 1}>
-                  |          ^^^^^^^
+                  |          ^^^^^^^^^^^^
             "#]],
         );
     }

@@ -133,6 +133,18 @@ impl IrTestBuilder {
                 operand_types: EquatableType::String,
                 annotation: self.next_expr_id(),
             },
+            (Type::Int, Type::Int) => TypedExpr::Equals {
+                left: Box::new(left),
+                right: Box::new(right),
+                operand_types: EquatableType::Int,
+                annotation: self.next_expr_id(),
+            },
+            (Type::Float, Type::Float) => TypedExpr::Equals {
+                left: Box::new(left),
+                right: Box::new(right),
+                operand_types: EquatableType::Float,
+                annotation: self.next_expr_id(),
+            },
             _ => panic!(
                 "Unsupported type for equality comparison: {:?}",
                 left.as_type()

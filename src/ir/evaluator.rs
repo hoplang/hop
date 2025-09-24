@@ -202,6 +202,18 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             let right_int = right_val.as_i64().unwrap_or(0);
             Ok(Value::Bool(left_int == right_int))
         }
+        IrExpr::Equals {
+            left,
+            right,
+            operand_types: EquatableType::Float,
+            ..
+        } => {
+            let left_val = evaluate_expr(left, env)?;
+            let right_val = evaluate_expr(right, env)?;
+            let left_float = left_val.as_f64().unwrap_or(0.0);
+            let right_float = right_val.as_f64().unwrap_or(0.0);
+            Ok(Value::Bool(left_float == right_float))
+        }
         IrExpr::NotEquals {
             left,
             right,
@@ -237,6 +249,18 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             let left_int = left_val.as_i64().unwrap_or(0);
             let right_int = right_val.as_i64().unwrap_or(0);
             Ok(Value::Bool(left_int != right_int))
+        }
+        IrExpr::NotEquals {
+            left,
+            right,
+            operand_types: EquatableType::Float,
+            ..
+        } => {
+            let left_val = evaluate_expr(left, env)?;
+            let right_val = evaluate_expr(right, env)?;
+            let left_float = left_val.as_f64().unwrap_or(0.0);
+            let right_float = right_val.as_f64().unwrap_or(0.0);
+            Ok(Value::Bool(left_float != right_float))
         }
         IrExpr::LessThan {
             left,

@@ -496,6 +496,14 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
+    fn transpile_float_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("(")
+            .append(self.transpile_expr(left))
+            .append(BoxDoc::text(" == "))
+            .append(self.transpile_expr(right))
+            .append(BoxDoc::text(")"))
+    }
+
     fn transpile_string_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
@@ -513,6 +521,14 @@ impl ExpressionTranspiler for GoTranspiler {
     }
 
     fn transpile_int_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("(")
+            .append(self.transpile_expr(left))
+            .append(BoxDoc::text(" != "))
+            .append(self.transpile_expr(right))
+            .append(BoxDoc::text(")"))
+    }
+
+    fn transpile_float_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" != "))
@@ -1223,12 +1239,12 @@ mod tests {
                     database: {
                       credentials: {password: string, username: string},
                       host: string,
-                      port: number,
+                      port: float,
                     },
                     features: array[{
                       enabled: boolean,
                       name: string,
-                      settings: {level: string, timeout: number},
+                      settings: {level: string, timeout: float},
                     }],
                   },
                 ) {
@@ -1389,7 +1405,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 test-json(
-                  data: {active: boolean, count: number, title: string},
+                  data: {active: boolean, count: float, title: string},
                   items: array[string],
                 ) {
                   write("<script>\n")

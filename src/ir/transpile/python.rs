@@ -464,6 +464,14 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(BoxDoc::text(")"))
     }
 
+    fn transpile_float_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("(")
+            .append(self.transpile_expr(left))
+            .append(BoxDoc::text(" == "))
+            .append(self.transpile_expr(right))
+            .append(BoxDoc::text(")"))
+    }
+
     fn transpile_string_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
@@ -481,6 +489,14 @@ impl ExpressionTranspiler for PythonTranspiler {
     }
 
     fn transpile_int_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("(")
+            .append(self.transpile_expr(left))
+            .append(BoxDoc::text(" != "))
+            .append(self.transpile_expr(right))
+            .append(BoxDoc::text(")"))
+    }
+
+    fn transpile_float_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" != "))
@@ -809,7 +825,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-json(data: {count: number, title: string}) {
+                test-json(data: {count: float, title: string}) {
                   write("<script>\n")
                   write("const data = ")
                   write_expr(JsonEncode(data))
@@ -970,7 +986,7 @@ mod tests {
                   users: array[{
                     email: string,
                     name: string,
-                    profile: {age: number, bio: string},
+                    profile: {age: float, bio: string},
                   }],
                 ) {
                   for user in users {
@@ -1118,7 +1134,7 @@ mod tests {
                     database: {
                       credentials: {password: string, username: string},
                       host: string,
-                      port: number,
+                      port: float,
                     },
                   },
                 ) {

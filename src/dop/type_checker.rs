@@ -351,9 +351,9 @@ mod tests {
             "name: string, count: number",
             "name == count",
             expect![[r#"
-                error: Type string is not comparable
+                error: Can not compare string to float
                 name == count
-                ^^^^
+                ^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -403,7 +403,7 @@ mod tests {
             "count: number",
             "count.value",
             expect![[r#"
-                error: number can not be used as an object
+                error: float can not be used as an object
                 count.value
                 ^^^^^
             "#]],
@@ -502,7 +502,7 @@ mod tests {
 
     #[test]
     fn test_typecheck_number_literal_float() {
-        check("", "3.14", expect!["number"]);
+        check("", "3.14", expect!["float"]);
     }
 
     #[test]
@@ -530,9 +530,9 @@ mod tests {
             "count: number",
             "count == 42",
             expect![[r#"
-                error: Type number is not comparable
+                error: Can not compare float to int
                 count == 42
-                ^^^^^
+                ^^^^^^^^^^^
             "#]],
         );
     }

@@ -10,6 +10,7 @@ pub enum EquatableType {
     String,
     Bool,
     Int,
+    Float,
 }
 
 /// A ComparableType is a type where its values can be ordered
@@ -37,7 +38,8 @@ impl Type {
             Type::Bool => Some(EquatableType::Bool),
             Type::String => Some(EquatableType::String),
             Type::Int => Some(EquatableType::Int),
-            Type::Object(_) | Type::Array(_) | Type::Float => None,
+            Type::Float => Some(EquatableType::Float),
+            Type::Object(_) | Type::Array(_) => None,
         }
     }
 
@@ -92,7 +94,7 @@ impl<'a> Type {
     pub fn to_doc(&'a self) -> BoxDoc<'a> {
         match self {
             Type::String => BoxDoc::text("string"),
-            Type::Float => BoxDoc::text("number"),
+            Type::Float => BoxDoc::text("float"),
             Type::Int => BoxDoc::text("int"),
             Type::Bool => BoxDoc::text("boolean"),
             Type::Array(elem_type) => match elem_type {
