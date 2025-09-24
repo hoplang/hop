@@ -40,6 +40,10 @@ pub fn typecheck_expr(
             value: value.clone(),
             annotation: (),
         }),
+        AnnotatedExpr::IntLiteral { value, .. } => Ok(SimpleTypedExpr::IntLiteral {
+            value: *value,
+            annotation: (),
+        }),
         AnnotatedExpr::NumberLiteral { value, .. } => Ok(SimpleTypedExpr::NumberLiteral {
             value: value.clone(),
             annotation: (),
@@ -411,8 +415,8 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_number_literal_integer() {
-        check("", "42", expect!["number"]);
+    fn test_typecheck_int_literal() {
+        check("", "42", expect!["int"]);
     }
 
     #[test]
@@ -550,7 +554,7 @@ mod tests {
         check(
             "",
             r#"{a: "foo", b: 1, c: true}"#,
-            expect!["{a: string, b: number, c: boolean}"],
+            expect!["{a: string, b: int, c: boolean}"],
         );
     }
 
@@ -578,7 +582,7 @@ mod tests {
             "",
             "[1, true]",
             expect![[r#"
-                error: Array elements must all have the same type, found number and boolean
+                error: Array elements must all have the same type, found int and boolean
                 [1, true]
                     ^^^^
             "#]],
@@ -587,7 +591,7 @@ mod tests {
 
     #[test]
     fn test_typecheck_array_trailing_comma_numbers() {
-        check("", "[\n\t1,\n\t2,\n\t3,\n]", expect!["array[number]"]);
+        check("", "[\n\t1,\n\t2,\n\t3,\n]", expect!["array[int]"]);
     }
 
     #[test]
@@ -613,7 +617,7 @@ mod tests {
                 	b: 1,
                 }
             "#},
-            expect!["{a: string, b: number}"],
+            expect!["{a: string, b: int}"],
         );
     }
 
@@ -655,7 +659,7 @@ mod tests {
             "",
             r#"42 + "hello""#,
             expect![[r#"
-                error: Plus operator can only be used with strings, found number
+                error: Plus operator can only be used with strings, found int
                 42 + "hello"
                 ^^
             "#]],
@@ -681,7 +685,7 @@ mod tests {
             "",
             r#"42 + 58"#,
             expect![[r#"
-                error: Plus operator can only be used with strings, found number
+                error: Plus operator can only be used with strings, found int
                 42 + 58
                 ^^
             "#]],

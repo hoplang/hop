@@ -455,6 +455,10 @@ impl Parser {
                 value,
                 annotation: range,
             }),
+            Some((Token::IntLiteral(value), range)) => Ok(AnnotatedExpr::IntLiteral {
+                value,
+                annotation: range,
+            }),
             Some((Token::NumberLiteral(value), range)) => Ok(AnnotatedExpr::NumberLiteral {
                 value,
                 annotation: range,
@@ -852,7 +856,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_number_literal_integer() {
+    fn test_parse_expr_int_literal() {
         check_parse_expr(
             "99",
             expect![[r#"
@@ -867,6 +871,16 @@ mod tests {
             "3.14",
             expect![[r#"
                 3.14
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_mixed_int_and_float() {
+        check_parse_expr(
+            "42 + 3.14",
+            expect![[r#"
+                (42 + 3.14)
             "#]],
         );
     }
@@ -982,7 +996,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_array_numbers() {
+    fn test_parse_expr_array_integers() {
         check_parse_expr(
             "[1, 2, 3]",
             expect![[r#"

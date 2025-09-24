@@ -102,7 +102,13 @@ impl Iterator for Tokenizer {
                             .extend(self.iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
                     }
                     match serde_json::Number::from_str(number_string.as_str()) {
-                        Ok(n) => Ok((Token::NumberLiteral(n), number_string)),
+                        Ok(n) => {
+                            if let Some(i) = n.as_i64() {
+                                Ok((Token::IntLiteral(i), number_string))
+                            } else {
+                                Ok((Token::NumberLiteral(n), number_string))
+                            }
+                        }
                         Err(_) => Err(ParseError::InvalidNumberFormat {
                             range: number_string,
                         }),
@@ -231,6 +237,62 @@ mod tests {
                 token: 0.101
                 1.0 0.0 0.0000 1000000 0.0000 0.1010
                                               ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_integers() {
+        check(
+            "42 0 123 999",
+            expect![[r#"
+                token: 42
+                42 0 123 999
+                ^^
+
+                token: 0
+                42 0 123 999
+                   ^
+
+                token: 123
+                42 0 123 999
+                     ^^^
+
+                token: 999
+                42 0 123 999
+                         ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_mixed_integers_and_floats() {
+        check(
+            "42 3.14 0 0.0 123 99.99",
+            expect![[r#"
+                token: 42
+                42 3.14 0 0.0 123 99.99
+                ^^
+
+                token: 3.14
+                42 3.14 0 0.0 123 99.99
+                   ^^^^
+
+                token: 0
+                42 3.14 0 0.0 123 99.99
+                        ^
+
+                token: 0.0
+                42 3.14 0 0.0 123 99.99
+                          ^^^
+
+                token: 123
+                42 3.14 0 0.0 123 99.99
+                              ^^^
+
+                token: 99.99
+                42 3.14 0 0.0 123 99.99
+                                  ^^^^^
             "#]],
         );
     }

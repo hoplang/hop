@@ -3261,7 +3261,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Type number is not comparable
+                error: Type int is not comparable
                   --> main.hop (line 2, col 8)
                 1 | <main-comp>
                 2 |   <if {1 == "approved"}>
@@ -3323,7 +3323,7 @@ mod tests {
                 </foo-comp>
             "#},
             expect![[r#"
-                error: Argument 'config' of type number is incompatible with expected type {debug: boolean}
+                error: Argument 'config' of type int is incompatible with expected type {debug: boolean}
                   --> main.hop (line 7, col 23)
                 6 | <foo-comp>
                 7 |   <main-comp {config: 1}/>
@@ -3512,7 +3512,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Argument 'message' of type number is incompatible with expected type string
+                error: Argument 'message' of type int is incompatible with expected type string
                   --> main.hop (line 5, col 25)
                 4 | <main-comp>
                 5 |     <string-comp {message: 42}/>
@@ -4075,13 +4075,13 @@ mod tests {
                 </foo-comp>
             "#},
             expect![[r#"
-                error: Type number is not comparable
+                error: Type int is not comparable
                   --> main.hop (line 5, col 20)
                 4 | <foo-comp>
                 5 |     <main-comp {a: 1 == "", b: 1 == ""}/>
                   |                    ^
 
-                error: Type number is not comparable
+                error: Type int is not comparable
                   --> main.hop (line 5, col 32)
                 4 | <foo-comp>
                 5 |     <main-comp {a: 1 == "", b: 1 == ""}/>

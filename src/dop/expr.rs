@@ -30,6 +30,9 @@ pub enum AnnotatedExpr<A> {
     /// A boolean literal expression, e.g. true
     BooleanLiteral { value: bool, annotation: A },
 
+    /// An integer literal expression, e.g. 42
+    IntLiteral { value: i64, annotation: A },
+
     /// A number literal expression, e.g. 2.5
     NumberLiteral {
         value: serde_json::Number,
@@ -62,6 +65,7 @@ impl<A> AnnotatedExpr<A> {
             | AnnotatedExpr::PropertyAccess { annotation, .. }
             | AnnotatedExpr::StringLiteral { annotation, .. }
             | AnnotatedExpr::BooleanLiteral { annotation, .. }
+            | AnnotatedExpr::IntLiteral { annotation, .. }
             | AnnotatedExpr::NumberLiteral { annotation, .. }
             | AnnotatedExpr::ArrayLiteral { annotation, .. }
             | AnnotatedExpr::ObjectLiteral { annotation, .. }
@@ -89,6 +93,7 @@ impl<'a, T> AnnotatedExpr<T> {
                 .append(BoxDoc::text(property.as_str())),
             AnnotatedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
             AnnotatedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            AnnotatedExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
             AnnotatedExpr::NumberLiteral { value, .. } => BoxDoc::text(value.to_string()),
             AnnotatedExpr::ArrayLiteral { elements, .. } => {
                 if elements.is_empty() {
