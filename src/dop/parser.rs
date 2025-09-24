@@ -334,7 +334,7 @@ impl Parser {
     // equality = additive ( "==" additive )*
     fn parse_equality(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.parse_additive()?;
-        while self.advance_if(Token::Equal).is_some() {
+        while self.advance_if(Token::Eq).is_some() {
             let right = self.parse_additive()?;
             expr = AnnotatedExpr::BinaryOp {
                 annotation: expr.range().clone().to(right.range().clone()),

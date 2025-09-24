@@ -59,7 +59,7 @@ impl Iterator for Tokenizer {
                 '+' => Ok((Token::Plus, start)),
                 '!' => Ok((Token::Not, start)),
                 '=' => match self.iter.next_if(|s| s.ch() == '=') {
-                    Some(end) => Ok((Token::Equal, start.to(end))),
+                    Some(end) => Ok((Token::Eq, start.to(end))),
                     None => Err(ParseError::ExpectedDoubleEqButGotSingleEq { range: start }),
                 },
                 '"' => {
