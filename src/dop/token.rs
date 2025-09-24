@@ -26,7 +26,8 @@ pub enum Token {
     In,
     // Type tokens
     TypeString,
-    TypeNumber,
+    TypeInt,
+    TypeFloat,
     TypeBoolean,
     TypeArray,
 }
@@ -55,7 +56,8 @@ impl PartialEq for Token {
             (Token::Comma, Token::Comma) => true,
             (Token::In, Token::In) => true,
             (Token::TypeString, Token::TypeString) => true,
-            (Token::TypeNumber, Token::TypeNumber) => true,
+            (Token::TypeInt, Token::TypeInt) => true,
+            (Token::TypeFloat, Token::TypeFloat) => true,
             (Token::TypeBoolean, Token::TypeBoolean) => true,
             (Token::TypeArray, Token::TypeArray) => true,
             _ => false,
@@ -100,7 +102,8 @@ impl fmt::Display for Token {
             Token::Comma => write!(f, ","),
             Token::In => write!(f, "in"),
             Token::TypeString => write!(f, "string"),
-            Token::TypeNumber => write!(f, "number"),
+            Token::TypeInt => write!(f, "int"),
+            Token::TypeFloat => write!(f, "float"),
             Token::TypeBoolean => write!(f, "boolean"),
             Token::TypeArray => write!(f, "array"),
         }

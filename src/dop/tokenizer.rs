@@ -90,7 +90,8 @@ impl Iterator for Tokenizer {
                         "false" => Token::BooleanLiteral(false),
                         // Type keywords
                         "string" => Token::TypeString,
-                        "number" => Token::TypeNumber,
+                        "int" => Token::TypeInt,
+                        "float" => Token::TypeFloat,
                         "boolean" => Token::TypeBoolean,
                         "array" => Token::TypeArray,
                         _ => Token::Identifier(identifier.clone()),
@@ -435,6 +436,34 @@ mod tests {
                 token: var123
                 foo in true false _test var123
                                         ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_type_keywords() {
+        check(
+            "string int float boolean array",
+            expect![[r#"
+                token: string
+                string int float boolean array
+                ^^^^^^
+
+                token: int
+                string int float boolean array
+                       ^^^
+
+                token: float
+                string int float boolean array
+                           ^^^^^
+
+                token: boolean
+                string int float boolean array
+                                 ^^^^^^^
+
+                token: array
+                string int float boolean array
+                                         ^^^^^
             "#]],
         );
     }

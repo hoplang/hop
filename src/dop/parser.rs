@@ -312,7 +312,8 @@ impl Parser {
     fn parse_type(&mut self) -> Result<(Type, DocumentRange), ParseError> {
         match self.iter.next().transpose()? {
             Some((Token::TypeString, range)) => Ok((Type::String, range)),
-            Some((Token::TypeNumber, range)) => Ok((Type::Float, range)),
+            Some((Token::TypeInt, range)) => Ok((Type::Int, range)),
+            Some((Token::TypeFloat, range)) => Ok((Type::Float, range)),
             Some((Token::TypeBoolean, range)) => Ok((Type::Bool, range)),
             Some((Token::TypeArray, type_array)) => {
                 let left_bracket = self.expect_token(&Token::LeftBracket)?;
@@ -567,12 +568,22 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_parameters_type_keywords() {
+        check_parse_parameters(
+            "name: string, age: int, score: float, active: boolean, items: array[string]",
+            expect![[r#"
+                [name: string, age: int, score: float, active: boolean, items: array[string]]
+            "#]],
+        );
+    }
+
+    #[test]
     fn test_parse_parameters_duplicate_parameters_with_different_type_error() {
         check_parse_parameters(
-            "foo: string, foo: number",
+            "foo: string, foo: float",
             expect![[r#"
                 error: Duplicate parameter 'foo'
-                foo: string, foo: number
+                foo: string, foo: float
                              ^^^
             "#]],
         );
@@ -617,10 +628,10 @@ mod tests {
     #[test]
     fn test_parse_parameters_duplicate_keys_in_object_type() {
         check_parse_parameters(
-            "user: {name: string, name: number}",
+            "user: {name: string, name: float}",
             expect![[r#"
                 error: Duplicate property 'name'
-                user: {name: string, name: number}
+                user: {name: string, name: float}
                                      ^^^^
             "#]],
         );

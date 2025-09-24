@@ -3500,7 +3500,7 @@ mod tests {
     }
 
     #[test]
-    fn test_component_parameter_type_error_number() {
+    fn test_component_parameter_type_error_float() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3707,13 +3707,13 @@ mod tests {
         );
     }
 
-    // Component with explicit number parameter type.
+    // Component with explicit float parameter type.
     #[test]
-    fn test_explicit_number_parameter() {
+    fn test_explicit_float_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
-                <counter-comp {count: number}>
+                <counter-comp {count: float}>
                 	<if {count == 0}>
                 		<div>Zero</div>
                 	</if>
@@ -3722,7 +3722,7 @@ mod tests {
             expect![[r#"
                 error: Can not compare float to int
                   --> main.hop (line 2, col 7)
-                1 | <counter-comp {count: number}>
+                1 | <counter-comp {count: float}>
                 2 |     <if {count == 0}>
                   |          ^^^^^^^^^^
             "#]],
@@ -3735,7 +3735,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <profile-comp {profile: {user: {name: string, age: number}}}>
+                <profile-comp {profile: {user: {name: string, age: float}}}>
                 	<div>{profile.user.name}</div>
                 	<if {profile.user.age == 25}>
                 		<div>Quarter century</div>
@@ -3758,7 +3758,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <matrix-comp {matrix: array[array[number]]}>
+                <matrix-comp {matrix: array[array[float]]}>
                 	<for {row in matrix}>
                 		<for {cell in row}>
                 			<if {cell == 1}>
@@ -3913,7 +3913,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- item-display.hop --
-                <item-display {item: {id: number, name: string, active: boolean}}>
+                <item-display {item: {id: float, name: string, active: boolean}}>
                 	<div>{item.name}</div>
                 	<if {item.active}>
                 		<span>Active item</span>
@@ -3924,14 +3924,14 @@ mod tests {
                 </item-display>
                 -- data-list.hop --
                 <import component="item-display" from="@/item-display">
-                <data-list {items: array[{id: number, name: string, active: boolean}]}>
+                <data-list {items: array[{id: float, name: string, active: boolean}]}>
                 	<for {item in items}>
                 		<item-display {item: item}/>
                 	</for>
                 </data-list>
                 -- main.hop --
                 <import component="data-list" from="@/data-list">
-                <main-comp {items: array[{id: number, name: string, active: boolean}]}>
+                <main-comp {items: array[{id: float, name: string, active: boolean}]}>
                 	<data-list {items: items}/>
                 </main-comp>
             "#},

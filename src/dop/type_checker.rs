@@ -348,7 +348,7 @@ mod tests {
     #[test]
     fn test_typecheck_equality_incompatible_string_number() {
         check(
-            "name: string, count: number",
+            "name: string, count: float",
             "name == count",
             expect![[r#"
                 error: Can not compare string to float
@@ -400,7 +400,7 @@ mod tests {
     #[test]
     fn test_typecheck_property_access_on_non_object() {
         check(
-            "count: number",
+            "count: float",
             "count.value",
             expect![[r#"
                 error: float can not be used as an object
@@ -426,7 +426,7 @@ mod tests {
     #[test]
     fn test_typecheck_negation_number_error() {
         check(
-            "count: number",
+            "count: float",
             "!count",
             expect![[r#"
                 error: Negation operator can only be applied to boolean values
@@ -527,7 +527,7 @@ mod tests {
     #[test]
     fn test_typecheck_equality_number() {
         check(
-            "count: number",
+            "count: float",
             "count == 42",
             expect![[r#"
                 error: Can not compare float to int

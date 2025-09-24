@@ -1598,7 +1598,7 @@ mod tests {
     fn test_parser_param_object_type() {
         check(
             indoc! {"
-                <main-comp {user: {name: string, age: number}}>
+                <main-comp {user: {name: string, age: float}}>
                     <div>{user.name} is {user.age} years old</div>
                 </main-comp>
             "},
