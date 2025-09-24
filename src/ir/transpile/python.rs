@@ -552,7 +552,7 @@ impl TypeTranspiler for PythonTranspiler {
         BoxDoc::text("str")
     }
 
-    fn transpile_number_type<'a>(&self) -> BoxDoc<'a> {
+    fn transpile_float_type<'a>(&self) -> BoxDoc<'a> {
         BoxDoc::text("float")
     }
 

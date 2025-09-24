@@ -61,7 +61,7 @@ pub trait StatementTranspiler {
 pub trait TypeTranspiler {
     fn transpile_bool_type<'a>(&self) -> BoxDoc<'a>;
     fn transpile_string_type<'a>(&self) -> BoxDoc<'a>;
-    fn transpile_number_type<'a>(&self) -> BoxDoc<'a>;
+    fn transpile_float_type<'a>(&self) -> BoxDoc<'a>;
     fn transpile_int_type<'a>(&self) -> BoxDoc<'a>;
     fn transpile_array_type<'a>(&self, element_type: Option<&'a Type>) -> BoxDoc<'a>;
     fn transpile_object_type<'a>(&self, fields: &'a BTreeMap<String, Type>) -> BoxDoc<'a>;
@@ -69,7 +69,7 @@ pub trait TypeTranspiler {
         match t {
             Type::Bool => self.transpile_bool_type(),
             Type::String => self.transpile_string_type(),
-            Type::Float => self.transpile_number_type(),
+            Type::Float => self.transpile_float_type(),
             Type::Int => self.transpile_int_type(),
             Type::Array(elem) => self.transpile_array_type(elem.as_deref()),
             Type::Object(fields) => self.transpile_object_type(fields),

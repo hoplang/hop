@@ -459,7 +459,7 @@ impl TypeTranspiler for JsTranspiler {
         BoxDoc::text("string")
     }
 
-    fn transpile_number_type<'a>(&self) -> BoxDoc<'a> {
+    fn transpile_float_type<'a>(&self) -> BoxDoc<'a> {
         BoxDoc::text("number")
     }
 
