@@ -91,14 +91,14 @@ pub fn typecheck_expr(
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            let Some(left_comparable) = left_type.as_comparable_type() else {
+            let Some(left_comparable) = left_type.as_equatable_type() else {
                 return Err(TypeError::TypeIsNotComparable {
                     t: left_type.clone(),
                     range: left.range().clone(),
                 });
             };
 
-            let Some(right_comparable) = right_type.as_comparable_type() else {
+            let Some(right_comparable) = right_type.as_equatable_type() else {
                 return Err(TypeError::TypeIsNotComparable {
                     t: left_type.clone(),
                     range: left.range().clone(),

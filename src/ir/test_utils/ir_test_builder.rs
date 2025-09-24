@@ -1,5 +1,5 @@
 use crate::dop::TypedExpr;
-use crate::dop::r#type::ComparableType;
+use crate::dop::r#type::EquatableType;
 use crate::dop::{Type, VarName};
 use crate::ir::ast::IrEntrypoint;
 use crate::ir::ast::{ExprId, IrExpr, IrStatement, StatementId};
@@ -117,13 +117,13 @@ impl IrTestBuilder {
             (Type::Bool, Type::Bool) => TypedExpr::Equality {
                 left: Box::new(left),
                 right: Box::new(right),
-                operand_types: ComparableType::Bool,
+                operand_types: EquatableType::Bool,
                 annotation: self.next_expr_id(),
             },
             (Type::String, Type::String) => TypedExpr::Equality {
                 left: Box::new(left),
                 right: Box::new(right),
-                operand_types: ComparableType::String,
+                operand_types: EquatableType::String,
                 annotation: self.next_expr_id(),
             },
             _ => panic!(

@@ -10,7 +10,7 @@ pub use js::{JsTranspiler, LanguageMode};
 use pretty::BoxDoc;
 pub use python::PythonTranspiler;
 
-use crate::dop::r#type::{ComparableType, Type};
+use crate::dop::r#type::{EquatableType, Type};
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use std::collections::BTreeMap;
 
@@ -138,9 +138,9 @@ pub trait ExpressionTranspiler {
                 operand_types,
                 ..
             } => match operand_types {
-                ComparableType::Bool => self.transpile_bool_equality(left, right),
-                ComparableType::String => self.transpile_string_equality(left, right),
-                ComparableType::Int => self.transpile_int_equality(left, right),
+                EquatableType::Bool => self.transpile_bool_equality(left, right),
+                EquatableType::String => self.transpile_string_equality(left, right),
+                EquatableType::Int => self.transpile_int_equality(left, right),
             },
         }
     }

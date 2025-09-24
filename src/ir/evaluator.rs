@@ -1,6 +1,6 @@
 use crate::hop::environment::Environment;
 use crate::ir::IrExpr;
-use crate::{common::escape_html, dop::r#type::ComparableType};
+use crate::{common::escape_html, dop::r#type::EquatableType};
 use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -129,7 +129,9 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
         }
         IrExpr::StringLiteral { value: s, .. } => Ok(Value::String(s.clone())),
         IrExpr::BooleanLiteral { value: b, .. } => Ok(Value::Bool(*b)),
-        IrExpr::FloatLiteral { value: f, .. } => Ok(Value::Number(serde_json::Number::from_f64(*f).unwrap())),
+        IrExpr::FloatLiteral { value: f, .. } => {
+            Ok(Value::Number(serde_json::Number::from_f64(*f).unwrap()))
+        }
         IrExpr::IntLiteral { value: i, .. } => Ok(Value::Number(serde_json::Number::from(*i))),
         IrExpr::ArrayLiteral { elements, .. } => {
             let mut array = Vec::new();
@@ -167,7 +169,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
         IrExpr::Equality {
             left,
             right,
-            operand_types: ComparableType::Bool,
+            operand_types: EquatableType::Bool,
             ..
         } => {
             let left_val = evaluate_expr(left, env)?;
@@ -179,7 +181,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
         IrExpr::Equality {
             left,
             right,
-            operand_types: ComparableType::String,
+            operand_types: EquatableType::String,
             ..
         } => {
             let left_val = evaluate_expr(left, env)?;
@@ -191,7 +193,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
         IrExpr::Equality {
             left,
             right,
-            operand_types: ComparableType::Int,
+            operand_types: EquatableType::Int,
             ..
         } => {
             let left_val = evaluate_expr(left, env)?;

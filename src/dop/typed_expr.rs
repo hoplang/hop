@@ -3,7 +3,7 @@ use std::fmt::{self, Display};
 use crate::dop::var_name::VarName;
 use pretty::BoxDoc;
 
-use super::{Type, r#type::ComparableType};
+use super::{Type, r#type::EquatableType};
 
 pub type SimpleTypedExpr = TypedExpr<()>;
 
@@ -31,10 +31,7 @@ pub enum TypedExpr<A> {
     BooleanLiteral { value: bool, annotation: A },
 
     /// A float literal expression, e.g. 2.5
-    FloatLiteral {
-        value: f64,
-        annotation: A,
-    },
+    FloatLiteral { value: f64, annotation: A },
 
     /// An integer literal expression, e.g. 42
     IntLiteral { value: i64, annotation: A },
@@ -69,7 +66,7 @@ pub enum TypedExpr<A> {
     Equality {
         left: Box<Self>,
         right: Box<Self>,
-        operand_types: ComparableType,
+        operand_types: EquatableType,
         annotation: A,
     },
 }

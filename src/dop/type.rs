@@ -3,8 +3,10 @@ use std::collections::BTreeMap;
 
 use pretty::BoxDoc;
 
+/// An EquatableType is a type where its values can be compared
+/// using `==` and `!=`.
 #[derive(Debug, Clone, PartialEq)]
-pub enum ComparableType {
+pub enum EquatableType {
     String,
     Bool,
     Int,
@@ -21,11 +23,11 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn as_comparable_type(&self) -> Option<ComparableType> {
+    pub fn as_equatable_type(&self) -> Option<EquatableType> {
         match self {
-            Type::Bool => Some(ComparableType::Bool),
-            Type::String => Some(ComparableType::String),
-            Type::Int => Some(ComparableType::Int),
+            Type::Bool => Some(EquatableType::Bool),
+            Type::String => Some(EquatableType::String),
+            Type::Int => Some(EquatableType::Int),
             Type::Object(_) | Type::Array(_) | Type::Float => None,
         }
     }
