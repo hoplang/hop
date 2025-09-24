@@ -10,6 +10,7 @@ pub type Expr = AnnotatedExpr<DocumentRange>;
 pub enum BinaryOp {
     Eq,
     NotEq,
+    LessThan,
     Plus,
 }
 
@@ -170,6 +171,7 @@ impl Display for BinaryOp {
         match self {
             BinaryOp::Eq => write!(f, "=="),
             BinaryOp::NotEq => write!(f, "!="),
+            BinaryOp::LessThan => write!(f, "<"),
             BinaryOp::Plus => write!(f, "+"),
         }
     }

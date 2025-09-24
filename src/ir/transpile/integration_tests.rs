@@ -624,4 +624,40 @@ mod tests {
 
         run_integration_test(test_case).expect("Integration test failed");
     }
+
+    #[test]
+    #[ignore]
+    fn test_less_than_comparison() {
+        let test_case = TestCase::new(
+            build_ir_auto("test", vec![], |t| {
+                t.if_stmt(t.less_than(t.int(3), t.int(5)), |t| {
+                    t.write("3 < 5");
+                });
+                t.if_stmt(t.less_than(t.int(10), t.int(2)), |t| {
+                    t.write("10 < 2");
+                });
+            }),
+            "3 < 5",
+        );
+
+        run_integration_test(test_case).expect("Integration test failed");
+    }
+
+    #[test]
+    #[ignore]
+    fn test_less_than_float_comparison() {
+        let test_case = TestCase::new(
+            build_ir_auto("test", vec![], |t| {
+                t.if_stmt(t.less_than(t.float(1.5), t.float(2.5)), |t| {
+                    t.write("1.5 < 2.5");
+                });
+                t.if_stmt(t.less_than(t.float(3.0), t.float(1.0)), |t| {
+                    t.write("3.0 < 1.0");
+                });
+            }),
+            "1.5 < 2.5",
+        );
+
+        run_integration_test(test_case).expect("Integration test failed");
+    }
 }

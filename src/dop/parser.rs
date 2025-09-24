@@ -331,12 +331,12 @@ impl Parser {
         }
     }
 
-    // equality = additive ( ("==" | "!=") additive )*
+    // equality = relational ( ("==" | "!=") relational )*
     fn parse_equality(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = self.parse_additive()?;
+        let mut expr = self.parse_relational()?;
         loop {
             if self.advance_if(Token::Eq).is_some() {
-                let right = self.parse_additive()?;
+                let right = self.parse_relational()?;
                 expr = AnnotatedExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
@@ -344,7 +344,7 @@ impl Parser {
                     right: Box::new(right),
                 };
             } else if self.advance_if(Token::NotEq).is_some() {
-                let right = self.parse_additive()?;
+                let right = self.parse_relational()?;
                 expr = AnnotatedExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
@@ -354,6 +354,21 @@ impl Parser {
             } else {
                 break;
             }
+        }
+        Ok(expr)
+    }
+
+    // relational = additive ( "<" additive )*
+    fn parse_relational(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.parse_additive()?;
+        while self.advance_if(Token::LessThan).is_some() {
+            let right = self.parse_additive()?;
+            expr = AnnotatedExpr::BinaryOp {
+                annotation: expr.range().clone().to(right.range().clone()),
+                left: Box::new(expr),
+                operator: BinaryOp::LessThan,
+                right: Box::new(right),
+            };
         }
         Ok(expr)
     }

@@ -70,7 +70,14 @@ impl IrTestBuilder {
         }
     }
 
-    pub fn num(&self, n: f64) -> IrExpr {
+    pub fn int(&self, n: i64) -> IrExpr {
+        TypedExpr::IntLiteral {
+            value: n,
+            annotation: self.next_expr_id(),
+        }
+    }
+
+    pub fn float(&self, n: f64) -> IrExpr {
         TypedExpr::FloatLiteral {
             value: n,
             annotation: self.next_expr_id(),
@@ -128,6 +135,27 @@ impl IrTestBuilder {
             },
             _ => panic!(
                 "Unsupported type for equality comparison: {:?}",
+                left.as_type()
+            ),
+        }
+    }
+
+    pub fn less_than(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        match (left.as_type(), right.as_type()) {
+            (Type::Int, Type::Int) => TypedExpr::LessThan {
+                left: Box::new(left),
+                right: Box::new(right),
+                operand_types: Type::Int,
+                annotation: self.next_expr_id(),
+            },
+            (Type::Float, Type::Float) => TypedExpr::LessThan {
+                left: Box::new(left),
+                right: Box::new(right),
+                operand_types: Type::Float,
+                annotation: self.next_expr_id(),
+            },
+            _ => panic!(
+                "Unsupported type for less than comparison: {:?}",
                 left.as_type()
             ),
         }
@@ -393,8 +421,12 @@ impl IrAutoBuilder {
         self.inner.str(s)
     }
 
-    pub fn num(&self, n: f64) -> IrExpr {
-        self.inner.num(n)
+    pub fn int(&self, n: i64) -> IrExpr {
+        self.inner.int(n)
+    }
+
+    pub fn float(&self, n: f64) -> IrExpr {
+        self.inner.float(n)
     }
 
     pub fn bool(&self, b: bool) -> IrExpr {
@@ -407,6 +439,10 @@ impl IrAutoBuilder {
 
     pub fn eq(&self, left: IrExpr, right: IrExpr) -> IrExpr {
         self.inner.eq(left, right)
+    }
+
+    pub fn less_than(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        self.inner.less_than(left, right)
     }
 
     pub fn not(&self, operand: IrExpr) -> IrExpr {

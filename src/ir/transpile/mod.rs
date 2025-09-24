@@ -101,6 +101,8 @@ pub trait ExpressionTranspiler {
     fn transpile_string_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_bool_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_int_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_float_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_not<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_json_encode<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_string_concat<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
@@ -154,6 +156,16 @@ pub trait ExpressionTranspiler {
                 EquatableType::Bool => self.transpile_bool_not_equals(left, right),
                 EquatableType::String => self.transpile_string_not_equals(left, right),
                 EquatableType::Int => self.transpile_int_not_equals(left, right),
+            },
+            IrExpr::LessThan {
+                left,
+                right,
+                operand_types,
+                ..
+            } => match operand_types {
+                Type::Int => self.transpile_int_less_than(left, right),
+                Type::Float => self.transpile_float_less_than(left, right),
+                _ => unreachable!("Type checker should prevent non-numeric types in LessThan"),
             },
         }
     }

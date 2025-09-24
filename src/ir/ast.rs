@@ -303,7 +303,10 @@ impl IrExpr {
             TypedExpr::JsonEncode { value, .. } => {
                 value.traverse(f);
             }
-            TypedExpr::Equals { left, right, .. } | TypedExpr::NotEquals { left, right, .. } | TypedExpr::StringConcat { left, right, .. } => {
+            TypedExpr::Equals { left, right, .. }
+            | TypedExpr::NotEquals { left, right, .. }
+            | TypedExpr::LessThan { left, right, .. }
+            | TypedExpr::StringConcat { left, right, .. } => {
                 left.traverse(f);
                 right.traverse(f);
             }
@@ -341,7 +344,10 @@ impl IrExpr {
             TypedExpr::JsonEncode { value, .. } => {
                 value.traverse_mut(f);
             }
-            TypedExpr::StringConcat { left, right, .. } => {
+            TypedExpr::StringConcat { left, right, .. }
+            | TypedExpr::Equals { left, right, .. }
+            | TypedExpr::NotEquals { left, right, .. }
+            | TypedExpr::LessThan { left, right, .. } => {
                 left.traverse_mut(f);
                 right.traverse_mut(f);
             }

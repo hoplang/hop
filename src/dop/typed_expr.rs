@@ -77,6 +77,14 @@ pub enum TypedExpr<A> {
         operand_types: EquatableType,
         annotation: A,
     },
+
+    /// Less than expression
+    LessThan {
+        left: Box<Self>,
+        right: Box<Self>,
+        operand_types: Type, // We'll use Type for now, can refine later
+        annotation: A,
+    },
 }
 
 impl<A> TypedExpr<A> {
@@ -102,7 +110,8 @@ impl<A> TypedExpr<A> {
             TypedExpr::BooleanLiteral { .. }
             | TypedExpr::Negation { .. }
             | TypedExpr::Equals { .. }
-            | TypedExpr::NotEquals { .. } => &BOOL_TYPE,
+            | TypedExpr::NotEquals { .. }
+            | TypedExpr::LessThan { .. } => &BOOL_TYPE,
         }
     }
 
@@ -120,7 +129,8 @@ impl<A> TypedExpr<A> {
             | TypedExpr::StringConcat { annotation, .. }
             | TypedExpr::Negation { annotation, .. }
             | TypedExpr::Equals { annotation, .. }
-            | TypedExpr::NotEquals { annotation, .. } => annotation,
+            | TypedExpr::NotEquals { annotation, .. }
+            | TypedExpr::LessThan { annotation, .. } => annotation,
         }
     }
 
@@ -205,6 +215,12 @@ impl<A> TypedExpr<A> {
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" != "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
+            TypedExpr::LessThan { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(left.to_doc())
+                .append(BoxDoc::text(" < "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
         }

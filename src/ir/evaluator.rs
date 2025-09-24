@@ -1,6 +1,6 @@
 use crate::hop::environment::Environment;
 use crate::ir::IrExpr;
-use crate::{common::escape_html, dop::r#type::EquatableType};
+use crate::{common::escape_html, dop::r#type::EquatableType, dop::Type};
 use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -237,6 +237,30 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             let left_int = left_val.as_i64().unwrap_or(0);
             let right_int = right_val.as_i64().unwrap_or(0);
             Ok(Value::Bool(left_int != right_int))
+        }
+        IrExpr::LessThan {
+            left,
+            right,
+            operand_types,
+            ..
+        } => {
+            let left_val = evaluate_expr(left, env)?;
+            let right_val = evaluate_expr(right, env)?;
+
+            let result = match operand_types {
+                Type::Int => {
+                    let left_int = left_val.as_i64().unwrap_or(0);
+                    let right_int = right_val.as_i64().unwrap_or(0);
+                    left_int < right_int
+                }
+                Type::Float => {
+                    let left_float = left_val.as_f64().unwrap_or(0.0);
+                    let right_float = right_val.as_f64().unwrap_or(0.0);
+                    left_float < right_float
+                }
+                _ => false, // This shouldn't happen if type checking is correct
+            };
+            Ok(Value::Bool(result))
         }
     }
 }

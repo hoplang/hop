@@ -162,6 +162,50 @@ pub fn typecheck_expr(
         }
         AnnotatedExpr::BinaryOp {
             left,
+            operator: BinaryOp::LessThan,
+            right,
+            ..
+        } => {
+            let typed_left = typecheck_expr(left, env, annotations)?;
+            let typed_right = typecheck_expr(right, env, annotations)?;
+            let left_type = typed_left.as_type().clone();
+            let right_type = typed_right.as_type().clone();
+
+            // LessThan only works on numeric types (Int and Float)
+            let is_numeric = |t: &Type| matches!(t, Type::Int | Type::Float);
+
+            if !is_numeric(&left_type) {
+                return Err(TypeError::TypeIsNotComparable {
+                    t: left_type.clone(),
+                    range: left.range().clone(),
+                });
+            }
+
+            if !is_numeric(&right_type) {
+                return Err(TypeError::TypeIsNotComparable {
+                    t: right_type.clone(),
+                    range: right.range().clone(),
+                });
+            }
+
+            // Both operands must be the same numeric type
+            if left_type != right_type {
+                return Err(TypeError::CannotCompareTypes {
+                    left: left_type.to_string(),
+                    right: right_type.to_string(),
+                    range: expr.range().clone(),
+                });
+            }
+
+            Ok(SimpleTypedExpr::LessThan {
+                left: Box::new(typed_left),
+                right: Box::new(typed_right),
+                operand_types: left_type.clone(),
+                annotation: (),
+            })
+        }
+        AnnotatedExpr::BinaryOp {
+            left,
             operator: BinaryOp::Plus,
             right,
             ..
