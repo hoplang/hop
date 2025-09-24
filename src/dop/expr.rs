@@ -9,6 +9,7 @@ pub type Expr = AnnotatedExpr<DocumentRange>;
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
     Eq,
+    NotEq,
     Plus,
 }
 
@@ -168,6 +169,7 @@ impl Display for BinaryOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             BinaryOp::Eq => write!(f, "=="),
+            BinaryOp::NotEq => write!(f, "!="),
             BinaryOp::Plus => write!(f, "+"),
         }
     }

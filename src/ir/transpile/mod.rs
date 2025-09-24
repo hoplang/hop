@@ -98,6 +98,9 @@ pub trait ExpressionTranspiler {
     fn transpile_string_equality<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_bool_equality<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_equality<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_string_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_bool_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_int_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_not<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_json_encode<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_string_concat<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
@@ -141,6 +144,16 @@ pub trait ExpressionTranspiler {
                 EquatableType::Bool => self.transpile_bool_equality(left, right),
                 EquatableType::String => self.transpile_string_equality(left, right),
                 EquatableType::Int => self.transpile_int_equality(left, right),
+            },
+            IrExpr::NotEquals {
+                left,
+                right,
+                operand_types,
+                ..
+            } => match operand_types {
+                EquatableType::Bool => self.transpile_bool_not_equals(left, right),
+                EquatableType::String => self.transpile_string_not_equals(left, right),
+                EquatableType::Int => self.transpile_int_not_equals(left, right),
             },
         }
     }

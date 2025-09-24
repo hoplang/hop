@@ -57,7 +57,10 @@ impl Iterator for Tokenizer {
                 ':' => Ok((Token::Colon, start)),
                 ',' => Ok((Token::Comma, start)),
                 '+' => Ok((Token::Plus, start)),
-                '!' => Ok((Token::Not, start)),
+                '!' => match self.iter.next_if(|s| s.ch() == '=') {
+                    Some(end) => Ok((Token::NotEq, start.to(end))),
+                    None => Ok((Token::Not, start)),
+                },
                 '=' => match self.iter.next_if(|s| s.ch() == '=') {
                     Some(end) => Ok((Token::Eq, start.to(end))),
                     None => Err(ParseError::ExpectedDoubleEqButGotSingleEq { range: start }),
@@ -367,6 +370,38 @@ mod tests {
                 token: ==
                 ( ) . ! ==
                         ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_not_equals() {
+        check(
+            "!=",
+            expect![[r#"
+                token: !=
+                !=
+                ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_not_equals_in_expression() {
+        check(
+            "x != y",
+            expect![[r#"
+                token: x
+                x != y
+                ^
+
+                token: !=
+                x != y
+                  ^^
+
+                token: y
+                x != y
+                     ^
             "#]],
         );
     }

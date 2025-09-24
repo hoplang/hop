@@ -331,17 +331,29 @@ impl Parser {
         }
     }
 
-    // equality = additive ( "==" additive )*
+    // equality = additive ( ("==" | "!=") additive )*
     fn parse_equality(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.parse_additive()?;
-        while self.advance_if(Token::Eq).is_some() {
-            let right = self.parse_additive()?;
-            expr = AnnotatedExpr::BinaryOp {
-                annotation: expr.range().clone().to(right.range().clone()),
-                left: Box::new(expr),
-                operator: BinaryOp::Eq,
-                right: Box::new(right),
-            };
+        loop {
+            if self.advance_if(Token::Eq).is_some() {
+                let right = self.parse_additive()?;
+                expr = AnnotatedExpr::BinaryOp {
+                    annotation: expr.range().clone().to(right.range().clone()),
+                    left: Box::new(expr),
+                    operator: BinaryOp::Eq,
+                    right: Box::new(right),
+                };
+            } else if self.advance_if(Token::NotEq).is_some() {
+                let right = self.parse_additive()?;
+                expr = AnnotatedExpr::BinaryOp {
+                    annotation: expr.range().clone().to(right.range().clone()),
+                    left: Box::new(expr),
+                    operator: BinaryOp::NotEq,
+                    right: Box::new(right),
+                };
+            } else {
+                break;
+            }
         }
         Ok(expr)
     }
@@ -1417,6 +1429,46 @@ mod tests {
             r#"user.firstName + " " + user.lastName"#,
             expect![[r#"
                 ((user.firstName + " ") + user.lastName)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_not_equals_simple() {
+        check_parse_expr(
+            "x != y",
+            expect![[r#"
+                (x != y)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_not_equals_string() {
+        check_parse_expr(
+            r#""hello" != "world""#,
+            expect![[r#"
+                ("hello" != "world")
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_not_equals_chained() {
+        check_parse_expr(
+            "a != b != c",
+            expect![[r#"
+                ((a != b) != c)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_mixed_equals_not_equals() {
+        check_parse_expr(
+            "a == b != c",
+            expect![[r#"
+                ((a == b) != c)
             "#]],
         );
     }

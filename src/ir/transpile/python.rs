@@ -464,6 +464,30 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(BoxDoc::text(")"))
     }
 
+    fn transpile_string_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("(")
+            .append(self.transpile_expr(left))
+            .append(BoxDoc::text(" != "))
+            .append(self.transpile_expr(right))
+            .append(BoxDoc::text(")"))
+    }
+
+    fn transpile_bool_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("(")
+            .append(self.transpile_expr(left))
+            .append(BoxDoc::text(" != "))
+            .append(self.transpile_expr(right))
+            .append(BoxDoc::text(")"))
+    }
+
+    fn transpile_int_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("(")
+            .append(self.transpile_expr(left))
+            .append(BoxDoc::text(" != "))
+            .append(self.transpile_expr(right))
+            .append(BoxDoc::text(")"))
+    }
+
     fn transpile_not<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("not (")
             .append(self.transpile_expr(operand))

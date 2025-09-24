@@ -400,6 +400,17 @@ impl Compiler {
                 operand_types,
                 annotation: expr_id,
             },
+            SimpleTypedExpr::NotEquals {
+                left,
+                right,
+                operand_types,
+                ..
+            } => TypedExpr::NotEquals {
+                left: Box::new(self.compile_expr(*left)),
+                right: Box::new(self.compile_expr(*right)),
+                operand_types,
+                annotation: expr_id,
+            },
         }
     }
 }

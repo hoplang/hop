@@ -122,6 +122,46 @@ pub fn typecheck_expr(
         }
         AnnotatedExpr::BinaryOp {
             left,
+            operator: BinaryOp::NotEq,
+            right,
+            ..
+        } => {
+            let typed_left = typecheck_expr(left, env, annotations)?;
+            let typed_right = typecheck_expr(right, env, annotations)?;
+            let left_type = typed_left.as_type();
+            let right_type = typed_right.as_type();
+
+            let Some(left_comparable) = left_type.as_equatable_type() else {
+                return Err(TypeError::TypeIsNotComparable {
+                    t: left_type.clone(),
+                    range: left.range().clone(),
+                });
+            };
+
+            let Some(right_comparable) = right_type.as_equatable_type() else {
+                return Err(TypeError::TypeIsNotComparable {
+                    t: left_type.clone(),
+                    range: left.range().clone(),
+                });
+            };
+
+            if left_comparable != right_comparable {
+                return Err(TypeError::CannotCompareTypes {
+                    left: left_type.to_string(),
+                    right: right_type.to_string(),
+                    range: expr.range().clone(),
+                });
+            }
+
+            Ok(SimpleTypedExpr::NotEquals {
+                left: Box::new(typed_left),
+                right: Box::new(typed_right),
+                operand_types: left_comparable,
+                annotation: (),
+            })
+        }
+        AnnotatedExpr::BinaryOp {
+            left,
             operator: BinaryOp::Plus,
             right,
             ..
