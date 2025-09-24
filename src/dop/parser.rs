@@ -359,7 +359,7 @@ impl Parser {
         Ok(expr)
     }
 
-    // relational = additive ( ("<" | ">") additive )*
+    // relational = additive ( ("<" | ">" | "<=") additive )*
     fn parse_relational(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.parse_additive()?;
         loop {
@@ -377,6 +377,14 @@ impl Parser {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: BinaryOp::GreaterThan,
+                    right: Box::new(right),
+                };
+            } else if self.advance_if(Token::LessThanOrEqual).is_some() {
+                let right = self.parse_additive()?;
+                expr = AnnotatedExpr::BinaryOp {
+                    annotation: expr.range().clone().to(right.range().clone()),
+                    left: Box::new(expr),
+                    operator: BinaryOp::LessThanOrEqual,
                     right: Box::new(right),
                 };
             } else {
@@ -881,6 +889,26 @@ mod tests {
             "user.name == admin.name",
             expect![[r#"
                 (user.name == admin.name)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_less_than_or_equal() {
+        check_parse_expr(
+            "x <= y",
+            expect![[r#"
+                (x <= y)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_less_than_or_equal_chained() {
+        check_parse_expr(
+            "a <= b <= c",
+            expect![[r#"
+                ((a <= b) <= c)
             "#]],
         );
     }

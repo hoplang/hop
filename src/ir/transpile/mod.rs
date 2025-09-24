@@ -107,6 +107,8 @@ pub trait ExpressionTranspiler {
     fn transpile_float_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_greater_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_greater_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_int_less_than_or_equal<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_float_less_than_or_equal<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_not<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_json_encode<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_string_concat<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
@@ -180,6 +182,15 @@ pub trait ExpressionTranspiler {
             } => match operand_types {
                 ComparableType::Int => self.transpile_int_greater_than(left, right),
                 ComparableType::Float => self.transpile_float_greater_than(left, right),
+            },
+            IrExpr::LessThanOrEqual {
+                left,
+                right,
+                operand_types,
+                ..
+            } => match operand_types {
+                ComparableType::Int => self.transpile_int_less_than_or_equal(left, right),
+                ComparableType::Float => self.transpile_float_less_than_or_equal(left, right),
             },
         }
     }

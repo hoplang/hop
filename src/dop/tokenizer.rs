@@ -61,7 +61,10 @@ impl Iterator for Tokenizer {
                     Some(end) => Ok((Token::NotEq, start.to(end))),
                     None => Ok((Token::Not, start)),
                 },
-                '<' => Ok((Token::LessThan, start)),
+                '<' => match self.iter.next_if(|s| s.ch() == '=') {
+                    Some(end) => Ok((Token::LessThanOrEqual, start.to(end))),
+                    None => Ok((Token::LessThan, start)),
+                },
                 '>' => Ok((Token::GreaterThan, start)),
                 '=' => match self.iter.next_if(|s| s.ch() == '=') {
                     Some(end) => Ok((Token::Eq, start.to(end))),
@@ -412,6 +415,38 @@ mod tests {
 
                 token: y
                 x != y
+                     ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_less_than_or_equal() {
+        check(
+            "<=",
+            expect![[r#"
+                token: <=
+                <=
+                ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_less_than_or_equal_in_expression() {
+        check(
+            "x <= y",
+            expect![[r#"
+                token: x
+                x <= y
+                ^
+
+                token: <=
+                x <= y
+                  ^^
+
+                token: y
+                x <= y
                      ^
             "#]],
         );
