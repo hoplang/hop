@@ -1,5 +1,6 @@
 use super::Type;
 use super::expr::{AnnotatedExpr, BinaryOp, Expr};
+use super::r#type::NumericType;
 use super::type_error::TypeError;
 use super::typed_expr::SimpleTypedExpr;
 use crate::document::document_cursor::Ranged as _;
@@ -397,26 +398,44 @@ pub fn typecheck_expr(
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            // Plus operator only works for string concatenation
-            if !left_type.is_subtype(&Type::String) {
-                return Err(TypeError::PlusRequiresStrings {
-                    found: left_type.to_string(),
-                    range: left.range().clone(),
-                });
-            }
+            // Plus operator works for:
+            // 1. String concatenation (String + String)
+            // 2. Integer addition (Int + Int)
+            // 3. Float addition (Float + Float)
 
-            if !right_type.is_subtype(&Type::String) {
-                return Err(TypeError::PlusRequiresStrings {
-                    found: right_type.to_string(),
-                    range: right.range().clone(),
-                });
+            match (left_type, right_type) {
+                (Type::String, Type::String) => {
+                    Ok(SimpleTypedExpr::StringConcat {
+                        left: Box::new(typed_left),
+                        right: Box::new(typed_right),
+                        annotation: (),
+                    })
+                }
+                (Type::Int, Type::Int) => {
+                    Ok(SimpleTypedExpr::NumericAdd {
+                        left: Box::new(typed_left),
+                        right: Box::new(typed_right),
+                        operand_types: NumericType::Int,
+                        annotation: (),
+                    })
+                }
+                (Type::Float, Type::Float) => {
+                    Ok(SimpleTypedExpr::NumericAdd {
+                        left: Box::new(typed_left),
+                        right: Box::new(typed_right),
+                        operand_types: NumericType::Float,
+                        annotation: (),
+                    })
+                }
+                _ => {
+                    // Incompatible types for addition
+                    Err(TypeError::IncompatibleTypesForAddition {
+                        left_type: left_type.to_string(),
+                        right_type: right_type.to_string(),
+                        range: left.range().clone().to(right.range().clone()),
+                    })
+                }
             }
-
-            Ok(SimpleTypedExpr::StringConcat {
-                left: Box::new(typed_left),
-                right: Box::new(typed_right),
-                annotation: (),
-            })
         }
         AnnotatedExpr::Negation { operand, .. } => {
             let typed_operand = typecheck_expr(operand, env, annotations)?;
@@ -994,9 +1013,9 @@ mod tests {
             "",
             r#"42 + "hello""#,
             expect![[r#"
-                error: Plus operator can only be used with strings, found int
+                error: Cannot add values of incompatible types: int + string
                 42 + "hello"
-                ^^
+                ^^^^^^^^^^^^
             "#]],
         );
     }
@@ -1007,9 +1026,9 @@ mod tests {
             "",
             r#""hello" + true"#,
             expect![[r#"
-                error: Plus operator can only be used with strings, found boolean
+                error: Cannot add values of incompatible types: string + boolean
                 "hello" + true
-                          ^^^^
+                ^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -1019,11 +1038,7 @@ mod tests {
         check(
             "",
             r#"42 + 58"#,
-            expect![[r#"
-                error: Plus operator can only be used with strings, found int
-                42 + 58
-                ^^
-            "#]],
+            expect!["int"],
         );
     }
 
@@ -1207,6 +1222,93 @@ mod tests {
         check(
             "a: boolean, b: boolean, c: boolean, d: boolean",
             "a || b && c || d",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_int_addition() {
+        check("x: int, y: int", "x + y", expect!["int"]);
+    }
+
+    #[test]
+    fn test_typecheck_float_addition() {
+        check("x: float, y: float", "x + y", expect!["float"]);
+    }
+
+    #[test]
+    fn test_typecheck_string_addition() {
+        check("s1: string, s2: string", "s1 + s2", expect!["string"]);
+    }
+
+    #[test]
+    fn test_typecheck_int_literal_addition() {
+        check("", "42 + 17", expect!["int"]);
+    }
+
+    #[test]
+    fn test_typecheck_float_literal_addition() {
+        check("", "3.14 + 2.71", expect!["float"]);
+    }
+
+    #[test]
+    fn test_typecheck_string_literal_concatenation() {
+        check("", r#""hello" + " world""#, expect!["string"]);
+    }
+
+    #[test]
+    fn test_typecheck_addition_error_int_plus_float() {
+        check(
+            "x: int, y: float",
+            "x + y",
+            expect![[r#"
+                error: Cannot add values of incompatible types: int + float
+                x + y
+                ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_addition_error_string_plus_int() {
+        check(
+            "name: string, count: int",
+            "name + count",
+            expect![[r#"
+                error: Cannot add values of incompatible types: string + int
+                name + count
+                ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_addition_error_boolean_plus_int() {
+        check(
+            "flag: boolean, count: int",
+            "flag + count",
+            expect![[r#"
+                error: Cannot add values of incompatible types: boolean + int
+                flag + count
+                ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_addition_with_property_access() {
+        check(
+            "user: {x: int, y: int}",
+            "user.x + user.y",
+            expect!["int"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_mixed_addition_and_comparison() {
+        check(
+            "a: int, b: int, c: int",
+            "a + b > c",
             expect!["boolean"],
         );
     }

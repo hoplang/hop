@@ -45,6 +45,13 @@ pub enum TypeError {
 
     #[error("Logical OR operator can only be applied to boolean values")]
     LogicalOrRequiresBoolean { range: DocumentRange },
+
+    #[error("Cannot add values of incompatible types: {left_type} + {right_type}")]
+    IncompatibleTypesForAddition {
+        left_type: String,
+        right_type: String,
+        range: DocumentRange,
+    },
 }
 
 impl Ranged for TypeError {
@@ -59,7 +66,8 @@ impl Ranged for TypeError {
             | TypeError::TypeIsNotComparable { range, .. }
             | TypeError::PlusRequiresStrings { range, .. }
             | TypeError::LogicalAndRequiresBoolean { range, .. }
-            | TypeError::LogicalOrRequiresBoolean { range, .. } => range,
+            | TypeError::LogicalOrRequiresBoolean { range, .. }
+            | TypeError::IncompatibleTypesForAddition { range, .. } => range,
         }
     }
 }

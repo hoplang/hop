@@ -10,7 +10,7 @@ pub use js::{JsTranspiler, LanguageMode};
 use pretty::BoxDoc;
 pub use python::PythonTranspiler;
 
-use crate::dop::r#type::{EquatableType, ComparableType, Type};
+use crate::dop::r#type::{EquatableType, ComparableType, NumericType, Type};
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use std::collections::BTreeMap;
 
@@ -116,6 +116,8 @@ pub trait ExpressionTranspiler {
     fn transpile_string_concat<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_logical_and<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_logical_or<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_int_add<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_float_add<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_expr<'a>(&self, expr: &'a IrExpr) -> BoxDoc<'a> {
         match expr {
             IrExpr::Var { value, .. } => self.transpile_var(value.as_str()),
@@ -207,6 +209,10 @@ pub trait ExpressionTranspiler {
             },
             IrExpr::LogicalAnd { left, right, .. } => self.transpile_logical_and(left, right),
             IrExpr::LogicalOr { left, right, .. } => self.transpile_logical_or(left, right),
+            IrExpr::NumericAdd { left, right, operand_types, .. } => match operand_types {
+                NumericType::Int => self.transpile_int_add(left, right),
+                NumericType::Float => self.transpile_float_add(left, right),
+            },
         }
     }
 }

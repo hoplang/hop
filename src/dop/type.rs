@@ -22,6 +22,15 @@ pub enum ComparableType {
     Float,
 }
 
+/// A NumericType is a type where its values can be used
+/// in arithmetic operations like `+`.
+/// Both integer and floating-point types support arithmetic.
+#[derive(Debug, Clone, PartialEq)]
+pub enum NumericType {
+    Int,
+    Float,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     String,
@@ -47,6 +56,14 @@ impl Type {
         match self {
             Type::Int => Some(ComparableType::Int),
             Type::Float => Some(ComparableType::Float),
+            Type::Bool | Type::String | Type::Object(_) | Type::Array(_) => None,
+        }
+    }
+
+    pub fn as_numeric_type(&self) -> Option<NumericType> {
+        match self {
+            Type::Int => Some(NumericType::Int),
+            Type::Float => Some(NumericType::Float),
             Type::Bool | Type::String | Type::Object(_) | Type::Array(_) => None,
         }
     }

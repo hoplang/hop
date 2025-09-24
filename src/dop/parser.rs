@@ -1724,4 +1724,34 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn test_parse_expr_addition_precedence() {
+        check_parse_expr(
+            "x + y == z",
+            expect![[r#"
+                ((x + y) == z)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_addition_with_logical_and() {
+        check_parse_expr(
+            "x + y > z && enabled",
+            expect![[r#"
+                (((x + y) > z) && enabled)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_chained_addition() {
+        check_parse_expr(
+            "x + y + z",
+            expect![[r#"
+                ((x + y) + z)
+            "#]],
+        );
+    }
 }

@@ -3,7 +3,7 @@ use std::fmt::{self, Display};
 use crate::dop::var_name::VarName;
 use pretty::BoxDoc;
 
-use super::{Type, r#type::{EquatableType, ComparableType}};
+use super::{Type, r#type::{EquatableType, ComparableType, NumericType}};
 
 pub type SimpleTypedExpr = TypedExpr<()>;
 
@@ -56,6 +56,14 @@ pub enum TypedExpr<A> {
     StringConcat {
         left: Box<Self>,
         right: Box<Self>,
+        annotation: A,
+    },
+
+    /// Numeric addition expression for adding numeric values
+    NumericAdd {
+        left: Box<Self>,
+        right: Box<Self>,
+        operand_types: NumericType,
         annotation: A,
     },
 
@@ -145,6 +153,11 @@ impl<A> TypedExpr<A> {
             | TypedExpr::StringConcat { .. }
             | TypedExpr::StringLiteral { .. } => &STRING_TYPE,
 
+            TypedExpr::NumericAdd { operand_types, .. } => match operand_types {
+                NumericType::Int => &INT_TYPE,
+                NumericType::Float => &FLOAT_TYPE,
+            },
+
             TypedExpr::BooleanLiteral { .. }
             | TypedExpr::Negation { .. }
             | TypedExpr::Equals { .. }
@@ -170,6 +183,7 @@ impl<A> TypedExpr<A> {
             | TypedExpr::ObjectLiteral { annotation, .. }
             | TypedExpr::JsonEncode { annotation, .. }
             | TypedExpr::StringConcat { annotation, .. }
+            | TypedExpr::NumericAdd { annotation, .. }
             | TypedExpr::Negation { annotation, .. }
             | TypedExpr::Equals { annotation, .. }
             | TypedExpr::NotEquals { annotation, .. }
@@ -243,6 +257,12 @@ impl<A> TypedExpr<A> {
                 .append(value.to_doc())
                 .append(BoxDoc::text(")")),
             TypedExpr::StringConcat { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(left.to_doc())
+                .append(BoxDoc::text(" + "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
+            TypedExpr::NumericAdd { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" + "))

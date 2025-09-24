@@ -310,6 +310,7 @@ impl IrExpr {
             | TypedExpr::LessThanOrEqual { left, right, .. }
             | TypedExpr::GreaterThanOrEqual { left, right, .. }
             | TypedExpr::StringConcat { left, right, .. }
+            | TypedExpr::NumericAdd { left, right, .. }
             | TypedExpr::LogicalAnd { left, right, .. }
             | TypedExpr::LogicalOr { left, right, .. } => {
                 left.traverse(f);
@@ -350,6 +351,7 @@ impl IrExpr {
                 value.traverse_mut(f);
             }
             TypedExpr::StringConcat { left, right, .. }
+            | TypedExpr::NumericAdd { left, right, .. }
             | TypedExpr::Equals { left, right, .. }
             | TypedExpr::NotEquals { left, right, .. }
             | TypedExpr::LessThan { left, right, .. }
