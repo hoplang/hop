@@ -10,7 +10,7 @@ pub use js::{JsTranspiler, LanguageMode};
 use pretty::BoxDoc;
 pub use python::PythonTranspiler;
 
-use crate::dop::r#type::{EquatableType, Type};
+use crate::dop::r#type::{EquatableType, ComparableType, Type};
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use std::collections::BTreeMap;
 
@@ -163,9 +163,8 @@ pub trait ExpressionTranspiler {
                 operand_types,
                 ..
             } => match operand_types {
-                Type::Int => self.transpile_int_less_than(left, right),
-                Type::Float => self.transpile_float_less_than(left, right),
-                _ => unreachable!("Type checker should prevent non-numeric types in LessThan"),
+                ComparableType::Int => self.transpile_int_less_than(left, right),
+                ComparableType::Float => self.transpile_float_less_than(left, right),
             },
         }
     }

@@ -3,7 +3,7 @@ use std::fmt::{self, Display};
 use crate::dop::var_name::VarName;
 use pretty::BoxDoc;
 
-use super::{Type, r#type::EquatableType};
+use super::{Type, r#type::{EquatableType, ComparableType}};
 
 pub type SimpleTypedExpr = TypedExpr<()>;
 
@@ -82,7 +82,7 @@ pub enum TypedExpr<A> {
     LessThan {
         left: Box<Self>,
         right: Box<Self>,
-        operand_types: Type, // We'll use Type for now, can refine later
+        operand_types: ComparableType,
         annotation: A,
     },
 }

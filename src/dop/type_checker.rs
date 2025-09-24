@@ -168,28 +168,25 @@ pub fn typecheck_expr(
         } => {
             let typed_left = typecheck_expr(left, env, annotations)?;
             let typed_right = typecheck_expr(right, env, annotations)?;
-            let left_type = typed_left.as_type().clone();
-            let right_type = typed_right.as_type().clone();
+            let left_type = typed_left.as_type();
+            let right_type = typed_right.as_type();
 
-            // LessThan only works on numeric types (Int and Float)
-            let is_numeric = |t: &Type| matches!(t, Type::Int | Type::Float);
-
-            if !is_numeric(&left_type) {
-                return Err(TypeError::TypeIsNotComparable {
+            let left_comparable = left_type.as_comparable_type().ok_or_else(|| {
+                TypeError::TypeIsNotComparable {
                     t: left_type.clone(),
                     range: left.range().clone(),
-                });
-            }
+                }
+            })?;
 
-            if !is_numeric(&right_type) {
-                return Err(TypeError::TypeIsNotComparable {
+            let right_comparable = right_type.as_comparable_type().ok_or_else(|| {
+                TypeError::TypeIsNotComparable {
                     t: right_type.clone(),
                     range: right.range().clone(),
-                });
-            }
+                }
+            })?;
 
-            // Both operands must be the same numeric type
-            if left_type != right_type {
+            // Both operands must be the same comparable type
+            if left_comparable != right_comparable {
                 return Err(TypeError::CannotCompareTypes {
                     left: left_type.to_string(),
                     right: right_type.to_string(),
@@ -200,7 +197,7 @@ pub fn typecheck_expr(
             Ok(SimpleTypedExpr::LessThan {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
-                operand_types: left_type.clone(),
+                operand_types: left_comparable,
                 annotation: (),
             })
         }

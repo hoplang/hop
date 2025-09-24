@@ -12,6 +12,15 @@ pub enum EquatableType {
     Int,
 }
 
+/// A ComparableType is a type where its values can be ordered
+/// using comparison operations like `<`, `>`, `<=`, `>=`.
+/// Only numeric types support ordering comparisons.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ComparableType {
+    Int,
+    Float,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     String,
@@ -29,6 +38,14 @@ impl Type {
             Type::String => Some(EquatableType::String),
             Type::Int => Some(EquatableType::Int),
             Type::Object(_) | Type::Array(_) | Type::Float => None,
+        }
+    }
+
+    pub fn as_comparable_type(&self) -> Option<ComparableType> {
+        match self {
+            Type::Int => Some(ComparableType::Int),
+            Type::Float => Some(ComparableType::Float),
+            Type::Bool | Type::String | Type::Object(_) | Type::Array(_) => None,
         }
     }
     /// Check if `subtype` is a subtype of `supertype`
