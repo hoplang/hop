@@ -258,7 +258,6 @@ fn typecheck_python(code: &str) -> Result<(), String> {
         .arg("-m")
         .arg("mypy")
         .arg("--strict")
-        .arg("--allow-any-generics")
         .arg("--no-error-summary")
         .arg(&module_file)
         .output()
