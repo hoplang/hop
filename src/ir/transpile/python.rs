@@ -158,13 +158,13 @@ impl StatementTranspiler for PythonTranspiler {
 
     fn transpile_write_expr<'a>(&self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a> {
         if escape {
-            BoxDoc::text("output.append(html_escape(str(")
-                .append(self.transpile_expr(expr))
-                .append(BoxDoc::text(")))"))
-        } else {
-            BoxDoc::text("output.append(str(")
+            BoxDoc::text("output.append(html_escape(")
                 .append(self.transpile_expr(expr))
                 .append(BoxDoc::text("))"))
+        } else {
+            BoxDoc::text("output.append(")
+                .append(self.transpile_expr(expr))
+                .append(BoxDoc::text(")"))
         }
     }
 
@@ -429,9 +429,9 @@ mod tests {
                 def test_greeting_comp(name: str, message: str) -> str:
                     output = []
                     output.append("<h1>Hello ")
-                    output.append(html_escape(str(name)))
+                    output.append(html_escape(name))
                     output.append(", ")
-                    output.append(html_escape(str(message)))
+                    output.append(html_escape(message))
                     output.append("</h1>\n")
                     return ''.join(output)
             "#]],
@@ -503,7 +503,7 @@ mod tests {
                     output = []
                     for item in items:
                         output.append("<li>")
-                        output.append(html_escape(str(item)))
+                        output.append(html_escape(item))
                         output.append("</li>\n")
                     return ''.join(output)
             "#]],
@@ -539,7 +539,7 @@ mod tests {
                     output = []
                     greeting = "Hello from Python!"
                     output.append("<p>")
-                    output.append(html_escape(str(greeting)))
+                    output.append(html_escape(greeting))
                     output.append("</p>\n")
                     return ''.join(output)
             "#]],
@@ -585,7 +585,7 @@ mod tests {
                     output = []
                     output.append("<script>\n")
                     output.append("const data = ")
-                    output.append(str(json.dumps(data, separators=(',', ':'))))
+                    output.append(json.dumps(data, separators=(',', ':')))
                     output.append(";\n")
                     output.append("</script>\n")
                     return ''.join(output)
