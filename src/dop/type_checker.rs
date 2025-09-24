@@ -116,6 +116,38 @@ pub fn typecheck_expr(
                 annotation: (),
             })
         }
+        AnnotatedExpr::BinaryOp {
+            left,
+            operator: BinaryOp::Plus,
+            right,
+            ..
+        } => {
+            let typed_left = typecheck_expr(left, env, annotations)?;
+            let typed_right = typecheck_expr(right, env, annotations)?;
+            let left_type = typed_left.as_type();
+            let right_type = typed_right.as_type();
+
+            // Plus operator only works for string concatenation
+            if !left_type.is_subtype(&Type::String) {
+                return Err(TypeError::PlusRequiresStrings {
+                    found: left_type.to_string(),
+                    range: left.range().clone(),
+                });
+            }
+
+            if !right_type.is_subtype(&Type::String) {
+                return Err(TypeError::PlusRequiresStrings {
+                    found: right_type.to_string(),
+                    range: right.range().clone(),
+                });
+            }
+
+            Ok(SimpleTypedExpr::StringConcat {
+                left: Box::new(typed_left),
+                right: Box::new(typed_right),
+                annotation: (),
+            })
+        }
         AnnotatedExpr::Negation { operand, .. } => {
             let typed_operand = typecheck_expr(operand, env, annotations)?;
             let operand_type = typed_operand.as_type();
@@ -595,6 +627,90 @@ mod tests {
             }
         "#},
             expect!["{name: string}"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_string_concatenation() {
+        check(
+            "",
+            r#""hello" + "world""#,
+            expect!["string"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_string_concatenation_multiple() {
+        check(
+            "",
+            r#""hello" + " " + "world""#,
+            expect!["string"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_string_concatenation_with_variables() {
+        check(
+            "greeting: string, name: string",
+            r#"greeting + " " + name"#,
+            expect!["string"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_string_concatenation_error_left_number() {
+        check(
+            "",
+            r#"42 + "hello""#,
+            expect![[r#"
+                error: Plus operator can only be used with strings, found number
+                42 + "hello"
+                ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_string_concatenation_error_right_boolean() {
+        check(
+            "",
+            r#""hello" + true"#,
+            expect![[r#"
+                error: Plus operator can only be used with strings, found boolean
+                "hello" + true
+                          ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_string_concatenation_error_both_numbers() {
+        check(
+            "",
+            r#"42 + 58"#,
+            expect![[r#"
+                error: Plus operator can only be used with strings, found number
+                42 + 58
+                ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_string_concatenation_with_property_access() {
+        check(
+            "user: {firstName: string, lastName: string}",
+            r#"user.firstName + " " + user.lastName"#,
+            expect!["string"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_string_concatenation_result_comparison() {
+        check(
+            "",
+            r#""a" + "b" == "ab""#,
+            expect!["boolean"],
         );
     }
 }

@@ -36,6 +36,9 @@ pub enum TypeError {
 
     #[error("Type {t} is not comparable")]
     TypeIsNotComparable { t: Type, range: DocumentRange },
+
+    #[error("Plus operator can only be used with strings, found {found}")]
+    PlusRequiresStrings { found: String, range: DocumentRange },
 }
 
 impl Ranged for TypeError {
@@ -47,7 +50,8 @@ impl Ranged for TypeError {
             | TypeError::CannotCompareTypes { range, .. }
             | TypeError::NegationRequiresBoolean { range, .. }
             | TypeError::ArrayTypeMismatch { range, .. }
-            | TypeError::TypeIsNotComparable { range, .. } => range,
+            | TypeError::TypeIsNotComparable { range, .. }
+            | TypeError::PlusRequiresStrings { range, .. } => range,
         }
     }
 }

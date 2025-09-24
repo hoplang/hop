@@ -56,6 +56,7 @@ impl Iterator for Tokenizer {
                 '}' => Ok((Token::RightBrace, start)),
                 ':' => Ok((Token::Colon, start)),
                 ',' => Ok((Token::Comma, start)),
+                '+' => Ok((Token::Plus, start)),
                 '!' => Ok((Token::Not, start)),
                 '=' => match self.iter.next_if(|s| s.ch() == '=') {
                     Some(end) => Ok((Token::Equal, start.to(end))),

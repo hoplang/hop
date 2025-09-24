@@ -331,15 +331,30 @@ impl Parser {
         }
     }
 
-    // equality = unary ( "==" unary )*
+    // equality = additive ( "==" additive )*
     fn parse_equality(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = self.parse_unary()?;
+        let mut expr = self.parse_additive()?;
         while self.advance_if(Token::Equal).is_some() {
-            let right = self.parse_unary()?;
+            let right = self.parse_additive()?;
             expr = AnnotatedExpr::BinaryOp {
                 annotation: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
                 operator: BinaryOp::Eq,
+                right: Box::new(right),
+            };
+        }
+        Ok(expr)
+    }
+
+    // additive = unary ( "+" unary )*
+    fn parse_additive(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.parse_unary()?;
+        while self.advance_if(Token::Plus).is_some() {
+            let right = self.parse_unary()?;
+            expr = AnnotatedExpr::BinaryOp {
+                annotation: expr.range().clone().to(right.range().clone()),
+                left: Box::new(expr),
+                operator: BinaryOp::Plus,
                 right: Box::new(right),
             };
         }
@@ -1338,6 +1353,56 @@ mod tests {
             "{k:1,}",
             expect![[r#"
                 {k: 1}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_string_concatenation() {
+        check_parse_expr(
+            r#""hello" + "world""#,
+            expect![[r#"
+                ("hello" + "world")
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_string_concatenation_multiple() {
+        check_parse_expr(
+            r#""hello" + " " + "world""#,
+            expect![[r#"
+                (("hello" + " ") + "world")
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_string_concatenation_with_variables() {
+        check_parse_expr(
+            r#"greeting + " " + name"#,
+            expect![[r#"
+                ((greeting + " ") + name)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_string_concatenation_precedence() {
+        check_parse_expr(
+            r#""a" + "b" == "ab""#,
+            expect![[r#"
+                (("a" + "b") == "ab")
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_string_concatenation_with_property_access() {
+        check_parse_expr(
+            r#"user.firstName + " " + user.lastName"#,
+            expect![[r#"
+                ((user.firstName + " ") + user.lastName)
             "#]],
         );
     }
