@@ -72,7 +72,7 @@ impl IrTestBuilder {
 
     pub fn num(&self, n: f64) -> IrExpr {
         TypedExpr::FloatLiteral {
-            value: serde_json::Number::from_f64(n).unwrap_or_else(|| serde_json::Number::from(0)),
+            value: n,
             annotation: self.next_expr_id(),
         }
     }

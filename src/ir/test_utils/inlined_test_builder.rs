@@ -66,7 +66,7 @@ impl InlinedTestBuilder {
 
     pub fn num_expr(&self, n: f64) -> SimpleTypedExpr {
         SimpleTypedExpr::FloatLiteral {
-            value: serde_json::Number::from_f64(n).unwrap_or_else(|| serde_json::Number::from(0)),
+            value: n,
             annotation: (),
         }
     }

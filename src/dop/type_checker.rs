@@ -45,7 +45,7 @@ pub fn typecheck_expr(
             annotation: (),
         }),
         AnnotatedExpr::FloatLiteral { value, .. } => Ok(SimpleTypedExpr::FloatLiteral {
-            value: value.clone(),
+            value: *value,
             annotation: (),
         }),
         AnnotatedExpr::PropertyAccess {

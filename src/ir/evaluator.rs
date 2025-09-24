@@ -129,7 +129,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
         }
         IrExpr::StringLiteral { value: s, .. } => Ok(Value::String(s.clone())),
         IrExpr::BooleanLiteral { value: b, .. } => Ok(Value::Bool(*b)),
-        IrExpr::FloatLiteral { value: n, .. } => Ok(Value::Number(n.clone())),
+        IrExpr::FloatLiteral { value: f, .. } => Ok(Value::Number(serde_json::Number::from_f64(*f).unwrap())),
         IrExpr::IntLiteral { value: i, .. } => Ok(Value::Number(serde_json::Number::from(*i))),
         IrExpr::ArrayLiteral { elements, .. } => {
             let mut array = Vec::new();

@@ -32,7 +32,7 @@ pub enum TypedExpr<A> {
 
     /// A float literal expression, e.g. 2.5
     FloatLiteral {
-        value: serde_json::Number,
+        value: f64,
         annotation: A,
     },
 

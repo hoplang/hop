@@ -296,8 +296,8 @@ impl ExpressionTranspiler for JsTranspiler {
         }
     }
 
-    fn transpile_number_literal<'a>(&self, value: &'a serde_json::Number) -> BoxDoc<'a> {
-        BoxDoc::as_string(value.to_string())
+    fn transpile_float_literal<'a>(&self, value: f64) -> BoxDoc<'a> {
+        BoxDoc::as_string(format!("{}", value))
     }
 
     fn transpile_int_literal<'a>(&self, value: i64) -> BoxDoc<'a> {

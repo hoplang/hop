@@ -96,17 +96,27 @@ impl Iterator for Tokenizer {
                 ch if ch.is_ascii_digit() => {
                     let mut number_string =
                         start.extend(self.iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
-                    if let Some(dot) = self.iter.next_if(|s| s.ch() == '.') {
+                    let has_decimal = if let Some(dot) = self.iter.next_if(|s| s.ch() == '.') {
                         number_string = number_string.to(dot);
                         number_string = number_string
                             .extend(self.iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
-                    }
+                        true
+                    } else {
+                        false
+                    };
+
                     match serde_json::Number::from_str(number_string.as_str()) {
                         Ok(n) => {
-                            if let Some(i) = n.as_i64() {
+                            if has_decimal {
+                                // If original string had a decimal point, treat as float
+                                let f = n.as_f64().unwrap();
+                                Ok((Token::FloatLiteral(f), number_string))
+                            } else if let Some(i) = n.as_i64() {
                                 Ok((Token::IntLiteral(i), number_string))
                             } else {
-                                Ok((Token::FloatLiteral(n), number_string))
+                                // Convert serde_json::Number to f64 for FloatLiteral
+                                let f = n.as_f64().unwrap();
+                                Ok((Token::FloatLiteral(f), number_string))
                             }
                         }
                         Err(_) => Err(ParseError::InvalidNumberFormat {
@@ -214,15 +224,15 @@ mod tests {
         check(
             "1.0 0.0 0.0000 1000000 0.0000 0.1010",
             expect![[r#"
-                token: 1.0
+                token: 1
                 1.0 0.0 0.0000 1000000 0.0000 0.1010
                 ^^^
 
-                token: 0.0
+                token: 0
                 1.0 0.0 0.0000 1000000 0.0000 0.1010
                     ^^^
 
-                token: 0.0
+                token: 0
                 1.0 0.0 0.0000 1000000 0.0000 0.1010
                         ^^^^^^
 
@@ -230,7 +240,7 @@ mod tests {
                 1.0 0.0 0.0000 1000000 0.0000 0.1010
                                ^^^^^^^
 
-                token: 0.0
+                token: 0
                 1.0 0.0 0.0000 1000000 0.0000 0.1010
                                        ^^^^^^
 
@@ -282,7 +292,7 @@ mod tests {
                 42 3.14 0 0.0 123 99.99
                         ^
 
-                token: 0.0
+                token: 0
                 42 3.14 0 0.0 123 99.99
                           ^^^
 
@@ -570,7 +580,7 @@ mod tests {
                 [1.0, 12.0, 343.0]
                 ^
 
-                token: 1.0
+                token: 1
                 [1.0, 12.0, 343.0]
                  ^^^
 
@@ -578,7 +588,7 @@ mod tests {
                 [1.0, 12.0, 343.0]
                     ^
 
-                token: 12.0
+                token: 12
                 [1.0, 12.0, 343.0]
                       ^^^^
 
@@ -586,7 +596,7 @@ mod tests {
                 [1.0, 12.0, 343.0]
                           ^
 
-                token: 343.0
+                token: 343
                 [1.0, 12.0, 343.0]
                             ^^^^^
 

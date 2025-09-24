@@ -418,17 +418,8 @@ impl ExpressionTranspiler for GoTranspiler {
         BoxDoc::text(if value { "true" } else { "false" })
     }
 
-    fn transpile_number_literal<'a>(&self, value: &'a serde_json::Number) -> BoxDoc<'a> {
-        // Go requires explicit float notation for decimals
-        if let Some(f) = value.as_f64() {
-            if f.fract() == 0.0 {
-                BoxDoc::as_string(format!("{}", f as i64))
-            } else {
-                BoxDoc::as_string(format!("{}", f))
-            }
-        } else {
-            BoxDoc::as_string(value.to_string())
-        }
+    fn transpile_float_literal<'a>(&self, value: f64) -> BoxDoc<'a> {
+        BoxDoc::as_string(format!("{}", value))
     }
 
     fn transpile_int_literal<'a>(&self, value: i64) -> BoxDoc<'a> {
