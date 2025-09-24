@@ -22,6 +22,7 @@
             pkgs.typescript-language-server
 			pkgs.bun
 			pkgs.python3
+			pkgs.mypy
 			pkgs.go
             pkgs.just
           ];

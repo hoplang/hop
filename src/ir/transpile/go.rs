@@ -32,12 +32,13 @@ impl GoTranspiler {
                 // Process fields depth-first, collecting nested types
                 let mut field_docs = Vec::new();
                 for (nested_field_name, nested_field_type) in fields {
-                    let field_name_pascal = CasedString::from_snake_case(nested_field_name).to_pascal_case();
+                    let field_name_pascal =
+                        CasedString::from_snake_case(nested_field_name).to_pascal_case();
 
                     // Recursively process and get the type reference
                     let field_type_doc = self.extract_and_generate_nested_type(
                         nested_field_type,
-                        &type_name,  // New base name for nested types
+                        &type_name, // New base name for nested types
                         nested_field_name,
                         generated_types,
                     );
@@ -189,7 +190,6 @@ impl Transpiler for GoTranspiler {
         }
 
         // Generate parameter structs for entrypoints that have parameters
-        let mut nested_types = Vec::new();
 
         for entrypoint in entrypoints {
             if !entrypoint.parameters.is_empty() {
@@ -197,6 +197,8 @@ impl Transpiler for GoTranspiler {
                     "{}Params",
                     CasedString::from_kebab_case(&entrypoint.name).to_pascal_case()
                 );
+
+                let mut nested_types = Vec::new();
 
                 // Process each parameter, extracting nested types
                 let fields: Vec<_> = entrypoint
@@ -230,7 +232,6 @@ impl Transpiler for GoTranspiler {
                         .append(BoxDoc::line())
                         .append(BoxDoc::line());
                 }
-                nested_types.clear();
 
                 // Then add the main parameter struct
                 result = result
@@ -1167,10 +1168,7 @@ mod tests {
             t.write_expr_escaped(t.prop_access(t.var("config"), "api_key"));
             t.write("</div>\n");
             t.write("<div>DB Host: ");
-            t.write_expr_escaped(t.prop_access(
-                t.prop_access(t.var("config"), "database"),
-                "host",
-            ));
+            t.write_expr_escaped(t.prop_access(t.prop_access(t.var("config"), "database"), "host"));
             t.write("</div>\n");
         })];
 

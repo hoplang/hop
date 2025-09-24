@@ -1,6 +1,8 @@
 use super::{GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler};
+use crate::dop::r#type::Type;
 use crate::ir::ast::IrEntrypoint;
 use crate::ir::test_utils::build_ir_auto;
+use std::collections::BTreeMap;
 use std::fs;
 use std::process::Command;
 use tempfile::TempDir;
@@ -20,17 +22,25 @@ impl TestCase {
     }
 }
 
+#[derive(Debug)]
+struct TypeCheckTestCase {
+    entrypoints: Vec<IrEntrypoint>,
+}
+
+impl TypeCheckTestCase {
+    fn new(entrypoints: Vec<IrEntrypoint>) -> Self {
+        Self { entrypoints }
+    }
+}
+
 fn execute_javascript(code: &str, is_typescript: bool) -> Result<String, String> {
     let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
     let extension = if is_typescript { "ts" } else { "js" };
     let module_file = temp_dir.path().join(format!("module.{}", extension));
     let runner_file = temp_dir.path().join(format!("runner.{}", extension));
 
-    // Write the generated module code
     fs::write(&module_file, code).map_err(|e| format!("Failed to write module file: {}", e))?;
 
-    // Create a runner that imports and executes the function
-    // Always calls test() since all our tests use "test" as the entrypoint name
     let runner_code = format!(
         r#"
 import module from './module.{}';
@@ -63,11 +73,8 @@ fn execute_python(code: &str) -> Result<String, String> {
     let module_file = temp_dir.path().join("module.py");
     let runner_file = temp_dir.path().join("runner.py");
 
-    // Write the generated module code
     fs::write(&module_file, code).map_err(|e| format!("Failed to write module file: {}", e))?;
 
-    // Create a runner that imports and executes the function
-    // Always calls test() since all our tests use "test" as the entrypoint name
     let runner_code = r#"
 from module import test
 print(test(), end='')
@@ -96,8 +103,6 @@ fn execute_go(code: &str) -> Result<String, String> {
     let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
     let main_file = temp_dir.path().join("main.go");
 
-    // Create a main.go file that imports and calls our function
-    // Always calls Test() since all our tests use "test" as the entrypoint name
     let main_code = r#"package main
 
 import (
@@ -113,7 +118,6 @@ func main() {
 
     fs::write(&main_file, main_code).map_err(|e| format!("Failed to write main.go: {}", e))?;
 
-    // Create go.mod file
     let go_mod = r#"module testmod
 
 go 1.24
@@ -121,14 +125,12 @@ go 1.24
     fs::write(temp_dir.path().join("go.mod"), go_mod)
         .map_err(|e| format!("Failed to write go.mod: {}", e))?;
 
-    // Create components subdirectory and put our code there
     let components_dir = temp_dir.path().join("components");
     fs::create_dir(&components_dir)
         .map_err(|e| format!("Failed to create components dir: {}", e))?;
     fs::write(components_dir.join("test.go"), code)
         .map_err(|e| format!("Failed to write components/test.go: {}", e))?;
 
-    // Run the Go code
     let output = Command::new("go")
         .arg("run")
         .arg("main.go")
@@ -149,38 +151,29 @@ go 1.24
 fn run_integration_test(test_case: TestCase) -> Result<(), String> {
     let entrypoints = vec![test_case.entrypoint];
 
-    // Transpile to JavaScript
     let js_transpiler = JsTranspiler::new(LanguageMode::JavaScript);
     let js_code = js_transpiler.transpile_module(&entrypoints);
 
-    // Transpile to TypeScript
     let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
     let ts_code = ts_transpiler.transpile_module(&entrypoints);
 
-    // Transpile to Go
     let go_transpiler = GoTranspiler::new();
     let go_code = go_transpiler.transpile_module(&entrypoints);
 
-    // Transpile to Python
     let python_transpiler = PythonTranspiler::new();
     let python_code = python_transpiler.transpile_module(&entrypoints);
 
-    // Execute JavaScript version
     let js_output = execute_javascript(&js_code, false)
         .map_err(|e| format!("JavaScript execution failed: {}", e))?;
 
-    // Execute TypeScript version
     let ts_output = execute_javascript(&ts_code, true)
         .map_err(|e| format!("TypeScript execution failed: {}", e))?;
 
-    // Execute Go version
     let go_output = execute_go(&go_code).map_err(|e| format!("Go execution failed: {}", e))?;
 
-    // Execute Python version
-    let python_output = execute_python(&python_code)
-        .map_err(|e| format!("Python execution failed: {}", e))?;
+    let python_output =
+        execute_python(&python_code).map_err(|e| format!("Python execution failed: {}", e))?;
 
-    // Verify outputs match expected
     if js_output != test_case.expected_output {
         return Err(format!(
             "JavaScript output mismatch:\nExpected: {}\nGot: {}",
@@ -212,12 +205,133 @@ fn run_integration_test(test_case: TestCase) -> Result<(), String> {
     Ok(())
 }
 
+fn typecheck_javascript(code: &str, is_typescript: bool) -> Result<(), String> {
+    let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
+    let extension = if is_typescript { "ts" } else { "js" };
+    let module_file = temp_dir.path().join(format!("module.{}", extension));
+
+    fs::write(&module_file, code).map_err(|e| format!("Failed to write module file: {}", e))?;
+
+    let mut args = vec!["x", "tsc", "--noEmit", "--target", "ES2020"];
+
+    if is_typescript {
+        args.push("--strict");
+    } else {
+        args.push("--allowJs");
+        args.push("--checkJs");
+    }
+
+    let file_path = module_file
+        .to_str()
+        .ok_or_else(|| "Failed to convert path to string".to_string())?;
+    args.push(file_path);
+
+    let output = Command::new("bun")
+        .args(&args)
+        .output()
+        .map_err(|e| format!("Failed to execute TypeScript compiler: {}", e))?;
+
+    if !output.status.success() {
+        let lang = if is_typescript {
+            "TypeScript"
+        } else {
+            "JavaScript"
+        };
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "{} type checking failed:\nSTDERR:\n{}\nSTDOUT:\n{}",
+            lang, stderr, stdout
+        ));
+    }
+
+    Ok(())
+}
+
+fn typecheck_python(code: &str) -> Result<(), String> {
+    let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
+    let module_file = temp_dir.path().join("module.py");
+
+    fs::write(&module_file, code).map_err(|e| format!("Failed to write module file: {}", e))?;
+
+    let output = Command::new("python3")
+        .arg("-m")
+        .arg("mypy")
+        .arg("--strict")
+        .arg("--allow-any-generics")
+        .arg("--no-error-summary")
+        .arg(&module_file)
+        .output()
+        .map_err(|e| format!("Failed to execute mypy: {}", e))?;
+
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Python type checking failed:\nSTDOUT:\n{}\nSTDERR:\n{}",
+            stdout, stderr
+        ));
+    }
+
+    Ok(())
+}
+
+fn typecheck_go(code: &str) -> Result<(), String> {
+    let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
+
+    let go_mod = "module test\n\ngo 1.24\n";
+    fs::write(temp_dir.path().join("go.mod"), go_mod)
+        .map_err(|e| format!("Failed to write go.mod: {}", e))?;
+
+    let package_dir = temp_dir.path().join("components");
+    fs::create_dir(&package_dir).map_err(|e| format!("Failed to create package dir: {}", e))?;
+
+    let module_file = package_dir.join("components.go");
+    fs::write(&module_file, code).map_err(|e| format!("Failed to write module file: {}", e))?;
+
+    let output = Command::new("go")
+        .arg("build")
+        .arg("./components")
+        .current_dir(&temp_dir)
+        .output()
+        .map_err(|e| format!("Failed to execute Go compiler: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Go compilation failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    Ok(())
+}
+
+fn run_type_check_test(test_case: TypeCheckTestCase) -> Result<(), String> {
+    let js_transpiler = JsTranspiler::new(LanguageMode::JavaScript);
+    let js_code = js_transpiler.transpile_module(&test_case.entrypoints);
+    typecheck_javascript(&js_code, false)?;
+
+    let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
+    let ts_code = ts_transpiler.transpile_module(&test_case.entrypoints);
+    typecheck_javascript(&ts_code, true)?;
+
+    let go_transpiler = GoTranspiler::new();
+    let go_code = go_transpiler.transpile_module(&test_case.entrypoints);
+    typecheck_go(&go_code)?;
+
+    let python_transpiler = PythonTranspiler::new();
+    let python_code = python_transpiler.transpile_module(&test_case.entrypoints);
+    typecheck_python(&python_code)?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    #[ignore] // Mark as ignored by default since it requires Node.js and Go runtime
+    #[ignore]
     fn test_simple_html() {
         let test_case = TestCase::new(
             build_ir_auto("test", vec![], |t| {
@@ -388,5 +502,107 @@ mod tests {
         );
 
         run_integration_test(test_case).expect("Integration test failed");
+    }
+
+    #[test]
+    #[ignore]
+    fn test_typecheck_deeply_nested_params() {
+        // Create deeply nested parameter structure
+        let parameters = vec![(
+            "config",
+            Type::Object({
+                let mut config = BTreeMap::new();
+                config.insert("api_key".to_string(), Type::String);
+                config.insert(
+                    "database".to_string(),
+                    Type::Object({
+                        let mut db = BTreeMap::new();
+                        db.insert("host".to_string(), Type::String);
+                        db.insert("port".to_string(), Type::Number);
+                        db.insert(
+                            "credentials".to_string(),
+                            Type::Object({
+                                let mut creds = BTreeMap::new();
+                                creds.insert("username".to_string(), Type::String);
+                                creds.insert("password".to_string(), Type::String);
+                                creds
+                            }),
+                        );
+                        db
+                    }),
+                );
+                config.insert(
+                    "features".to_string(),
+                    Type::Array(Some(Box::new(Type::Object({
+                        let mut feature = BTreeMap::new();
+                        feature.insert("name".to_string(), Type::String);
+                        feature.insert("enabled".to_string(), Type::Bool);
+                        feature.insert(
+                            "settings".to_string(),
+                            Type::Object({
+                                let mut settings = BTreeMap::new();
+                                settings.insert("level".to_string(), Type::String);
+                                settings.insert("timeout".to_string(), Type::Number);
+                                settings
+                            }),
+                        );
+                        feature
+                    })))),
+                );
+                config
+            }),
+        )];
+
+        let test_case =
+            TypeCheckTestCase::new(vec![build_ir_auto("test-deep-config", parameters, |t| {
+                t.write("<div>API Key: ");
+                t.write_expr_escaped(t.prop_access(t.var("config"), "api_key"));
+                t.write("</div>\n");
+                t.write("<div>DB Host: ");
+                t.write_expr_escaped(
+                    t.prop_access(t.prop_access(t.var("config"), "database"), "host"),
+                );
+                t.write("</div>\n");
+            })]);
+
+        run_type_check_test(test_case).expect("Type check test failed");
+    }
+
+    #[test]
+    #[ignore]
+    fn test_typecheck_array_of_objects_param() {
+        let parameters = vec![(
+            "users",
+            Type::Array(Some(Box::new(Type::Object({
+                let mut user = BTreeMap::new();
+                user.insert("name".to_string(), Type::String);
+                user.insert("email".to_string(), Type::String);
+                user.insert(
+                    "profile".to_string(),
+                    Type::Object({
+                        let mut profile = BTreeMap::new();
+                        profile.insert("bio".to_string(), Type::String);
+                        profile.insert("age".to_string(), Type::Number);
+                        profile
+                    }),
+                );
+                user
+            })))),
+        )];
+
+        let test_case =
+            TypeCheckTestCase::new(vec![build_ir_auto("test-users", parameters, |t| {
+                t.for_loop("user", t.var("users"), |t| {
+                    t.write("<div>");
+                    t.write_expr_escaped(t.prop_access(t.var("user"), "name"));
+                    t.write(" - ");
+                    t.write_expr_escaped(
+                        t.prop_access(t.prop_access(t.var("user"), "profile"), "bio"),
+                    );
+                    t.write("</div>\n");
+                });
+            })]);
+
+        run_type_check_test(test_case).expect("Type check test failed");
     }
 }
