@@ -13,6 +13,86 @@ impl GoTranspiler {
         Self {}
     }
 
+    fn extract_and_generate_nested_type<'a>(
+        &self,
+        param_type: &'a Type,
+        base_name: &str,
+        field_name: &str,
+        generated_types: &mut Vec<(String, BoxDoc<'a>)>,
+    ) -> BoxDoc<'a> {
+        match param_type {
+            Type::Object(fields) => {
+                // Generate the type name for this struct
+                let type_name = format!(
+                    "{}{}",
+                    base_name,
+                    CasedString::from_snake_case(field_name).to_pascal_case()
+                );
+
+                // Process fields depth-first, collecting nested types
+                let mut field_docs = Vec::new();
+                for (nested_field_name, nested_field_type) in fields {
+                    let field_name_pascal = CasedString::from_snake_case(nested_field_name).to_pascal_case();
+
+                    // Recursively process and get the type reference
+                    let field_type_doc = self.extract_and_generate_nested_type(
+                        nested_field_type,
+                        &type_name,  // New base name for nested types
+                        nested_field_name,
+                        generated_types,
+                    );
+
+                    // Build field definition
+                    let field_doc = BoxDoc::as_string(field_name_pascal)
+                        .append(BoxDoc::text(" "))
+                        .append(field_type_doc)
+                        .append(BoxDoc::text(" `json:\""))
+                        .append(BoxDoc::text(nested_field_name.as_str()))
+                        .append(BoxDoc::text("\"`"));
+
+                    field_docs.push(field_doc);
+                }
+
+                // Generate the struct definition
+                let struct_def = BoxDoc::text("type ")
+                    .append(BoxDoc::as_string(type_name.clone()))
+                    .append(BoxDoc::text(" struct {"))
+                    .append(
+                        BoxDoc::line()
+                            .append(BoxDoc::intersperse(field_docs, BoxDoc::line()))
+                            .nest(1),
+                    )
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("}"));
+
+                // Add to generated types
+                generated_types.push((type_name.clone(), struct_def));
+
+                // Return reference to this type
+                BoxDoc::as_string(type_name)
+            }
+            Type::Array(Some(elem_type)) => {
+                if matches!(elem_type.as_ref(), Type::Object(_)) {
+                    // Generate type for array elements
+                    let elem_type_doc = self.extract_and_generate_nested_type(
+                        elem_type,
+                        base_name,
+                        &format!("{}_item", field_name),
+                        generated_types,
+                    );
+                    BoxDoc::text("[]").append(elem_type_doc)
+                } else {
+                    // Regular array
+                    BoxDoc::text("[]").append(self.transpile_type(elem_type))
+                }
+            }
+            _ => {
+                // Primitive types - just use regular transpilation
+                self.transpile_type(param_type)
+            }
+        }
+    }
+
     fn scan_for_imports(imports: &mut BTreeSet<String>, entrypoint: &IrEntrypoint) {
         // Use visitor pattern to scan statements for imports
         for stmt in &entrypoint.body {
@@ -109,6 +189,8 @@ impl Transpiler for GoTranspiler {
         }
 
         // Generate parameter structs for entrypoints that have parameters
+        let mut nested_types = Vec::new();
+
         for entrypoint in entrypoints {
             if !entrypoint.parameters.is_empty() {
                 let struct_name = format!(
@@ -116,21 +198,41 @@ impl Transpiler for GoTranspiler {
                     CasedString::from_kebab_case(&entrypoint.name).to_pascal_case()
                 );
 
+                // Process each parameter, extracting nested types
                 let fields: Vec<_> = entrypoint
                     .parameters
                     .iter()
                     .map(|(param_name, param_type)| {
                         let field_name =
                             CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
-                        BoxDoc::text(field_name)
+
+                        // Extract nested types and get the type reference
+                        let field_type_doc = self.extract_and_generate_nested_type(
+                            param_type,
+                            &struct_name,
+                            param_name.as_str(),
+                            &mut nested_types,
+                        );
+
+                        BoxDoc::as_string(field_name)
                             .append(BoxDoc::text(" "))
-                            .append(self.transpile_type(param_type))
+                            .append(field_type_doc)
                             .append(BoxDoc::text(" `json:\""))
                             .append(BoxDoc::text(param_name.as_str()))
                             .append(BoxDoc::text("\"`"))
                     })
                     .collect();
 
+                // First, add all nested types that were extracted
+                for (_name, type_def) in &nested_types {
+                    result = result
+                        .append(type_def.clone())
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::line());
+                }
+                nested_types.clear();
+
+                // Then add the main parameter struct
                 result = result
                     .append(BoxDoc::text("type "))
                     .append(BoxDoc::text(struct_name))
@@ -821,11 +923,13 @@ mod tests {
                 	"strings"
                 )
 
+                type TestNestedParamsUsersItem struct {
+                	Id string `json:"id"`
+                	Name string `json:"name"`
+                }
+
                 type TestNestedParams struct {
-                	Users []struct{
-                		Id string `json:"id"`
-                		Name string `json:"name"`
-                	} `json:"users"`
+                	Users []TestNestedParamsUsersItem `json:"users"`
                 }
 
                 func TestNested(params TestNestedParams) string {
@@ -1012,6 +1116,147 @@ mod tests {
     }
 
     #[test]
+    fn test_deeply_nested_structs() {
+        let parameters = vec![(
+            "config",
+            Type::Object({
+                let mut config = BTreeMap::new();
+                config.insert("api_key".to_string(), Type::String);
+                config.insert(
+                    "database".to_string(),
+                    Type::Object({
+                        let mut db = BTreeMap::new();
+                        db.insert("host".to_string(), Type::String);
+                        db.insert("port".to_string(), Type::Number);
+                        db.insert(
+                            "credentials".to_string(),
+                            Type::Object({
+                                let mut creds = BTreeMap::new();
+                                creds.insert("username".to_string(), Type::String);
+                                creds.insert("password".to_string(), Type::String);
+                                creds
+                            }),
+                        );
+                        db
+                    }),
+                );
+                config.insert(
+                    "features".to_string(),
+                    Type::Array(Some(Box::new(Type::Object({
+                        let mut feature = BTreeMap::new();
+                        feature.insert("name".to_string(), Type::String);
+                        feature.insert("enabled".to_string(), Type::Bool);
+                        feature.insert(
+                            "settings".to_string(),
+                            Type::Object({
+                                let mut settings = BTreeMap::new();
+                                settings.insert("level".to_string(), Type::String);
+                                settings.insert("timeout".to_string(), Type::Number);
+                                settings
+                            }),
+                        );
+                        feature
+                    })))),
+                );
+                config
+            }),
+        )];
+
+        let entrypoints = vec![build_ir_auto("test-deep-config", parameters, |t| {
+            t.write("<div>API Key: ");
+            t.write_expr_escaped(t.prop_access(t.var("config"), "api_key"));
+            t.write("</div>\n");
+            t.write("<div>DB Host: ");
+            t.write_expr_escaped(t.prop_access(
+                t.prop_access(t.var("config"), "database"),
+                "host",
+            ));
+            t.write("</div>\n");
+        })];
+
+        check(
+            &entrypoints,
+            expect![[r#"
+                -- before --
+                test-deep-config(
+                  config: {
+                    api_key: string,
+                    database: {
+                      credentials: {password: string, username: string},
+                      host: string,
+                      port: number,
+                    },
+                    features: array[{
+                      enabled: boolean,
+                      name: string,
+                      settings: {level: string, timeout: number},
+                    }],
+                  },
+                ) {
+                  write("<div>API Key: ")
+                  write_escaped(config.api_key)
+                  write("</div>\n")
+                  write("<div>DB Host: ")
+                  write_escaped(config.database.host)
+                  write("</div>\n")
+                }
+
+                -- after --
+                package components
+
+                import (
+                	"html"
+                	"strings"
+                )
+
+                type TestDeepConfigParamsConfigDatabaseCredentials struct {
+                	Password string `json:"password"`
+                	Username string `json:"username"`
+                }
+
+                type TestDeepConfigParamsConfigDatabase struct {
+                	Credentials TestDeepConfigParamsConfigDatabaseCredentials `json:"credentials"`
+                	Host string `json:"host"`
+                	Port float64 `json:"port"`
+                }
+
+                type TestDeepConfigParamsConfigFeaturesItemSettings struct {
+                	Level string `json:"level"`
+                	Timeout float64 `json:"timeout"`
+                }
+
+                type TestDeepConfigParamsConfigFeaturesItem struct {
+                	Enabled bool `json:"enabled"`
+                	Name string `json:"name"`
+                	Settings TestDeepConfigParamsConfigFeaturesItemSettings `json:"settings"`
+                }
+
+                type TestDeepConfigParamsConfig struct {
+                	ApiKey string `json:"api_key"`
+                	Database TestDeepConfigParamsConfigDatabase `json:"database"`
+                	Features []TestDeepConfigParamsConfigFeaturesItem `json:"features"`
+                }
+
+                type TestDeepConfigParams struct {
+                	Config TestDeepConfigParamsConfig `json:"config"`
+                }
+
+                func TestDeepConfig(params TestDeepConfigParams) string {
+                	config := params.Config
+                	var output strings.Builder
+                	output.WriteString("<div>API Key: ")
+                	output.WriteString(html.EscapeString(config.ApiKey))
+                	output.WriteString("</div>\n")
+                	output.WriteString("<div>DB Host: ")
+                	output.WriteString(html.EscapeString(config.Database.Host))
+                	output.WriteString("</div>\n")
+                	return output.String()
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn test_string_comparison() {
         let entrypoints = vec![build_ir_auto(
             "test-auth-check",
@@ -1134,12 +1379,14 @@ mod tests {
                 	return string(data)
                 }
 
+                type TestJsonParamsData struct {
+                	Active bool `json:"active"`
+                	Count float64 `json:"count"`
+                	Title string `json:"title"`
+                }
+
                 type TestJsonParams struct {
-                	Data struct{
-                		Active bool `json:"active"`
-                		Count float64 `json:"count"`
-                		Title string `json:"title"`
-                	} `json:"data"`
+                	Data TestJsonParamsData `json:"data"`
                 	Items []string `json:"items"`
                 }
 
