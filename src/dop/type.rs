@@ -16,8 +16,8 @@ pub enum EquatableType {
 pub enum Type {
     String,
     Bool,
-    Float,
     Int,
+    Float,
     Object(BTreeMap<String, Type>),
     Array(Option<Box<Type>>),
 }

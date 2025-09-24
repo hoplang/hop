@@ -95,9 +95,9 @@ pub trait ExpressionTranspiler {
         properties: &'a [(String, IrExpr)],
         property_types: &'a BTreeMap<String, Type>,
     ) -> BoxDoc<'a>;
-    fn transpile_string_equality<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_bool_equality<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_int_equality<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_bool_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_int_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_string_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_bool_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
@@ -141,9 +141,9 @@ pub trait ExpressionTranspiler {
                 operand_types,
                 ..
             } => match operand_types {
-                EquatableType::Bool => self.transpile_bool_equality(left, right),
-                EquatableType::String => self.transpile_string_equality(left, right),
-                EquatableType::Int => self.transpile_int_equality(left, right),
+                EquatableType::Bool => self.transpile_bool_equals(left, right),
+                EquatableType::String => self.transpile_string_equals(left, right),
+                EquatableType::Int => self.transpile_int_equals(left, right),
             },
             IrExpr::NotEquals {
                 left,

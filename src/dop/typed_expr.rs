@@ -83,7 +83,7 @@ impl<A> TypedExpr<A> {
     pub fn as_type(&self) -> &Type {
         static STRING_TYPE: Type = Type::String;
         static BOOL_TYPE: Type = Type::Bool;
-        static NUMBER_TYPE: Type = Type::Float;
+        static FLOAT_TYPE: Type = Type::Float;
         static INT_TYPE: Type = Type::Int;
 
         match self {
@@ -92,7 +92,7 @@ impl<A> TypedExpr<A> {
             | TypedExpr::ArrayLiteral { kind, .. }
             | TypedExpr::ObjectLiteral { kind, .. } => kind,
 
-            TypedExpr::FloatLiteral { .. } => &NUMBER_TYPE,
+            TypedExpr::FloatLiteral { .. } => &FLOAT_TYPE,
             TypedExpr::IntLiteral { .. } => &INT_TYPE,
 
             TypedExpr::JsonEncode { .. }
