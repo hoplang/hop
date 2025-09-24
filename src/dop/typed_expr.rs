@@ -109,6 +109,13 @@ pub enum TypedExpr<A> {
         operand_types: ComparableType,
         annotation: A,
     },
+
+    /// Logical AND expression
+    LogicalAnd {
+        left: Box<Self>,
+        right: Box<Self>,
+        annotation: A,
+    },
 }
 
 impl<A> TypedExpr<A> {
@@ -138,7 +145,8 @@ impl<A> TypedExpr<A> {
             | TypedExpr::LessThan { .. }
             | TypedExpr::GreaterThan { .. }
             | TypedExpr::LessThanOrEqual { .. }
-            | TypedExpr::GreaterThanOrEqual { .. } => &BOOL_TYPE,
+            | TypedExpr::GreaterThanOrEqual { .. }
+            | TypedExpr::LogicalAnd { .. } => &BOOL_TYPE,
         }
     }
 
@@ -160,7 +168,8 @@ impl<A> TypedExpr<A> {
             | TypedExpr::LessThan { annotation, .. }
             | TypedExpr::GreaterThan { annotation, .. }
             | TypedExpr::LessThanOrEqual { annotation, .. }
-            | TypedExpr::GreaterThanOrEqual { annotation, .. } => annotation,
+            | TypedExpr::GreaterThanOrEqual { annotation, .. }
+            | TypedExpr::LogicalAnd { annotation, .. } => annotation,
         }
     }
 
@@ -269,6 +278,12 @@ impl<A> TypedExpr<A> {
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" >= "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
+            TypedExpr::LogicalAnd { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(left.to_doc())
+                .append(BoxDoc::text(" && "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
         }

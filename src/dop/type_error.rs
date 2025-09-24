@@ -39,6 +39,9 @@ pub enum TypeError {
 
     #[error("Plus operator can only be used with strings, found {found}")]
     PlusRequiresStrings { found: String, range: DocumentRange },
+
+    #[error("Logical AND operator can only be applied to boolean values")]
+    LogicalAndRequiresBoolean { range: DocumentRange },
 }
 
 impl Ranged for TypeError {
@@ -51,7 +54,8 @@ impl Ranged for TypeError {
             | TypeError::NegationRequiresBoolean { range, .. }
             | TypeError::ArrayTypeMismatch { range, .. }
             | TypeError::TypeIsNotComparable { range, .. }
-            | TypeError::PlusRequiresStrings { range, .. } => range,
+            | TypeError::PlusRequiresStrings { range, .. }
+            | TypeError::LogicalAndRequiresBoolean { range, .. } => range,
         }
     }
 }

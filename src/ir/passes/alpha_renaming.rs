@@ -241,6 +241,11 @@ impl AlphaRenamingPass {
             TypedExpr::BooleanLiteral { .. } => expr,
             TypedExpr::FloatLiteral { .. } => expr,
             TypedExpr::IntLiteral { .. } => expr,
+            TypedExpr::LogicalAnd { left, right, annotation } => TypedExpr::LogicalAnd {
+                left: Box::new(self.rename_expr(*left)),
+                right: Box::new(self.rename_expr(*right)),
+                annotation,
+            },
         }
     }
 

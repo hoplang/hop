@@ -455,6 +455,11 @@ impl Compiler {
                 operand_types,
                 annotation: expr_id,
             },
+            TypedExpr::LogicalAnd { left, right, .. } => TypedExpr::LogicalAnd {
+                left: Box::new(self.compile_expr(*left)),
+                right: Box::new(self.compile_expr(*right)),
+                annotation: expr_id,
+            },
         }
     }
 }

@@ -328,6 +328,36 @@ pub fn typecheck_expr(
         }
         AnnotatedExpr::BinaryOp {
             left,
+            operator: BinaryOp::LogicalAnd,
+            right,
+            ..
+        } => {
+            let typed_left = typecheck_expr(left, env, annotations)?;
+            let typed_right = typecheck_expr(right, env, annotations)?;
+            let left_type = typed_left.as_type();
+            let right_type = typed_right.as_type();
+
+            // LogicalAnd only works with boolean expressions
+            if !left_type.is_subtype(&Type::Bool) {
+                return Err(TypeError::LogicalAndRequiresBoolean {
+                    range: left.range().clone(),
+                });
+            }
+
+            if !right_type.is_subtype(&Type::Bool) {
+                return Err(TypeError::LogicalAndRequiresBoolean {
+                    range: right.range().clone(),
+                });
+            }
+
+            Ok(SimpleTypedExpr::LogicalAnd {
+                left: Box::new(typed_left),
+                right: Box::new(typed_right),
+                annotation: (),
+            })
+        }
+        AnnotatedExpr::BinaryOp {
+            left,
             operator: BinaryOp::Plus,
             right,
             ..
@@ -979,5 +1009,81 @@ mod tests {
     #[test]
     fn test_typecheck_string_concatenation_result_comparison() {
         check("", r#""a" + "b" == "ab""#, expect!["boolean"]);
+    }
+
+    #[test]
+    fn test_typecheck_logical_and_boolean_variables() {
+        check("a: boolean, b: boolean", "a && b", expect!["boolean"]);
+    }
+
+    #[test]
+    fn test_typecheck_logical_and_boolean_literals() {
+        check("", "true && false", expect!["boolean"]);
+    }
+
+    #[test]
+    fn test_typecheck_logical_and_property_access() {
+        check(
+            "user: {enabled: boolean, active: boolean}",
+            "user.enabled && user.active",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_logical_and_with_comparison() {
+        check(
+            "x: int, y: int, enabled: boolean",
+            "x > y && enabled",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_logical_and_error_left_string() {
+        check(
+            "name: string, enabled: boolean",
+            "name && enabled",
+            expect![[r#"
+                error: Logical AND operator can only be applied to boolean values
+                name && enabled
+                ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_logical_and_error_right_int() {
+        check(
+            "enabled: boolean, count: int",
+            "enabled && count",
+            expect![[r#"
+                error: Logical AND operator can only be applied to boolean values
+                enabled && count
+                           ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_logical_and_error_both_strings() {
+        check(
+            "a: string, b: string",
+            "a && b",
+            expect![[r#"
+                error: Logical AND operator can only be applied to boolean values
+                a && b
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_logical_and_precedence() {
+        check(
+            "a: boolean, b: boolean, c: boolean",
+            "a && b == c",
+            expect!["boolean"],
+        );
     }
 }

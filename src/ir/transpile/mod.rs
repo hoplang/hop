@@ -114,6 +114,7 @@ pub trait ExpressionTranspiler {
     fn transpile_not<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_json_encode<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_string_concat<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_logical_and<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_expr<'a>(&self, expr: &'a IrExpr) -> BoxDoc<'a> {
         match expr {
             IrExpr::Var { value, .. } => self.transpile_var(value.as_str()),
@@ -203,6 +204,7 @@ pub trait ExpressionTranspiler {
                 ComparableType::Int => self.transpile_int_greater_than_or_equal(left, right),
                 ComparableType::Float => self.transpile_float_greater_than_or_equal(left, right),
             },
+            IrExpr::LogicalAnd { left, right, .. } => self.transpile_logical_and(left, right),
         }
     }
 }
