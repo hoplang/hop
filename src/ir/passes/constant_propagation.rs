@@ -42,7 +42,7 @@ impl Pass for ConstantPropagationPass {
                         IrExpr::Negation { operand, .. } => {
                             not_relations.push((operand.id(), expr.id()));
                         }
-                        IrExpr::Equality { left, right, .. } => {
+                        IrExpr::Equals { left, right, .. } => {
                             eq_left_relations.push((left.id(), expr.id()));
                             eq_right_relations.push((right.id(), expr.id()));
                         }
@@ -76,10 +76,10 @@ impl Pass for ConstantPropagationPass {
         // Not operations keyed by operand: (operand_id => expr_id)
         let not_rel = Relation::from_iter(not_relations);
 
-        // Equality operations - left operand: (left_operand_id => expr_id)
+        // Equals operations - left operand: (left_operand_id => expr_id)
         let eq_left = Relation::from_iter(eq_left_relations);
 
-        // Equality operations - right operand: (right_operand_id => expr_id)
+        // Equals operations - right operand: (right_operand_id => expr_id)
         let eq_right = Relation::from_iter(eq_right_relations);
 
         // Variable bindings: (defining_expr_id => referencing_expr_id)

@@ -166,7 +166,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             let bool_val = val.as_bool().unwrap_or(false);
             Ok(Value::Bool(!bool_val))
         }
-        IrExpr::Equality {
+        IrExpr::Equals {
             left,
             right,
             operand_types: EquatableType::Bool,
@@ -178,7 +178,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             let right_bool = right_val.as_bool().unwrap_or(false);
             Ok(Value::Bool(left_bool == right_bool))
         }
-        IrExpr::Equality {
+        IrExpr::Equals {
             left,
             right,
             operand_types: EquatableType::String,
@@ -190,7 +190,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             let right_str = right_val.as_str().unwrap();
             Ok(Value::Bool(left_str == right_str))
         }
-        IrExpr::Equality {
+        IrExpr::Equals {
             left,
             right,
             operand_types: EquatableType::Int,

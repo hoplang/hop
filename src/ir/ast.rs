@@ -303,8 +303,7 @@ impl IrExpr {
             TypedExpr::JsonEncode { value, .. } => {
                 value.traverse(f);
             }
-            TypedExpr::Equality { left, right, .. }
-            | TypedExpr::StringConcat { left, right, .. } => {
+            TypedExpr::Equals { left, right, .. } | TypedExpr::StringConcat { left, right, .. } => {
                 left.traverse(f);
                 right.traverse(f);
             }

@@ -62,8 +62,8 @@ pub enum TypedExpr<A> {
     /// Boolean negation expression
     Negation { operand: Box<Self>, annotation: A },
 
-    /// Equality expression
-    Equality {
+    /// Equals expression
+    Equals {
         left: Box<Self>,
         right: Box<Self>,
         operand_types: EquatableType,
@@ -93,7 +93,7 @@ impl<A> TypedExpr<A> {
 
             TypedExpr::BooleanLiteral { .. }
             | TypedExpr::Negation { .. }
-            | TypedExpr::Equality { .. } => &BOOL_TYPE,
+            | TypedExpr::Equals { .. } => &BOOL_TYPE,
         }
     }
 
@@ -110,7 +110,7 @@ impl<A> TypedExpr<A> {
             | TypedExpr::JsonEncode { annotation, .. }
             | TypedExpr::StringConcat { annotation, .. }
             | TypedExpr::Negation { annotation, .. }
-            | TypedExpr::Equality { annotation, .. } => annotation,
+            | TypedExpr::Equals { annotation, .. } => annotation,
         }
     }
 
@@ -185,7 +185,7 @@ impl<A> TypedExpr<A> {
                 .append(BoxDoc::text("!"))
                 .append(operand.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::Equality { left, right, .. } => BoxDoc::nil()
+            TypedExpr::Equals { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" == "))

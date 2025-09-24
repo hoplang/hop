@@ -114,13 +114,13 @@ impl IrTestBuilder {
 
     pub fn eq(&self, left: IrExpr, right: IrExpr) -> IrExpr {
         match (left.as_type(), right.as_type()) {
-            (Type::Bool, Type::Bool) => TypedExpr::Equality {
+            (Type::Bool, Type::Bool) => TypedExpr::Equals {
                 left: Box::new(left),
                 right: Box::new(right),
                 operand_types: EquatableType::Bool,
                 annotation: self.next_expr_id(),
             },
-            (Type::String, Type::String) => TypedExpr::Equality {
+            (Type::String, Type::String) => TypedExpr::Equals {
                 left: Box::new(left),
                 right: Box::new(right),
                 operand_types: EquatableType::String,

@@ -113,7 +113,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(SimpleTypedExpr::Equality {
+            Ok(SimpleTypedExpr::Equals {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
