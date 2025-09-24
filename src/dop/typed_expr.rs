@@ -116,6 +116,13 @@ pub enum TypedExpr<A> {
         right: Box<Self>,
         annotation: A,
     },
+
+    /// Logical OR expression
+    LogicalOr {
+        left: Box<Self>,
+        right: Box<Self>,
+        annotation: A,
+    },
 }
 
 impl<A> TypedExpr<A> {
@@ -146,7 +153,8 @@ impl<A> TypedExpr<A> {
             | TypedExpr::GreaterThan { .. }
             | TypedExpr::LessThanOrEqual { .. }
             | TypedExpr::GreaterThanOrEqual { .. }
-            | TypedExpr::LogicalAnd { .. } => &BOOL_TYPE,
+            | TypedExpr::LogicalAnd { .. }
+            | TypedExpr::LogicalOr { .. } => &BOOL_TYPE,
         }
     }
 
@@ -169,7 +177,8 @@ impl<A> TypedExpr<A> {
             | TypedExpr::GreaterThan { annotation, .. }
             | TypedExpr::LessThanOrEqual { annotation, .. }
             | TypedExpr::GreaterThanOrEqual { annotation, .. }
-            | TypedExpr::LogicalAnd { annotation, .. } => annotation,
+            | TypedExpr::LogicalAnd { annotation, .. }
+            | TypedExpr::LogicalOr { annotation, .. } => annotation,
         }
     }
 
@@ -284,6 +293,12 @@ impl<A> TypedExpr<A> {
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" && "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
+            TypedExpr::LogicalOr { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(left.to_doc())
+                .append(BoxDoc::text(" || "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
         }

@@ -246,6 +246,11 @@ impl AlphaRenamingPass {
                 right: Box::new(self.rename_expr(*right)),
                 annotation,
             },
+            TypedExpr::LogicalOr { left, right, annotation } => TypedExpr::LogicalOr {
+                left: Box::new(self.rename_expr(*left)),
+                right: Box::new(self.rename_expr(*right)),
+                annotation,
+            },
         }
     }
 

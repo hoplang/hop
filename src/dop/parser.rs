@@ -203,18 +203,18 @@ impl Parser {
         self.expect_opposite(opening_token, opening_range)
     }
 
-    // expr = logical_and Eof
+    // expr = logical Eof
     pub fn parse_expr(&mut self) -> Result<Expr, ParseError> {
-        let result = self.parse_logical_and()?;
+        let result = self.parse_logical()?;
         self.expect_eof()?;
         Ok(result)
     }
 
-    // loop_header = Identifier "in" logical_and Eof
+    // loop_header = Identifier "in" logical Eof
     pub fn parse_loop_header(&mut self) -> Result<(VarName, DocumentRange, Expr), ParseError> {
         let (var_name, var_name_range) = self.expect_variable_name()?;
         self.expect_token(&Token::In)?;
-        let array_expr = self.parse_logical_and()?;
+        let array_expr = self.parse_logical()?;
         self.expect_eof()?;
         Ok((var_name, var_name_range, array_expr))
     }
@@ -235,7 +235,7 @@ impl Parser {
     fn parse_argument(&mut self) -> Result<Argument, ParseError> {
         let (var_name, var_name_range) = self.expect_variable_name()?;
         self.expect_token(&Token::Colon)?;
-        let expression = self.parse_logical_and()?;
+        let expression = self.parse_logical()?;
         Ok(Argument {
             var_name,
             var_name_range,
@@ -332,7 +332,20 @@ impl Parser {
         }
     }
 
-    // logical_and = equality ( "&&" equality )*
+    fn parse_logical(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.parse_logical_and()?;
+        while self.advance_if(Token::LogicalOr).is_some() {
+            let right = self.parse_logical_and()?;
+            expr = AnnotatedExpr::BinaryOp {
+                annotation: expr.range().clone().to(right.range().clone()),
+                left: Box::new(expr),
+                operator: BinaryOp::LogicalOr,
+                right: Box::new(right),
+            };
+        }
+        Ok(expr)
+    }
+
     fn parse_logical_and(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.parse_equality()?;
         while self.advance_if(Token::LogicalAnd).is_some() {
@@ -445,12 +458,12 @@ impl Parser {
         }
     }
 
-    // array_literal = "[" ( logical_and ("," logical_and)* )? "]"
+    // array_literal = "[" ( logical ("," logical)* )? "]"
     fn parse_array_literal(&mut self, left_bracket: DocumentRange) -> Result<Expr, ParseError> {
         let mut elements = Vec::new();
         let right_bracket =
             self.parse_delimited_list(&Token::LeftBracket, &left_bracket, |this| {
-                elements.push(this.parse_logical_and()?);
+                elements.push(this.parse_logical()?);
                 Ok(())
             })?;
         Ok(AnnotatedExpr::ArrayLiteral {
@@ -471,7 +484,7 @@ impl Parser {
                 });
             }
             this.expect_token(&Token::Colon)?;
-            properties.push((prop_name.to_string(), this.parse_logical_and()?));
+            properties.push((prop_name.to_string(), this.parse_logical()?));
             Ok(())
         })?;
         Ok(AnnotatedExpr::ObjectLiteral {
@@ -537,7 +550,7 @@ impl Parser {
             Some((Token::LeftBracket, left_bracket)) => self.parse_array_literal(left_bracket),
             Some((Token::LeftBrace, left_brace)) => self.parse_object_literal(left_brace),
             Some((Token::LeftParen, left_paren)) => {
-                let expr = self.parse_logical_and()?;
+                let expr = self.parse_logical()?;
                 self.expect_opposite(&Token::LeftParen, &left_paren)?;
                 Ok(expr)
             }
@@ -1638,6 +1651,76 @@ mod tests {
             "!a && !b",
             expect![[r#"
                 ((!a) && (!b))
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_logical_or() {
+        check_parse_expr(
+            "a || b",
+            expect![[r#"
+                (a || b)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_logical_or_chained() {
+        check_parse_expr(
+            "a || b || c",
+            expect![[r#"
+                ((a || b) || c)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_logical_or_with_equals() {
+        check_parse_expr(
+            "a || b == c",
+            expect![[r#"
+                (a || (b == c))
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_mixed_logical_operators() {
+        check_parse_expr(
+            "a && b || c",
+            expect![[r#"
+                ((a && b) || c)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_mixed_logical_operators_complex() {
+        check_parse_expr(
+            "a || b && c || d",
+            expect![[r#"
+                ((a || (b && c)) || d)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_logical_operators_precedence_with_comparison() {
+        check_parse_expr(
+            "x > y && a || b < c",
+            expect![[r#"
+                (((x > y) && a) || (b < c))
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_logical_or_with_negation() {
+        check_parse_expr(
+            "!a || !b",
+            expect![[r#"
+                ((!a) || (!b))
             "#]],
         );
     }

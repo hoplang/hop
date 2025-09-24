@@ -511,6 +511,15 @@ impl ExpressionTranspiler for JsTranspiler {
             .append(self.transpile_expr(right))
             .append(BoxDoc::text(")"))
     }
+
+    fn transpile_logical_or<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::nil()
+            .append(BoxDoc::text("("))
+            .append(self.transpile_expr(left))
+            .append(BoxDoc::text(" || "))
+            .append(self.transpile_expr(right))
+            .append(BoxDoc::text(")"))
+    }
 }
 
 impl TypeTranspiler for JsTranspiler {

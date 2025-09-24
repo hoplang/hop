@@ -64,6 +64,13 @@ impl Iterator for Tokenizer {
                         range: start,
                     }),
                 },
+                '|' => match self.iter.next_if(|s| s.ch() == '|') {
+                    Some(end) => Ok((Token::LogicalOr, start.to(end))),
+                    None => Err(ParseError::UnexpectedCharacter {
+                        ch: '|',
+                        range: start,
+                    }),
+                },
                 '!' => match self.iter.next_if(|s| s.ch() == '=') {
                     Some(end) => Ok((Token::NotEq, start.to(end))),
                     None => Ok((Token::Not, start)),

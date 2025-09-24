@@ -42,6 +42,9 @@ pub enum TypeError {
 
     #[error("Logical AND operator can only be applied to boolean values")]
     LogicalAndRequiresBoolean { range: DocumentRange },
+
+    #[error("Logical OR operator can only be applied to boolean values")]
+    LogicalOrRequiresBoolean { range: DocumentRange },
 }
 
 impl Ranged for TypeError {
@@ -55,7 +58,8 @@ impl Ranged for TypeError {
             | TypeError::ArrayTypeMismatch { range, .. }
             | TypeError::TypeIsNotComparable { range, .. }
             | TypeError::PlusRequiresStrings { range, .. }
-            | TypeError::LogicalAndRequiresBoolean { range, .. } => range,
+            | TypeError::LogicalAndRequiresBoolean { range, .. }
+            | TypeError::LogicalOrRequiresBoolean { range, .. } => range,
         }
     }
 }

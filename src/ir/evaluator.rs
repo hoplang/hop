@@ -365,6 +365,14 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             let right_bool = right_val.as_bool().unwrap_or(false);
             Ok(Value::Bool(left_bool && right_bool))
         }
+
+        IrExpr::LogicalOr { left, right, .. } => {
+            let left_val = evaluate_expr(left, env)?;
+            let right_val = evaluate_expr(right, env)?;
+            let left_bool = left_val.as_bool().unwrap_or(false);
+            let right_bool = right_val.as_bool().unwrap_or(false);
+            Ok(Value::Bool(left_bool || right_bool))
+        }
     }
 }
 

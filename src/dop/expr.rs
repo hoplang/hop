@@ -15,6 +15,7 @@ pub enum BinaryOp {
     LessThanOrEqual,
     GreaterThanOrEqual,
     LogicalAnd,
+    LogicalOr,
     Plus,
 }
 
@@ -180,6 +181,7 @@ impl Display for BinaryOp {
             BinaryOp::LessThanOrEqual => write!(f, "<="),
             BinaryOp::GreaterThanOrEqual => write!(f, ">="),
             BinaryOp::LogicalAnd => write!(f, "&&"),
+            BinaryOp::LogicalOr => write!(f, "||"),
             BinaryOp::Plus => write!(f, "+"),
         }
     }
