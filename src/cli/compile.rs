@@ -3,7 +3,7 @@ use crate::document::DocumentAnnotator;
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::program::Program;
 use crate::ir::{
-    CompilationMode, GoTranspiler, JsTranspiler, LanguageMode, Transpiler,
+    CompilationMode, GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler,
     orchestrator::orchestrate,
 };
 use crate::tui::timing;
@@ -108,6 +108,11 @@ pub fn execute(
         CompileLanguage::Go => {
             timer.start_phase("transpiling to go");
             let transpiler = GoTranspiler::new();
+            transpiler.transpile_module(&ir_entrypoints)
+        }
+        CompileLanguage::Py => {
+            timer.start_phase("transpiling to python");
+            let transpiler = PythonTranspiler::new();
             transpiler.transpile_module(&ir_entrypoints)
         }
     };

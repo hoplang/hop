@@ -21,6 +21,8 @@ enum CompileLanguage {
     Ts,
     /// Go
     Go,
+    /// Python
+    Py,
 }
 
 #[derive(Parser)]
@@ -110,6 +112,7 @@ async fn main() -> anyhow::Result<()> {
                 CompileLanguage::Js => "output.js",
                 CompileLanguage::Ts => "output.ts",
                 CompileLanguage::Go => "output.go",
+                CompileLanguage::Py => "output.py",
             });
 
             let result = cli::compile::execute(projectdir.as_deref(), output_path, language, *development)?;
