@@ -69,7 +69,7 @@ pub trait TypeTranspiler {
         match t {
             Type::Bool => self.transpile_bool_type(),
             Type::String => self.transpile_string_type(),
-            Type::Number => self.transpile_number_type(),
+            Type::Float => self.transpile_number_type(),
             Type::Int => self.transpile_int_type(),
             Type::Array(elem) => self.transpile_array_type(elem.as_deref()),
             Type::Object(fields) => self.transpile_object_type(fields),

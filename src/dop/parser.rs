@@ -312,7 +312,7 @@ impl Parser {
     fn parse_type(&mut self) -> Result<(Type, DocumentRange), ParseError> {
         match self.iter.next().transpose()? {
             Some((Token::TypeString, range)) => Ok((Type::String, range)),
-            Some((Token::TypeNumber, range)) => Ok((Type::Number, range)),
+            Some((Token::TypeNumber, range)) => Ok((Type::Float, range)),
             Some((Token::TypeBoolean, range)) => Ok((Type::Bool, range)),
             Some((Token::TypeArray, type_array)) => {
                 let left_bracket = self.expect_token(&Token::LeftBracket)?;

@@ -78,7 +78,7 @@ impl<A> TypedExpr<A> {
     pub fn as_type(&self) -> &Type {
         static STRING_TYPE: Type = Type::String;
         static BOOL_TYPE: Type = Type::Bool;
-        static NUMBER_TYPE: Type = Type::Number;
+        static NUMBER_TYPE: Type = Type::Float;
         static INT_TYPE: Type = Type::Int;
 
         match self {

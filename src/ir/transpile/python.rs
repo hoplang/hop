@@ -96,7 +96,7 @@ impl PythonTranspiler {
         match param_type {
             Type::String => BoxDoc::text("str"),
             Type::Bool => BoxDoc::text("bool"),
-            Type::Number => BoxDoc::text("float"),
+            Type::Float => BoxDoc::text("float"),
             Type::Int => BoxDoc::text("int"),
             Type::Array(Some(elem)) => BoxDoc::text("list[")
                 .append(self.get_python_type(elem))
@@ -742,7 +742,7 @@ mod tests {
             Type::Object({
                 let mut map = BTreeMap::new();
                 map.insert("title".to_string(), Type::String);
-                map.insert("count".to_string(), Type::Number);
+                map.insert("count".to_string(), Type::Float);
                 map
             }),
         )];
@@ -894,7 +894,7 @@ mod tests {
                     Type::Object({
                         let mut profile = BTreeMap::new();
                         profile.insert("bio".to_string(), Type::String);
-                        profile.insert("age".to_string(), Type::Number);
+                        profile.insert("age".to_string(), Type::Float);
                         profile
                     }),
                 );
@@ -1032,7 +1032,7 @@ mod tests {
                     Type::Object({
                         let mut db = BTreeMap::new();
                         db.insert("host".to_string(), Type::String);
-                        db.insert("port".to_string(), Type::Number);
+                        db.insert("port".to_string(), Type::Float);
                         db.insert(
                             "credentials".to_string(),
                             Type::Object({

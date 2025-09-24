@@ -517,7 +517,7 @@ mod tests {
                     Type::Object({
                         let mut db = BTreeMap::new();
                         db.insert("host".to_string(), Type::String);
-                        db.insert("port".to_string(), Type::Number);
+                        db.insert("port".to_string(), Type::Float);
                         db.insert(
                             "credentials".to_string(),
                             Type::Object({
@@ -541,7 +541,7 @@ mod tests {
                             Type::Object({
                                 let mut settings = BTreeMap::new();
                                 settings.insert("level".to_string(), Type::String);
-                                settings.insert("timeout".to_string(), Type::Number);
+                                settings.insert("timeout".to_string(), Type::Float);
                                 settings
                             }),
                         );
@@ -581,7 +581,7 @@ mod tests {
                     Type::Object({
                         let mut profile = BTreeMap::new();
                         profile.insert("bio".to_string(), Type::String);
-                        profile.insert("age".to_string(), Type::Number);
+                        profile.insert("age".to_string(), Type::Float);
                         profile
                     }),
                 );

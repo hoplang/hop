@@ -1128,7 +1128,7 @@ mod tests {
                     Type::Object({
                         let mut db = BTreeMap::new();
                         db.insert("host".to_string(), Type::String);
-                        db.insert("port".to_string(), Type::Number);
+                        db.insert("port".to_string(), Type::Float);
                         db.insert(
                             "credentials".to_string(),
                             Type::Object({
@@ -1152,7 +1152,7 @@ mod tests {
                             Type::Object({
                                 let mut settings = BTreeMap::new();
                                 settings.insert("level".to_string(), Type::String);
-                                settings.insert("timeout".to_string(), Type::Number);
+                                settings.insert("timeout".to_string(), Type::Float);
                                 settings
                             }),
                         );
@@ -1318,7 +1318,7 @@ mod tests {
                 Type::Object({
                     let mut map = BTreeMap::new();
                     map.insert("title".to_string(), Type::String);
-                    map.insert("count".to_string(), Type::Number);
+                    map.insert("count".to_string(), Type::Float);
                     map.insert("active".to_string(), Type::Bool);
                     map
                 }),

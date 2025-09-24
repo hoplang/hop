@@ -13,7 +13,7 @@ pub enum ComparableType {
 pub enum Type {
     String,
     Bool,
-    Number,
+    Float,
     Int,
     Object(BTreeMap<String, Type>),
     Array(Option<Box<Type>>),
@@ -24,7 +24,7 @@ impl Type {
         match self {
             Type::Bool => Some(ComparableType::Bool),
             Type::String => Some(ComparableType::String),
-            Type::Object(_) | Type::Array(_) | Type::Number | Type::Int => None,
+            Type::Object(_) | Type::Array(_) | Type::Float | Type::Int => None,
         }
     }
     /// Check if `subtype` is a subtype of `supertype`
@@ -33,7 +33,7 @@ impl Type {
             // Exact matches
             (Type::Bool, Type::Bool) => true,
             (Type::String, Type::String) => true,
-            (Type::Number, Type::Number) => true,
+            (Type::Float, Type::Float) => true,
             (Type::Int, Type::Int) => true,
 
             // Arrays are covariant in their element type
@@ -71,7 +71,7 @@ impl<'a> Type {
     pub fn to_doc(&'a self) -> BoxDoc<'a> {
         match self {
             Type::String => BoxDoc::text("string"),
-            Type::Number => BoxDoc::text("number"),
+            Type::Float => BoxDoc::text("number"),
             Type::Int => BoxDoc::text("int"),
             Type::Bool => BoxDoc::text("boolean"),
             Type::Array(elem_type) => match elem_type {
