@@ -459,7 +459,7 @@ impl Parser {
                 value,
                 annotation: range,
             }),
-            Some((Token::NumberLiteral(value), range)) => Ok(AnnotatedExpr::NumberLiteral {
+            Some((Token::FloatLiteral(value), range)) => Ok(AnnotatedExpr::FloatLiteral {
                 value,
                 annotation: range,
             }),

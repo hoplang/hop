@@ -44,7 +44,7 @@ pub fn typecheck_expr(
             value: *value,
             annotation: (),
         }),
-        AnnotatedExpr::NumberLiteral { value, .. } => Ok(SimpleTypedExpr::NumberLiteral {
+        AnnotatedExpr::FloatLiteral { value, .. } => Ok(SimpleTypedExpr::FloatLiteral {
             value: value.clone(),
             annotation: (),
         }),

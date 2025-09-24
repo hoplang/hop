@@ -106,7 +106,7 @@ impl Iterator for Tokenizer {
                             if let Some(i) = n.as_i64() {
                                 Ok((Token::IntLiteral(i), number_string))
                             } else {
-                                Ok((Token::NumberLiteral(n), number_string))
+                                Ok((Token::FloatLiteral(n), number_string))
                             }
                         }
                         Err(_) => Err(ParseError::InvalidNumberFormat {

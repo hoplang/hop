@@ -30,8 +30,8 @@ pub enum TypedExpr<A> {
     /// A boolean literal expression, e.g. true
     BooleanLiteral { value: bool, annotation: A },
 
-    /// A number literal expression, e.g. 2.5
-    NumberLiteral {
+    /// A float literal expression, e.g. 2.5
+    FloatLiteral {
         value: serde_json::Number,
         annotation: A,
     },
@@ -87,7 +87,7 @@ impl<A> TypedExpr<A> {
             | TypedExpr::ArrayLiteral { kind, .. }
             | TypedExpr::ObjectLiteral { kind, .. } => kind,
 
-            TypedExpr::NumberLiteral { .. } => &NUMBER_TYPE,
+            TypedExpr::FloatLiteral { .. } => &NUMBER_TYPE,
             TypedExpr::IntLiteral { .. } => &INT_TYPE,
 
             TypedExpr::JsonEncode { .. }
@@ -106,7 +106,7 @@ impl<A> TypedExpr<A> {
             | TypedExpr::PropertyAccess { annotation, .. }
             | TypedExpr::StringLiteral { annotation, .. }
             | TypedExpr::BooleanLiteral { annotation, .. }
-            | TypedExpr::NumberLiteral { annotation, .. }
+            | TypedExpr::FloatLiteral { annotation, .. }
             | TypedExpr::IntLiteral { annotation, .. }
             | TypedExpr::ArrayLiteral { annotation, .. }
             | TypedExpr::ObjectLiteral { annotation, .. }
@@ -128,7 +128,7 @@ impl<A> TypedExpr<A> {
                 .append(BoxDoc::text(property.as_str())),
             TypedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
             TypedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            TypedExpr::NumberLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            TypedExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
             TypedExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
             TypedExpr::ArrayLiteral { elements, .. } => {
                 if elements.is_empty() {

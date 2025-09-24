@@ -33,8 +33,8 @@ pub enum AnnotatedExpr<A> {
     /// An integer literal expression, e.g. 42
     IntLiteral { value: i64, annotation: A },
 
-    /// A number literal expression, e.g. 2.5
-    NumberLiteral {
+    /// A float literal expression, e.g. 2.5
+    FloatLiteral {
         value: serde_json::Number,
         annotation: A,
     },
@@ -66,7 +66,7 @@ impl<A> AnnotatedExpr<A> {
             | AnnotatedExpr::StringLiteral { annotation, .. }
             | AnnotatedExpr::BooleanLiteral { annotation, .. }
             | AnnotatedExpr::IntLiteral { annotation, .. }
-            | AnnotatedExpr::NumberLiteral { annotation, .. }
+            | AnnotatedExpr::FloatLiteral { annotation, .. }
             | AnnotatedExpr::ArrayLiteral { annotation, .. }
             | AnnotatedExpr::ObjectLiteral { annotation, .. }
             | AnnotatedExpr::BinaryOp { annotation, .. }
@@ -94,7 +94,7 @@ impl<'a, T> AnnotatedExpr<T> {
             AnnotatedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
             AnnotatedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
             AnnotatedExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            AnnotatedExpr::NumberLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            AnnotatedExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
             AnnotatedExpr::ArrayLiteral { elements, .. } => {
                 if elements.is_empty() {
                     BoxDoc::text("[]")

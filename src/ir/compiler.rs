@@ -372,7 +372,7 @@ impl Compiler {
                 value,
                 annotation: expr_id,
             },
-            SimpleTypedExpr::NumberLiteral { value, .. } => TypedExpr::NumberLiteral {
+            SimpleTypedExpr::FloatLiteral { value, .. } => TypedExpr::FloatLiteral {
                 value,
                 annotation: expr_id,
             },

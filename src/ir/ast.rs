@@ -311,7 +311,7 @@ impl IrExpr {
             TypedExpr::Var { .. }
             | TypedExpr::StringLiteral { .. }
             | TypedExpr::BooleanLiteral { .. }
-            | TypedExpr::NumberLiteral { .. }
+            | TypedExpr::FloatLiteral { .. }
             | TypedExpr::IntLiteral { .. } => {}
         }
     }
