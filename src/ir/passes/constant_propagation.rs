@@ -42,7 +42,7 @@ impl Pass for ConstantPropagationPass {
                         IrExpr::Negation { operand, .. } => {
                             not_relations.push((operand.id(), expr.id()));
                         }
-                        IrExpr::Comparison { left, right, .. } => {
+                        IrExpr::Equality { left, right, .. } => {
                             eq_left_relations.push((left.id(), expr.id()));
                             eq_right_relations.push((right.id(), expr.id()));
                         }

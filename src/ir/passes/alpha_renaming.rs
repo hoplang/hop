@@ -170,12 +170,12 @@ impl AlphaRenamingPass {
                 right: Box::new(self.rename_expr(*right)),
                 annotation,
             },
-            TypedExpr::Comparison {
+            TypedExpr::Equality {
                 left,
                 right,
                 operand_types,
                 annotation,
-            } => TypedExpr::Comparison {
+            } => TypedExpr::Equality {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,

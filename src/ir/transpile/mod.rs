@@ -7,8 +7,8 @@ pub mod integration_tests;
 
 pub use go::GoTranspiler;
 pub use js::{JsTranspiler, LanguageMode};
-pub use python::PythonTranspiler;
 use pretty::BoxDoc;
+pub use python::PythonTranspiler;
 
 use crate::dop::r#type::{ComparableType, Type};
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
@@ -131,7 +131,7 @@ pub trait ExpressionTranspiler {
             IrExpr::JsonEncode { value, .. } => self.transpile_json_encode(value),
             IrExpr::StringConcat { left, right, .. } => self.transpile_string_concat(left, right),
             IrExpr::Negation { operand, .. } => self.transpile_not(operand),
-            IrExpr::Comparison {
+            IrExpr::Equality {
                 left,
                 right,
                 operand_types,

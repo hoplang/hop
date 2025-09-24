@@ -389,12 +389,12 @@ impl Compiler {
                 right: Box::new(self.compile_expr(*right)),
                 annotation: expr_id,
             },
-            SimpleTypedExpr::Comparison {
+            SimpleTypedExpr::Equality {
                 left,
                 right,
                 operand_types,
                 ..
-            } => TypedExpr::Comparison {
+            } => TypedExpr::Equality {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,

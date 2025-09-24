@@ -109,7 +109,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(SimpleTypedExpr::Comparison {
+            Ok(SimpleTypedExpr::Equality {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -632,20 +632,12 @@ mod tests {
 
     #[test]
     fn test_typecheck_string_concatenation() {
-        check(
-            "",
-            r#""hello" + "world""#,
-            expect!["string"],
-        );
+        check("", r#""hello" + "world""#, expect!["string"]);
     }
 
     #[test]
     fn test_typecheck_string_concatenation_multiple() {
-        check(
-            "",
-            r#""hello" + " " + "world""#,
-            expect!["string"],
-        );
+        check("", r#""hello" + " " + "world""#, expect!["string"]);
     }
 
     #[test]
@@ -707,10 +699,6 @@ mod tests {
 
     #[test]
     fn test_typecheck_string_concatenation_result_comparison() {
-        check(
-            "",
-            r#""a" + "b" == "ab""#,
-            expect!["boolean"],
-        );
+        check("", r#""a" + "b" == "ab""#, expect!["boolean"]);
     }
 }

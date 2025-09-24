@@ -75,10 +75,14 @@ impl PythonTranspiler {
                         &format!("{}_item", field_name),
                         generated_types,
                     );
-                    BoxDoc::text("list[").append(elem_type_doc).append(BoxDoc::text("]"))
+                    BoxDoc::text("list[")
+                        .append(elem_type_doc)
+                        .append(BoxDoc::text("]"))
                 } else {
                     // Regular array
-                    BoxDoc::text("list[").append(self.get_python_type(elem_type)).append(BoxDoc::text("]"))
+                    BoxDoc::text("list[")
+                        .append(self.get_python_type(elem_type))
+                        .append(BoxDoc::text("]"))
                 }
             }
             _ => {
@@ -94,9 +98,9 @@ impl PythonTranspiler {
             Type::Bool => BoxDoc::text("bool"),
             Type::Number => BoxDoc::text("float"),
             Type::Int => BoxDoc::text("int"),
-            Type::Array(Some(elem)) => {
-                BoxDoc::text("list[").append(self.get_python_type(elem)).append(BoxDoc::text("]"))
-            }
+            Type::Array(Some(elem)) => BoxDoc::text("list[")
+                .append(self.get_python_type(elem))
+                .append(BoxDoc::text("]")),
             Type::Array(None) => BoxDoc::text("list"),
             Type::Object(_) => BoxDoc::text("dict"),
         }
@@ -118,16 +122,14 @@ impl PythonTranspiler {
             // Check for JSON encoding and object literals
             stmt.traverse(&mut |s| {
                 if let Some(primary_expr) = s.expr() {
-                    primary_expr.traverse(&mut |expr| {
-                        match expr {
-                            IrExpr::JsonEncode { .. } => {
-                                needs_json = true;
-                            }
-                            IrExpr::ObjectLiteral { .. } => {
-                                needs_simple_namespace = true;
-                            }
-                            _ => {}
+                    primary_expr.traverse(&mut |expr| match expr {
+                        IrExpr::JsonEncode { .. } => {
+                            needs_json = true;
                         }
+                        IrExpr::ObjectLiteral { .. } => {
+                            needs_simple_namespace = true;
+                        }
+                        _ => {}
                     });
                 }
             });
@@ -292,7 +294,7 @@ impl Transpiler for PythonTranspiler {
                 BoxDoc::nil()
                     .append(BoxDoc::text(param_name.as_str()))
                     .append(BoxDoc::text(" = params."))
-                    .append(BoxDoc::text(param_name.as_str()))
+                    .append(BoxDoc::text(param_name.as_str())),
             );
         }
 
@@ -905,9 +907,7 @@ mod tests {
                 t.write("<div>");
                 t.write_expr_escaped(t.prop_access(t.var("user"), "name"));
                 t.write(" - ");
-                t.write_expr_escaped(
-                    t.prop_access(t.prop_access(t.var("user"), "profile"), "bio"),
-                );
+                t.write_expr_escaped(t.prop_access(t.prop_access(t.var("user"), "profile"), "bio"));
                 t.write("</div>\n");
             });
         })];
