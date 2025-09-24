@@ -7,6 +7,7 @@ use pretty::BoxDoc;
 pub enum ComparableType {
     String,
     Bool,
+    Int,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -24,7 +25,8 @@ impl Type {
         match self {
             Type::Bool => Some(ComparableType::Bool),
             Type::String => Some(ComparableType::String),
-            Type::Object(_) | Type::Array(_) | Type::Float | Type::Int => None,
+            Type::Int => Some(ComparableType::Int),
+            Type::Object(_) | Type::Array(_) | Type::Float => None,
         }
     }
     /// Check if `subtype` is a subtype of `supertype`

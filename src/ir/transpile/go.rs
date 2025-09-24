@@ -488,6 +488,14 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
+    fn transpile_int_equality<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("(")
+            .append(self.transpile_expr(left))
+            .append(BoxDoc::text(" == "))
+            .append(self.transpile_expr(right))
+            .append(BoxDoc::text(")"))
+    }
+
     fn transpile_not<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("!(")
             .append(self.transpile_expr(operand))

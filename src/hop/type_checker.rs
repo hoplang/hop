@@ -3261,11 +3261,11 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Type int is not comparable
+                error: Can not compare int to string
                   --> main.hop (line 2, col 8)
                 1 | <main-comp>
                 2 |   <if {1 == "approved"}>
-                  |        ^
+                  |        ^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -4075,17 +4075,17 @@ mod tests {
                 </foo-comp>
             "#},
             expect![[r#"
-                error: Type int is not comparable
+                error: Can not compare int to string
                   --> main.hop (line 5, col 20)
                 4 | <foo-comp>
                 5 |     <main-comp {a: 1 == "", b: 1 == ""}/>
-                  |                    ^
+                  |                    ^^^^^^^
 
-                error: Type int is not comparable
+                error: Can not compare int to string
                   --> main.hop (line 5, col 32)
                 4 | <foo-comp>
                 5 |     <main-comp {a: 1 == "", b: 1 == ""}/>
-                  |                                ^
+                  |                                ^^^^^^^
             "#]],
         );
     }

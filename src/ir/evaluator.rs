@@ -188,6 +188,18 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             let right_str = right_val.as_str().unwrap();
             Ok(Value::Bool(left_str == right_str))
         }
+        IrExpr::Equality {
+            left,
+            right,
+            operand_types: ComparableType::Int,
+            ..
+        } => {
+            let left_val = evaluate_expr(left, env)?;
+            let right_val = evaluate_expr(right, env)?;
+            let left_int = left_val.as_i64().unwrap_or(0);
+            let right_int = right_val.as_i64().unwrap_or(0);
+            Ok(Value::Bool(left_int == right_int))
+        }
     }
 }
 
