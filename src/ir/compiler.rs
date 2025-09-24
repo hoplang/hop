@@ -444,6 +444,17 @@ impl Compiler {
                 operand_types,
                 annotation: expr_id,
             },
+            SimpleTypedExpr::GreaterThanOrEqual {
+                left,
+                right,
+                operand_types,
+                ..
+            } => TypedExpr::GreaterThanOrEqual {
+                left: Box::new(self.compile_expr(*left)),
+                right: Box::new(self.compile_expr(*right)),
+                operand_types,
+                annotation: expr_id,
+            },
         }
     }
 }

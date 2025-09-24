@@ -101,6 +101,14 @@ pub enum TypedExpr<A> {
         operand_types: ComparableType,
         annotation: A,
     },
+
+    /// Greater than or equal expression
+    GreaterThanOrEqual {
+        left: Box<Self>,
+        right: Box<Self>,
+        operand_types: ComparableType,
+        annotation: A,
+    },
 }
 
 impl<A> TypedExpr<A> {
@@ -129,7 +137,8 @@ impl<A> TypedExpr<A> {
             | TypedExpr::NotEquals { .. }
             | TypedExpr::LessThan { .. }
             | TypedExpr::GreaterThan { .. }
-            | TypedExpr::LessThanOrEqual { .. } => &BOOL_TYPE,
+            | TypedExpr::LessThanOrEqual { .. }
+            | TypedExpr::GreaterThanOrEqual { .. } => &BOOL_TYPE,
         }
     }
 
@@ -150,7 +159,8 @@ impl<A> TypedExpr<A> {
             | TypedExpr::NotEquals { annotation, .. }
             | TypedExpr::LessThan { annotation, .. }
             | TypedExpr::GreaterThan { annotation, .. }
-            | TypedExpr::LessThanOrEqual { annotation, .. } => annotation,
+            | TypedExpr::LessThanOrEqual { annotation, .. }
+            | TypedExpr::GreaterThanOrEqual { annotation, .. } => annotation,
         }
     }
 
@@ -253,6 +263,12 @@ impl<A> TypedExpr<A> {
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" <= "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
+            TypedExpr::GreaterThanOrEqual { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(left.to_doc())
+                .append(BoxDoc::text(" >= "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
         }

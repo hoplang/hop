@@ -308,6 +308,7 @@ impl IrExpr {
             | TypedExpr::LessThan { left, right, .. }
             | TypedExpr::GreaterThan { left, right, .. }
             | TypedExpr::LessThanOrEqual { left, right, .. }
+            | TypedExpr::GreaterThanOrEqual { left, right, .. }
             | TypedExpr::StringConcat { left, right, .. } => {
                 left.traverse(f);
                 right.traverse(f);
@@ -351,7 +352,8 @@ impl IrExpr {
             | TypedExpr::NotEquals { left, right, .. }
             | TypedExpr::LessThan { left, right, .. }
             | TypedExpr::GreaterThan { left, right, .. }
-            | TypedExpr::LessThanOrEqual { left, right, .. } => {
+            | TypedExpr::LessThanOrEqual { left, right, .. }
+            | TypedExpr::GreaterThanOrEqual { left, right, .. } => {
                 left.traverse_mut(f);
                 right.traverse_mut(f);
             }
