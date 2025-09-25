@@ -36,6 +36,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Initialize a new hop project with a template
+    Init {
+        /// Template language for the project
+        #[arg(value_enum)]
+        template: CompileLanguage,
+    },
     /// Run the Language Server Protocol (LSP) server
     Lsp,
     /// Compile hop templates to the specified language
@@ -95,6 +101,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     match &cli.command {
+        Some(Commands::Init { template }) => {
+            cli::init::execute(template)?;
+        }
         Some(Commands::Lsp) => {
             cli::lsp::execute().await;
         }

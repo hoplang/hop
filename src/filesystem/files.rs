@@ -1,5 +1,4 @@
 use anyhow::Context;
-use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs,
@@ -7,6 +6,7 @@ use std::{
 };
 
 use crate::hop::module_name::ModuleName;
+use super::config::HopConfig;
 
 /// Check if a directory should be skipped during .hop file search
 fn should_skip_directory(dir_name: &str) -> bool {
@@ -31,17 +31,6 @@ fn should_skip_directory(dir_name: &str) -> bool {
             | ".vscode"
             | ".direnv"
     )
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct HopConfig {
-    #[serde(default)]
-    pub css: CssConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct CssConfig {
-    pub mode: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -184,7 +173,7 @@ impl ProjectRoot {
         let config_str = fs::read_to_string(&config_path)
             .with_context(|| format!("Failed to read hop.toml at {:?}", config_path))?;
 
-        let config: HopConfig = toml::from_str(&config_str)
+        let config = HopConfig::from_toml_str(&config_str)
             .with_context(|| format!("Failed to parse hop.toml at {:?}", config_path))?;
 
         Ok(config)
