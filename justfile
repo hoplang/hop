@@ -11,10 +11,10 @@ update-tests:
 	UPDATE_EXPECT=1 cargo test
 
 build:
-	cargo build
+	cargo build -vv
 
 build-release:
-	cargo build --release
+	cargo build -vv --release
 
 install: build
 	sudo cp target/debug/hop /usr/local/bin/hop

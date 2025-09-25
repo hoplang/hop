@@ -11,3 +11,4 @@ output
 *.pdf
 html
 .envrc
+.hop-cache
