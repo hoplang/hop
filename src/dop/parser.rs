@@ -315,6 +315,7 @@ impl Parser {
             Some((Token::TypeInt, range)) => Ok((Type::Int, range)),
             Some((Token::TypeFloat, range)) => Ok((Type::Float, range)),
             Some((Token::TypeBoolean, range)) => Ok((Type::Bool, range)),
+            Some((Token::TypeTrustedHtml, range)) => Ok((Type::TrustedHtml, range)),
             Some((Token::TypeArray, type_array)) => {
                 let left_bracket = self.expect_token(&Token::LeftBracket)?;
                 let inner_type = self.parse_type()?;
@@ -623,12 +624,26 @@ mod tests {
         expected.assert_eq(&actual);
     }
 
+    ///////////////////////////////////////////////////////////////////////////
+    /// PARAMETERS                                                          ///
+    ///////////////////////////////////////////////////////////////////////////
+
     #[test]
     fn test_parse_parameters_type_keywords() {
         check_parse_parameters(
             "name: string, age: int, score: float, active: boolean, items: array[string]",
             expect![[r#"
                 [name: string, age: int, score: float, active: boolean, items: array[string]]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_parameters_trusted_html_type() {
+        check_parse_parameters(
+            "content: trusted_html",
+            expect![[r#"
+                [content: trusted_html]
             "#]],
         );
     }
@@ -692,6 +707,114 @@ mod tests {
             "#]],
         );
     }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// ARGUMENTS                                                           ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn test_parse_arguments_single() {
+        check_parse_arguments(
+            r#"name: "John""#,
+            expect![[r#"
+                [name: "John"]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_arguments_multiple() {
+        check_parse_arguments(
+            r#"name: "John", age: 25, active: true"#,
+            expect![[r#"
+                [name: "John", age: 25, active: true]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_named_arguments_complex_expressions() {
+        check_parse_arguments(
+            "user: user.name, enabled: !user.disabled",
+            expect![[r#"
+                [user: user.name, enabled: (!user.disabled)]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_named_arguments_trailing_comma() {
+        check_parse_arguments(
+            r#"name: "John", age: 25,"#,
+            expect![[r#"
+                [name: "John", age: 25]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_arguments_duplicate_argument_error() {
+        check_parse_arguments(
+            r#"name: "John", name: "Jane""#,
+            expect![[r#"
+                error: Duplicate argument 'name'
+                name: "John", name: "Jane"
+                              ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_named_arguments_missing_colon_error() {
+        check_parse_arguments(
+            r#"name "John""#,
+            expect![[r#"
+                error: Expected token ':' but got '"John"'
+                name "John"
+                     ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_named_arguments_missing_value_error() {
+        check_parse_arguments(
+            "name:",
+            expect![[r#"
+            error: Unexpected end of expression
+            name:
+            ^^^^^
+        "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_named_arguments_invalid_start_error() {
+        check_parse_arguments(
+            r#"123: "value""#,
+            expect![[r#"
+                error: Expected variable name but got 123
+                123: "value"
+                ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_named_arguments_unexpected_token_error() {
+        check_parse_arguments(
+            r#"name: "John" age: 25"#,
+            expect![[r#"
+                error: Unexpected token 'age'
+                name: "John" age: 25
+                             ^^^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// EXPRESSIONS                                                         ///
+    ///////////////////////////////////////////////////////////////////////////
 
     #[test]
     fn test_parse_expr_error_trailing_tokens() {
@@ -1331,106 +1454,6 @@ mod tests {
             "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
             expect![[r#"
                 {user: user.name, active: (!user.disabled)}
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_arguments_single() {
-        check_parse_arguments(
-            r#"name: "John""#,
-            expect![[r#"
-                [name: "John"]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_arguments_multiple() {
-        check_parse_arguments(
-            r#"name: "John", age: 25, active: true"#,
-            expect![[r#"
-                [name: "John", age: 25, active: true]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_named_arguments_complex_expressions() {
-        check_parse_arguments(
-            "user: user.name, enabled: !user.disabled",
-            expect![[r#"
-                [user: user.name, enabled: (!user.disabled)]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_named_arguments_trailing_comma() {
-        check_parse_arguments(
-            r#"name: "John", age: 25,"#,
-            expect![[r#"
-                [name: "John", age: 25]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_arguments_duplicate_argument_error() {
-        check_parse_arguments(
-            r#"name: "John", name: "Jane""#,
-            expect![[r#"
-                error: Duplicate argument 'name'
-                name: "John", name: "Jane"
-                              ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_named_arguments_missing_colon_error() {
-        check_parse_arguments(
-            r#"name "John""#,
-            expect![[r#"
-                error: Expected token ':' but got '"John"'
-                name "John"
-                     ^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_named_arguments_missing_value_error() {
-        check_parse_arguments(
-            "name:",
-            expect![[r#"
-            error: Unexpected end of expression
-            name:
-            ^^^^^
-        "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_named_arguments_invalid_start_error() {
-        check_parse_arguments(
-            r#"123: "value""#,
-            expect![[r#"
-                error: Expected variable name but got 123
-                123: "value"
-                ^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_named_arguments_unexpected_token_error() {
-        check_parse_arguments(
-            r#"name: "John" age: 25"#,
-            expect![[r#"
-                error: Unexpected token 'age'
-                name: "John" age: 25
-                             ^^^
             "#]],
         );
     }

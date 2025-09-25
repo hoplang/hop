@@ -114,6 +114,7 @@ impl Iterator for Tokenizer {
                         "int" => Token::TypeInt,
                         "float" => Token::TypeFloat,
                         "boolean" => Token::TypeBoolean,
+                        "trusted_html" => Token::TypeTrustedHtml,
                         "array" => Token::TypeArray,
                         _ => Token::Identifier(identifier.clone()),
                     };
@@ -536,27 +537,31 @@ mod tests {
     #[test]
     fn test_tokenize_type_keywords() {
         check(
-            "string int float boolean array",
+            "string int float boolean trusted_html array",
             expect![[r#"
                 token: string
-                string int float boolean array
+                string int float boolean trusted_html array
                 ^^^^^^
 
                 token: int
-                string int float boolean array
+                string int float boolean trusted_html array
                        ^^^
 
                 token: float
-                string int float boolean array
+                string int float boolean trusted_html array
                            ^^^^^
 
                 token: boolean
-                string int float boolean array
+                string int float boolean trusted_html array
                                  ^^^^^^^
 
+                token: trusted_html
+                string int float boolean trusted_html array
+                                         ^^^^^^^^^^^^
+
                 token: array
-                string int float boolean array
-                                         ^^^^^
+                string int float boolean trusted_html array
+                                                      ^^^^^
             "#]],
         );
     }

@@ -34,6 +34,7 @@ pub enum Token {
     TypeInt,
     TypeFloat,
     TypeBoolean,
+    TypeTrustedHtml,
     TypeArray,
 }
 
@@ -69,6 +70,7 @@ impl PartialEq for Token {
             (Token::TypeInt, Token::TypeInt) => true,
             (Token::TypeFloat, Token::TypeFloat) => true,
             (Token::TypeBoolean, Token::TypeBoolean) => true,
+            (Token::TypeTrustedHtml, Token::TypeTrustedHtml) => true,
             (Token::TypeArray, Token::TypeArray) => true,
             _ => false,
         }
@@ -120,6 +122,7 @@ impl fmt::Display for Token {
             Token::TypeInt => write!(f, "int"),
             Token::TypeFloat => write!(f, "float"),
             Token::TypeBoolean => write!(f, "boolean"),
+            Token::TypeTrustedHtml => write!(f, "trusted_html"),
             Token::TypeArray => write!(f, "array"),
         }
     }
