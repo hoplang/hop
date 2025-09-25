@@ -175,119 +175,121 @@ async fn main() -> anyhow::Result<()> {
 
             // Execute compile_and_run commands
             if target_config.compile_and_run.is_empty() {
-                eprintln!("  {} No compile_and_run commands configured in hop.toml", "✗".red());
+                eprintln!(
+                    "  {} No compile_and_run commands configured in hop.toml",
+                    "✗".red()
+                );
                 eprintln!("  Add commands to start your application server");
                 return Err(anyhow::anyhow!("No compile_and_run commands configured"));
             }
 
-                let commands = &target_config.compile_and_run;
+            let commands = &target_config.compile_and_run;
 
-                // Execute all commands except the last one synchronously
-                for command in &commands[..commands.len().saturating_sub(1)] {
-                    println!("  > {}", command.dimmed());
-                    use std::process::Command;
-                    let output = if cfg!(target_os = "windows") {
-                        Command::new("cmd").args(["/C", command]).output()
-                    } else {
-                        Command::new("sh").args(["-c", command]).output()
-                    };
-
-                    match output {
-                        Ok(output) => {
-                            if !output.stdout.is_empty() {
-                                print!("{}", String::from_utf8_lossy(&output.stdout));
-                            }
-                            if !output.stderr.is_empty() {
-                                eprint!("{}", String::from_utf8_lossy(&output.stderr));
-                            }
-                            if !output.status.success() {
-                                eprintln!(
-                                    "  {} Command failed with exit code: {:?}",
-                                    "✗".red(),
-                                    output.status.code()
-                                );
-                                return Err(anyhow::anyhow!("Command failed: {}", command));
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("  {} Failed to execute command: {}", "✗".red(), e);
-                            return Err(anyhow::anyhow!("Failed to execute command: {}", e));
-                        }
-                    }
-                }
-
-                // Execute the last command asynchronously (non-blocking)
-                let last_command = commands.last()
-                    .ok_or_else(|| anyhow::anyhow!("No commands found in compile_and_run"))?;
-
-                println!("  > {} (running in background)", last_command.dimmed());
+            // Execute all commands except the last one synchronously
+            for command in &commands[..commands.len().saturating_sub(1)] {
+                println!("  > {}", command.dimmed());
                 use std::process::Command;
-                use tokio::sync::oneshot;
-
-                let command_clone = last_command.clone();
-
-                // Try to start the command and check if it fails immediately
-                let child = if cfg!(target_os = "windows") {
-                    Command::new("cmd").args(["/C", &command_clone]).spawn()
+                let output = if cfg!(target_os = "windows") {
+                    Command::new("cmd").args(["/C", command]).output()
                 } else {
-                    Command::new("sh").args(["-c", &command_clone]).spawn()
+                    Command::new("sh").args(["-c", command]).output()
                 };
 
-                match child {
-                    Ok(mut child) => {
-                        // Create a channel to signal when the background process exits
-                        let (tx, rx) = oneshot::channel::<std::process::ExitStatus>();
+                match output {
+                    Ok(output) => {
+                        if !output.stdout.is_empty() {
+                            print!("{}", String::from_utf8_lossy(&output.stdout));
+                        }
+                        if !output.stderr.is_empty() {
+                            eprint!("{}", String::from_utf8_lossy(&output.stderr));
+                        }
+                        if !output.status.success() {
+                            eprintln!(
+                                "  {} Command failed with exit code: {:?}",
+                                "✗".red(),
+                                output.status.code()
+                            );
+                            return Err(anyhow::anyhow!("Command failed: {}", command));
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("  {} Failed to execute command: {}", "✗".red(), e);
+                        return Err(anyhow::anyhow!("Failed to execute command: {}", e));
+                    }
+                }
+            }
 
-                        // Spawn a task to monitor the background process
-                        tokio::spawn(async move {
-                            if let Ok(status) = child.wait() {
-                                // Send the exit status through the channel (ignore if receiver dropped)
-                                let _ = tx.send(status);
-                            }
-                        });
+            // Execute the last command asynchronously (non-blocking)
+            let last_command = commands
+                .last()
+                .ok_or_else(|| anyhow::anyhow!("No commands found in compile_and_run"))?;
 
-                        // Wait for background server to start and load the development stubs
-                        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+            println!("  > {}", last_command.dimmed());
+            use std::process::Command;
+            use tokio::sync::oneshot;
 
-                        // Second compilation with development: false for clean production output
-                        let _ = cli::compile::execute(projectdir.as_deref(), false)?;
+            let command_clone = last_command.clone();
 
-                        println!();
+            // Try to start the command and check if it fails immediately
+            let child = if cfg!(target_os = "windows") {
+                Command::new("cmd").args(["/C", &command_clone]).spawn()
+            } else {
+                Command::new("sh").args(["-c", &command_clone]).spawn()
+            };
 
-                        // Run the server and monitor for background process exit
-                        tokio::select! {
-                            result = axum::serve(listener, router) => {
-                                // Server ended (shouldn't normally happen)
-                                result?;
-                            }
-                            status = rx => {
-                                // Background process exited
-                                match status {
-                                    Ok(exit_status) => {
-                                        eprintln!();
-                                        eprintln!("  {} Background command exited with status: {}",
-                                                 "✗".red(),
-                                                 exit_status);
-                                        return Err(anyhow::anyhow!("Background command exited"));
-                                    }
-                                    Err(_) => {
-                                        // Channel was dropped, which shouldn't happen
-                                        eprintln!("  {} Lost connection to background command", "✗".red());
-                                        return Err(anyhow::anyhow!("Lost connection to background command"));
-                                    }
+            match child {
+                Ok(mut child) => {
+                    // Create a channel to signal when the background process exits
+                    let (tx, rx) = oneshot::channel::<std::process::ExitStatus>();
+
+                    // Spawn a task to monitor the background process
+                    tokio::spawn(async move {
+                        if let Ok(status) = child.wait() {
+                            // Send the exit status through the channel (ignore if receiver dropped)
+                            let _ = tx.send(status);
+                        }
+                    });
+
+                    // Wait for background server to start and load the development stubs
+                    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+                    // Second compilation with development: false for clean production output
+                    let _ = cli::compile::execute(projectdir.as_deref(), false)?;
+
+                    // Run the server and monitor for background process exit
+                    tokio::select! {
+                        result = axum::serve(listener, router) => {
+                            // Server ended (shouldn't normally happen)
+                            result?;
+                        }
+                        status = rx => {
+                            // Background process exited
+                            match status {
+                                Ok(exit_status) => {
+                                    eprintln!();
+                                    eprintln!("  {} Background command exited with status: {}",
+                                             "✗".red(),
+                                             exit_status);
+                                    return Err(anyhow::anyhow!("Background command exited"));
+                                }
+                                Err(_) => {
+                                    // Channel was dropped, which shouldn't happen
+                                    eprintln!("  {} Lost connection to background command", "✗".red());
+                                    return Err(anyhow::anyhow!("Lost connection to background command"));
                                 }
                             }
                         }
                     }
-                    Err(e) => {
-                        eprintln!(
-                            "  {} Failed to execute background command: {}",
-                            "✗".red(),
-                            e
-                        );
-                        return Err(anyhow::anyhow!("Failed to start background command: {}", e));
-                    }
                 }
+                Err(e) => {
+                    eprintln!(
+                        "  {} Failed to execute background command: {}",
+                        "✗".red(),
+                        e
+                    );
+                    return Err(anyhow::anyhow!("Failed to start background command: {}", e));
+                }
+            }
         }
         Some(Commands::Fmt { filename }) => {
             use hop::pretty_print::pretty_print_from_source;

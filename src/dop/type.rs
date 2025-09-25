@@ -57,7 +57,9 @@ impl Type {
         match self {
             Type::Int => Some(ComparableType::Int),
             Type::Float => Some(ComparableType::Float),
-            Type::Bool | Type::String | Type::TrustedHtml | Type::Object(_) | Type::Array(_) => None,
+            Type::Bool | Type::String | Type::TrustedHtml | Type::Object(_) | Type::Array(_) => {
+                None
+            }
         }
     }
 
@@ -65,7 +67,9 @@ impl Type {
         match self {
             Type::Int => Some(NumericType::Int),
             Type::Float => Some(NumericType::Float),
-            Type::Bool | Type::String | Type::TrustedHtml | Type::Object(_) | Type::Array(_) => None,
+            Type::Bool | Type::String | Type::TrustedHtml | Type::Object(_) | Type::Array(_) => {
+                None
+            }
         }
     }
     /// Check if `subtype` is a subtype of `supertype`
