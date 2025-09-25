@@ -16,6 +16,7 @@ pub struct CompileResult {
     pub output_path: String,
     pub file_size: usize,
     pub entry_points: Vec<String>,
+    pub timer: crate::tui::timing::TimingCollector,
 }
 
 pub fn execute(projectdir: Option<&str>, development: bool) -> Result<CompileResult> {
@@ -125,8 +126,6 @@ pub fn execute(projectdir: Option<&str>, development: bool) -> Result<CompileRes
     fs::write(output_path, &generated_code)
         .with_context(|| format!("Failed to write output to {}", output_path))?;
 
-    timer.print();
-
     let entry_points: Vec<String> = ir_entrypoints
         .iter()
         .map(|entrypoint| entrypoint.name.replace(['/', '-'], "_"))
@@ -136,5 +135,6 @@ pub fn execute(projectdir: Option<&str>, development: bool) -> Result<CompileRes
         output_path: output_path.to_string(),
         file_size: generated_code.len(),
         entry_points,
+        timer,
     })
 }

@@ -110,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
             use std::time::Instant;
             let start_time = Instant::now();
 
-            let result = cli::compile::execute(projectdir.as_deref(), *development)?;
+            let mut result = cli::compile::execute(projectdir.as_deref(), *development)?;
             let elapsed = start_time.elapsed();
 
             print_header("compiled", elapsed.as_millis());
@@ -134,6 +134,7 @@ async fn main() -> anyhow::Result<()> {
                 println!("  {} No entrypoint components found", "⚠".yellow());
                 println!("  Add 'entrypoint' attribute to components you want to export");
             }
+            result.timer.print();
             println!();
         }
         Some(Commands::Dev {
@@ -153,6 +154,9 @@ async fn main() -> anyhow::Result<()> {
             // Load config to get compile_and_run commands
             let config = root.load_config()?;
             let (_target_language, target_config) = config.get_target();
+
+            // First compilation with development: true for stubs
+            let _ = cli::compile::execute(projectdir.as_deref(), true)?;
 
             let (router, _watcher) = cli::dev::execute(&root).await?;
             let elapsed = start_time.elapsed();
@@ -232,6 +236,12 @@ async fn main() -> anyhow::Result<()> {
                                 let _ = tx.send(status);
                             }
                         });
+
+                        // Wait for background server to start and load the development stubs
+                        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+                        // Second compilation with development: false for clean production output
+                        let _ = cli::compile::execute(projectdir.as_deref(), false)?;
 
                         println!();
 
