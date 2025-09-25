@@ -241,17 +241,30 @@ impl AlphaRenamingPass {
             TypedExpr::BooleanLiteral { .. } => expr,
             TypedExpr::FloatLiteral { .. } => expr,
             TypedExpr::IntLiteral { .. } => expr,
-            TypedExpr::LogicalAnd { left, right, annotation } => TypedExpr::LogicalAnd {
+            TypedExpr::LogicalAnd {
+                left,
+                right,
+                annotation,
+            } => TypedExpr::LogicalAnd {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 annotation,
             },
-            TypedExpr::LogicalOr { left, right, annotation } => TypedExpr::LogicalOr {
+            TypedExpr::LogicalOr {
+                left,
+                right,
+                annotation,
+            } => TypedExpr::LogicalOr {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 annotation,
             },
-            TypedExpr::NumericAdd { left, right, operand_types, annotation } => TypedExpr::NumericAdd {
+            TypedExpr::NumericAdd {
+                left,
+                right,
+                operand_types,
+                annotation,
+            } => TypedExpr::NumericAdd {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,

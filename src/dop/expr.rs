@@ -41,10 +41,7 @@ pub enum AnnotatedExpr<A> {
     IntLiteral { value: i64, annotation: A },
 
     /// A float literal expression, e.g. 2.5
-    FloatLiteral {
-        value: f64,
-        annotation: A,
-    },
+    FloatLiteral { value: f64, annotation: A },
 
     /// An array literal expression, e.g. [1, 2, 3]
     ArrayLiteral { elements: Vec<Self>, annotation: A },

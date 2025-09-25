@@ -10,7 +10,7 @@ pub use js::{JsTranspiler, LanguageMode};
 use pretty::BoxDoc;
 pub use python::PythonTranspiler;
 
-use crate::dop::r#type::{EquatableType, ComparableType, NumericType, Type};
+use crate::dop::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use std::collections::BTreeMap;
 
@@ -107,10 +107,26 @@ pub trait ExpressionTranspiler {
     fn transpile_float_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_greater_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_greater_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_int_less_than_or_equal<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_float_less_than_or_equal<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_int_greater_than_or_equal<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_float_greater_than_or_equal<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_int_less_than_or_equal<'a>(
+        &self,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> BoxDoc<'a>;
+    fn transpile_float_less_than_or_equal<'a>(
+        &self,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> BoxDoc<'a>;
+    fn transpile_int_greater_than_or_equal<'a>(
+        &self,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> BoxDoc<'a>;
+    fn transpile_float_greater_than_or_equal<'a>(
+        &self,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> BoxDoc<'a>;
     fn transpile_not<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_json_encode<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_string_concat<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
@@ -209,7 +225,12 @@ pub trait ExpressionTranspiler {
             },
             IrExpr::LogicalAnd { left, right, .. } => self.transpile_logical_and(left, right),
             IrExpr::LogicalOr { left, right, .. } => self.transpile_logical_or(left, right),
-            IrExpr::NumericAdd { left, right, operand_types, .. } => match operand_types {
+            IrExpr::NumericAdd {
+                left,
+                right,
+                operand_types,
+                ..
+            } => match operand_types {
                 NumericType::Int => self.transpile_int_add(left, right),
                 NumericType::Float => self.transpile_float_add(left, right),
             },

@@ -1,5 +1,6 @@
 use crate::CompileLanguage;
 use crate::document::DocumentAnnotator;
+use crate::filesystem::config::TargetLanguage;
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::program::Program;
 use crate::ir::{
@@ -17,12 +18,7 @@ pub struct CompileResult {
     pub entry_points: Vec<String>,
 }
 
-pub fn execute(
-    projectdir: Option<&str>,
-    output_path: &str,
-    language: &CompileLanguage,
-    development: bool,
-) -> Result<CompileResult> {
+pub fn execute(projectdir: Option<&str>, development: bool) -> Result<CompileResult> {
     let mut timer = timing::TimingCollector::new();
 
     // Find project root
@@ -33,11 +29,17 @@ pub fn execute(
 
     // Load configuration
     let config = project_root.load_config()?;
+    let (target_language, target_config) = config.get_target();
 
-    // Log CSS mode if configured
-    if let Some(css_mode) = &config.css.mode {
-        eprintln!("Using CSS mode: {}", css_mode);
-    }
+    // Convert target language to CompileLanguage
+    let language = match target_language {
+        TargetLanguage::Js => CompileLanguage::Js,
+        TargetLanguage::Ts => CompileLanguage::Ts,
+        TargetLanguage::Python => CompileLanguage::Py,
+        TargetLanguage::Go => CompileLanguage::Go,
+    };
+
+    let output_path = &target_config.output;
 
     // Load all .hop files
     let hop_modules = project_root.load_all_hop_modules()?;

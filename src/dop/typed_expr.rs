@@ -3,7 +3,10 @@ use std::fmt::{self, Display};
 use crate::dop::var_name::VarName;
 use pretty::BoxDoc;
 
-use super::{Type, r#type::{EquatableType, ComparableType, NumericType}};
+use super::{
+    Type,
+    r#type::{ComparableType, EquatableType, NumericType},
+};
 
 pub type SimpleTypedExpr = TypedExpr<()>;
 

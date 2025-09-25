@@ -5,8 +5,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::hop::module_name::ModuleName;
 use super::config::HopConfig;
+use crate::hop::module_name::ModuleName;
 
 /// Check if a directory should be skipped during .hop file search
 fn should_skip_directory(dir_name: &str) -> bool {
@@ -419,6 +419,9 @@ mod tests {
             -- hop.toml --
             [css]
             mode = "tailwind4"
+
+            [target.ts]
+            output = "app.ts"
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::from(&temp_dir).unwrap();
@@ -466,8 +469,10 @@ mod tests {
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::from(&temp_dir).unwrap();
 
-        let config = root.load_config().unwrap();
-        assert!(config.css.mode.is_none());
+        let result = root.load_config();
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("Failed to parse hop.toml"));
 
         fs::remove_dir_all(&temp_dir).unwrap();
     }

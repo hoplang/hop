@@ -540,7 +540,11 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_int_less_than_or_equal<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_less_than_or_equal<'a>(
+        &self,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -549,7 +553,11 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_less_than_or_equal<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_less_than_or_equal<'a>(
+        &self,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -558,7 +566,11 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_int_greater_than_or_equal<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_int_greater_than_or_equal<'a>(
+        &self,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
@@ -567,7 +579,11 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_float_greater_than_or_equal<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+    fn transpile_float_greater_than_or_equal<'a>(
+        &self,
+        left: &'a IrExpr,
+        right: &'a IrExpr,
+    ) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))

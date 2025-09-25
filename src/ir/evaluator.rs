@@ -1,6 +1,9 @@
 use crate::hop::environment::Environment;
 use crate::ir::IrExpr;
-use crate::{common::escape_html, dop::r#type::{EquatableType, ComparableType, NumericType}};
+use crate::{
+    common::escape_html,
+    dop::r#type::{ComparableType, EquatableType, NumericType},
+};
 use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -374,7 +377,12 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             Ok(Value::Bool(left_bool || right_bool))
         }
 
-        IrExpr::NumericAdd { left, right, operand_types, .. } => {
+        IrExpr::NumericAdd {
+            left,
+            right,
+            operand_types,
+            ..
+        } => {
             let left_val = evaluate_expr(left, env)?;
             let right_val = evaluate_expr(right, env)?;
 
@@ -382,12 +390,17 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 NumericType::Int => {
                     let left_int = left_val.as_i64().unwrap_or(0);
                     let right_int = right_val.as_i64().unwrap_or(0);
-                    Ok(Value::Number(serde_json::Number::from(left_int + right_int)))
+                    Ok(Value::Number(serde_json::Number::from(
+                        left_int + right_int,
+                    )))
                 }
                 NumericType::Float => {
                     let left_float = left_val.as_f64().unwrap_or(0.0);
                     let right_float = right_val.as_f64().unwrap_or(0.0);
-                    Ok(Value::Number(serde_json::Number::from_f64(left_float + right_float).unwrap_or_else(|| serde_json::Number::from(0))))
+                    Ok(Value::Number(
+                        serde_json::Number::from_f64(left_float + right_float)
+                            .unwrap_or_else(|| serde_json::Number::from(0)),
+                    ))
                 }
             }
         }

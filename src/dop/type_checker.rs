@@ -172,19 +172,21 @@ pub fn typecheck_expr(
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            let left_comparable = left_type.as_comparable_type().ok_or_else(|| {
-                TypeError::TypeIsNotComparable {
-                    t: left_type.clone(),
-                    range: left.range().clone(),
-                }
-            })?;
+            let left_comparable =
+                left_type
+                    .as_comparable_type()
+                    .ok_or_else(|| TypeError::TypeIsNotComparable {
+                        t: left_type.clone(),
+                        range: left.range().clone(),
+                    })?;
 
-            let right_comparable = right_type.as_comparable_type().ok_or_else(|| {
-                TypeError::TypeIsNotComparable {
-                    t: right_type.clone(),
-                    range: right.range().clone(),
-                }
-            })?;
+            let right_comparable =
+                right_type
+                    .as_comparable_type()
+                    .ok_or_else(|| TypeError::TypeIsNotComparable {
+                        t: right_type.clone(),
+                        range: right.range().clone(),
+                    })?;
 
             // Both operands must be the same comparable type
             if left_comparable != right_comparable {
@@ -214,19 +216,21 @@ pub fn typecheck_expr(
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            let left_comparable = left_type.as_comparable_type().ok_or_else(|| {
-                TypeError::TypeIsNotComparable {
-                    t: left_type.clone(),
-                    range: left.range().clone(),
-                }
-            })?;
+            let left_comparable =
+                left_type
+                    .as_comparable_type()
+                    .ok_or_else(|| TypeError::TypeIsNotComparable {
+                        t: left_type.clone(),
+                        range: left.range().clone(),
+                    })?;
 
-            let right_comparable = right_type.as_comparable_type().ok_or_else(|| {
-                TypeError::TypeIsNotComparable {
-                    t: right_type.clone(),
-                    range: right.range().clone(),
-                }
-            })?;
+            let right_comparable =
+                right_type
+                    .as_comparable_type()
+                    .ok_or_else(|| TypeError::TypeIsNotComparable {
+                        t: right_type.clone(),
+                        range: right.range().clone(),
+                    })?;
 
             // Both operands must be the same comparable type
             if left_comparable != right_comparable {
@@ -256,19 +260,21 @@ pub fn typecheck_expr(
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            let left_comparable = left_type.as_comparable_type().ok_or_else(|| {
-                TypeError::TypeIsNotComparable {
-                    t: left_type.clone(),
-                    range: left.range().clone(),
-                }
-            })?;
+            let left_comparable =
+                left_type
+                    .as_comparable_type()
+                    .ok_or_else(|| TypeError::TypeIsNotComparable {
+                        t: left_type.clone(),
+                        range: left.range().clone(),
+                    })?;
 
-            let right_comparable = right_type.as_comparable_type().ok_or_else(|| {
-                TypeError::TypeIsNotComparable {
-                    t: right_type.clone(),
-                    range: right.range().clone(),
-                }
-            })?;
+            let right_comparable =
+                right_type
+                    .as_comparable_type()
+                    .ok_or_else(|| TypeError::TypeIsNotComparable {
+                        t: right_type.clone(),
+                        range: right.range().clone(),
+                    })?;
 
             // Both operands must be the same comparable type
             if left_comparable != right_comparable {
@@ -297,19 +303,21 @@ pub fn typecheck_expr(
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            let left_comparable = left_type.as_comparable_type().ok_or_else(|| {
-                TypeError::TypeIsNotComparable {
-                    t: left_type.clone(),
-                    range: left.range().clone(),
-                }
-            })?;
+            let left_comparable =
+                left_type
+                    .as_comparable_type()
+                    .ok_or_else(|| TypeError::TypeIsNotComparable {
+                        t: left_type.clone(),
+                        range: left.range().clone(),
+                    })?;
 
-            let right_comparable = right_type.as_comparable_type().ok_or_else(|| {
-                TypeError::TypeIsNotComparable {
-                    t: right_type.clone(),
-                    range: right.range().clone(),
-                }
-            })?;
+            let right_comparable =
+                right_type
+                    .as_comparable_type()
+                    .ok_or_else(|| TypeError::TypeIsNotComparable {
+                        t: right_type.clone(),
+                        range: right.range().clone(),
+                    })?;
 
             // Both operands must be the same comparable type
             if left_comparable != right_comparable {
@@ -404,29 +412,23 @@ pub fn typecheck_expr(
             // 3. Float addition (Float + Float)
 
             match (left_type, right_type) {
-                (Type::String, Type::String) => {
-                    Ok(SimpleTypedExpr::StringConcat {
-                        left: Box::new(typed_left),
-                        right: Box::new(typed_right),
-                        annotation: (),
-                    })
-                }
-                (Type::Int, Type::Int) => {
-                    Ok(SimpleTypedExpr::NumericAdd {
-                        left: Box::new(typed_left),
-                        right: Box::new(typed_right),
-                        operand_types: NumericType::Int,
-                        annotation: (),
-                    })
-                }
-                (Type::Float, Type::Float) => {
-                    Ok(SimpleTypedExpr::NumericAdd {
-                        left: Box::new(typed_left),
-                        right: Box::new(typed_right),
-                        operand_types: NumericType::Float,
-                        annotation: (),
-                    })
-                }
+                (Type::String, Type::String) => Ok(SimpleTypedExpr::StringConcat {
+                    left: Box::new(typed_left),
+                    right: Box::new(typed_right),
+                    annotation: (),
+                }),
+                (Type::Int, Type::Int) => Ok(SimpleTypedExpr::NumericAdd {
+                    left: Box::new(typed_left),
+                    right: Box::new(typed_right),
+                    operand_types: NumericType::Int,
+                    annotation: (),
+                }),
+                (Type::Float, Type::Float) => Ok(SimpleTypedExpr::NumericAdd {
+                    left: Box::new(typed_left),
+                    right: Box::new(typed_right),
+                    operand_types: NumericType::Float,
+                    annotation: (),
+                }),
                 _ => {
                     // Incompatible types for addition
                     Err(TypeError::IncompatibleTypesForAddition {
@@ -1035,11 +1037,7 @@ mod tests {
 
     #[test]
     fn test_typecheck_string_concatenation_error_both_numbers() {
-        check(
-            "",
-            r#"42 + 58"#,
-            expect!["int"],
-        );
+        check("", r#"42 + 58"#, expect!["int"]);
     }
 
     #[test]
@@ -1297,19 +1295,11 @@ mod tests {
 
     #[test]
     fn test_typecheck_addition_with_property_access() {
-        check(
-            "user: {x: int, y: int}",
-            "user.x + user.y",
-            expect!["int"],
-        );
+        check("user: {x: int, y: int}", "user.x + user.y", expect!["int"]);
     }
 
     #[test]
     fn test_typecheck_mixed_addition_and_comparison() {
-        check(
-            "a: int, b: int, c: int",
-            "a + b > c",
-            expect!["boolean"],
-        );
+        check("a: int, b: int, c: int", "a + b > c", expect!["boolean"]);
     }
 }

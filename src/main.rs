@@ -11,6 +11,7 @@ mod test_utils;
 mod tui;
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use filesystem::config::TargetLanguage;
 use std::path::Path;
 
 #[derive(Clone, Debug, ValueEnum)]
@@ -36,25 +37,20 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize a new hop project with a template
+    /// Initialize a new hop project
+    #[command(arg_required_else_help = true)]
     Init {
-        /// Template language for the project
+        /// Target language for the project
         #[arg(value_enum)]
-        template: CompileLanguage,
+        target: TargetLanguage,
     },
     /// Run the Language Server Protocol (LSP) server
     Lsp,
-    /// Compile hop templates to the specified language
+    /// Compile hop templates using target from hop.toml
     Compile {
-        /// Target language (currently only 'js' is supported)
-        #[arg(value_enum)]
-        language: CompileLanguage,
         /// Path to project root
         #[arg(long)]
         projectdir: Option<String>,
-        /// Output file (defaults to output.{ext})
-        #[arg(short, long)]
-        output: Option<String>,
         /// Compile for development mode (generates bootstrap HTML)
         #[arg(long, default_value = "false")]
         development: bool,
@@ -101,30 +97,20 @@ async fn main() -> anyhow::Result<()> {
     }
 
     match &cli.command {
-        Some(Commands::Init { template }) => {
-            cli::init::execute(template)?;
+        Some(Commands::Init { target }) => {
+            cli::init::execute(target)?;
         }
         Some(Commands::Lsp) => {
             cli::lsp::execute().await;
         }
         Some(Commands::Compile {
-            language,
             projectdir,
-            output,
             development,
         }) => {
             use std::time::Instant;
             let start_time = Instant::now();
 
-            // Determine output filename based on language if not specified
-            let output_path = output.as_deref().unwrap_or(match language {
-                CompileLanguage::Js => "output.js",
-                CompileLanguage::Ts => "output.ts",
-                CompileLanguage::Go => "output.go",
-                CompileLanguage::Py => "output.py",
-            });
-
-            let result = cli::compile::execute(projectdir.as_deref(), output_path, language, *development)?;
+            let result = cli::compile::execute(projectdir.as_deref(), *development)?;
             let elapsed = start_time.elapsed();
 
             print_header("compiled", elapsed.as_millis());

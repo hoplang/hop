@@ -1,5 +1,5 @@
 use crate::dop::TypedExpr;
-use crate::dop::r#type::{EquatableType, ComparableType};
+use crate::dop::r#type::{ComparableType, EquatableType};
 use crate::dop::{Type, VarName};
 use crate::ir::ast::IrEntrypoint;
 use crate::ir::ast::{ExprId, IrExpr, IrStatement, StatementId};

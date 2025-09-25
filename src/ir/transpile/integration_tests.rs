@@ -610,13 +610,10 @@ mod tests {
         let test_case = TestCase::new(
             build_ir_auto("test", vec![], |t| {
                 t.if_stmt(
-                    t.eq(
-                        t.string_concat(t.str("foo"), t.str("bar")),
-                        t.str("foobar")
-                    ),
+                    t.eq(t.string_concat(t.str("foo"), t.str("bar")), t.str("foobar")),
                     |t| {
                         t.write("equals");
-                    }
+                    },
                 );
             }),
             "equals",
