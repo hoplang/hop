@@ -149,6 +149,11 @@ async fn main() -> anyhow::Result<()> {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
+
+            // Load config to get compile_and_run commands
+            let config = root.load_config()?;
+            let (_target_language, target_config) = config.get_target();
+
             let (router, _watcher) = cli::dev::execute(&root).await?;
             let elapsed = start_time.elapsed();
             let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
@@ -161,6 +166,76 @@ async fn main() -> anyhow::Result<()> {
                 port.to_string().green()
             );
             println!("  /render endpoint available for component rendering");
+
+            // Execute compile_and_run commands
+            if !target_config.compile_and_run.is_empty() {
+                println!();
+                println!("  {} Executing compile_and_run commands:", "🔄".cyan());
+
+                let commands = &target_config.compile_and_run;
+
+                // Execute all commands except the last one synchronously
+                for command in &commands[..commands.len().saturating_sub(1)] {
+                    println!("    > {}", command.dimmed());
+                    use std::process::Command;
+                    let output = if cfg!(target_os = "windows") {
+                        Command::new("cmd")
+                            .args(["/C", command])
+                            .output()
+                    } else {
+                        Command::new("sh")
+                            .args(["-c", command])
+                            .output()
+                    };
+
+                    match output {
+                        Ok(output) => {
+                            if !output.stdout.is_empty() {
+                                print!("{}", String::from_utf8_lossy(&output.stdout));
+                            }
+                            if !output.stderr.is_empty() {
+                                eprint!("{}", String::from_utf8_lossy(&output.stderr));
+                            }
+                            if !output.status.success() {
+                                eprintln!("    {} Command failed with exit code: {:?}", "✗".red(), output.status.code());
+                            } else {
+                                println!("    {} Command completed successfully", "✓".green());
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("    {} Failed to execute command: {}", "✗".red(), e);
+                        }
+                    }
+                }
+
+                // Execute the last command asynchronously (non-blocking)
+                if let Some(last_command) = commands.last() {
+                    println!("    > {} (running in background)", last_command.dimmed());
+                    use std::process::Command;
+                    let command_clone = last_command.clone();
+                    tokio::spawn(async move {
+                        let mut child = if cfg!(target_os = "windows") {
+                            Command::new("cmd")
+                                .args(["/C", &command_clone])
+                                .spawn()
+                        } else {
+                            Command::new("sh")
+                                .args(["-c", &command_clone])
+                                .spawn()
+                        };
+
+                        match child {
+                            Ok(ref mut child) => {
+                                let _ = child.wait();
+                            }
+                            Err(e) => {
+                                eprintln!("    {} Failed to execute background command: {}", "✗".red(), e);
+                            }
+                        }
+                    });
+                }
+            }
+
             println!();
             axum::serve(listener, router).await?;
         }

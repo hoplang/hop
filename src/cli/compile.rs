@@ -39,8 +39,6 @@ pub fn execute(projectdir: Option<&str>, development: bool) -> Result<CompileRes
         TargetLanguage::Go => CompileLanguage::Go,
     };
 
-    let output_path = &target_config.output;
-
     // Load all .hop files
     let hop_modules = project_root.load_all_hop_modules()?;
 
@@ -120,6 +118,9 @@ pub fn execute(projectdir: Option<&str>, development: bool) -> Result<CompileRes
     };
 
     timer.start_phase("writing output");
+
+    let output_path = &target_config.output;
+
     // Write output file
     fs::write(output_path, &generated_code)
         .with_context(|| format!("Failed to write output to {}", output_path))?;
