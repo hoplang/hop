@@ -158,6 +158,15 @@ async fn main() -> anyhow::Result<()> {
             // First compilation with development: true for stubs
             let _ = cli::compile::execute(projectdir.as_deref(), true)?;
 
+            // Set up Ctrl-C handler to ensure we compile production output before exit
+            let projectdir_clone = projectdir.clone();
+            tokio::spawn(async move {
+                tokio::signal::ctrl_c().await.ok();
+                // Compile with production mode to clean up stubs
+                let _ = cli::compile::execute(projectdir_clone.as_deref(), false);
+                std::process::exit(130); // Standard exit code for SIGINT
+            });
+
             let (router, _watcher) = cli::dev::execute(&root).await?;
             let elapsed = start_time.elapsed();
             let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
