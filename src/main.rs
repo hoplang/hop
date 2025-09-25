@@ -159,33 +159,20 @@ async fn main() -> anyhow::Result<()> {
             let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
 
             print_header("ready", elapsed.as_millis());
-            println!("  {} http://{}:{}/", "➜".green(), host, port);
-            println!();
-            println!(
-                "  Development server running on port {}",
-                port.to_string().green()
-            );
-            println!("  /render endpoint available for component rendering");
 
             // Execute compile_and_run commands
             if !target_config.compile_and_run.is_empty() {
-                println!();
-                println!("  {} Executing compile_and_run commands:", "🔄".cyan());
 
                 let commands = &target_config.compile_and_run;
 
                 // Execute all commands except the last one synchronously
                 for command in &commands[..commands.len().saturating_sub(1)] {
-                    println!("    > {}", command.dimmed());
+                    println!("  > {}", command.dimmed());
                     use std::process::Command;
                     let output = if cfg!(target_os = "windows") {
-                        Command::new("cmd")
-                            .args(["/C", command])
-                            .output()
+                        Command::new("cmd").args(["/C", command]).output()
                     } else {
-                        Command::new("sh")
-                            .args(["-c", command])
-                            .output()
+                        Command::new("sh").args(["-c", command]).output()
                     };
 
                     match output {
@@ -197,31 +184,31 @@ async fn main() -> anyhow::Result<()> {
                                 eprint!("{}", String::from_utf8_lossy(&output.stderr));
                             }
                             if !output.status.success() {
-                                eprintln!("    {} Command failed with exit code: {:?}", "✗".red(), output.status.code());
-                            } else {
-                                println!("    {} Command completed successfully", "✓".green());
+                                eprintln!(
+                                    "  {} Command failed with exit code: {:?}",
+                                    "✗".red(),
+                                    output.status.code()
+                                );
+                                return Err(anyhow::anyhow!("Command failed: {}", command));
                             }
                         }
                         Err(e) => {
-                            eprintln!("    {} Failed to execute command: {}", "✗".red(), e);
+                            eprintln!("  {} Failed to execute command: {}", "✗".red(), e);
+                            return Err(anyhow::anyhow!("Failed to execute command: {}", e));
                         }
                     }
                 }
 
                 // Execute the last command asynchronously (non-blocking)
                 if let Some(last_command) = commands.last() {
-                    println!("    > {} (running in background)", last_command.dimmed());
+                    println!("  > {} (running in background)", last_command.dimmed());
                     use std::process::Command;
                     let command_clone = last_command.clone();
                     tokio::spawn(async move {
                         let mut child = if cfg!(target_os = "windows") {
-                            Command::new("cmd")
-                                .args(["/C", &command_clone])
-                                .spawn()
+                            Command::new("cmd").args(["/C", &command_clone]).spawn()
                         } else {
-                            Command::new("sh")
-                                .args(["-c", &command_clone])
-                                .spawn()
+                            Command::new("sh").args(["-c", &command_clone]).spawn()
                         };
 
                         match child {
@@ -229,7 +216,11 @@ async fn main() -> anyhow::Result<()> {
                                 let _ = child.wait();
                             }
                             Err(e) => {
-                                eprintln!("    {} Failed to execute background command: {}", "✗".red(), e);
+                                eprintln!(
+                                    "  {} Failed to execute background command: {}",
+                                    "✗".red(),
+                                    e
+                                );
                             }
                         }
                     });
