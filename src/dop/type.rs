@@ -37,6 +37,7 @@ pub enum Type {
     Bool,
     Int,
     Float,
+    TrustedHtml,
     Object(BTreeMap<String, Type>),
     Array(Option<Box<Type>>),
 }
@@ -48,7 +49,7 @@ impl Type {
             Type::String => Some(EquatableType::String),
             Type::Int => Some(EquatableType::Int),
             Type::Float => Some(EquatableType::Float),
-            Type::Object(_) | Type::Array(_) => None,
+            Type::TrustedHtml | Type::Object(_) | Type::Array(_) => None,
         }
     }
 
@@ -56,7 +57,7 @@ impl Type {
         match self {
             Type::Int => Some(ComparableType::Int),
             Type::Float => Some(ComparableType::Float),
-            Type::Bool | Type::String | Type::Object(_) | Type::Array(_) => None,
+            Type::Bool | Type::String | Type::TrustedHtml | Type::Object(_) | Type::Array(_) => None,
         }
     }
 
@@ -64,7 +65,7 @@ impl Type {
         match self {
             Type::Int => Some(NumericType::Int),
             Type::Float => Some(NumericType::Float),
-            Type::Bool | Type::String | Type::Object(_) | Type::Array(_) => None,
+            Type::Bool | Type::String | Type::TrustedHtml | Type::Object(_) | Type::Array(_) => None,
         }
     }
     /// Check if `subtype` is a subtype of `supertype`
@@ -75,6 +76,7 @@ impl Type {
             (Type::String, Type::String) => true,
             (Type::Float, Type::Float) => true,
             (Type::Int, Type::Int) => true,
+            (Type::TrustedHtml, Type::TrustedHtml) => true,
 
             // Arrays are covariant in their element type
             (Type::Array(sub_elem), Type::Array(super_elem)) => {
@@ -114,6 +116,7 @@ impl<'a> Type {
             Type::Float => BoxDoc::text("float"),
             Type::Int => BoxDoc::text("int"),
             Type::Bool => BoxDoc::text("boolean"),
+            Type::TrustedHtml => BoxDoc::text("trusted_html"),
             Type::Array(elem_type) => match elem_type {
                 Some(elem) => BoxDoc::nil()
                     .append(BoxDoc::text("array["))

@@ -167,10 +167,12 @@ impl Compiler {
             }
 
             InlinedNode::TextExpression { expression } => {
+                let compiled_expr = self.compile_expr(expression.clone());
+                let should_escape = compiled_expr.as_type() != &Type::TrustedHtml;
                 output.push(IrStatement::WriteExpr {
                     id: self.next_node_id(),
-                    expr: self.compile_expr(expression.clone()),
-                    escape: true,
+                    expr: compiled_expr,
+                    escape: should_escape,
                 });
             }
 
@@ -312,10 +314,12 @@ impl Compiler {
                     id: self.next_node_id(),
                     content: format!(" {}=\"", name),
                 });
+                let compiled_expr = self.compile_expr(expr);
+                let should_escape = compiled_expr.as_type() != &Type::TrustedHtml;
                 output.push(IrStatement::WriteExpr {
                     id: self.next_node_id(),
-                    expr: self.compile_expr(expr),
-                    escape: true,
+                    expr: compiled_expr,
+                    escape: should_escape,
                 });
                 output.push(IrStatement::Write {
                     id: self.next_node_id(),

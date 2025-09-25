@@ -98,6 +98,7 @@ impl PythonTranspiler {
             Type::Bool => BoxDoc::text("bool"),
             Type::Float => BoxDoc::text("float"),
             Type::Int => BoxDoc::text("int"),
+            Type::TrustedHtml => BoxDoc::text("str"),
             Type::Array(Some(elem)) => BoxDoc::text("list[")
                 .append(self.get_python_type(elem))
                 .append(BoxDoc::text("]")),
@@ -651,6 +652,10 @@ impl TypeTranspiler for PythonTranspiler {
     }
 
     fn transpile_string_type<'a>(&self) -> BoxDoc<'a> {
+        BoxDoc::text("str")
+    }
+
+    fn transpile_trusted_html_type<'a>(&self) -> BoxDoc<'a> {
         BoxDoc::text("str")
     }
 

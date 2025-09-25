@@ -686,6 +686,10 @@ impl TypeTranspiler for GoTranspiler {
         BoxDoc::text("string")
     }
 
+    fn transpile_trusted_html_type<'a>(&self) -> BoxDoc<'a> {
+        BoxDoc::text("string")
+    }
+
     fn transpile_float_type<'a>(&self) -> BoxDoc<'a> {
         BoxDoc::text("float64")
     }

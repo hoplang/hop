@@ -546,7 +546,7 @@ fn typecheck_node(
                 .ok_or_add(dop::typecheck_expr(expression, env, annotations).map_err(Into::into))
             {
                 let expr_type = typed_expr.as_type();
-                if !expr_type.is_subtype(&Type::String) {
+                if !expr_type.is_subtype(&Type::String) && !expr_type.is_subtype(&Type::TrustedHtml) {
                     errors.push(TypeError::ExpectedStringExpression {
                         found: expr_type.clone(),
                         range: range.clone(),
