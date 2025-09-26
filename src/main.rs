@@ -119,7 +119,7 @@ async fn main() -> anyhow::Result<()> {
             use std::time::Instant;
             let start_time = Instant::now();
 
-            let mut result = cli::compile::execute(projectdir.as_deref(), *development)?;
+            let mut result = cli::compile::execute(projectdir.as_deref(), *development).await?;
             let elapsed = start_time.elapsed();
 
             print_header("compiled", elapsed.as_millis());
@@ -165,14 +165,14 @@ async fn main() -> anyhow::Result<()> {
             let (_target_language, target_config) = config.get_target();
 
             // First compilation with development: true for stubs
-            let _ = cli::compile::execute(projectdir.as_deref(), true)?;
+            let _ = cli::compile::execute(projectdir.as_deref(), true).await?;
 
             // Set up Ctrl-C handler to ensure we compile production output before exit
             let projectdir_clone = projectdir.clone();
             tokio::spawn(async move {
                 tokio::signal::ctrl_c().await.ok();
                 // Compile with production mode to clean up stubs
-                let _ = cli::compile::execute(projectdir_clone.as_deref(), false);
+                let _ = cli::compile::execute(projectdir_clone.as_deref(), false).await;
                 std::process::exit(130); // Standard exit code for SIGINT
             });
 
@@ -263,7 +263,7 @@ async fn main() -> anyhow::Result<()> {
                     tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
                     // Second compilation with development: false for clean production output
-                    let _ = cli::compile::execute(projectdir.as_deref(), false)?;
+                    let _ = cli::compile::execute(projectdir.as_deref(), false).await?;
 
                     // Run the server and monitor for background process exit
                     tokio::select! {

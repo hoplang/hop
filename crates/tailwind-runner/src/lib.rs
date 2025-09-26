@@ -41,6 +41,7 @@ impl TailwindRunner {
             .arg(&config.input)
             .arg("--output")
             .arg(&config.output)
+            .arg("--minify")
             .output()
             .await?;
 
@@ -61,6 +62,7 @@ impl TailwindRunner {
             .arg(&config.input)
             .arg("--output")
             .arg(&config.output)
+            .arg("--minify")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()?;

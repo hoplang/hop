@@ -10,7 +10,8 @@ use crate::ir::{
 use crate::tui::timing;
 use anyhow::{Context, Result};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use tailwind_runner::{TailwindConfig, TailwindRunner};
 
 pub struct CompileResult {
     pub output_path: String,
@@ -19,7 +20,37 @@ pub struct CompileResult {
     pub timer: crate::tui::timing::TimingCollector,
 }
 
-pub fn execute(projectdir: Option<&str>, development: bool) -> Result<CompileResult> {
+async fn compile_tailwind(input_path: &Path) -> Result<String> {
+    let cache_dir = PathBuf::from("/tmp/.hop-cache");
+    tokio::fs::create_dir_all(&cache_dir).await?;
+
+    let runner = TailwindRunner::new(cache_dir.clone()).await?;
+
+    let tailwind_config = TailwindConfig {
+        input: input_path.to_path_buf(),
+        output: cache_dir.join("compiled-tailwind.css"),
+    };
+
+    // Run Tailwind compilation
+    runner.run_once(&tailwind_config).await?;
+
+    // Read and return the compiled CSS
+    let css = tokio::fs::read_to_string(&tailwind_config.output).await?;
+    Ok(css)
+}
+
+async fn create_default_tailwind_input() -> Result<PathBuf> {
+    let cache_dir = PathBuf::from("/tmp/.hop-cache");
+    tokio::fs::create_dir_all(&cache_dir).await?;
+
+    let temp_input = cache_dir.join("default-input.css");
+    let default_content = r#"@import "tailwindcss";"#;
+
+    tokio::fs::write(&temp_input, default_content).await?;
+    Ok(temp_input)
+}
+
+pub async fn execute(projectdir: Option<&str>, development: bool) -> Result<CompileResult> {
     let mut timer = timing::TimingCollector::new();
 
     // Find project root
@@ -38,6 +69,18 @@ pub fn execute(projectdir: Option<&str>, development: bool) -> Result<CompileRes
         TargetLanguage::Ts => CompileLanguage::Ts,
         TargetLanguage::Python => CompileLanguage::Py,
         TargetLanguage::Go => CompileLanguage::Go,
+    };
+
+    // Compile Tailwind CSS if configured (always minified)
+    timer.start_phase("running tailwind");
+    let tailwind_css = if let Some(ref tailwind_config) = config.css.tailwind {
+        // Use user-specified Tailwind input
+        let input_path = PathBuf::from(&tailwind_config.input);
+        Some(compile_tailwind(&input_path).await?)
+    } else {
+        // Use default Tailwind configuration
+        let default_input = create_default_tailwind_input().await?;
+        Some(compile_tailwind(&default_input).await?)
     };
 
     // Load all .hop files
@@ -92,7 +135,11 @@ pub fn execute(projectdir: Option<&str>, development: bool) -> Result<CompileRes
 
     timer.start_phase("compiling to IR");
     // Use orchestrate to handle inlining, compilation, and optimization
-    let ir_entrypoints = orchestrate(program.get_typed_modules().clone(), compilation_mode, None);
+    let ir_entrypoints = orchestrate(
+        program.get_typed_modules().clone(),
+        compilation_mode,
+        tailwind_css.as_deref(),
+    );
 
     // Generate code based on target language
     let generated_code = match language {
