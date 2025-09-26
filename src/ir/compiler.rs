@@ -81,7 +81,7 @@ impl Compiler {
         body.push(IrStatement::Write {
             id: self.next_node_id(),
             content: format!(
-                r#"<script id="hop-config" type="application/json">{{"entrypoint": "{}", "params": "#,
+                r#"<script type="application/json">{{"entrypoint": "{}", "params": "#,
                 component_name
             ),
         });
@@ -122,7 +122,9 @@ impl Compiler {
 
         body.push(IrStatement::Write {
             id: self.next_node_id(),
-            content: "}</script>\n<script type=\"module\" src=\"http://localhost:33861/dev.js\"></script>".to_string(),
+            content:
+                "}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>"
+                    .to_string(),
         });
 
         body
@@ -735,13 +737,10 @@ mod tests {
 
                 -- after --
                 test-comp(name: string, count: string) {
-                  write("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>")
-                  write("test-comp - Development Mode")
-                  write("</title>\n</head>\n<body>\n<script id=\"hop-config\" type=\"application/json\">\n{\"entrypoint\": \"")
-                  write("test-comp")
-                  write("\", \"params\": ")
+                  write("<!DOCTYPE html>\n")
+                  write("<script type=\"application/json\">{\"entrypoint\": \"test-comp\", \"params\": ")
                   write_expr(JsonEncode({name: name, count: count}))
-                  write("}\n</script>\n<script type=\"module\" src=\"http://localhost:33861/dev.js\"></script>\n</body>\n</html>")
+                  write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                 }
             "#]],
         );

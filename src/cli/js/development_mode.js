@@ -3,6 +3,9 @@
 // It fetches the actual entrypoint HTML from the dev server and renders it
 // It also handles hot module reloading by listening to SSE events
 
+const LOCAL_STORAGE_PREFIX = "hop-html-cache";
+const DEV_SERVER_URL = "http://localhost:33861";
+
 /**
  * @typedef {object} HopConfig
  *
@@ -12,7 +15,7 @@
 
 /** @returns {HopConfig} */
 function loadConfig() {
-	let el = document.getElementById('hop-config');
+	let el = document.querySelector('script[type="application/json"]');
 	if (!el) {
 		throw new Error('Element hop-config not found');
 	}
@@ -27,7 +30,7 @@ function loadConfig() {
  * @param {HopConfig} cfg
  */
 async function fetchEntryPoint(cfg) {
-    const renderUrl = new URL('http://localhost:33861/render');
+    const renderUrl = new URL(`${DEV_SERVER_URL}/render`);
     renderUrl.searchParams.set('entrypoint', cfg.entrypoint);
     renderUrl.searchParams.set('params', JSON.stringify(cfg.params));
     const response = await fetch(renderUrl);
@@ -40,12 +43,13 @@ async function fetchEntryPoint(cfg) {
 /**
  * Function to update the DOM with new HTML using morphing
  * @param {string} html - The new HTML content to morph into the DOM
+ * @param {HopConfig} cfg - The configuration object containing entrypoint
  */
-async function morphDOM(html) {
+async function morphDOM(html, cfg) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
-	console.log(doc);
     Idiomorph.morph(document.documentElement, doc.documentElement);
+    localStorage.setItem(`${LOCAL_STORAGE_PREFIX}-${cfg.entrypoint}`, html);
 }
 
 /**
@@ -53,7 +57,7 @@ async function morphDOM(html) {
  * @param {HopConfig} cfg
  */
 function setupHMR(cfg) {
-    const eventSource = new EventSource('http://localhost:33861/_hop/event_source');
+    const eventSource = new EventSource(`${DEV_SERVER_URL}/_hop/event_source`);
     
     /**
      * @param {MessageEvent} event
@@ -62,7 +66,7 @@ function setupHMR(cfg) {
         if (event.data === 'reload') {
             try {
                 const html = await fetchEntryPoint(cfg);
-                await morphDOM(html);
+                await morphDOM(html, cfg);
             } catch (error) {
                 console.error('Hot reload fetch error:', error);
             }
@@ -91,13 +95,22 @@ function setupHMR(cfg) {
 async function bootstrap() {
     try {
 		const cfg = loadConfig();
+
+        // Check if we have cached HTML in localStorage and render it immediately
+        const cachedHTML = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}-${cfg.entrypoint}`);
+        if (cachedHTML) {
+            const parser = new DOMParser();
+            const newDoc = parser.parseFromString(cachedHTML, 'text/html');
+			document.documentElement.replaceWith(newDoc.documentElement);
+        }
+
         const html = await fetchEntryPoint(cfg);
-        morphDOM(html);
+        morphDOM(html, cfg);
         setupHMR(cfg);
     } catch (error) {
         console.error('Failed to load from development server:', error);
         
-        // Show error message
+        // Show error message (pass a minimal config for error display)
         morphDOM(`
 			<html>
 			<body>
@@ -113,7 +126,7 @@ async function bootstrap() {
             </div>
 			</body>
 			</html>
-        `);
+        `, { entrypoint: 'error', params: {} });
         document.close();
     }
 }
@@ -236,10 +249,6 @@ var Idiomorph = (function () {
    * @property {ConfigInternal['head']} head
    * @property {HTMLDivElement} pantry
    */
-
-  //=============================================================================
-  // AND NOW IT BEGINS...
-  //=============================================================================
 
   const noOp = () => {};
   /**
@@ -1475,9 +1484,6 @@ var Idiomorph = (function () {
     return { normalizeElement, normalizeParent };
   })();
 
-  //=============================================================================
-  // This is what ends up becoming the Idiomorph global object
-  //=============================================================================
   return {
     morph,
     defaults,

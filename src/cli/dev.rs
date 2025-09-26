@@ -16,20 +16,12 @@ struct AppState {
     tailwind_css: Arc<RwLock<Option<String>>>,
 }
 
-async fn handle_idiomorph() -> Response<Body> {
-    Response::builder()
-        .header("Content-Type", "application/javascript")
-        .header("Cache-Control", "public, max-age=31536000, immutable")
-        .body(Body::from(include_str!("./js/idiomorph.js")))
-        .unwrap()
-}
-
-async fn handle_dev_js() -> Response<Body> {
+async fn handle_development_mode_js() -> Response<Body> {
     Response::builder()
         .header("Content-Type", "application/javascript")
         .header("Access-Control-Allow-Origin", "*")
         .header("Cache-Control", "public, max-age=31536000, immutable")
-        .body(Body::from(include_str!("./js/dev.js")))
+        .body(Body::from(include_str!("./js/development_mode.js")))
         .unwrap()
 }
 
@@ -104,9 +96,7 @@ async fn create_default_tailwind_input() -> anyhow::Result<PathBuf> {
     Ok(temp_input)
 }
 
-async fn start_tailwind_watcher(
-    input_path: &PathBuf,
-) -> anyhow::Result<(String, WatchHandle)> {
+async fn start_tailwind_watcher(input_path: &PathBuf) -> anyhow::Result<(String, WatchHandle)> {
     let cache_dir = PathBuf::from("/tmp/.hop-cache");
     let runner = TailwindRunner::new(cache_dir).await?;
 
@@ -221,8 +211,7 @@ pub async fn execute(
     let watcher = create_file_watcher(root, css_output_path, app_state.clone())?;
 
     let router = axum::Router::new()
-        .route("/idiomorph.js", get(handle_idiomorph))
-        .route("/dev.js", get(handle_dev_js))
+        .route("/development_mode.js", get(handle_development_mode_js))
         .route("/_hop/event_source", get(handle_event_source))
         .route("/render", get(handle_render));
 
@@ -306,7 +295,8 @@ mod tests {
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let html = String::from_utf8(body.to_vec()).unwrap();
 
-        expect!["<!DOCTYPE html><html><head></head><body><div>Simple content</div></body></html>"].assert_eq(&html);
+        expect!["<!DOCTYPE html><html><head></head><body><div>Simple content</div></body></html>"]
+            .assert_eq(&html);
 
         // Test non-existent entrypoint
         let request = Request::builder()
