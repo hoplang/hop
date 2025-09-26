@@ -26,22 +26,6 @@ impl DoctypeInjector {
         false
     }
 
-    /// Find the position to insert DOCTYPE (after leading whitespace)
-    fn find_doctype_insert_position(nodes: &[InlinedNode]) -> usize {
-        for (i, node) in nodes.iter().enumerate() {
-            if let InlinedNode::Text { value, .. } = node {
-                if value.as_str().trim().is_empty() {
-                    // Skip whitespace-only text nodes
-                    continue;
-                }
-            }
-            // Found first non-whitespace node
-            return i;
-        }
-        // All nodes are whitespace or list is empty
-        nodes.len()
-    }
-
     pub fn run(mut entrypoint: InlinedEntrypoint) -> InlinedEntrypoint {
         // Only inject DOCTYPE for entrypoints
         if !Self::has_doctype(&entrypoint.children) {
@@ -50,9 +34,8 @@ impl DoctypeInjector {
                 value: StringSpan::new("<!DOCTYPE html>".to_string()),
             };
 
-            // Find the right position to insert (after any leading whitespace)
-            let insert_pos = Self::find_doctype_insert_position(&entrypoint.children);
-            entrypoint.children.insert(insert_pos, doctype_node);
+            // Always insert DOCTYPE at the beginning (position 0)
+            entrypoint.children.insert(0, doctype_node);
         }
         entrypoint
     }
@@ -119,8 +102,8 @@ mod tests {
             </html>
             "\n                "
             -- after --
-            "                    "
             <!DOCTYPE html>
+            "                    "
             <html>
               "\n                        "
               <body>
@@ -192,8 +175,8 @@ mod tests {
             -- before --
             "\n                "
             -- after --
-            "\n                "
             <!DOCTYPE html>
+            "\n                "
         "#]],
         );
     }
@@ -271,8 +254,8 @@ mod tests {
             </html>
             "\n                "
             -- after --
-            "\n\n                    "
             <!DOCTYPE html>
+            "\n\n                    "
             <html>
               "Content"
             </html>
