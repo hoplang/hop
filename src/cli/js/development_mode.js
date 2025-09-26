@@ -7,6 +7,7 @@ const LOCAL_STORAGE_PREFIX = "hop-html-cache";
 const DEV_SERVER_URL = "http://localhost:33861";
 const EVENT_SOURCE_URL = `${DEV_SERVER_URL}/event_source`;
 const RENDER_URL = `${DEV_SERVER_URL}/render`;
+const DEBOUNCE_DELAY_MS = 15;
 
 /**
  * @typedef {object} HopConfig
@@ -60,21 +61,34 @@ async function morphDOM(html, cfg) {
  */
 function setupHMR(cfg) {
     const eventSource = new EventSource(EVENT_SOURCE_URL);
-    
+	/**
+	 * @type {number | null}
+	 */
+    let reloadTimeout = null;
+
     /**
      * @param {MessageEvent} event
      */
     eventSource.onmessage = async function(event) {
         if (event.data === 'reload') {
-            try {
-                const html = await fetchEntryPoint(cfg);
-                await morphDOM(html, cfg);
-            } catch (error) {
-                console.error('Hot reload fetch error:', error);
+            // Clear any existing timeout
+            if (reloadTimeout) {
+                clearTimeout(reloadTimeout);
             }
+
+            // Set a new timeout for the reload
+            reloadTimeout = setTimeout(async () => {
+                try {
+                    const html = await fetchEntryPoint(cfg);
+                    await morphDOM(html, cfg);
+                } catch (error) {
+                    console.error('Hot reload fetch error:', error);
+                }
+                reloadTimeout = null;
+            }, DEBOUNCE_DELAY_MS);
         }
     };
-    
+
     eventSource.onerror = (event) => {
         console.log('Hot reload connection error:', event);
         setTimeout(() => {
@@ -82,11 +96,14 @@ function setupHMR(cfg) {
             location.reload();
         }, 1000);
     };
-    
+
     window.addEventListener("beforeunload", () => {
 		// This is important on chrome, not closing the event source
 		// will leave it open even when the user navigates away.
         eventSource.close();
+        if (reloadTimeout) {
+            clearTimeout(reloadTimeout);
+        }
     });
 }
 
