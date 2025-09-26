@@ -75,27 +75,15 @@ impl Compiler {
         // Generate the HTML bootstrap
         body.push(IrStatement::Write {
             id: self.next_node_id(),
-            content: "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>".to_string(),
+            content: "<!DOCTYPE html>\n".to_string(),
         });
 
         body.push(IrStatement::Write {
             id: self.next_node_id(),
-            content: format!("{} - Development Mode", component_name),
-        });
-
-        body.push(IrStatement::Write {
-            id: self.next_node_id(),
-            content: "</title>\n</head>\n<body>\n<script id=\"hop-config\" type=\"application/json\">\n{\"entrypoint\": \"".to_string(),
-        });
-
-        body.push(IrStatement::Write {
-            id: self.next_node_id(),
-            content: component_name.to_string(),
-        });
-
-        body.push(IrStatement::Write {
-            id: self.next_node_id(),
-            content: "\", \"params\": ".to_string(),
+            content: format!(
+                r#"<script id="hop-config" type="application/json">{{"entrypoint": "{}", "params": "#,
+                component_name
+            ),
         });
 
         // Create params object
@@ -134,7 +122,7 @@ impl Compiler {
 
         body.push(IrStatement::Write {
             id: self.next_node_id(),
-            content: "}\n</script>\n<script type=\"module\" src=\"http://localhost:33861/dev.js\"></script>\n</body>\n</html>".to_string(),
+            content: "}</script>\n<script type=\"module\" src=\"http://localhost:33861/dev.js\"></script>".to_string(),
         });
 
         body
