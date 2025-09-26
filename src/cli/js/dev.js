@@ -1,32 +1,37 @@
 // Hop Development Mode Bootstrap Script
-// This script is loaded when a component is rendered in development mode
-// It fetches the actual component HTML from the dev server and renders it
+// This script is loaded when an entrypoint is rendered in development mode
+// It fetches the actual entrypoint HTML from the dev server and renders it
 // It also handles hot module reloading by listening to SSE events
 
 import Idiomorph from './idiomorph.js';
 
-// Parse configuration from JSON script tag
-const configScript = document.getElementById('hop-config');
-let entrypoint = '';
-let params = {};
+/**
+ * @typedef {object} Config
+ *
+ * @property {string} entrypoint
+ * @property {any} params
+ */
 
-if (configScript) {
-    try {
-        const config = JSON.parse(configScript.textContent);
-        entrypoint = config.entrypoint || '';
-        params = config.params || {};
-    } catch (e) {
-        console.error('Failed to parse hop-config:', e);
-    }
-} else {
-    console.error('hop-config script tag not found');
+/** @returns {Config} */
+function loadConfig() {
+	let el = document.getElementById('hop-config');
+	if (!el) {
+		throw new Error('Element hop-config not found');
+	}
+	if (!el.textContent) {
+		throw new Error('Text content of hop-config is empty');
+	}
+	return JSON.parse(el.textContent);
 }
 
-// Function to fetch the rendered component
-async function fetchComponent() {
+/**
+ * Function to fetch the rendered entrypoint from the dev server
+ * @param {Config} cfg
+ */
+async function renderEntryPoint(cfg) {
     const renderUrl = new URL('http://localhost:33861/render');
-    renderUrl.searchParams.set('entrypoint', entrypoint);
-    renderUrl.searchParams.set('params', JSON.stringify(params));
+    renderUrl.searchParams.set('entrypoint', cfg.entrypoint);
+    renderUrl.searchParams.set('params', JSON.stringify(cfg.params));
     
     const response = await fetch(renderUrl);
     if (!response.ok) {
@@ -36,44 +41,38 @@ async function fetchComponent() {
     return await response.text();
 }
 
-// Function to update the DOM with new HTML
-function updateDOM(html) {
+/**
+ * Function to update the DOM with new HTML using morphing
+ * @param {string} html - The new HTML content to morph into the DOM
+ */
+function morphDOM(html) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     // Morph the entire document to enable head merging
-    Idiomorph.morph(document.documentElement, doc.documentElement, {
-        head: {
-            shouldPreserve: function(elt) {
-                // Preserve elements with im-preserve attribute (default behavior)
-                if (elt.getAttribute('im-preserve') === 'true') {
-                    return true;
-                }
-                // Preserve Tailwind CSS style tags
-                if (elt.tagName === 'STYLE' && elt.textContent && 
-                    elt.textContent.includes('/*! tailwindcss')) {
-                    return true;
-                }
-                return false;
-            }
-        }
-    });
+    Idiomorph.morph(document.documentElement, doc.documentElement);
 }
 
-// Setup hot module reloading
-function setupHMR() {
+/**
+ * Setup hot module reloading by connecting to the dev server's SSE endpoint
+ * @param {Config} cfg
+ */
+function setupHMR(cfg) {
     const eventSource = new EventSource('http://localhost:33861/_hop/event_source');
     
+    /**
+     * @param {MessageEvent} event
+     */
     eventSource.onmessage = function(event) {
         if (event.data === 'reload') {
-            fetchComponent()
-                .then(html => updateDOM(html))
+            renderEntryPoint(cfg)
+                .then(html => morphDOM(html))
                 .catch(error => {
                     console.error('Hot reload fetch error:', error);
                 });
         }
     };
     
-    eventSource.onerror = function(event) {
+    eventSource.onerror = (event) => {
         console.log('Hot reload connection error:', event);
         setTimeout(() => {
             eventSource.close();
@@ -81,24 +80,30 @@ function setupHMR() {
         }, 1000);
     };
     
-    window.addEventListener("beforeunload", function() {
-        // This is important on chrome, not closing the event source will leave it open even when the
-        // user navigates away.
+    window.addEventListener("beforeunload", () => {
+		// This is important on chrome, not closing the event source
+		// will leave it open even when the user navigates away.
         eventSource.close();
     });
 }
 
-// Main bootstrap function
+/**
+ * Main bootstrap function that initializes the development environment
+ * Fetches the initial component, updates the DOM, and sets up HMR
+ */
 async function bootstrap() {
     try {
+		// Parse configuration from JSON script tag
+		const cfg = loadConfig();
+
         // Fetch and render the initial component
-        const html = await fetchComponent();
+        const html = await renderEntryPoint(cfg);
         
         // Update the DOM with the fetched HTML
-        updateDOM(html);
+        morphDOM(html);
         
         // Setup hot module reloading after initial render
-        setupHMR();
+        setupHMR(cfg);
     } catch (error) {
         console.error('Failed to load from development server:', error);
         

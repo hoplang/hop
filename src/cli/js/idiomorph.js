@@ -1361,11 +1361,4 @@ var Idiomorph = (function () {
   };
 })();
 
-// ES6 module export
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = Idiomorph;
-} else if (typeof window !== 'undefined') {
-  window.Idiomorph = Idiomorph;
-}
-
 export default Idiomorph;
