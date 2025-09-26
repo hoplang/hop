@@ -24,6 +24,8 @@ impl Pass for ConstantPropagationPass {
         let mut not_relations = Vec::new();
         let mut eq_left_relations = Vec::new();
         let mut eq_right_relations = Vec::new();
+        let mut concat_left_relations = Vec::new();
+        let mut concat_right_relations = Vec::new();
         let mut var_references = Vec::new();
 
         for stmt in &entrypoint.body {
@@ -45,6 +47,10 @@ impl Pass for ConstantPropagationPass {
                         IrExpr::Equals { left, right, .. } => {
                             eq_left_relations.push((left.id(), expr.id()));
                             eq_right_relations.push((right.id(), expr.id()));
+                        }
+                        IrExpr::StringConcat { left, right, .. } => {
+                            concat_left_relations.push((left.id(), expr.id()));
+                            concat_right_relations.push((right.id(), expr.id()));
                         }
                         IrExpr::Var { value: name, .. } => {
                             // Check if this variable is defined by a Let or For statement
@@ -73,6 +79,12 @@ impl Pass for ConstantPropagationPass {
         // Values of right operands in equality expressions: (eq_expr_id => right_value)
         let eq_right_value = iteration.variable::<(ExprId, Const)>("eq_right_value");
 
+        // Values of left operands in string concat expressions: (concat_expr_id => left_value)
+        let concat_left_value = iteration.variable::<(ExprId, Const)>("concat_left_value");
+
+        // Values of right operands in string concat expressions: (concat_expr_id => right_value)
+        let concat_right_value = iteration.variable::<(ExprId, Const)>("concat_right_value");
+
         // Not operations keyed by operand: (operand_id => expr_id)
         let not_rel = Relation::from_iter(not_relations);
 
@@ -81,6 +93,12 @@ impl Pass for ConstantPropagationPass {
 
         // Equals operations - right operand: (right_operand_id => expr_id)
         let eq_right = Relation::from_iter(eq_right_relations);
+
+        // String concat operations - left operand: (left_operand_id => expr_id)
+        let concat_left = Relation::from_iter(concat_left_relations);
+
+        // String concat operations - right operand: (right_operand_id => expr_id)
+        let concat_right = Relation::from_iter(concat_right_relations);
 
         // Variable bindings: (defining_expr_id => referencing_expr_id)
         let def_to_ref = Relation::from_iter(var_references);
@@ -116,6 +134,40 @@ impl Pass for ConstantPropagationPass {
                 &eq_right_value,
                 |eq_expr: &ExprId, left_val: &Const, right_val: &Const| {
                     (*eq_expr, Const::Bool(left_val == right_val))
+                },
+            );
+
+            // concat_left_value(concat_expr, left_val) :- concat_left(left_op, concat_expr), const_value(left_op, left_val).
+            concat_left_value.from_join(
+                &const_value,
+                &concat_left,
+                |_: &ExprId, const_val: &Const, concat_expr: &ExprId| {
+                    (*concat_expr, const_val.clone())
+                },
+            );
+
+            // concat_right_value(concat_expr, right_val) :- concat_right(right_op, concat_expr), const_value(right_op, right_val).
+            concat_right_value.from_join(
+                &const_value,
+                &concat_right,
+                |_: &ExprId, const_val: &Const, concat_expr: &ExprId| {
+                    (*concat_expr, const_val.clone())
+                },
+            );
+
+            // const_value(concat, String(lv + rv)) :- concat_left_value(concat, String(lv)), concat_right_value(concat, String(rv)).
+            const_value.from_join(
+                &concat_left_value,
+                &concat_right_value,
+                |concat_expr: &ExprId, left_val: &Const, right_val: &Const| match (
+                    left_val, right_val,
+                ) {
+                    (Const::String(l), Const::String(r)) => {
+                        let mut result = l.clone();
+                        result.push_str(r);
+                        (*concat_expr, Const::String(result))
+                    }
+                    _ => unreachable!("StringConcat can only have string operands"),
                 },
             );
 
@@ -561,6 +613,114 @@ mod tests {
                     let message = "hello" in {
                       if true {
                         write("Variables are equal")
+                      }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_nested_string_concat_folding() {
+        check(
+            build_ir_auto("test", vec![], |t| {
+                t.write_expr_escaped(
+                    t.string_concat(t.string_concat(t.str("Hello"), t.str(" ")), t.str("World")),
+                );
+            }),
+            expect![[r#"
+                -- before --
+                test() {
+                  write_escaped((("Hello" + " ") + "World"))
+                }
+
+                -- after --
+                test() {
+                  write_escaped("Hello World")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_string_concat_in_equality() {
+        check(
+            build_ir_auto("test", vec![], |t| {
+                t.if_stmt(
+                    t.eq(t.string_concat(t.str("foo"), t.str("bar")), t.str("foobar")),
+                    |t| {
+                        t.write("Concatenation matches");
+                    },
+                );
+                t.if_stmt(
+                    t.eq(
+                        t.string_concat(t.str("hello"), t.str(" world")),
+                        t.str("hello"),
+                    ),
+                    |t| {
+                        t.write("Should not appear");
+                    },
+                );
+            }),
+            expect![[r#"
+                -- before --
+                test() {
+                  if (("foo" + "bar") == "foobar") {
+                    write("Concatenation matches")
+                  }
+                  if (("hello" + " world") == "hello") {
+                    write("Should not appear")
+                  }
+                }
+
+                -- after --
+                test() {
+                  if true {
+                    write("Concatenation matches")
+                  }
+                  if false {
+                    write("Should not appear")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_string_concat_with_mixed_propagation() {
+        check(
+            build_ir_auto("test", vec![], |t| {
+                t.let_stmt("prefix", t.str("Hello"), |t| {
+                    t.let_stmt("suffix", t.string_concat(t.str(" "), t.str("World")), |t| {
+                        t.let_stmt(
+                            "full",
+                            t.string_concat(t.var("prefix"), t.var("suffix")),
+                            |t| {
+                                t.write_expr_escaped(t.var("full"));
+                            },
+                        );
+                    });
+                });
+            }),
+            expect![[r#"
+                -- before --
+                test() {
+                  let prefix = "Hello" in {
+                    let suffix = (" " + "World") in {
+                      let full = (prefix + suffix) in {
+                        write_escaped(full)
+                      }
+                    }
+                  }
+                }
+
+                -- after --
+                test() {
+                  let prefix = "Hello" in {
+                    let suffix = " World" in {
+                      let full = "Hello World" in {
+                        write_escaped("Hello World")
                       }
                     }
                   }
