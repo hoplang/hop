@@ -71,6 +71,13 @@ pub async fn execute(projectdir: Option<&str>, development: bool) -> Result<Comp
         TargetLanguage::Go => CompileLanguage::Go,
     };
 
+    // Truncate output file before running Tailwind to prevent scanning old content
+    let output_path = &target_config.output;
+    if Path::new(output_path).exists() {
+        fs::write(output_path, "")
+            .with_context(|| format!("Failed to truncate output file {}", output_path))?;
+    }
+
     // Compile Tailwind CSS if configured (always minified)
     timer.start_phase("running tailwind");
     let tailwind_css = if let Some(ref tailwind_config) = config.css.tailwind {
