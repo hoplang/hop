@@ -213,8 +213,15 @@ async fn main() -> anyhow::Result<()> {
             // Step (1) - Read `compile_and_run`
             let commands = &target_config.compile_and_run;
 
+            // Set up SIGINT handler (cross-platform)
+            #[cfg(unix)]
+            let mut sigint =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
+            #[cfg(windows)]
+            let mut sigint = tokio::signal::windows::ctrl_c()?;
+
             // Step (2) - Create stubs
-            let _ = cli::compile::execute(projectdir.as_deref(), true).await?;
+            let _ = cli::compile::execute(projectdir.as_deref(), true).await;
 
             // Store the last command
             let last_command = commands
@@ -285,21 +292,16 @@ async fn main() -> anyhow::Result<()> {
                         }
                     });
 
-                    // Wait for background server to start before replacing the stubs.
-                    //
-                    // This is necessary in dynamic languages like TypeScript and Python
-                    // since the stubs are not loaded until the language runtime has
-                    // performed import resolution and read the files from disk.
-                    tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
-
-                    // Step (5) - Replace stubs with real code
-                    let _ = cli::compile::execute(projectdir.as_deref(), false).await?;
-
-                    // Set up SIGINT handler (cross-platform)
-                    #[cfg(unix)]
-                    let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
-                    #[cfg(windows)]
-                    let mut sigint = tokio::signal::windows::ctrl_c()?;
+                    let project_dir_clone = projectdir.clone();
+                    tokio::spawn(async move {
+                        // Wait for background server to start before replacing the stubs.
+                        //
+                        // This is necessary in dynamic languages like TypeScript and Python
+                        // since the stubs are not loaded until the language runtime has
+                        // performed import resolution and read the files from disk.
+                        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                        let _ = cli::compile::execute(project_dir_clone.as_deref(), false).await;
+                    });
 
                     let result: anyhow::Result<()> = tokio::select! {
                         // Step (6) - Start the dev server
@@ -337,7 +339,11 @@ async fn main() -> anyhow::Result<()> {
                     // Kill the child process if it's still running
                     if let Err(e) = kill_process(child_pid) {
                         // Ignore error - process may have already exited
-                        eprintln!("  {} Backend process may have already stopped: {}", "⚠".yellow(), e);
+                        eprintln!(
+                            "  {} Backend process may have already stopped: {}",
+                            "⚠".yellow(),
+                            e
+                        );
                     }
 
                     result?;
