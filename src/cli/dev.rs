@@ -13,6 +13,7 @@ use tailwind_runner::{TailwindRunner, WatchHandle};
 struct AppState {
     program: Arc<RwLock<Program>>,
     reload_channel: tokio::sync::broadcast::Sender<()>,
+    tailwind_css: Arc<RwLock<Option<String>>>,
 }
 
 async fn handle_idiomorph() -> Response<Body> {
@@ -71,8 +72,12 @@ async fn handle_render(
         }
     };
 
+    // Get the CSS content from state
+    let css = state.tailwind_css.read().unwrap();
+    let css_content = css.as_deref();
+
     // Render the component using IR evaluation
-    match program.evaluate_ir_entrypoint(&query.entrypoint, params, "dev") {
+    match program.evaluate_ir_entrypoint(&query.entrypoint, params, "dev", css_content) {
         Ok(html) => Response::builder()
             .status(StatusCode::OK)
             .header("Access-Control-Allow-Origin", "*")
@@ -101,8 +106,7 @@ async fn create_default_tailwind_input() -> anyhow::Result<PathBuf> {
 
 async fn start_tailwind_watcher(
     input_path: &PathBuf,
-    _state: AppState,
-) -> anyhow::Result<WatchHandle> {
+) -> anyhow::Result<(String, WatchHandle)> {
     let cache_dir = PathBuf::from("/tmp/.hop-cache");
     let runner = TailwindRunner::new(cache_dir).await?;
 
@@ -114,10 +118,15 @@ async fn start_tailwind_watcher(
     // Run once initially to generate CSS - return error if it fails
     runner.run_once(&tailwind_config).await?;
 
+    // Read the generated CSS file
+    let css_content = tokio::fs::read_to_string(&tailwind_config.output).await?;
+
     // Start watcher
     let handle = runner.watch(&tailwind_config).await?;
 
-    Ok(handle)
+    // TODO: Monitor the output file for changes and update state
+
+    Ok((css_content, handle))
 }
 
 fn create_file_watcher(
@@ -175,22 +184,23 @@ pub async fn execute(
     // Load config to check for Tailwind configuration
     let config = root.load_config()?;
 
-    let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
-
-    let app_state = AppState {
-        program: Arc::new(RwLock::new(Program::new(modules))),
-        reload_channel,
-    };
-
-    let watcher = create_file_watcher(root, app_state.clone())?;
-
-    // Always start Tailwind - either with user config or default
+    // Always start Tailwind first - either with user config or default
     let tailwind_input_path = match config.css.tailwind {
         Some(ref tailwind_config) => PathBuf::from(&tailwind_config.input),
         None => create_default_tailwind_input().await?,
     };
 
-    let tailwind_handle = start_tailwind_watcher(&tailwind_input_path, app_state.clone()).await?;
+    let (css_content, tailwind_handle) = start_tailwind_watcher(&tailwind_input_path).await?;
+
+    let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
+
+    let app_state = AppState {
+        program: Arc::new(RwLock::new(Program::new(modules))),
+        reload_channel,
+        tailwind_css: Arc::new(RwLock::new(Some(css_content))),
+    };
+
+    let watcher = create_file_watcher(root, app_state.clone())?;
 
     let router = axum::Router::new()
         .route("/idiomorph.js", get(handle_idiomorph))
@@ -229,6 +239,7 @@ mod tests {
         let app_state = AppState {
             program: Arc::new(RwLock::new(program)),
             reload_channel,
+            tailwind_css: Arc::new(RwLock::new(None)),
         };
 
         let app = axum::Router::new()
@@ -263,7 +274,7 @@ mod tests {
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let html = String::from_utf8(body.to_vec()).unwrap();
 
-        expect!["<!DOCTYPE html><h1>Welcome</h1><p>Hello, Alice!</p>"].assert_eq(&html);
+        expect!["<!DOCTYPE html><html><head></head><body><h1>Welcome</h1><p>Hello, Alice!</p></body></html>"].assert_eq(&html);
 
         // Test rendering without parameters
         let request = Request::builder()
@@ -277,7 +288,7 @@ mod tests {
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let html = String::from_utf8(body.to_vec()).unwrap();
 
-        expect!["<!DOCTYPE html><div>Simple content</div>"].assert_eq(&html);
+        expect!["<!DOCTYPE html><html><head></head><body><div>Simple content</div></body></html>"].assert_eq(&html);
 
         // Test non-existent entrypoint
         let request = Request::builder()

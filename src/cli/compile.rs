@@ -92,7 +92,7 @@ pub fn execute(projectdir: Option<&str>, development: bool) -> Result<CompileRes
 
     timer.start_phase("compiling to IR");
     // Use orchestrate to handle inlining, compilation, and optimization
-    let ir_entrypoints = orchestrate(program.get_typed_modules().clone(), compilation_mode);
+    let ir_entrypoints = orchestrate(program.get_typed_modules().clone(), compilation_mode, None);
 
     // Generate code based on target language
     let generated_code = match language {

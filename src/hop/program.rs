@@ -398,11 +398,13 @@ impl Program {
         entrypoint_name: &str,
         args: HashMap<String, serde_json::Value>,
         hop_mode: &str,
+        generated_tailwind_css: Option<&str>,
     ) -> Result<String> {
         // Use orchestrate to handle inlining and compilation - use Production mode for evaluation
         let ir_entrypoints = orchestrate(
             self.get_typed_modules().clone(),
             ir::CompilationMode::Production,
+            generated_tailwind_css,
         );
 
         // Get the entrypoint
@@ -1339,20 +1341,20 @@ mod tests {
         args.insert("name".to_string(), serde_json::json!("Alice"));
 
         let result = program
-            .evaluate_ir_entrypoint("hello-world", args, "dev")
+            .evaluate_ir_entrypoint("hello-world", args, "dev", None)
             .expect("Should evaluate successfully");
 
         assert!(result.contains("<h1>Hello Alice!</h1>"));
 
         // Test evaluating another-comp entrypoint without parameters
         let result = program
-            .evaluate_ir_entrypoint("another-comp", HashMap::new(), "dev")
+            .evaluate_ir_entrypoint("another-comp", HashMap::new(), "dev", None)
             .expect("Should evaluate successfully");
 
         assert!(result.contains("<p>Static content</p>"));
 
         // Test error when entrypoint doesn't exist
-        let result = program.evaluate_ir_entrypoint("non-existent", HashMap::new(), "dev");
+        let result = program.evaluate_ir_entrypoint("non-existent", HashMap::new(), "dev", None);
         assert!(result.is_err());
         assert!(
             result

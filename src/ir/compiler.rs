@@ -240,10 +240,7 @@ impl Compiler {
         slot_content: Option<&Vec<IrStatement>>,
         output: &mut Vec<IrStatement>,
     ) {
-        // Skip style and script tags without src
-        if tag_name.as_str() == "style" {
-            return;
-        }
+        // Skip script tags without src
         if tag_name.as_str() == "script" && !attributes.contains_key("src") {
             return;
         }
