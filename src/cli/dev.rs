@@ -212,7 +212,7 @@ pub async fn execute(
 
     let router = axum::Router::new()
         .route("/development_mode.js", get(handle_development_mode_js))
-        .route("/_hop/event_source", get(handle_event_source))
+        .route("/event_source", get(handle_event_source))
         .route("/render", get(handle_render));
 
     Ok((router.with_state(app_state), watcher, tailwind_handle))

@@ -5,6 +5,8 @@
 
 const LOCAL_STORAGE_PREFIX = "hop-html-cache";
 const DEV_SERVER_URL = "http://localhost:33861";
+const EVENT_SOURCE_URL = `${DEV_SERVER_URL}/event_source`;
+const RENDER_URL = `${DEV_SERVER_URL}/render`;
 
 /**
  * @typedef {object} HopConfig
@@ -30,7 +32,7 @@ function loadConfig() {
  * @param {HopConfig} cfg
  */
 async function fetchEntryPoint(cfg) {
-    const renderUrl = new URL(`${DEV_SERVER_URL}/render`);
+    const renderUrl = new URL(RENDER_URL);
     renderUrl.searchParams.set('entrypoint', cfg.entrypoint);
     renderUrl.searchParams.set('params', JSON.stringify(cfg.params));
     const response = await fetch(renderUrl);
@@ -57,7 +59,7 @@ async function morphDOM(html, cfg) {
  * @param {HopConfig} cfg
  */
 function setupHMR(cfg) {
-    const eventSource = new EventSource(`${DEV_SERVER_URL}/_hop/event_source`);
+    const eventSource = new EventSource(EVENT_SOURCE_URL);
     
     /**
      * @param {MessageEvent} event
