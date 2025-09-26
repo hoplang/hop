@@ -5,7 +5,7 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use tailwind_runner::{TailwindRunner, WatchHandle};
 
@@ -96,12 +96,12 @@ async fn create_default_tailwind_input() -> anyhow::Result<PathBuf> {
     Ok(temp_input)
 }
 
-async fn start_tailwind_watcher(input_path: &PathBuf) -> anyhow::Result<(String, WatchHandle)> {
+async fn start_tailwind_watcher(input_path: &Path) -> anyhow::Result<(String, WatchHandle)> {
     let cache_dir = PathBuf::from("/tmp/.hop-cache");
     let runner = TailwindRunner::new(cache_dir).await?;
 
     let tailwind_config = tailwind_runner::TailwindConfig {
-        input: input_path.clone(),
+        input: input_path.to_path_buf(),
         output: PathBuf::from("/tmp/.hop-cache/tailwind-output.css"),
     };
 
@@ -113,8 +113,6 @@ async fn start_tailwind_watcher(input_path: &PathBuf) -> anyhow::Result<(String,
 
     // Start watcher
     let handle = runner.watch(&tailwind_config).await?;
-
-    // TODO: Monitor the output file for changes and update state
 
     Ok((css_content, handle))
 }
@@ -140,9 +138,6 @@ fn create_file_watcher(
                         .iter()
                         .any(|p| p.extension().and_then(|e| e.to_str()) == Some("hop"));
 
-                    // Check if it's the CSS output file
-                    let is_css_file = event.paths.iter().any(|p| p == &css_path_clone);
-
                     if is_hop_file {
                         // Reload all modules from scratch
                         if let Ok(modules) = local_root.load_all_hop_modules() {
@@ -151,7 +146,12 @@ fn create_file_watcher(
                                 *program = new_program;
                             }
                         }
+                        // Tell the client to hot reload
+                        let _ = state.reload_channel.send(());
                     }
+
+                    // Check if it's the CSS output file
+                    let is_css_file = event.paths.iter().any(|p| p == &css_path_clone);
 
                     if is_css_file {
                         // Update CSS content in AppState
@@ -160,9 +160,9 @@ fn create_file_watcher(
                                 *css_guard = Some(new_css);
                             }
                         }
+                        // Tell the client to hot reload
+                        let _ = state.reload_channel.send(());
                     }
-
-                    let _ = state.reload_channel.send(());
                 }
             }
         },
