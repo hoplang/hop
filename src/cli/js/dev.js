@@ -3,6 +3,9 @@
 // It fetches the actual entrypoint HTML from the dev server and renders it
 // It also handles hot module reloading by listening to SSE events
 
+// Mark when script execution starts
+performance.mark('hop-script-start');
+
 import Idiomorph from './idiomorph.js';
 
 /**
@@ -53,6 +56,23 @@ function morphDOM(html) {
 }
 
 /**
+ * Function to replace the entire document with new HTML
+ * @param {string} html - The new HTML content to replace the document with
+ */
+function replaceDocument(html) {
+    performance.mark('hop-parse-start');
+
+    const parser = new DOMParser();
+    const newDoc = parser.parseFromString(html, 'text/html');
+
+    performance.mark('hop-parse-end');
+    performance.measure('hop-parse', 'hop-parse-start', 'hop-parse-end');
+
+    // Replace the entire document element
+    document.documentElement.replaceWith(newDoc.documentElement);
+}
+
+/**
  * Setup hot module reloading by connecting to the dev server's SSE endpoint
  * @param {Config} cfg
  */
@@ -96,12 +116,47 @@ async function bootstrap() {
 		// Parse configuration from JSON script tag
 		const cfg = loadConfig();
 
+        // Start timing the initial render
+        performance.mark('hop-fetch-start');
+
         // Fetch and render the initial component
         const html = await renderEntryPoint(cfg);
-        
-        // Update the DOM with the fetched HTML
-        morphDOM(html);
-        
+
+        performance.mark('hop-fetch-end');
+        performance.measure('hop-fetch', 'hop-fetch-start', 'hop-fetch-end');
+
+        // Time the document replacement
+        performance.mark('hop-replace-start');
+
+        // Replace the entire document on initial load (no need to morph)
+        replaceDocument(html);
+
+        performance.mark('hop-replace-end');
+        performance.measure('hop-replace', 'hop-replace-start', 'hop-replace-end');
+
+        // Log the performance metrics
+        const fetchTime = performance.getEntriesByName('hop-fetch')[0].duration;
+        const parseTime = performance.getEntriesByName('hop-parse')[0].duration;
+        const replaceTime = performance.getEntriesByName('hop-replace')[0].duration;
+
+        // Calculate time from script start to fetch start
+        performance.measure('hop-script-to-fetch', 'hop-script-start', 'hop-fetch-start');
+        const scriptToFetchTime = performance.getEntriesByName('hop-script-to-fetch')[0].duration;
+
+        // Get absolute times from navigation start using performance.getEntriesByName
+        const scriptStartTime = performance.getEntriesByName('hop-script-start')[0].startTime;
+        const fetchEndTime = performance.getEntriesByName('hop-fetch-end')[0].startTime;
+        const parseEndTime = performance.getEntriesByName('hop-parse-end')[0].startTime;
+        const replaceEndTime = performance.getEntriesByName('hop-replace-end')[0].startTime;
+
+        const replaceDomTime = replaceTime - parseTime;
+
+        console.log(`[Hop Dev] Initial render performance:
+  Script startup: +${scriptToFetchTime.toFixed(2)}ms (${scriptStartTime.toFixed(2)}ms)
+  Fetch: +${fetchTime.toFixed(2)}ms (${fetchEndTime.toFixed(2)}ms)
+  Parse HTML: +${parseTime.toFixed(2)}ms (${parseEndTime.toFixed(2)}ms)
+  Replace DOM: +${replaceDomTime.toFixed(2)}ms (${replaceEndTime.toFixed(2)}ms)`);
+
         // Setup hot module reloading after initial render
         setupHMR(cfg);
     } catch (error) {
