@@ -36,6 +36,16 @@ pub struct TargetSection {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CssConfig {
     pub mode: Option<String>,
+
+    /// Tailwind CSS configuration
+    #[serde(default)]
+    pub tailwind: Option<TailwindConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TailwindConfig {
+    /// Path to the input CSS file for Tailwind
+    pub input: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -216,5 +226,19 @@ mod tests {
         let target_config = &config.target.js.as_ref().unwrap();
         assert_eq!(target_config.output, "app.js");
         assert!(target_config.compile_and_run.is_empty());
+    }
+
+    #[test]
+    fn test_parse_config_with_tailwind() {
+        let toml_str = indoc! {r#"
+            [css.tailwind]
+            input = "styles/input.css"
+
+            [target.ts]
+            output = "app.ts"
+        "#};
+        let config = HopConfig::from_toml_str(toml_str).unwrap();
+        assert!(config.css.tailwind.is_some());
+        assert_eq!(config.css.tailwind.unwrap().input, "styles/input.css");
     }
 }

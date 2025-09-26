@@ -22,6 +22,13 @@ impl WatchHandle {
     }
 }
 
+impl Drop for WatchHandle {
+    fn drop(&mut self) {
+        // Kill the child process when the handle is dropped
+        let _ = self.child.start_kill();
+    }
+}
+
 impl TailwindRunner {
     pub async fn new(extraction_path: PathBuf) -> Result<Self> {
         let binary_path = extract_binary(extraction_path).await?;
@@ -54,6 +61,8 @@ impl TailwindRunner {
             .arg(&config.input)
             .arg("--output")
             .arg(&config.output)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .spawn()?;
 
         Ok(WatchHandle { child })

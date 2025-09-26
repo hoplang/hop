@@ -176,7 +176,7 @@ async fn main() -> anyhow::Result<()> {
                 std::process::exit(130); // Standard exit code for SIGINT
             });
 
-            let (router, _watcher) = cli::dev::execute(&root).await?;
+            let (router, _watcher, _tailwind_handle) = cli::dev::execute(&root).await?;
             let elapsed = start_time.elapsed();
             let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
 

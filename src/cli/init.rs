@@ -52,6 +52,7 @@ pub fn execute(template: &TargetLanguage) -> Result<()> {
 fn create_hop_config(template: &TargetLanguage) -> HopConfig {
     let css_config = CssConfig {
         mode: Some("tailwind4".to_string()),
+        tailwind: None,
     };
 
     let target_config = match template {

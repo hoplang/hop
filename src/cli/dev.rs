@@ -5,7 +5,9 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use tailwind_runner::{TailwindRunner, WatchHandle};
 
 #[derive(Clone)]
 struct AppState {
@@ -86,6 +88,38 @@ async fn handle_render(
     }
 }
 
+async fn create_default_tailwind_input() -> anyhow::Result<PathBuf> {
+    let cache_dir = PathBuf::from("/tmp/.hop-cache");
+    tokio::fs::create_dir_all(&cache_dir).await?;
+
+    let temp_input = cache_dir.join("default-input.css");
+    let default_content = r#"@import "tailwindcss";"#;
+
+    tokio::fs::write(&temp_input, default_content).await?;
+    Ok(temp_input)
+}
+
+async fn start_tailwind_watcher(
+    input_path: &PathBuf,
+    _state: AppState,
+) -> anyhow::Result<WatchHandle> {
+    let cache_dir = PathBuf::from("/tmp/.hop-cache");
+    let runner = TailwindRunner::new(cache_dir).await?;
+
+    let tailwind_config = tailwind_runner::TailwindConfig {
+        input: input_path.clone(),
+        output: PathBuf::from("/tmp/.hop-cache/tailwind-output.css"),
+    };
+
+    // Run once initially to generate CSS - return error if it fails
+    runner.run_once(&tailwind_config).await?;
+
+    // Start watcher
+    let handle = runner.watch(&tailwind_config).await?;
+
+    Ok(handle)
+}
+
 fn create_file_watcher(
     root: &ProjectRoot,
     state: AppState,
@@ -133,10 +167,13 @@ fn create_file_watcher(
 /// The watcher emits SSE-events on the `/_hop/event_source` route.
 pub async fn execute(
     root: &ProjectRoot,
-) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
+) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher, WatchHandle)> {
     use axum::routing::get;
 
     let modules = root.load_all_hop_modules()?;
+
+    // Load config to check for Tailwind configuration
+    let config = root.load_config()?;
 
     let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
 
@@ -147,13 +184,21 @@ pub async fn execute(
 
     let watcher = create_file_watcher(root, app_state.clone())?;
 
+    // Always start Tailwind - either with user config or default
+    let tailwind_input_path = match config.css.tailwind {
+        Some(ref tailwind_config) => PathBuf::from(&tailwind_config.input),
+        None => create_default_tailwind_input().await?,
+    };
+
+    let tailwind_handle = start_tailwind_watcher(&tailwind_input_path, app_state.clone()).await?;
+
     let router = axum::Router::new()
         .route("/idiomorph.js", get(handle_idiomorph))
         .route("/dev.js", get(handle_dev_js))
         .route("/_hop/event_source", get(handle_event_source))
         .route("/render", get(handle_render));
 
-    Ok((router.with_state(app_state), watcher))
+    Ok((router.with_state(app_state), watcher, tailwind_handle))
 }
 
 #[cfg(test)]
