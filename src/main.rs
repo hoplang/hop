@@ -72,15 +72,6 @@ enum Commands {
         /// Path to the file to format
         filename: String,
     },
-    /// Run tailwindcss
-    Tailwind {
-        /// Input CSS file path
-        #[arg(long, default_value = "input.css")]
-        input: String,
-        /// Output CSS file path
-        #[arg(long, default_value = "output.css")]
-        output: String,
-    },
 }
 
 #[tokio::main]
@@ -312,41 +303,6 @@ async fn main() -> anyhow::Result<()> {
                     for error in errors {
                         eprintln!("    {}", error);
                     }
-                    std::process::exit(1);
-                }
-            }
-        }
-        Some(Commands::Tailwind { input, output }) => {
-            use std::path::PathBuf;
-            use tailwind_runner::{TailwindConfig, TailwindRunner};
-
-            // NOTE: We need to think about where to store this file.
-            // If it is stored in the current directory it is being
-            // scanned by tailwind.
-            //
-            // See https://github.com/tailwindlabs/tailwindcss/tree/664f2e36da9f3a18e418b207179fe5cbc7481824/crates/oxide/src/scanner/fixtures
-            let cache_dir = PathBuf::from("/tmp/.hop-cache");
-
-            println!("Initializing Tailwind CSS...");
-            let runner = TailwindRunner::new(cache_dir).await?;
-
-            let config = TailwindConfig {
-                input: PathBuf::from(input),
-                output: PathBuf::from(output),
-            };
-
-            println!("Running Tailwind CSS...");
-            match runner.run_once(&config).await {
-                Ok(output) => {
-                    use colored::*;
-                    println!("  {} Generated {}", "✓".green(), config.output.display());
-                    if !output.is_empty() {
-                        println!("{}", output);
-                    }
-                }
-                Err(e) => {
-                    use colored::*;
-                    eprintln!("  {} Tailwind CSS failed: {}", "✗".red(), e);
                     std::process::exit(1);
                 }
             }
