@@ -164,38 +164,21 @@ async fn main() -> anyhow::Result<()> {
             let config = root.load_config()?;
             let (_target_language, target_config) = config.get_target();
 
-            // First compilation with development: true for stubs
-            let _ = cli::compile::execute(projectdir.as_deref(), true).await?;
-
-            // Set up Ctrl-C handler to ensure we compile production output before exit
-            let projectdir_clone = projectdir.clone();
-            tokio::spawn(async move {
-                tokio::signal::ctrl_c().await.ok();
-                // Compile with production mode to clean up stubs
-                let _ = cli::compile::execute(projectdir_clone.as_deref(), false).await;
-                std::process::exit(130); // Standard exit code for SIGINT
-            });
-
             let (router, _watcher, _tailwind_handle) = cli::dev::execute(&root).await?;
             let elapsed = start_time.elapsed();
             let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
 
             print_header("ready", elapsed.as_millis());
 
-            // Execute compile_and_run commands
-            if target_config.compile_and_run.is_empty() {
-                eprintln!(
-                    "  {} No compile_and_run commands configured in hop.toml",
-                    "✗".red()
-                );
-                eprintln!("  Add commands to start your application server");
-                return Err(anyhow::anyhow!("No compile_and_run commands configured"));
-            }
-
             let commands = &target_config.compile_and_run;
 
+            // Store the last command
+            let last_command = commands
+                .last()
+                .ok_or_else(|| anyhow::anyhow!("No commands found in compile_and_run"))?;
+
             // Execute all commands except the last one synchronously
-            for command in &commands[..commands.len().saturating_sub(1)] {
+            for command in &commands[..commands.len() - 1] {
                 println!("  > {}", command.dimmed());
                 use std::process::Command;
                 let output = if cfg!(target_os = "windows") {
@@ -228,14 +211,21 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
 
-            // Execute the last command asynchronously (non-blocking)
-            let last_command = commands
-                .last()
-                .ok_or_else(|| anyhow::anyhow!("No commands found in compile_and_run"))?;
-
             println!("  > {}", last_command.dimmed());
             use std::process::Command;
             use tokio::sync::oneshot;
+
+            // Write development mode stubs to the output file
+            let _ = cli::compile::execute(projectdir.as_deref(), true).await?;
+
+            // Set up Ctrl-C handler to ensure we compile production output before exit
+            let projectdir_clone = projectdir.clone();
+            tokio::spawn(async move {
+                tokio::signal::ctrl_c().await.ok();
+                // Compile with production mode to clean up stubs
+                let _ = cli::compile::execute(projectdir_clone.as_deref(), false).await;
+                std::process::exit(130); // Standard exit code for SIGINT
+            });
 
             let command_clone = last_command.clone();
 
@@ -262,7 +252,8 @@ async fn main() -> anyhow::Result<()> {
                     // Wait for background server to start and load the development stubs
                     tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
-                    // Second compilation with development: false for clean production output
+                    // Second compilation with development: false to overwrite
+                    // development stubs with real code
                     let _ = cli::compile::execute(projectdir.as_deref(), false).await?;
 
                     // Run the server and monitor for background process exit

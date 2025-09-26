@@ -20,7 +20,9 @@ impl HtmlStructureInjector {
     fn has_head_element(nodes: &[InlinedNode]) -> bool {
         for node in nodes {
             match node {
-                InlinedNode::Html { tag_name, children, .. } => {
+                InlinedNode::Html {
+                    tag_name, children, ..
+                } => {
                     if tag_name.as_str() == "head" {
                         return true;
                     }
@@ -46,7 +48,9 @@ impl HtmlStructureInjector {
     fn has_body_element(nodes: &[InlinedNode]) -> bool {
         for node in nodes {
             match node {
-                InlinedNode::Html { tag_name, children, .. } => {
+                InlinedNode::Html {
+                    tag_name, children, ..
+                } => {
                     if tag_name.as_str() == "body" {
                         return true;
                     }
@@ -150,56 +154,72 @@ impl HtmlStructureInjector {
 
     /// Recursively ensure head and body exist within HTML elements
     fn ensure_head_and_body_in_html(nodes: Vec<InlinedNode>) -> Vec<InlinedNode> {
-        nodes.into_iter().map(|node| {
-            match node {
-                InlinedNode::Html { tag_name, attributes, children } => {
-                    if tag_name.as_str() == "html" {
-                        let mut new_children = Vec::new();
+        nodes
+            .into_iter()
+            .map(|node| {
+                match node {
+                    InlinedNode::Html {
+                        tag_name,
+                        attributes,
+                        children,
+                    } => {
+                        if tag_name.as_str() == "html" {
+                            let mut new_children = Vec::new();
 
-                        // Add head if missing
-                        if !Self::has_head_element(&children) {
-                            new_children.push(Self::create_html_element("head", vec![]));
-                        }
+                            // Add head if missing
+                            if !Self::has_head_element(&children) {
+                                new_children.push(Self::create_html_element("head", vec![]));
+                            }
 
-                        // Add existing children or wrap in body if no body exists
-                        if Self::has_body_element(&children) {
-                            new_children.extend(children);
+                            // Add existing children or wrap in body if no body exists
+                            if Self::has_body_element(&children) {
+                                new_children.extend(children);
+                            } else {
+                                new_children.push(Self::create_html_element("body", children));
+                            }
+
+                            InlinedNode::Html {
+                                tag_name,
+                                attributes,
+                                children: new_children,
+                            }
                         } else {
-                            new_children.push(Self::create_html_element("body", children));
-                        }
-
-                        InlinedNode::Html { tag_name, attributes, children: new_children }
-                    } else {
-                        // Recursively process other HTML elements
-                        InlinedNode::Html {
-                            tag_name,
-                            attributes,
-                            children: Self::ensure_head_and_body_in_html(children)
+                            // Recursively process other HTML elements
+                            InlinedNode::Html {
+                                tag_name,
+                                attributes,
+                                children: Self::ensure_head_and_body_in_html(children),
+                            }
                         }
                     }
-                }
-                InlinedNode::If { condition, children } => {
                     InlinedNode::If {
                         condition,
-                        children: Self::ensure_head_and_body_in_html(children)
-                    }
-                }
-                InlinedNode::For { var_name, array_expr, children } => {
+                        children,
+                    } => InlinedNode::If {
+                        condition,
+                        children: Self::ensure_head_and_body_in_html(children),
+                    },
                     InlinedNode::For {
                         var_name,
                         array_expr,
-                        children: Self::ensure_head_and_body_in_html(children)
-                    }
-                }
-                InlinedNode::Let { var, value, children } => {
+                        children,
+                    } => InlinedNode::For {
+                        var_name,
+                        array_expr,
+                        children: Self::ensure_head_and_body_in_html(children),
+                    },
                     InlinedNode::Let {
                         var,
                         value,
-                        children: Self::ensure_head_and_body_in_html(children)
-                    }
+                        children,
+                    } => InlinedNode::Let {
+                        var,
+                        value,
+                        children: Self::ensure_head_and_body_in_html(children),
+                    },
+                    other => other,
                 }
-                other => other,
-            }
-        }).collect()
+            })
+            .collect()
     }
 }
