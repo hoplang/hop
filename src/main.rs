@@ -161,14 +161,45 @@ async fn main() -> anyhow::Result<()> {
 
             print_header("ready", elapsed.as_millis());
 
+            // The logic for the dev server works like this:
+            //
+            // (1) We read the array of `compile_and_run` commands from the users config.
+            //
+            // (2) We compile the users project in development mode. This creates
+            //     a file containing stubs for each entrypoint of the project, the stubs
+            //     contain a bootstrap script that makes the backend able to do
+            //     hot-reloading.
+            //
+            // (3) We execute all the commands of the `compile_and_run` block except
+            //     the last one synchronously (these are the commands that should compile the
+            //     software and get it ready for execution, e.g. typechecking, linting, compilation
+            //     etc).
+            //
+            // (4) We execute the last command of the `compile_and_run` command in a
+            //     separate thread.
+            //     This command is expected to start the users backend server which should
+            //     now have the loaded stubs that were created in step (2).
+            //
+            // (5) We compile the project in production mode (replacing the stubs we created in
+            //     step (2) with the real code). This is necessary since the user might have
+            //     the output file checked in to version control, and we don't want the VCS state
+            //     to be dirty just because the dev server is running.
+            //
+            // (6) We start the dev server, which is the server that will respond to the
+            //     requests made from the stubs created in step (2).
+
+            // Step (1) - Read `compile_and_run`
             let commands = &target_config.compile_and_run;
+
+            // Step (2) - Create stubs
+            let _ = cli::compile::execute(projectdir.as_deref(), true).await?;
 
             // Store the last command
             let last_command = commands
                 .last()
                 .ok_or_else(|| anyhow::anyhow!("No commands found in compile_and_run"))?;
 
-            // Execute all commands except the last one synchronously
+            // Step (3) - Compile the users backend server
             for command in &commands[..commands.len() - 1] {
                 println!("  > {}", command.dimmed());
                 use std::process::Command;
@@ -206,10 +237,7 @@ async fn main() -> anyhow::Result<()> {
             use std::process::Command;
             use tokio::sync::oneshot;
 
-            // Write development mode stubs to the output file
-            let _ = cli::compile::execute(projectdir.as_deref(), true).await?;
-
-            // Try to start the command and check if it fails immediately
+            // Step (4) - Start the users backend server
             let child = if cfg!(target_os = "windows") {
                 Command::new("cmd").args(["/C", last_command]).spawn()
             } else {
@@ -221,10 +249,10 @@ async fn main() -> anyhow::Result<()> {
                     return Err(anyhow::anyhow!("Failed to start background command: {}", e));
                 }
                 Ok(mut child) => {
-                    // Create a channel to signal when the background process exits
+                    // Create a channel to signal when the backend server process exits
                     let (tx, rx) = oneshot::channel::<std::process::ExitStatus>();
 
-                    // Spawn a task to monitor the background process
+                    // Spawn a task to monitor the users backend server
                     tokio::spawn(async move {
                         if let Ok(status) = child.wait() {
                             // Send the exit status through the channel (ignore if receiver dropped)
@@ -232,21 +260,24 @@ async fn main() -> anyhow::Result<()> {
                         }
                     });
 
-                    // Wait for background server to start and load the development stubs
-                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                    // Wait for background server to start before replacing the stubs.
+                    //
+                    // This is necessary in dynamic languages like TypeScript and Python
+                    // since the stubs are not loaded until the language runtime has
+                    // performed import resolution and read the files from disk.
+                    tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
 
-                    // Second compilation with development: false to overwrite
-                    // development stubs with real code
+                    // Step (5) - Replace stubs with real code
                     let _ = cli::compile::execute(projectdir.as_deref(), false).await?;
 
-                    // Run the server and monitor for background process exit
                     tokio::select! {
+                        // Step (6) - Start the dev server
                         result = axum::serve(listener, router) => {
-                            // Server ended (shouldn't normally happen)
+                            // Dev server exited (shouldn't normally happen)
                             result?;
                         }
                         status = rx => {
-                            // Background process exited
+                            // Users backend server exited
                             match status {
                                 Ok(exit_status) => {
                                     return Err(anyhow::anyhow!("Background command exited with status: {}", exit_status));
