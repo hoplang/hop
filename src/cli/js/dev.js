@@ -6,7 +6,8 @@
 // Mark when script execution starts
 performance.mark('hop-script-start');
 
-import Idiomorph from './idiomorph.js';
+// Lazy load Idiomorph only when needed for HMR
+let Idiomorph = null;
 
 /**
  * @typedef {object} Config
@@ -48,7 +49,13 @@ async function renderEntryPoint(cfg) {
  * Function to update the DOM with new HTML using morphing
  * @param {string} html - The new HTML content to morph into the DOM
  */
-function morphDOM(html) {
+async function morphDOM(html) {
+    // Lazy load Idiomorph on first hot reload
+    if (!Idiomorph) {
+        const module = await import('./idiomorph.js');
+        Idiomorph = module.default;
+    }
+
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     // Morph the entire document to enable head merging
@@ -82,13 +89,14 @@ function setupHMR(cfg) {
     /**
      * @param {MessageEvent} event
      */
-    eventSource.onmessage = function(event) {
+    eventSource.onmessage = async function(event) {
         if (event.data === 'reload') {
-            renderEntryPoint(cfg)
-                .then(html => morphDOM(html))
-                .catch(error => {
-                    console.error('Hot reload fetch error:', error);
-                });
+            try {
+                const html = await renderEntryPoint(cfg);
+                await morphDOM(html);
+            } catch (error) {
+                console.error('Hot reload fetch error:', error);
+            }
         }
     };
     
