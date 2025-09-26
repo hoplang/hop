@@ -209,25 +209,17 @@ async fn main() -> anyhow::Result<()> {
             // Write development mode stubs to the output file
             let _ = cli::compile::execute(projectdir.as_deref(), true).await?;
 
-            // Set up Ctrl-C handler to ensure we compile production output before exit
-            let projectdir_clone = projectdir.clone();
-            tokio::spawn(async move {
-                tokio::signal::ctrl_c().await.ok();
-                // Compile with production mode to clean up stubs
-                let _ = cli::compile::execute(projectdir_clone.as_deref(), false).await;
-                std::process::exit(130); // Standard exit code for SIGINT
-            });
-
-            let command_clone = last_command.clone();
-
             // Try to start the command and check if it fails immediately
             let child = if cfg!(target_os = "windows") {
-                Command::new("cmd").args(["/C", &command_clone]).spawn()
+                Command::new("cmd").args(["/C", last_command]).spawn()
             } else {
-                Command::new("sh").args(["-c", &command_clone]).spawn()
+                Command::new("sh").args(["-c", last_command]).spawn()
             };
 
             match child {
+                Err(e) => {
+                    return Err(anyhow::anyhow!("Failed to start background command: {}", e));
+                }
                 Ok(mut child) => {
                     // Create a channel to signal when the background process exits
                     let (tx, rx) = oneshot::channel::<std::process::ExitStatus>();
@@ -241,7 +233,7 @@ async fn main() -> anyhow::Result<()> {
                     });
 
                     // Wait for background server to start and load the development stubs
-                    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
                     // Second compilation with development: false to overwrite
                     // development stubs with real code
@@ -257,28 +249,15 @@ async fn main() -> anyhow::Result<()> {
                             // Background process exited
                             match status {
                                 Ok(exit_status) => {
-                                    eprintln!();
-                                    eprintln!("  {} Background command exited with status: {}",
-                                             "✗".red(),
-                                             exit_status);
-                                    return Err(anyhow::anyhow!("Background command exited"));
+                                    return Err(anyhow::anyhow!("Background command exited with status: {}", exit_status));
                                 }
                                 Err(_) => {
                                     // Channel was dropped, which shouldn't happen
-                                    eprintln!("  {} Lost connection to background command", "✗".red());
                                     return Err(anyhow::anyhow!("Lost connection to background command"));
                                 }
                             }
                         }
                     }
-                }
-                Err(e) => {
-                    eprintln!(
-                        "  {} Failed to execute background command: {}",
-                        "✗".red(),
-                        e
-                    );
-                    return Err(anyhow::anyhow!("Failed to start background command: {}", e));
                 }
             }
         }
