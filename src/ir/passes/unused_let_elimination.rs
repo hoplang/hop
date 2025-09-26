@@ -55,8 +55,10 @@ impl UnusedLetEliminationPass {
         statements
             .into_iter()
             .flat_map(|stmt| match stmt {
-                // Unused let - replace with its body
-                IrStatement::Let { body, id, .. } if unused_lets.contains(&id) => body,
+                // Unused let - replace with its body, recursively transforming it
+                IrStatement::Let { body, id, .. } if unused_lets.contains(&id) => {
+                    Self::transform_statements(body, unused_lets)
+                }
 
                 // All other statements pass through
                 other => vec![other],
@@ -435,6 +437,42 @@ mod tests {
                     write_expr(x)
                   }
                   write("No reference to x here")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_quadruple_nested_unused_lets() {
+        check(
+            build_ir_auto("test", vec![], |t| {
+                t.let_stmt("level1", t.str("value1"), |t| {
+                    t.let_stmt("level2", t.str("value2"), |t| {
+                        t.let_stmt("level3", t.str("value3"), |t| {
+                            t.let_stmt("level4", t.str("value4"), |t| {
+                                t.write("Deeply nested, no variables used");
+                            });
+                        });
+                    });
+                });
+            }),
+            expect![[r#"
+                -- before --
+                test() {
+                  let level1 = "value1" in {
+                    let level2 = "value2" in {
+                      let level3 = "value3" in {
+                        let level4 = "value4" in {
+                          write("Deeply nested, no variables used")
+                        }
+                      }
+                    }
+                  }
+                }
+
+                -- after --
+                test() {
+                  write("Deeply nested, no variables used")
                 }
             "#]],
         );
