@@ -131,6 +131,7 @@ async fn start_tailwind_watcher(
 
 fn create_file_watcher(
     root: &ProjectRoot,
+    css_output_path: PathBuf,
     state: AppState,
 ) -> anyhow::Result<notify::RecommendedWatcher> {
     use notify::Watcher;
@@ -138,6 +139,7 @@ fn create_file_watcher(
 
     // TODO: We should ignore folders such as .git, .direnv
 
+    let css_path_clone = css_output_path.clone();
     let mut watcher = notify::RecommendedWatcher::new(
         move |res: Result<notify::Event, notify::Error>| {
             if let Ok(event) = res {
@@ -148,12 +150,24 @@ fn create_file_watcher(
                         .iter()
                         .any(|p| p.extension().and_then(|e| e.to_str()) == Some("hop"));
 
+                    // Check if it's the CSS output file
+                    let is_css_file = event.paths.iter().any(|p| p == &css_path_clone);
+
                     if is_hop_file {
                         // Reload all modules from scratch
                         if let Ok(modules) = local_root.load_all_hop_modules() {
                             let new_program = Program::new(modules);
                             if let Ok(mut program) = state.program.write() {
                                 *program = new_program;
+                            }
+                        }
+                    }
+
+                    if is_css_file {
+                        // Update CSS content in AppState
+                        if let Ok(new_css) = std::fs::read_to_string(&css_path_clone) {
+                            if let Ok(mut css_guard) = state.tailwind_css.write() {
+                                *css_guard = Some(new_css);
                             }
                         }
                     }
@@ -166,6 +180,9 @@ fn create_file_watcher(
     )?;
 
     watcher.watch(root.get_path(), notify::RecursiveMode::Recursive)?;
+
+    // Also watch the CSS output file
+    watcher.watch(&css_output_path, notify::RecursiveMode::NonRecursive)?;
 
     Ok(watcher)
 }
@@ -200,7 +217,8 @@ pub async fn execute(
         tailwind_css: Arc::new(RwLock::new(Some(css_content))),
     };
 
-    let watcher = create_file_watcher(root, app_state.clone())?;
+    let css_output_path = PathBuf::from("/tmp/.hop-cache/tailwind-output.css");
+    let watcher = create_file_watcher(root, css_output_path, app_state.clone())?;
 
     let router = axum::Router::new()
         .route("/idiomorph.js", get(handle_idiomorph))
