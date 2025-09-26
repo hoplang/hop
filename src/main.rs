@@ -96,6 +96,27 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    /// Kill a process by its PID
+    fn kill_process(pid: u32) -> anyhow::Result<()> {
+        #[cfg(unix)]
+        {
+            use std::process::Command;
+            Command::new("kill")
+                .arg(pid.to_string())
+                .output()
+                .map_err(|e| anyhow::anyhow!("Failed to kill process {}: {}", pid, e))?;
+        }
+        #[cfg(windows)]
+        {
+            use std::process::Command;
+            Command::new("taskkill")
+                .args(["/F", "/PID", &pid.to_string()])
+                .output()
+                .map_err(|e| anyhow::anyhow!("Failed to kill process {}: {}", pid, e))?;
+        }
+        Ok(())
+    }
+
     match &cli.command {
         Some(Commands::Init { target }) => {
             cli::init::execute(target)?;
@@ -145,6 +166,7 @@ async fn main() -> anyhow::Result<()> {
             use colored::*;
             use filesystem::files::ProjectRoot;
             use std::time::Instant;
+
             let start_time = Instant::now();
             let root = match projectdir {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
@@ -249,6 +271,9 @@ async fn main() -> anyhow::Result<()> {
                     return Err(anyhow::anyhow!("Failed to start background command: {}", e));
                 }
                 Ok(mut child) => {
+                    // Store the child process ID for cleanup
+                    let child_pid = child.id();
+
                     // Create a channel to signal when the backend server process exits
                     let (tx, rx) = oneshot::channel::<std::process::ExitStatus>();
 
@@ -270,25 +295,52 @@ async fn main() -> anyhow::Result<()> {
                     // Step (5) - Replace stubs with real code
                     let _ = cli::compile::execute(projectdir.as_deref(), false).await?;
 
-                    tokio::select! {
+                    // Set up SIGINT handler (cross-platform)
+                    #[cfg(unix)]
+                    let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
+                    #[cfg(windows)]
+                    let mut sigint = tokio::signal::windows::ctrl_c()?;
+
+                    let result: anyhow::Result<()> = tokio::select! {
                         // Step (6) - Start the dev server
                         result = axum::serve(listener, router) => {
                             // Dev server exited (shouldn't normally happen)
-                            result?;
+                            result.map_err(|e| anyhow::anyhow!("Dev server error: {}", e))
                         }
                         status = rx => {
                             // Users backend server exited
                             match status {
                                 Ok(exit_status) => {
-                                    return Err(anyhow::anyhow!("Background command exited with status: {}", exit_status));
+                                    Err(anyhow::anyhow!("Background command exited with status: {}", exit_status))
                                 }
                                 Err(_) => {
                                     // Channel was dropped, which shouldn't happen
-                                    return Err(anyhow::anyhow!("Lost connection to background command"));
+                                    Err(anyhow::anyhow!("Lost connection to background command"))
                                 }
                             }
                         }
+                        _ = sigint.recv() => {
+                            // SIGINT received - perform cleanup
+                            eprintln!("\n  Shutting down gracefully...");
+                            Ok(())
+                        }
+                    };
+
+                    // Always restore production code on exit
+                    eprintln!("  Restoring production code...");
+                    if let Err(e) = cli::compile::execute(projectdir.as_deref(), false).await {
+                        eprintln!("  {} Failed to restore production code: {}", "✗".red(), e);
+                    } else {
+                        eprintln!("  {} Production code restored", "✓".green());
                     }
+
+                    // Kill the child process if it's still running
+                    if let Err(e) = kill_process(child_pid) {
+                        // Ignore error - process may have already exited
+                        eprintln!("  {} Backend process may have already stopped: {}", "⚠".yellow(), e);
+                    }
+
+                    result?;
                 }
             }
         }
