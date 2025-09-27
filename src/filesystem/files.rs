@@ -1,9 +1,9 @@
 use anyhow::Context;
 use std::{
     collections::HashMap,
-    fs,
     path::{Path, PathBuf},
 };
+use tokio::fs as async_fs;
 
 use super::config::HopConfig;
 use crate::hop::module_name::ModuleName;
@@ -160,7 +160,7 @@ impl ProjectRoot {
     }
 
     /// Load the hop.toml configuration file from this project root
-    pub fn load_config(&self) -> anyhow::Result<HopConfig> {
+    pub async fn load_config(&self) -> anyhow::Result<HopConfig> {
         let config_path = self.0.join("hop.toml");
 
         if !config_path.exists() {
@@ -170,7 +170,8 @@ impl ProjectRoot {
             );
         }
 
-        let config_str = fs::read_to_string(&config_path)
+        let config_str = async_fs::read_to_string(&config_path)
+            .await
             .with_context(|| format!("Failed to read hop.toml at {:?}", config_path))?;
 
         let config = HopConfig::from_toml_str(&config_str)
@@ -205,7 +206,7 @@ mod tests {
         assert_eq!(found.0, temp_dir);
 
         // Clean up
-        fs::remove_dir_all(&temp_dir).unwrap();
+        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[test]
@@ -227,7 +228,7 @@ mod tests {
         assert!(error_message.contains("Failed to locate hop.toml"));
 
         // Clean up
-        fs::remove_dir_all(&temp_dir).unwrap();
+        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[test]
@@ -254,7 +255,7 @@ mod tests {
         assert_eq!(main_module.as_str(), "main");
 
         // Clean up
-        fs::remove_dir_all(&temp_dir).unwrap();
+        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[test]
@@ -279,7 +280,7 @@ mod tests {
         );
 
         // Clean up
-        fs::remove_dir_all(&temp_dir).unwrap();
+        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[test]
@@ -322,7 +323,7 @@ mod tests {
         assert!(button_content.contains("<button-comp>Click me!</button-comp>"));
 
         // Clean up
-        fs::remove_dir_all(&temp_dir).unwrap();
+        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[test]
@@ -373,7 +374,7 @@ mod tests {
         );
 
         // Clean up
-        fs::remove_dir_all(&temp_dir).unwrap();
+        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[test]
@@ -410,11 +411,11 @@ mod tests {
         assert!(!module_names.iter().any(|m| m.contains("target")));
 
         // Clean up
-        fs::remove_dir_all(&temp_dir).unwrap();
+        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
-    #[test]
-    fn test_load_css_config() {
+    #[tokio::test]
+    async fn test_load_css_config() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [css]
@@ -426,15 +427,15 @@ mod tests {
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::from(&temp_dir).unwrap();
 
-        let config = root.load_config().unwrap();
+        let config = root.load_config().await.unwrap();
 
         assert_eq!(config.css.mode, Some("tailwind4".to_string()));
 
-        fs::remove_dir_all(&temp_dir).unwrap();
+        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
-    #[test]
-    fn test_load_config_missing_hop_toml_error() {
+    #[tokio::test]
+    async fn test_load_config_missing_hop_toml_error() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [css]
@@ -446,9 +447,9 @@ mod tests {
         let root = ProjectRoot::from(&temp_dir).unwrap();
 
         // Delete the hop.toml to test the error case
-        fs::remove_file(temp_dir.join("hop.toml")).unwrap();
+        std::fs::remove_file(temp_dir.join("hop.toml")).unwrap();
 
-        let result = root.load_config();
+        let result = root.load_config().await;
         assert!(result.is_err());
         assert!(
             result
@@ -457,11 +458,11 @@ mod tests {
                 .contains("hop.toml not found")
         );
 
-        fs::remove_dir_all(&temp_dir).unwrap();
+        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 
-    #[test]
-    fn test_load_config_with_empty_hop_toml() {
+    #[tokio::test]
+    async fn test_load_config_with_empty_hop_toml() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             # Empty config file
@@ -469,11 +470,11 @@ mod tests {
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::from(&temp_dir).unwrap();
 
-        let result = root.load_config();
+        let result = root.load_config().await;
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("Failed to parse hop.toml"));
 
-        fs::remove_dir_all(&temp_dir).unwrap();
+        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 }

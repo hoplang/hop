@@ -158,7 +158,7 @@ async fn main() -> anyhow::Result<()> {
             };
 
             // Load config to get compile_and_run commands
-            let config = root.load_config()?;
+            let config = root.load_config().await?;
             let (_target_language, target_config) = config.get_target();
 
             let (router, _watcher, mut tailwind_child) = cli::dev::execute(&root).await?;

@@ -190,7 +190,7 @@ pub async fn execute(
     let modules = root.load_all_hop_modules()?;
 
     // Load config to check for Tailwind configuration
-    let config = root.load_config()?;
+    let config = root.load_config().await?;
 
     // Always start Tailwind first - either with user config or default
     let tailwind_input_path = match config.css.tailwind {

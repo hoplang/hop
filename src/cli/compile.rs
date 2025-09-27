@@ -54,7 +54,7 @@ pub async fn execute(project_root: &ProjectRoot, development: bool) -> Result<Co
     let mut timer = timing::TimingCollector::new();
 
     // Load configuration
-    let config = project_root.load_config()?;
+    let config = project_root.load_config().await?;
     let (target_language, target_config) = config.get_target();
 
     // Convert target language to CompileLanguage
