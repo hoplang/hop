@@ -96,7 +96,6 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-
     match &cli.command {
         Some(Commands::Init { target }) => {
             cli::init::execute(target)?;
@@ -150,6 +149,7 @@ async fn main() -> anyhow::Result<()> {
         }) => {
             use colored::*;
             use std::time::Instant;
+            use tokio::process::Command;
 
             let start_time = Instant::now();
             let root = match projectdir {
@@ -215,11 +215,10 @@ async fn main() -> anyhow::Result<()> {
             // Step (3) - Compile the users backend server
             for command in &commands[..commands.len() - 1] {
                 println!("  > {}", command.dimmed());
-                use std::process::Command;
                 let output = if cfg!(target_os = "windows") {
-                    Command::new("cmd").args(["/C", command]).output()
+                    Command::new("cmd").args(["/C", command]).output().await
                 } else {
-                    Command::new("sh").args(["-c", command]).output()
+                    Command::new("sh").args(["-c", command]).output().await
                 };
 
                 match output {
@@ -247,7 +246,6 @@ async fn main() -> anyhow::Result<()> {
             }
 
             println!("  > {}", last_command.dimmed());
-            use tokio::process::Command;
 
             // Step (4) - Start the users backend server
             let mut child = if cfg!(target_os = "windows") {
@@ -256,7 +254,6 @@ async fn main() -> anyhow::Result<()> {
                 Command::new("sh").args(["-c", last_command]).spawn()
             }
             .map_err(|e| anyhow::anyhow!("Failed to start background command: {}", e))?;
-
 
             let local_root = root.clone();
             tokio::spawn(async move {
