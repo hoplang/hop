@@ -147,7 +147,6 @@ async fn main() -> anyhow::Result<()> {
             port,
             host,
         }) => {
-            use colored::*;
             use std::time::Instant;
 
             let start_time = Instant::now();
@@ -179,7 +178,7 @@ async fn main() -> anyhow::Result<()> {
                 let config = root.load_config().await?;
                 let (_target_language, target_config) = config.get_target();
 
-                let (router, _watcher, mut tailwind_watcher) = cli::dev::execute(&root).await?;
+                let (router, _watcher, mut tailwind_watcher) = cli::dev::execute(root).await?;
                 let elapsed = start_time.elapsed();
                 let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
 
