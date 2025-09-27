@@ -1,6 +1,5 @@
 use anyhow::Result;
 use std::path::PathBuf;
-use tokio::process::{Child, Command};
 
 pub struct TailwindRunner {
     binary_path: PathBuf,
@@ -18,7 +17,7 @@ impl TailwindRunner {
     }
 
     pub async fn run_once(&self, config: &TailwindConfig) -> Result<String> {
-        let output = Command::new(&self.binary_path)
+        let output = tokio::process::Command::new(&self.binary_path)
             .arg("--input")
             .arg(&config.input)
             .arg("--output")
@@ -37,8 +36,8 @@ impl TailwindRunner {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
-    pub async fn watch(&self, config: &TailwindConfig) -> Result<Child> {
-        let child = Command::new(&self.binary_path)
+    pub fn watch(&self, config: &TailwindConfig) -> Result<tokio::process::Child> {
+        let child = tokio::process::Command::new(&self.binary_path)
             .arg("--watch")
             .arg("--input")
             .arg(&config.input)

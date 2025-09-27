@@ -187,7 +187,6 @@ mod tests {
     use crate::test_utils::archive::temp_dir_from_archive;
     use indoc::indoc;
     use simple_txtar::Archive;
-    use std::fs;
 
     #[test]
     fn test_find_config_file() {

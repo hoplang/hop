@@ -113,7 +113,7 @@ async fn start_tailwind_watcher(input_path: &Path) -> anyhow::Result<(String, Ch
     let css_content = tokio::fs::read_to_string(&tailwind_config.output).await?;
 
     // Start watcher
-    let handle = runner.watch(&tailwind_config).await?;
+    let handle = runner.watch(&tailwind_config)?;
 
     Ok((css_content, handle))
 }
