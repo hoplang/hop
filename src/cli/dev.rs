@@ -16,6 +16,8 @@ struct AppState {
     program: Arc<RwLock<Program>>,
     reload_channel: tokio::sync::broadcast::Sender<()>,
     tailwind_css: Arc<RwLock<Option<String>>>,
+    _tmp_dir: Arc<tempfile::TempDir>,
+    tailwind_css_output_path: Arc<PathBuf>,
 }
 
 async fn handle_development_mode_js() -> Response<Body> {
@@ -87,24 +89,25 @@ async fn handle_render(
     }
 }
 
-async fn create_default_tailwind_input() -> anyhow::Result<PathBuf> {
-    let cache_dir = PathBuf::from("/tmp/.hop-cache");
-    tokio::fs::create_dir_all(&cache_dir).await?;
-
-    let temp_input = cache_dir.join("default-input.css");
+async fn create_default_tailwind_input(tmp_dir: &tempfile::TempDir) -> anyhow::Result<PathBuf> {
+    let temp_input = tmp_dir.path().join("default-input.css");
     let default_content = r#"@import "tailwindcss";"#;
 
     tokio::fs::write(&temp_input, default_content).await?;
     Ok(temp_input)
 }
 
-async fn start_tailwind_watcher(input_path: &Path) -> anyhow::Result<(String, Child)> {
-    let cache_dir = PathBuf::from("/tmp/.hop-cache");
-    let runner = TailwindRunner::new(cache_dir).await?;
+async fn start_tailwind_watcher(
+    input_path: &Path,
+    tmp_dir: &tempfile::TempDir,
+) -> anyhow::Result<(String, PathBuf, Child)> {
+    let cache_dir = tmp_dir.path().to_path_buf();
+    let runner = TailwindRunner::new(cache_dir.clone()).await?;
 
+    let output_path = cache_dir.join("tailwind-output.css");
     let tailwind_config = tailwind_runner::TailwindConfig {
         input: input_path.to_path_buf(),
-        output: PathBuf::from("/tmp/.hop-cache/tailwind-output.css"),
+        output: output_path.clone(),
     };
 
     // Run once initially to generate CSS - return error if it fails
@@ -116,12 +119,11 @@ async fn start_tailwind_watcher(input_path: &Path) -> anyhow::Result<(String, Ch
     // Start watcher
     let handle = runner.watch(&tailwind_config)?;
 
-    Ok((css_content, handle))
+    Ok((css_content, output_path, handle))
 }
 
 async fn create_file_watcher(
     root: &ProjectRoot,
-    css_output_path: PathBuf,
     state: AppState,
 ) -> anyhow::Result<(AdaptiveWatcher, notify::RecommendedWatcher)> {
     let local_root = root.clone();
@@ -161,12 +163,14 @@ async fn create_file_watcher(
 
     // Create a separate watcher for the CSS output file
     use notify::Watcher;
+    let css_output_path = state.tailwind_css_output_path.as_ref().clone();
+    let state_for_css_watcher = state.clone();
     let mut css_watcher = notify::RecommendedWatcher::new(
         move |res: Result<notify::Event, notify::Error>| {
             if let Ok(event) = res {
                 if event.kind.is_modify() {
                     // Tell the client to hot reload
-                    let _ = state.reload_channel.send(());
+                    let _ = state_for_css_watcher.reload_channel.send(());
                 }
             }
         },
@@ -201,13 +205,16 @@ pub async fn execute(
 )> {
     let modules = root.load_all_hop_modules()?;
 
+    let tmp_dir = tempfile::tempdir()?;
+
     // Always start Tailwind first - either with user config or default
     let tailwind_input_path = match root.get_tailwind_input_path().await? {
         Some(p) => p,
-        None => create_default_tailwind_input().await?,
+        None => create_default_tailwind_input(&tmp_dir).await?,
     };
 
-    let (css_content, tailwind_handle) = start_tailwind_watcher(&tailwind_input_path).await?;
+    let (css_content, css_output_path, tailwind_handle) =
+        start_tailwind_watcher(&tailwind_input_path, &tmp_dir).await?;
 
     let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
 
@@ -215,11 +222,11 @@ pub async fn execute(
         program: Arc::new(RwLock::new(Program::new(modules))),
         reload_channel,
         tailwind_css: Arc::new(RwLock::new(Some(css_content))),
+        _tmp_dir: Arc::new(tmp_dir),
+        tailwind_css_output_path: Arc::new(css_output_path.clone()),
     };
 
-    let css_output_path = PathBuf::from("/tmp/.hop-cache/tailwind-output.css");
-    let (adaptive_watcher, css_watcher) =
-        create_file_watcher(root, css_output_path, app_state.clone()).await?;
+    let (adaptive_watcher, css_watcher) = create_file_watcher(root, app_state.clone()).await?;
 
     let router = create_router();
 
@@ -255,11 +262,15 @@ mod tests {
 
         let program = Program::new(modules);
         let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let css_output_path = tmp_dir.path().join("tailwind-output.css");
 
         let app_state = AppState {
             program: Arc::new(RwLock::new(program)),
             reload_channel,
             tailwind_css: Arc::new(RwLock::new(None)),
+            _tmp_dir: Arc::new(tmp_dir),
+            tailwind_css_output_path: Arc::new(css_output_path),
         };
 
         let app = axum::Router::new()

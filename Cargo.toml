@@ -33,6 +33,7 @@ itertools = "0.13"
 thiserror = "2.0"
 pretty = "0.12"
 datafrog = "2.0"
+tempfile = "3.8"
 
 [dev-dependencies]
 simple_txtar = "1.1.0"
@@ -40,7 +41,6 @@ axum-test = "17.0"
 rand = "0.9"
 expect-test = "1.5"
 indoc = "2.0"
-tempfile = "3.8"
 
 [lints.clippy]
 too_many_arguments = "allow"
