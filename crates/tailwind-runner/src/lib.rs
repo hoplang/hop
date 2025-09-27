@@ -38,12 +38,13 @@ impl TailwindRunner {
 
     pub fn watch(&self, config: &TailwindConfig) -> Result<tokio::process::Child> {
         let child = tokio::process::Command::new(&self.binary_path)
-            .arg("--watch")
+            .arg("--watch=always")
             .arg("--input")
             .arg(&config.input)
             .arg("--output")
             .arg(&config.output)
             .arg("--minify")
+            .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()?;
