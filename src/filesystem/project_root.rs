@@ -34,7 +34,10 @@ fn should_skip_directory(dir_name: &str) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ProjectRoot(PathBuf);
+pub struct ProjectRoot {
+    // Directory containing the hop.toml file
+    directory: PathBuf,
+}
 
 impl ProjectRoot {
     /// Find the project root by traversing upwards.
@@ -53,7 +56,9 @@ impl ProjectRoot {
         loop {
             let config_file = current_dir.join("hop.toml");
             if config_file.exists() {
-                return Ok(ProjectRoot(current_dir.to_path_buf()));
+                return Ok(ProjectRoot {
+                    directory: current_dir.to_path_buf(),
+                });
             }
             current_dir = current_dir.parent().ok_or_else(|| {
                 anyhow::anyhow!(
@@ -78,18 +83,20 @@ impl ProjectRoot {
         if !config_file.exists() {
             anyhow::bail!("Expected to find hop.toml in {:?}", &path)
         }
-        Ok(ProjectRoot(canonicalized.to_path_buf()))
+        Ok(ProjectRoot {
+            directory: canonicalized.to_path_buf(),
+        })
     }
 
     pub fn get_path(&self) -> &Path {
-        &self.0
+        &self.directory
     }
 
     /// Convert a file path to a module name using this project root as reference
     /// Returns a module name with '/' separators (e.g., "src/components/header")
     pub fn path_to_module_name(&self, file_path: &Path) -> anyhow::Result<ModuleName> {
         let relative_path = file_path
-            .strip_prefix(&self.0)
+            .strip_prefix(&self.directory)
             .with_context(|| format!("Failed to strip prefix from path {:?}", file_path))?;
 
         let module_str = relative_path
@@ -107,7 +114,7 @@ impl ProjectRoot {
         let module_path = module_name
             .to_string()
             .replace('/', std::path::MAIN_SEPARATOR_STR);
-        self.0.join(format!("{}.hop", module_path))
+        self.directory.join(format!("{}.hop", module_path))
     }
 
     /// Load all hop modules from this project root, returning a HashMap of module_name -> content
@@ -129,12 +136,12 @@ impl ProjectRoot {
     fn find_hop_files(&self) -> anyhow::Result<Vec<PathBuf>> {
         let mut hop_files = Vec::new();
 
-        if !self.0.exists() || !self.0.is_dir() {
+        if !self.directory.exists() || !self.directory.is_dir() {
             return Ok(hop_files);
         }
 
         let mut paths: Vec<PathBuf> = Vec::new();
-        paths.push(self.0.to_path_buf());
+        paths.push(self.directory.clone());
 
         while let Some(path) = paths.pop() {
             if path.is_dir() {
@@ -161,7 +168,7 @@ impl ProjectRoot {
 
     /// Load the hop.toml configuration file from this project root
     pub async fn load_config(&self) -> anyhow::Result<HopConfig> {
-        let config_path = self.0.join("hop.toml");
+        let config_path = self.directory.join("hop.toml");
 
         if !config_path.exists() {
             anyhow::bail!("hop.toml not found at {:?}", config_path);
@@ -199,7 +206,7 @@ mod tests {
         // Test finding from nested directory
         let nested_dir = temp_dir.join("src").join("components");
         let found = ProjectRoot::find_upwards(&nested_dir).unwrap();
-        assert_eq!(found.0, temp_dir);
+        assert_eq!(found.directory, temp_dir);
 
         // Clean up
         std::fs::remove_dir_all(&temp_dir).unwrap();
