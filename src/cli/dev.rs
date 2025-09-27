@@ -137,7 +137,9 @@ async fn create_file_watcher(
     tokio::spawn(async move {
         while let Ok(event) = rx.recv().await {
             match event {
-                WatchEvent::Created(path) | WatchEvent::Modified(path) | WatchEvent::Deleted(path) => {
+                WatchEvent::Created(path)
+                | WatchEvent::Modified(path)
+                | WatchEvent::Deleted(path) => {
                     // Check if it's a .hop file
                     let is_hop_file = path.extension().and_then(|e| e.to_str()) == Some("hop");
 
@@ -159,24 +161,12 @@ async fn create_file_watcher(
 
     // Create a separate watcher for the CSS output file
     use notify::Watcher;
-    let css_path_clone = css_output_path.clone();
     let mut css_watcher = notify::RecommendedWatcher::new(
         move |res: Result<notify::Event, notify::Error>| {
             if let Ok(event) = res {
                 if event.kind.is_modify() {
-                    // Check if it's the CSS output file
-                    let is_css_file = event.paths.iter().any(|p| p == &css_path_clone);
-
-                    if is_css_file {
-                        // Update CSS content in AppState
-                        if let Ok(new_css) = std::fs::read_to_string(&css_path_clone) {
-                            if let Ok(mut css_guard) = state.tailwind_css.write() {
-                                *css_guard = Some(new_css);
-                            }
-                        }
-                        // Tell the client to hot reload
-                        let _ = state.reload_channel.send(());
-                    }
+                    // Tell the client to hot reload
+                    let _ = state.reload_channel.send(());
                 }
             }
         },
@@ -195,7 +185,12 @@ async fn create_file_watcher(
 /// The watcher emits SSE-events on the `/event_source` route.
 pub async fn execute(
     root: &ProjectRoot,
-) -> anyhow::Result<(axum::Router, AdaptiveWatcher, notify::RecommendedWatcher, Child)> {
+) -> anyhow::Result<(
+    axum::Router,
+    AdaptiveWatcher,
+    notify::RecommendedWatcher,
+    Child,
+)> {
     use axum::routing::get;
 
     let modules = root.load_all_hop_modules()?;
@@ -217,14 +212,20 @@ pub async fn execute(
     };
 
     let css_output_path = PathBuf::from("/tmp/.hop-cache/tailwind-output.css");
-    let (adaptive_watcher, css_watcher) = create_file_watcher(root, css_output_path, app_state.clone()).await?;
+    let (adaptive_watcher, css_watcher) =
+        create_file_watcher(root, css_output_path, app_state.clone()).await?;
 
     let router = axum::Router::new()
         .route("/development_mode.js", get(handle_development_mode_js))
         .route("/event_source", get(handle_event_source))
         .route("/render", get(handle_render));
 
-    Ok((router.with_state(app_state), adaptive_watcher, css_watcher, tailwind_handle))
+    Ok((
+        router.with_state(app_state),
+        adaptive_watcher,
+        css_watcher,
+        tailwind_handle,
+    ))
 }
 
 #[cfg(test)]
