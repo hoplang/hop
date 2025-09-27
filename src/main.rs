@@ -150,13 +150,23 @@ async fn main() -> anyhow::Result<()> {
             use colored::*;
             use std::time::Instant;
 
+            // Set up Ctrl-C handler
+            //
+            // The channel is necessary here since the listener is not
+            // registered until the signal is actually awaited, and we want
+            // to register it right here.
+            let (sigint_tx, mut sigint_rx) = tokio::sync::oneshot::channel();
+            tokio::spawn(async move {
+                tokio::signal::ctrl_c().await.ok();
+                sigint_tx.send(()).ok();
+            });
+
             let start_time = Instant::now();
             let root = match projectdir {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
 
-            // Load config to get compile_and_run commands
             let config = root.load_config().await?;
             let (_target_language, target_config) = config.get_target();
 
@@ -195,13 +205,6 @@ async fn main() -> anyhow::Result<()> {
 
             // Step (1) - Read `compile_and_run`
             let commands = &target_config.compile_and_run;
-
-            // Set up SIGINT handler (cross-platform)
-            #[cfg(unix)]
-            let mut sigint =
-                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
-            #[cfg(windows)]
-            let mut sigint = tokio::signal::windows::ctrl_c()?;
 
             // Step (2) - Create stubs
             let _ = cli::compile::execute(&root, true).await;
@@ -303,7 +306,7 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
                 }
-                _ = sigint.recv() => {
+                _ = &mut sigint_rx => {
                     // SIGINT received - perform cleanup
                     eprintln!("\n  Shutting down gracefully...");
                     Ok(())
