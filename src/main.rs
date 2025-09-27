@@ -200,13 +200,15 @@ async fn main() -> anyhow::Result<()> {
                 //     This command is expected to start the users backend server which should
                 //     now have the loaded stubs that were created in step (2).
                 //
-                // (5) We compile the project in production mode (replacing the stubs we created in
+                // (5) We start the dev server, which is the server that will respond to the
+                //     requests made from the stubs created in step (2).
+                //
+                // (6) We compile the project in production mode (replacing the stubs we created in
                 //     step (2) with the real code). This is necessary since the user might have
                 //     the output file checked in to version control, and we don't want the VCS state
                 //     to be dirty just because the dev server is running.
                 //
-                // (6) We start the dev server, which is the server that will respond to the
-                //     requests made from the stubs created in step (2).
+                // (7) We block until a subprocess exits or we receive Ctrl-C.
 
                 // Step (1) - Read `compile_and_run`
                 let commands = &target_config.compile_and_run;
@@ -263,11 +265,12 @@ async fn main() -> anyhow::Result<()> {
                         .spawn()
                 }?;
 
-                // Start our server (this takes ~200ms since we need to spawn a tailwind watcher)
+                // Step (5) - Start our server (this takes ~200ms since we need to spawn a tailwind watcher)
                 let (router, _hop_file_watcher, _css_file_watcher, mut tailwind_watcher) =
                     cli::dev::execute(root).await?;
                 let dev_server = axum::serve(listener, router);
 
+                // Step (6) - Overwrite stubs
                 let local_root = root.clone();
                 tokio::spawn(async move {
                     // Add a sleep here to let backend server start before replacing the stubs.
@@ -279,8 +282,11 @@ async fn main() -> anyhow::Result<()> {
                     let _ = cli::compile::execute(&local_root, false).await;
                 });
 
+                // Step (7) - Block
                 let result = tokio::select! {
-                    // Step (6) - Start the dev server
+                    _ = &mut sigint_rx => {
+                        Ok(())
+                    }
                     result = dev_server => {
                         // Dev server exited (shouldn't normally happen)
                         result.map_err(|e| anyhow::anyhow!("Dev server error: {}", e))
@@ -306,9 +312,6 @@ async fn main() -> anyhow::Result<()> {
                                 Err(anyhow::anyhow!("Failed to wait for tailwind watcher: {}", e))
                             }
                         }
-                    }
-                    _ = &mut sigint_rx => {
-                        Ok(())
                     }
                 };
 
