@@ -164,10 +164,7 @@ impl ProjectRoot {
         let config_path = self.0.join("hop.toml");
 
         if !config_path.exists() {
-            anyhow::bail!(
-                "hop.toml not found at {:?}. Every hop project must have a hop.toml configuration file.",
-                config_path
-            );
+            anyhow::bail!("hop.toml not found at {:?}", config_path);
         }
 
         let config_str = async_fs::read_to_string(&config_path)
