@@ -1,3 +1,4 @@
+use crate::filesystem::adaptive_watcher::{AdaptiveWatcher, WatchEvent};
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::program::Program;
 use axum::body::Body;
@@ -118,39 +119,51 @@ async fn start_tailwind_watcher(input_path: &Path) -> anyhow::Result<(String, Ch
     Ok((css_content, handle))
 }
 
-fn create_file_watcher(
+async fn create_file_watcher(
     root: &ProjectRoot,
     css_output_path: PathBuf,
     state: AppState,
-) -> anyhow::Result<notify::RecommendedWatcher> {
-    use notify::Watcher;
+) -> anyhow::Result<(AdaptiveWatcher, notify::RecommendedWatcher)> {
     let local_root = root.clone();
 
-    // TODO: We should ignore folders such as .git, .direnv
+    // Create adaptive watcher with ignored folders for the project directory
+    let ignored_folders = vec![".git", ".direnv", "node_modules", "target"];
 
-    let css_path_clone = css_output_path.clone();
-    let mut watcher = notify::RecommendedWatcher::new(
-        move |res: Result<notify::Event, notify::Error>| {
-            if let Ok(event) = res {
-                if event.kind.is_modify() || event.kind.is_create() || event.kind.is_remove() {
+    let adaptive_watcher = AdaptiveWatcher::new(root.get_path(), ignored_folders).await?;
+
+    // Spawn task to handle watch events from the adaptive watcher
+    let mut rx = adaptive_watcher.subscribe();
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        while let Ok(event) = rx.recv().await {
+            match event {
+                WatchEvent::Created(path) | WatchEvent::Modified(path) | WatchEvent::Deleted(path) => {
                     // Check if it's a .hop file
-                    let is_hop_file = event
-                        .paths
-                        .iter()
-                        .any(|p| p.extension().and_then(|e| e.to_str()) == Some("hop"));
+                    let is_hop_file = path.extension().and_then(|e| e.to_str()) == Some("hop");
 
                     if is_hop_file {
                         // Reload all modules from scratch
                         if let Ok(modules) = local_root.load_all_hop_modules() {
                             let new_program = Program::new(modules);
-                            if let Ok(mut program) = state.program.write() {
+                            if let Ok(mut program) = state_clone.program.write() {
                                 *program = new_program;
                             }
                         }
                         // Tell the client to hot reload
-                        let _ = state.reload_channel.send(());
+                        let _ = state_clone.reload_channel.send(());
                     }
+                }
+            }
+        }
+    });
 
+    // Create a separate watcher for the CSS output file
+    use notify::Watcher;
+    let css_path_clone = css_output_path.clone();
+    let mut css_watcher = notify::RecommendedWatcher::new(
+        move |res: Result<notify::Event, notify::Error>| {
+            if let Ok(event) = res {
+                if event.kind.is_modify() {
                     // Check if it's the CSS output file
                     let is_css_file = event.paths.iter().any(|p| p == &css_path_clone);
 
@@ -170,12 +183,10 @@ fn create_file_watcher(
         notify::Config::default(),
     )?;
 
-    watcher.watch(root.get_path(), notify::RecursiveMode::Recursive)?;
+    // Watch the CSS output file
+    css_watcher.watch(&css_output_path, notify::RecursiveMode::NonRecursive)?;
 
-    // Also watch the CSS output file
-    watcher.watch(&css_output_path, notify::RecursiveMode::NonRecursive)?;
-
-    Ok(watcher)
+    Ok((adaptive_watcher, css_watcher))
 }
 
 /// Create a router that responds to render requests.
@@ -184,7 +195,7 @@ fn create_file_watcher(
 /// The watcher emits SSE-events on the `/event_source` route.
 pub async fn execute(
     root: &ProjectRoot,
-) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher, Child)> {
+) -> anyhow::Result<(axum::Router, AdaptiveWatcher, notify::RecommendedWatcher, Child)> {
     use axum::routing::get;
 
     let modules = root.load_all_hop_modules()?;
@@ -206,14 +217,14 @@ pub async fn execute(
     };
 
     let css_output_path = PathBuf::from("/tmp/.hop-cache/tailwind-output.css");
-    let watcher = create_file_watcher(root, css_output_path, app_state.clone())?;
+    let (adaptive_watcher, css_watcher) = create_file_watcher(root, css_output_path, app_state.clone()).await?;
 
     let router = axum::Router::new()
         .route("/development_mode.js", get(handle_development_mode_js))
         .route("/event_source", get(handle_event_source))
         .route("/render", get(handle_render));
 
-    Ok((router.with_state(app_state), watcher, tailwind_handle))
+    Ok((router.with_state(app_state), adaptive_watcher, css_watcher, tailwind_handle))
 }
 
 #[cfg(test)]

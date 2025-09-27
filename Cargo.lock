@@ -697,6 +697,7 @@ dependencies = [
  "tower-http",
  "tower-lsp",
  "unicode-width 0.2.1",
+ "walkdir",
 ]
 
 [[package]]
