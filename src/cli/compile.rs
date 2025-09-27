@@ -9,7 +9,6 @@ use crate::ir::{
 };
 use crate::tui::timing;
 use anyhow::{Context, Result};
-use std::fs;
 use std::path::{Path, PathBuf};
 use tailwind_runner::{TailwindConfig, TailwindRunner};
 
@@ -68,7 +67,8 @@ pub async fn execute(project_root: &ProjectRoot, development: bool) -> Result<Co
     // Truncate output file before running Tailwind to prevent scanning old content
     let output_path = &target_config.output;
     if Path::new(output_path).exists() {
-        fs::write(output_path, "")
+        tokio::fs::write(output_path, "")
+            .await
             .with_context(|| format!("Failed to truncate output file {}", output_path))?;
     }
 
@@ -171,7 +171,8 @@ pub async fn execute(project_root: &ProjectRoot, development: bool) -> Result<Co
     let output_path = &target_config.output;
 
     // Write output file
-    fs::write(output_path, &generated_code)
+    tokio::fs::write(output_path, &generated_code)
+        .await
         .with_context(|| format!("Failed to write output to {}", output_path))?;
 
     let entry_points: Vec<String> = ir_entrypoints
