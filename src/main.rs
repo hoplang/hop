@@ -173,7 +173,6 @@ async fn main() -> anyhow::Result<()> {
                 let config = root.load_config().await?;
                 let (_target_language, target_config) = config.get_target();
 
-                let (router, _adaptive_watcher, _css_watcher, mut tailwind_watcher) = cli::dev::execute(root).await?;
                 let elapsed = start_time.elapsed();
                 let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
 
@@ -264,20 +263,25 @@ async fn main() -> anyhow::Result<()> {
                         .spawn()
                 }?;
 
+                // Start our server (this takes ~200ms since we need to spawn a tailwind watcher)
+                let (router, _hop_file_watcher, _css_file_watcher, mut tailwind_watcher) =
+                    cli::dev::execute(root).await?;
+                let dev_server = axum::serve(listener, router);
+
                 let local_root = root.clone();
                 tokio::spawn(async move {
-                    // Wait for background server to start before replacing the stubs.
+                    // Add a sleep here to let backend server start before replacing the stubs.
                     //
                     // This is necessary in dynamic languages like TypeScript and Python
                     // since the stubs are not loaded until the language runtime has
                     // performed import resolution and read the files from disk.
-                    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                     let _ = cli::compile::execute(&local_root, false).await;
                 });
 
                 let result = tokio::select! {
                     // Step (6) - Start the dev server
-                    result = axum::serve(listener, router) => {
+                    result = dev_server => {
                         // Dev server exited (shouldn't normally happen)
                         result.map_err(|e| anyhow::anyhow!("Dev server error: {}", e))
                     }
@@ -308,7 +312,7 @@ async fn main() -> anyhow::Result<()> {
                     }
                 };
 
-                // Kill the child processes
+                // Kill all child processes that are still running.
                 let _ = backend_server.kill().await;
                 let _ = tailwind_watcher.kill().await;
 

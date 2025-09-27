@@ -65,15 +65,20 @@ pub async fn execute(project_root: &ProjectRoot, development: bool) -> Result<Co
     // Truncate output file before running Tailwind to prevent scanning old content
     project_root.write_output("").await?;
 
-    // Compile Tailwind CSS if configured (always minified)
-    timer.start_phase("running tailwind");
-    let tailwind_css = if let Some(p) = project_root.get_tailwind_input_path().await? {
-        // Use user-specified Tailwind input
-        Some(compile_tailwind(&p).await?)
+    // Compile Tailwind CSS if configured (skip in development mode)
+    let tailwind_css = if development {
+        timer.start_phase("skipping tailwind (development mode)");
+        None
     } else {
-        // Use default Tailwind configuration
-        let default_input = create_default_tailwind_input().await?;
-        Some(compile_tailwind(&default_input).await?)
+        timer.start_phase("running tailwind");
+        if let Some(p) = project_root.get_tailwind_input_path().await? {
+            // Use user-specified Tailwind input
+            Some(compile_tailwind(&p).await?)
+        } else {
+            // Use default Tailwind configuration
+            let default_input = create_default_tailwind_input().await?;
+            Some(compile_tailwind(&default_input).await?)
+        }
     };
 
     // Load all .hop files

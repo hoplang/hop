@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -96,10 +96,7 @@ pub struct AdaptiveWatcher {
 }
 
 impl AdaptiveWatcher {
-    pub async fn new(
-        root: impl AsRef<Path>,
-        ignored_folder_names: Vec<&str>,
-    ) -> Result<Self> {
+    pub async fn new(root: impl AsRef<Path>, ignored_folder_names: Vec<&str>) -> Result<Self> {
         let root = root.as_ref().to_path_buf();
 
         if !root.exists() {
