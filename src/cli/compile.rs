@@ -1,7 +1,7 @@
 use crate::CompileLanguage;
 use crate::document::DocumentAnnotator;
 use crate::filesystem::config::TargetLanguage;
-use crate::filesystem::files::ProjectRoot;
+use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::program::Program;
 use crate::ir::{
     CompilationMode, GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler,

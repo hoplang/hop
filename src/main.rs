@@ -11,7 +11,7 @@ mod test_utils;
 mod tui;
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
-use filesystem::{config::TargetLanguage, files::ProjectRoot};
+use filesystem::{config::TargetLanguage, project_root::ProjectRoot};
 use std::path::Path;
 
 #[derive(Clone, Debug, ValueEnum)]
