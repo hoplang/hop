@@ -150,7 +150,6 @@ async fn main() -> anyhow::Result<()> {
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
 
-            // Inner function that contains the main logic
             async fn run_dev_server(
                 root: &ProjectRoot,
                 host: &str,

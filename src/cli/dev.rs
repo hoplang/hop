@@ -179,6 +179,14 @@ async fn create_file_watcher(
     Ok((adaptive_watcher, css_watcher))
 }
 
+fn create_router() -> axum::Router<AppState> {
+    use axum::routing::get;
+    axum::Router::new()
+        .route("/development_mode.js", get(handle_development_mode_js))
+        .route("/event_source", get(handle_event_source))
+        .route("/render", get(handle_render))
+}
+
 /// Create a router that responds to render requests.
 ///
 /// Also sets up a watcher that watches all source files used to construct the output files.
@@ -191,8 +199,6 @@ pub async fn execute(
     notify::RecommendedWatcher,
     Child,
 )> {
-    use axum::routing::get;
-
     let modules = root.load_all_hop_modules()?;
 
     // Always start Tailwind first - either with user config or default
@@ -215,10 +221,7 @@ pub async fn execute(
     let (adaptive_watcher, css_watcher) =
         create_file_watcher(root, css_output_path, app_state.clone()).await?;
 
-    let router = axum::Router::new()
-        .route("/development_mode.js", get(handle_development_mode_js))
-        .route("/event_source", get(handle_event_source))
-        .route("/render", get(handle_render));
+    let router = create_router();
 
     Ok((
         router.with_state(app_state),
