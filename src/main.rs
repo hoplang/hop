@@ -11,7 +11,7 @@ mod test_utils;
 mod tui;
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
-use filesystem::config::TargetLanguage;
+use filesystem::{config::TargetLanguage, files::ProjectRoot};
 use std::path::Path;
 
 #[derive(Clone, Debug, ValueEnum)]
@@ -131,7 +131,12 @@ async fn main() -> anyhow::Result<()> {
             use std::time::Instant;
             let start_time = Instant::now();
 
-            let mut result = cli::compile::execute(projectdir.as_deref(), *development).await?;
+            let root = match projectdir {
+                Some(d) => ProjectRoot::from(Path::new(d))?,
+                None => ProjectRoot::find_upwards(Path::new("."))?,
+            };
+
+            let mut result = cli::compile::execute(&root, *development).await?;
             let elapsed = start_time.elapsed();
 
             print_header("compiled", elapsed.as_millis());
@@ -164,7 +169,6 @@ async fn main() -> anyhow::Result<()> {
             host,
         }) => {
             use colored::*;
-            use filesystem::files::ProjectRoot;
             use std::time::Instant;
 
             let start_time = Instant::now();
@@ -221,7 +225,7 @@ async fn main() -> anyhow::Result<()> {
             let mut sigint = tokio::signal::windows::ctrl_c()?;
 
             // Step (2) - Create stubs
-            let _ = cli::compile::execute(projectdir.as_deref(), true).await;
+            let _ = cli::compile::execute(&root, true).await;
 
             // Store the last command
             let last_command = commands
@@ -292,7 +296,7 @@ async fn main() -> anyhow::Result<()> {
                         }
                     });
 
-                    let project_dir_clone = projectdir.clone();
+                    let local_root = root.clone();
                     tokio::spawn(async move {
                         // Wait for background server to start before replacing the stubs.
                         //
@@ -300,7 +304,7 @@ async fn main() -> anyhow::Result<()> {
                         // since the stubs are not loaded until the language runtime has
                         // performed import resolution and read the files from disk.
                         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-                        let _ = cli::compile::execute(project_dir_clone.as_deref(), false).await;
+                        let _ = cli::compile::execute(&local_root, false).await;
                     });
 
                     let result: anyhow::Result<()> = tokio::select! {
@@ -330,7 +334,7 @@ async fn main() -> anyhow::Result<()> {
 
                     // Always restore production code on exit
                     eprintln!("  Restoring production code...");
-                    if let Err(e) = cli::compile::execute(projectdir.as_deref(), false).await {
+                    if let Err(e) = cli::compile::execute(&root, false).await {
                         eprintln!("  {} Failed to restore production code: {}", "✗".red(), e);
                     } else {
                         eprintln!("  {} Production code restored", "✓".green());

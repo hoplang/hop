@@ -50,14 +50,8 @@ async fn create_default_tailwind_input() -> Result<PathBuf> {
     Ok(temp_input)
 }
 
-pub async fn execute(projectdir: Option<&str>, development: bool) -> Result<CompileResult> {
+pub async fn execute(project_root: &ProjectRoot, development: bool) -> Result<CompileResult> {
     let mut timer = timing::TimingCollector::new();
-
-    // Find project root
-    let project_root = match projectdir {
-        Some(dir) => ProjectRoot::find_upwards(Path::new(dir))?,
-        None => ProjectRoot::find_upwards(Path::new("."))?,
-    };
 
     // Load configuration
     let config = project_root.load_config()?;
