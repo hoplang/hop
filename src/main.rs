@@ -28,7 +28,7 @@ enum CompileLanguage {
 
 #[derive(Parser)]
 #[command(name = "hop")]
-#[command(about = "A HTML-like templating language with built-in type checking")]
+#[command(about = "The hop compiler - https://hoplang.com")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 struct Cli {
     #[command(subcommand)]

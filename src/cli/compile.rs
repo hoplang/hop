@@ -67,10 +67,9 @@ pub async fn execute(project_root: &ProjectRoot, development: bool) -> Result<Co
 
     // Compile Tailwind CSS if configured (skip in development mode)
     let tailwind_css = if development {
-        timer.start_phase("skipping tailwind (development mode)");
         None
     } else {
-        timer.start_phase("running tailwind");
+        timer.start_phase("tailwind");
         if let Some(p) = project_root.get_tailwind_input_path().await? {
             // Use user-specified Tailwind input
             Some(compile_tailwind(&p).await?)
