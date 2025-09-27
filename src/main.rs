@@ -149,7 +149,6 @@ async fn main() -> anyhow::Result<()> {
         }) => {
             use colored::*;
             use std::time::Instant;
-            use tokio::process::Command;
 
             let start_time = Instant::now();
             let root = match projectdir {
@@ -216,9 +215,15 @@ async fn main() -> anyhow::Result<()> {
             for command in &commands[..commands.len() - 1] {
                 println!("  > {}", command.dimmed());
                 let output = if cfg!(target_os = "windows") {
-                    Command::new("cmd").args(["/C", command]).output().await
+                    tokio::process::Command::new("cmd")
+                        .args(["/C", command])
+                        .output()
+                        .await
                 } else {
-                    Command::new("sh").args(["-c", command]).output().await
+                    tokio::process::Command::new("sh")
+                        .args(["-c", command])
+                        .output()
+                        .await
                 };
 
                 match output {
@@ -249,9 +254,13 @@ async fn main() -> anyhow::Result<()> {
 
             // Step (4) - Start the users backend server
             let mut backend_server = if cfg!(target_os = "windows") {
-                Command::new("cmd").args(["/C", last_command]).spawn()
+                tokio::process::Command::new("cmd")
+                    .args(["/C", last_command])
+                    .spawn()
             } else {
-                Command::new("sh").args(["-c", last_command]).spawn()
+                tokio::process::Command::new("sh")
+                    .args(["-c", last_command])
+                    .spawn()
             }
             .map_err(|e| anyhow::anyhow!("Failed to start background command: {}", e))?;
 

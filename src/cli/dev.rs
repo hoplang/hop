@@ -181,7 +181,7 @@ fn create_file_watcher(
 /// Create a router that responds to render requests.
 ///
 /// Also sets up a watcher that watches all source files used to construct the output files.
-/// The watcher emits SSE-events on the `/_hop/event_source` route.
+/// The watcher emits SSE-events on the `/event_source` route.
 pub async fn execute(
     root: &ProjectRoot,
 ) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher, Child)> {
