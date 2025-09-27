@@ -96,26 +96,6 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    /// Kill a process by its PID
-    fn kill_process(pid: u32) -> anyhow::Result<()> {
-        #[cfg(unix)]
-        {
-            use std::process::Command;
-            Command::new("kill")
-                .arg(pid.to_string())
-                .output()
-                .map_err(|e| anyhow::anyhow!("Failed to kill process {}: {}", pid, e))?;
-        }
-        #[cfg(windows)]
-        {
-            use std::process::Command;
-            Command::new("taskkill")
-                .args(["/F", "/PID", &pid.to_string()])
-                .output()
-                .map_err(|e| anyhow::anyhow!("Failed to kill process {}: {}", pid, e))?;
-        }
-        Ok(())
-    }
 
     match &cli.command {
         Some(Commands::Init { target }) => {
@@ -267,92 +247,71 @@ async fn main() -> anyhow::Result<()> {
             }
 
             println!("  > {}", last_command.dimmed());
-            use std::process::Command;
-            use tokio::sync::oneshot;
+            use tokio::process::Command;
 
             // Step (4) - Start the users backend server
-            let child = if cfg!(target_os = "windows") {
+            let mut child = if cfg!(target_os = "windows") {
                 Command::new("cmd").args(["/C", last_command]).spawn()
             } else {
                 Command::new("sh").args(["-c", last_command]).spawn()
+            }
+            .map_err(|e| anyhow::anyhow!("Failed to start background command: {}", e))?;
+
+
+            let local_root = root.clone();
+            tokio::spawn(async move {
+                // Wait for background server to start before replacing the stubs.
+                //
+                // This is necessary in dynamic languages like TypeScript and Python
+                // since the stubs are not loaded until the language runtime has
+                // performed import resolution and read the files from disk.
+                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                let _ = cli::compile::execute(&local_root, false).await;
+            });
+
+            let result: anyhow::Result<()> = tokio::select! {
+                // Step (6) - Start the dev server
+                result = axum::serve(listener, router) => {
+                    // Dev server exited (shouldn't normally happen)
+                    result.map_err(|e| anyhow::anyhow!("Dev server error: {}", e))
+                }
+                status = child.wait() => {
+                    // Users backend server exited
+                    match status {
+                        Ok(exit_status) => {
+                            Err(anyhow::anyhow!("Background command exited with status: {}", exit_status))
+                        }
+                        Err(e) => {
+                            Err(anyhow::anyhow!("Failed to wait for background command: {}", e))
+                        }
+                    }
+                }
+                _ = sigint.recv() => {
+                    // SIGINT received - perform cleanup
+                    eprintln!("\n  Shutting down gracefully...");
+                    Ok(())
+                }
             };
 
-            match child {
-                Err(e) => {
-                    return Err(anyhow::anyhow!("Failed to start background command: {}", e));
-                }
-                Ok(mut child) => {
-                    // Store the child process ID for cleanup
-                    let child_pid = child.id();
-
-                    // Create a channel to signal when the backend server process exits
-                    let (tx, rx) = oneshot::channel::<std::process::ExitStatus>();
-
-                    // Spawn a task to monitor the users backend server
-                    tokio::spawn(async move {
-                        if let Ok(status) = child.wait() {
-                            // Send the exit status through the channel (ignore if receiver dropped)
-                            let _ = tx.send(status);
-                        }
-                    });
-
-                    let local_root = root.clone();
-                    tokio::spawn(async move {
-                        // Wait for background server to start before replacing the stubs.
-                        //
-                        // This is necessary in dynamic languages like TypeScript and Python
-                        // since the stubs are not loaded until the language runtime has
-                        // performed import resolution and read the files from disk.
-                        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-                        let _ = cli::compile::execute(&local_root, false).await;
-                    });
-
-                    let result: anyhow::Result<()> = tokio::select! {
-                        // Step (6) - Start the dev server
-                        result = axum::serve(listener, router) => {
-                            // Dev server exited (shouldn't normally happen)
-                            result.map_err(|e| anyhow::anyhow!("Dev server error: {}", e))
-                        }
-                        status = rx => {
-                            // Users backend server exited
-                            match status {
-                                Ok(exit_status) => {
-                                    Err(anyhow::anyhow!("Background command exited with status: {}", exit_status))
-                                }
-                                Err(_) => {
-                                    // Channel was dropped, which shouldn't happen
-                                    Err(anyhow::anyhow!("Lost connection to background command"))
-                                }
-                            }
-                        }
-                        _ = sigint.recv() => {
-                            // SIGINT received - perform cleanup
-                            eprintln!("\n  Shutting down gracefully...");
-                            Ok(())
-                        }
-                    };
-
-                    // Always restore production code on exit
-                    eprintln!("  Restoring production code...");
-                    if let Err(e) = cli::compile::execute(&root, false).await {
-                        eprintln!("  {} Failed to restore production code: {}", "✗".red(), e);
-                    } else {
-                        eprintln!("  {} Production code restored", "✓".green());
-                    }
-
-                    // Kill the child process if it's still running
-                    if let Err(e) = kill_process(child_pid) {
-                        // Ignore error - process may have already exited
-                        eprintln!(
-                            "  {} Backend process may have already stopped: {}",
-                            "⚠".yellow(),
-                            e
-                        );
-                    }
-
-                    result?;
-                }
+            // Always restore production code on exit
+            eprintln!("  Restoring production code...");
+            if let Err(e) = cli::compile::execute(&root, false).await {
+                eprintln!("  {} Failed to restore production code: {}", "✗".red(), e);
+            } else {
+                eprintln!("  {} Production code restored", "✓".green());
             }
+
+            // Kill the child process if it's still running
+            if let Err(e) = child.kill().await {
+                // Ignore error - process may have already exited
+                eprintln!(
+                    "  {} Backend process may have already stopped: {}",
+                    "⚠".yellow(),
+                    e
+                );
+            }
+
+            result?;
         }
         Some(Commands::Fmt { filename }) => {
             use hop::pretty_print::pretty_print_from_source;
