@@ -161,7 +161,7 @@ async fn main() -> anyhow::Result<()> {
             let config = root.load_config().await?;
             let (_target_language, target_config) = config.get_target();
 
-            let (router, _watcher, mut tailwind_child) = cli::dev::execute(&root).await?;
+            let (router, _watcher, mut tailwind_watcher) = cli::dev::execute(&root).await?;
             let elapsed = start_time.elapsed();
             let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
 
@@ -248,7 +248,7 @@ async fn main() -> anyhow::Result<()> {
             println!("  > {}", last_command.dimmed());
 
             // Step (4) - Start the users backend server
-            let mut child = if cfg!(target_os = "windows") {
+            let mut backend_server = if cfg!(target_os = "windows") {
                 Command::new("cmd").args(["/C", last_command]).spawn()
             } else {
                 Command::new("sh").args(["-c", last_command]).spawn()
@@ -266,13 +266,13 @@ async fn main() -> anyhow::Result<()> {
                 let _ = cli::compile::execute(&local_root, false).await;
             });
 
-            let result: anyhow::Result<()> = tokio::select! {
+            let result = tokio::select! {
                 // Step (6) - Start the dev server
                 result = axum::serve(listener, router) => {
                     // Dev server exited (shouldn't normally happen)
                     result.map_err(|e| anyhow::anyhow!("Dev server error: {}", e))
                 }
-                status = child.wait() => {
+                status = backend_server.wait() => {
                     // Users backend server exited
                     match status {
                         Ok(exit_status) => {
@@ -283,7 +283,7 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
                 }
-                tailwind_status = tailwind_child.wait() => {
+                tailwind_status = tailwind_watcher.wait() => {
                     // Tailwind watcher exited
                     match tailwind_status {
                         Ok(exit_status) => {
@@ -309,24 +309,11 @@ async fn main() -> anyhow::Result<()> {
                 eprintln!("  {} Production code restored", "✓".green());
             }
 
-            // Kill the child processes if they're still running
-            if let Err(e) = child.kill().await {
-                // Ignore error - process may have already exited
-                eprintln!(
-                    "  {} Backend process may have already stopped: {}",
-                    "⚠".yellow(),
-                    e
-                );
-            }
+            // Kill the backend server if it is still running
+            let _ = backend_server.kill().await;
 
-            if let Err(e) = tailwind_child.kill().await {
-                // Ignore error - process may have already exited
-                eprintln!(
-                    "  {} Tailwind watcher may have already stopped: {}",
-                    "⚠".yellow(),
-                    e
-                );
-            }
+            // Kill the tailwind watcher if it is still running
+            let _ = tailwind_watcher.kill().await;
 
             result?;
         }
