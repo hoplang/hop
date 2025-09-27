@@ -189,12 +189,9 @@ pub async fn execute(
 
     let modules = root.load_all_hop_modules()?;
 
-    // Load config to check for Tailwind configuration
-    let config = root.load_config().await?;
-
     // Always start Tailwind first - either with user config or default
-    let tailwind_input_path = match config.css.tailwind {
-        Some(ref tailwind_config) => PathBuf::from(&tailwind_config.input),
+    let tailwind_input_path = match root.get_tailwind_input_path().await? {
+        Some(p) => p,
         None => create_default_tailwind_input().await?,
     };
 

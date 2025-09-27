@@ -8,13 +8,11 @@ use crate::ir::{
     orchestrator::orchestrate,
 };
 use crate::tui::timing;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::path::{Path, PathBuf};
 use tailwind_runner::{TailwindConfig, TailwindRunner};
 
 pub struct CompileResult {
-    pub output_path: String,
-    pub file_size: usize,
     pub entry_points: Vec<String>,
     pub timer: crate::tui::timing::TimingCollector,
 }
@@ -54,7 +52,7 @@ pub async fn execute(project_root: &ProjectRoot, development: bool) -> Result<Co
 
     // Load configuration
     let config = project_root.load_config().await?;
-    let (target_language, target_config) = config.get_target();
+    let (target_language, _) = config.get_target();
 
     // Convert target language to CompileLanguage
     let language = match target_language {
@@ -65,19 +63,13 @@ pub async fn execute(project_root: &ProjectRoot, development: bool) -> Result<Co
     };
 
     // Truncate output file before running Tailwind to prevent scanning old content
-    let output_path = &target_config.output;
-    if Path::new(output_path).exists() {
-        tokio::fs::write(output_path, "")
-            .await
-            .with_context(|| format!("Failed to truncate output file {}", output_path))?;
-    }
+    project_root.write_output("").await?;
 
     // Compile Tailwind CSS if configured (always minified)
     timer.start_phase("running tailwind");
-    let tailwind_css = if let Some(ref tailwind_config) = config.css.tailwind {
+    let tailwind_css = if let Some(p) = project_root.get_tailwind_input_path().await? {
         // Use user-specified Tailwind input
-        let input_path = PathBuf::from(&tailwind_config.input);
-        Some(compile_tailwind(&input_path).await?)
+        Some(compile_tailwind(&p).await?)
     } else {
         // Use default Tailwind configuration
         let default_input = create_default_tailwind_input().await?;
@@ -168,12 +160,7 @@ pub async fn execute(project_root: &ProjectRoot, development: bool) -> Result<Co
 
     timer.start_phase("writing output");
 
-    let output_path = &target_config.output;
-
-    // Write output file
-    tokio::fs::write(output_path, &generated_code)
-        .await
-        .with_context(|| format!("Failed to write output to {}", output_path))?;
+    project_root.write_output(&generated_code).await?;
 
     let entry_points: Vec<String> = ir_entrypoints
         .iter()
@@ -181,8 +168,6 @@ pub async fn execute(project_root: &ProjectRoot, development: bool) -> Result<Co
         .collect();
 
     Ok(CompileResult {
-        output_path: output_path.to_string(),
-        file_size: generated_code.len(),
         entry_points,
         timer,
     })

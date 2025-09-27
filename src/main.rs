@@ -119,11 +119,6 @@ async fn main() -> anyhow::Result<()> {
             let elapsed = start_time.elapsed();
 
             print_header("compiled", elapsed.as_millis());
-            println!(
-                "  {:<50} {}",
-                result.output_path,
-                format_file_size(result.file_size)
-            );
 
             if !result.entry_points.is_empty() {
                 println!();
