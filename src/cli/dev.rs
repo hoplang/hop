@@ -7,7 +7,8 @@ use axum::response::Response;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
-use tailwind_runner::{TailwindRunner, WatchHandle};
+use tailwind_runner::TailwindRunner;
+use tokio::process::Child;
 
 #[derive(Clone)]
 struct AppState {
@@ -96,7 +97,7 @@ async fn create_default_tailwind_input() -> anyhow::Result<PathBuf> {
     Ok(temp_input)
 }
 
-async fn start_tailwind_watcher(input_path: &Path) -> anyhow::Result<(String, WatchHandle)> {
+async fn start_tailwind_watcher(input_path: &Path) -> anyhow::Result<(String, Child)> {
     let cache_dir = PathBuf::from("/tmp/.hop-cache");
     let runner = TailwindRunner::new(cache_dir).await?;
 
@@ -183,7 +184,7 @@ fn create_file_watcher(
 /// The watcher emits SSE-events on the `/_hop/event_source` route.
 pub async fn execute(
     root: &ProjectRoot,
-) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher, WatchHandle)> {
+) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher, Child)> {
     use axum::routing::get;
 
     let modules = root.load_all_hop_modules()?;

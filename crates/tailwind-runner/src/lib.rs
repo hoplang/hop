@@ -11,24 +11,6 @@ pub struct TailwindConfig {
     pub output: PathBuf,
 }
 
-pub struct WatchHandle {
-    child: Child,
-}
-
-impl WatchHandle {
-    pub async fn stop(mut self) -> Result<()> {
-        self.child.kill().await?;
-        Ok(())
-    }
-}
-
-impl Drop for WatchHandle {
-    fn drop(&mut self) {
-        // Kill the child process when the handle is dropped
-        let _ = self.child.start_kill();
-    }
-}
-
 impl TailwindRunner {
     pub async fn new(extraction_path: PathBuf) -> Result<Self> {
         let binary_path = extract_binary(extraction_path).await?;
@@ -55,7 +37,7 @@ impl TailwindRunner {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
-    pub async fn watch(&self, config: &TailwindConfig) -> Result<WatchHandle> {
+    pub async fn watch(&self, config: &TailwindConfig) -> Result<Child> {
         let child = Command::new(&self.binary_path)
             .arg("--watch")
             .arg("--input")
@@ -67,7 +49,7 @@ impl TailwindRunner {
             .stderr(std::process::Stdio::null())
             .spawn()?;
 
-        Ok(WatchHandle { child })
+        Ok(child)
     }
 }
 

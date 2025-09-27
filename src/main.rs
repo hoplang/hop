@@ -161,7 +161,7 @@ async fn main() -> anyhow::Result<()> {
             let config = root.load_config()?;
             let (_target_language, target_config) = config.get_target();
 
-            let (router, _watcher, _tailwind_handle) = cli::dev::execute(&root).await?;
+            let (router, _watcher, mut tailwind_child) = cli::dev::execute(&root).await?;
             let elapsed = start_time.elapsed();
             let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
 
@@ -283,6 +283,17 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
                 }
+                tailwind_status = tailwind_child.wait() => {
+                    // Tailwind watcher exited
+                    match tailwind_status {
+                        Ok(exit_status) => {
+                            Err(anyhow::anyhow!("Tailwind watcher exited with status: {}", exit_status))
+                        }
+                        Err(e) => {
+                            Err(anyhow::anyhow!("Failed to wait for tailwind watcher: {}", e))
+                        }
+                    }
+                }
                 _ = sigint.recv() => {
                     // SIGINT received - perform cleanup
                     eprintln!("\n  Shutting down gracefully...");
@@ -298,11 +309,20 @@ async fn main() -> anyhow::Result<()> {
                 eprintln!("  {} Production code restored", "✓".green());
             }
 
-            // Kill the child process if it's still running
+            // Kill the child processes if they're still running
             if let Err(e) = child.kill().await {
                 // Ignore error - process may have already exited
                 eprintln!(
                     "  {} Backend process may have already stopped: {}",
+                    "⚠".yellow(),
+                    e
+                );
+            }
+
+            if let Err(e) = tailwind_child.kill().await {
+                // Ignore error - process may have already exited
+                eprintln!(
+                    "  {} Tailwind watcher may have already stopped: {}",
                     "⚠".yellow(),
                     e
                 );
