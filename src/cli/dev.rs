@@ -10,6 +10,13 @@ use std::sync::{Arc, RwLock};
 use tailwind_runner::TailwindRunner;
 use tokio::process::Child;
 
+pub struct DevelopmentServer {
+    pub router: axum::Router,
+    pub hop_watcher: AdaptiveWatcher,
+    pub css_watcher: notify::RecommendedWatcher,
+    pub tailwind_process: Child,
+}
+
 #[derive(Clone)]
 struct AppState {
     // The compiled hop program.
@@ -206,14 +213,7 @@ fn create_router() -> axum::Router<AppState> {
 ///
 /// Also sets up a watcher that watches all source files used to construct the output files.
 /// The watcher emits SSE-events on the `/event_source` route.
-pub async fn execute(
-    root: &ProjectRoot,
-) -> anyhow::Result<(
-    axum::Router,
-    AdaptiveWatcher,
-    notify::RecommendedWatcher,
-    Child,
-)> {
+pub async fn execute(root: &ProjectRoot) -> anyhow::Result<DevelopmentServer> {
     let modules = root.load_all_hop_modules()?;
 
     let tmp_dir = tempfile::tempdir()?;
@@ -235,7 +235,12 @@ pub async fn execute(
 
     let router = create_router().with_state(app_state);
 
-    Ok((router, adaptive_watcher, css_watcher, tailwind_handle))
+    Ok(DevelopmentServer {
+        router,
+        hop_watcher: adaptive_watcher,
+        css_watcher,
+        tailwind_process: tailwind_handle,
+    })
 }
 
 #[cfg(test)]

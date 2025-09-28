@@ -265,9 +265,8 @@ async fn main() -> anyhow::Result<()> {
                 }?;
 
                 // Step (5) - Start our server (this takes ~200ms since we need to spawn a tailwind watcher)
-                let (router, _hop_file_watcher, _css_file_watcher, mut tailwind_watcher) =
-                    cli::dev::execute(root).await?;
-                let dev_server = axum::serve(listener, router);
+                let mut res = cli::dev::execute(root).await?;
+                let dev_server = axum::serve(listener, res.router);
 
                 // Step (6) - Overwrite stubs
                 let local_root = root.clone();
@@ -301,7 +300,7 @@ async fn main() -> anyhow::Result<()> {
                             }
                         }
                     }
-                    tailwind_status = tailwind_watcher.wait() => {
+                    tailwind_status = res.tailwind_process.wait() => {
                         // Tailwind watcher exited
                         match tailwind_status {
                             Ok(exit_status) => {
@@ -316,7 +315,7 @@ async fn main() -> anyhow::Result<()> {
 
                 // Kill all child processes that are still running.
                 let _ = backend_server.kill().await;
-                let _ = tailwind_watcher.kill().await;
+                let _ = res.tailwind_process.kill().await;
 
                 result
             }
