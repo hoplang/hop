@@ -187,6 +187,13 @@ async fn create_file_watcher(
         move |res: Result<notify::Event, notify::Error>| {
             if let Ok(event) = res {
                 if event.kind.is_modify() {
+                    if let Ok(new_css) = std::fs::read_to_string(
+                        state_for_css_watcher.tailwind_css_output_path.as_path(),
+                    ) {
+                        if let Ok(mut css_guard) = state.tailwind_css.write() {
+                            *css_guard = Some(new_css);
+                        }
+                    }
                     // Tell the client to hot reload
                     let _ = state_for_css_watcher.reload_channel.send(());
                 }
