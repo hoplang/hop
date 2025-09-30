@@ -48,16 +48,23 @@ async fn handle_development_mode_js() -> Response<Body> {
 
 async fn handle_event_source(
     State(state): State<AppState>,
-) -> axum::response::sse::Sse<
-    impl tokio_stream::Stream<Item = Result<axum::response::sse::Event, axum::Error>>,
-> {
+) -> (
+    [(axum::http::HeaderName, &'static str); 1],
+    axum::response::sse::Sse<
+        impl tokio_stream::Stream<Item = Result<axum::response::sse::Event, axum::Error>>,
+    >,
+) {
     use axum::response::sse::{Event, Sse};
     use tokio_stream::StreamExt;
 
-    Sse::new(
+    let headers = [(axum::http::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")];
+
+    let sse = Sse::new(
         tokio_stream::wrappers::BroadcastStream::new(state.reload_channel.subscribe())
             .map(|_| Ok::<Event, axum::Error>(Event::default().data("reload"))),
-    )
+    );
+
+    (headers, sse)
 }
 
 #[derive(serde::Deserialize)]
