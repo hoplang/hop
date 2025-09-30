@@ -33,10 +33,16 @@ function loadConfig() {
  * @param {HopConfig} cfg
  */
 async function fetchEntryPoint(cfg) {
-    const renderUrl = new URL(RENDER_URL);
-    renderUrl.searchParams.set('entrypoint', cfg.entrypoint);
-    renderUrl.searchParams.set('params', JSON.stringify(cfg.params));
-    const response = await fetch(renderUrl);
+    const response = await fetch(RENDER_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            entrypoint: cfg.entrypoint,
+            params: cfg.params,
+        }),
+    });
     if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
     }

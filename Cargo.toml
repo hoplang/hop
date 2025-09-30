@@ -22,7 +22,7 @@ tower-lsp = "0.20"
 tokio = { version = "1.0", features = ["full"] }
 axum = { version = "0.8" }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["fs"] }
+tower-http = { version = "0.6", features = ["fs", "cors"] }
 notify = "8.0"
 tokio-stream = { version = "0.1", features = ["sync"] }
 walkdir = "2.5"

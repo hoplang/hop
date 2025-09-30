@@ -2,7 +2,7 @@ use crate::filesystem::adaptive_watcher::{AdaptiveWatcher, WatchEvent};
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::program::Program;
 use axum::body::Body;
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Response;
 use std::path::PathBuf;
@@ -40,7 +40,6 @@ struct AppState {
 async fn handle_development_mode_js() -> Response<Body> {
     Response::builder()
         .header("Content-Type", "application/javascript")
-        .header("Access-Control-Allow-Origin", "*")
         .header("Cache-Control", "public, max-age=31536000, immutable")
         .body(Body::from(include_str!("./js/development_mode.js")))
         .unwrap()
@@ -48,64 +47,42 @@ async fn handle_development_mode_js() -> Response<Body> {
 
 async fn handle_event_source(
     State(state): State<AppState>,
-) -> (
-    [(axum::http::HeaderName, &'static str); 1],
-    axum::response::sse::Sse<
-        impl tokio_stream::Stream<Item = Result<axum::response::sse::Event, axum::Error>>,
-    >,
-) {
+) -> axum::response::sse::Sse<
+    impl tokio_stream::Stream<Item = Result<axum::response::sse::Event, axum::Error>>,
+> {
     use axum::response::sse::{Event, Sse};
     use tokio_stream::StreamExt;
 
-    let headers = [(axum::http::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")];
-
-    let sse = Sse::new(
+    Sse::new(
         tokio_stream::wrappers::BroadcastStream::new(state.reload_channel.subscribe())
             .map(|_| Ok::<Event, axum::Error>(Event::default().data("reload"))),
-    );
-
-    (headers, sse)
+    )
 }
 
 #[derive(serde::Deserialize)]
 struct RenderParams {
     entrypoint: String,
-    params: String,
+    params: std::collections::HashMap<String, serde_json::Value>,
 }
 
 async fn handle_render(
     State(state): State<AppState>,
-    Query(query): Query<RenderParams>,
+    axum::Json(body): axum::Json<RenderParams>,
 ) -> Response<Body> {
     let program = state.program.read().unwrap();
-
-    // Parse the JSON params
-    let params = match serde_json::from_str(&query.params) {
-        Ok(p) => p,
-        Err(e) => {
-            return Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .header("Access-Control-Allow-Origin", "*")
-                .header("Content-Type", "text/html")
-                .body(Body::from(format!("Invalid JSON parameters: {}", e)))
-                .unwrap();
-        }
-    };
 
     // Get the CSS content from state
     let css = state.tailwind_css.read().unwrap();
     let css_content = css.as_deref();
 
-    match program.evaluate_ir_entrypoint(&query.entrypoint, params, "dev", css_content) {
+    match program.evaluate_ir_entrypoint(&body.entrypoint, body.params, "dev", css_content) {
         Ok(html) => Response::builder()
             .status(StatusCode::OK)
-            .header("Access-Control-Allow-Origin", "*")
             .header("Content-Type", "text/html")
             .body(Body::from(html))
             .unwrap(),
         Err(e) => Response::builder()
             .status(StatusCode::INTERNAL_SERVER_ERROR)
-            .header("Access-Control-Allow-Origin", "*")
             .header("Content-Type", "text/html")
             .body(Body::from(format!("Error rendering component: {}", e)))
             .unwrap(),
@@ -216,11 +193,19 @@ async fn create_file_watcher(
 }
 
 fn create_router() -> axum::Router<AppState> {
-    use axum::routing::get;
+    use axum::routing::{get, post};
+    use tower_http::cors::{Any, CorsLayer};
+
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
     axum::Router::new()
         .route("/development_mode.js", get(handle_development_mode_js))
         .route("/event_source", get(handle_event_source))
-        .route("/render", get(handle_render))
+        .route("/render", post(handle_render))
+        .layer(cors)
 }
 
 /// Create a router that responds to render requests.
@@ -295,29 +280,23 @@ mod tests {
         };
 
         let app = axum::Router::new()
-            .route("/render", axum::routing::get(handle_render))
+            .route("/render", axum::routing::post(handle_render))
             .with_state(app_state);
 
         // Test rendering with parameters
-        let params = serde_json::json!({
-            "name": "Alice",
-            "title": "Welcome"
+        let body_json = serde_json::json!({
+            "entrypoint": "greeting-comp",
+            "params": {
+                "name": "Alice",
+                "title": "Welcome"
+            }
         });
 
-        let encoded_params = params
-            .to_string()
-            .replace('"', "%22")
-            .replace(' ', "%20")
-            .replace('{', "%7B")
-            .replace('}', "%7D")
-            .replace(':', "%3A")
-            .replace(',', "%2C");
         let request = Request::builder()
-            .uri(format!(
-                "/render?entrypoint=greeting-comp&params={}",
-                encoded_params
-            ))
-            .body(Body::empty())
+            .uri("/render")
+            .method("POST")
+            .header("Content-Type", "application/json")
+            .body(Body::from(body_json.to_string()))
             .unwrap();
 
         let response = app.clone().oneshot(request).await.unwrap();
@@ -329,9 +308,16 @@ mod tests {
         expect!["<!DOCTYPE html><html><head></head><body><h1>Welcome</h1><p>Hello, Alice!</p></body></html>"].assert_eq(&html);
 
         // Test rendering without parameters
+        let body_json = serde_json::json!({
+            "entrypoint": "simple-comp",
+            "params": {}
+        });
+
         let request = Request::builder()
-            .uri("/render?entrypoint=simple-comp&params={}")
-            .body(Body::empty())
+            .uri("/render")
+            .method("POST")
+            .header("Content-Type", "application/json")
+            .body(Body::from(body_json.to_string()))
             .unwrap();
 
         let response = app.clone().oneshot(request).await.unwrap();
@@ -344,9 +330,16 @@ mod tests {
             .assert_eq(&html);
 
         // Test non-existent entrypoint
+        let body_json = serde_json::json!({
+            "entrypoint": "nonexistent",
+            "params": {}
+        });
+
         let request = Request::builder()
-            .uri("/render?entrypoint=nonexistent&params={}")
-            .body(Body::empty())
+            .uri("/render")
+            .method("POST")
+            .header("Content-Type", "application/json")
+            .body(Body::from(body_json.to_string()))
             .unwrap();
 
         let response = app.clone().oneshot(request).await.unwrap();
@@ -358,20 +351,15 @@ mod tests {
         expect![[r#"Error rendering component: Entrypoint 'nonexistent' not found"#]]
             .assert_eq(&error_msg);
 
-        // Test invalid JSON parameters
+        // Test invalid JSON body
         let request = Request::builder()
-            .uri("/render?entrypoint=simple-comp&params=invalid-json")
-            .body(Body::empty())
+            .uri("/render")
+            .method("POST")
+            .header("Content-Type", "application/json")
+            .body(Body::from("invalid-json"))
             .unwrap();
 
         let response = app.oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-
-        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let error_msg = String::from_utf8(body.to_vec()).unwrap();
-
-        // The error message will include details about the JSON parse error
-        // so we just check that it starts with the expected prefix
-        assert!(error_msg.starts_with("Invalid JSON parameters:"));
     }
 }
