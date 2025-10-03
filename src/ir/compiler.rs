@@ -183,6 +183,7 @@ impl Compiler {
                     id: self.next_node_id(),
                     condition: self.compile_expr(condition.clone()),
                     body: self.compile_nodes(children, slot_content.cloned()),
+                    else_body: None,
                 });
             }
 

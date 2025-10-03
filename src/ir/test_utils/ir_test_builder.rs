@@ -247,6 +247,17 @@ impl IrTestBuilder {
             id: self.next_node_id(),
             condition: cond,
             body,
+            else_body: None,
+        }
+    }
+
+    pub fn if_else_stmt(&self, cond: IrExpr, body: Vec<IrStatement>, else_body: Vec<IrStatement>) -> IrStatement {
+        assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
+        IrStatement::If {
+            id: self.next_node_id(),
+            condition: cond,
+            body,
+            else_body: Some(else_body),
         }
     }
 
@@ -372,6 +383,22 @@ impl IrAutoBuilder {
         body_fn(&mut inner_builder);
         let body = inner_builder.statements;
         self.statements.push(self.inner.if_stmt(cond, body));
+    }
+
+    pub fn if_else_stmt<F, G>(&mut self, cond: IrExpr, body_fn: F, else_body_fn: G)
+    where
+        F: FnOnce(&mut Self),
+        G: FnOnce(&mut Self),
+    {
+        let mut body_builder = self.new_scoped();
+        body_fn(&mut body_builder);
+        let body = body_builder.statements;
+
+        let mut else_builder = self.new_scoped();
+        else_body_fn(&mut else_builder);
+        let else_body = else_builder.statements;
+
+        self.statements.push(self.inner.if_else_stmt(cond, body, else_body));
     }
 
     pub fn for_loop<F>(&mut self, var: &str, array: IrExpr, body_fn: F)

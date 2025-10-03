@@ -28,6 +28,7 @@ impl WriteCoalescingPass {
                     id,
                     condition,
                     body,
+                    else_body,
                 } => {
                     // Flush any pending write before a control flow statement
                     if let Some((write_id, text)) = pending_write.take() {
@@ -41,6 +42,7 @@ impl WriteCoalescingPass {
                         id,
                         condition,
                         body: Self::transform_statements(body),
+                        else_body: else_body.map(|stmts| Self::transform_statements(stmts)),
                     });
                 }
                 IrStatement::For {

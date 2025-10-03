@@ -50,15 +50,26 @@ impl AlphaRenamingPass {
                 id,
                 condition,
                 body,
+                else_body,
             } => {
                 self.push_scope();
                 let renamed_body = self.rename_statements(body);
                 self.pop_scope();
 
+                let renamed_else_body = if let Some(else_stmts) = else_body {
+                    self.push_scope();
+                    let renamed = self.rename_statements(else_stmts);
+                    self.pop_scope();
+                    Some(renamed)
+                } else {
+                    None
+                };
+
                 IrStatement::If {
                     id,
                     condition: self.rename_expr(condition),
                     body: renamed_body,
+                    else_body: renamed_else_body,
                 }
             }
 

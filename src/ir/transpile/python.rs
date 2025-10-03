@@ -339,8 +339,8 @@ impl StatementTranspiler for PythonTranspiler {
         }
     }
 
-    fn transpile_if<'a>(&self, condition: &'a IrExpr, body: &'a [IrStatement]) -> BoxDoc<'a> {
-        BoxDoc::nil()
+    fn transpile_if<'a>(&self, condition: &'a IrExpr, body: &'a [IrStatement], else_body: Option<&'a [IrStatement]>) -> BoxDoc<'a> {
+        let mut doc = BoxDoc::nil()
             .append(BoxDoc::text("if "))
             .append(self.transpile_expr(condition))
             .append(BoxDoc::text(":"))
@@ -348,7 +348,20 @@ impl StatementTranspiler for PythonTranspiler {
                 BoxDoc::line()
                     .append(self.transpile_statements(body))
                     .nest(4),
-            )
+            );
+
+        if let Some(else_stmts) = else_body {
+            doc = doc
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("else:"))
+                .append(
+                    BoxDoc::line()
+                        .append(self.transpile_statements(else_stmts))
+                        .nest(4),
+                );
+        }
+
+        doc
     }
 
     fn transpile_for<'a>(

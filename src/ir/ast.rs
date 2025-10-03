@@ -45,6 +45,7 @@ pub enum IrStatement {
         id: StatementId,
         condition: IrExpr,
         body: Vec<IrStatement>,
+        else_body: Option<Vec<IrStatement>>,
     },
 
     /// Loop over an array.
@@ -99,9 +100,14 @@ impl IrStatement {
         match self {
             IrStatement::Write { .. } => {}
             IrStatement::WriteExpr { .. } => {}
-            IrStatement::If { body, .. } => {
+            IrStatement::If { body, else_body, .. } => {
                 for stmt in body {
                     stmt.traverse(f);
+                }
+                if let Some(else_stmts) = else_body {
+                    for stmt in else_stmts {
+                        stmt.traverse(f);
+                    }
                 }
             }
             IrStatement::For { body, .. } => {
@@ -138,9 +144,14 @@ impl IrStatement {
         match self {
             IrStatement::Write { .. } => {}
             IrStatement::WriteExpr { .. } => {}
-            IrStatement::If { body, .. } => {
+            IrStatement::If { body, else_body, .. } => {
                 for stmt in body {
                     stmt.traverse_with_scope_impl(scope, f);
+                }
+                if let Some(else_stmts) = else_body {
+                    for stmt in else_stmts {
+                        stmt.traverse_with_scope_impl(scope, f);
+                    }
                 }
             }
             IrStatement::For { var, body, .. } => {
@@ -177,9 +188,14 @@ impl IrStatement {
         match self {
             IrStatement::Write { .. } => {}
             IrStatement::WriteExpr { .. } => {}
-            IrStatement::If { body, .. } => {
+            IrStatement::If { body, else_body, .. } => {
                 for stmt in body {
                     stmt.traverse_mut(f);
+                }
+                if let Some(else_stmts) = else_body {
+                    for stmt in else_stmts {
+                        stmt.traverse_mut(f);
+                    }
                 }
             }
             IrStatement::For { body, .. } => {
@@ -213,22 +229,43 @@ impl IrStatement {
                     .append(BoxDoc::text(")"))
             }
             IrStatement::If {
-                condition, body, ..
-            } => BoxDoc::text("if ")
-                .append(condition.to_doc())
-                .append(BoxDoc::text(" {"))
-                .append(if body.is_empty() {
-                    BoxDoc::nil()
-                } else {
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            body.iter().map(|stmt| stmt.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .append(BoxDoc::line())
-                        .nest(2)
-                })
-                .append(BoxDoc::text("}")),
+                condition, body, else_body, ..
+            } => {
+                let mut doc = BoxDoc::text("if ")
+                    .append(condition.to_doc())
+                    .append(BoxDoc::text(" {"))
+                    .append(if body.is_empty() {
+                        BoxDoc::nil()
+                    } else {
+                        BoxDoc::line()
+                            .append(BoxDoc::intersperse(
+                                body.iter().map(|stmt| stmt.to_doc()),
+                                BoxDoc::line(),
+                            ))
+                            .append(BoxDoc::line())
+                            .nest(2)
+                    })
+                    .append(BoxDoc::text("}"));
+
+                if let Some(else_stmts) = else_body {
+                    doc = doc
+                        .append(BoxDoc::text(" else {"))
+                        .append(if else_stmts.is_empty() {
+                            BoxDoc::nil()
+                        } else {
+                            BoxDoc::line()
+                                .append(BoxDoc::intersperse(
+                                    else_stmts.iter().map(|stmt| stmt.to_doc()),
+                                    BoxDoc::line(),
+                                ))
+                                .append(BoxDoc::line())
+                                .nest(2)
+                        })
+                        .append(BoxDoc::text("}"));
+                }
+
+                doc
+            }
             IrStatement::For {
                 var, array, body, ..
             } => BoxDoc::text("for ")

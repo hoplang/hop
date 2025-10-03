@@ -381,6 +381,40 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn test_if_else() {
+        let test_case = TestCase::new(
+            build_ir_auto("test", vec![], |t| {
+                t.let_stmt("show", t.bool(true), |t| {
+                    t.if_else_stmt(
+                        t.var("show"),
+                        |t| {
+                            t.write("True branch");
+                        },
+                        |t| {
+                            t.write("False branch");
+                        },
+                    );
+                });
+                t.let_stmt("hide", t.bool(false), |t| {
+                    t.if_else_stmt(
+                        t.var("hide"),
+                        |t| {
+                            t.write("Should not appear");
+                        },
+                        |t| {
+                            t.write("False branch");
+                        },
+                    );
+                });
+            }),
+            "True branchFalse branch",
+        );
+
+        run_integration_test(test_case).expect("Integration test failed");
+    }
+
+    #[test]
+    #[ignore]
     fn test_for_loop() {
         let test_case = TestCase::new(
             build_ir_auto("test", vec![], |t| {

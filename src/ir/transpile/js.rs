@@ -220,8 +220,8 @@ impl StatementTranspiler for JsTranspiler {
         }
     }
 
-    fn transpile_if<'a>(&self, condition: &'a IrExpr, body: &'a [IrStatement]) -> BoxDoc<'a> {
-        BoxDoc::nil()
+    fn transpile_if<'a>(&self, condition: &'a IrExpr, body: &'a [IrStatement], else_body: Option<&'a [IrStatement]>) -> BoxDoc<'a> {
+        let mut doc = BoxDoc::nil()
             .append(BoxDoc::text("if ("))
             .append(self.transpile_expr(condition))
             .append(BoxDoc::text(") {"))
@@ -232,7 +232,22 @@ impl StatementTranspiler for JsTranspiler {
                     .append(BoxDoc::hardline())
                     .nest(4),
             )
-            .append(BoxDoc::text("}"))
+            .append(BoxDoc::text("}"));
+
+        if let Some(else_stmts) = else_body {
+            doc = doc
+                .append(BoxDoc::text(" else {"))
+                .append(
+                    BoxDoc::nil()
+                        .append(BoxDoc::hardline())
+                        .append(self.transpile_statements(else_stmts))
+                        .append(BoxDoc::hardline())
+                        .nest(4),
+                )
+                .append(BoxDoc::text("}"));
+        }
+
+        doc
     }
 
     fn transpile_for<'a>(

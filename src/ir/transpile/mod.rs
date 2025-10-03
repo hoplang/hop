@@ -22,7 +22,7 @@ pub trait Transpiler {
 pub trait StatementTranspiler {
     fn transpile_write<'a>(&self, content: &'a str) -> BoxDoc<'a>;
     fn transpile_write_expr<'a>(&self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a>;
-    fn transpile_if<'a>(&self, condition: &'a IrExpr, body: &'a [IrStatement]) -> BoxDoc<'a>;
+    fn transpile_if<'a>(&self, condition: &'a IrExpr, body: &'a [IrStatement], else_body: Option<&'a [IrStatement]>) -> BoxDoc<'a>;
     fn transpile_for<'a>(
         &self,
         var: &'a str,
@@ -40,8 +40,8 @@ pub trait StatementTranspiler {
             IrStatement::Write { content, .. } => self.transpile_write(content),
             IrStatement::WriteExpr { expr, escape, .. } => self.transpile_write_expr(expr, *escape),
             IrStatement::If {
-                condition, body, ..
-            } => self.transpile_if(condition, body),
+                condition, body, else_body, ..
+            } => self.transpile_if(condition, body, else_body.as_deref()),
             IrStatement::For {
                 var, array, body, ..
             } => self.transpile_for(var.as_str(), array, body),

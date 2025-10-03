@@ -74,10 +74,13 @@ fn eval_statement(
             id: _,
             condition,
             body,
+            else_body,
         } => {
             let cond_value = evaluate_expr(condition, env)?;
             if cond_value.as_bool().unwrap_or(false) {
                 eval_statements(body, env, output)?;
+            } else if let Some(else_stmts) = else_body {
+                eval_statements(else_stmts, env, output)?;
             }
             Ok(())
         }
