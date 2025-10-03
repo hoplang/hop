@@ -303,6 +303,9 @@ impl IrExpr {
             TypedExpr::JsonEncode { value, .. } => {
                 value.traverse(f);
             }
+            TypedExpr::EnvLookup { key, .. } => {
+                key.traverse(f);
+            }
             TypedExpr::Equals { left, right, .. }
             | TypedExpr::NotEquals { left, right, .. }
             | TypedExpr::LessThan { left, right, .. }
@@ -349,6 +352,9 @@ impl IrExpr {
             }
             TypedExpr::JsonEncode { value, .. } => {
                 value.traverse_mut(f);
+            }
+            TypedExpr::EnvLookup { key, .. } => {
+                key.traverse_mut(f);
             }
             TypedExpr::StringConcat { left, right, .. }
             | TypedExpr::NumericAdd { left, right, .. }

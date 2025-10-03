@@ -161,6 +161,10 @@ impl AlphaRenamingPass {
                 value: Box::new(self.rename_expr(*value)),
                 annotation,
             },
+            TypedExpr::EnvLookup { key, annotation } => TypedExpr::EnvLookup {
+                key: Box::new(self.rename_expr(*key)),
+                annotation,
+            },
             TypedExpr::StringConcat {
                 left,
                 right,

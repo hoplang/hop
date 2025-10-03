@@ -55,6 +55,9 @@ pub enum TypedExpr<A> {
     /// JSON encode expression for converting values to JSON strings
     JsonEncode { value: Box<Self>, annotation: A },
 
+    /// Environment variable lookup expression
+    EnvLookup { key: Box<Self>, annotation: A },
+
     /// String concatenation expression for joining two string expressions
     StringConcat {
         left: Box<Self>,
@@ -153,6 +156,7 @@ impl<A> TypedExpr<A> {
             TypedExpr::IntLiteral { .. } => &INT_TYPE,
 
             TypedExpr::JsonEncode { .. }
+            | TypedExpr::EnvLookup { .. }
             | TypedExpr::StringConcat { .. }
             | TypedExpr::StringLiteral { .. } => &STRING_TYPE,
 
@@ -185,6 +189,7 @@ impl<A> TypedExpr<A> {
             | TypedExpr::ArrayLiteral { annotation, .. }
             | TypedExpr::ObjectLiteral { annotation, .. }
             | TypedExpr::JsonEncode { annotation, .. }
+            | TypedExpr::EnvLookup { annotation, .. }
             | TypedExpr::StringConcat { annotation, .. }
             | TypedExpr::NumericAdd { annotation, .. }
             | TypedExpr::Negation { annotation, .. }
@@ -258,6 +263,10 @@ impl<A> TypedExpr<A> {
             TypedExpr::JsonEncode { value, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("JsonEncode("))
                 .append(value.to_doc())
+                .append(BoxDoc::text(")")),
+            TypedExpr::EnvLookup { key, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("EnvLookup("))
+                .append(key.to_doc())
                 .append(BoxDoc::text(")")),
             TypedExpr::StringConcat { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))

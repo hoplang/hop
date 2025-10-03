@@ -375,6 +375,10 @@ impl Compiler {
                 value: Box::new(self.compile_expr(*value)),
                 annotation: expr_id,
             },
+            SimpleTypedExpr::EnvLookup { key, .. } => TypedExpr::EnvLookup {
+                key: Box::new(self.compile_expr(*key)),
+                annotation: expr_id,
+            },
             SimpleTypedExpr::StringConcat { left, right, .. } => TypedExpr::StringConcat {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),

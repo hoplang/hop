@@ -605,6 +605,12 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(BoxDoc::text(", separators=(',', ':'))"))
     }
 
+    fn transpile_env_lookup<'a>(&self, key: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("os.environ.get(")
+            .append(self.transpile_expr(key))
+            .append(BoxDoc::text(", \"\")"))
+    }
+
     fn transpile_string_concat<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))

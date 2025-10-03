@@ -510,6 +510,13 @@ impl ExpressionTranspiler for JsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
+    fn transpile_env_lookup<'a>(&self, key: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::nil()
+            .append(BoxDoc::text("(process?.env?.["))
+            .append(self.transpile_expr(key))
+            .append(BoxDoc::text("] ?? \"\")"))
+    }
+
     fn transpile_string_concat<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
