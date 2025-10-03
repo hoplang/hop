@@ -257,10 +257,12 @@ async fn main() -> anyhow::Result<()> {
                 let mut backend_server = if cfg!(target_os = "windows") {
                     tokio::process::Command::new("cmd")
                         .args(["/C", last_command])
+                        .env("HOP_DEV_MODE", "enabled")
                         .spawn()
                 } else {
                     tokio::process::Command::new("sh")
                         .args(["-c", last_command])
+                        .env("HOP_DEV_MODE", "enabled")
                         .spawn()
                 }?;
 
