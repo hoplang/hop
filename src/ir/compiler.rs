@@ -2,6 +2,7 @@ use crate::common::is_void_element;
 use crate::document::document_cursor::StringSpan;
 use crate::dop::{SimpleTypedExpr, TypedExpr};
 use crate::dop::{Type, VarName};
+use crate::dop::r#type::EquatableType;
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode,
 };
@@ -9,15 +10,7 @@ use std::collections::BTreeMap;
 
 use super::ast::{ExprId, IrEntrypoint, IrExpr, IrStatement, StatementId};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum CompilationMode {
-    Production,
-    Development,
-}
-
 pub struct Compiler {
-    compilation_mode: CompilationMode,
-
     // Expression ID generation
     expr_id_counter: u32,
 
@@ -26,12 +19,8 @@ pub struct Compiler {
 }
 
 impl Compiler {
-    pub fn compile(
-        entrypoint: InlinedEntrypoint,
-        compilation_mode: CompilationMode,
-    ) -> IrEntrypoint {
+    pub fn compile(entrypoint: InlinedEntrypoint) -> IrEntrypoint {
         let mut compiler = Compiler {
-            compilation_mode,
             expr_id_counter: 0,
             node_id_counter: 0,
         };
@@ -46,17 +35,36 @@ impl Compiler {
         let tag_name = entrypoint.tag_name;
         let children = entrypoint.children;
 
-        let body = match compiler.compilation_mode {
-            CompilationMode::Production => {
-                // Compile component body normally for production
-                compiler.compile_nodes(children, None)
-            }
-            CompilationMode::Development => {
-                // Generate development mode bootstrap HTML
-                let component_name = tag_name.as_str();
-                compiler.generate_development_mode_body(component_name, &param_info)
-            }
+        // Always generate both development and production bodies
+        let dev_body = compiler.generate_development_mode_body(tag_name.as_str(), &param_info);
+        let prod_body = compiler.compile_nodes(children, None);
+
+        // Create condition: EnvLookup("HOP_DEV_MODE") == "enabled"
+        let env_lookup_expr = TypedExpr::EnvLookup {
+            key: Box::new(TypedExpr::StringLiteral {
+                value: "HOP_DEV_MODE".to_string(),
+                annotation: compiler.next_expr_id(),
+            }),
+            annotation: compiler.next_expr_id(),
         };
+
+        let condition_expr = TypedExpr::Equals {
+            left: Box::new(env_lookup_expr),
+            right: Box::new(TypedExpr::StringLiteral {
+                value: "enabled".to_string(),
+                annotation: compiler.next_expr_id(),
+            }),
+            operand_types: EquatableType::String,
+            annotation: compiler.next_expr_id(),
+        };
+
+        // Wrap both bodies in an If statement
+        let body = vec![IrStatement::If {
+            id: compiler.next_node_id(),
+            condition: condition_expr,
+            body: dev_body,
+            else_body: Some(prod_body),
+        }];
 
         IrEntrypoint {
             name: tag_name.to_string(),
@@ -482,9 +490,9 @@ mod tests {
     use crate::ir::test_utils::build_inlined_auto;
     use expect_test::{Expect, expect};
 
-    fn check(entrypoint: InlinedEntrypoint, mode: CompilationMode, expected: Expect) {
+    fn check(entrypoint: InlinedEntrypoint, expected: Expect) {
         let before = entrypoint.to_string();
-        let ir = Compiler::compile(entrypoint, mode);
+        let ir = Compiler::compile(entrypoint);
         let after = ir.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
@@ -496,7 +504,6 @@ mod tests {
             build_inlined_auto("main-comp", vec![], |t| {
                 t.text("Hello World");
             }),
-            CompilationMode::Production,
             expect![[r#"
                 -- before --
                 <main-comp>
@@ -505,7 +512,14 @@ mod tests {
 
                 -- after --
                 main-comp() {
-                  write("Hello World")
+                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
+                    write("<!DOCTYPE html>\n")
+                    write("<script type=\"application/json\">{\"entrypoint\": \"main-comp\", \"params\": ")
+                    write("{}")
+                    write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
+                  } else {
+                    write("Hello World")
+                  }
                 }
             "#]],
         );
@@ -518,7 +532,6 @@ mod tests {
                 t.text("Hello ");
                 t.text_expr(t.var_expr("name"));
             }),
-            CompilationMode::Production,
             expect![[r#"
                 -- before --
                 <main-comp {name: string}>
@@ -528,8 +541,15 @@ mod tests {
 
                 -- after --
                 main-comp(name: string) {
-                  write("Hello ")
-                  write_escaped(name)
+                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
+                    write("<!DOCTYPE html>\n")
+                    write("<script type=\"application/json\">{\"entrypoint\": \"main-comp\", \"params\": ")
+                    write_expr(JsonEncode({name: name}))
+                    write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
+                  } else {
+                    write("Hello ")
+                    write_escaped(name)
+                  }
                 }
             "#]],
         );
@@ -543,7 +563,6 @@ mod tests {
                     t.text("Content");
                 });
             }),
-            CompilationMode::Production,
             expect![[r#"
                 -- before --
                 <main-comp>
@@ -554,10 +573,17 @@ mod tests {
 
                 -- after --
                 main-comp() {
-                  write("<div")
-                  write(">")
-                  write("Content")
-                  write("</div>")
+                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
+                    write("<!DOCTYPE html>\n")
+                    write("<script type=\"application/json\">{\"entrypoint\": \"main-comp\", \"params\": ")
+                    write("{}")
+                    write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
+                  } else {
+                    write("<div")
+                    write(">")
+                    write("Content")
+                    write("</div>")
+                  }
                 }
             "#]],
         );
@@ -573,7 +599,6 @@ mod tests {
                     });
                 });
             }),
-            CompilationMode::Production,
             expect![[r#"
                 -- before --
                 <main-comp {show: boolean}>
@@ -586,11 +611,18 @@ mod tests {
 
                 -- after --
                 main-comp(show: boolean) {
-                  if show {
-                    write("<div")
-                    write(">")
-                    write("Visible")
-                    write("</div>")
+                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
+                    write("<!DOCTYPE html>\n")
+                    write("<script type=\"application/json\">{\"entrypoint\": \"main-comp\", \"params\": ")
+                    write_expr(JsonEncode({show: show}))
+                    write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
+                  } else {
+                    if show {
+                      write("<div")
+                      write(">")
+                      write("Visible")
+                      write("</div>")
+                    }
                   }
                 }
             "#]],
@@ -613,7 +645,6 @@ mod tests {
                     });
                 },
             ),
-            CompilationMode::Production,
             expect![[r#"
                 -- before --
                 <main-comp {items: array[string]}>
@@ -628,15 +659,22 @@ mod tests {
 
                 -- after --
                 main-comp(items: array[string]) {
-                  write("<ul")
-                  write(">")
-                  for item in items {
-                    write("<li")
+                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
+                    write("<!DOCTYPE html>\n")
+                    write("<script type=\"application/json\">{\"entrypoint\": \"main-comp\", \"params\": ")
+                    write_expr(JsonEncode({items: items}))
+                    write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
+                  } else {
+                    write("<ul")
                     write(">")
-                    write_escaped(item)
-                    write("</li>")
+                    for item in items {
+                      write("<li")
+                      write(">")
+                      write_escaped(item)
+                      write("</li>")
+                    }
+                    write("</ul>")
                   }
-                  write("</ul>")
                 }
             "#]],
         );
@@ -653,7 +691,6 @@ mod tests {
                     },
                 );
             }),
-            CompilationMode::Production,
             expect![[r#"
                 -- before --
                 <main-comp>
@@ -664,12 +701,19 @@ mod tests {
 
                 -- after --
                 main-comp() {
-                  write("<div")
-                  write(" class=\"base\"")
-                  write(" id=\"test\"")
-                  write(">")
-                  write("Content")
-                  write("</div>")
+                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
+                    write("<!DOCTYPE html>\n")
+                    write("<script type=\"application/json\">{\"entrypoint\": \"main-comp\", \"params\": ")
+                    write("{}")
+                    write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
+                  } else {
+                    write("<div")
+                    write(" class=\"base\"")
+                    write(" id=\"test\"")
+                    write(">")
+                    write("Content")
+                    write("</div>")
+                  }
                 }
             "#]],
         );
@@ -689,7 +733,6 @@ mod tests {
                     },
                 );
             }),
-            CompilationMode::Production,
             expect![[r#"
                 -- before --
                 <main-comp {cls: string}>
@@ -700,14 +743,21 @@ mod tests {
 
                 -- after --
                 main-comp(cls: string) {
-                  write("<div")
-                  write(" class=\"base\"")
-                  write(" data-value=\"")
-                  write_escaped(cls)
-                  write("\"")
-                  write(">")
-                  write("Content")
-                  write("</div>")
+                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
+                    write("<!DOCTYPE html>\n")
+                    write("<script type=\"application/json\">{\"entrypoint\": \"main-comp\", \"params\": ")
+                    write_expr(JsonEncode({cls: cls}))
+                    write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
+                  } else {
+                    write("<div")
+                    write(" class=\"base\"")
+                    write(" data-value=\"")
+                    write_escaped(cls)
+                    write("\"")
+                    write(">")
+                    write("Content")
+                    write("</div>")
+                  }
                 }
             "#]],
         );
@@ -728,7 +778,6 @@ mod tests {
                     });
                 },
             ),
-            CompilationMode::Development,
             expect![[r#"
                 -- before --
                 <test-comp {name: string, count: string}>
@@ -742,10 +791,20 @@ mod tests {
 
                 -- after --
                 test-comp(name: string, count: string) {
-                  write("<!DOCTYPE html>\n")
-                  write("<script type=\"application/json\">{\"entrypoint\": \"test-comp\", \"params\": ")
-                  write_expr(JsonEncode({name: name, count: count}))
-                  write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
+                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
+                    write("<!DOCTYPE html>\n")
+                    write("<script type=\"application/json\">{\"entrypoint\": \"test-comp\", \"params\": ")
+                    write_expr(JsonEncode({name: name, count: count}))
+                    write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
+                  } else {
+                    write("<div")
+                    write(">")
+                    write("Hello ")
+                    write_escaped(name)
+                    write(", count: ")
+                    write_escaped(count)
+                    write("</div>")
+                  }
                 }
             "#]],
         );

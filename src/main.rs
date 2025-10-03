@@ -51,9 +51,6 @@ enum Commands {
         /// Path to project root
         #[arg(long)]
         projectdir: Option<String>,
-        /// Compile for development mode (generates bootstrap HTML)
-        #[arg(long, default_value = "false")]
-        development: bool,
     },
     /// Start development server for serving hop templates from a manifest
     Dev {
@@ -103,10 +100,7 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Lsp) => {
             cli::lsp::execute().await;
         }
-        Some(Commands::Compile {
-            projectdir,
-            development,
-        }) => {
+        Some(Commands::Compile { projectdir }) => {
             use std::time::Instant;
             let start_time = Instant::now();
 
@@ -115,7 +109,7 @@ async fn main() -> anyhow::Result<()> {
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
 
-            let mut result = cli::compile::execute(&root, *development).await?;
+            let mut result = cli::compile::execute(&root).await?;
             let elapsed = start_time.elapsed();
 
             print_header("compiled", elapsed.as_millis());
@@ -184,10 +178,10 @@ async fn main() -> anyhow::Result<()> {
                 //
                 // (1) We read the array of `compile_and_run` commands from the users config.
                 //
-                // (2) We compile the users project in development mode. This creates
-                //     a file containing stubs for each entrypoint of the project, the stubs
-                //     contain a bootstrap script that makes the backend able to do
-                //     hot-reloading.
+                // (2) We compile the users project. This creates a file containing code that
+                //     checks the HOP_DEV_MODE environment variable at runtime to decide whether
+                //     to render dev mode stubs (with bootstrap script for hot-reloading) or
+                //     production HTML.
                 //
                 // (3) We execute all the commands of the `compile_and_run` block except
                 //     the last one synchronously (these are the commands that should compile the
@@ -195,25 +189,20 @@ async fn main() -> anyhow::Result<()> {
                 //     etc).
                 //
                 // (4) We execute the last command of the `compile_and_run` command in a
-                //     separate thread.
-                //     This command is expected to start the users backend server which should
-                //     now have the loaded stubs that were created in step (2).
+                //     separate thread with HOP_DEV_MODE=enabled set.
+                //     This command is expected to start the users backend server which will
+                //     render dev mode stubs due to the environment variable.
                 //
                 // (5) We start the dev server, which is the server that will respond to the
-                //     requests made from the stubs created in step (2).
+                //     requests made from the stubs rendered in step (4).
                 //
                 // (6) We block until a subprocess exits or we receive Ctrl-C.
-                //
-                // (7) We compile the project in production mode (replacing the stubs we created in
-                //     step (2) with the real code). This is necessary since the user might have
-                //     the output file checked in to version control, and we don't want the VCS state
-                //     to
 
                 // Step (1) - Read `compile_and_run`
                 let commands = &target_config.compile_and_run;
 
-                // Step (2) - Create stubs
-                cli::compile::execute(root, true).await?;
+                // Step (2) - Compile project (generates both dev and prod code)
+                cli::compile::execute(root).await?;
 
                 // Store the last command
                 let last_command = commands
@@ -311,14 +300,7 @@ async fn main() -> anyhow::Result<()> {
             }
 
             // Run the dev server and ensure cleanup always happens
-            let result = run_dev_server(&root, host, *port, start_time).await;
-
-            // (7) Compile the project in production mode.
-            if let Err(e) = cli::compile::execute(&root, false).await {
-                eprintln!("Failed to restore production code: {}", e);
-            }
-
-            result?
+            run_dev_server(&root, host, *port, start_time).await?
         }
         Some(Commands::Fmt { filename }) => {
             use hop::pretty_print::pretty_print_from_source;

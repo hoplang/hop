@@ -400,10 +400,9 @@ impl Program {
         hop_mode: &str,
         generated_tailwind_css: Option<&str>,
     ) -> Result<String> {
-        // Use orchestrate to handle inlining and compilation - use Production mode for evaluation
+        // Use orchestrate to handle inlining and compilation
         let ir_entrypoints = orchestrate(
             self.get_typed_modules().clone(),
-            ir::CompilationMode::Production,
             generated_tailwind_css,
         );
 

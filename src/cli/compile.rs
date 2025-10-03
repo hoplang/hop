@@ -4,7 +4,7 @@ use crate::filesystem::config::TargetLanguage;
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::program::Program;
 use crate::ir::{
-    CompilationMode, GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler,
+    GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler,
     orchestrator::orchestrate,
 };
 use crate::tui::timing;
@@ -47,7 +47,7 @@ async fn create_default_tailwind_input() -> Result<PathBuf> {
     Ok(temp_input)
 }
 
-pub async fn execute(project_root: &ProjectRoot, development: bool) -> Result<CompileResult> {
+pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
     let mut timer = timing::TimingCollector::new();
 
     // Load configuration
@@ -65,19 +65,15 @@ pub async fn execute(project_root: &ProjectRoot, development: bool) -> Result<Co
     // Truncate output file before running Tailwind to prevent scanning old content
     project_root.write_output("").await?;
 
-    // Compile Tailwind CSS if configured (skip in development mode)
-    let tailwind_css = if development {
-        None
+    // Compile Tailwind CSS if configured
+    timer.start_phase("tailwind");
+    let tailwind_css = if let Some(p) = project_root.get_tailwind_input_path().await? {
+        // Use user-specified Tailwind input
+        Some(compile_tailwind(&p).await?)
     } else {
-        timer.start_phase("tailwind");
-        if let Some(p) = project_root.get_tailwind_input_path().await? {
-            // Use user-specified Tailwind input
-            Some(compile_tailwind(&p).await?)
-        } else {
-            // Use default Tailwind configuration
-            let default_input = create_default_tailwind_input().await?;
-            Some(compile_tailwind(&default_input).await?)
-        }
+        // Use default Tailwind configuration
+        let default_input = create_default_tailwind_input().await?;
+        Some(compile_tailwind(&default_input).await?)
     };
 
     // Load all .hop files
@@ -123,18 +119,10 @@ pub async fn execute(project_root: &ProjectRoot, development: bool) -> Result<Co
         ));
     }
 
-    // Determine compilation mode
-    let compilation_mode = if development {
-        CompilationMode::Development
-    } else {
-        CompilationMode::Production
-    };
-
     timer.start_phase("compiling to IR");
     // Use orchestrate to handle inlining, compilation, and optimization
     let ir_entrypoints = orchestrate(
         program.get_typed_modules().clone(),
-        compilation_mode,
         tailwind_css.as_deref(),
     );
 

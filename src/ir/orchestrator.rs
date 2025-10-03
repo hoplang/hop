@@ -8,12 +8,11 @@ use crate::ir::passes::{
     UnusedLetEliminationPass, WriteExprSimplificationPass,
 };
 use crate::ir::transforms::{DoctypeInjector, HtmlStructureInjector, TailwindInjector};
-use crate::ir::{CompilationMode, Compiler};
+use crate::ir::Compiler;
 use std::collections::HashMap;
 
 pub fn orchestrate(
     typed_asts: HashMap<ModuleName, Ast<SimpleTypedExpr>>,
-    mode: CompilationMode,
     generated_tailwind_css: Option<&str>,
 ) -> Vec<IrEntrypoint> {
     Inliner::inline_entrypoints(typed_asts)
@@ -23,7 +22,7 @@ pub fn orchestrate(
         .map(HtmlStructureInjector::run)
         .map(|entrypoint| TailwindInjector::run(entrypoint, generated_tailwind_css))
         // compile to IR
-        .map(|entrypoint| Compiler::compile(entrypoint, mode))
+        .map(Compiler::compile)
         // optimize IR
         .map(AlphaRenamingPass::run)
         .map(ConstantPropagationPass::run)
