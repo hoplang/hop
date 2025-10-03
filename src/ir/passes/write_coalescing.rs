@@ -42,7 +42,7 @@ impl WriteCoalescingPass {
                         id,
                         condition,
                         body: Self::transform_statements(body),
-                        else_body: else_body.map(|stmts| Self::transform_statements(stmts)),
+                        else_body: else_body.map(Self::transform_statements),
                     });
                 }
                 IrStatement::For {

@@ -19,11 +19,12 @@ impl DeadCodeEliminationPass {
                     ..
                 } => body,
 
-                // If with constant false condition - remove entirely
+                // If with constant false condition - replace with else branch if exists
                 IrStatement::If {
                     condition: IrExpr::BooleanLiteral { value: false, .. },
+                    else_body,
                     ..
-                } => vec![],
+                } => else_body.unwrap_or_else(Vec::new),
 
                 // All other statements (including dynamic If) pass through unchanged
                 other => vec![other],
@@ -37,9 +38,13 @@ impl Pass for DeadCodeEliminationPass {
         // First, recursively process all nested bodies using visit_mut
         for stmt in &mut entrypoint.body {
             stmt.traverse_mut(&mut |s| match s {
-                IrStatement::If { body, .. }
-                | IrStatement::For { body, .. }
-                | IrStatement::Let { body, .. } => {
+                IrStatement::If {
+                    body, else_body, ..
+                } => {
+                    *body = Self::transform_statements(std::mem::take(body));
+                    *else_body = else_body.take().map(Self::transform_statements)
+                }
+                IrStatement::For { body, .. } | IrStatement::Let { body, .. } => {
                     *body = Self::transform_statements(std::mem::take(body));
                 }
                 _ => {}

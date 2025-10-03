@@ -75,9 +75,15 @@ impl Pass for UnusedLetEliminationPass {
         // Use visit_mut to recursively process nested bodies
         for stmt in &mut entrypoint.body {
             stmt.traverse_mut(&mut |s| match s {
-                IrStatement::If { body, .. }
-                | IrStatement::For { body, .. }
-                | IrStatement::Let { body, .. } => {
+                IrStatement::If {
+                    body, else_body, ..
+                } => {
+                    *body = Self::transform_statements(std::mem::take(body), &unused_lets);
+                    *else_body = else_body
+                        .take()
+                        .map(|else_body| Self::transform_statements(else_body, &unused_lets))
+                }
+                IrStatement::For { body, .. } | IrStatement::Let { body, .. } => {
                     *body = Self::transform_statements(std::mem::take(body), &unused_lets);
                 }
                 _ => {}
