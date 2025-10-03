@@ -202,12 +202,12 @@ async fn main() -> anyhow::Result<()> {
                 // (5) We start the dev server, which is the server that will respond to the
                 //     requests made from the stubs created in step (2).
                 //
-                // (6) We compile the project in production mode (replacing the stubs we created in
+                // (6) We block until a subprocess exits or we receive Ctrl-C.
+                //
+                // (7) We compile the project in production mode (replacing the stubs we created in
                 //     step (2) with the real code). This is necessary since the user might have
                 //     the output file checked in to version control, and we don't want the VCS state
-                //     to be dirty just because the dev server is running.
-                //
-                // (7) We block until a subprocess exits or we receive Ctrl-C.
+                //     to
 
                 // Step (1) - Read `compile_and_run`
                 let commands = &target_config.compile_and_run;
@@ -268,19 +268,7 @@ async fn main() -> anyhow::Result<()> {
                 let mut res = cli::dev::execute(root).await?;
                 let dev_server = axum::serve(listener, res.router);
 
-                // Step (6) - Overwrite stubs
-                let local_root = root.clone();
-                tokio::spawn(async move {
-                    // Add a sleep here to let backend server start before replacing the stubs.
-                    //
-                    // This is necessary in dynamic languages like TypeScript and Python
-                    // since the stubs are not loaded until the language runtime has
-                    // performed import resolution and read the files from disk.
-                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-                    let _ = cli::compile::execute(&local_root, false).await;
-                });
-
-                // Step (7) - Block
+                // Step (6) - Block
                 let result = tokio::select! {
                     _ = &mut sigint_rx => {
                         Ok(())
@@ -323,7 +311,7 @@ async fn main() -> anyhow::Result<()> {
             // Run the dev server and ensure cleanup always happens
             let result = run_dev_server(&root, host, *port, start_time).await;
 
-            // Always restore production code on exit
+            // (7) Compile the project in production mode.
             if let Err(e) = cli::compile::execute(&root, false).await {
                 eprintln!("Failed to restore production code: {}", e);
             }
