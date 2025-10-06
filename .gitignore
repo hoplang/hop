@@ -12,3 +12,4 @@ output
 html
 .envrc
 .hop-cache
+cross/*.sdk
