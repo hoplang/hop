@@ -4,11 +4,10 @@ use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::module_name::ModuleName;
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
 use std::collections::HashMap;
-use std::path::Path;
 use tokio::sync::{OnceCell, RwLock};
-use tower_lsp::jsonrpc::Result;
-use tower_lsp::lsp_types::{self, *};
-use tower_lsp::{Client, LanguageServer, LspService, Server as LspServer};
+use tower_lsp_server::jsonrpc::Result;
+use tower_lsp_server::lsp_types::{self, *};
+use tower_lsp_server::{Client, LanguageServer, LspService, Server as LspServer, UriExt};
 
 // LSP uses UTF-16 encoding by default for position character offsets.
 impl From<lsp_types::Position> for DocumentPosition {
@@ -53,29 +52,29 @@ impl HopLanguageServer {
         }
     }
 
-    fn uri_to_module_name(uri: &Url, root: &ProjectRoot) -> ModuleName {
-        match root.path_to_module_name(Path::new(uri.path())) {
-            Ok(s) => s,
-            Err(_) => panic!(),
+    fn uri_to_module_name(uri: &Uri, root: &ProjectRoot) -> ModuleName {
+        match uri.to_file_path() {
+            Some(path) => match root.path_to_module_name(&path) {
+                Ok(s) => s,
+                Err(_) => panic!(),
+            },
+            None => panic!(),
         }
     }
 
-    fn module_name_to_uri(name: &ModuleName, root: &ProjectRoot) -> Url {
+    fn module_name_to_uri(name: &ModuleName, root: &ProjectRoot) -> Uri {
         let p = root.module_name_to_path(name);
-        match Url::from_file_path(&p) {
-            Ok(url) => url,
-            Err(_) => panic!(),
-        }
+        Uri::from_file_path(&p).expect("Failed to create URI from file path")
     }
 
-    async fn publish_diagnostics(&self, root: &ProjectRoot, uri: &Url) {
+    async fn publish_diagnostics(&self, root: &ProjectRoot, uri: &Uri) {
         let module_name = Self::uri_to_module_name(uri, root);
         let program = self.program.read().await;
         let diagnostics = program.get_error_diagnostics(module_name);
 
-        let lsp_diagnostics: Vec<tower_lsp::lsp_types::Diagnostic> = diagnostics
+        let lsp_diagnostics: Vec<tower_lsp_server::lsp_types::Diagnostic> = diagnostics
             .into_iter()
-            .map(|d| tower_lsp::lsp_types::Diagnostic {
+            .map(|d| tower_lsp_server::lsp_types::Diagnostic {
                 range: d.range.into(),
                 severity: Some(DiagnosticSeverity::ERROR),
                 code: None,
@@ -94,12 +93,11 @@ impl HopLanguageServer {
     }
 }
 
-#[tower_lsp::async_trait]
 impl LanguageServer for HopLanguageServer {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         // Try to find the project root from the rootUri or rootPath
         if let Some(root_uri) = params.root_uri {
-            if let Ok(root_path) = root_uri.to_file_path() {
+            if let Some(root_path) = root_uri.to_file_path() {
                 if let Ok(project_root) = ProjectRoot::find_upwards(&root_path) {
                     let _ = self.root.set(project_root);
                 }
@@ -247,7 +245,7 @@ impl LanguageServer for HopLanguageServer {
             if let Some(rename_locations) =
                 server.get_rename_locations(&module_name, position.into())
             {
-                let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
+                let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
 
                 for RenameLocation { module, range } in rename_locations {
                     let file_uri = Self::module_name_to_uri(&module, root);
