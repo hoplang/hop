@@ -94,7 +94,10 @@ fn download_and_compress_binary(
 
     println!("Downloading Tailwind CSS binary from: {}", url);
 
-    let response = reqwest::blocking::get(&url)?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(90))
+        .build()?;
+    let response = client.get(&url).send()?;
     if !response.status().is_success() {
         return Err(anyhow::anyhow!(
             "Failed to download binary: HTTP {}",
