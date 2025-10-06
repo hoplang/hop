@@ -1,5 +1,5 @@
 {
-  description = "Development environment for hop-rs";
+  description = "Development environment for hop";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/122034aaa1c4302ce1637d54b2003e593fb0c2da";
