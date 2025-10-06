@@ -3,7 +3,7 @@ members = [".", "crates/tailwind-runner"]
 resolver = "2"
 
 [package]
-name = "hop_rs"
+name = "hop"
 edition = "2024"
 publish = false
 
