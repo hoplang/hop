@@ -1,5 +1,7 @@
 #!/bin/env sh
 
+cargo install --locked cargo-zigbuild
+
 # aarch64-apple-darwin
 rustup target add aarch64-apple-darwin
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
