@@ -211,7 +211,7 @@ impl IrStatement {
         }
     }
 
-    pub fn to_doc(&self) -> BoxDoc {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
             IrStatement::Write { content, .. } => BoxDoc::text("write")
                 .append(BoxDoc::text("("))

@@ -63,7 +63,7 @@ pub enum InlinedNode {
 }
 
 impl InlinedParameter {
-    pub fn to_doc(&self) -> BoxDoc {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
         BoxDoc::text(self.var_name.as_str())
             .append(BoxDoc::text(": "))
             .append(BoxDoc::text(self.var_type.to_string()))
@@ -71,7 +71,7 @@ impl InlinedParameter {
 }
 
 impl InlinedAttributeValue {
-    pub fn to_doc(&self) -> BoxDoc {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
             InlinedAttributeValue::Expression(expr) => BoxDoc::text("{")
                 .append(expr.to_doc())
@@ -82,7 +82,7 @@ impl InlinedAttributeValue {
 }
 
 impl InlinedAttribute {
-    pub fn to_doc(&self) -> BoxDoc {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
         let name_doc = BoxDoc::text(&self.name);
         match &self.value {
             Some(value) => name_doc.append(BoxDoc::text("=")).append(value.to_doc()),
@@ -92,7 +92,7 @@ impl InlinedAttribute {
 }
 
 impl InlinedEntrypoint {
-    pub fn to_doc(&self) -> BoxDoc {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
         BoxDoc::text("<")
             .append(BoxDoc::text(self.tag_name.as_str()))
             .append(if self.params.is_empty() {
@@ -124,7 +124,7 @@ impl InlinedEntrypoint {
 }
 
 impl InlinedNode {
-    pub fn to_doc(&self) -> BoxDoc {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
             InlinedNode::Text { value } => BoxDoc::text(format!("{:?}", value.as_str())),
             InlinedNode::TextExpression { expression } => BoxDoc::text("{")

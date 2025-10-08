@@ -3,8 +3,10 @@ use crate::ir::ast::{IrEntrypoint, IrStatement, StatementId};
 use super::Pass;
 
 /// A pass that concatenates consecutive Write statements into a single Write statement
+#[allow(dead_code)]
 pub struct WriteCoalescingPass;
 
+#[allow(dead_code)]
 impl WriteCoalescingPass {
     /// Transform a list of statements, coalescing consecutive Write statements
     fn transform_statements(statements: Vec<IrStatement>) -> Vec<IrStatement> {

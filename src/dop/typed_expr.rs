@@ -204,7 +204,7 @@ impl<A> TypedExpr<A> {
         }
     }
 
-    pub fn to_doc(&self) -> BoxDoc {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
             TypedExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
             TypedExpr::PropertyAccess {

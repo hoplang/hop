@@ -82,17 +82,6 @@ async fn main() -> anyhow::Result<()> {
         println!();
     }
 
-    /// Format file size.
-    fn format_file_size(bytes: usize) -> String {
-        if bytes < 1024 {
-            format!("{} B", bytes)
-        } else if bytes < 1024 * 1024 {
-            format!("{:.2} kB", bytes as f64 / 1024.0)
-        } else {
-            format!("{:.2} MB", bytes as f64 / (1024.0 * 1024.0))
-        }
-    }
-
     match &cli.command {
         Some(Commands::Init { target }) => {
             cli::init::execute(target)?;

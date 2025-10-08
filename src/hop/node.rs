@@ -115,7 +115,7 @@ impl<T> Node<T> {
         }
     }
 
-    pub fn iter_depth_first(&self) -> DepthFirstIterator<T> {
+    pub fn iter_depth_first(&self) -> DepthFirstIterator<'_, T> {
         DepthFirstIterator::new(self)
     }
 

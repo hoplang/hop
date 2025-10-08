@@ -14,7 +14,6 @@ impl PythonTranspiler {
     }
 
     fn extract_and_generate_nested_type<'a>(
-        &self,
         param_type: &'a Type,
         base_name: &str,
         field_name: &str,
@@ -33,7 +32,7 @@ impl PythonTranspiler {
                 let mut field_docs = Vec::new();
                 for (nested_field_name, nested_field_type) in fields {
                     // Recursively process and get the type reference
-                    let field_type_doc = self.extract_and_generate_nested_type(
+                    let field_type_doc = Self::extract_and_generate_nested_type(
                         nested_field_type,
                         &type_name, // New base name for nested types
                         nested_field_name,
@@ -69,7 +68,7 @@ impl PythonTranspiler {
             Type::Array(Some(elem_type)) => {
                 if matches!(elem_type.as_ref(), Type::Object(_)) {
                     // Generate type for array elements
-                    let elem_type_doc = self.extract_and_generate_nested_type(
+                    let elem_type_doc = Self::extract_and_generate_nested_type(
                         elem_type,
                         base_name,
                         &format!("{}_item", field_name),
@@ -81,18 +80,18 @@ impl PythonTranspiler {
                 } else {
                     // Regular array
                     BoxDoc::text("list[")
-                        .append(self.get_python_type(elem_type))
+                        .append(Self::get_python_type(elem_type))
                         .append(BoxDoc::text("]"))
                 }
             }
             _ => {
                 // Primitive types - just use regular type
-                self.get_python_type(param_type)
+                Self::get_python_type(param_type)
             }
         }
     }
 
-    fn get_python_type<'a>(&self, param_type: &'a Type) -> BoxDoc<'a> {
+    fn get_python_type(param_type: &Type) -> BoxDoc<'_> {
         match param_type {
             Type::String => BoxDoc::text("str"),
             Type::Bool => BoxDoc::text("bool"),
@@ -100,7 +99,7 @@ impl PythonTranspiler {
             Type::Int => BoxDoc::text("int"),
             Type::TrustedHtml => BoxDoc::text("str"),
             Type::Array(Some(elem)) => BoxDoc::text("list[")
-                .append(self.get_python_type(elem))
+                .append(Self::get_python_type(elem))
                 .append(BoxDoc::text("]")),
             Type::Array(None) => BoxDoc::text("list"),
             Type::Object(_) => BoxDoc::text("dict"),
@@ -214,7 +213,7 @@ impl Transpiler for PythonTranspiler {
                     .iter()
                     .map(|(param_name, param_type)| {
                         // Extract nested types and get the type reference
-                        let field_type_doc = self.extract_and_generate_nested_type(
+                        let field_type_doc = Self::extract_and_generate_nested_type(
                             param_type,
                             &class_name,
                             param_name.as_str(),

@@ -12,8 +12,8 @@ use tokio::process::Child;
 
 pub struct DevelopmentServer {
     pub router: axum::Router,
-    pub hop_watcher: AdaptiveWatcher,
-    pub css_watcher: notify::RecommendedWatcher,
+    _hop_watcher: AdaptiveWatcher,
+    _css_watcher: notify::RecommendedWatcher,
     pub tailwind_process: Child,
 }
 
@@ -236,8 +236,8 @@ pub async fn execute(root: &ProjectRoot) -> anyhow::Result<DevelopmentServer> {
 
     Ok(DevelopmentServer {
         router,
-        hop_watcher: adaptive_watcher,
-        css_watcher,
+        _hop_watcher: adaptive_watcher,
+        _css_watcher: css_watcher,
         tailwind_process: tailwind_handle,
     })
 }

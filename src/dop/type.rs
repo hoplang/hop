@@ -63,15 +63,6 @@ impl Type {
         }
     }
 
-    pub fn as_numeric_type(&self) -> Option<NumericType> {
-        match self {
-            Type::Int => Some(NumericType::Int),
-            Type::Float => Some(NumericType::Float),
-            Type::Bool | Type::String | Type::TrustedHtml | Type::Object(_) | Type::Array(_) => {
-                None
-            }
-        }
-    }
     /// Check if `subtype` is a subtype of `supertype`
     pub fn is_subtype(&self, supertype: &Type) -> bool {
         match (self, supertype) {

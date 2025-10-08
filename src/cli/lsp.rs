@@ -96,6 +96,7 @@ impl HopLanguageServer {
 impl LanguageServer for HopLanguageServer {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         // Try to find the project root from the rootUri or rootPath
+        #[allow(deprecated)]
         if let Some(root_uri) = params.root_uri {
             if let Some(root_path) = root_uri.to_file_path() {
                 if let Ok(project_root) = ProjectRoot::find_upwards(&root_path) {
@@ -245,6 +246,7 @@ impl LanguageServer for HopLanguageServer {
             if let Some(rename_locations) =
                 server.get_rename_locations(&module_name, position.into())
             {
+                #[allow(clippy::mutable_key_type)]
                 let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
 
                 for RenameLocation { module, range } in rename_locations {
