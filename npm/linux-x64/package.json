@@ -1,6 +1,6 @@
 {
   "name": "@hoplang/linux-x64",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Hop binary for Linux x64",
   "os": ["linux"],
   "cpu": ["x64"],
