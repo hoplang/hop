@@ -1,7 +1,7 @@
 {
   "name": "@hoplang/hop",
   "version": "0.2.1",
-  "description": "Hop language server and tooling",
+  "description": "hop compiler and tooling",
   "bin": "./bin/hop",
   "scripts": {
     "postinstall": "node postinstall.js"

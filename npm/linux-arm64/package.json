@@ -1,7 +1,7 @@
 {
   "name": "@hoplang/linux-arm64",
   "version": "0.2.1",
-  "description": "Hop binary for Linux ARM64",
+  "description": "hop compiler binary for Linux ARM64",
   "os": ["linux"],
   "cpu": ["arm64"],
   "repository": {

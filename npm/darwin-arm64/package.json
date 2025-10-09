@@ -1,7 +1,7 @@
 {
   "name": "@hoplang/darwin-arm64",
   "version": "0.2.1",
-  "description": "Hop binary for macOS ARM64",
+  "description": "hop compiler binary for macOS ARM64",
   "os": ["darwin"],
   "cpu": ["arm64"],
   "repository": {
