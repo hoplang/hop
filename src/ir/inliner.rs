@@ -401,7 +401,7 @@ mod tests {
             vec![(
                 "main",
                 r#"
-                    <card-comp {title: string}>
+                    <card-comp {title: String}>
                         <h2>{title}</h2>
                     </card-comp>
 

@@ -880,7 +880,7 @@ mod tests {
     fn test_parser_uppercase_variable_name() {
         check(
             indoc! {"
-                <main-comp {Data: string}>
+                <main-comp {Data: String}>
                     <div></div>
                 </main-comp>
             "},
@@ -972,14 +972,14 @@ mod tests {
     fn test_parser_param_malformed_type_error() {
         check(
             indoc! {"
-                <main-comp {data: array[}>
+                <main-comp {data: Array[}>
                     <div>{data}</div>
                 </main-comp>
             "},
             // TODO: Improve error message
             expect![[r#"
                 error: Unexpected end of expression
-                1 | <main-comp {data: array[}>
+                1 | <main-comp {data: Array[}>
                   |             ^^^^^^^^^^^^
             "#]],
         );
@@ -1009,7 +1009,7 @@ mod tests {
     fn test_parser_nested_loops_complex_types() {
         check(
             indoc! {"
-                <main-comp {sections: array[{title: string, items: array[string]}]}>
+                <main-comp {sections: Array[{title: String, items: Array[String]}]}>
                     <div>
                         <for {section in sections}>
                             <div>
@@ -1039,7 +1039,7 @@ mod tests {
     fn test_parser_doctype_html_structure() {
         check(
             indoc! {"
-                <main-comp {foo: string}>
+                <main-comp {foo: String}>
                     <!DOCTYPE html>
                     <html>
                         <body>
@@ -1083,7 +1083,7 @@ mod tests {
     fn test_parser_entrypoint_with_data_param() {
         check(
             indoc! {"
-                <main-comp entrypoint {data: {message: string}}>
+                <main-comp entrypoint {data: {message: String}}>
                     <h1>Hello World</h1>
                     <p>{data.message}</p>
                 </main-comp>
@@ -1144,7 +1144,7 @@ mod tests {
     fn test_parser_complex_nested_loops() {
         check(
             indoc! {"
-                <main-comp {i: array[{s: {t: array[string]}}]}>
+                <main-comp {i: Array[{s: {t: Array[String]}}]}>
                     <for {j in i}>
                         <for {k in j.s.t}>
                             <if {k}>
@@ -1174,7 +1174,7 @@ mod tests {
     fn test_parser_if_with_for_nested() {
         check(
             indoc! {"
-                <main-comp {data: array[string]}>
+                <main-comp {data: Array[String]}>
 	                <if {data}>
 		                <for {d in data}>
 		                </for>
@@ -1192,7 +1192,7 @@ mod tests {
     fn test_parser_simple_for_loop() {
         check(
             indoc! {"
-                <main-comp {foo: array[string]}>
+                <main-comp {foo: Array[String]}>
                     <for {bar in foo}>
                         <div></div>
                     </for>
@@ -1209,7 +1209,7 @@ mod tests {
     fn test_parser_component_references() {
         check(
             indoc! {"
-                <main-comp {p: string}>
+                <main-comp {p: String}>
                     <foo-comp></foo-comp>
                     <foo-comp></foo-comp>
                 </main-comp>
@@ -1225,7 +1225,7 @@ mod tests {
     fn test_parser_component_with_params() {
         check(
             indoc! {"
-                <main-comp {data: {user: string}}>
+                <main-comp {data: {user: String}}>
                     <foo-comp {a: data}/>
                     <bar-comp {b: data.user}/>
                 </main-comp>
@@ -1241,7 +1241,7 @@ mod tests {
     fn test_parser_for_loop_with_text_expression() {
         check(
             indoc! {"
-                <main-comp {foo: array[string]}>
+                <main-comp {foo: Array[String]}>
                     <for {v in foo}>
                         <div>{v}</div>
                     </for>
@@ -1259,7 +1259,7 @@ mod tests {
     fn test_parser_script_tag_with_html_content() {
         check(
             indoc! {r#"
-                <main-comp {foo: string}>
+                <main-comp {foo: String}>
                     <script>
                         const x = "<div></div>";
                     </script>
@@ -1275,7 +1275,7 @@ mod tests {
     fn test_parser_expression_attributes() {
         check(
             indoc! {r#"
-                <main-comp {user: {url: string, theme: string}}>
+                <main-comp {user: {url: String, theme: String}}>
                     <a href={user.url} class={user.theme}>Link</a>
                 </main-comp>
             "#},
@@ -1563,7 +1563,7 @@ mod tests {
     fn test_parser_param_simple_type() {
         check(
             indoc! {"
-                <main-comp {data: string}>
+                <main-comp {data: String}>
                     <div>{data}</div>
                 </main-comp>
             "},
@@ -1579,7 +1579,7 @@ mod tests {
     fn test_parser_param_array_type() {
         check(
             indoc! {"
-                <main-comp {items: array[string]}>
+                <main-comp {items: Array[String]}>
                     <for {item in items}>
                         <div>{item}</div>
                     </for>
@@ -1598,7 +1598,7 @@ mod tests {
     fn test_parser_param_object_type() {
         check(
             indoc! {"
-                <main-comp {user: {name: string, age: float}}>
+                <main-comp {user: {name: String, age: Float}}>
                     <div>{user.name} is {user.age} years old</div>
                 </main-comp>
             "},
@@ -1615,7 +1615,7 @@ mod tests {
     fn test_parser_param_nested_types() {
         check(
             indoc! {"
-                <main-comp {data: array[{title: string, items: array[string]}]}>
+                <main-comp {data: Array[{title: String, items: Array[String]}]}>
                     <for {section in data}>
                         <h1>{section.title}</h1>
                         <for {item in section.items}>

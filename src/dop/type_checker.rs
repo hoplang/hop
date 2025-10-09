@@ -346,7 +346,7 @@ pub fn typecheck_expr(
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            // LogicalAnd only works with boolean expressions
+            // LogicalAnd only works with Bool expressions
             if !left_type.is_subtype(&Type::Bool) {
                 return Err(TypeError::LogicalAndRequiresBoolean {
                     range: left.range().clone(),
@@ -376,7 +376,7 @@ pub fn typecheck_expr(
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            // LogicalOr only works with boolean expressions
+            // LogicalOr only works with Bool expressions
             if !left_type.is_subtype(&Type::Bool) {
                 return Err(TypeError::LogicalOrRequiresBoolean {
                     range: left.range().clone(),
@@ -443,7 +443,7 @@ pub fn typecheck_expr(
             let typed_operand = typecheck_expr(operand, env, annotations)?;
             let operand_type = typed_operand.as_type();
 
-            // Negation only works on boolean expressions
+            // Negation only works on Bool expressions
             if !operand_type.is_subtype(&Type::Bool) {
                 return Err(TypeError::NegationRequiresBoolean {
                     range: operand.range().clone(),
@@ -554,10 +554,10 @@ mod tests {
     #[test]
     fn test_typecheck_equality_incompatible_string_number() {
         check(
-            "name: string, count: float",
+            "name: String, count: Float",
             "name == count",
             expect![[r#"
-                error: Can not compare string to float
+                error: Can not compare String to Float
                 name == count
                 ^^^^^^^^^^^^^
             "#]],
@@ -567,10 +567,10 @@ mod tests {
     #[test]
     fn test_typecheck_equality_incompatible_boolean_string() {
         check(
-            "enabled: boolean, name: string",
+            "enabled: Bool, name: String",
             "enabled == name",
             expect![[r#"
-                error: Can not compare boolean to string
+                error: Can not compare Bool to String
                 enabled == name
                 ^^^^^^^^^^^^^^^
             "#]],
@@ -606,10 +606,10 @@ mod tests {
     #[test]
     fn test_typecheck_property_access_on_non_object() {
         check(
-            "count: float",
+            "count: Float",
             "count.value",
             expect![[r#"
-                error: float can not be used as an object
+                error: Float can not be used as an object
                 count.value
                 ^^^^^
             "#]],
@@ -619,10 +619,10 @@ mod tests {
     #[test]
     fn test_typecheck_negation_string_error() {
         check(
-            "name: string",
+            "name: String",
             "!name",
             expect![[r#"
-                error: Negation operator can only be applied to boolean values
+                error: Negation operator can only be applied to Bool values
                 !name
                  ^^^^
             "#]],
@@ -632,10 +632,10 @@ mod tests {
     #[test]
     fn test_typecheck_negation_number_error() {
         check(
-            "count: float",
+            "count: Float",
             "!count",
             expect![[r#"
-                error: Negation operator can only be applied to boolean values
+                error: Negation operator can only be applied to Bool values
                 !count
                  ^^^^^
             "#]],
@@ -645,10 +645,10 @@ mod tests {
     #[test]
     fn test_typecheck_nested_array_property_error() {
         check(
-            "config: {users: array[{profile: {name: string, active: boolean}}]}",
+            "config: {users: Array[{profile: {name: String, active: Bool}}]}",
             "config.users.profile.name",
             expect![[r#"
-                error: array[{profile: {active: boolean, name: string}}] can not be used as an object
+                error: Array[{profile: {active: Bool, name: String}}] can not be used as an object
                 config.users.profile.name
                 ^^^^^^^^^^^^
             "#]],
@@ -658,10 +658,10 @@ mod tests {
     #[test]
     fn test_typecheck_array_property_access_error() {
         check(
-            "users: array[{name: string}]",
+            "users: Array[{name: String}]",
             "users.name",
             expect![[r#"
-                error: array[{name: string}] can not be used as an object
+                error: Array[{name: String}] can not be used as an object
                 users.name
                 ^^^^^
             "#]],
@@ -671,10 +671,10 @@ mod tests {
     #[test]
     fn test_typecheck_unknown_property() {
         check(
-            "data: {field: string}",
+            "data: {field: String}",
             "data.unknown",
             expect![[r#"
-                error: Property unknown not found in object {field: string}
+                error: Property unknown not found in object {field: String}
                 data.unknown
                 ^^^^^^^^^^^^
             "#]],
@@ -683,60 +683,60 @@ mod tests {
 
     #[test]
     fn test_typecheck_basic_variable_lookup() {
-        check("name: string", "name", expect!["string"]);
+        check("name: String", "name", expect!["String"]);
     }
 
     #[test]
     fn test_typecheck_string_literal() {
-        check("", r#""hello world""#, expect!["string"]);
+        check("", r#""hello world""#, expect!["String"]);
     }
 
     #[test]
     fn test_typecheck_boolean_literal_true() {
-        check("", "true", expect!["boolean"]);
+        check("", "true", expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_boolean_literal_false() {
-        check("", "false", expect!["boolean"]);
+        check("", "false", expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_int_literal() {
-        check("", "42", expect!["int"]);
+        check("", "42", expect!["Int"]);
     }
 
     #[test]
     fn test_typecheck_number_literal_float() {
-        check("", "3.14", expect!["float"]);
+        check("", "3.14", expect!["Float"]);
     }
 
     #[test]
     fn test_typecheck_property_access() {
-        check("user: {name: string}", "user.name", expect!["string"]);
+        check("user: {name: String}", "user.name", expect!["String"]);
     }
 
     #[test]
     fn test_typecheck_nested_property_access() {
         check(
-            "app: {user: {profile: {name: string}}}",
+            "app: {user: {profile: {name: String}}}",
             "app.user.profile.name",
-            expect!["string"],
+            expect!["String"],
         );
     }
 
     #[test]
     fn test_typecheck_equality_string() {
-        check("name: string", r#"name == "alice""#, expect!["boolean"]);
+        check("name: String", r#"name == "alice""#, expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_equality_number() {
         check(
-            "count: float",
+            "count: Float",
             "count == 42",
             expect![[r#"
-                error: Can not compare float to int
+                error: Can not compare Float to Int
                 count == 42
                 ^^^^^^^^^^^
             "#]],
@@ -745,59 +745,59 @@ mod tests {
 
     #[test]
     fn test_typecheck_equality_boolean() {
-        check("enabled: boolean", "enabled == true", expect!["boolean"]);
+        check("enabled: Bool", "enabled == true", expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_equality_same_object_properties() {
         check(
-            "user: {name: string}, admin: {name: string}",
+            "user: {name: String}, admin: {name: String}",
             "user.name == admin.name",
-            expect!["boolean"],
+            expect!["Bool"],
         );
     }
 
     #[test]
     fn test_typecheck_complex_equality() {
         check(
-            "a: boolean, b: boolean",
+            "a: Bool, b: Bool",
             "a == b == true",
-            expect!["boolean"],
+            expect!["Bool"],
         );
     }
 
     #[test]
     fn test_typecheck_negation_variable() {
-        check("enabled: boolean", "!enabled", expect!["boolean"]);
+        check("enabled: Bool", "!enabled", expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_negation_true() {
-        check("", "!true", expect!["boolean"]);
+        check("", "!true", expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_negation_false() {
-        check("", "!false", expect!["boolean"]);
+        check("", "!false", expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_greater_than_int() {
-        check("x: int, y: int", "x > y", expect!["boolean"]);
+        check("x: Int, y: Int", "x > y", expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_greater_than_float() {
-        check("x: float, y: float", "x > y", expect!["boolean"]);
+        check("x: Float, y: Float", "x > y", expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_greater_than_mixed_error() {
         check(
-            "x: int, y: float",
+            "x: Int, y: Float",
             "x > y",
             expect![[r#"
-                error: Can not compare int to float
+                error: Can not compare Int to Float
                 x > y
                 ^^^^^
             "#]],
@@ -806,21 +806,21 @@ mod tests {
 
     #[test]
     fn test_typecheck_less_than_or_equal_int() {
-        check("x: int, y: int", "x <= y", expect!["boolean"]);
+        check("x: Int, y: Int", "x <= y", expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_less_than_or_equal_float() {
-        check("x: float, y: float", "x <= y", expect!["boolean"]);
+        check("x: Float, y: Float", "x <= y", expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_less_than_or_equal_mixed_error() {
         check(
-            "x: int, y: float",
+            "x: Int, y: Float",
             "x <= y",
             expect![[r#"
-                error: Can not compare int to float
+                error: Can not compare Int to Float
                 x <= y
                 ^^^^^^
             "#]],
@@ -829,21 +829,21 @@ mod tests {
 
     #[test]
     fn test_typecheck_greater_than_or_equal_int() {
-        check("x: int, y: int", "x >= y", expect!["boolean"]);
+        check("x: Int, y: Int", "x >= y", expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_greater_than_or_equal_float() {
-        check("x: float, y: float", "x >= y", expect!["boolean"]);
+        check("x: Float, y: Float", "x >= y", expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_greater_than_or_equal_mixed_error() {
         check(
-            "x: int, y: float",
+            "x: Int, y: Float",
             "x >= y",
             expect![[r#"
-                error: Can not compare int to float
+                error: Can not compare Int to Float
                 x >= y
                 ^^^^^^
             "#]],
@@ -853,45 +853,45 @@ mod tests {
     #[test]
     fn test_typecheck_complex_negation_equality() {
         check(
-            "user: {active: boolean}",
+            "user: {active: Bool}",
             "!user.active == false",
-            expect!["boolean"],
+            expect!["Bool"],
         );
     }
 
     #[test]
     fn test_typecheck_parenthesized_negation() {
         check(
-            "status: {enabled: boolean}, config: {active: boolean}",
+            "status: {enabled: Bool}, config: {active: Bool}",
             "!(status.enabled == config.active)",
-            expect!["boolean"],
+            expect!["Bool"],
         );
     }
 
     #[test]
     fn test_typecheck_object_array_property() {
         check(
-            "data: {items: array[string]}",
+            "data: {items: Array[String]}",
             "data.items",
-            expect!["array[string]"],
+            expect!["Array[String]"],
         );
     }
 
     #[test]
     fn test_typecheck_deep_property_access() {
         check(
-            "system: {config: {database: {connection: {host: string}}}}",
+            "system: {config: {database: {connection: {host: String}}}}",
             "system.config.database.connection.host",
-            expect!["string"],
+            expect!["String"],
         );
     }
 
     #[test]
     fn test_typecheck_multiple_property_access() {
         check(
-            "obj: {name: string, title: string}",
+            "obj: {name: String, title: String}",
             "obj.name == obj.title",
-            expect!["boolean"],
+            expect!["Bool"],
         );
     }
 
@@ -902,7 +902,7 @@ mod tests {
 
     #[test]
     fn test_typecheck_object_literal_single_property() {
-        check("", r#"{name: "John"}"#, expect!["{name: string}"]);
+        check("", r#"{name: "John"}"#, expect!["{name: String}"]);
     }
 
     #[test]
@@ -910,16 +910,16 @@ mod tests {
         check(
             "",
             r#"{a: "foo", b: 1, c: true}"#,
-            expect!["{a: string, b: int, c: boolean}"],
+            expect!["{a: String, b: Int, c: Bool}"],
         );
     }
 
     #[test]
     fn test_typecheck_object_literal_complex_expressions() {
         check(
-            "user: {name: string, disabled: boolean}",
+            "user: {name: String, disabled: Bool}",
             "{user: user.name, active: !user.disabled}",
-            expect!["{active: boolean, user: string}"],
+            expect!["{active: Bool, user: String}"],
         );
     }
 
@@ -928,7 +928,7 @@ mod tests {
         check(
             "",
             r#"{nested: {inner: "value"}}"#,
-            expect!["{nested: {inner: string}}"],
+            expect!["{nested: {inner: String}}"],
         );
     }
 
@@ -938,7 +938,7 @@ mod tests {
             "",
             "[1, true]",
             expect![[r#"
-                error: Array elements must all have the same type, found int and boolean
+                error: Array elements must all have the same type, found Int and Bool
                 [1, true]
                     ^^^^
             "#]],
@@ -947,7 +947,7 @@ mod tests {
 
     #[test]
     fn test_typecheck_array_trailing_comma_numbers() {
-        check("", "[\n\t1,\n\t2,\n\t3,\n]", expect!["array[int]"]);
+        check("", "[\n\t1,\n\t2,\n\t3,\n]", expect!["Array[Int]"]);
     }
 
     #[test]
@@ -959,7 +959,7 @@ mod tests {
             	"hello",
             ]
         "#},
-            expect!["array[string]"],
+            expect!["Array[String]"],
         );
     }
 
@@ -973,7 +973,7 @@ mod tests {
                 	b: 1,
                 }
             "#},
-            expect!["{a: string, b: int}"],
+            expect!["{a: String, b: Int}"],
         );
     }
 
@@ -986,26 +986,26 @@ mod tests {
             	name: "John",
             }
         "#},
-            expect!["{name: string}"],
+            expect!["{name: String}"],
         );
     }
 
     #[test]
     fn test_typecheck_string_concatenation() {
-        check("", r#""hello" + "world""#, expect!["string"]);
+        check("", r#""hello" + "world""#, expect!["String"]);
     }
 
     #[test]
     fn test_typecheck_string_concatenation_multiple() {
-        check("", r#""hello" + " " + "world""#, expect!["string"]);
+        check("", r#""hello" + " " + "world""#, expect!["String"]);
     }
 
     #[test]
     fn test_typecheck_string_concatenation_with_variables() {
         check(
-            "greeting: string, name: string",
+            "greeting: String, name: String",
             r#"greeting + " " + name"#,
-            expect!["string"],
+            expect!["String"],
         );
     }
 
@@ -1015,7 +1015,7 @@ mod tests {
             "",
             r#"42 + "hello""#,
             expect![[r#"
-                error: Cannot add values of incompatible types: int + string
+                error: Cannot add values of incompatible types: Int + String
                 42 + "hello"
                 ^^^^^^^^^^^^
             "#]],
@@ -1028,7 +1028,7 @@ mod tests {
             "",
             r#""hello" + true"#,
             expect![[r#"
-                error: Cannot add values of incompatible types: string + boolean
+                error: Cannot add values of incompatible types: String + Bool
                 "hello" + true
                 ^^^^^^^^^^^^^^
             "#]],
@@ -1037,58 +1037,58 @@ mod tests {
 
     #[test]
     fn test_typecheck_string_concatenation_error_both_numbers() {
-        check("", r#"42 + 58"#, expect!["int"]);
+        check("", r#"42 + 58"#, expect!["Int"]);
     }
 
     #[test]
     fn test_typecheck_string_concatenation_with_property_access() {
         check(
-            "user: {firstName: string, lastName: string}",
+            "user: {firstName: String, lastName: String}",
             r#"user.firstName + " " + user.lastName"#,
-            expect!["string"],
+            expect!["String"],
         );
     }
 
     #[test]
     fn test_typecheck_string_concatenation_result_comparison() {
-        check("", r#""a" + "b" == "ab""#, expect!["boolean"]);
+        check("", r#""a" + "b" == "ab""#, expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_logical_and_boolean_variables() {
-        check("a: boolean, b: boolean", "a && b", expect!["boolean"]);
+        check("a: Bool, b: Bool", "a && b", expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_logical_and_boolean_literals() {
-        check("", "true && false", expect!["boolean"]);
+        check("", "true && false", expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_logical_and_property_access() {
         check(
-            "user: {enabled: boolean, active: boolean}",
+            "user: {enabled: Bool, active: Bool}",
             "user.enabled && user.active",
-            expect!["boolean"],
+            expect!["Bool"],
         );
     }
 
     #[test]
     fn test_typecheck_logical_and_with_comparison() {
         check(
-            "x: int, y: int, enabled: boolean",
+            "x: Int, y: Int, enabled: Bool",
             "x > y && enabled",
-            expect!["boolean"],
+            expect!["Bool"],
         );
     }
 
     #[test]
     fn test_typecheck_logical_and_error_left_string() {
         check(
-            "name: string, enabled: boolean",
+            "name: String, enabled: Bool",
             "name && enabled",
             expect![[r#"
-                error: Logical AND operator can only be applied to boolean values
+                error: Logical AND operator can only be applied to Bool values
                 name && enabled
                 ^^^^
             "#]],
@@ -1098,10 +1098,10 @@ mod tests {
     #[test]
     fn test_typecheck_logical_and_error_right_int() {
         check(
-            "enabled: boolean, count: int",
+            "enabled: Bool, count: Int",
             "enabled && count",
             expect![[r#"
-                error: Logical AND operator can only be applied to boolean values
+                error: Logical AND operator can only be applied to Bool values
                 enabled && count
                            ^^^^^
             "#]],
@@ -1111,10 +1111,10 @@ mod tests {
     #[test]
     fn test_typecheck_logical_and_error_both_strings() {
         check(
-            "a: string, b: string",
+            "a: String, b: String",
             "a && b",
             expect![[r#"
-                error: Logical AND operator can only be applied to boolean values
+                error: Logical AND operator can only be applied to Bool values
                 a && b
                 ^
             "#]],
@@ -1124,47 +1124,47 @@ mod tests {
     #[test]
     fn test_typecheck_logical_and_precedence() {
         check(
-            "a: boolean, b: boolean, c: boolean",
+            "a: Bool, b: Bool, c: Bool",
             "a && b == c",
-            expect!["boolean"],
+            expect!["Bool"],
         );
     }
 
     #[test]
     fn test_typecheck_logical_or_boolean_variables() {
-        check("a: boolean, b: boolean", "a || b", expect!["boolean"]);
+        check("a: Bool, b: Bool", "a || b", expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_logical_or_boolean_literals() {
-        check("", "true || false", expect!["boolean"]);
+        check("", "true || false", expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_logical_or_property_access() {
         check(
-            "user: {enabled: boolean, active: boolean}",
+            "user: {enabled: Bool, active: Bool}",
             "user.enabled || user.active",
-            expect!["boolean"],
+            expect!["Bool"],
         );
     }
 
     #[test]
     fn test_typecheck_logical_or_with_comparison() {
         check(
-            "x: int, y: int, enabled: boolean",
+            "x: Int, y: Int, enabled: Bool",
             "x > y || enabled",
-            expect!["boolean"],
+            expect!["Bool"],
         );
     }
 
     #[test]
     fn test_typecheck_logical_or_error_left_string() {
         check(
-            "name: string, enabled: boolean",
+            "name: String, enabled: Bool",
             "name || enabled",
             expect![[r#"
-                error: Logical OR operator can only be applied to boolean values
+                error: Logical OR operator can only be applied to Bool values
                 name || enabled
                 ^^^^
             "#]],
@@ -1174,10 +1174,10 @@ mod tests {
     #[test]
     fn test_typecheck_logical_or_error_right_int() {
         check(
-            "enabled: boolean, count: int",
+            "enabled: Bool, count: Int",
             "enabled || count",
             expect![[r#"
-                error: Logical OR operator can only be applied to boolean values
+                error: Logical OR operator can only be applied to Bool values
                 enabled || count
                            ^^^^^
             "#]],
@@ -1187,10 +1187,10 @@ mod tests {
     #[test]
     fn test_typecheck_logical_or_error_both_strings() {
         check(
-            "a: string, b: string",
+            "a: String, b: String",
             "a || b",
             expect![[r#"
-                error: Logical OR operator can only be applied to boolean values
+                error: Logical OR operator can only be applied to Bool values
                 a || b
                 ^
             "#]],
@@ -1200,67 +1200,67 @@ mod tests {
     #[test]
     fn test_typecheck_logical_or_precedence() {
         check(
-            "a: boolean, b: boolean, c: boolean",
+            "a: Bool, b: Bool, c: Bool",
             "a || b == c",
-            expect!["boolean"],
+            expect!["Bool"],
         );
     }
 
     #[test]
     fn test_typecheck_mixed_logical_operators() {
         check(
-            "a: boolean, b: boolean, c: boolean",
+            "a: Bool, b: Bool, c: Bool",
             "a && b || c",
-            expect!["boolean"],
+            expect!["Bool"],
         );
     }
 
     #[test]
     fn test_typecheck_logical_operator_precedence_complex() {
         check(
-            "a: boolean, b: boolean, c: boolean, d: boolean",
+            "a: Bool, b: Bool, c: Bool, d: Bool",
             "a || b && c || d",
-            expect!["boolean"],
+            expect!["Bool"],
         );
     }
 
     #[test]
     fn test_typecheck_int_addition() {
-        check("x: int, y: int", "x + y", expect!["int"]);
+        check("x: Int, y: Int", "x + y", expect!["Int"]);
     }
 
     #[test]
     fn test_typecheck_float_addition() {
-        check("x: float, y: float", "x + y", expect!["float"]);
+        check("x: Float, y: Float", "x + y", expect!["Float"]);
     }
 
     #[test]
     fn test_typecheck_string_addition() {
-        check("s1: string, s2: string", "s1 + s2", expect!["string"]);
+        check("s1: String, s2: String", "s1 + s2", expect!["String"]);
     }
 
     #[test]
     fn test_typecheck_int_literal_addition() {
-        check("", "42 + 17", expect!["int"]);
+        check("", "42 + 17", expect!["Int"]);
     }
 
     #[test]
     fn test_typecheck_float_literal_addition() {
-        check("", "3.14 + 2.71", expect!["float"]);
+        check("", "3.14 + 2.71", expect!["Float"]);
     }
 
     #[test]
     fn test_typecheck_string_literal_concatenation() {
-        check("", r#""hello" + " world""#, expect!["string"]);
+        check("", r#""hello" + " world""#, expect!["String"]);
     }
 
     #[test]
     fn test_typecheck_addition_error_int_plus_float() {
         check(
-            "x: int, y: float",
+            "x: Int, y: Float",
             "x + y",
             expect![[r#"
-                error: Cannot add values of incompatible types: int + float
+                error: Cannot add values of incompatible types: Int + Float
                 x + y
                 ^^^^^
             "#]],
@@ -1270,10 +1270,10 @@ mod tests {
     #[test]
     fn test_typecheck_addition_error_string_plus_int() {
         check(
-            "name: string, count: int",
+            "name: String, count: Int",
             "name + count",
             expect![[r#"
-                error: Cannot add values of incompatible types: string + int
+                error: Cannot add values of incompatible types: String + Int
                 name + count
                 ^^^^^^^^^^^^
             "#]],
@@ -1283,10 +1283,10 @@ mod tests {
     #[test]
     fn test_typecheck_addition_error_boolean_plus_int() {
         check(
-            "flag: boolean, count: int",
+            "flag: Bool, count: Int",
             "flag + count",
             expect![[r#"
-                error: Cannot add values of incompatible types: boolean + int
+                error: Cannot add values of incompatible types: Bool + Int
                 flag + count
                 ^^^^^^^^^^^^
             "#]],
@@ -1295,11 +1295,11 @@ mod tests {
 
     #[test]
     fn test_typecheck_addition_with_property_access() {
-        check("user: {x: int, y: int}", "user.x + user.y", expect!["int"]);
+        check("user: {x: Int, y: Int}", "user.x + user.y", expect!["Int"]);
     }
 
     #[test]
     fn test_typecheck_mixed_addition_and_comparison() {
-        check("a: int, b: int, c: int", "a + b > c", expect!["boolean"]);
+        check("a: Int, b: Int, c: Int", "a + b > c", expect!["Bool"]);
     }
 }

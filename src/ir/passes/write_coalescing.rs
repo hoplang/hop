@@ -360,7 +360,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test(x: string) {
+                test(x: String) {
                   write("Value")
                   write(": ")
                   write_escaped(x)
@@ -369,7 +369,7 @@ mod tests {
                 }
 
                 -- after --
-                test(x: string) {
+                test(x: String) {
                   write("Value: ")
                   write_escaped(x)
                   write(" - done")

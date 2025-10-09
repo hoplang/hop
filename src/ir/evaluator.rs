@@ -463,7 +463,7 @@ mod tests {
             vec![("content", json!("<script>alert('xss')</script>"))],
             expect![[r#"
                 -- before --
-                test(content: string) {
+                test(content: String) {
                   write_escaped(content)
                 }
 
@@ -484,7 +484,7 @@ mod tests {
             vec![("show", json!(true))],
             expect![[r#"
                 -- before --
-                test(show: boolean) {
+                test(show: Bool) {
                   if show {
                     write("<div>Visible</div>")
                   }
@@ -507,7 +507,7 @@ mod tests {
             vec![("show", json!(false))],
             expect![[r#"
                 -- before --
-                test(show: boolean) {
+                test(show: Bool) {
                   if show {
                     write("<div>Hidden</div>")
                   }
@@ -536,7 +536,7 @@ mod tests {
             vec![("items", json!(["Apple", "Banana", "Cherry"]))],
             expect![[r#"
                 -- before --
-                test(items: array[string]) {
+                test(items: Array[String]) {
                   for item in items {
                     write("<li>")
                     write_escaped(item)

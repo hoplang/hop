@@ -1097,15 +1097,15 @@ mod tests {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {user: {name: string}}>
+                <main-comp {user: {name: String}}>
                               ^
                   <h1>Hello {user.name}</h1>
                 </main-comp>
             "#},
             expect![[r#"
-                `user`: `{name: string}`
+                `user`: `{name: String}`
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {user: {name: string}}>
+                1 | <main-comp {user: {name: String}}>
                   |             ^^^^
             "#]],
         );
@@ -1326,7 +1326,7 @@ mod tests {
     fn test_evaluate_ir_entrypoint() {
         let program = program_from_txtar(indoc! {r#"
             -- main.hop --
-            <hello-world entrypoint {name: string}>
+            <hello-world entrypoint {name: String}>
               <h1>Hello {name}!</h1>
             </hello-world>
 

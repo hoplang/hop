@@ -24,7 +24,7 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Negation operator can only be applied to boolean values")]
+    #[error("Negation operator can only be applied to Bool values")]
     NegationRequiresBoolean { range: DocumentRange },
 
     #[error("Array elements must all have the same type, found {expected} and {found}")]
@@ -37,10 +37,10 @@ pub enum TypeError {
     #[error("Type {t} is not comparable")]
     TypeIsNotComparable { t: Type, range: DocumentRange },
 
-    #[error("Logical AND operator can only be applied to boolean values")]
+    #[error("Logical AND operator can only be applied to Bool values")]
     LogicalAndRequiresBoolean { range: DocumentRange },
 
-    #[error("Logical OR operator can only be applied to boolean values")]
+    #[error("Logical OR operator can only be applied to Bool values")]
     LogicalOrRequiresBoolean { range: DocumentRange },
 
     #[error("Cannot add values of incompatible types: {left_type} + {right_type}")]

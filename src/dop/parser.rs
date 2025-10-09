@@ -315,7 +315,7 @@ impl Parser {
             Some((Token::TypeInt, range)) => Ok((Type::Int, range)),
             Some((Token::TypeFloat, range)) => Ok((Type::Float, range)),
             Some((Token::TypeBoolean, range)) => Ok((Type::Bool, range)),
-            Some((Token::TypeTrustedHtml, range)) => Ok((Type::TrustedHtml, range)),
+            Some((Token::TypeTrustedHTML, range)) => Ok((Type::TrustedHTML, range)),
             Some((Token::TypeArray, type_array)) => {
                 let left_bracket = self.expect_token(&Token::LeftBracket)?;
                 let inner_type = self.parse_type()?;
@@ -631,9 +631,9 @@ mod tests {
     #[test]
     fn test_parse_parameters_type_keywords() {
         check_parse_parameters(
-            "name: string, age: int, score: float, active: boolean, items: array[string]",
+            "name: String, age: Int, score: Float, active: Bool, items: Array[String]",
             expect![[r#"
-                [name: string, age: int, score: float, active: boolean, items: array[string]]
+                [name: String, age: Int, score: Float, active: Bool, items: Array[String]]
             "#]],
         );
     }
@@ -641,9 +641,9 @@ mod tests {
     #[test]
     fn test_parse_parameters_trusted_html_type() {
         check_parse_parameters(
-            "content: trusted_html",
+            "content: TrustedHTML",
             expect![[r#"
-                [content: trusted_html]
+                [content: TrustedHTML]
             "#]],
         );
     }
@@ -651,10 +651,10 @@ mod tests {
     #[test]
     fn test_parse_parameters_duplicate_parameters_with_different_type_error() {
         check_parse_parameters(
-            "foo: string, foo: float",
+            "foo: String, foo: Float",
             expect![[r#"
                 error: Duplicate parameter 'foo'
-                foo: string, foo: float
+                foo: String, foo: Float
                              ^^^
             "#]],
         );
@@ -663,10 +663,10 @@ mod tests {
     #[test]
     fn test_parse_parameters_duplicate_parameters_with_same_type_error() {
         check_parse_parameters(
-            "foo: string, foo: string",
+            "foo: String, foo: String",
             expect![[r#"
                 error: Duplicate parameter 'foo'
-                foo: string, foo: string
+                foo: String, foo: String
                              ^^^
             "#]],
         );
@@ -675,11 +675,11 @@ mod tests {
     #[test]
     fn test_parse_parameters_extra_closing_brace() {
         check_parse_parameters(
-            "params: {i: {j: {k: {l: boolean}}}}}",
+            "params: {i: {j: {k: {l: Bool}}}}}",
             expect![[r#"
                 error: Unexpected token '}'
-                params: {i: {j: {k: {l: boolean}}}}}
-                                                   ^
+                params: {i: {j: {k: {l: Bool}}}}}
+                                                ^
             "#]],
         );
     }
@@ -687,10 +687,10 @@ mod tests {
     #[test]
     fn test_parse_parameters_missing_closing_brace() {
         check_parse_parameters(
-            "params: {i: {j: {k: {l: boolean}}}",
+            "params: {i: {j: {k: {l: Bool}}}",
             expect![[r#"
                 error: Unmatched '{'
-                params: {i: {j: {k: {l: boolean}}}
+                params: {i: {j: {k: {l: Bool}}}
                         ^
             "#]],
         );
@@ -699,10 +699,10 @@ mod tests {
     #[test]
     fn test_parse_parameters_duplicate_keys_in_object_type() {
         check_parse_parameters(
-            "user: {name: string, name: float}",
+            "user: {name: String, name: Float}",
             expect![[r#"
                 error: Duplicate property 'name'
-                user: {name: string, name: float}
+                user: {name: String, name: Float}
                                      ^^^^
             "#]],
         );

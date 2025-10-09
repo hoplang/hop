@@ -416,12 +416,12 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test(x: string) {
+                test(x: String) {
                   write_escaped(x)
                 }
 
                 -- after --
-                test(x: string) {
+                test(x: String) {
                   write_escaped(x)
                 }
             "#]],
@@ -438,14 +438,14 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test(x: string) {
+                test(x: String) {
                   for x in ["a"] {
                     write_escaped(x)
                   }
                 }
 
                 -- after --
-                test(x: string) {
+                test(x: String) {
                   for x_1 in ["a"] {
                     write_escaped(x_1)
                   }
@@ -540,7 +540,7 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                test(x: string, y: string) {
+                test(x: String, y: String) {
                   write_escaped(x)
                   for y in ["a"] {
                     write_escaped(x)
@@ -549,7 +549,7 @@ mod tests {
                 }
 
                 -- after --
-                test(x: string, y: string) {
+                test(x: String, y: String) {
                   write_escaped(x)
                   for y_1 in ["a"] {
                     write_escaped(x)
@@ -617,7 +617,7 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                test(items: array[string]) {
+                test(items: Array[String]) {
                   for item in items {
                     write("<div>")
                     for item in ["nested"] {
@@ -632,7 +632,7 @@ mod tests {
                 }
 
                 -- after --
-                test(items: array[string]) {
+                test(items: Array[String]) {
                   for item in items {
                     write("<div>")
                     for item_1 in ["nested"] {

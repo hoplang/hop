@@ -828,7 +828,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-greeting-comp(name: string, message: string) {
+                test-greeting-comp(name: String, message: String) {
                   write("<h1>Hello ")
                   write_escaped(name)
                   write(", ")
@@ -917,7 +917,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-main-comp(show: boolean) {
+                test-main-comp(show: Bool) {
                   if show {
                     write("<div>Visible</div>\n")
                   }
@@ -964,7 +964,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-main-comp(items: array[string]) {
+                test-main-comp(items: Array[String]) {
                   for item in items {
                     write("<li>")
                     write_escaped(item)
@@ -1089,7 +1089,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-nested(users: array[{id: string, name: string}]) {
+                test-nested(users: Array[{id: String, name: String}]) {
                   for user in users {
                     write("<div>")
                     write_escaped(user.name)
@@ -1361,16 +1361,16 @@ mod tests {
                 -- before --
                 test-deep-config(
                   config: {
-                    api_key: string,
+                    api_key: String,
                     database: {
-                      credentials: {password: string, username: string},
-                      host: string,
-                      port: float,
+                      credentials: {password: String, username: String},
+                      host: String,
+                      port: Float,
                     },
-                    features: array[{
-                      enabled: boolean,
-                      name: string,
-                      settings: {level: string, timeout: float},
+                    features: Array[{
+                      enabled: Bool,
+                      name: String,
+                      settings: {level: String, timeout: Float},
                     }],
                   },
                 ) {
@@ -1456,7 +1456,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-auth-check(user_role: string, expected_role: string) {
+                test-auth-check(user_role: String, expected_role: String) {
                   if (user_role == expected_role) {
                     write("<div>Access granted</div>\n")
                   }
@@ -1531,8 +1531,8 @@ mod tests {
             expect![[r#"
                 -- before --
                 test-json(
-                  data: {active: boolean, count: float, title: string},
-                  items: array[string],
+                  data: {active: Bool, count: Float, title: String},
+                  items: Array[String],
                 ) {
                   write("<script>\n")
                   write("const data = ")

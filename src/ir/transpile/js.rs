@@ -715,7 +715,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                user-info(name: string, age: string) {
+                user-info(name: String, age: String) {
                   write("<div>\n")
                   write("<h2>Name: ")
                   write_escaped(name)
@@ -797,7 +797,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                conditional-display(title: string, show: boolean) {
+                conditional-display(title: String, show: Bool) {
                   if show {
                     write("<h1>")
                     write_escaped(title)
@@ -872,7 +872,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                list-items(items: array[string]) {
+                list-items(items: Array[String]) {
                   write("<ul>\n")
                   for item in items {
                     write("<li>")
@@ -1308,8 +1308,8 @@ mod tests {
             expect![[r#"
                 -- before --
                 test-user-list(
-                  users: array[{active: boolean, id: string, name: string}],
-                  title: string,
+                  users: Array[{active: Bool, id: String, name: String}],
+                  title: String,
                 ) {
                   write("<div>\n")
                   write("<h1>\n")

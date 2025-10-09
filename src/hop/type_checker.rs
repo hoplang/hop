@@ -546,7 +546,7 @@ fn typecheck_node(
                 .ok_or_add(dop::typecheck_expr(expression, env, annotations).map_err(Into::into))
             {
                 let expr_type = typed_expr.as_type();
-                if !expr_type.is_subtype(&Type::String) && !expr_type.is_subtype(&Type::TrustedHtml)
+                if !expr_type.is_subtype(&Type::String) && !expr_type.is_subtype(&Type::TrustedHTML)
                 {
                     errors.push(TypeError::ExpectedStringExpression {
                         found: expr_type.clone(),
@@ -935,7 +935,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {items: {foo: array[string]}}>
+                <main-comp {items: {foo: Array[String]}}>
                   <for {items in items.foo}>
                   </for>
                 </main-comp>
@@ -943,7 +943,7 @@ mod tests {
             expect![[r#"
                 error: Variable items is already defined
                   --> main.hop (line 2, col 9)
-                1 | <main-comp {items: {foo: array[string]}}>
+                1 | <main-comp {items: {foo: Array[String]}}>
                 2 |   <for {items in items.foo}>
                   |         ^^^^^
             "#]],
@@ -956,7 +956,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {items: array[string]}>
+                <main-comp {items: Array[String]}>
                   <for {items in items}>
                   </for>
                 </main-comp>
@@ -964,7 +964,7 @@ mod tests {
             expect![[r#"
                 error: Variable items is already defined
                   --> main.hop (line 2, col 9)
-                1 | <main-comp {items: array[string]}>
+                1 | <main-comp {items: Array[String]}>
                 2 |   <for {items in items}>
                   |         ^^^^^
             "#]],
@@ -977,7 +977,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {items: {a: array[string], b: array[string]}}>
+                <main-comp {items: {a: Array[String], b: Array[String]}}>
                   <for {item in items.a}>
                     <for {item in items.b}>
                       <div>{item}</div>
@@ -1001,7 +1001,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: array[{active: boolean}]}>
+                <main-comp {params: Array[{active: Bool}]}>
                 	<for {item in params}>
                 	  <if {item.active}>
                 	  </if>
@@ -1026,7 +1026,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {items: array[string]}>
+                <main-comp {items: Array[String]}>
                   <for {item in items}>
                       <div>{item}</div>
                   </for>
@@ -1050,7 +1050,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {items: array[string]}>
+                <main-comp {items: Array[String]}>
                   <for {item in items}>
                   </for>
                   <for {item in items}>
@@ -1061,7 +1061,7 @@ mod tests {
             expect![[r#"
                 error: Unused variable item
                   --> main.hop (line 2, col 9)
-                1 | <main-comp {items: array[string]}>
+                1 | <main-comp {items: Array[String]}>
                 2 |   <for {item in items}>
                   |         ^^^^
             "#]],
@@ -1074,7 +1074,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {items: array[string]}>
+                <main-comp {items: Array[String]}>
                   <for {item in items}>
                   </for>
                 </main-comp>
@@ -1082,7 +1082,7 @@ mod tests {
             expect![[r#"
                 error: Unused variable item
                   --> main.hop (line 2, col 9)
-                1 | <main-comp {items: array[string]}>
+                1 | <main-comp {items: Array[String]}>
                 2 |   <for {item in items}>
                   |         ^^^^
             "#]],
@@ -1095,7 +1095,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <bar-comp {p: string, s: string}>
+                <bar-comp {p: String, s: String}>
                   <div>
                   	{s}
                   </div>
@@ -1104,7 +1104,7 @@ mod tests {
             expect![[r#"
                 error: Unused variable p
                   --> main.hop (line 1, col 12)
-                1 | <bar-comp {p: string, s: string}>
+                1 | <bar-comp {p: String, s: String}>
                   |            ^
             "#]],
         );
@@ -1116,7 +1116,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {a: boolean, b: string}>
+                <main-comp {a: Bool, b: String}>
                   <if {a}>
                     <div>{b}</div>
                   </if>
@@ -1126,35 +1126,35 @@ mod tests {
                 </foo-comp>
             "#},
             expect![[r#"
-                a: boolean
+                a: Bool
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {a: boolean, b: string}>
+                1 | <main-comp {a: Bool, b: String}>
                   |             ^
 
-                b: string
-                  --> main.hop (line 1, col 25)
-                1 | <main-comp {a: boolean, b: string}>
-                  |                         ^
+                b: String
+                  --> main.hop (line 1, col 22)
+                1 | <main-comp {a: Bool, b: String}>
+                  |                      ^
 
-                b: string
+                b: String
                   --> main.hop (line 3, col 11)
                 2 |   <if {a}>
                 3 |     <div>{b}</div>
                   |           ^
 
-                a: boolean
+                a: Bool
                   --> main.hop (line 2, col 8)
-                1 | <main-comp {a: boolean, b: string}>
+                1 | <main-comp {a: Bool, b: String}>
                 2 |   <if {a}>
                   |        ^
 
-                b: string
+                b: String
                   --> main.hop (line 7, col 18)
                 6 | <foo-comp>
                 7 |   <main-comp {b: "foo", a: true}/>
                   |                  ^^^^^
 
-                a: boolean
+                a: Bool
                   --> main.hop (line 7, col 28)
                 6 | <foo-comp>
                 7 |   <main-comp {b: "foo", a: true}/>
@@ -1169,7 +1169,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {a: boolean, b: string}>
+                <main-comp {a: Bool, b: String}>
                   <if {a}>
                     <div>{b}</div>
                   </if>
@@ -1194,7 +1194,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {a: boolean, b: string}>
+                <main-comp {a: Bool, b: String}>
                   <if {a}>
                     <div>{b}</div>
                   </if>
@@ -1242,7 +1242,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: array[{k: boolean}]}>
+                <main-comp {params: Array[{k: Bool}]}>
                 	<for {item in params}>
                 		<if {item.k}>
                 		</if>
@@ -1255,7 +1255,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Can not iterate over boolean
+                error: Can not iterate over Bool
                   --> main.hop (line 7, col 18)
                  6 |     <for {item in params}>
                  7 |         <for {inner in item.k}>
@@ -1269,7 +1269,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: boolean}>
+                <main-comp {params: Bool}>
                 	<if {params}>
                 	</if>
                 	<for {item in params}>
@@ -1278,7 +1278,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Can not iterate over boolean
+                error: Can not iterate over Bool
                   --> main.hop (line 4, col 16)
                 3 |     </if>
                 4 |     <for {item in params}>
@@ -1293,7 +1293,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: {items: array[{active: boolean, name: boolean}]}}>
+                <main-comp {params: {items: Array[{active: Bool, name: Bool}]}}>
                 	<for {item in params.items}>
                 		<if {item.active}>
                 		</if>
@@ -1303,30 +1303,30 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {items: array[{active: boolean, name: boolean}]}
+                params: {items: Array[{active: Bool, name: Bool}]}
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {params: {items: array[{active: boolean, name: boolean}]}}>
+                1 | <main-comp {params: {items: Array[{active: Bool, name: Bool}]}}>
                   |             ^^^^^^
 
-                params: {items: array[{active: boolean, name: boolean}]}
+                params: {items: Array[{active: Bool, name: Bool}]}
                   --> main.hop (line 2, col 16)
-                1 | <main-comp {params: {items: array[{active: boolean, name: boolean}]}}>
+                1 | <main-comp {params: {items: Array[{active: Bool, name: Bool}]}}>
                 2 |     <for {item in params.items}>
                   |                   ^^^^^^
 
-                item: {active: boolean, name: boolean}
+                item: {active: Bool, name: Bool}
                   --> main.hop (line 2, col 8)
-                1 | <main-comp {params: {items: array[{active: boolean, name: boolean}]}}>
+                1 | <main-comp {params: {items: Array[{active: Bool, name: Bool}]}}>
                 2 |     <for {item in params.items}>
                   |           ^^^^
 
-                item: {active: boolean, name: boolean}
+                item: {active: Bool, name: Bool}
                   --> main.hop (line 3, col 8)
                 2 |     <for {item in params.items}>
                 3 |         <if {item.active}>
                   |              ^^^^
 
-                item: {active: boolean, name: boolean}
+                item: {active: Bool, name: Bool}
                   --> main.hop (line 5, col 8)
                 4 |         </if>
                 5 |         <if {item.name}>
@@ -1356,27 +1356,27 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: {a: string, b: boolean}}>
+                <main-comp {params: {a: String, b: Bool}}>
                   <if {(params.a == "str") == params.b}>
                     <div>Match</div>
                   </if>
                 </main-comp>
             "#},
             expect![[r#"
-                params: {a: string, b: boolean}
+                params: {a: String, b: Bool}
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {params: {a: string, b: boolean}}>
+                1 | <main-comp {params: {a: String, b: Bool}}>
                   |             ^^^^^^
 
-                params: {a: string, b: boolean}
+                params: {a: String, b: Bool}
                   --> main.hop (line 2, col 9)
-                1 | <main-comp {params: {a: string, b: boolean}}>
+                1 | <main-comp {params: {a: String, b: Bool}}>
                 2 |   <if {(params.a == "str") == params.b}>
                   |         ^^^^^^
 
-                params: {a: string, b: boolean}
+                params: {a: String, b: Bool}
                   --> main.hop (line 2, col 31)
-                1 | <main-comp {params: {a: string, b: boolean}}>
+                1 | <main-comp {params: {a: String, b: Bool}}>
                 2 |   <if {(params.a == "str") == params.b}>
                   |                               ^^^^^^
             "#]],
@@ -1388,7 +1388,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: {enabled: boolean, users: array[{profile: {verified: boolean}, posts: array[{published: boolean}]}]}}>
+                <main-comp {params: {enabled: Bool, users: Array[{profile: {verified: Bool}, posts: Array[{published: Bool}]}]}}>
                 	<if {params.enabled}>
                 		<for {user in params.users}>
                 			<if {user.profile.verified}>
@@ -1404,21 +1404,21 @@ mod tests {
             "#},
             expect![[r#"
                 params: {
-                  enabled: boolean,
-                  users: array[{
-                    posts: array[{published: boolean}],
-                    profile: {verified: boolean},
+                  enabled: Bool,
+                  users: Array[{
+                    posts: Array[{published: Bool}],
+                    profile: {verified: Bool},
                   }],
                 }
                   --> main.hop (line 1, col 13)
-                 1 | <main-comp {params: {enabled: boolean, users: array[{profile: {verified: boolean}, posts: array[{published: boolean}]}]}}>
+                 1 | <main-comp {params: {enabled: Bool, users: Array[{profile: {verified: Bool}, posts: Array[{published: Bool}]}]}}>
                    |             ^^^^^^
 
                 params: {
-                  enabled: boolean,
-                  users: array[{
-                    posts: array[{published: boolean}],
-                    profile: {verified: boolean},
+                  enabled: Bool,
+                  users: Array[{
+                    posts: Array[{published: Bool}],
+                    profile: {verified: Bool},
                   }],
                 }
                   --> main.hop (line 3, col 17)
@@ -1426,54 +1426,45 @@ mod tests {
                  3 |         <for {user in params.users}>
                    |                       ^^^^^^
 
-                user: {
-                  posts: array[{published: boolean}],
-                  profile: {verified: boolean},
-                }
+                user: {posts: Array[{published: Bool}], profile: {verified: Bool}}
                   --> main.hop (line 3, col 9)
                  2 |     <if {params.enabled}>
                  3 |         <for {user in params.users}>
                    |               ^^^^
 
-                user: {
-                  posts: array[{published: boolean}],
-                  profile: {verified: boolean},
-                }
+                user: {posts: Array[{published: Bool}], profile: {verified: Bool}}
                   --> main.hop (line 5, col 19)
                  4 |             <if {user.profile.verified}>
                  5 |                 <for {post in user.posts}>
                    |                               ^^^^
 
-                post: {published: boolean}
+                post: {published: Bool}
                   --> main.hop (line 5, col 11)
                  4 |             <if {user.profile.verified}>
                  5 |                 <for {post in user.posts}>
                    |                       ^^^^
 
-                post: {published: boolean}
+                post: {published: Bool}
                   --> main.hop (line 6, col 11)
                  5 |                 <for {post in user.posts}>
                  6 |                     <if {post.published}>
                    |                          ^^^^
 
-                user: {
-                  posts: array[{published: boolean}],
-                  profile: {verified: boolean},
-                }
+                user: {posts: Array[{published: Bool}], profile: {verified: Bool}}
                   --> main.hop (line 4, col 9)
                  3 |         <for {user in params.users}>
                  4 |             <if {user.profile.verified}>
                    |                  ^^^^
 
                 params: {
-                  enabled: boolean,
-                  users: array[{
-                    posts: array[{published: boolean}],
-                    profile: {verified: boolean},
+                  enabled: Bool,
+                  users: Array[{
+                    posts: Array[{published: Bool}],
+                    profile: {verified: Bool},
                   }],
                 }
                   --> main.hop (line 2, col 7)
-                 1 | <main-comp {params: {enabled: boolean, users: array[{profile: {verified: boolean}, posts: array[{published: boolean}]}]}}>
+                 1 | <main-comp {params: {enabled: Bool, users: Array[{profile: {verified: Bool}, posts: Array[{published: Bool}]}]}}>
                  2 |     <if {params.enabled}>
                    |          ^^^^^^
             "#]],
@@ -1485,7 +1476,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: {sections: array[{header: {visible: boolean}, items: array[{data: {valid: boolean}}]}]}}>
+                <main-comp {params: {sections: Array[{header: {visible: Bool}, items: Array[{data: {valid: Bool}}]}]}}>
                 	<for {section in params.sections}>
                 		<if {section.header.visible}>
                 			<for {item in section.items}>
@@ -1498,59 +1489,59 @@ mod tests {
             "#},
             expect![[r#"
                 params: {
-                  sections: array[{
-                    header: {visible: boolean},
-                    items: array[{data: {valid: boolean}}],
+                  sections: Array[{
+                    header: {visible: Bool},
+                    items: Array[{data: {valid: Bool}}],
                   }],
                 }
                   --> main.hop (line 1, col 13)
-                 1 | <main-comp {params: {sections: array[{header: {visible: boolean}, items: array[{data: {valid: boolean}}]}]}}>
+                 1 | <main-comp {params: {sections: Array[{header: {visible: Bool}, items: Array[{data: {valid: Bool}}]}]}}>
                    |             ^^^^^^
 
                 params: {
-                  sections: array[{
-                    header: {visible: boolean},
-                    items: array[{data: {valid: boolean}}],
+                  sections: Array[{
+                    header: {visible: Bool},
+                    items: Array[{data: {valid: Bool}}],
                   }],
                 }
                   --> main.hop (line 2, col 19)
-                 1 | <main-comp {params: {sections: array[{header: {visible: boolean}, items: array[{data: {valid: boolean}}]}]}}>
+                 1 | <main-comp {params: {sections: Array[{header: {visible: Bool}, items: Array[{data: {valid: Bool}}]}]}}>
                  2 |     <for {section in params.sections}>
                    |                      ^^^^^^
 
                 section: {
-                  header: {visible: boolean},
-                  items: array[{data: {valid: boolean}}],
+                  header: {visible: Bool},
+                  items: Array[{data: {valid: Bool}}],
                 }
                   --> main.hop (line 2, col 8)
-                 1 | <main-comp {params: {sections: array[{header: {visible: boolean}, items: array[{data: {valid: boolean}}]}]}}>
+                 1 | <main-comp {params: {sections: Array[{header: {visible: Bool}, items: Array[{data: {valid: Bool}}]}]}}>
                  2 |     <for {section in params.sections}>
                    |           ^^^^^^^
 
                 section: {
-                  header: {visible: boolean},
-                  items: array[{data: {valid: boolean}}],
+                  header: {visible: Bool},
+                  items: Array[{data: {valid: Bool}}],
                 }
                   --> main.hop (line 4, col 18)
                  3 |         <if {section.header.visible}>
                  4 |             <for {item in section.items}>
                    |                           ^^^^^^^
 
-                item: {data: {valid: boolean}}
+                item: {data: {valid: Bool}}
                   --> main.hop (line 4, col 10)
                  3 |         <if {section.header.visible}>
                  4 |             <for {item in section.items}>
                    |                   ^^^^
 
-                item: {data: {valid: boolean}}
+                item: {data: {valid: Bool}}
                   --> main.hop (line 5, col 10)
                  4 |             <for {item in section.items}>
                  5 |                 <if {item.data.valid}>
                    |                      ^^^^
 
                 section: {
-                  header: {visible: boolean},
-                  items: array[{data: {valid: boolean}}],
+                  header: {visible: Bool},
+                  items: Array[{data: {valid: Bool}}],
                 }
                   --> main.hop (line 3, col 8)
                  2 |     <for {section in params.sections}>
@@ -1565,20 +1556,20 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: {i: {j: {k: {l: boolean}}}}}>
+                <main-comp {params: {i: {j: {k: {l: Bool}}}}}>
                 	<if {params.i.j.k.l}>
                 	</if>
                 </main-comp>
             "#},
             expect![[r#"
-                params: {i: {j: {k: {l: boolean}}}}
+                params: {i: {j: {k: {l: Bool}}}}
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {params: {i: {j: {k: {l: boolean}}}}}>
+                1 | <main-comp {params: {i: {j: {k: {l: Bool}}}}}>
                   |             ^^^^^^
 
-                params: {i: {j: {k: {l: boolean}}}}
+                params: {i: {j: {k: {l: Bool}}}}
                   --> main.hop (line 2, col 7)
-                1 | <main-comp {params: {i: {j: {k: {l: boolean}}}}}>
+                1 | <main-comp {params: {i: {j: {k: {l: Bool}}}}}>
                 2 |     <if {params.i.j.k.l}>
                   |          ^^^^^^
             "#]],
@@ -1590,7 +1581,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: {app: {ui: {theme: {dark: boolean}}, api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}}}}>
+                <main-comp {params: {app: {ui: {theme: {dark: Bool}}, api: {endpoints: {users: {enabled: Bool}}}, database: {connection: {ssl: Bool}}}}}>
                 	<if {params.app.ui.theme.dark}>
                 	</if>
                 	<if {params.app.api.endpoints.users.enabled}>
@@ -1602,32 +1593,32 @@ mod tests {
             expect![[r#"
                 params: {
                   app: {
-                    api: {endpoints: {users: {enabled: boolean}}},
-                    database: {connection: {ssl: boolean}},
-                    ui: {theme: {dark: boolean}},
+                    api: {endpoints: {users: {enabled: Bool}}},
+                    database: {connection: {ssl: Bool}},
+                    ui: {theme: {dark: Bool}},
                   },
                 }
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {params: {app: {ui: {theme: {dark: boolean}}, api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}}}}>
+                1 | <main-comp {params: {app: {ui: {theme: {dark: Bool}}, api: {endpoints: {users: {enabled: Bool}}}, database: {connection: {ssl: Bool}}}}}>
                   |             ^^^^^^
 
                 params: {
                   app: {
-                    api: {endpoints: {users: {enabled: boolean}}},
-                    database: {connection: {ssl: boolean}},
-                    ui: {theme: {dark: boolean}},
+                    api: {endpoints: {users: {enabled: Bool}}},
+                    database: {connection: {ssl: Bool}},
+                    ui: {theme: {dark: Bool}},
                   },
                 }
                   --> main.hop (line 2, col 7)
-                1 | <main-comp {params: {app: {ui: {theme: {dark: boolean}}, api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}}}}>
+                1 | <main-comp {params: {app: {ui: {theme: {dark: Bool}}, api: {endpoints: {users: {enabled: Bool}}}, database: {connection: {ssl: Bool}}}}}>
                 2 |     <if {params.app.ui.theme.dark}>
                   |          ^^^^^^
 
                 params: {
                   app: {
-                    api: {endpoints: {users: {enabled: boolean}}},
-                    database: {connection: {ssl: boolean}},
-                    ui: {theme: {dark: boolean}},
+                    api: {endpoints: {users: {enabled: Bool}}},
+                    database: {connection: {ssl: Bool}},
+                    ui: {theme: {dark: Bool}},
                   },
                 }
                   --> main.hop (line 4, col 7)
@@ -1637,9 +1628,9 @@ mod tests {
 
                 params: {
                   app: {
-                    api: {endpoints: {users: {enabled: boolean}}},
-                    database: {connection: {ssl: boolean}},
-                    ui: {theme: {dark: boolean}},
+                    api: {endpoints: {users: {enabled: Bool}}},
+                    database: {connection: {ssl: Bool}},
+                    ui: {theme: {dark: Bool}},
                   },
                 }
                   --> main.hop (line 6, col 7)
@@ -1673,18 +1664,18 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp entrypoint {data: {message: string}}>
+                <main-comp entrypoint {data: {message: String}}>
                     <h1>Hello World</h1>
                     <p>{data.message}</p>
                 </main-comp>
             "#},
             expect![[r#"
-                data: {message: string}
+                data: {message: String}
                   --> main.hop (line 1, col 24)
-                1 | <main-comp entrypoint {data: {message: string}}>
+                1 | <main-comp entrypoint {data: {message: String}}>
                   |                        ^^^^
 
-                data: {message: string}
+                data: {message: String}
                   --> main.hop (line 3, col 9)
                 2 |     <h1>Hello World</h1>
                 3 |     <p>{data.message}</p>
@@ -1698,7 +1689,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: {user: {name: string}, other_user: {name: string}, data: {x: string, y: string}}}>
+                <main-comp {params: {user: {name: String}, other_user: {name: String}, data: {x: String, y: String}}}>
                   <if {params.user.name == params.other_user.name}>
                     <div>Same name</div>
                   </if>
@@ -1709,38 +1700,38 @@ mod tests {
             "#},
             expect![[r#"
                 params: {
-                  data: {x: string, y: string},
-                  other_user: {name: string},
-                  user: {name: string},
+                  data: {x: String, y: String},
+                  other_user: {name: String},
+                  user: {name: String},
                 }
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {params: {user: {name: string}, other_user: {name: string}, data: {x: string, y: string}}}>
+                1 | <main-comp {params: {user: {name: String}, other_user: {name: String}, data: {x: String, y: String}}}>
                   |             ^^^^^^
 
                 params: {
-                  data: {x: string, y: string},
-                  other_user: {name: string},
-                  user: {name: string},
+                  data: {x: String, y: String},
+                  other_user: {name: String},
+                  user: {name: String},
                 }
                   --> main.hop (line 2, col 8)
-                1 | <main-comp {params: {user: {name: string}, other_user: {name: string}, data: {x: string, y: string}}}>
+                1 | <main-comp {params: {user: {name: String}, other_user: {name: String}, data: {x: String, y: String}}}>
                 2 |   <if {params.user.name == params.other_user.name}>
                   |        ^^^^^^
 
                 params: {
-                  data: {x: string, y: string},
-                  other_user: {name: string},
-                  user: {name: string},
+                  data: {x: String, y: String},
+                  other_user: {name: String},
+                  user: {name: String},
                 }
                   --> main.hop (line 2, col 28)
-                1 | <main-comp {params: {user: {name: string}, other_user: {name: string}, data: {x: string, y: string}}}>
+                1 | <main-comp {params: {user: {name: String}, other_user: {name: String}, data: {x: String, y: String}}}>
                 2 |   <if {params.user.name == params.other_user.name}>
                   |                            ^^^^^^
 
                 params: {
-                  data: {x: string, y: string},
-                  other_user: {name: string},
-                  user: {name: string},
+                  data: {x: String, y: String},
+                  other_user: {name: String},
+                  user: {name: String},
                 }
                   --> main.hop (line 5, col 9)
                 4 |   </if>
@@ -1748,9 +1739,9 @@ mod tests {
                   |         ^^^^^^
 
                 params: {
-                  data: {x: string, y: string},
-                  other_user: {name: string},
-                  user: {name: string},
+                  data: {x: String, y: String},
+                  other_user: {name: String},
+                  user: {name: String},
                 }
                   --> main.hop (line 5, col 26)
                 4 |   </if>
@@ -1765,27 +1756,27 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: {x: string, y: string}}>
+                <main-comp {params: {x: String, y: String}}>
                   <if {params.x == params.y}>
                     <div>Values are equal</div>
                   </if>
                 </main-comp>
             "#},
             expect![[r#"
-                params: {x: string, y: string}
+                params: {x: String, y: String}
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {params: {x: string, y: string}}>
+                1 | <main-comp {params: {x: String, y: String}}>
                   |             ^^^^^^
 
-                params: {x: string, y: string}
+                params: {x: String, y: String}
                   --> main.hop (line 2, col 8)
-                1 | <main-comp {params: {x: string, y: string}}>
+                1 | <main-comp {params: {x: String, y: String}}>
                 2 |   <if {params.x == params.y}>
                   |        ^^^^^^
 
-                params: {x: string, y: string}
+                params: {x: String, y: String}
                   --> main.hop (line 2, col 20)
-                1 | <main-comp {params: {x: string, y: string}}>
+                1 | <main-comp {params: {x: String, y: String}}>
                 2 |   <if {params.x == params.y}>
                   |                    ^^^^^^
             "#]],
@@ -1797,7 +1788,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: {foo: {bar: array[boolean]}}}>
+                <main-comp {params: {foo: {bar: Array[Bool]}}}>
                 	<for {j in params.foo.bar}>
                 		<if {j}>
                 		</if>
@@ -1805,24 +1796,24 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {foo: {bar: array[boolean]}}
+                params: {foo: {bar: Array[Bool]}}
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {params: {foo: {bar: array[boolean]}}}>
+                1 | <main-comp {params: {foo: {bar: Array[Bool]}}}>
                   |             ^^^^^^
 
-                params: {foo: {bar: array[boolean]}}
+                params: {foo: {bar: Array[Bool]}}
                   --> main.hop (line 2, col 13)
-                1 | <main-comp {params: {foo: {bar: array[boolean]}}}>
+                1 | <main-comp {params: {foo: {bar: Array[Bool]}}}>
                 2 |     <for {j in params.foo.bar}>
                   |                ^^^^^^
 
-                j: boolean
+                j: Bool
                   --> main.hop (line 2, col 8)
-                1 | <main-comp {params: {foo: {bar: array[boolean]}}}>
+                1 | <main-comp {params: {foo: {bar: Array[Bool]}}}>
                 2 |     <for {j in params.foo.bar}>
                   |           ^
 
-                j: boolean
+                j: Bool
                   --> main.hop (line 3, col 8)
                 2 |     <for {j in params.foo.bar}>
                 3 |         <if {j}>
@@ -1836,7 +1827,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: array[{a: boolean, b: boolean}]}>
+                <main-comp {params: Array[{a: Bool, b: Bool}]}>
                 	<for {j in params}>
                 		<if {j.a}>
                 		</if>
@@ -1848,42 +1839,42 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: array[{a: boolean, b: boolean}]
+                params: Array[{a: Bool, b: Bool}]
                   --> main.hop (line 1, col 13)
-                 1 | <main-comp {params: array[{a: boolean, b: boolean}]}>
+                 1 | <main-comp {params: Array[{a: Bool, b: Bool}]}>
                    |             ^^^^^^
 
-                params: array[{a: boolean, b: boolean}]
+                params: Array[{a: Bool, b: Bool}]
                   --> main.hop (line 2, col 13)
-                 1 | <main-comp {params: array[{a: boolean, b: boolean}]}>
+                 1 | <main-comp {params: Array[{a: Bool, b: Bool}]}>
                  2 |     <for {j in params}>
                    |                ^^^^^^
 
-                j: {a: boolean, b: boolean}
+                j: {a: Bool, b: Bool}
                   --> main.hop (line 2, col 8)
-                 1 | <main-comp {params: array[{a: boolean, b: boolean}]}>
+                 1 | <main-comp {params: Array[{a: Bool, b: Bool}]}>
                  2 |     <for {j in params}>
                    |           ^
 
-                j: {a: boolean, b: boolean}
+                j: {a: Bool, b: Bool}
                   --> main.hop (line 3, col 8)
                  2 |     <for {j in params}>
                  3 |         <if {j.a}>
                    |              ^
 
-                params: array[{a: boolean, b: boolean}]
+                params: Array[{a: Bool, b: Bool}]
                   --> main.hop (line 6, col 13)
                  5 |     </for>
                  6 |     <for {j in params}>
                    |                ^^^^^^
 
-                j: {a: boolean, b: boolean}
+                j: {a: Bool, b: Bool}
                   --> main.hop (line 6, col 8)
                  5 |     </for>
                  6 |     <for {j in params}>
                    |           ^
 
-                j: {a: boolean, b: boolean}
+                j: {a: Bool, b: Bool}
                   --> main.hop (line 7, col 8)
                  6 |     <for {j in params}>
                  7 |         <if {j.b}>
@@ -1897,7 +1888,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {i: array[array[boolean]]}>
+                <main-comp {i: Array[Array[Bool]]}>
                 	<for {j in i}>
                 		<for {k in j}>
                 			<if {k}>
@@ -1907,36 +1898,36 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                i: array[array[boolean]]
+                i: Array[Array[Bool]]
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {i: array[array[boolean]]}>
+                1 | <main-comp {i: Array[Array[Bool]]}>
                   |             ^
 
-                i: array[array[boolean]]
+                i: Array[Array[Bool]]
                   --> main.hop (line 2, col 13)
-                1 | <main-comp {i: array[array[boolean]]}>
+                1 | <main-comp {i: Array[Array[Bool]]}>
                 2 |     <for {j in i}>
                   |                ^
 
-                j: array[boolean]
+                j: Array[Bool]
                   --> main.hop (line 2, col 8)
-                1 | <main-comp {i: array[array[boolean]]}>
+                1 | <main-comp {i: Array[Array[Bool]]}>
                 2 |     <for {j in i}>
                   |           ^
 
-                j: array[boolean]
+                j: Array[Bool]
                   --> main.hop (line 3, col 14)
                 2 |     <for {j in i}>
                 3 |         <for {k in j}>
                   |                    ^
 
-                k: boolean
+                k: Bool
                   --> main.hop (line 3, col 9)
                 2 |     <for {j in i}>
                 3 |         <for {k in j}>
                   |               ^
 
-                k: boolean
+                k: Bool
                   --> main.hop (line 4, col 9)
                 3 |         <for {k in j}>
                 4 |             <if {k}>
@@ -1950,7 +1941,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {i: array[boolean]}>
+                <main-comp {i: Array[Bool]}>
                 	<for {j in i}>
                 		<if {j}>
                 		</if>
@@ -1958,24 +1949,24 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                i: array[boolean]
+                i: Array[Bool]
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {i: array[boolean]}>
+                1 | <main-comp {i: Array[Bool]}>
                   |             ^
 
-                i: array[boolean]
+                i: Array[Bool]
                   --> main.hop (line 2, col 13)
-                1 | <main-comp {i: array[boolean]}>
+                1 | <main-comp {i: Array[Bool]}>
                 2 |     <for {j in i}>
                   |                ^
 
-                j: boolean
+                j: Bool
                   --> main.hop (line 2, col 8)
-                1 | <main-comp {i: array[boolean]}>
+                1 | <main-comp {i: Array[Bool]}>
                 2 |     <for {j in i}>
                   |           ^
 
-                j: boolean
+                j: Bool
                   --> main.hop (line 3, col 8)
                 2 |     <for {j in i}>
                 3 |         <if {j}>
@@ -1989,44 +1980,44 @@ mod tests {
         check(
             indoc! {r#"
                 -- utils.hop --
-                <button-comp {text: string}>
+                <button-comp {text: String}>
                   <div>{text}</div>
                 </button-comp>
 
                 -- main.hop --
                 <import component="button-comp" from="@/utils">
 
-                <main-comp {label: string}>
+                <main-comp {label: String}>
                   <button-comp {text: label}/>
                 </main-comp>
             "#},
             expect![[r#"
-                text: string
+                text: String
                   --> utils.hop (line 1, col 15)
-                1 | <button-comp {text: string}>
+                1 | <button-comp {text: String}>
                   |               ^^^^
 
-                text: string
+                text: String
                   --> utils.hop (line 2, col 9)
-                1 | <button-comp {text: string}>
+                1 | <button-comp {text: String}>
                 2 |   <div>{text}</div>
                   |         ^^^^
 
-                label: string
+                label: String
                   --> main.hop (line 3, col 13)
                 2 | 
-                3 | <main-comp {label: string}>
+                3 | <main-comp {label: String}>
                   |             ^^^^^
 
-                label: string
+                label: String
                   --> main.hop (line 4, col 23)
-                3 | <main-comp {label: string}>
+                3 | <main-comp {label: String}>
                 4 |   <button-comp {text: label}/>
                   |                       ^^^^^
 
-                text: string
+                text: String
                   --> main.hop (line 4, col 23)
-                3 | <main-comp {label: string}>
+                3 | <main-comp {label: String}>
                 4 |   <button-comp {text: label}/>
                   |                       ^^^^^
             "#]],
@@ -2038,7 +2029,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- bar.hop --
-                <widget-comp {config: {enabled: boolean, title: string}}>
+                <widget-comp {config: {enabled: Bool, title: String}}>
                   <if {config.enabled}>
                     <div>{config.title}</div>
                   </if>
@@ -2047,7 +2038,7 @@ mod tests {
                 -- foo.hop --
                 <import component="widget-comp" from="@/bar">
 
-                <panel-comp {data: {items: array[{enabled: boolean, title: string}]}}>
+                <panel-comp {data: {items: Array[{enabled: Bool, title: String}]}}>
                   <for {item in data.items}>
                     <widget-comp {config: item}/>
                   </for>
@@ -2056,81 +2047,73 @@ mod tests {
                 -- main.hop --
                 <import component="panel-comp" from="@/foo">
 
-                <main-comp {settings: {dashboard: {items: array[{enabled: boolean, title: string}]}}}>
+                <main-comp {settings: {dashboard: {items: Array[{enabled: Bool, title: String}]}}}>
                   <panel-comp {data: settings.dashboard}/>
                 </main-comp>
             "#},
             expect![[r#"
-                config: {enabled: boolean, title: string}
+                config: {enabled: Bool, title: String}
                   --> bar.hop (line 1, col 15)
-                1 | <widget-comp {config: {enabled: boolean, title: string}}>
+                1 | <widget-comp {config: {enabled: Bool, title: String}}>
                   |               ^^^^^^
 
-                config: {enabled: boolean, title: string}
+                config: {enabled: Bool, title: String}
                   --> bar.hop (line 3, col 11)
                 2 |   <if {config.enabled}>
                 3 |     <div>{config.title}</div>
                   |           ^^^^^^
 
-                config: {enabled: boolean, title: string}
+                config: {enabled: Bool, title: String}
                   --> bar.hop (line 2, col 8)
-                1 | <widget-comp {config: {enabled: boolean, title: string}}>
+                1 | <widget-comp {config: {enabled: Bool, title: String}}>
                 2 |   <if {config.enabled}>
                   |        ^^^^^^
 
-                data: {items: array[{enabled: boolean, title: string}]}
+                data: {items: Array[{enabled: Bool, title: String}]}
                   --> foo.hop (line 3, col 14)
                 2 | 
-                3 | <panel-comp {data: {items: array[{enabled: boolean, title: string}]}}>
+                3 | <panel-comp {data: {items: Array[{enabled: Bool, title: String}]}}>
                   |              ^^^^
 
-                data: {items: array[{enabled: boolean, title: string}]}
+                data: {items: Array[{enabled: Bool, title: String}]}
                   --> foo.hop (line 4, col 17)
-                3 | <panel-comp {data: {items: array[{enabled: boolean, title: string}]}}>
+                3 | <panel-comp {data: {items: Array[{enabled: Bool, title: String}]}}>
                 4 |   <for {item in data.items}>
                   |                 ^^^^
 
-                item: {enabled: boolean, title: string}
+                item: {enabled: Bool, title: String}
                   --> foo.hop (line 4, col 9)
-                3 | <panel-comp {data: {items: array[{enabled: boolean, title: string}]}}>
+                3 | <panel-comp {data: {items: Array[{enabled: Bool, title: String}]}}>
                 4 |   <for {item in data.items}>
                   |         ^^^^
 
-                item: {enabled: boolean, title: string}
+                item: {enabled: Bool, title: String}
                   --> foo.hop (line 5, col 27)
                 4 |   <for {item in data.items}>
                 5 |     <widget-comp {config: item}/>
                   |                           ^^^^
 
-                config: {enabled: boolean, title: string}
+                config: {enabled: Bool, title: String}
                   --> foo.hop (line 5, col 27)
                 4 |   <for {item in data.items}>
                 5 |     <widget-comp {config: item}/>
                   |                           ^^^^
 
-                settings: {
-                  dashboard: {
-                    items: array[{enabled: boolean, title: string}],
-                  },
-                }
+                settings: {dashboard: {items: Array[{enabled: Bool, title: String}]}}
                   --> main.hop (line 3, col 13)
                 2 | 
-                3 | <main-comp {settings: {dashboard: {items: array[{enabled: boolean, title: string}]}}}>
+                3 | <main-comp {settings: {dashboard: {items: Array[{enabled: Bool, title: String}]}}}>
                   |             ^^^^^^^^
 
-                settings: {
-                  dashboard: {
-                    items: array[{enabled: boolean, title: string}],
-                  },
-                }
+                settings: {dashboard: {items: Array[{enabled: Bool, title: String}]}}
                   --> main.hop (line 4, col 22)
-                3 | <main-comp {settings: {dashboard: {items: array[{enabled: boolean, title: string}]}}}>
+                3 | <main-comp {settings: {dashboard: {items: Array[{enabled: Bool, title: String}]}}}>
                 4 |   <panel-comp {data: settings.dashboard}/>
                   |                      ^^^^^^^^
 
-                data: {items: array[{enabled: boolean, title: string}]}
+                data: {items: Array[{enabled: Bool, title: String}]}
                   --> main.hop (line 4, col 22)
-                3 | <main-comp {settings: {dashboard: {items: array[{enabled: boolean, title: string}]}}}>
+                3 | <main-comp {settings: {dashboard: {items: Array[{enabled: Bool, title: String}]}}}>
                 4 |   <panel-comp {data: settings.dashboard}/>
                   |                      ^^^^^^^^^^^^^^^^^^
             "#]],
@@ -2142,19 +2125,19 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: string}>
+                <main-comp {params: String}>
                 	<div>{params}</div>
                 </main-comp>
             "#},
             expect![[r#"
-                params: string
+                params: String
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {params: string}>
+                1 | <main-comp {params: String}>
                   |             ^^^^^^
 
-                params: string
+                params: String
                   --> main.hop (line 2, col 8)
-                1 | <main-comp {params: string}>
+                1 | <main-comp {params: String}>
                 2 |     <div>{params}</div>
                   |           ^^^^^^
             "#]],
@@ -2166,7 +2149,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: {config: {debug: boolean}, data: array[{id: boolean, attributes: array[boolean]}]}}>
+                <main-comp {params: {config: {debug: Bool}, data: Array[{id: Bool, attributes: Array[Bool]}]}}>
                 	<if {params.config.debug}>
                 	</if>
                 	<for {item in params.data}>
@@ -2181,56 +2164,56 @@ mod tests {
             "#},
             expect![[r#"
                 params: {
-                  config: {debug: boolean},
-                  data: array[{attributes: array[boolean], id: boolean}],
+                  config: {debug: Bool},
+                  data: Array[{attributes: Array[Bool], id: Bool}],
                 }
                   --> main.hop (line 1, col 13)
-                 1 | <main-comp {params: {config: {debug: boolean}, data: array[{id: boolean, attributes: array[boolean]}]}}>
+                 1 | <main-comp {params: {config: {debug: Bool}, data: Array[{id: Bool, attributes: Array[Bool]}]}}>
                    |             ^^^^^^
 
                 params: {
-                  config: {debug: boolean},
-                  data: array[{attributes: array[boolean], id: boolean}],
+                  config: {debug: Bool},
+                  data: Array[{attributes: Array[Bool], id: Bool}],
                 }
                   --> main.hop (line 2, col 7)
-                 1 | <main-comp {params: {config: {debug: boolean}, data: array[{id: boolean, attributes: array[boolean]}]}}>
+                 1 | <main-comp {params: {config: {debug: Bool}, data: Array[{id: Bool, attributes: Array[Bool]}]}}>
                  2 |     <if {params.config.debug}>
                    |          ^^^^^^
 
                 params: {
-                  config: {debug: boolean},
-                  data: array[{attributes: array[boolean], id: boolean}],
+                  config: {debug: Bool},
+                  data: Array[{attributes: Array[Bool], id: Bool}],
                 }
                   --> main.hop (line 4, col 16)
                  3 |     </if>
                  4 |     <for {item in params.data}>
                    |                   ^^^^^^
 
-                item: {attributes: array[boolean], id: boolean}
+                item: {attributes: Array[Bool], id: Bool}
                   --> main.hop (line 4, col 8)
                  3 |     </if>
                  4 |     <for {item in params.data}>
                    |           ^^^^
 
-                item: {attributes: array[boolean], id: boolean}
+                item: {attributes: Array[Bool], id: Bool}
                   --> main.hop (line 5, col 8)
                  4 |     <for {item in params.data}>
                  5 |         <if {item.id}>
                    |              ^^^^
 
-                item: {attributes: array[boolean], id: boolean}
+                item: {attributes: Array[Bool], id: Bool}
                   --> main.hop (line 7, col 17)
                  6 |         </if>
                  7 |         <for {attr in item.attributes}>
                    |                       ^^^^
 
-                attr: boolean
+                attr: Bool
                   --> main.hop (line 7, col 9)
                  6 |         </if>
                  7 |         <for {attr in item.attributes}>
                    |               ^^^^
 
-                attr: boolean
+                attr: Bool
                   --> main.hop (line 8, col 9)
                  7 |         <for {attr in item.attributes}>
                  8 |             <if {attr}>
@@ -2244,86 +2227,86 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <step3-comp {settings: {enabled: boolean}}>
+                <step3-comp {settings: {enabled: Bool}}>
                 	<if {settings.enabled}>
                 	</if>
                 </step3-comp>
 
-                <step2-comp {config: {settings: {enabled: boolean}}}>
+                <step2-comp {config: {settings: {enabled: Bool}}}>
                 	<step3-comp {settings: config.settings}/>
                 </step2-comp>
 
-                <step1-comp {data: {config: {settings: {enabled: boolean}}}}>
+                <step1-comp {data: {config: {settings: {enabled: Bool}}}}>
                 	<step2-comp {config: data.config}/>
                 </step1-comp>
 
-                <main-comp {params: {config: {settings: {enabled: boolean}}}}>
+                <main-comp {params: {config: {settings: {enabled: Bool}}}}>
                 	<step1-comp {data: params}/>
                 </main-comp>
             "#},
             expect![[r#"
-                settings: {enabled: boolean}
+                settings: {enabled: Bool}
                   --> main.hop (line 1, col 14)
-                 1 | <step3-comp {settings: {enabled: boolean}}>
+                 1 | <step3-comp {settings: {enabled: Bool}}>
                    |              ^^^^^^^^
 
-                settings: {enabled: boolean}
+                settings: {enabled: Bool}
                   --> main.hop (line 2, col 7)
-                 1 | <step3-comp {settings: {enabled: boolean}}>
+                 1 | <step3-comp {settings: {enabled: Bool}}>
                  2 |     <if {settings.enabled}>
                    |          ^^^^^^^^
 
-                config: {settings: {enabled: boolean}}
+                config: {settings: {enabled: Bool}}
                   --> main.hop (line 6, col 14)
                  5 | 
-                 6 | <step2-comp {config: {settings: {enabled: boolean}}}>
+                 6 | <step2-comp {config: {settings: {enabled: Bool}}}>
                    |              ^^^^^^
 
-                config: {settings: {enabled: boolean}}
+                config: {settings: {enabled: Bool}}
                   --> main.hop (line 7, col 25)
-                 6 | <step2-comp {config: {settings: {enabled: boolean}}}>
+                 6 | <step2-comp {config: {settings: {enabled: Bool}}}>
                  7 |     <step3-comp {settings: config.settings}/>
                    |                            ^^^^^^
 
-                settings: {enabled: boolean}
+                settings: {enabled: Bool}
                   --> main.hop (line 7, col 25)
-                 6 | <step2-comp {config: {settings: {enabled: boolean}}}>
+                 6 | <step2-comp {config: {settings: {enabled: Bool}}}>
                  7 |     <step3-comp {settings: config.settings}/>
                    |                            ^^^^^^^^^^^^^^^
 
-                data: {config: {settings: {enabled: boolean}}}
+                data: {config: {settings: {enabled: Bool}}}
                   --> main.hop (line 10, col 14)
                  9 | 
-                10 | <step1-comp {data: {config: {settings: {enabled: boolean}}}}>
+                10 | <step1-comp {data: {config: {settings: {enabled: Bool}}}}>
                    |              ^^^^
 
-                data: {config: {settings: {enabled: boolean}}}
+                data: {config: {settings: {enabled: Bool}}}
                   --> main.hop (line 11, col 23)
-                10 | <step1-comp {data: {config: {settings: {enabled: boolean}}}}>
+                10 | <step1-comp {data: {config: {settings: {enabled: Bool}}}}>
                 11 |     <step2-comp {config: data.config}/>
                    |                          ^^^^
 
-                config: {settings: {enabled: boolean}}
+                config: {settings: {enabled: Bool}}
                   --> main.hop (line 11, col 23)
-                10 | <step1-comp {data: {config: {settings: {enabled: boolean}}}}>
+                10 | <step1-comp {data: {config: {settings: {enabled: Bool}}}}>
                 11 |     <step2-comp {config: data.config}/>
                    |                          ^^^^^^^^^^^
 
-                params: {config: {settings: {enabled: boolean}}}
+                params: {config: {settings: {enabled: Bool}}}
                   --> main.hop (line 14, col 13)
                 13 | 
-                14 | <main-comp {params: {config: {settings: {enabled: boolean}}}}>
+                14 | <main-comp {params: {config: {settings: {enabled: Bool}}}}>
                    |             ^^^^^^
 
-                params: {config: {settings: {enabled: boolean}}}
+                params: {config: {settings: {enabled: Bool}}}
                   --> main.hop (line 15, col 21)
-                14 | <main-comp {params: {config: {settings: {enabled: boolean}}}}>
+                14 | <main-comp {params: {config: {settings: {enabled: Bool}}}}>
                 15 |     <step1-comp {data: params}/>
                    |                        ^^^^^^
 
-                data: {config: {settings: {enabled: boolean}}}
+                data: {config: {settings: {enabled: Bool}}}
                   --> main.hop (line 15, col 21)
-                14 | <main-comp {params: {config: {settings: {enabled: boolean}}}}>
+                14 | <main-comp {params: {config: {settings: {enabled: Bool}}}}>
                 15 |     <step1-comp {data: params}/>
                    |                        ^^^^^^
             "#]],
@@ -2335,7 +2318,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-card {item: {title: string, active: boolean, status: string}}>
+                <main-card {item: {title: String, active: Bool, status: String}}>
                   <div>{item.title}
                   </div>
                   <if {item.active}>
@@ -2344,97 +2327,97 @@ mod tests {
                   </if>
                 </main-card>
 
-                <main-list {items: array[{title: string, active: boolean, status: string}]}>
+                <main-list {items: Array[{title: String, active: Bool, status: String}]}>
                   <for {item in items}>
                     <main-card {item: item}/>
                   </for>
                 </main-list>
 
-                <main-comp {data: {items: array[{title: string, active: boolean, status: string}]}}>
+                <main-comp {data: {items: Array[{title: String, active: Bool, status: String}]}}>
                   <main-list {items: data.items}/>
                 </main-comp>
             "#},
             expect![[r#"
-                item: {active: boolean, status: string, title: string}
+                item: {active: Bool, status: String, title: String}
                   --> main.hop (line 1, col 13)
-                 1 | <main-card {item: {title: string, active: boolean, status: string}}>
+                 1 | <main-card {item: {title: String, active: Bool, status: String}}>
                    |             ^^^^
 
-                item: {active: boolean, status: string, title: string}
+                item: {active: Bool, status: String, title: String}
                   --> main.hop (line 2, col 9)
-                 1 | <main-card {item: {title: string, active: boolean, status: string}}>
+                 1 | <main-card {item: {title: String, active: Bool, status: String}}>
                  2 |   <div>{item.title}
                    |         ^^^^
 
-                item: {active: boolean, status: string, title: string}
+                item: {active: Bool, status: String, title: String}
                   --> main.hop (line 5, col 12)
                  4 |   <if {item.active}>
                  5 |     <span>{item.status}
                    |            ^^^^
 
-                item: {active: boolean, status: string, title: string}
+                item: {active: Bool, status: String, title: String}
                   --> main.hop (line 4, col 8)
                  3 |   </div>
                  4 |   <if {item.active}>
                    |        ^^^^
 
-                items: array[{active: boolean, status: string, title: string}]
+                items: Array[{active: Bool, status: String, title: String}]
                   --> main.hop (line 10, col 13)
                  9 | 
-                10 | <main-list {items: array[{title: string, active: boolean, status: string}]}>
+                10 | <main-list {items: Array[{title: String, active: Bool, status: String}]}>
                    |             ^^^^^
 
-                items: array[{active: boolean, status: string, title: string}]
+                items: Array[{active: Bool, status: String, title: String}]
                   --> main.hop (line 11, col 17)
-                10 | <main-list {items: array[{title: string, active: boolean, status: string}]}>
+                10 | <main-list {items: Array[{title: String, active: Bool, status: String}]}>
                 11 |   <for {item in items}>
                    |                 ^^^^^
 
-                item: {active: boolean, status: string, title: string}
+                item: {active: Bool, status: String, title: String}
                   --> main.hop (line 11, col 9)
-                10 | <main-list {items: array[{title: string, active: boolean, status: string}]}>
+                10 | <main-list {items: Array[{title: String, active: Bool, status: String}]}>
                 11 |   <for {item in items}>
                    |         ^^^^
 
-                item: {active: boolean, status: string, title: string}
+                item: {active: Bool, status: String, title: String}
                   --> main.hop (line 12, col 23)
                 11 |   <for {item in items}>
                 12 |     <main-card {item: item}/>
                    |                       ^^^^
 
-                item: {active: boolean, status: string, title: string}
+                item: {active: Bool, status: String, title: String}
                   --> main.hop (line 12, col 23)
                 11 |   <for {item in items}>
                 12 |     <main-card {item: item}/>
                    |                       ^^^^
 
                 data: {
-                  items: array[{
-                    active: boolean,
-                    status: string,
-                    title: string,
+                  items: Array[{
+                    active: Bool,
+                    status: String,
+                    title: String,
                   }],
                 }
                   --> main.hop (line 16, col 13)
                 15 | 
-                16 | <main-comp {data: {items: array[{title: string, active: boolean, status: string}]}}>
+                16 | <main-comp {data: {items: Array[{title: String, active: Bool, status: String}]}}>
                    |             ^^^^
 
                 data: {
-                  items: array[{
-                    active: boolean,
-                    status: string,
-                    title: string,
+                  items: Array[{
+                    active: Bool,
+                    status: String,
+                    title: String,
                   }],
                 }
                   --> main.hop (line 17, col 22)
-                16 | <main-comp {data: {items: array[{title: string, active: boolean, status: string}]}}>
+                16 | <main-comp {data: {items: Array[{title: String, active: Bool, status: String}]}}>
                 17 |   <main-list {items: data.items}/>
                    |                      ^^^^
 
-                items: array[{active: boolean, status: string, title: string}]
+                items: Array[{active: Bool, status: String, title: String}]
                   --> main.hop (line 17, col 22)
-                16 | <main-comp {data: {items: array[{title: string, active: boolean, status: string}]}}>
+                16 | <main-comp {data: {items: Array[{title: String, active: Bool, status: String}]}}>
                 17 |   <main-list {items: data.items}/>
                    |                      ^^^^^^^^^^
             "#]],
@@ -2446,7 +2429,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: {i: {j: {k: {l: boolean}}, k: boolean}}}>
+                <main-comp {params: {i: {j: {k: {l: Bool}}, k: Bool}}}>
                 	<if {params.i.j.k.l}>
                 		<if {params.i.k}>
                 		</if>
@@ -2454,20 +2437,20 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {i: {j: {k: {l: boolean}}, k: boolean}}
+                params: {i: {j: {k: {l: Bool}}, k: Bool}}
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {params: {i: {j: {k: {l: boolean}}, k: boolean}}}>
+                1 | <main-comp {params: {i: {j: {k: {l: Bool}}, k: Bool}}}>
                   |             ^^^^^^
 
-                params: {i: {j: {k: {l: boolean}}, k: boolean}}
+                params: {i: {j: {k: {l: Bool}}, k: Bool}}
                   --> main.hop (line 3, col 8)
                 2 |     <if {params.i.j.k.l}>
                 3 |         <if {params.i.k}>
                   |              ^^^^^^
 
-                params: {i: {j: {k: {l: boolean}}, k: boolean}}
+                params: {i: {j: {k: {l: Bool}}, k: Bool}}
                   --> main.hop (line 2, col 7)
-                1 | <main-comp {params: {i: {j: {k: {l: boolean}}, k: boolean}}}>
+                1 | <main-comp {params: {i: {j: {k: {l: Bool}}, k: Bool}}}>
                 2 |     <if {params.i.j.k.l}>
                   |          ^^^^^^
             "#]],
@@ -2479,7 +2462,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: {i: {j: {k: {l: boolean}}, k: boolean}}}>
+                <main-comp {params: {i: {j: {k: {l: Bool}}, k: Bool}}}>
                 	<if {params.i.j.k.l}>
                 	</if>
                 	<if {params.i.k}>
@@ -2487,18 +2470,18 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {i: {j: {k: {l: boolean}}, k: boolean}}
+                params: {i: {j: {k: {l: Bool}}, k: Bool}}
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {params: {i: {j: {k: {l: boolean}}, k: boolean}}}>
+                1 | <main-comp {params: {i: {j: {k: {l: Bool}}, k: Bool}}}>
                   |             ^^^^^^
 
-                params: {i: {j: {k: {l: boolean}}, k: boolean}}
+                params: {i: {j: {k: {l: Bool}}, k: Bool}}
                   --> main.hop (line 2, col 7)
-                1 | <main-comp {params: {i: {j: {k: {l: boolean}}, k: boolean}}}>
+                1 | <main-comp {params: {i: {j: {k: {l: Bool}}, k: Bool}}}>
                 2 |     <if {params.i.j.k.l}>
                   |          ^^^^^^
 
-                params: {i: {j: {k: {l: boolean}}, k: boolean}}
+                params: {i: {j: {k: {l: Bool}}, k: Bool}}
                   --> main.hop (line 4, col 7)
                 3 |     </if>
                 4 |     <if {params.i.k}>
@@ -2512,7 +2495,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: {tags: array[boolean], categories: array[boolean], metadata: {title: boolean}}}>
+                <main-comp {params: {tags: Array[Bool], categories: Array[Bool], metadata: {title: Bool}}}>
                 	<for {tag in params.tags}>
                 		<if {tag}>
                 		</if>
@@ -2527,62 +2510,62 @@ mod tests {
             "#},
             expect![[r#"
                 params: {
-                  categories: array[boolean],
-                  metadata: {title: boolean},
-                  tags: array[boolean],
+                  categories: Array[Bool],
+                  metadata: {title: Bool},
+                  tags: Array[Bool],
                 }
                   --> main.hop (line 1, col 13)
-                 1 | <main-comp {params: {tags: array[boolean], categories: array[boolean], metadata: {title: boolean}}}>
+                 1 | <main-comp {params: {tags: Array[Bool], categories: Array[Bool], metadata: {title: Bool}}}>
                    |             ^^^^^^
 
                 params: {
-                  categories: array[boolean],
-                  metadata: {title: boolean},
-                  tags: array[boolean],
+                  categories: Array[Bool],
+                  metadata: {title: Bool},
+                  tags: Array[Bool],
                 }
                   --> main.hop (line 2, col 15)
-                 1 | <main-comp {params: {tags: array[boolean], categories: array[boolean], metadata: {title: boolean}}}>
+                 1 | <main-comp {params: {tags: Array[Bool], categories: Array[Bool], metadata: {title: Bool}}}>
                  2 |     <for {tag in params.tags}>
                    |                  ^^^^^^
 
-                tag: boolean
+                tag: Bool
                   --> main.hop (line 2, col 8)
-                 1 | <main-comp {params: {tags: array[boolean], categories: array[boolean], metadata: {title: boolean}}}>
+                 1 | <main-comp {params: {tags: Array[Bool], categories: Array[Bool], metadata: {title: Bool}}}>
                  2 |     <for {tag in params.tags}>
                    |           ^^^
 
-                tag: boolean
+                tag: Bool
                   --> main.hop (line 3, col 8)
                  2 |     <for {tag in params.tags}>
                  3 |         <if {tag}>
                    |              ^^^
 
                 params: {
-                  categories: array[boolean],
-                  metadata: {title: boolean},
-                  tags: array[boolean],
+                  categories: Array[Bool],
+                  metadata: {title: Bool},
+                  tags: Array[Bool],
                 }
                   --> main.hop (line 6, col 20)
                  5 |     </for>
                  6 |     <for {category in params.categories}>
                    |                       ^^^^^^
 
-                category: boolean
+                category: Bool
                   --> main.hop (line 6, col 8)
                  5 |     </for>
                  6 |     <for {category in params.categories}>
                    |           ^^^^^^^^
 
-                category: boolean
+                category: Bool
                   --> main.hop (line 7, col 8)
                  6 |     <for {category in params.categories}>
                  7 |         <if {category}>
                    |              ^^^^^^^^
 
                 params: {
-                  categories: array[boolean],
-                  metadata: {title: boolean},
-                  tags: array[boolean],
+                  categories: Array[Bool],
+                  metadata: {title: Bool},
+                  tags: Array[Bool],
                 }
                   --> main.hop (line 10, col 7)
                  9 |     </for>
@@ -2597,64 +2580,64 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-bar {p: boolean}>
+                <main-bar {p: Bool}>
                   <if {p}>
                   </if>
                 </main-bar>
 
-                <main-foo {p: boolean}>
+                <main-foo {p: Bool}>
                   <main-bar {p: p}/>
                 </main-foo>
 
-                <main-comp {i: boolean}>
+                <main-comp {i: Bool}>
                   <main-foo {p: i}/>
                 </main-comp>
             "#},
             expect![[r#"
-                p: boolean
+                p: Bool
                   --> main.hop (line 1, col 12)
-                 1 | <main-bar {p: boolean}>
+                 1 | <main-bar {p: Bool}>
                    |            ^
 
-                p: boolean
+                p: Bool
                   --> main.hop (line 2, col 8)
-                 1 | <main-bar {p: boolean}>
+                 1 | <main-bar {p: Bool}>
                  2 |   <if {p}>
                    |        ^
 
-                p: boolean
+                p: Bool
                   --> main.hop (line 6, col 12)
                  5 | 
-                 6 | <main-foo {p: boolean}>
+                 6 | <main-foo {p: Bool}>
                    |            ^
 
-                p: boolean
+                p: Bool
                   --> main.hop (line 7, col 17)
-                 6 | <main-foo {p: boolean}>
+                 6 | <main-foo {p: Bool}>
                  7 |   <main-bar {p: p}/>
                    |                 ^
 
-                p: boolean
+                p: Bool
                   --> main.hop (line 7, col 17)
-                 6 | <main-foo {p: boolean}>
+                 6 | <main-foo {p: Bool}>
                  7 |   <main-bar {p: p}/>
                    |                 ^
 
-                i: boolean
+                i: Bool
                   --> main.hop (line 10, col 13)
                  9 | 
-                10 | <main-comp {i: boolean}>
+                10 | <main-comp {i: Bool}>
                    |             ^
 
-                i: boolean
+                i: Bool
                   --> main.hop (line 11, col 17)
-                10 | <main-comp {i: boolean}>
+                10 | <main-comp {i: Bool}>
                 11 |   <main-foo {p: i}/>
                    |                 ^
 
-                p: boolean
+                p: Bool
                   --> main.hop (line 11, col 17)
-                10 | <main-comp {i: boolean}>
+                10 | <main-comp {i: Bool}>
                 11 |   <main-foo {p: i}/>
                    |                 ^
             "#]],
@@ -2666,12 +2649,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <execute-step {step: {condition: boolean}}>
+                <execute-step {step: {condition: Bool}}>
                 	<if {step.condition}>
                 	</if>
                 </execute-step>
 
-                <execute-workflow {workflow: {enabled: boolean, steps: array[{condition: boolean}]}}>
+                <execute-workflow {workflow: {enabled: Bool, steps: Array[{condition: Bool}]}}>
                 	<if {workflow.enabled}>
                 		<for {step in workflow.steps}>
                 			<execute-step {step: step}/>
@@ -2679,95 +2662,95 @@ mod tests {
                 	</if>
                 </execute-workflow>
 
-                <main-comp {params: {workflows: array[{enabled: boolean, steps: array[{condition: boolean}]}]}}>
+                <main-comp {params: {workflows: Array[{enabled: Bool, steps: Array[{condition: Bool}]}]}}>
                 	<for {workflow in params.workflows}>
                 		<execute-workflow {workflow: workflow}/>
                 	</for>
                 </main-comp>
             "#},
             expect![[r#"
-                step: {condition: boolean}
+                step: {condition: Bool}
                   --> main.hop (line 1, col 16)
-                 1 | <execute-step {step: {condition: boolean}}>
+                 1 | <execute-step {step: {condition: Bool}}>
                    |                ^^^^
 
-                step: {condition: boolean}
+                step: {condition: Bool}
                   --> main.hop (line 2, col 7)
-                 1 | <execute-step {step: {condition: boolean}}>
+                 1 | <execute-step {step: {condition: Bool}}>
                  2 |     <if {step.condition}>
                    |          ^^^^
 
-                workflow: {enabled: boolean, steps: array[{condition: boolean}]}
+                workflow: {enabled: Bool, steps: Array[{condition: Bool}]}
                   --> main.hop (line 6, col 20)
                  5 | 
-                 6 | <execute-workflow {workflow: {enabled: boolean, steps: array[{condition: boolean}]}}>
+                 6 | <execute-workflow {workflow: {enabled: Bool, steps: Array[{condition: Bool}]}}>
                    |                    ^^^^^^^^
 
-                workflow: {enabled: boolean, steps: array[{condition: boolean}]}
+                workflow: {enabled: Bool, steps: Array[{condition: Bool}]}
                   --> main.hop (line 8, col 17)
                  7 |     <if {workflow.enabled}>
                  8 |         <for {step in workflow.steps}>
                    |                       ^^^^^^^^
 
-                step: {condition: boolean}
+                step: {condition: Bool}
                   --> main.hop (line 8, col 9)
                  7 |     <if {workflow.enabled}>
                  8 |         <for {step in workflow.steps}>
                    |               ^^^^
 
-                step: {condition: boolean}
+                step: {condition: Bool}
                   --> main.hop (line 9, col 25)
                  8 |         <for {step in workflow.steps}>
                  9 |             <execute-step {step: step}/>
                    |                                  ^^^^
 
-                step: {condition: boolean}
+                step: {condition: Bool}
                   --> main.hop (line 9, col 25)
                  8 |         <for {step in workflow.steps}>
                  9 |             <execute-step {step: step}/>
                    |                                  ^^^^
 
-                workflow: {enabled: boolean, steps: array[{condition: boolean}]}
+                workflow: {enabled: Bool, steps: Array[{condition: Bool}]}
                   --> main.hop (line 7, col 7)
-                 6 | <execute-workflow {workflow: {enabled: boolean, steps: array[{condition: boolean}]}}>
+                 6 | <execute-workflow {workflow: {enabled: Bool, steps: Array[{condition: Bool}]}}>
                  7 |     <if {workflow.enabled}>
                    |          ^^^^^^^^
 
                 params: {
-                  workflows: array[{
-                    enabled: boolean,
-                    steps: array[{condition: boolean}],
+                  workflows: Array[{
+                    enabled: Bool,
+                    steps: Array[{condition: Bool}],
                   }],
                 }
                   --> main.hop (line 14, col 13)
                 13 | 
-                14 | <main-comp {params: {workflows: array[{enabled: boolean, steps: array[{condition: boolean}]}]}}>
+                14 | <main-comp {params: {workflows: Array[{enabled: Bool, steps: Array[{condition: Bool}]}]}}>
                    |             ^^^^^^
 
                 params: {
-                  workflows: array[{
-                    enabled: boolean,
-                    steps: array[{condition: boolean}],
+                  workflows: Array[{
+                    enabled: Bool,
+                    steps: Array[{condition: Bool}],
                   }],
                 }
                   --> main.hop (line 15, col 20)
-                14 | <main-comp {params: {workflows: array[{enabled: boolean, steps: array[{condition: boolean}]}]}}>
+                14 | <main-comp {params: {workflows: Array[{enabled: Bool, steps: Array[{condition: Bool}]}]}}>
                 15 |     <for {workflow in params.workflows}>
                    |                       ^^^^^^
 
-                workflow: {enabled: boolean, steps: array[{condition: boolean}]}
+                workflow: {enabled: Bool, steps: Array[{condition: Bool}]}
                   --> main.hop (line 15, col 8)
-                14 | <main-comp {params: {workflows: array[{enabled: boolean, steps: array[{condition: boolean}]}]}}>
+                14 | <main-comp {params: {workflows: Array[{enabled: Bool, steps: Array[{condition: Bool}]}]}}>
                 15 |     <for {workflow in params.workflows}>
                    |           ^^^^^^^^
 
-                workflow: {enabled: boolean, steps: array[{condition: boolean}]}
+                workflow: {enabled: Bool, steps: Array[{condition: Bool}]}
                   --> main.hop (line 16, col 32)
                 15 |     <for {workflow in params.workflows}>
                 16 |         <execute-workflow {workflow: workflow}/>
                    |                                      ^^^^^^^^
 
-                workflow: {enabled: boolean, steps: array[{condition: boolean}]}
+                workflow: {enabled: Bool, steps: Array[{condition: Bool}]}
                   --> main.hop (line 16, col 32)
                 15 |     <for {workflow in params.workflows}>
                 16 |         <execute-workflow {workflow: workflow}/>
@@ -2781,42 +2764,42 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <foo-comp {p: boolean}>
+                <foo-comp {p: Bool}>
                   <if {p}>
                   </if>
                 </foo-comp>
 
-                <main-comp {i: boolean}>
+                <main-comp {i: Bool}>
                   <foo-comp {p: i}/>
                 </main-comp>
             "#},
             expect![[r#"
-                p: boolean
+                p: Bool
                   --> main.hop (line 1, col 12)
-                1 | <foo-comp {p: boolean}>
+                1 | <foo-comp {p: Bool}>
                   |            ^
 
-                p: boolean
+                p: Bool
                   --> main.hop (line 2, col 8)
-                1 | <foo-comp {p: boolean}>
+                1 | <foo-comp {p: Bool}>
                 2 |   <if {p}>
                   |        ^
 
-                i: boolean
+                i: Bool
                   --> main.hop (line 6, col 13)
                 5 | 
-                6 | <main-comp {i: boolean}>
+                6 | <main-comp {i: Bool}>
                   |             ^
 
-                i: boolean
+                i: Bool
                   --> main.hop (line 7, col 17)
-                6 | <main-comp {i: boolean}>
+                6 | <main-comp {i: Bool}>
                 7 |   <foo-comp {p: i}/>
                   |                 ^
 
-                p: boolean
+                p: Bool
                   --> main.hop (line 7, col 17)
-                6 | <main-comp {i: boolean}>
+                6 | <main-comp {i: Bool}>
                 7 |   <foo-comp {p: i}/>
                   |                 ^
             "#]],
@@ -2830,8 +2813,8 @@ mod tests {
                 -- main.hop --
                 <process-item {
                     item: {
-                        children: array[{visible: boolean}],
-                        status: {active: boolean}
+                        children: Array[{visible: Bool}],
+                        status: {active: Bool}
                     }
                 }>
                 	<if {item.status.active}>
@@ -2843,8 +2826,8 @@ mod tests {
                 </process-item>
 
                 <main-comp {params: {
-                    items: array[{children: array[{visible: boolean}],
-                    status: {active: boolean}}],
+                    items: Array[{children: Array[{visible: Bool}],
+                    status: {active: Bool}}],
                 }}>
                 	<for {item in params.items}>
                 		<process-item {item: item}/>
@@ -2852,49 +2835,40 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                item: {
-                  children: array[{visible: boolean}],
-                  status: {active: boolean},
-                }
+                item: {children: Array[{visible: Bool}], status: {active: Bool}}
                   --> main.hop (line 2, col 5)
                  1 | <process-item {
                  2 |     item: {
                    |     ^^^^
 
-                item: {
-                  children: array[{visible: boolean}],
-                  status: {active: boolean},
-                }
+                item: {children: Array[{visible: Bool}], status: {active: Bool}}
                   --> main.hop (line 7, col 7)
                  6 | }>
                  7 |     <if {item.status.active}>
                    |          ^^^^
 
-                item: {
-                  children: array[{visible: boolean}],
-                  status: {active: boolean},
-                }
+                item: {children: Array[{visible: Bool}], status: {active: Bool}}
                   --> main.hop (line 9, col 17)
                  8 |     </if>
                  9 |     <for {child in item.children}>
                    |                    ^^^^
 
-                child: {visible: boolean}
+                child: {visible: Bool}
                   --> main.hop (line 9, col 8)
                  8 |     </if>
                  9 |     <for {child in item.children}>
                    |           ^^^^^
 
-                child: {visible: boolean}
+                child: {visible: Bool}
                   --> main.hop (line 10, col 8)
                  9 |     <for {child in item.children}>
                 10 |         <if {child.visible}>
                    |              ^^^^^
 
                 params: {
-                  items: array[{
-                    children: array[{visible: boolean}],
-                    status: {active: boolean},
+                  items: Array[{
+                    children: Array[{visible: Bool}],
+                    status: {active: Bool},
                   }],
                 }
                   --> main.hop (line 15, col 13)
@@ -2903,9 +2877,9 @@ mod tests {
                    |             ^^^^^^
 
                 params: {
-                  items: array[{
-                    children: array[{visible: boolean}],
-                    status: {active: boolean},
+                  items: Array[{
+                    children: Array[{visible: Bool}],
+                    status: {active: Bool},
                   }],
                 }
                   --> main.hop (line 19, col 16)
@@ -2913,28 +2887,19 @@ mod tests {
                 19 |     <for {item in params.items}>
                    |                   ^^^^^^
 
-                item: {
-                  children: array[{visible: boolean}],
-                  status: {active: boolean},
-                }
+                item: {children: Array[{visible: Bool}], status: {active: Bool}}
                   --> main.hop (line 19, col 8)
                 18 | }}>
                 19 |     <for {item in params.items}>
                    |           ^^^^
 
-                item: {
-                  children: array[{visible: boolean}],
-                  status: {active: boolean},
-                }
+                item: {children: Array[{visible: Bool}], status: {active: Bool}}
                   --> main.hop (line 20, col 24)
                 19 |     <for {item in params.items}>
                 20 |         <process-item {item: item}/>
                    |                              ^^^^
 
-                item: {
-                  children: array[{visible: boolean}],
-                  status: {active: boolean},
-                }
+                item: {children: Array[{visible: Bool}], status: {active: Bool}}
                   --> main.hop (line 20, col 24)
                 19 |     <for {item in params.items}>
                 20 |         <process-item {item: item}/>
@@ -2948,25 +2913,25 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {user: {url: string, theme: string}}>
+                <main-comp {user: {url: String, theme: String}}>
                   <a href={user.url} class={user.theme}>Link</a>
                 </main-comp>
             "#},
             expect![[r#"
-                user: {theme: string, url: string}
+                user: {theme: String, url: String}
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {user: {url: string, theme: string}}>
+                1 | <main-comp {user: {url: String, theme: String}}>
                   |             ^^^^
 
-                user: {theme: string, url: string}
+                user: {theme: String, url: String}
                   --> main.hop (line 2, col 29)
-                1 | <main-comp {user: {url: string, theme: string}}>
+                1 | <main-comp {user: {url: String, theme: String}}>
                 2 |   <a href={user.url} class={user.theme}>Link</a>
                   |                             ^^^^
 
-                user: {theme: string, url: string}
+                user: {theme: String, url: String}
                   --> main.hop (line 2, col 12)
-                1 | <main-comp {user: {url: string, theme: string}}>
+                1 | <main-comp {user: {url: String, theme: String}}>
                 2 |   <a href={user.url} class={user.theme}>Link</a>
                   |            ^^^^
             "#]],
@@ -2999,20 +2964,20 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {data: {message: string}}>
+                <main-comp {data: {message: String}}>
                   <div>{data.message}
                   </div>
                 </main-comp>
             "#},
             expect![[r#"
-                data: {message: string}
+                data: {message: String}
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {data: {message: string}}>
+                1 | <main-comp {data: {message: String}}>
                   |             ^^^^
 
-                data: {message: string}
+                data: {message: String}
                   --> main.hop (line 2, col 9)
-                1 | <main-comp {data: {message: string}}>
+                1 | <main-comp {data: {message: String}}>
                 2 |   <div>{data.message}
                   |         ^^^^
             "#]],
@@ -3024,21 +2989,21 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: {role: string}}>
+                <main-comp {params: {role: String}}>
                   <if {params.role == "admin"}>
                     <div>Admin</div>
                   </if>
                 </main-comp>
             "#},
             expect![[r#"
-                params: {role: string}
+                params: {role: String}
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {params: {role: string}}>
+                1 | <main-comp {params: {role: String}}>
                   |             ^^^^^^
 
-                params: {role: string}
+                params: {role: String}
                   --> main.hop (line 2, col 8)
-                1 | <main-comp {params: {role: string}}>
+                1 | <main-comp {params: {role: String}}>
                 2 |   <if {params.role == "admin"}>
                   |        ^^^^^^
             "#]],
@@ -3050,7 +3015,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: array[array[array[boolean]]]}>
+                <main-comp {params: Array[Array[Array[Bool]]]}>
                 	<for {level1 in params}>
                 		<for {level2 in level1}>
                 			<for {level3 in level2}>
@@ -3062,48 +3027,48 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: array[array[array[boolean]]]
+                params: Array[Array[Array[Bool]]]
                   --> main.hop (line 1, col 13)
-                 1 | <main-comp {params: array[array[array[boolean]]]}>
+                 1 | <main-comp {params: Array[Array[Array[Bool]]]}>
                    |             ^^^^^^
 
-                params: array[array[array[boolean]]]
+                params: Array[Array[Array[Bool]]]
                   --> main.hop (line 2, col 18)
-                 1 | <main-comp {params: array[array[array[boolean]]]}>
+                 1 | <main-comp {params: Array[Array[Array[Bool]]]}>
                  2 |     <for {level1 in params}>
                    |                     ^^^^^^
 
-                level1: array[array[boolean]]
+                level1: Array[Array[Bool]]
                   --> main.hop (line 2, col 8)
-                 1 | <main-comp {params: array[array[array[boolean]]]}>
+                 1 | <main-comp {params: Array[Array[Array[Bool]]]}>
                  2 |     <for {level1 in params}>
                    |           ^^^^^^
 
-                level1: array[array[boolean]]
+                level1: Array[Array[Bool]]
                   --> main.hop (line 3, col 19)
                  2 |     <for {level1 in params}>
                  3 |         <for {level2 in level1}>
                    |                         ^^^^^^
 
-                level2: array[boolean]
+                level2: Array[Bool]
                   --> main.hop (line 3, col 9)
                  2 |     <for {level1 in params}>
                  3 |         <for {level2 in level1}>
                    |               ^^^^^^
 
-                level2: array[boolean]
+                level2: Array[Bool]
                   --> main.hop (line 4, col 20)
                  3 |         <for {level2 in level1}>
                  4 |             <for {level3 in level2}>
                    |                             ^^^^^^
 
-                level3: boolean
+                level3: Bool
                   --> main.hop (line 4, col 10)
                  3 |         <for {level2 in level1}>
                  4 |             <for {level3 in level2}>
                    |                   ^^^^^^
 
-                level3: boolean
+                level3: Bool
                   --> main.hop (line 5, col 10)
                  4 |             <for {level3 in level2}>
                  5 |                 <if {level3}>
@@ -3117,7 +3082,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: array[string]}>
+                <main-comp {params: Array[String]}>
                 	<for {x in params}>
                 		{x}
                 	</for>
@@ -3127,7 +3092,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: array[string] can not be used as an object
+                error: Array[String] can not be used as an object
                   --> main.hop (line 5, col 13)
                 4 |     </for>
                 5 |     <for {y in params.foo}>
@@ -3141,18 +3106,18 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {data: {message: string}}>
+                <main-comp {data: {message: String}}>
                 	<hop-x-raw>foo bar</hop-x-raw>
                 	<div>{data.message}</div>
                 </main-comp>
             "#},
             expect![[r#"
-                data: {message: string}
+                data: {message: String}
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {data: {message: string}}>
+                1 | <main-comp {data: {message: String}}>
                   |             ^^^^
 
-                data: {message: string}
+                data: {message: String}
                   --> main.hop (line 3, col 8)
                 2 |     <hop-x-raw>foo bar</hop-x-raw>
                 3 |     <div>{data.message}</div>
@@ -3195,27 +3160,27 @@ mod tests {
         );
     }
 
-    // Test <if> tag with boolean expression.
+    // Test <if> tag with Bool expression.
     #[test]
     fn test_if_with_boolean_expression() {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {user: {isActive: boolean}}>
+                <main-comp {user: {isActive: Bool}}>
                   <if {user.isActive}>
                     <div>User is active</div>
                   </if>
                 </main-comp>
             "#},
             expect![[r#"
-                user: {isActive: boolean}
+                user: {isActive: Bool}
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {user: {isActive: boolean}}>
+                1 | <main-comp {user: {isActive: Bool}}>
                   |             ^^^^
 
-                user: {isActive: boolean}
+                user: {isActive: Bool}
                   --> main.hop (line 2, col 8)
-                1 | <main-comp {user: {isActive: boolean}}>
+                1 | <main-comp {user: {isActive: Bool}}>
                 2 |   <if {user.isActive}>
                   |        ^^^^
             "#]],
@@ -3228,21 +3193,21 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {data: {status: string}}>
+                <main-comp {data: {status: String}}>
                   <if {data.status == "approved"}>
                     <div>Status is approved</div>
                   </if>
                 </main-comp>
             "#},
             expect![[r#"
-                data: {status: string}
+                data: {status: String}
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {data: {status: string}}>
+                1 | <main-comp {data: {status: String}}>
                   |             ^^^^
 
-                data: {status: string}
+                data: {status: String}
                   --> main.hop (line 2, col 8)
-                1 | <main-comp {data: {status: string}}>
+                1 | <main-comp {data: {status: String}}>
                 2 |   <if {data.status == "approved"}>
                   |        ^^^^
             "#]],
@@ -3262,7 +3227,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Can not compare int to string
+                error: Can not compare Int to String
                   --> main.hop (line 2, col 8)
                 1 | <main-comp>
                 2 |   <if {1 == "approved"}>
@@ -3277,7 +3242,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {config: {enabled: boolean, debug: boolean}}>
+                <main-comp {config: {enabled: Bool, debug: Bool}}>
                   <if {config.enabled}>
                     <div>Feature enabled</div>
                     <if {config.debug}>
@@ -3287,20 +3252,20 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                config: {debug: boolean, enabled: boolean}
+                config: {debug: Bool, enabled: Bool}
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {config: {enabled: boolean, debug: boolean}}>
+                1 | <main-comp {config: {enabled: Bool, debug: Bool}}>
                   |             ^^^^^^
 
-                config: {debug: boolean, enabled: boolean}
+                config: {debug: Bool, enabled: Bool}
                   --> main.hop (line 4, col 10)
                 3 |     <div>Feature enabled</div>
                 4 |     <if {config.debug}>
                   |          ^^^^^^
 
-                config: {debug: boolean, enabled: boolean}
+                config: {debug: Bool, enabled: Bool}
                   --> main.hop (line 2, col 8)
-                1 | <main-comp {config: {enabled: boolean, debug: boolean}}>
+                1 | <main-comp {config: {enabled: Bool, debug: Bool}}>
                 2 |   <if {config.enabled}>
                   |        ^^^^^^
             "#]],
@@ -3314,7 +3279,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {config: {debug: boolean}}>
+                <main-comp {config: {debug: Bool}}>
                   <if {config.debug}>
                     <div>Debug mode on</div>
                   </if>
@@ -3324,7 +3289,7 @@ mod tests {
                 </foo-comp>
             "#},
             expect![[r#"
-                error: Argument 'config' of type int is incompatible with expected type {debug: boolean}
+                error: Argument 'config' of type Int is incompatible with expected type {debug: Bool}
                   --> main.hop (line 7, col 23)
                 6 | <foo-comp>
                 7 |   <main-comp {config: 1}/>
@@ -3333,7 +3298,7 @@ mod tests {
         );
     }
 
-    // Test HOP_MODE global variable is available and has string type.
+    // Test HOP_MODE global variable is available and has String type.
     #[test]
     fn test_hop_mode_global_variable() {
         check(
@@ -3344,7 +3309,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                HOP_MODE: string
+                HOP_MODE: String
                   --> main.hop (line 2, col 9)
                 1 | <main-comp>
                 2 |   <div>{HOP_MODE}</div>
@@ -3369,13 +3334,13 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                HOP_MODE: string
+                HOP_MODE: String
                   --> main.hop (line 2, col 8)
                 1 | <main-comp>
                 2 |   <if {HOP_MODE == "dev"}>
                   |        ^^^^^^^^
 
-                HOP_MODE: string
+                HOP_MODE: String
                   --> main.hop (line 5, col 8)
                 4 |   </if>
                 5 |   <if {HOP_MODE == "build"}>
@@ -3390,27 +3355,27 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: {mode: string}}>
+                <main-comp {params: {mode: String}}>
                   <if {params.mode == HOP_MODE}>
                     <div>Mode matches</div>
                   </if>
                 </main-comp>
             "#},
             expect![[r#"
-                params: {mode: string}
+                params: {mode: String}
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {params: {mode: string}}>
+                1 | <main-comp {params: {mode: String}}>
                   |             ^^^^^^
 
-                params: {mode: string}
+                params: {mode: String}
                   --> main.hop (line 2, col 8)
-                1 | <main-comp {params: {mode: string}}>
+                1 | <main-comp {params: {mode: String}}>
                 2 |   <if {params.mode == HOP_MODE}>
                   |        ^^^^^^
 
-                HOP_MODE: string
+                HOP_MODE: String
                   --> main.hop (line 2, col 23)
-                1 | <main-comp {params: {mode: string}}>
+                1 | <main-comp {params: {mode: String}}>
                 2 |   <if {params.mode == HOP_MODE}>
                   |                       ^^^^^^^^
             "#]],
@@ -3422,7 +3387,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: {foo: string}}>
+                <main-comp {params: {foo: String}}>
                   <if {params.foo == "foo"}>
                     eq 1
                   </if>
@@ -3432,7 +3397,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Type {foo: string} is not comparable
+                error: Type {foo: String} is not comparable
                   --> main.hop (line 5, col 8)
                 4 |   </if>
                 5 |   <if {params == params}>
@@ -3446,7 +3411,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {data: array[{title: string, items: array[string]}]}>
+                <main-comp {data: Array[{title: String, items: Array[String]}]}>
                 	<for {section in data}>
                 		<h1>{section.title}</h1>
                 		<for {item in section.items}>
@@ -3456,42 +3421,42 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                data: array[{items: array[string], title: string}]
+                data: Array[{items: Array[String], title: String}]
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {data: array[{title: string, items: array[string]}]}>
+                1 | <main-comp {data: Array[{title: String, items: Array[String]}]}>
                   |             ^^^^
 
-                data: array[{items: array[string], title: string}]
+                data: Array[{items: Array[String], title: String}]
                   --> main.hop (line 2, col 19)
-                1 | <main-comp {data: array[{title: string, items: array[string]}]}>
+                1 | <main-comp {data: Array[{title: String, items: Array[String]}]}>
                 2 |     <for {section in data}>
                   |                      ^^^^
 
-                section: {items: array[string], title: string}
+                section: {items: Array[String], title: String}
                   --> main.hop (line 2, col 8)
-                1 | <main-comp {data: array[{title: string, items: array[string]}]}>
+                1 | <main-comp {data: Array[{title: String, items: Array[String]}]}>
                 2 |     <for {section in data}>
                   |           ^^^^^^^
 
-                section: {items: array[string], title: string}
+                section: {items: Array[String], title: String}
                   --> main.hop (line 3, col 8)
                 2 |     <for {section in data}>
                 3 |         <h1>{section.title}</h1>
                   |              ^^^^^^^
 
-                section: {items: array[string], title: string}
+                section: {items: Array[String], title: String}
                   --> main.hop (line 4, col 17)
                 3 |         <h1>{section.title}</h1>
                 4 |         <for {item in section.items}>
                   |                       ^^^^^^^
 
-                item: string
+                item: String
                   --> main.hop (line 4, col 9)
                 3 |         <h1>{section.title}</h1>
                 4 |         <for {item in section.items}>
                   |               ^^^^
 
-                item: string
+                item: String
                   --> main.hop (line 5, col 10)
                 4 |         <for {item in section.items}>
                 5 |             <div>{item}</div>
@@ -3505,7 +3470,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <string-comp {message: string}>
+                <string-comp {message: String}>
                 	<div>{message}</div>
                 </string-comp>
                 <main-comp>
@@ -3513,7 +3478,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Argument 'message' of type int is incompatible with expected type string
+                error: Argument 'message' of type Int is incompatible with expected type String
                   --> main.hop (line 5, col 25)
                 4 | <main-comp>
                 5 |     <string-comp {message: 42}/>
@@ -3527,7 +3492,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <user-comp {user: {name: string, age: string}}>
+                <user-comp {user: {name: String, age: String}}>
                 	<div>{user.name} ({user.age})</div>
                 </user-comp>
                 <main-comp>
@@ -3535,7 +3500,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Argument 'user' of type string is incompatible with expected type {age: string, name: string}
+                error: Argument 'user' of type String is incompatible with expected type {age: String, name: String}
                   --> main.hop (line 5, col 20)
                 4 | <main-comp>
                 5 |     <user-comp {user: "invalid"}/>
@@ -3549,46 +3514,46 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <user-comp {user: {name: string, active: string}}>
+                <user-comp {user: {name: String, active: String}}>
                 	<div>{user.name}: {user.active}</div>
                 </user-comp>
-                <main-comp {data: {profile: {name: string, active: string}}}>
+                <main-comp {data: {profile: {name: String, active: String}}}>
                 	<user-comp {user: data.profile}/>
                 </main-comp>
             "#},
             expect![[r#"
-                user: {active: string, name: string}
+                user: {active: String, name: String}
                   --> main.hop (line 1, col 13)
-                1 | <user-comp {user: {name: string, active: string}}>
+                1 | <user-comp {user: {name: String, active: String}}>
                   |             ^^^^
 
-                user: {active: string, name: string}
+                user: {active: String, name: String}
                   --> main.hop (line 2, col 8)
-                1 | <user-comp {user: {name: string, active: string}}>
+                1 | <user-comp {user: {name: String, active: String}}>
                 2 |     <div>{user.name}: {user.active}</div>
                   |           ^^^^
 
-                user: {active: string, name: string}
+                user: {active: String, name: String}
                   --> main.hop (line 2, col 21)
-                1 | <user-comp {user: {name: string, active: string}}>
+                1 | <user-comp {user: {name: String, active: String}}>
                 2 |     <div>{user.name}: {user.active}</div>
                   |                        ^^^^
 
-                data: {profile: {active: string, name: string}}
+                data: {profile: {active: String, name: String}}
                   --> main.hop (line 4, col 13)
                 3 | </user-comp>
-                4 | <main-comp {data: {profile: {name: string, active: string}}}>
+                4 | <main-comp {data: {profile: {name: String, active: String}}}>
                   |             ^^^^
 
-                data: {profile: {active: string, name: string}}
+                data: {profile: {active: String, name: String}}
                   --> main.hop (line 5, col 20)
-                4 | <main-comp {data: {profile: {name: string, active: string}}}>
+                4 | <main-comp {data: {profile: {name: String, active: String}}}>
                 5 |     <user-comp {user: data.profile}/>
                   |                       ^^^^
 
-                user: {active: string, name: string}
+                user: {active: String, name: String}
                   --> main.hop (line 5, col 20)
-                4 | <main-comp {data: {profile: {name: string, active: string}}}>
+                4 | <main-comp {data: {profile: {name: String, active: String}}}>
                 5 |     <user-comp {user: data.profile}/>
                   |                       ^^^^^^^^^^^^
             "#]],
@@ -3600,7 +3565,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <new-comp {user: {name: string}}>
+                <new-comp {user: {name: String}}>
                 	<div>{user.name}</div>
                 </new-comp>
                 <main-comp>
@@ -3608,7 +3573,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Argument 'user' of type string is incompatible with expected type {name: string}
+                error: Argument 'user' of type String is incompatible with expected type {name: String}
                   --> main.hop (line 5, col 19)
                 4 | <main-comp>
                 5 |     <new-comp {user: "invalid"}/>
@@ -3623,19 +3588,19 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <user-comp {user: {name: string}}>
+                <user-comp {user: {name: String}}>
                 	<div>{user.name}</div>
                 </user-comp>
             "#},
             expect![[r#"
-                user: {name: string}
+                user: {name: String}
                   --> main.hop (line 1, col 13)
-                1 | <user-comp {user: {name: string}}>
+                1 | <user-comp {user: {name: String}}>
                   |             ^^^^
 
-                user: {name: string}
+                user: {name: String}
                   --> main.hop (line 2, col 8)
-                1 | <user-comp {user: {name: string}}>
+                1 | <user-comp {user: {name: String}}>
                 2 |     <div>{user.name}</div>
                   |           ^^^^
             "#]],
@@ -3648,31 +3613,31 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <list-comp {items: array[string]}>
+                <list-comp {items: Array[String]}>
                 	<for {item in items}>
                 		<div>{item}</div>
                 	</for>
                 </list-comp>
             "#},
             expect![[r#"
-                items: array[string]
+                items: Array[String]
                   --> main.hop (line 1, col 13)
-                1 | <list-comp {items: array[string]}>
+                1 | <list-comp {items: Array[String]}>
                   |             ^^^^^
 
-                items: array[string]
+                items: Array[String]
                   --> main.hop (line 2, col 16)
-                1 | <list-comp {items: array[string]}>
+                1 | <list-comp {items: Array[String]}>
                 2 |     <for {item in items}>
                   |                   ^^^^^
 
-                item: string
+                item: String
                   --> main.hop (line 2, col 8)
-                1 | <list-comp {items: array[string]}>
+                1 | <list-comp {items: Array[String]}>
                 2 |     <for {item in items}>
                   |           ^^^^
 
-                item: string
+                item: String
                   --> main.hop (line 3, col 9)
                 2 |     <for {item in items}>
                 3 |         <div>{item}</div>
@@ -3681,49 +3646,49 @@ mod tests {
         );
     }
 
-    // Component with explicit boolean parameter type.
+    // Component with explicit Bool parameter type.
     #[test]
     fn test_explicit_boolean_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
-                <toggle-comp {enabled: boolean}>
+                <toggle-comp {enabled: Bool}>
                 	<if {enabled}>
                 		<div>Enabled</div>
                 	</if>
                 </toggle-comp>
             "#},
             expect![[r#"
-                enabled: boolean
+                enabled: Bool
                   --> main.hop (line 1, col 15)
-                1 | <toggle-comp {enabled: boolean}>
+                1 | <toggle-comp {enabled: Bool}>
                   |               ^^^^^^^
 
-                enabled: boolean
+                enabled: Bool
                   --> main.hop (line 2, col 7)
-                1 | <toggle-comp {enabled: boolean}>
+                1 | <toggle-comp {enabled: Bool}>
                 2 |     <if {enabled}>
                   |          ^^^^^^^
             "#]],
         );
     }
 
-    // Component with explicit float parameter type.
+    // Component with explicit Float parameter type.
     #[test]
     fn test_explicit_float_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
-                <counter-comp {count: float}>
+                <counter-comp {count: Float}>
                 	<if {count == 0}>
                 		<div>Zero</div>
                 	</if>
                 </counter-comp>
             "#},
             expect![[r#"
-                error: Can not compare float to int
+                error: Can not compare Float to Int
                   --> main.hop (line 2, col 7)
-                1 | <counter-comp {count: float}>
+                1 | <counter-comp {count: Float}>
                 2 |     <if {count == 0}>
                   |          ^^^^^^^^^^
             "#]],
@@ -3736,7 +3701,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <profile-comp {profile: {user: {name: string, age: float}}}>
+                <profile-comp {profile: {user: {name: String, age: Float}}}>
                 	<div>{profile.user.name}</div>
                 	<if {profile.user.age == 25}>
                 		<div>Quarter century</div>
@@ -3744,7 +3709,7 @@ mod tests {
                 </profile-comp>
             "#},
             expect![[r#"
-                error: Can not compare float to int
+                error: Can not compare Float to Int
                   --> main.hop (line 3, col 7)
                 2 |     <div>{profile.user.name}</div>
                 3 |     <if {profile.user.age == 25}>
@@ -3759,7 +3724,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <matrix-comp {matrix: array[array[float]]}>
+                <matrix-comp {matrix: Array[Array[Float]]}>
                 	<for {row in matrix}>
                 		<for {cell in row}>
                 			<if {cell == 1}>
@@ -3770,7 +3735,7 @@ mod tests {
                 </matrix-comp>
             "#},
             expect![[r#"
-                error: Can not compare float to int
+                error: Can not compare Float to Int
                   --> main.hop (line 4, col 9)
                 3 |         <for {cell in row}>
                 4 |             <if {cell == 1}>
@@ -3786,10 +3751,10 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 <card-comp {data: {
-                    title: string,
-                    content: string,
-                    tags: array[string],
-                    metadata: {author: string, published: boolean},
+                    title: String,
+                    content: String,
+                    tags: Array[String],
+                    metadata: {author: String, published: Bool},
                 }}>
                 	<h1>{data.title}</h1>
                 	<p>{data.content}</p>
@@ -3804,20 +3769,20 @@ mod tests {
             "#},
             expect![[r#"
                 data: {
-                  content: string,
-                  metadata: {author: string, published: boolean},
-                  tags: array[string],
-                  title: string,
+                  content: String,
+                  metadata: {author: String, published: Bool},
+                  tags: Array[String],
+                  title: String,
                 }
                   --> main.hop (line 1, col 13)
                  1 | <card-comp {data: {
                    |             ^^^^
 
                 data: {
-                  content: string,
-                  metadata: {author: string, published: boolean},
-                  tags: array[string],
-                  title: string,
+                  content: String,
+                  metadata: {author: String, published: Bool},
+                  tags: Array[String],
+                  title: String,
                 }
                   --> main.hop (line 7, col 7)
                  6 | }}>
@@ -3825,10 +3790,10 @@ mod tests {
                    |          ^^^^
 
                 data: {
-                  content: string,
-                  metadata: {author: string, published: boolean},
-                  tags: array[string],
-                  title: string,
+                  content: String,
+                  metadata: {author: String, published: Bool},
+                  tags: Array[String],
+                  title: String,
                 }
                   --> main.hop (line 8, col 6)
                  7 |     <h1>{data.title}</h1>
@@ -3836,10 +3801,10 @@ mod tests {
                    |         ^^^^
 
                 data: {
-                  content: string,
-                  metadata: {author: string, published: boolean},
-                  tags: array[string],
-                  title: string,
+                  content: String,
+                  metadata: {author: String, published: Bool},
+                  tags: Array[String],
+                  title: String,
                 }
                   --> main.hop (line 9, col 8)
                  8 |     <p>{data.content}</p>
@@ -3847,10 +3812,10 @@ mod tests {
                    |           ^^^^
 
                 data: {
-                  content: string,
-                  metadata: {author: string, published: boolean},
-                  tags: array[string],
-                  title: string,
+                  content: String,
+                  metadata: {author: String, published: Bool},
+                  tags: Array[String],
+                  title: String,
                 }
                   --> main.hop (line 10, col 7)
                  9 |     <div>{data.metadata.author}</div>
@@ -3858,23 +3823,23 @@ mod tests {
                    |          ^^^^
 
                 data: {
-                  content: string,
-                  metadata: {author: string, published: boolean},
-                  tags: array[string],
-                  title: string,
+                  content: String,
+                  metadata: {author: String, published: Bool},
+                  tags: Array[String],
+                  title: String,
                 }
                   --> main.hop (line 13, col 15)
                 12 |     </if>
                 13 |     <for {tag in data.tags}>
                    |                  ^^^^
 
-                tag: string
+                tag: String
                   --> main.hop (line 13, col 8)
                 12 |     </if>
                 13 |     <for {tag in data.tags}>
                    |           ^^^
 
-                tag: string
+                tag: String
                   --> main.hop (line 14, col 10)
                 13 |     <for {tag in data.tags}>
                 14 |         <span>{tag}</span>
@@ -3883,13 +3848,13 @@ mod tests {
         );
     }
 
-    // Error when passing wrong type to boolean parameter.
+    // Error when passing wrong type to Bool parameter.
     #[test]
     fn test_wrong_type_to_boolean_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
-                <toggle-comp {enabled: boolean}>
+                <toggle-comp {enabled: Bool}>
                 	<if {enabled}>
                 		<div>Enabled</div>
                 	</if>
@@ -3899,7 +3864,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Argument 'enabled' of type string is incompatible with expected type boolean
+                error: Argument 'enabled' of type String is incompatible with expected type Bool
                   --> main.hop (line 7, col 25)
                 6 | <main-comp>
                 7 |     <toggle-comp {enabled: "not a boolean"}/>
@@ -3914,7 +3879,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- item-display.hop --
-                <item-display {item: {id: float, name: string, active: boolean}}>
+                <item-display {item: {id: Float, name: String, active: Bool}}>
                 	<div>{item.name}</div>
                 	<if {item.active}>
                 		<span>Active item</span>
@@ -3925,19 +3890,19 @@ mod tests {
                 </item-display>
                 -- data-list.hop --
                 <import component="item-display" from="@/item-display">
-                <data-list {items: array[{id: float, name: string, active: boolean}]}>
+                <data-list {items: Array[{id: Float, name: String, active: Bool}]}>
                 	<for {item in items}>
                 		<item-display {item: item}/>
                 	</for>
                 </data-list>
                 -- main.hop --
                 <import component="data-list" from="@/data-list">
-                <main-comp {items: array[{id: float, name: string, active: boolean}]}>
+                <main-comp {items: Array[{id: Float, name: String, active: Bool}]}>
                 	<data-list {items: items}/>
                 </main-comp>
             "#},
             expect![[r#"
-                error: Can not compare float to int
+                error: Can not compare Float to Int
                   --> item-display.hop (line 6, col 7)
                 5 |     </if>
                 6 |     <if {item.id == 1}>
@@ -3952,41 +3917,41 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <needs-a {data: {a: string}}>
+                <needs-a {data: {a: String}}>
                 	<div>{data.a}</div>
                 </needs-a>
 
-                <main-comp {params: {data: {a: string, b: string}}}>
+                <main-comp {params: {data: {a: String, b: String}}}>
                 	<needs-a {data: params.data}/>
                 </main-comp>
             "#},
             expect![[r#"
-                data: {a: string}
+                data: {a: String}
                   --> main.hop (line 1, col 11)
-                1 | <needs-a {data: {a: string}}>
+                1 | <needs-a {data: {a: String}}>
                   |           ^^^^
 
-                data: {a: string}
+                data: {a: String}
                   --> main.hop (line 2, col 8)
-                1 | <needs-a {data: {a: string}}>
+                1 | <needs-a {data: {a: String}}>
                 2 |     <div>{data.a}</div>
                   |           ^^^^
 
-                params: {data: {a: string, b: string}}
+                params: {data: {a: String, b: String}}
                   --> main.hop (line 5, col 13)
                 4 | 
-                5 | <main-comp {params: {data: {a: string, b: string}}}>
+                5 | <main-comp {params: {data: {a: String, b: String}}}>
                   |             ^^^^^^
 
-                params: {data: {a: string, b: string}}
+                params: {data: {a: String, b: String}}
                   --> main.hop (line 6, col 18)
-                5 | <main-comp {params: {data: {a: string, b: string}}}>
+                5 | <main-comp {params: {data: {a: String, b: String}}}>
                 6 |     <needs-a {data: params.data}/>
                   |                     ^^^^^^
 
-                data: {a: string, b: string}
+                data: {a: String, b: String}
                   --> main.hop (line 6, col 18)
-                5 | <main-comp {params: {data: {a: string, b: string}}}>
+                5 | <main-comp {params: {data: {a: String, b: String}}}>
                 6 |     <needs-a {data: params.data}/>
                   |                     ^^^^^^^^^^^
             "#]],
@@ -3999,25 +3964,25 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <needs-a {data: {a: string}}>
+                <needs-a {data: {a: String}}>
                 	<div>{data.a}</div>
                 </needs-a>
 
-                <main-comp {params: {data: {b: string}}}>
+                <main-comp {params: {data: {b: String}}}>
                 	<needs-a {data: params.data}/>
                 </main-comp>
             "#},
             expect![[r#"
-                error: Argument 'data' of type {b: string} is incompatible with expected type {a: string}
+                error: Argument 'data' of type {b: String} is incompatible with expected type {a: String}
                   --> main.hop (line 6, col 18)
-                5 | <main-comp {params: {data: {b: string}}}>
+                5 | <main-comp {params: {data: {b: String}}}>
                 6 |     <needs-a {data: params.data}/>
                   |                     ^^^^^^^^^^^
             "#]],
         );
     }
 
-    // Using a condition that is not a boolean should produce an error
+    // Using a condition that is not a Bool should produce an error
     #[test]
     fn test_if_condition_must_be_boolean() {
         check(
@@ -4030,7 +3995,7 @@ mod tests {
                 </main-component>
             "#},
             expect![[r#"
-                error: Expected boolean condition, got string
+                error: Expected boolean condition, got String
                   --> main.hop (line 2, col 10)
                 1 | <main-component>
                 2 |     <if {"str"}>
@@ -4045,7 +4010,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {a: string}>
+                <main-comp {a: String}>
                   {a}
                 </main-comp>
                 <foo-comp>
@@ -4068,7 +4033,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {a: string, b: string}>
+                <main-comp {a: String, b: String}>
                   {a} {b}
                 </main-comp>
                 <foo-comp>
@@ -4076,13 +4041,13 @@ mod tests {
                 </foo-comp>
             "#},
             expect![[r#"
-                error: Can not compare int to string
+                error: Can not compare Int to String
                   --> main.hop (line 5, col 20)
                 4 | <foo-comp>
                 5 |     <main-comp {a: 1 == "", b: 1 == ""}/>
                   |                    ^^^^^^^
 
-                error: Can not compare int to string
+                error: Can not compare Int to String
                   --> main.hop (line 5, col 32)
                 4 | <foo-comp>
                 5 |     <main-comp {a: 1 == "", b: 1 == ""}/>
@@ -4124,7 +4089,7 @@ mod tests {
                 </main-component>
             "#},
             expect![[r#"
-                error: Expected string for text expression, got boolean
+                error: Expected string for text expression, got Bool
                   --> main.hop (line 2, col 5)
                 1 | <main-component>
                 2 |     {false}

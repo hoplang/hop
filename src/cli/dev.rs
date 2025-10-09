@@ -259,7 +259,7 @@ mod tests {
         modules.insert(
             crate::hop::module_name::ModuleName::new("test".to_string()).unwrap(),
             r#"
-            <greeting-comp entrypoint {name: string, title: string}><h1>{title}</h1><p>Hello, {name}!</p></greeting-comp>
+            <greeting-comp entrypoint {name: String, title: String}><h1>{title}</h1><p>Hello, {name}!</p></greeting-comp>
 
             <simple-comp entrypoint><div>Simple content</div></simple-comp>
             "#

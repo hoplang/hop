@@ -373,7 +373,7 @@ impl Tokenizer {
 
     /// Parse an expression.
     ///
-    /// E.g. <div foo="bar" {x: string}>
+    /// E.g. <div foo="bar" {x: String}>
     ///                     ^^^^^^^^^^^
     /// Expects that the iterator points to the initial '{'.
     ///
@@ -427,7 +427,7 @@ impl Tokenizer {
 
     /// Parse tag content (attributes and expressions).
     ///
-    /// E.g. <div foo="bar" {x: string}>
+    /// E.g. <div foo="bar" {x: String}>
     ///           ^^^^^^^^^^^^^^^^^^^^^
     fn parse_tag_content(&mut self) -> (BTreeMap<StringSpan, Attribute>, Option<DocumentRange>) {
         let mut attributes: BTreeMap<StringSpan, Attribute> = BTreeMap::new();
@@ -463,7 +463,7 @@ impl Tokenizer {
 
     /// Parse an opening tag.
     ///
-    /// E.g. <div foo="bar" {x: string}>
+    /// E.g. <div foo="bar" {x: String}>
     ///       ^^^^^^^^^^^^^^^^^^^^^^^^^^
     /// Expects that the iterator points to the initial alphabetic char.
     ///
@@ -868,7 +868,7 @@ mod tests {
     fn test_tokenize_component_with_src() {
         check(
             indoc! {r#"
-                <not-found-error entrypoint {path: string, available_routes: array[string]}>
+                <not-found-error entrypoint {path: String, available_routes: Array[String]}>
                     <!DOCTYPE html>
                     <html>
                     <head>
@@ -888,12 +888,12 @@ mod tests {
                 </not-found-error>
             "#},
             expect![[r#"
-                OpeningTag <not-found-error entrypoint expr="path: string, available_routes: array[string]">
-                 1 | <not-found-error entrypoint {path: string, available_routes: array[string]}>
+                OpeningTag <not-found-error entrypoint expr="path: String, available_routes: Array[String]">
+                 1 | <not-found-error entrypoint {path: String, available_routes: Array[String]}>
                    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 Text [5 byte, "\n    "]
-                 1 | <not-found-error entrypoint {path: string, available_routes: array[string]}>
+                 1 | <not-found-error entrypoint {path: String, available_routes: Array[String]}>
                  2 |     <!DOCTYPE html>
                    | ^^^^
 
@@ -1086,10 +1086,10 @@ mod tests {
     #[test]
     fn test_tokenize_with_expr_before_attributes() {
         check(
-            "<h1 {foo: {k: string}} foo bar/>",
+            "<h1 {foo: {k: String}} foo bar/>",
             expect![[r#"
-                OpeningTag <h1 foo bar expr="foo: {k: string}"/>
-                1 | <h1 {foo: {k: string}} foo bar/>
+                OpeningTag <h1 foo bar expr="foo: {k: String}"/>
+                1 | <h1 {foo: {k: String}} foo bar/>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );

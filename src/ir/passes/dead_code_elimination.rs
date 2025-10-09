@@ -138,7 +138,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test(show: boolean) {
+                test(show: Bool) {
                   if show {
                     write("Dynamic")
                   }
@@ -151,7 +151,7 @@ mod tests {
                 }
 
                 -- after --
-                test(show: boolean) {
+                test(show: Bool) {
                   if show {
                     write("Dynamic")
                   }
@@ -188,7 +188,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test(condition: boolean) {
+                test(condition: Bool) {
                   if condition {
                     write("Before nested")
                     if true {
@@ -212,7 +212,7 @@ mod tests {
                 }
 
                 -- after --
-                test(condition: boolean) {
+                test(condition: Bool) {
                   if condition {
                     write("Before nested")
                     write("Nested always true")

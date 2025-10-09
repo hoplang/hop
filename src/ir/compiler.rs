@@ -166,7 +166,7 @@ impl Compiler {
 
             InlinedNode::TextExpression { expression } => {
                 let compiled_expr = self.compile_expr(expression.clone());
-                let should_escape = compiled_expr.as_type() != &Type::TrustedHtml;
+                let should_escape = compiled_expr.as_type() != &Type::TrustedHTML;
                 output.push(IrStatement::WriteExpr {
                     id: self.next_node_id(),
                     expr: compiled_expr,
@@ -311,7 +311,7 @@ impl Compiler {
                     content: format!(" {}=\"", name),
                 });
                 let compiled_expr = self.compile_expr(expr);
-                let should_escape = compiled_expr.as_type() != &Type::TrustedHtml;
+                let should_escape = compiled_expr.as_type() != &Type::TrustedHTML;
                 output.push(IrStatement::WriteExpr {
                     id: self.next_node_id(),
                     expr: compiled_expr,
@@ -534,13 +534,13 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                <main-comp {name: string}>
+                <main-comp {name: String}>
                   "Hello "
                   {name}
                 </main-comp>
 
                 -- after --
-                main-comp(name: string) {
+                main-comp(name: String) {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
                     write("<script type=\"application/json\">{\"entrypoint\": \"main-comp\", \"params\": ")
@@ -601,7 +601,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                <main-comp {show: boolean}>
+                <main-comp {show: Bool}>
                   <if {show}>
                     <div>
                       "Visible"
@@ -610,7 +610,7 @@ mod tests {
                 </main-comp>
 
                 -- after --
-                main-comp(show: boolean) {
+                main-comp(show: Bool) {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
                     write("<script type=\"application/json\">{\"entrypoint\": \"main-comp\", \"params\": ")
@@ -647,7 +647,7 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                <main-comp {items: array[string]}>
+                <main-comp {items: Array[String]}>
                   <ul>
                     <for {item in items}>
                       <li>
@@ -658,7 +658,7 @@ mod tests {
                 </main-comp>
 
                 -- after --
-                main-comp(items: array[string]) {
+                main-comp(items: Array[String]) {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
                     write("<script type=\"application/json\">{\"entrypoint\": \"main-comp\", \"params\": ")
@@ -735,14 +735,14 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                <main-comp {cls: string}>
+                <main-comp {cls: String}>
                   <div class="base" data-value={cls}>
                     "Content"
                   </div>
                 </main-comp>
 
                 -- after --
-                main-comp(cls: string) {
+                main-comp(cls: String) {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
                     write("<script type=\"application/json\">{\"entrypoint\": \"main-comp\", \"params\": ")
@@ -780,7 +780,7 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                <test-comp {name: string, count: string}>
+                <test-comp {name: String, count: String}>
                   <div>
                     "Hello "
                     {name}
@@ -790,7 +790,7 @@ mod tests {
                 </test-comp>
 
                 -- after --
-                test-comp(name: string, count: string) {
+                test-comp(name: String, count: String) {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
                     write("<script type=\"application/json\">{\"entrypoint\": \"test-comp\", \"params\": ")

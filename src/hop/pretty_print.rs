@@ -173,7 +173,7 @@ fn format_opening_tag(
 }
 
 /// Format the parameters of a component definition.
-/// E.g. <foo-component {users: array[{name: string}]}>
+/// E.g. <foo-component {users: Array[{name: String}]}>
 ///                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 fn format_parameters(params: Vec<Parameter>) -> RcDoc<'static> {
     RcDoc::nil()
@@ -563,12 +563,12 @@ mod tests {
     fn test_format_long_parameter_list_gets_whitespace() {
         check_pretty_print(
             indoc! {r#"
-                <foo-component {users:array[{name:string}]}>
+                <foo-component {users:Array[{name:String}]}>
                   <div>Hello</div>
                 </foo-component>
             "#},
             expect![[r#"
-                <foo-component {users: array[{name: string}]}>
+                <foo-component {users: Array[{name: String}]}>
                   <div>Hello</div>
                 </foo-component>
             "#]],
@@ -581,7 +581,7 @@ mod tests {
     fn test_format_long_parameter_list_has_trailing_comma() {
         check_pretty_print(
             indoc! {r#"
-                <foo-component {users: array[{name: string}], admins: array[{name: string, email: string}], others: array[{name: string, email: string, foo: string, bar: string, baz: string}]}>
+                <foo-component {users: Array[{name: String}], admins: Array[{name: String, email: String}], others: Array[{name: String, email: String, foo: String, bar: String, baz: String}]}>
                     <div>
                         <h1>User List</h1>
                         <for {user in users}>
@@ -592,14 +592,14 @@ mod tests {
             "#},
             expect![[r#"
                 <foo-component {
-                  users: array[{name: string}],
-                  admins: array[{email: string, name: string}],
-                  others: array[{
-                  bar: string,
-                  baz: string,
-                  email: string,
-                  foo: string,
-                  name: string,
+                  users: Array[{name: String}],
+                  admins: Array[{email: String, name: String}],
+                  others: Array[{
+                  bar: String,
+                  baz: String,
+                  email: String,
+                  foo: String,
+                  name: String,
                 }],
                 }>
                   <div>

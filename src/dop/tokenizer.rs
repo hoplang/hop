@@ -110,12 +110,12 @@ impl Iterator for Tokenizer {
                         "true" => Token::BooleanLiteral(true),
                         "false" => Token::BooleanLiteral(false),
                         // Type keywords
-                        "string" => Token::TypeString,
-                        "int" => Token::TypeInt,
-                        "float" => Token::TypeFloat,
-                        "boolean" => Token::TypeBoolean,
-                        "trusted_html" => Token::TypeTrustedHtml,
-                        "array" => Token::TypeArray,
+                        "String" => Token::TypeString,
+                        "Int" => Token::TypeInt,
+                        "Float" => Token::TypeFloat,
+                        "Bool" => Token::TypeBoolean,
+                        "TrustedHTML" => Token::TypeTrustedHTML,
+                        "Array" => Token::TypeArray,
                         _ => Token::Identifier(identifier.clone()),
                     };
                     Ok((t, identifier))
@@ -537,31 +537,31 @@ mod tests {
     #[test]
     fn test_tokenize_type_keywords() {
         check(
-            "string int float boolean trusted_html array",
+            "String Int Float Bool TrustedHTML Array",
             expect![[r#"
-                token: string
-                string int float boolean trusted_html array
+                token: String
+                String Int Float Bool TrustedHTML Array
                 ^^^^^^
 
-                token: int
-                string int float boolean trusted_html array
+                token: Int
+                String Int Float Bool TrustedHTML Array
                        ^^^
 
-                token: float
-                string int float boolean trusted_html array
+                token: Float
+                String Int Float Bool TrustedHTML Array
                            ^^^^^
 
-                token: boolean
-                string int float boolean trusted_html array
-                                 ^^^^^^^
+                token: Bool
+                String Int Float Bool TrustedHTML Array
+                                 ^^^^
 
-                token: trusted_html
-                string int float boolean trusted_html array
-                                         ^^^^^^^^^^^^
+                token: TrustedHTML
+                String Int Float Bool TrustedHTML Array
+                                      ^^^^^^^^^^^
 
-                token: array
-                string int float boolean trusted_html array
-                                                      ^^^^^
+                token: Array
+                String Int Float Bool TrustedHTML Array
+                                                  ^^^^^
             "#]],
         );
     }

@@ -97,7 +97,7 @@ impl PythonTranspiler {
             Type::Bool => BoxDoc::text("bool"),
             Type::Float => BoxDoc::text("float"),
             Type::Int => BoxDoc::text("int"),
-            Type::TrustedHtml => BoxDoc::text("str"),
+            Type::TrustedHTML => BoxDoc::text("str"),
             Type::Array(Some(elem)) => BoxDoc::text("list[")
                 .append(Self::get_python_type(elem))
                 .append(BoxDoc::text("]")),
@@ -774,7 +774,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-greeting-comp(name: string, message: string) {
+                test-greeting-comp(name: String, message: String) {
                   write("<h1>Hello ")
                   write_escaped(name)
                   write(", ")
@@ -821,7 +821,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-main-comp(show: boolean) {
+                test-main-comp(show: Bool) {
                   if show {
                     write("<div>Visible</div>\n")
                   }
@@ -862,7 +862,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-main-comp(items: array[string]) {
+                test-main-comp(items: Array[String]) {
                   for item in items {
                     write("<li>")
                     write_escaped(item)
@@ -950,7 +950,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-json(data: {count: float, title: string}) {
+                test-json(data: {count: Float, title: String}) {
                   write("<script>\n")
                   write("const data = ")
                   write_expr(JsonEncode(data))
@@ -1003,7 +1003,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-auth-check(user_role: string, expected_role: string) {
+                test-auth-check(user_role: String, expected_role: String) {
                   if (user_role == expected_role) {
                     write("<div>Access granted</div>\n")
                   }
@@ -1049,7 +1049,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-not(active: boolean) {
+                test-not(active: Bool) {
                   if (!active) {
                     write("<div>Inactive</div>\n")
                   }
@@ -1108,10 +1108,10 @@ mod tests {
             expect![[r#"
                 -- before --
                 test-users(
-                  users: array[{
-                    email: string,
-                    name: string,
-                    profile: {age: float, bio: string},
+                  users: Array[{
+                    email: String,
+                    name: String,
+                    profile: {age: Float, bio: String},
                   }],
                 ) {
                   for user in users {
@@ -1255,11 +1255,11 @@ mod tests {
                 -- before --
                 test-deep-config(
                   config: {
-                    api_key: string,
+                    api_key: String,
                     database: {
-                      credentials: {password: string, username: string},
-                      host: string,
-                      port: float,
+                      credentials: {password: String, username: String},
+                      host: String,
+                      port: Float,
                     },
                   },
                 ) {

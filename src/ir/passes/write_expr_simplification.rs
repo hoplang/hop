@@ -139,14 +139,14 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test(x: string) {
+                test(x: String) {
                   write("Already a Write statement")
                   write_expr("Will become Write")
                   write_expr(x)
                 }
 
                 -- after --
-                test(x: string) {
+                test(x: String) {
                   write("Already a Write statement")
                   write("Will become Write")
                   write_expr(x)

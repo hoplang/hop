@@ -72,7 +72,7 @@ pub trait TypeTranspiler {
             Type::String => self.transpile_string_type(),
             Type::Float => self.transpile_float_type(),
             Type::Int => self.transpile_int_type(),
-            Type::TrustedHtml => self.transpile_trusted_html_type(),
+            Type::TrustedHTML => self.transpile_trusted_html_type(),
             Type::Array(elem) => self.transpile_array_type(elem.as_deref()),
             Type::Object(fields) => self.transpile_object_type(fields),
         }
