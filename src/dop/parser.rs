@@ -326,7 +326,7 @@ impl Parser {
                 ))
             }
             Some((Token::LeftBrace, left_brace_range)) => self.parse_object_type(left_brace_range),
-            Some((_, range)) => Err(ParseError::ExpectedTypeName { range }),
+            Some((actual, range)) => Err(ParseError::ExpectedTypeNameButGot { actual, range }),
             None => Err(ParseError::UnexpectedEof {
                 range: self.range.clone(),
             }),

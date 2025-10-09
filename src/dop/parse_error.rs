@@ -68,8 +68,8 @@ pub enum ParseError {
         range: DocumentRange,
     },
 
-    #[error("Expected type name")]
-    ExpectedTypeName { range: DocumentRange },
+    #[error("Expected type name but got {actual}")]
+    ExpectedTypeNameButGot { actual: Token, range: DocumentRange },
 
     #[error("Invalid number format")]
     InvalidNumberFormat { range: DocumentRange },
@@ -90,7 +90,7 @@ impl Ranged for ParseError {
             | ParseError::ExpectedPropertyNameButGot { range, .. }
             | ParseError::DuplicateArgument { range, .. }
             | ParseError::InvalidVariableName { range, .. }
-            | ParseError::ExpectedTypeName { range, .. }
+            | ParseError::ExpectedTypeNameButGot { range, .. }
             | ParseError::UnexpectedEndOfPropertyAccess { range, .. }
             | ParseError::DuplicateParameter { range, .. }
             | ParseError::DuplicateProperty { range, .. }

@@ -960,7 +960,7 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                error: Expected type name
+                error: Expected type name but got invalid
                 1 | <main-comp {data: invalid}>
                   |                   ^^^^^^^
             "#]],
