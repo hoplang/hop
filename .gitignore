@@ -14,3 +14,4 @@ html
 .hop-cache
 cross/*.sdk
 npm/*/bin/hop
+!npm/hop/bin/hop

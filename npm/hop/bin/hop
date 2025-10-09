@@ -1,0 +1,5 @@
+#!/usr/bin/env node
+
+// This is a placeholder that will be replaced by the postinstall script
+console.error("[hop] Binary not installed. Please run: npm install");
+process.exit(1);
