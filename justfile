@@ -24,6 +24,7 @@ install-release: build-release
 
 build-npm:
 	./cross/compile.sh
+	mkdir -p npm/darwin-arm64/bin npm/linux-arm64/bin npm/linux-x64/bin npm/hop/bin
 	cp target/aarch64-apple-darwin/release/hop npm/darwin-arm64/bin/
 	cp target/aarch64-unknown-linux-gnu/release/hop npm/linux-arm64/bin/
 	cp target/x86_64-unknown-linux-gnu/release/hop npm/linux-x64/bin/
