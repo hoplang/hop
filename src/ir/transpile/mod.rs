@@ -10,6 +10,7 @@ pub use js::{JsTranspiler, LanguageMode};
 use pretty::BoxDoc;
 pub use python::PythonTranspiler;
 
+use crate::dop::property_name::PropertyName;
 use crate::dop::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use std::collections::BTreeMap;
@@ -65,7 +66,7 @@ pub trait TypeTranspiler {
     fn transpile_int_type<'a>(&self) -> BoxDoc<'a>;
     fn transpile_trusted_html_type<'a>(&self) -> BoxDoc<'a>;
     fn transpile_array_type<'a>(&self, element_type: Option<&'a Type>) -> BoxDoc<'a>;
-    fn transpile_object_type<'a>(&self, fields: &'a BTreeMap<String, Type>) -> BoxDoc<'a>;
+    fn transpile_object_type<'a>(&self, fields: &'a BTreeMap<PropertyName, Type>) -> BoxDoc<'a>;
     fn transpile_type<'a>(&self, t: &'a Type) -> BoxDoc<'a> {
         match t {
             Type::Bool => self.transpile_bool_type(),
@@ -94,8 +95,8 @@ pub trait ExpressionTranspiler {
     ) -> BoxDoc<'a>;
     fn transpile_object_literal<'a>(
         &self,
-        properties: &'a [(String, IrExpr)],
-        property_types: &'a BTreeMap<String, Type>,
+        properties: &'a [(PropertyName, IrExpr)],
+        property_types: &'a BTreeMap<PropertyName, Type>,
     ) -> BoxDoc<'a>;
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_bool_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
@@ -142,7 +143,7 @@ pub trait ExpressionTranspiler {
             IrExpr::Var { value, .. } => self.transpile_var(value.as_str()),
             IrExpr::PropertyAccess {
                 object, property, ..
-            } => self.transpile_property_access(object, property),
+            } => self.transpile_property_access(object, property.as_str()),
             IrExpr::StringLiteral { value, .. } => self.transpile_string_literal(value),
             IrExpr::BooleanLiteral { value, .. } => self.transpile_boolean_literal(*value),
             IrExpr::FloatLiteral { value, .. } => self.transpile_float_literal(*value),

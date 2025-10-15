@@ -1,6 +1,7 @@
 use std::fmt::{self, Display};
 
 use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::dop::property_name::PropertyName;
 use crate::dop::var_name::VarName;
 use pretty::BoxDoc;
 
@@ -27,7 +28,7 @@ pub enum AnnotatedExpr<A> {
     /// A property access expression, e.g. foo.bar
     PropertyAccess {
         object: Box<Self>,
-        property: String,
+        property: PropertyName,
         annotation: A,
     },
 
@@ -47,7 +48,7 @@ pub enum AnnotatedExpr<A> {
     ArrayLiteral { elements: Vec<Self>, annotation: A },
 
     ObjectLiteral {
-        properties: Vec<(String, Self)>,
+        properties: Vec<(PropertyName, Self)>,
         annotation: A,
     },
 

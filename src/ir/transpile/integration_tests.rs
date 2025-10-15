@@ -1,5 +1,6 @@
 use super::{GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler};
 use crate::dop::r#type::Type;
+use crate::dop::PropertyName;
 use crate::ir::ast::IrEntrypoint;
 use crate::ir::test_utils::build_ir_auto;
 use std::collections::BTreeMap;
@@ -545,19 +546,19 @@ mod tests {
             "config",
             Type::Object({
                 let mut config = BTreeMap::new();
-                config.insert("api_key".to_string(), Type::String);
+                config.insert(PropertyName::new("api_key").unwrap(), Type::String);
                 config.insert(
-                    "database".to_string(),
+                    PropertyName::new("database").unwrap(),
                     Type::Object({
                         let mut db = BTreeMap::new();
-                        db.insert("host".to_string(), Type::String);
-                        db.insert("port".to_string(), Type::Float);
+                        db.insert(PropertyName::new("host").unwrap(), Type::String);
+                        db.insert(PropertyName::new("port").unwrap(), Type::Float);
                         db.insert(
-                            "credentials".to_string(),
+                            PropertyName::new("credentials").unwrap(),
                             Type::Object({
                                 let mut creds = BTreeMap::new();
-                                creds.insert("username".to_string(), Type::String);
-                                creds.insert("password".to_string(), Type::String);
+                                creds.insert(PropertyName::new("username").unwrap(), Type::String);
+                                creds.insert(PropertyName::new("password").unwrap(), Type::String);
                                 creds
                             }),
                         );
@@ -565,17 +566,17 @@ mod tests {
                     }),
                 );
                 config.insert(
-                    "features".to_string(),
+                    PropertyName::new("features").unwrap(),
                     Type::Array(Some(Box::new(Type::Object({
                         let mut feature = BTreeMap::new();
-                        feature.insert("name".to_string(), Type::String);
-                        feature.insert("enabled".to_string(), Type::Bool);
+                        feature.insert(PropertyName::new("name").unwrap(), Type::String);
+                        feature.insert(PropertyName::new("enabled").unwrap(), Type::Bool);
                         feature.insert(
-                            "settings".to_string(),
+                            PropertyName::new("settings").unwrap(),
                             Type::Object({
                                 let mut settings = BTreeMap::new();
-                                settings.insert("level".to_string(), Type::String);
-                                settings.insert("timeout".to_string(), Type::Float);
+                                settings.insert(PropertyName::new("level").unwrap(), Type::String);
+                                settings.insert(PropertyName::new("timeout").unwrap(), Type::Float);
                                 settings
                             }),
                         );
@@ -608,14 +609,14 @@ mod tests {
             "users",
             Type::Array(Some(Box::new(Type::Object({
                 let mut user = BTreeMap::new();
-                user.insert("name".to_string(), Type::String);
-                user.insert("email".to_string(), Type::String);
+                user.insert(PropertyName::new("name").unwrap(), Type::String);
+                user.insert(PropertyName::new("email").unwrap(), Type::String);
                 user.insert(
-                    "profile".to_string(),
+                    PropertyName::new("profile").unwrap(),
                     Type::Object({
                         let mut profile = BTreeMap::new();
-                        profile.insert("bio".to_string(), Type::String);
-                        profile.insert("age".to_string(), Type::Float);
+                        profile.insert(PropertyName::new("bio").unwrap(), Type::String);
+                        profile.insert(PropertyName::new("age").unwrap(), Type::Float);
                         profile
                     }),
                 );

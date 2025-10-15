@@ -6,6 +6,7 @@ use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as 
 use crate::dop::Type;
 use crate::dop::expr::{AnnotatedExpr, BinaryOp};
 use crate::dop::parse_error::ParseError;
+use crate::dop::property_name::PropertyName;
 use crate::dop::token::Token;
 use crate::dop::tokenizer::Tokenizer;
 use crate::dop::var_name::VarName;
@@ -138,9 +139,18 @@ impl Parser {
         }
     }
 
-    fn expect_property_name(&mut self) -> Result<DocumentRange, ParseError> {
+    fn expect_property_name(&mut self) -> Result<(PropertyName, DocumentRange), ParseError> {
         match self.iter.next().transpose()? {
-            Some((Token::Identifier(name), _)) => Ok(name),
+            Some((Token::Identifier(name), range)) => {
+                let prop_name = PropertyName::new(name.as_str()).map_err(|error| {
+                    ParseError::InvalidPropertyName {
+                        name: name.to_string_span(),
+                        error,
+                        range: name.clone(),
+                    }
+                })?;
+                Ok((prop_name, range))
+            }
             Some((token, range)) => Err(ParseError::ExpectedPropertyNameButGot {
                 actual: token,
                 range: range.clone(),
@@ -294,16 +304,16 @@ impl Parser {
     ) -> Result<(Type, DocumentRange), ParseError> {
         let mut properties = BTreeMap::new();
         let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
-            let prop_name = this.expect_property_name()?;
+            let (prop_name, prop_name_range) = this.expect_property_name()?;
             this.expect_token(&Token::Colon)?;
             let (typ, _range) = this.parse_type()?;
-            if properties.contains_key(prop_name.as_str()) {
+            if properties.contains_key(&prop_name) {
                 return Err(ParseError::DuplicateProperty {
-                    name: prop_name.to_string_span(),
-                    range: prop_name.clone(),
+                    name: prop_name_range.to_string_span(),
+                    range: prop_name_range.clone(),
                 });
             }
-            properties.insert(prop_name.to_string(), typ);
+            properties.insert(prop_name, typ);
             Ok(())
         })?;
         Ok((Type::Object(properties), left_brace.to(right_brace)))
@@ -477,15 +487,15 @@ impl Parser {
         let mut properties = Vec::new();
         let mut seen_names = HashSet::new();
         let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
-            let prop_name = this.expect_property_name()?;
-            if !seen_names.insert(prop_name.to_string_span()) {
+            let (prop_name, prop_name_range) = this.expect_property_name()?;
+            if !seen_names.insert(prop_name.as_str().to_string()) {
                 return Err(ParseError::DuplicateProperty {
-                    name: prop_name.to_string_span(),
-                    range: prop_name.clone(),
+                    name: prop_name_range.to_string_span(),
+                    range: prop_name_range.clone(),
                 });
             }
             this.expect_token(&Token::Colon)?;
-            properties.push((prop_name.to_string(), this.parse_logical()?));
+            properties.push((prop_name, this.parse_logical()?));
             Ok(())
         })?;
         Ok(AnnotatedExpr::ObjectLiteral {
@@ -509,10 +519,18 @@ impl Parser {
         while let Some(dot) = self.advance_if(Token::Dot) {
             match self.iter.next().transpose()? {
                 Some((Token::Identifier(prop), _)) => {
+                    // Validate property name
+                    let prop_name = PropertyName::new(prop.as_str()).map_err(|error| {
+                        ParseError::InvalidPropertyName {
+                            name: prop.to_string_span(),
+                            error,
+                            range: prop.clone(),
+                        }
+                    })?;
                     let range = expr.range().clone().to(prop.clone());
                     expr = AnnotatedExpr::PropertyAccess {
                         object: Box::new(expr),
-                        property: prop.to_string(),
+                        property: prop_name,
                         annotation: range,
                     };
                 }
@@ -1571,9 +1589,9 @@ mod tests {
     #[test]
     fn test_parse_expr_string_concatenation_with_property_access() {
         check_parse_expr(
-            r#"user.firstName + " " + user.lastName"#,
+            r#"user.first_name + " " + user.last_name"#,
             expect![[r#"
-                ((user.firstName + " ") + user.lastName)
+                ((user.first_name + " ") + user.last_name)
             "#]],
         );
     }

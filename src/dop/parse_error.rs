@@ -1,6 +1,7 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use thiserror::Error;
 
+use super::property_name::InvalidPropertyNameError;
 use super::token::Token;
 use super::var_name::InvalidVarNameError;
 
@@ -22,6 +23,13 @@ pub enum ParseError {
     InvalidVariableName {
         name: StringSpan,
         error: InvalidVarNameError,
+        range: DocumentRange,
+    },
+
+    #[error("Invalid property name '{name}': {error}")]
+    InvalidPropertyName {
+        name: StringSpan,
+        error: InvalidPropertyNameError,
         range: DocumentRange,
     },
 
@@ -90,6 +98,7 @@ impl Ranged for ParseError {
             | ParseError::ExpectedPropertyNameButGot { range, .. }
             | ParseError::DuplicateArgument { range, .. }
             | ParseError::InvalidVariableName { range, .. }
+            | ParseError::InvalidPropertyName { range, .. }
             | ParseError::ExpectedTypeNameButGot { range, .. }
             | ParseError::UnexpectedEndOfPropertyAccess { range, .. }
             | ParseError::DuplicateParameter { range, .. }

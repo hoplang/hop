@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 
 use pretty::BoxDoc;
 
+use super::PropertyName;
+
 /// An EquatableType is a type where its values can be compared
 /// using `==` and `!=`.
 #[derive(Debug, Clone, PartialEq)]
@@ -38,7 +40,7 @@ pub enum Type {
     Int,
     Float,
     TrustedHTML,
-    Object(BTreeMap<String, Type>),
+    Object(BTreeMap<PropertyName, Type>),
     Array(Option<Box<Type>>),
 }
 
@@ -130,7 +132,7 @@ impl<'a> Type {
                                 fields.iter().map(|(key, typ)| {
                                     BoxDoc::nil()
                                         // key
-                                        .append(BoxDoc::text(key.clone()))
+                                        .append(BoxDoc::text(key.as_str()))
                                         // separator
                                         .append(BoxDoc::text(": "))
                                         // value

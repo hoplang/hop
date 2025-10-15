@@ -1,4 +1,5 @@
 use crate::document::document_cursor::StringSpan;
+use crate::dop::PropertyName;
 use crate::dop::SimpleTypedExpr;
 use crate::dop::Type;
 use crate::dop::VarName;
@@ -120,20 +121,21 @@ impl InlinedTestBuilder {
     pub fn object_expr(&self, props: Vec<(&str, SimpleTypedExpr)>) -> SimpleTypedExpr {
         let mut type_map = BTreeMap::new();
         for (key, expr) in &props {
-            type_map.insert(key.to_string(), expr.as_type().clone());
+            type_map.insert(PropertyName::new(key).unwrap(), expr.as_type().clone());
         }
 
         SimpleTypedExpr::ObjectLiteral {
-            properties: props.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+            properties: props.into_iter().map(|(k, v)| (PropertyName::new(k).unwrap(), v)).collect(),
             kind: Type::Object(type_map),
             annotation: (),
         }
     }
 
     pub fn prop_access_expr(&self, object: SimpleTypedExpr, property: &str) -> SimpleTypedExpr {
+        let property_name = PropertyName::new(property).unwrap();
         let property_type = match object.as_type() {
             Type::Object(type_map) => type_map
-                .get(property)
+                .get(&property_name)
                 .cloned()
                 .unwrap_or_else(|| panic!("Property '{}' not found in object type", property)),
             _ => panic!("Cannot access property '{}' on non-object type", property),
@@ -141,7 +143,7 @@ impl InlinedTestBuilder {
 
         SimpleTypedExpr::PropertyAccess {
             object: Box::new(object),
-            property: property.to_string(),
+            property: property_name,
             kind: property_type,
             annotation: (),
         }

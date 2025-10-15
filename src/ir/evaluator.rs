@@ -128,7 +128,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
         } => {
             let obj_value = evaluate_expr(object, env)?;
             if let Some(obj) = obj_value.as_object() {
-                Ok(obj.get(property).cloned().unwrap_or(Value::Null))
+                Ok(obj.get(property.as_str()).cloned().unwrap_or(Value::Null))
             } else {
                 Ok(Value::Null)
             }
@@ -149,7 +149,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
         IrExpr::ObjectLiteral { properties, .. } => {
             let mut obj = serde_json::Map::new();
             for (key, value) in properties {
-                obj.insert(key.clone(), evaluate_expr(value, env)?);
+                obj.insert(key.as_str().to_string(), evaluate_expr(value, env)?);
             }
             Ok(Value::Object(obj))
         }

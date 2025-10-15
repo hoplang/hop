@@ -1,3 +1,4 @@
+use crate::dop::PropertyName;
 use crate::dop::TypedExpr;
 use crate::dop::r#type::{ComparableType, EquatableType};
 use crate::dop::{Type, VarName};
@@ -197,20 +198,21 @@ impl IrTestBuilder {
         // Build a type map from the property types
         let mut type_map = BTreeMap::new();
         for (key, expr) in &props {
-            type_map.insert(key.to_string(), expr.as_type().clone());
+            type_map.insert(PropertyName::new(key).unwrap(), expr.as_type().clone());
         }
 
         TypedExpr::ObjectLiteral {
-            properties: props.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+            properties: props.into_iter().map(|(k, v)| (PropertyName::new(k).unwrap(), v)).collect(),
             kind: Type::Object(type_map),
             annotation: self.next_expr_id(),
         }
     }
 
     pub fn prop_access(&self, object: IrExpr, property: &str) -> IrExpr {
+        let property_name = PropertyName::new(property).unwrap();
         let property_type = match object.as_type() {
             Type::Object(type_map) => type_map
-                .get(property)
+                .get(&property_name)
                 .cloned()
                 .unwrap_or_else(|| panic!("Property '{}' not found in object type", property)),
             _ => panic!("Cannot access property '{}' on non-object type", property),
@@ -218,7 +220,7 @@ impl IrTestBuilder {
 
         TypedExpr::PropertyAccess {
             object: Box::new(object),
-            property: property.to_string(),
+            property: property_name,
             kind: property_type,
             annotation: self.next_expr_id(),
         }

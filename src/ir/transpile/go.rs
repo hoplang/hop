@@ -2,6 +2,7 @@ use pretty::BoxDoc;
 
 use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::cased_string::CasedString;
+use crate::dop::property_name::PropertyName;
 use crate::dop::r#type::Type;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use std::collections::{BTreeMap, BTreeSet};
@@ -33,13 +34,13 @@ impl GoTranspiler {
                 let mut field_docs = Vec::new();
                 for (nested_field_name, nested_field_type) in fields {
                     let field_name_pascal =
-                        CasedString::from_snake_case(nested_field_name).to_pascal_case();
+                        CasedString::from_snake_case(nested_field_name.as_str()).to_pascal_case();
 
                     // Recursively process and get the type reference
                     let field_type_doc = self.extract_and_generate_nested_type(
                         nested_field_type,
                         &type_name, // New base name for nested types
-                        nested_field_name,
+                        nested_field_name.as_str(),
                         generated_types,
                     );
 
@@ -461,8 +462,8 @@ impl ExpressionTranspiler for GoTranspiler {
 
     fn transpile_object_literal<'a>(
         &self,
-        properties: &'a [(String, IrExpr)],
-        field_types: &'a BTreeMap<String, Type>,
+        properties: &'a [(PropertyName, IrExpr)],
+        field_types: &'a BTreeMap<PropertyName, Type>,
     ) -> BoxDoc<'a> {
         let struct_type = self.transpile_object_type(field_types);
         struct_type
@@ -472,7 +473,7 @@ impl ExpressionTranspiler for GoTranspiler {
                     .append(BoxDoc::line())
                     .append(BoxDoc::intersperse(
                         properties.iter().map(|(key, value)| {
-                            let field_name = CasedString::from_snake_case(key).to_pascal_case();
+                            let field_name = CasedString::from_snake_case(key.as_str()).to_pascal_case();
                             BoxDoc::as_string(field_name)
                                 .append(BoxDoc::text(": "))
                                 .append(self.transpile_expr(value))
@@ -725,7 +726,7 @@ impl TypeTranspiler for GoTranspiler {
         }
     }
 
-    fn transpile_object_type<'a>(&self, fields: &'a BTreeMap<String, Type>) -> BoxDoc<'a> {
+    fn transpile_object_type<'a>(&self, fields: &'a BTreeMap<PropertyName, Type>) -> BoxDoc<'a> {
         // Generate anonymous struct type
         BoxDoc::text("struct{")
             .append(
@@ -734,12 +735,12 @@ impl TypeTranspiler for GoTranspiler {
                     .append(BoxDoc::intersperse(
                         fields.iter().map(|(field_name, field_type)| {
                             let go_field =
-                                CasedString::from_snake_case(field_name).to_pascal_case();
+                                CasedString::from_snake_case(field_name.as_str()).to_pascal_case();
                             BoxDoc::as_string(go_field)
                                 .append(BoxDoc::text(" "))
                                 .append(self.transpile_type(field_type))
                                 .append(BoxDoc::text(" `json:\""))
-                                .append(BoxDoc::text(field_name))
+                                .append(BoxDoc::text(field_name.as_str()))
                                 .append(BoxDoc::text("\"`"))
                                 .append(BoxDoc::nil().flat_alt(BoxDoc::text(";")))
                         }),
@@ -1069,8 +1070,8 @@ mod tests {
             "users",
             Type::Array(Some(Box::new(Type::Object({
                 let mut map = BTreeMap::new();
-                map.insert("name".to_string(), Type::String);
-                map.insert("id".to_string(), Type::String);
+                map.insert(PropertyName::new("name").unwrap(), Type::String);
+                map.insert(PropertyName::new("id").unwrap(), Type::String);
                 map
             })))),
         )];
@@ -1305,19 +1306,19 @@ mod tests {
             "config",
             Type::Object({
                 let mut config = BTreeMap::new();
-                config.insert("api_key".to_string(), Type::String);
+                config.insert(PropertyName::new("api_key").unwrap(), Type::String);
                 config.insert(
-                    "database".to_string(),
+                    PropertyName::new("database").unwrap(),
                     Type::Object({
                         let mut db = BTreeMap::new();
-                        db.insert("host".to_string(), Type::String);
-                        db.insert("port".to_string(), Type::Float);
+                        db.insert(PropertyName::new("host").unwrap(), Type::String);
+                        db.insert(PropertyName::new("port").unwrap(), Type::Float);
                         db.insert(
-                            "credentials".to_string(),
+                            PropertyName::new("credentials").unwrap(),
                             Type::Object({
                                 let mut creds = BTreeMap::new();
-                                creds.insert("username".to_string(), Type::String);
-                                creds.insert("password".to_string(), Type::String);
+                                creds.insert(PropertyName::new("username").unwrap(), Type::String);
+                                creds.insert(PropertyName::new("password").unwrap(), Type::String);
                                 creds
                             }),
                         );
@@ -1325,17 +1326,17 @@ mod tests {
                     }),
                 );
                 config.insert(
-                    "features".to_string(),
+                    PropertyName::new("features").unwrap(),
                     Type::Array(Some(Box::new(Type::Object({
                         let mut feature = BTreeMap::new();
-                        feature.insert("name".to_string(), Type::String);
-                        feature.insert("enabled".to_string(), Type::Bool);
+                        feature.insert(PropertyName::new("name").unwrap(), Type::String);
+                        feature.insert(PropertyName::new("enabled").unwrap(), Type::Bool);
                         feature.insert(
-                            "settings".to_string(),
+                            PropertyName::new("settings").unwrap(),
                             Type::Object({
                                 let mut settings = BTreeMap::new();
-                                settings.insert("level".to_string(), Type::String);
-                                settings.insert("timeout".to_string(), Type::Float);
+                                settings.insert(PropertyName::new("level").unwrap(), Type::String);
+                                settings.insert(PropertyName::new("timeout").unwrap(), Type::Float);
                                 settings
                             }),
                         );
@@ -1500,9 +1501,9 @@ mod tests {
                 "data",
                 Type::Object({
                     let mut map = BTreeMap::new();
-                    map.insert("title".to_string(), Type::String);
-                    map.insert("count".to_string(), Type::Float);
-                    map.insert("active".to_string(), Type::Bool);
+                    map.insert(PropertyName::new("title").unwrap(), Type::String);
+                    map.insert(PropertyName::new("count").unwrap(), Type::Float);
+                    map.insert(PropertyName::new("active").unwrap(), Type::Bool);
                     map
                 }),
             ),

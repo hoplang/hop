@@ -3166,22 +3166,22 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {user: {isActive: Bool}}>
-                  <if {user.isActive}>
+                <main-comp {user: {is_active: Bool}}>
+                  <if {user.is_active}>
                     <div>User is active</div>
                   </if>
                 </main-comp>
             "#},
             expect![[r#"
-                user: {isActive: Bool}
+                user: {is_active: Bool}
                   --> main.hop (line 1, col 13)
-                1 | <main-comp {user: {isActive: Bool}}>
+                1 | <main-comp {user: {is_active: Bool}}>
                   |             ^^^^
 
-                user: {isActive: Bool}
+                user: {is_active: Bool}
                   --> main.hop (line 2, col 8)
-                1 | <main-comp {user: {isActive: Bool}}>
-                2 |   <if {user.isActive}>
+                1 | <main-comp {user: {is_active: Bool}}>
+                2 |   <if {user.is_active}>
                   |        ^^^^
             "#]],
         );

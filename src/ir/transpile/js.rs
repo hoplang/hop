@@ -2,6 +2,7 @@ use pretty::BoxDoc;
 
 use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::cased_string::CasedString;
+use crate::dop::property_name::PropertyName;
 use crate::dop::r#type::Type;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use std::collections::BTreeMap;
@@ -335,14 +336,14 @@ impl ExpressionTranspiler for JsTranspiler {
 
     fn transpile_object_literal<'a>(
         &self,
-        properties: &'a [(String, IrExpr)],
-        _field_types: &'a BTreeMap<String, Type>,
+        properties: &'a [(PropertyName, IrExpr)],
+        _field_types: &'a BTreeMap<PropertyName, Type>,
     ) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("{"))
             .append(BoxDoc::intersperse(
                 properties.iter().map(|(key, value)| {
-                    BoxDoc::text(key)
+                    BoxDoc::text(key.as_str())
                         .append(BoxDoc::text(": "))
                         .append(self.transpile_expr(value))
                 }),
@@ -606,7 +607,7 @@ impl TypeTranspiler for JsTranspiler {
         }
     }
 
-    fn transpile_object_type<'a>(&self, fields: &'a BTreeMap<String, Type>) -> BoxDoc<'a> {
+    fn transpile_object_type<'a>(&self, fields: &'a BTreeMap<PropertyName, Type>) -> BoxDoc<'a> {
         if fields.is_empty() {
             return BoxDoc::text("{}");
         }
@@ -615,7 +616,7 @@ impl TypeTranspiler for JsTranspiler {
             .append(BoxDoc::text("{ "))
             .append(BoxDoc::intersperse(
                 fields.iter().map(|(name, ty)| {
-                    BoxDoc::text(name)
+                    BoxDoc::text(name.as_str())
                         .append(BoxDoc::text(": "))
                         .append(self.transpile_type(ty))
                 }),
@@ -1092,17 +1093,17 @@ mod tests {
                 t.array(vec![
                     t.object(vec![
                         ("name", t.str("Laptop")),
-                        ("inStock", t.bool(true)),
+                        ("in_stock", t.bool(true)),
                         ("category", t.str("electronics")),
                     ]),
                     t.object(vec![
                         ("name", t.str("Book")),
-                        ("inStock", t.bool(false)),
+                        ("in_stock", t.bool(false)),
                         ("category", t.str("books")),
                     ]),
                     t.object(vec![
                         ("name", t.str("T-Shirt")),
-                        ("inStock", t.bool(true)),
+                        ("in_stock", t.bool(true)),
                         ("category", t.str("clothing")),
                     ]),
                 ]),
@@ -1111,7 +1112,7 @@ mod tests {
                         "display_info",
                         t.object(vec![
                             ("currency", t.str("$")),
-                            ("showStock", t.bool(true)),
+                            ("show_stock", t.bool(true)),
                             ("prefix", t.str("PROD-")),
                         ]),
                         |t| {
@@ -1124,11 +1125,11 @@ mod tests {
                             t.write("<p>Category: ");
                             t.write_expr_escaped(t.prop_access(t.var("product"), "category"));
                             t.write("</p>\n");
-                            t.if_stmt(t.prop_access(t.var("display_info"), "showStock"), |t| {
-                                t.if_stmt(t.prop_access(t.var("product"), "inStock"), |t| {
+                            t.if_stmt(t.prop_access(t.var("display_info"), "show_stock"), |t| {
+                                t.if_stmt(t.prop_access(t.var("product"), "in_stock"), |t| {
                                     t.write("<span class=\"in-stock\">✓ In Stock</span>\n");
                                 });
-                                t.if_stmt(t.not(t.prop_access(t.var("product"), "inStock")), |t| {
+                                t.if_stmt(t.not(t.prop_access(t.var("product"), "in_stock")), |t| {
                                     t.write("<span class=\"out-of-stock\">✗ Out of Stock</span>\n");
                                 });
                             });
@@ -1149,15 +1150,15 @@ mod tests {
                   for product in [
                     {
                       name: "Laptop",
-                      inStock: true,
+                      in_stock: true,
                       category: "electronics",
                     },
-                    {name: "Book", inStock: false, category: "books"},
-                    {name: "T-Shirt", inStock: true, category: "clothing"},
+                    {name: "Book", in_stock: false, category: "books"},
+                    {name: "T-Shirt", in_stock: true, category: "clothing"},
                   ] {
                     let display_info = {
                       currency: "$",
-                      showStock: true,
+                      show_stock: true,
                       prefix: "PROD-",
                     } in {
                       write("<article class=\"product\">\n")
@@ -1169,11 +1170,11 @@ mod tests {
                       write("<p>Category: ")
                       write_escaped(product.category)
                       write("</p>\n")
-                      if display_info.showStock {
-                        if product.inStock {
+                      if display_info.show_stock {
+                        if product.in_stock {
                           write("<span class=\"in-stock\">✓ In Stock</span>\n")
                         }
-                        if (!product.inStock) {
+                        if (!product.in_stock) {
                           write("<span class=\"out-of-stock\">✗ Out of Stock</span>\n")
                         }
                       }
@@ -1197,8 +1198,8 @@ mod tests {
                     testProductList: (): string => {
                         let output: string = "";
                         output += "<div class=\"products\">\n";
-                        for (const product of [{name: "Laptop", inStock: true, category: "electronics"}, {name: "Book", inStock: false, category: "books"}, {name: "T-Shirt", inStock: true, category: "clothing"}]) {
-                            const display_info = {currency: "$", showStock: true, prefix: "PROD-"};
+                        for (const product of [{name: "Laptop", in_stock: true, category: "electronics"}, {name: "Book", in_stock: false, category: "books"}, {name: "T-Shirt", in_stock: true, category: "clothing"}]) {
+                            const display_info = {currency: "$", show_stock: true, prefix: "PROD-"};
                             output += "<article class=\"product\">\n";
                             output += "<h3>";
                             output += display_info.prefix;
@@ -1208,11 +1209,11 @@ mod tests {
                             output += "<p>Category: ";
                             output += escapeHtml(product.category);
                             output += "</p>\n";
-                            if (display_info.showStock) {
-                                if (product.inStock) {
+                            if (display_info.show_stock) {
+                                if (product.in_stock) {
                                     output += "<span class=\"in-stock\">✓ In Stock</span>\n";
                                 }
-                                if (!(product.inStock)) {
+                                if (!(product.in_stock)) {
                                     output += "<span class=\"out-of-stock\">✗ Out of Stock</span>\n";
                                 }
                             }
@@ -1237,8 +1238,8 @@ mod tests {
                     testProductList: () => {
                         let output = "";
                         output += "<div class=\"products\">\n";
-                        for (const product of [{name: "Laptop", inStock: true, category: "electronics"}, {name: "Book", inStock: false, category: "books"}, {name: "T-Shirt", inStock: true, category: "clothing"}]) {
-                            const display_info = {currency: "$", showStock: true, prefix: "PROD-"};
+                        for (const product of [{name: "Laptop", in_stock: true, category: "electronics"}, {name: "Book", in_stock: false, category: "books"}, {name: "T-Shirt", in_stock: true, category: "clothing"}]) {
+                            const display_info = {currency: "$", show_stock: true, prefix: "PROD-"};
                             output += "<article class=\"product\">\n";
                             output += "<h3>";
                             output += display_info.prefix;
@@ -1248,11 +1249,11 @@ mod tests {
                             output += "<p>Category: ";
                             output += escapeHtml(product.category);
                             output += "</p>\n";
-                            if (display_info.showStock) {
-                                if (product.inStock) {
+                            if (display_info.show_stock) {
+                                if (product.in_stock) {
                                     output += "<span class=\"in-stock\">✓ In Stock</span>\n";
                                 }
-                                if (!(product.inStock)) {
+                                if (!(product.in_stock)) {
                                     output += "<span class=\"out-of-stock\">✗ Out of Stock</span>\n";
                                 }
                             }
@@ -1273,9 +1274,9 @@ mod tests {
                 "users",
                 Type::Array(Some(Box::new(Type::Object({
                     let mut map = BTreeMap::new();
-                    map.insert("name".to_string(), Type::String);
-                    map.insert("id".to_string(), Type::String);
-                    map.insert("active".to_string(), Type::Bool);
+                    map.insert(PropertyName::new("name").unwrap(), Type::String);
+                    map.insert(PropertyName::new("id").unwrap(), Type::String);
+                    map.insert(PropertyName::new("active").unwrap(), Type::Bool);
                     map
                 })))),
             ),

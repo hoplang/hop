@@ -1,6 +1,6 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::StringSpan;
-use crate::dop::{SimpleTypedExpr, TypedExpr};
+use crate::dop::{PropertyName, SimpleTypedExpr, TypedExpr};
 use crate::dop::{Type, VarName};
 use crate::dop::r#type::EquatableType;
 use crate::hop::inlined_ast::{
@@ -104,8 +104,11 @@ impl Compiler {
             // Build object with all parameters
             let mut props = Vec::new();
             for (name, typ) in params {
+                // VarName and PropertyName have the same validation rules (snake_case)
+                // so we can safely convert between them
+                let prop_name = PropertyName::new(name.as_str()).unwrap();
                 props.push((
-                    name.to_string(),
+                    prop_name,
                     TypedExpr::Var {
                         value: name.clone(),
                         kind: typ.clone(),

@@ -1,5 +1,6 @@
 use std::fmt::{self, Display};
 
+use crate::dop::property_name::PropertyName;
 use crate::dop::var_name::VarName;
 use pretty::BoxDoc;
 
@@ -22,7 +23,7 @@ pub enum TypedExpr<A> {
     /// A property access expression, e.g. foo.bar
     PropertyAccess {
         object: Box<Self>,
-        property: String,
+        property: PropertyName,
         kind: Type,
         annotation: A,
     },
@@ -47,7 +48,7 @@ pub enum TypedExpr<A> {
     },
 
     ObjectLiteral {
-        properties: Vec<(String, Self)>,
+        properties: Vec<(PropertyName, Self)>,
         kind: Type,
         annotation: A,
     },

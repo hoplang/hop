@@ -60,7 +60,7 @@ pub fn typecheck_expr(
 
             match &base_type {
                 Type::Object(props) => {
-                    if let Some(prop_type) = props.get(property.as_str()) {
+                    if let Some(prop_type) = props.get(property) {
                         Ok(SimpleTypedExpr::PropertyAccess {
                             kind: prop_type.clone(),
                             object: Box::new(typed_base),
@@ -500,7 +500,7 @@ pub fn typecheck_expr(
             for (key, value_expr) in properties {
                 let typed_value = typecheck_expr(value_expr, env, annotations)?;
                 let value_type = typed_value.as_type().clone();
-                object_properties.insert(key.to_string(), value_type);
+                object_properties.insert(key.clone(), value_type);
                 typed_properties.push((key.clone(), typed_value));
             }
 
@@ -1043,8 +1043,8 @@ mod tests {
     #[test]
     fn test_typecheck_string_concatenation_with_property_access() {
         check(
-            "user: {firstName: String, lastName: String}",
-            r#"user.firstName + " " + user.lastName"#,
+            "user: {first_name: String, last_name: String}",
+            r#"user.first_name + " " + user.last_name"#,
             expect!["String"],
         );
     }
