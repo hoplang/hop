@@ -885,7 +885,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                div                                               1:4-1:15
+                error: Invalid variable name 'Data': Variable name must be lowercase (found uppercase: 'D')
+                1 | <main-comp {Data: String}>
+                  |             ^^^^
             "#]],
         );
     }

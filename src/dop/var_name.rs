@@ -10,6 +10,15 @@ pub enum InvalidVarNameError {
     #[error("Variable name cannot start with underscore")]
     StartsWithUnderscore,
 
+    #[error("Variable name cannot end with underscore")]
+    EndsWithUnderscore,
+
+    #[error("Variable name contains consecutive underscores")]
+    ConsecutiveUnderscores,
+
+    #[error("Variable name must be lowercase (found uppercase: '{0}')")]
+    NotSnakeCase(char),
+
     #[error("Variable name contains invalid character: '{0}'")]
     InvalidCharacter(char),
 
@@ -32,29 +41,47 @@ impl VarName {
         })
     }
 
-    /// Validate a variable name string
+    /// Validate a variable name string (snake_case only)
     fn validate(name: &str) -> Result<(), InvalidVarNameError> {
         if name.is_empty() {
             return Err(InvalidVarNameError::Empty);
         }
 
+        // Check for leading/trailing underscores
+        if name.starts_with('_') {
+            return Err(InvalidVarNameError::StartsWithUnderscore);
+        }
+
+        if name.ends_with('_') {
+            return Err(InvalidVarNameError::EndsWithUnderscore);
+        }
+
+        // Check for consecutive underscores
+        if name.contains("__") {
+            return Err(InvalidVarNameError::ConsecutiveUnderscores);
+        }
+
         let mut chars = name.chars();
         let first_char = chars.next().unwrap();
 
+        // First character must be a lowercase letter
         if first_char.is_ascii_digit() {
             return Err(InvalidVarNameError::StartsWithDigit);
         }
 
-        if first_char == '_' {
-            return Err(InvalidVarNameError::StartsWithUnderscore);
+        if !first_char.is_ascii_lowercase() {
+            if first_char.is_ascii_uppercase() {
+                return Err(InvalidVarNameError::NotSnakeCase(first_char));
+            } else {
+                return Err(InvalidVarNameError::InvalidCharacter(first_char));
+            }
         }
 
-        if !first_char.is_ascii_alphabetic() {
-            return Err(InvalidVarNameError::InvalidCharacter(first_char));
-        }
-
+        // Remaining characters must be lowercase letters, digits, or underscores
         for c in chars {
-            if !c.is_ascii_alphanumeric() && c != '_' {
+            if c.is_ascii_uppercase() {
+                return Err(InvalidVarNameError::NotSnakeCase(c));
+            } else if !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_' {
                 return Err(InvalidVarNameError::InvalidCharacter(c));
             }
         }
@@ -94,14 +121,18 @@ mod tests {
 
     #[test]
     fn test_valid_var_names() {
-        assert!(VarName::new("validName").is_ok());
+        assert!(VarName::new("valid_name").is_ok());
         assert!(VarName::new("x").is_ok());
         assert!(VarName::new("name_with_underscores").is_ok());
         assert!(VarName::new("name123").is_ok());
+        assert!(VarName::new("foo_bar").is_ok());
+        assert!(VarName::new("foo_bar_123").is_ok());
+        assert!(VarName::new("a1_b2_c3").is_ok());
     }
 
     #[test]
     fn test_invalid_var_names() {
+        // Original invalid cases
         assert_eq!(
             VarName::new("123invalid"),
             Err(InvalidVarNameError::StartsWithDigit)
@@ -119,5 +150,27 @@ mod tests {
             Err(InvalidVarNameError::InvalidCharacter(' '))
         );
         assert_eq!(VarName::new(""), Err(InvalidVarNameError::Empty));
+
+        // New snake_case validation tests
+        assert_eq!(
+            VarName::new("foo_bar_"),
+            Err(InvalidVarNameError::EndsWithUnderscore)
+        );
+        assert_eq!(
+            VarName::new("foo__bar"),
+            Err(InvalidVarNameError::ConsecutiveUnderscores)
+        );
+        assert_eq!(
+            VarName::new("FooBar"),
+            Err(InvalidVarNameError::NotSnakeCase('F'))
+        );
+        assert_eq!(
+            VarName::new("foo_Bar"),
+            Err(InvalidVarNameError::NotSnakeCase('B'))
+        );
+        assert_eq!(
+            VarName::new("validName"),
+            Err(InvalidVarNameError::NotSnakeCase('N'))
+        );
     }
 }

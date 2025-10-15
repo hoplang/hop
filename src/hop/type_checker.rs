@@ -185,7 +185,7 @@ fn typecheck_module(
     }
 
     let mut env = Environment::new();
-    let _ = env.push("HOP_MODE".to_string(), Type::String);
+    let _ = env.push("hop_mode".to_string(), Type::String);
 
     // Build typed component definitions
     let mut typed_component_definitions = Vec::new();
@@ -3298,65 +3298,65 @@ mod tests {
         );
     }
 
-    // Test HOP_MODE global variable is available and has String type.
+    // Test hop_mode global variable is available and has String type.
     #[test]
     fn test_hop_mode_global_variable() {
         check(
             indoc! {r#"
                 -- main.hop --
                 <main-comp>
-                  <div>{HOP_MODE}</div>
+                  <div>{hop_mode}</div>
                 </main-comp>
             "#},
             expect![[r#"
-                HOP_MODE: String
+                hop_mode: String
                   --> main.hop (line 2, col 9)
                 1 | <main-comp>
-                2 |   <div>{HOP_MODE}</div>
+                2 |   <div>{hop_mode}</div>
                   |         ^^^^^^^^
             "#]],
         );
     }
 
-    // Test HOP_MODE can be used in conditions.
+    // Test hop_mode can be used in conditions.
     #[test]
     fn test_hop_mode_in_conditions() {
         check(
             indoc! {r#"
                 -- main.hop --
                 <main-comp>
-                  <if {HOP_MODE == "dev"}>
+                  <if {hop_mode == "dev"}>
                     <div>Development mode</div>
                   </if>
-                  <if {HOP_MODE == "build"}>
+                  <if {hop_mode == "build"}>
                     <div>Build mode</div>
                   </if>
                 </main-comp>
             "#},
             expect![[r#"
-                HOP_MODE: String
+                hop_mode: String
                   --> main.hop (line 2, col 8)
                 1 | <main-comp>
-                2 |   <if {HOP_MODE == "dev"}>
+                2 |   <if {hop_mode == "dev"}>
                   |        ^^^^^^^^
 
-                HOP_MODE: String
+                hop_mode: String
                   --> main.hop (line 5, col 8)
                 4 |   </if>
-                5 |   <if {HOP_MODE == "build"}>
+                5 |   <if {hop_mode == "build"}>
                   |        ^^^^^^^^
             "#]],
         );
     }
 
-    // Test type inference works when comparing variables to HOP_MODE.
+    // Test type inference works when comparing variables to hop_mode.
     #[test]
     fn test_hop_mode_type_inference() {
         check(
             indoc! {r#"
                 -- main.hop --
                 <main-comp {params: {mode: String}}>
-                  <if {params.mode == HOP_MODE}>
+                  <if {params.mode == hop_mode}>
                     <div>Mode matches</div>
                   </if>
                 </main-comp>
@@ -3370,13 +3370,13 @@ mod tests {
                 params: {mode: String}
                   --> main.hop (line 2, col 8)
                 1 | <main-comp {params: {mode: String}}>
-                2 |   <if {params.mode == HOP_MODE}>
+                2 |   <if {params.mode == hop_mode}>
                   |        ^^^^^^
 
-                HOP_MODE: String
+                hop_mode: String
                   --> main.hop (line 2, col 23)
                 1 | <main-comp {params: {mode: String}}>
-                2 |   <if {params.mode == HOP_MODE}>
+                2 |   <if {params.mode == hop_mode}>
                   |                       ^^^^^^^^
             "#]],
         );

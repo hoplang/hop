@@ -1108,7 +1108,7 @@ mod tests {
                 ]),
                 |t| {
                     t.let_stmt(
-                        "displayInfo",
+                        "display_info",
                         t.object(vec![
                             ("currency", t.str("$")),
                             ("showStock", t.bool(true)),
@@ -1117,14 +1117,14 @@ mod tests {
                         |t| {
                             t.write("<article class=\"product\">\n");
                             t.write("<h3>");
-                            t.write_expr(t.prop_access(t.var("displayInfo"), "prefix"), false);
+                            t.write_expr(t.prop_access(t.var("display_info"), "prefix"), false);
                             t.write_expr_escaped(t.prop_access(t.var("product"), "name"));
                             t.write("</h3>\n");
                             t.write("</p>\n");
                             t.write("<p>Category: ");
                             t.write_expr_escaped(t.prop_access(t.var("product"), "category"));
                             t.write("</p>\n");
-                            t.if_stmt(t.prop_access(t.var("displayInfo"), "showStock"), |t| {
+                            t.if_stmt(t.prop_access(t.var("display_info"), "showStock"), |t| {
                                 t.if_stmt(t.prop_access(t.var("product"), "inStock"), |t| {
                                     t.write("<span class=\"in-stock\">✓ In Stock</span>\n");
                                 });
@@ -1155,21 +1155,21 @@ mod tests {
                     {name: "Book", inStock: false, category: "books"},
                     {name: "T-Shirt", inStock: true, category: "clothing"},
                   ] {
-                    let displayInfo = {
+                    let display_info = {
                       currency: "$",
                       showStock: true,
                       prefix: "PROD-",
                     } in {
                       write("<article class=\"product\">\n")
                       write("<h3>")
-                      write_expr(displayInfo.prefix)
+                      write_expr(display_info.prefix)
                       write_escaped(product.name)
                       write("</h3>\n")
                       write("</p>\n")
                       write("<p>Category: ")
                       write_escaped(product.category)
                       write("</p>\n")
-                      if displayInfo.showStock {
+                      if display_info.showStock {
                         if product.inStock {
                           write("<span class=\"in-stock\">✓ In Stock</span>\n")
                         }
@@ -1198,17 +1198,17 @@ mod tests {
                         let output: string = "";
                         output += "<div class=\"products\">\n";
                         for (const product of [{name: "Laptop", inStock: true, category: "electronics"}, {name: "Book", inStock: false, category: "books"}, {name: "T-Shirt", inStock: true, category: "clothing"}]) {
-                            const displayInfo = {currency: "$", showStock: true, prefix: "PROD-"};
+                            const display_info = {currency: "$", showStock: true, prefix: "PROD-"};
                             output += "<article class=\"product\">\n";
                             output += "<h3>";
-                            output += displayInfo.prefix;
+                            output += display_info.prefix;
                             output += escapeHtml(product.name);
                             output += "</h3>\n";
                             output += "</p>\n";
                             output += "<p>Category: ";
                             output += escapeHtml(product.category);
                             output += "</p>\n";
-                            if (displayInfo.showStock) {
+                            if (display_info.showStock) {
                                 if (product.inStock) {
                                     output += "<span class=\"in-stock\">✓ In Stock</span>\n";
                                 }
@@ -1238,17 +1238,17 @@ mod tests {
                         let output = "";
                         output += "<div class=\"products\">\n";
                         for (const product of [{name: "Laptop", inStock: true, category: "electronics"}, {name: "Book", inStock: false, category: "books"}, {name: "T-Shirt", inStock: true, category: "clothing"}]) {
-                            const displayInfo = {currency: "$", showStock: true, prefix: "PROD-"};
+                            const display_info = {currency: "$", showStock: true, prefix: "PROD-"};
                             output += "<article class=\"product\">\n";
                             output += "<h3>";
-                            output += displayInfo.prefix;
+                            output += display_info.prefix;
                             output += escapeHtml(product.name);
                             output += "</h3>\n";
                             output += "</p>\n";
                             output += "<p>Category: ";
                             output += escapeHtml(product.category);
                             output += "</p>\n";
-                            if (displayInfo.showStock) {
+                            if (display_info.showStock) {
                                 if (product.inStock) {
                                     output += "<span class=\"in-stock\">✓ In Stock</span>\n";
                                 }
