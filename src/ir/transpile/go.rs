@@ -33,8 +33,7 @@ impl GoTranspiler {
                 // Process fields depth-first, collecting nested types
                 let mut field_docs = Vec::new();
                 for (nested_field_name, nested_field_type) in fields {
-                    let field_name_pascal =
-                        CasedString::from_snake_case(nested_field_name.as_str()).to_pascal_case();
+                    let field_name_pascal = nested_field_name.to_pascal_case();
 
                     // Recursively process and get the type reference
                     let field_type_doc = self.extract_and_generate_nested_type(
@@ -206,8 +205,7 @@ impl Transpiler for GoTranspiler {
                     .parameters
                     .iter()
                     .map(|(param_name, param_type)| {
-                        let field_name =
-                            CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
+                        let field_name = param_name.to_pascal_case();
 
                         // Extract nested types and get the type reference
                         let field_type_doc = self.extract_and_generate_nested_type(
@@ -306,7 +304,7 @@ impl Transpiler for GoTranspiler {
 
         // Extract parameters into local variables
         for (param_name, _) in &entrypoint.parameters {
-            let field_name = CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
+            let field_name = param_name.to_pascal_case();
             body.push(
                 BoxDoc::nil()
                     .append(BoxDoc::text(param_name.as_str()))
@@ -473,7 +471,7 @@ impl ExpressionTranspiler for GoTranspiler {
                     .append(BoxDoc::line())
                     .append(BoxDoc::intersperse(
                         properties.iter().map(|(key, value)| {
-                            let field_name = CasedString::from_snake_case(key.as_str()).to_pascal_case();
+                            let field_name = key.to_pascal_case();
                             BoxDoc::as_string(field_name)
                                 .append(BoxDoc::text(": "))
                                 .append(self.transpile_expr(value))
@@ -734,8 +732,7 @@ impl TypeTranspiler for GoTranspiler {
                     .append(BoxDoc::line())
                     .append(BoxDoc::intersperse(
                         fields.iter().map(|(field_name, field_type)| {
-                            let go_field =
-                                CasedString::from_snake_case(field_name.as_str()).to_pascal_case();
+                            let go_field = field_name.to_pascal_case();
                             BoxDoc::as_string(go_field)
                                 .append(BoxDoc::text(" "))
                                 .append(self.transpile_type(field_type))
