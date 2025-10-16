@@ -1303,30 +1303,30 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {items: Array[{active: Bool, name: Bool}]}
+                params: Record[items: Array[Record[active: Bool, name: Bool]]]
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {params: {items: Array[{active: Bool, name: Bool}]}}>
                   |             ^^^^^^
 
-                params: {items: Array[{active: Bool, name: Bool}]}
+                params: Record[items: Array[Record[active: Bool, name: Bool]]]
                   --> main.hop (line 2, col 16)
                 1 | <main-comp {params: {items: Array[{active: Bool, name: Bool}]}}>
                 2 |     <for {item in params.items}>
                   |                   ^^^^^^
 
-                item: {active: Bool, name: Bool}
+                item: Record[active: Bool, name: Bool]
                   --> main.hop (line 2, col 8)
                 1 | <main-comp {params: {items: Array[{active: Bool, name: Bool}]}}>
                 2 |     <for {item in params.items}>
                   |           ^^^^
 
-                item: {active: Bool, name: Bool}
+                item: Record[active: Bool, name: Bool]
                   --> main.hop (line 3, col 8)
                 2 |     <for {item in params.items}>
                 3 |         <if {item.active}>
                   |              ^^^^
 
-                item: {active: Bool, name: Bool}
+                item: Record[active: Bool, name: Bool]
                   --> main.hop (line 5, col 8)
                 4 |         </if>
                 5 |         <if {item.name}>
@@ -1363,18 +1363,18 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {a: String, b: Bool}
+                params: Record[a: String, b: Bool]
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {params: {a: String, b: Bool}}>
                   |             ^^^^^^
 
-                params: {a: String, b: Bool}
+                params: Record[a: String, b: Bool]
                   --> main.hop (line 2, col 9)
                 1 | <main-comp {params: {a: String, b: Bool}}>
                 2 |   <if {(params.a == "str") == params.b}>
                   |         ^^^^^^
 
-                params: {a: String, b: Bool}
+                params: Record[a: String, b: Bool]
                   --> main.hop (line 2, col 31)
                 1 | <main-comp {params: {a: String, b: Bool}}>
                 2 |   <if {(params.a == "str") == params.b}>
@@ -1403,66 +1403,75 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {
+                params: Record[
                   enabled: Bool,
-                  users: Array[{
-                    posts: Array[{published: Bool}],
-                    profile: {verified: Bool},
-                  }],
-                }
+                  users: Array[Record[
+                    posts: Array[Record[published: Bool]],
+                    profile: Record[verified: Bool],
+                  ]],
+                ]
                   --> main.hop (line 1, col 13)
                  1 | <main-comp {params: {enabled: Bool, users: Array[{profile: {verified: Bool}, posts: Array[{published: Bool}]}]}}>
                    |             ^^^^^^
 
-                params: {
+                params: Record[
                   enabled: Bool,
-                  users: Array[{
-                    posts: Array[{published: Bool}],
-                    profile: {verified: Bool},
-                  }],
-                }
+                  users: Array[Record[
+                    posts: Array[Record[published: Bool]],
+                    profile: Record[verified: Bool],
+                  ]],
+                ]
                   --> main.hop (line 3, col 17)
                  2 |     <if {params.enabled}>
                  3 |         <for {user in params.users}>
                    |                       ^^^^^^
 
-                user: {posts: Array[{published: Bool}], profile: {verified: Bool}}
+                user: Record[
+                  posts: Array[Record[published: Bool]],
+                  profile: Record[verified: Bool],
+                ]
                   --> main.hop (line 3, col 9)
                  2 |     <if {params.enabled}>
                  3 |         <for {user in params.users}>
                    |               ^^^^
 
-                user: {posts: Array[{published: Bool}], profile: {verified: Bool}}
+                user: Record[
+                  posts: Array[Record[published: Bool]],
+                  profile: Record[verified: Bool],
+                ]
                   --> main.hop (line 5, col 19)
                  4 |             <if {user.profile.verified}>
                  5 |                 <for {post in user.posts}>
                    |                               ^^^^
 
-                post: {published: Bool}
+                post: Record[published: Bool]
                   --> main.hop (line 5, col 11)
                  4 |             <if {user.profile.verified}>
                  5 |                 <for {post in user.posts}>
                    |                       ^^^^
 
-                post: {published: Bool}
+                post: Record[published: Bool]
                   --> main.hop (line 6, col 11)
                  5 |                 <for {post in user.posts}>
                  6 |                     <if {post.published}>
                    |                          ^^^^
 
-                user: {posts: Array[{published: Bool}], profile: {verified: Bool}}
+                user: Record[
+                  posts: Array[Record[published: Bool]],
+                  profile: Record[verified: Bool],
+                ]
                   --> main.hop (line 4, col 9)
                  3 |         <for {user in params.users}>
                  4 |             <if {user.profile.verified}>
                    |                  ^^^^
 
-                params: {
+                params: Record[
                   enabled: Bool,
-                  users: Array[{
-                    posts: Array[{published: Bool}],
-                    profile: {verified: Bool},
-                  }],
-                }
+                  users: Array[Record[
+                    posts: Array[Record[published: Bool]],
+                    profile: Record[verified: Bool],
+                  ]],
+                ]
                   --> main.hop (line 2, col 7)
                  1 | <main-comp {params: {enabled: Bool, users: Array[{profile: {verified: Bool}, posts: Array[{published: Bool}]}]}}>
                  2 |     <if {params.enabled}>
@@ -1488,61 +1497,61 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {
-                  sections: Array[{
-                    header: {visible: Bool},
-                    items: Array[{data: {valid: Bool}}],
-                  }],
-                }
+                params: Record[
+                  sections: Array[Record[
+                    header: Record[visible: Bool],
+                    items: Array[Record[data: Record[valid: Bool]]],
+                  ]],
+                ]
                   --> main.hop (line 1, col 13)
                  1 | <main-comp {params: {sections: Array[{header: {visible: Bool}, items: Array[{data: {valid: Bool}}]}]}}>
                    |             ^^^^^^
 
-                params: {
-                  sections: Array[{
-                    header: {visible: Bool},
-                    items: Array[{data: {valid: Bool}}],
-                  }],
-                }
+                params: Record[
+                  sections: Array[Record[
+                    header: Record[visible: Bool],
+                    items: Array[Record[data: Record[valid: Bool]]],
+                  ]],
+                ]
                   --> main.hop (line 2, col 19)
                  1 | <main-comp {params: {sections: Array[{header: {visible: Bool}, items: Array[{data: {valid: Bool}}]}]}}>
                  2 |     <for {section in params.sections}>
                    |                      ^^^^^^
 
-                section: {
-                  header: {visible: Bool},
-                  items: Array[{data: {valid: Bool}}],
-                }
+                section: Record[
+                  header: Record[visible: Bool],
+                  items: Array[Record[data: Record[valid: Bool]]],
+                ]
                   --> main.hop (line 2, col 8)
                  1 | <main-comp {params: {sections: Array[{header: {visible: Bool}, items: Array[{data: {valid: Bool}}]}]}}>
                  2 |     <for {section in params.sections}>
                    |           ^^^^^^^
 
-                section: {
-                  header: {visible: Bool},
-                  items: Array[{data: {valid: Bool}}],
-                }
+                section: Record[
+                  header: Record[visible: Bool],
+                  items: Array[Record[data: Record[valid: Bool]]],
+                ]
                   --> main.hop (line 4, col 18)
                  3 |         <if {section.header.visible}>
                  4 |             <for {item in section.items}>
                    |                           ^^^^^^^
 
-                item: {data: {valid: Bool}}
+                item: Record[data: Record[valid: Bool]]
                   --> main.hop (line 4, col 10)
                  3 |         <if {section.header.visible}>
                  4 |             <for {item in section.items}>
                    |                   ^^^^
 
-                item: {data: {valid: Bool}}
+                item: Record[data: Record[valid: Bool]]
                   --> main.hop (line 5, col 10)
                  4 |             <for {item in section.items}>
                  5 |                 <if {item.data.valid}>
                    |                      ^^^^
 
-                section: {
-                  header: {visible: Bool},
-                  items: Array[{data: {valid: Bool}}],
-                }
+                section: Record[
+                  header: Record[visible: Bool],
+                  items: Array[Record[data: Record[valid: Bool]]],
+                ]
                   --> main.hop (line 3, col 8)
                  2 |     <for {section in params.sections}>
                  3 |         <if {section.header.visible}>
@@ -1562,12 +1571,12 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {i: {j: {k: {l: Bool}}}}
+                params: Record[i: Record[j: Record[k: Record[l: Bool]]]]
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {params: {i: {j: {k: {l: Bool}}}}}>
                   |             ^^^^^^
 
-                params: {i: {j: {k: {l: Bool}}}}
+                params: Record[i: Record[j: Record[k: Record[l: Bool]]]]
                   --> main.hop (line 2, col 7)
                 1 | <main-comp {params: {i: {j: {k: {l: Bool}}}}}>
                 2 |     <if {params.i.j.k.l}>
@@ -1591,48 +1600,56 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {
-                  app: {
-                    api: {endpoints: {users: {enabled: Bool}}},
-                    database: {connection: {ssl: Bool}},
-                    ui: {theme: {dark: Bool}},
-                  },
-                }
+                params: Record[
+                  app: Record[
+                    api: Record[
+                      endpoints: Record[users: Record[enabled: Bool]],
+                    ],
+                    database: Record[connection: Record[ssl: Bool]],
+                    ui: Record[theme: Record[dark: Bool]],
+                  ],
+                ]
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {params: {app: {ui: {theme: {dark: Bool}}, api: {endpoints: {users: {enabled: Bool}}}, database: {connection: {ssl: Bool}}}}}>
                   |             ^^^^^^
 
-                params: {
-                  app: {
-                    api: {endpoints: {users: {enabled: Bool}}},
-                    database: {connection: {ssl: Bool}},
-                    ui: {theme: {dark: Bool}},
-                  },
-                }
+                params: Record[
+                  app: Record[
+                    api: Record[
+                      endpoints: Record[users: Record[enabled: Bool]],
+                    ],
+                    database: Record[connection: Record[ssl: Bool]],
+                    ui: Record[theme: Record[dark: Bool]],
+                  ],
+                ]
                   --> main.hop (line 2, col 7)
                 1 | <main-comp {params: {app: {ui: {theme: {dark: Bool}}, api: {endpoints: {users: {enabled: Bool}}}, database: {connection: {ssl: Bool}}}}}>
                 2 |     <if {params.app.ui.theme.dark}>
                   |          ^^^^^^
 
-                params: {
-                  app: {
-                    api: {endpoints: {users: {enabled: Bool}}},
-                    database: {connection: {ssl: Bool}},
-                    ui: {theme: {dark: Bool}},
-                  },
-                }
+                params: Record[
+                  app: Record[
+                    api: Record[
+                      endpoints: Record[users: Record[enabled: Bool]],
+                    ],
+                    database: Record[connection: Record[ssl: Bool]],
+                    ui: Record[theme: Record[dark: Bool]],
+                  ],
+                ]
                   --> main.hop (line 4, col 7)
                 3 |     </if>
                 4 |     <if {params.app.api.endpoints.users.enabled}>
                   |          ^^^^^^
 
-                params: {
-                  app: {
-                    api: {endpoints: {users: {enabled: Bool}}},
-                    database: {connection: {ssl: Bool}},
-                    ui: {theme: {dark: Bool}},
-                  },
-                }
+                params: Record[
+                  app: Record[
+                    api: Record[
+                      endpoints: Record[users: Record[enabled: Bool]],
+                    ],
+                    database: Record[connection: Record[ssl: Bool]],
+                    ui: Record[theme: Record[dark: Bool]],
+                  ],
+                ]
                   --> main.hop (line 6, col 7)
                 5 |     </if>
                 6 |     <if {params.app.database.connection.ssl}>
@@ -1670,12 +1687,12 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                data: {message: String}
+                data: Record[message: String]
                   --> main.hop (line 1, col 24)
                 1 | <main-comp entrypoint {data: {message: String}}>
                   |                        ^^^^
 
-                data: {message: String}
+                data: Record[message: String]
                   --> main.hop (line 3, col 9)
                 2 |     <h1>Hello World</h1>
                 3 |     <p>{data.message}</p>
@@ -1699,50 +1716,50 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {
-                  data: {x: String, y: String},
-                  other_user: {name: String},
-                  user: {name: String},
-                }
+                params: Record[
+                  data: Record[x: String, y: String],
+                  other_user: Record[name: String],
+                  user: Record[name: String],
+                ]
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {params: {user: {name: String}, other_user: {name: String}, data: {x: String, y: String}}}>
                   |             ^^^^^^
 
-                params: {
-                  data: {x: String, y: String},
-                  other_user: {name: String},
-                  user: {name: String},
-                }
+                params: Record[
+                  data: Record[x: String, y: String],
+                  other_user: Record[name: String],
+                  user: Record[name: String],
+                ]
                   --> main.hop (line 2, col 8)
                 1 | <main-comp {params: {user: {name: String}, other_user: {name: String}, data: {x: String, y: String}}}>
                 2 |   <if {params.user.name == params.other_user.name}>
                   |        ^^^^^^
 
-                params: {
-                  data: {x: String, y: String},
-                  other_user: {name: String},
-                  user: {name: String},
-                }
+                params: Record[
+                  data: Record[x: String, y: String],
+                  other_user: Record[name: String],
+                  user: Record[name: String],
+                ]
                   --> main.hop (line 2, col 28)
                 1 | <main-comp {params: {user: {name: String}, other_user: {name: String}, data: {x: String, y: String}}}>
                 2 |   <if {params.user.name == params.other_user.name}>
                   |                            ^^^^^^
 
-                params: {
-                  data: {x: String, y: String},
-                  other_user: {name: String},
-                  user: {name: String},
-                }
+                params: Record[
+                  data: Record[x: String, y: String],
+                  other_user: Record[name: String],
+                  user: Record[name: String],
+                ]
                   --> main.hop (line 5, col 9)
                 4 |   </if>
                 5 |   <if {(params.data.x == params.data.y)}>
                   |         ^^^^^^
 
-                params: {
-                  data: {x: String, y: String},
-                  other_user: {name: String},
-                  user: {name: String},
-                }
+                params: Record[
+                  data: Record[x: String, y: String],
+                  other_user: Record[name: String],
+                  user: Record[name: String],
+                ]
                   --> main.hop (line 5, col 26)
                 4 |   </if>
                 5 |   <if {(params.data.x == params.data.y)}>
@@ -1763,18 +1780,18 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {x: String, y: String}
+                params: Record[x: String, y: String]
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {params: {x: String, y: String}}>
                   |             ^^^^^^
 
-                params: {x: String, y: String}
+                params: Record[x: String, y: String]
                   --> main.hop (line 2, col 8)
                 1 | <main-comp {params: {x: String, y: String}}>
                 2 |   <if {params.x == params.y}>
                   |        ^^^^^^
 
-                params: {x: String, y: String}
+                params: Record[x: String, y: String]
                   --> main.hop (line 2, col 20)
                 1 | <main-comp {params: {x: String, y: String}}>
                 2 |   <if {params.x == params.y}>
@@ -1796,12 +1813,12 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {foo: {bar: Array[Bool]}}
+                params: Record[foo: Record[bar: Array[Bool]]]
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {params: {foo: {bar: Array[Bool]}}}>
                   |             ^^^^^^
 
-                params: {foo: {bar: Array[Bool]}}
+                params: Record[foo: Record[bar: Array[Bool]]]
                   --> main.hop (line 2, col 13)
                 1 | <main-comp {params: {foo: {bar: Array[Bool]}}}>
                 2 |     <for {j in params.foo.bar}>
@@ -1839,42 +1856,42 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: Array[{a: Bool, b: Bool}]
+                params: Array[Record[a: Bool, b: Bool]]
                   --> main.hop (line 1, col 13)
                  1 | <main-comp {params: Array[{a: Bool, b: Bool}]}>
                    |             ^^^^^^
 
-                params: Array[{a: Bool, b: Bool}]
+                params: Array[Record[a: Bool, b: Bool]]
                   --> main.hop (line 2, col 13)
                  1 | <main-comp {params: Array[{a: Bool, b: Bool}]}>
                  2 |     <for {j in params}>
                    |                ^^^^^^
 
-                j: {a: Bool, b: Bool}
+                j: Record[a: Bool, b: Bool]
                   --> main.hop (line 2, col 8)
                  1 | <main-comp {params: Array[{a: Bool, b: Bool}]}>
                  2 |     <for {j in params}>
                    |           ^
 
-                j: {a: Bool, b: Bool}
+                j: Record[a: Bool, b: Bool]
                   --> main.hop (line 3, col 8)
                  2 |     <for {j in params}>
                  3 |         <if {j.a}>
                    |              ^
 
-                params: Array[{a: Bool, b: Bool}]
+                params: Array[Record[a: Bool, b: Bool]]
                   --> main.hop (line 6, col 13)
                  5 |     </for>
                  6 |     <for {j in params}>
                    |                ^^^^^^
 
-                j: {a: Bool, b: Bool}
+                j: Record[a: Bool, b: Bool]
                   --> main.hop (line 6, col 8)
                  5 |     </for>
                  6 |     <for {j in params}>
                    |           ^
 
-                j: {a: Bool, b: Bool}
+                j: Record[a: Bool, b: Bool]
                   --> main.hop (line 7, col 8)
                  6 |     <for {j in params}>
                  7 |         <if {j.b}>
@@ -2052,66 +2069,74 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                config: {enabled: Bool, title: String}
+                config: Record[enabled: Bool, title: String]
                   --> bar.hop (line 1, col 15)
                 1 | <widget-comp {config: {enabled: Bool, title: String}}>
                   |               ^^^^^^
 
-                config: {enabled: Bool, title: String}
+                config: Record[enabled: Bool, title: String]
                   --> bar.hop (line 3, col 11)
                 2 |   <if {config.enabled}>
                 3 |     <div>{config.title}</div>
                   |           ^^^^^^
 
-                config: {enabled: Bool, title: String}
+                config: Record[enabled: Bool, title: String]
                   --> bar.hop (line 2, col 8)
                 1 | <widget-comp {config: {enabled: Bool, title: String}}>
                 2 |   <if {config.enabled}>
                   |        ^^^^^^
 
-                data: {items: Array[{enabled: Bool, title: String}]}
+                data: Record[items: Array[Record[enabled: Bool, title: String]]]
                   --> foo.hop (line 3, col 14)
                 2 | 
                 3 | <panel-comp {data: {items: Array[{enabled: Bool, title: String}]}}>
                   |              ^^^^
 
-                data: {items: Array[{enabled: Bool, title: String}]}
+                data: Record[items: Array[Record[enabled: Bool, title: String]]]
                   --> foo.hop (line 4, col 17)
                 3 | <panel-comp {data: {items: Array[{enabled: Bool, title: String}]}}>
                 4 |   <for {item in data.items}>
                   |                 ^^^^
 
-                item: {enabled: Bool, title: String}
+                item: Record[enabled: Bool, title: String]
                   --> foo.hop (line 4, col 9)
                 3 | <panel-comp {data: {items: Array[{enabled: Bool, title: String}]}}>
                 4 |   <for {item in data.items}>
                   |         ^^^^
 
-                item: {enabled: Bool, title: String}
+                item: Record[enabled: Bool, title: String]
                   --> foo.hop (line 5, col 27)
                 4 |   <for {item in data.items}>
                 5 |     <widget-comp {config: item}/>
                   |                           ^^^^
 
-                config: {enabled: Bool, title: String}
+                config: Record[enabled: Bool, title: String]
                   --> foo.hop (line 5, col 27)
                 4 |   <for {item in data.items}>
                 5 |     <widget-comp {config: item}/>
                   |                           ^^^^
 
-                settings: {dashboard: {items: Array[{enabled: Bool, title: String}]}}
+                settings: Record[
+                  dashboard: Record[
+                    items: Array[Record[enabled: Bool, title: String]],
+                  ],
+                ]
                   --> main.hop (line 3, col 13)
                 2 | 
                 3 | <main-comp {settings: {dashboard: {items: Array[{enabled: Bool, title: String}]}}}>
                   |             ^^^^^^^^
 
-                settings: {dashboard: {items: Array[{enabled: Bool, title: String}]}}
+                settings: Record[
+                  dashboard: Record[
+                    items: Array[Record[enabled: Bool, title: String]],
+                  ],
+                ]
                   --> main.hop (line 4, col 22)
                 3 | <main-comp {settings: {dashboard: {items: Array[{enabled: Bool, title: String}]}}}>
                 4 |   <panel-comp {data: settings.dashboard}/>
                   |                      ^^^^^^^^
 
-                data: {items: Array[{enabled: Bool, title: String}]}
+                data: Record[items: Array[Record[enabled: Bool, title: String]]]
                   --> main.hop (line 4, col 22)
                 3 | <main-comp {settings: {dashboard: {items: Array[{enabled: Bool, title: String}]}}}>
                 4 |   <panel-comp {data: settings.dashboard}/>
@@ -2163,45 +2188,45 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {
-                  config: {debug: Bool},
-                  data: Array[{attributes: Array[Bool], id: Bool}],
-                }
+                params: Record[
+                  config: Record[debug: Bool],
+                  data: Array[Record[attributes: Array[Bool], id: Bool]],
+                ]
                   --> main.hop (line 1, col 13)
                  1 | <main-comp {params: {config: {debug: Bool}, data: Array[{id: Bool, attributes: Array[Bool]}]}}>
                    |             ^^^^^^
 
-                params: {
-                  config: {debug: Bool},
-                  data: Array[{attributes: Array[Bool], id: Bool}],
-                }
+                params: Record[
+                  config: Record[debug: Bool],
+                  data: Array[Record[attributes: Array[Bool], id: Bool]],
+                ]
                   --> main.hop (line 2, col 7)
                  1 | <main-comp {params: {config: {debug: Bool}, data: Array[{id: Bool, attributes: Array[Bool]}]}}>
                  2 |     <if {params.config.debug}>
                    |          ^^^^^^
 
-                params: {
-                  config: {debug: Bool},
-                  data: Array[{attributes: Array[Bool], id: Bool}],
-                }
+                params: Record[
+                  config: Record[debug: Bool],
+                  data: Array[Record[attributes: Array[Bool], id: Bool]],
+                ]
                   --> main.hop (line 4, col 16)
                  3 |     </if>
                  4 |     <for {item in params.data}>
                    |                   ^^^^^^
 
-                item: {attributes: Array[Bool], id: Bool}
+                item: Record[attributes: Array[Bool], id: Bool]
                   --> main.hop (line 4, col 8)
                  3 |     </if>
                  4 |     <for {item in params.data}>
                    |           ^^^^
 
-                item: {attributes: Array[Bool], id: Bool}
+                item: Record[attributes: Array[Bool], id: Bool]
                   --> main.hop (line 5, col 8)
                  4 |     <for {item in params.data}>
                  5 |         <if {item.id}>
                    |              ^^^^
 
-                item: {attributes: Array[Bool], id: Bool}
+                item: Record[attributes: Array[Bool], id: Bool]
                   --> main.hop (line 7, col 17)
                  6 |         </if>
                  7 |         <for {attr in item.attributes}>
@@ -2245,66 +2270,66 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                settings: {enabled: Bool}
+                settings: Record[enabled: Bool]
                   --> main.hop (line 1, col 14)
                  1 | <step3-comp {settings: {enabled: Bool}}>
                    |              ^^^^^^^^
 
-                settings: {enabled: Bool}
+                settings: Record[enabled: Bool]
                   --> main.hop (line 2, col 7)
                  1 | <step3-comp {settings: {enabled: Bool}}>
                  2 |     <if {settings.enabled}>
                    |          ^^^^^^^^
 
-                config: {settings: {enabled: Bool}}
+                config: Record[settings: Record[enabled: Bool]]
                   --> main.hop (line 6, col 14)
                  5 | 
                  6 | <step2-comp {config: {settings: {enabled: Bool}}}>
                    |              ^^^^^^
 
-                config: {settings: {enabled: Bool}}
+                config: Record[settings: Record[enabled: Bool]]
                   --> main.hop (line 7, col 25)
                  6 | <step2-comp {config: {settings: {enabled: Bool}}}>
                  7 |     <step3-comp {settings: config.settings}/>
                    |                            ^^^^^^
 
-                settings: {enabled: Bool}
+                settings: Record[enabled: Bool]
                   --> main.hop (line 7, col 25)
                  6 | <step2-comp {config: {settings: {enabled: Bool}}}>
                  7 |     <step3-comp {settings: config.settings}/>
                    |                            ^^^^^^^^^^^^^^^
 
-                data: {config: {settings: {enabled: Bool}}}
+                data: Record[config: Record[settings: Record[enabled: Bool]]]
                   --> main.hop (line 10, col 14)
                  9 | 
                 10 | <step1-comp {data: {config: {settings: {enabled: Bool}}}}>
                    |              ^^^^
 
-                data: {config: {settings: {enabled: Bool}}}
+                data: Record[config: Record[settings: Record[enabled: Bool]]]
                   --> main.hop (line 11, col 23)
                 10 | <step1-comp {data: {config: {settings: {enabled: Bool}}}}>
                 11 |     <step2-comp {config: data.config}/>
                    |                          ^^^^
 
-                config: {settings: {enabled: Bool}}
+                config: Record[settings: Record[enabled: Bool]]
                   --> main.hop (line 11, col 23)
                 10 | <step1-comp {data: {config: {settings: {enabled: Bool}}}}>
                 11 |     <step2-comp {config: data.config}/>
                    |                          ^^^^^^^^^^^
 
-                params: {config: {settings: {enabled: Bool}}}
+                params: Record[config: Record[settings: Record[enabled: Bool]]]
                   --> main.hop (line 14, col 13)
                 13 | 
                 14 | <main-comp {params: {config: {settings: {enabled: Bool}}}}>
                    |             ^^^^^^
 
-                params: {config: {settings: {enabled: Bool}}}
+                params: Record[config: Record[settings: Record[enabled: Bool]]]
                   --> main.hop (line 15, col 21)
                 14 | <main-comp {params: {config: {settings: {enabled: Bool}}}}>
                 15 |     <step1-comp {data: params}/>
                    |                        ^^^^^^
 
-                data: {config: {settings: {enabled: Bool}}}
+                data: Record[config: Record[settings: Record[enabled: Bool]]]
                   --> main.hop (line 15, col 21)
                 14 | <main-comp {params: {config: {settings: {enabled: Bool}}}}>
                 15 |     <step1-comp {data: params}/>
@@ -2338,84 +2363,84 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                item: {active: Bool, status: String, title: String}
+                item: Record[active: Bool, status: String, title: String]
                   --> main.hop (line 1, col 13)
                  1 | <main-card {item: {title: String, active: Bool, status: String}}>
                    |             ^^^^
 
-                item: {active: Bool, status: String, title: String}
+                item: Record[active: Bool, status: String, title: String]
                   --> main.hop (line 2, col 9)
                  1 | <main-card {item: {title: String, active: Bool, status: String}}>
                  2 |   <div>{item.title}
                    |         ^^^^
 
-                item: {active: Bool, status: String, title: String}
+                item: Record[active: Bool, status: String, title: String]
                   --> main.hop (line 5, col 12)
                  4 |   <if {item.active}>
                  5 |     <span>{item.status}
                    |            ^^^^
 
-                item: {active: Bool, status: String, title: String}
+                item: Record[active: Bool, status: String, title: String]
                   --> main.hop (line 4, col 8)
                  3 |   </div>
                  4 |   <if {item.active}>
                    |        ^^^^
 
-                items: Array[{active: Bool, status: String, title: String}]
+                items: Array[Record[active: Bool, status: String, title: String]]
                   --> main.hop (line 10, col 13)
                  9 | 
                 10 | <main-list {items: Array[{title: String, active: Bool, status: String}]}>
                    |             ^^^^^
 
-                items: Array[{active: Bool, status: String, title: String}]
+                items: Array[Record[active: Bool, status: String, title: String]]
                   --> main.hop (line 11, col 17)
                 10 | <main-list {items: Array[{title: String, active: Bool, status: String}]}>
                 11 |   <for {item in items}>
                    |                 ^^^^^
 
-                item: {active: Bool, status: String, title: String}
+                item: Record[active: Bool, status: String, title: String]
                   --> main.hop (line 11, col 9)
                 10 | <main-list {items: Array[{title: String, active: Bool, status: String}]}>
                 11 |   <for {item in items}>
                    |         ^^^^
 
-                item: {active: Bool, status: String, title: String}
+                item: Record[active: Bool, status: String, title: String]
                   --> main.hop (line 12, col 23)
                 11 |   <for {item in items}>
                 12 |     <main-card {item: item}/>
                    |                       ^^^^
 
-                item: {active: Bool, status: String, title: String}
+                item: Record[active: Bool, status: String, title: String]
                   --> main.hop (line 12, col 23)
                 11 |   <for {item in items}>
                 12 |     <main-card {item: item}/>
                    |                       ^^^^
 
-                data: {
-                  items: Array[{
+                data: Record[
+                  items: Array[Record[
                     active: Bool,
                     status: String,
                     title: String,
-                  }],
-                }
+                  ]],
+                ]
                   --> main.hop (line 16, col 13)
                 15 | 
                 16 | <main-comp {data: {items: Array[{title: String, active: Bool, status: String}]}}>
                    |             ^^^^
 
-                data: {
-                  items: Array[{
+                data: Record[
+                  items: Array[Record[
                     active: Bool,
                     status: String,
                     title: String,
-                  }],
-                }
+                  ]],
+                ]
                   --> main.hop (line 17, col 22)
                 16 | <main-comp {data: {items: Array[{title: String, active: Bool, status: String}]}}>
                 17 |   <main-list {items: data.items}/>
                    |                      ^^^^
 
-                items: Array[{active: Bool, status: String, title: String}]
+                items: Array[Record[active: Bool, status: String, title: String]]
                   --> main.hop (line 17, col 22)
                 16 | <main-comp {data: {items: Array[{title: String, active: Bool, status: String}]}}>
                 17 |   <main-list {items: data.items}/>
@@ -2437,18 +2462,18 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {i: {j: {k: {l: Bool}}, k: Bool}}
+                params: Record[i: Record[j: Record[k: Record[l: Bool]], k: Bool]]
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {params: {i: {j: {k: {l: Bool}}, k: Bool}}}>
                   |             ^^^^^^
 
-                params: {i: {j: {k: {l: Bool}}, k: Bool}}
+                params: Record[i: Record[j: Record[k: Record[l: Bool]], k: Bool]]
                   --> main.hop (line 3, col 8)
                 2 |     <if {params.i.j.k.l}>
                 3 |         <if {params.i.k}>
                   |              ^^^^^^
 
-                params: {i: {j: {k: {l: Bool}}, k: Bool}}
+                params: Record[i: Record[j: Record[k: Record[l: Bool]], k: Bool]]
                   --> main.hop (line 2, col 7)
                 1 | <main-comp {params: {i: {j: {k: {l: Bool}}, k: Bool}}}>
                 2 |     <if {params.i.j.k.l}>
@@ -2470,18 +2495,18 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {i: {j: {k: {l: Bool}}, k: Bool}}
+                params: Record[i: Record[j: Record[k: Record[l: Bool]], k: Bool]]
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {params: {i: {j: {k: {l: Bool}}, k: Bool}}}>
                   |             ^^^^^^
 
-                params: {i: {j: {k: {l: Bool}}, k: Bool}}
+                params: Record[i: Record[j: Record[k: Record[l: Bool]], k: Bool]]
                   --> main.hop (line 2, col 7)
                 1 | <main-comp {params: {i: {j: {k: {l: Bool}}, k: Bool}}}>
                 2 |     <if {params.i.j.k.l}>
                   |          ^^^^^^
 
-                params: {i: {j: {k: {l: Bool}}, k: Bool}}
+                params: Record[i: Record[j: Record[k: Record[l: Bool]], k: Bool]]
                   --> main.hop (line 4, col 7)
                 3 |     </if>
                 4 |     <if {params.i.k}>
@@ -2509,20 +2534,20 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {
+                params: Record[
                   categories: Array[Bool],
-                  metadata: {title: Bool},
+                  metadata: Record[title: Bool],
                   tags: Array[Bool],
-                }
+                ]
                   --> main.hop (line 1, col 13)
                  1 | <main-comp {params: {tags: Array[Bool], categories: Array[Bool], metadata: {title: Bool}}}>
                    |             ^^^^^^
 
-                params: {
+                params: Record[
                   categories: Array[Bool],
-                  metadata: {title: Bool},
+                  metadata: Record[title: Bool],
                   tags: Array[Bool],
-                }
+                ]
                   --> main.hop (line 2, col 15)
                  1 | <main-comp {params: {tags: Array[Bool], categories: Array[Bool], metadata: {title: Bool}}}>
                  2 |     <for {tag in params.tags}>
@@ -2540,11 +2565,11 @@ mod tests {
                  3 |         <if {tag}>
                    |              ^^^
 
-                params: {
+                params: Record[
                   categories: Array[Bool],
-                  metadata: {title: Bool},
+                  metadata: Record[title: Bool],
                   tags: Array[Bool],
-                }
+                ]
                   --> main.hop (line 6, col 20)
                  5 |     </for>
                  6 |     <for {category in params.categories}>
@@ -2562,11 +2587,11 @@ mod tests {
                  7 |         <if {category}>
                    |              ^^^^^^^^
 
-                params: {
+                params: Record[
                   categories: Array[Bool],
-                  metadata: {title: Bool},
+                  metadata: Record[title: Bool],
                   tags: Array[Bool],
-                }
+                ]
                   --> main.hop (line 10, col 7)
                  9 |     </for>
                 10 |     <if {params.metadata.title}>
@@ -2669,88 +2694,88 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                step: {condition: Bool}
+                step: Record[condition: Bool]
                   --> main.hop (line 1, col 16)
                  1 | <execute-step {step: {condition: Bool}}>
                    |                ^^^^
 
-                step: {condition: Bool}
+                step: Record[condition: Bool]
                   --> main.hop (line 2, col 7)
                  1 | <execute-step {step: {condition: Bool}}>
                  2 |     <if {step.condition}>
                    |          ^^^^
 
-                workflow: {enabled: Bool, steps: Array[{condition: Bool}]}
+                workflow: Record[enabled: Bool, steps: Array[Record[condition: Bool]]]
                   --> main.hop (line 6, col 20)
                  5 | 
                  6 | <execute-workflow {workflow: {enabled: Bool, steps: Array[{condition: Bool}]}}>
                    |                    ^^^^^^^^
 
-                workflow: {enabled: Bool, steps: Array[{condition: Bool}]}
+                workflow: Record[enabled: Bool, steps: Array[Record[condition: Bool]]]
                   --> main.hop (line 8, col 17)
                  7 |     <if {workflow.enabled}>
                  8 |         <for {step in workflow.steps}>
                    |                       ^^^^^^^^
 
-                step: {condition: Bool}
+                step: Record[condition: Bool]
                   --> main.hop (line 8, col 9)
                  7 |     <if {workflow.enabled}>
                  8 |         <for {step in workflow.steps}>
                    |               ^^^^
 
-                step: {condition: Bool}
+                step: Record[condition: Bool]
                   --> main.hop (line 9, col 25)
                  8 |         <for {step in workflow.steps}>
                  9 |             <execute-step {step: step}/>
                    |                                  ^^^^
 
-                step: {condition: Bool}
+                step: Record[condition: Bool]
                   --> main.hop (line 9, col 25)
                  8 |         <for {step in workflow.steps}>
                  9 |             <execute-step {step: step}/>
                    |                                  ^^^^
 
-                workflow: {enabled: Bool, steps: Array[{condition: Bool}]}
+                workflow: Record[enabled: Bool, steps: Array[Record[condition: Bool]]]
                   --> main.hop (line 7, col 7)
                  6 | <execute-workflow {workflow: {enabled: Bool, steps: Array[{condition: Bool}]}}>
                  7 |     <if {workflow.enabled}>
                    |          ^^^^^^^^
 
-                params: {
-                  workflows: Array[{
+                params: Record[
+                  workflows: Array[Record[
                     enabled: Bool,
-                    steps: Array[{condition: Bool}],
-                  }],
-                }
+                    steps: Array[Record[condition: Bool]],
+                  ]],
+                ]
                   --> main.hop (line 14, col 13)
                 13 | 
                 14 | <main-comp {params: {workflows: Array[{enabled: Bool, steps: Array[{condition: Bool}]}]}}>
                    |             ^^^^^^
 
-                params: {
-                  workflows: Array[{
+                params: Record[
+                  workflows: Array[Record[
                     enabled: Bool,
-                    steps: Array[{condition: Bool}],
-                  }],
-                }
+                    steps: Array[Record[condition: Bool]],
+                  ]],
+                ]
                   --> main.hop (line 15, col 20)
                 14 | <main-comp {params: {workflows: Array[{enabled: Bool, steps: Array[{condition: Bool}]}]}}>
                 15 |     <for {workflow in params.workflows}>
                    |                       ^^^^^^
 
-                workflow: {enabled: Bool, steps: Array[{condition: Bool}]}
+                workflow: Record[enabled: Bool, steps: Array[Record[condition: Bool]]]
                   --> main.hop (line 15, col 8)
                 14 | <main-comp {params: {workflows: Array[{enabled: Bool, steps: Array[{condition: Bool}]}]}}>
                 15 |     <for {workflow in params.workflows}>
                    |           ^^^^^^^^
 
-                workflow: {enabled: Bool, steps: Array[{condition: Bool}]}
+                workflow: Record[enabled: Bool, steps: Array[Record[condition: Bool]]]
                   --> main.hop (line 16, col 32)
                 15 |     <for {workflow in params.workflows}>
                 16 |         <execute-workflow {workflow: workflow}/>
                    |                                      ^^^^^^^^
 
-                workflow: {enabled: Bool, steps: Array[{condition: Bool}]}
+                workflow: Record[enabled: Bool, steps: Array[Record[condition: Bool]]]
                   --> main.hop (line 16, col 32)
                 15 |     <for {workflow in params.workflows}>
                 16 |         <execute-workflow {workflow: workflow}/>
@@ -2835,71 +2860,89 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                item: {children: Array[{visible: Bool}], status: {active: Bool}}
+                item: Record[
+                  children: Array[Record[visible: Bool]],
+                  status: Record[active: Bool],
+                ]
                   --> main.hop (line 2, col 5)
                  1 | <process-item {
                  2 |     item: {
                    |     ^^^^
 
-                item: {children: Array[{visible: Bool}], status: {active: Bool}}
+                item: Record[
+                  children: Array[Record[visible: Bool]],
+                  status: Record[active: Bool],
+                ]
                   --> main.hop (line 7, col 7)
                  6 | }>
                  7 |     <if {item.status.active}>
                    |          ^^^^
 
-                item: {children: Array[{visible: Bool}], status: {active: Bool}}
+                item: Record[
+                  children: Array[Record[visible: Bool]],
+                  status: Record[active: Bool],
+                ]
                   --> main.hop (line 9, col 17)
                  8 |     </if>
                  9 |     <for {child in item.children}>
                    |                    ^^^^
 
-                child: {visible: Bool}
+                child: Record[visible: Bool]
                   --> main.hop (line 9, col 8)
                  8 |     </if>
                  9 |     <for {child in item.children}>
                    |           ^^^^^
 
-                child: {visible: Bool}
+                child: Record[visible: Bool]
                   --> main.hop (line 10, col 8)
                  9 |     <for {child in item.children}>
                 10 |         <if {child.visible}>
                    |              ^^^^^
 
-                params: {
-                  items: Array[{
-                    children: Array[{visible: Bool}],
-                    status: {active: Bool},
-                  }],
-                }
+                params: Record[
+                  items: Array[Record[
+                    children: Array[Record[visible: Bool]],
+                    status: Record[active: Bool],
+                  ]],
+                ]
                   --> main.hop (line 15, col 13)
                 14 | 
                 15 | <main-comp {params: {
                    |             ^^^^^^
 
-                params: {
-                  items: Array[{
-                    children: Array[{visible: Bool}],
-                    status: {active: Bool},
-                  }],
-                }
+                params: Record[
+                  items: Array[Record[
+                    children: Array[Record[visible: Bool]],
+                    status: Record[active: Bool],
+                  ]],
+                ]
                   --> main.hop (line 19, col 16)
                 18 | }}>
                 19 |     <for {item in params.items}>
                    |                   ^^^^^^
 
-                item: {children: Array[{visible: Bool}], status: {active: Bool}}
+                item: Record[
+                  children: Array[Record[visible: Bool]],
+                  status: Record[active: Bool],
+                ]
                   --> main.hop (line 19, col 8)
                 18 | }}>
                 19 |     <for {item in params.items}>
                    |           ^^^^
 
-                item: {children: Array[{visible: Bool}], status: {active: Bool}}
+                item: Record[
+                  children: Array[Record[visible: Bool]],
+                  status: Record[active: Bool],
+                ]
                   --> main.hop (line 20, col 24)
                 19 |     <for {item in params.items}>
                 20 |         <process-item {item: item}/>
                    |                              ^^^^
 
-                item: {children: Array[{visible: Bool}], status: {active: Bool}}
+                item: Record[
+                  children: Array[Record[visible: Bool]],
+                  status: Record[active: Bool],
+                ]
                   --> main.hop (line 20, col 24)
                 19 |     <for {item in params.items}>
                 20 |         <process-item {item: item}/>
@@ -2918,18 +2961,18 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                user: {theme: String, url: String}
+                user: Record[theme: String, url: String]
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {user: {url: String, theme: String}}>
                   |             ^^^^
 
-                user: {theme: String, url: String}
+                user: Record[theme: String, url: String]
                   --> main.hop (line 2, col 29)
                 1 | <main-comp {user: {url: String, theme: String}}>
                 2 |   <a href={user.url} class={user.theme}>Link</a>
                   |                             ^^^^
 
-                user: {theme: String, url: String}
+                user: Record[theme: String, url: String]
                   --> main.hop (line 2, col 12)
                 1 | <main-comp {user: {url: String, theme: String}}>
                 2 |   <a href={user.url} class={user.theme}>Link</a>
@@ -2970,12 +3013,12 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                data: {message: String}
+                data: Record[message: String]
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {data: {message: String}}>
                   |             ^^^^
 
-                data: {message: String}
+                data: Record[message: String]
                   --> main.hop (line 2, col 9)
                 1 | <main-comp {data: {message: String}}>
                 2 |   <div>{data.message}
@@ -2996,12 +3039,12 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {role: String}
+                params: Record[role: String]
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {params: {role: String}}>
                   |             ^^^^^^
 
-                params: {role: String}
+                params: Record[role: String]
                   --> main.hop (line 2, col 8)
                 1 | <main-comp {params: {role: String}}>
                 2 |   <if {params.role == "admin"}>
@@ -3112,12 +3155,12 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                data: {message: String}
+                data: Record[message: String]
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {data: {message: String}}>
                   |             ^^^^
 
-                data: {message: String}
+                data: Record[message: String]
                   --> main.hop (line 3, col 8)
                 2 |     <hop-x-raw>foo bar</hop-x-raw>
                 3 |     <div>{data.message}</div>
@@ -3173,12 +3216,12 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                user: {is_active: Bool}
+                user: Record[is_active: Bool]
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {user: {is_active: Bool}}>
                   |             ^^^^
 
-                user: {is_active: Bool}
+                user: Record[is_active: Bool]
                   --> main.hop (line 2, col 8)
                 1 | <main-comp {user: {is_active: Bool}}>
                 2 |   <if {user.is_active}>
@@ -3200,12 +3243,12 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                data: {status: String}
+                data: Record[status: String]
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {data: {status: String}}>
                   |             ^^^^
 
-                data: {status: String}
+                data: Record[status: String]
                   --> main.hop (line 2, col 8)
                 1 | <main-comp {data: {status: String}}>
                 2 |   <if {data.status == "approved"}>
@@ -3252,18 +3295,18 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                config: {debug: Bool, enabled: Bool}
+                config: Record[debug: Bool, enabled: Bool]
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {config: {enabled: Bool, debug: Bool}}>
                   |             ^^^^^^
 
-                config: {debug: Bool, enabled: Bool}
+                config: Record[debug: Bool, enabled: Bool]
                   --> main.hop (line 4, col 10)
                 3 |     <div>Feature enabled</div>
                 4 |     <if {config.debug}>
                   |          ^^^^^^
 
-                config: {debug: Bool, enabled: Bool}
+                config: Record[debug: Bool, enabled: Bool]
                   --> main.hop (line 2, col 8)
                 1 | <main-comp {config: {enabled: Bool, debug: Bool}}>
                 2 |   <if {config.enabled}>
@@ -3289,7 +3332,7 @@ mod tests {
                 </foo-comp>
             "#},
             expect![[r#"
-                error: Argument 'config' of type Int is incompatible with expected type {debug: Bool}
+                error: Argument 'config' of type Int is incompatible with expected type Record[debug: Bool]
                   --> main.hop (line 7, col 23)
                 6 | <foo-comp>
                 7 |   <main-comp {config: 1}/>
@@ -3362,12 +3405,12 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {mode: String}
+                params: Record[mode: String]
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {params: {mode: String}}>
                   |             ^^^^^^
 
-                params: {mode: String}
+                params: Record[mode: String]
                   --> main.hop (line 2, col 8)
                 1 | <main-comp {params: {mode: String}}>
                 2 |   <if {params.mode == hop_mode}>
@@ -3397,7 +3440,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Type {foo: String} is not comparable
+                error: Type Record[foo: String] is not comparable
                   --> main.hop (line 5, col 8)
                 4 |   </if>
                 5 |   <if {params == params}>
@@ -3421,30 +3464,30 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                data: Array[{items: Array[String], title: String}]
+                data: Array[Record[items: Array[String], title: String]]
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {data: Array[{title: String, items: Array[String]}]}>
                   |             ^^^^
 
-                data: Array[{items: Array[String], title: String}]
+                data: Array[Record[items: Array[String], title: String]]
                   --> main.hop (line 2, col 19)
                 1 | <main-comp {data: Array[{title: String, items: Array[String]}]}>
                 2 |     <for {section in data}>
                   |                      ^^^^
 
-                section: {items: Array[String], title: String}
+                section: Record[items: Array[String], title: String]
                   --> main.hop (line 2, col 8)
                 1 | <main-comp {data: Array[{title: String, items: Array[String]}]}>
                 2 |     <for {section in data}>
                   |           ^^^^^^^
 
-                section: {items: Array[String], title: String}
+                section: Record[items: Array[String], title: String]
                   --> main.hop (line 3, col 8)
                 2 |     <for {section in data}>
                 3 |         <h1>{section.title}</h1>
                   |              ^^^^^^^
 
-                section: {items: Array[String], title: String}
+                section: Record[items: Array[String], title: String]
                   --> main.hop (line 4, col 17)
                 3 |         <h1>{section.title}</h1>
                 4 |         <for {item in section.items}>
@@ -3500,7 +3543,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Argument 'user' of type String is incompatible with expected type {age: String, name: String}
+                error: Argument 'user' of type String is incompatible with expected type Record[age: String, name: String]
                   --> main.hop (line 5, col 20)
                 4 | <main-comp>
                 5 |     <user-comp {user: "invalid"}/>
@@ -3522,36 +3565,36 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                user: {active: String, name: String}
+                user: Record[active: String, name: String]
                   --> main.hop (line 1, col 13)
                 1 | <user-comp {user: {name: String, active: String}}>
                   |             ^^^^
 
-                user: {active: String, name: String}
+                user: Record[active: String, name: String]
                   --> main.hop (line 2, col 8)
                 1 | <user-comp {user: {name: String, active: String}}>
                 2 |     <div>{user.name}: {user.active}</div>
                   |           ^^^^
 
-                user: {active: String, name: String}
+                user: Record[active: String, name: String]
                   --> main.hop (line 2, col 21)
                 1 | <user-comp {user: {name: String, active: String}}>
                 2 |     <div>{user.name}: {user.active}</div>
                   |                        ^^^^
 
-                data: {profile: {active: String, name: String}}
+                data: Record[profile: Record[active: String, name: String]]
                   --> main.hop (line 4, col 13)
                 3 | </user-comp>
                 4 | <main-comp {data: {profile: {name: String, active: String}}}>
                   |             ^^^^
 
-                data: {profile: {active: String, name: String}}
+                data: Record[profile: Record[active: String, name: String]]
                   --> main.hop (line 5, col 20)
                 4 | <main-comp {data: {profile: {name: String, active: String}}}>
                 5 |     <user-comp {user: data.profile}/>
                   |                       ^^^^
 
-                user: {active: String, name: String}
+                user: Record[active: String, name: String]
                   --> main.hop (line 5, col 20)
                 4 | <main-comp {data: {profile: {name: String, active: String}}}>
                 5 |     <user-comp {user: data.profile}/>
@@ -3573,7 +3616,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Argument 'user' of type String is incompatible with expected type {name: String}
+                error: Argument 'user' of type String is incompatible with expected type Record[name: String]
                   --> main.hop (line 5, col 19)
                 4 | <main-comp>
                 5 |     <new-comp {user: "invalid"}/>
@@ -3593,12 +3636,12 @@ mod tests {
                 </user-comp>
             "#},
             expect![[r#"
-                user: {name: String}
+                user: Record[name: String]
                   --> main.hop (line 1, col 13)
                 1 | <user-comp {user: {name: String}}>
                   |             ^^^^
 
-                user: {name: String}
+                user: Record[name: String]
                   --> main.hop (line 2, col 8)
                 1 | <user-comp {user: {name: String}}>
                 2 |     <div>{user.name}</div>
@@ -3768,66 +3811,66 @@ mod tests {
                 </card-comp>
             "#},
             expect![[r#"
-                data: {
+                data: Record[
                   content: String,
-                  metadata: {author: String, published: Bool},
+                  metadata: Record[author: String, published: Bool],
                   tags: Array[String],
                   title: String,
-                }
+                ]
                   --> main.hop (line 1, col 13)
                  1 | <card-comp {data: {
                    |             ^^^^
 
-                data: {
+                data: Record[
                   content: String,
-                  metadata: {author: String, published: Bool},
+                  metadata: Record[author: String, published: Bool],
                   tags: Array[String],
                   title: String,
-                }
+                ]
                   --> main.hop (line 7, col 7)
                  6 | }}>
                  7 |     <h1>{data.title}</h1>
                    |          ^^^^
 
-                data: {
+                data: Record[
                   content: String,
-                  metadata: {author: String, published: Bool},
+                  metadata: Record[author: String, published: Bool],
                   tags: Array[String],
                   title: String,
-                }
+                ]
                   --> main.hop (line 8, col 6)
                  7 |     <h1>{data.title}</h1>
                  8 |     <p>{data.content}</p>
                    |         ^^^^
 
-                data: {
+                data: Record[
                   content: String,
-                  metadata: {author: String, published: Bool},
+                  metadata: Record[author: String, published: Bool],
                   tags: Array[String],
                   title: String,
-                }
+                ]
                   --> main.hop (line 9, col 8)
                  8 |     <p>{data.content}</p>
                  9 |     <div>{data.metadata.author}</div>
                    |           ^^^^
 
-                data: {
+                data: Record[
                   content: String,
-                  metadata: {author: String, published: Bool},
+                  metadata: Record[author: String, published: Bool],
                   tags: Array[String],
                   title: String,
-                }
+                ]
                   --> main.hop (line 10, col 7)
                  9 |     <div>{data.metadata.author}</div>
                 10 |     <if {data.metadata.published}>
                    |          ^^^^
 
-                data: {
+                data: Record[
                   content: String,
-                  metadata: {author: String, published: Bool},
+                  metadata: Record[author: String, published: Bool],
                   tags: Array[String],
                   title: String,
-                }
+                ]
                   --> main.hop (line 13, col 15)
                 12 |     </if>
                 13 |     <for {tag in data.tags}>
@@ -3926,30 +3969,30 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                data: {a: String}
+                data: Record[a: String]
                   --> main.hop (line 1, col 11)
                 1 | <needs-a {data: {a: String}}>
                   |           ^^^^
 
-                data: {a: String}
+                data: Record[a: String]
                   --> main.hop (line 2, col 8)
                 1 | <needs-a {data: {a: String}}>
                 2 |     <div>{data.a}</div>
                   |           ^^^^
 
-                params: {data: {a: String, b: String}}
+                params: Record[data: Record[a: String, b: String]]
                   --> main.hop (line 5, col 13)
                 4 | 
                 5 | <main-comp {params: {data: {a: String, b: String}}}>
                   |             ^^^^^^
 
-                params: {data: {a: String, b: String}}
+                params: Record[data: Record[a: String, b: String]]
                   --> main.hop (line 6, col 18)
                 5 | <main-comp {params: {data: {a: String, b: String}}}>
                 6 |     <needs-a {data: params.data}/>
                   |                     ^^^^^^
 
-                data: {a: String, b: String}
+                data: Record[a: String, b: String]
                   --> main.hop (line 6, col 18)
                 5 | <main-comp {params: {data: {a: String, b: String}}}>
                 6 |     <needs-a {data: params.data}/>
@@ -3973,7 +4016,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Argument 'data' of type {b: String} is incompatible with expected type {a: String}
+                error: Argument 'data' of type Record[b: String] is incompatible with expected type Record[a: String]
                   --> main.hop (line 6, col 18)
                 5 | <main-comp {params: {data: {b: String}}}>
                 6 |     <needs-a {data: params.data}/>

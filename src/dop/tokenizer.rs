@@ -118,6 +118,7 @@ impl Iterator for Tokenizer {
                         "Bool" => Token::TypeBoolean,
                         "TrustedHTML" => Token::TypeTrustedHTML,
                         "Array" => Token::TypeArray,
+                        "Record" => Token::TypeRecord,
                         _ => Token::Identifier(identifier.clone()),
                     };
                     Ok((t, identifier))

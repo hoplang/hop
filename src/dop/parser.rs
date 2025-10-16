@@ -319,6 +319,29 @@ impl Parser {
         Ok((Type::Object(properties), left_brace.to(right_brace)))
     }
 
+    // record_type = "Record" "[" (Identifier ":" type ("," Identifier ":" type)*)? "]"
+    fn parse_record_type(
+        &mut self,
+        type_record: DocumentRange,
+    ) -> Result<(Type, DocumentRange), ParseError> {
+        let left_bracket = self.expect_token(&Token::LeftBracket)?;
+        let mut properties = BTreeMap::new();
+        let right_bracket = self.parse_delimited_list(&Token::LeftBracket, &left_bracket, |this| {
+            let (prop_name, prop_name_range) = this.expect_property_name()?;
+            this.expect_token(&Token::Colon)?;
+            let (typ, _range) = this.parse_type()?;
+            if properties.contains_key(&prop_name) {
+                return Err(ParseError::DuplicateProperty {
+                    name: prop_name_range.to_string_span(),
+                    range: prop_name_range.clone(),
+                });
+            }
+            properties.insert(prop_name, typ);
+            Ok(())
+        })?;
+        Ok((Type::Object(properties), type_record.to(right_bracket)))
+    }
+
     fn parse_type(&mut self) -> Result<(Type, DocumentRange), ParseError> {
         match self.iter.next().transpose()? {
             Some((Token::TypeString, range)) => Ok((Type::String, range)),
@@ -335,6 +358,7 @@ impl Parser {
                     type_array.to(right_bracket),
                 ))
             }
+            Some((Token::TypeRecord, type_record_range)) => self.parse_record_type(type_record_range),
             Some((Token::LeftBrace, left_brace_range)) => self.parse_object_type(left_brace_range),
             Some((actual, range)) => Err(ParseError::ExpectedTypeNameButGot { actual, range }),
             None => Err(ParseError::UnexpectedEof {
@@ -749,6 +773,78 @@ mod tests {
                 error: Duplicate property 'name'
                 user: {name: String, name: Float}
                                      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_parameters_record_type_simple() {
+        check_parse_parameters(
+            "user: Record[name: String, role: String]",
+            expect![[r#"
+                [user: Record[name: String, role: String]]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_parameters_record_type_multiple() {
+        check_parse_parameters(
+            "user: Record[name: String, age: Int], config: Record[enabled: Bool]",
+            expect![[r#"
+                [user: Record[age: Int, name: String], config: Record[enabled: Bool]]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_parameters_record_type_nested() {
+        check_parse_parameters(
+            "data: Record[user: Record[name: String, active: Bool]]",
+            expect![[r#"
+                [data: Record[user: Record[active: Bool, name: String]]]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_parameters_record_type_with_array() {
+        check_parse_parameters(
+            "users: Record[names: Array[String], count: Int]",
+            expect![[r#"
+                [users: Record[count: Int, names: Array[String]]]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_parameters_record_type_empty() {
+        check_parse_parameters(
+            "empty: Record[]",
+            expect![[r#"
+                [empty: Record[]]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_parameters_record_type_duplicate_keys() {
+        check_parse_parameters(
+            "user: Record[name: String, name: Float]",
+            expect![[r#"
+                error: Duplicate property 'name'
+                user: Record[name: String, name: Float]
+                                           ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_parameters_mixed_record_and_object_syntax() {
+        check_parse_parameters(
+            "user: Record[name: String], settings: {theme: String}",
+            expect![[r#"
+                [user: Record[name: String], settings: Record[theme: String]]
             "#]],
         );
     }

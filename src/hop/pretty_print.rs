@@ -568,7 +568,7 @@ mod tests {
                 </foo-component>
             "#},
             expect![[r#"
-                <foo-component {users: Array[{name: String}]}>
+                <foo-component {users: Array[Record[name: String]]}>
                   <div>Hello</div>
                 </foo-component>
             "#]],
@@ -592,15 +592,15 @@ mod tests {
             "#},
             expect![[r#"
                 <foo-component {
-                  users: Array[{name: String}],
-                  admins: Array[{email: String, name: String}],
-                  others: Array[{
+                  users: Array[Record[name: String]],
+                  admins: Array[Record[email: String, name: String]],
+                  others: Array[Record[
                   bar: String,
                   baz: String,
                   email: String,
                   foo: String,
                   name: String,
-                }],
+                ]],
                 }>
                   <div>
                     <h1>User List</h1>

@@ -1103,7 +1103,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                `user`: `{name: String}`
+                `user`: `Record[name: String]`
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {user: {name: String}}>
                   |             ^^^^

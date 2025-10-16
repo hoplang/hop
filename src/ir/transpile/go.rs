@@ -1119,7 +1119,9 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-nested(users: Array[{id: String, name: String}]) {
+                test-nested(
+                  users: Array[Record[id: String, name: String]],
+                ) {
                   for user in users {
                     write("<div>")
                     write_escaped(user.name)
@@ -1390,19 +1392,22 @@ mod tests {
             expect![[r#"
                 -- before --
                 test-deep-config(
-                  config: {
+                  config: Record[
                     api_key: String,
-                    database: {
-                      credentials: {password: String, username: String},
+                    database: Record[
+                      credentials: Record[
+                        password: String,
+                        username: String,
+                      ],
                       host: String,
                       port: Float,
-                    },
-                    features: Array[{
+                    ],
+                    features: Array[Record[
                       enabled: Bool,
                       name: String,
-                      settings: {level: String, timeout: Float},
-                    }],
-                  },
+                      settings: Record[level: String, timeout: Float],
+                    ]],
+                  ],
                 ) {
                   write("<div>API Key: ")
                   write_escaped(config.api_key)
@@ -1561,7 +1566,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 test-json(
-                  data: {active: Bool, count: Float, title: String},
+                  data: Record[active: Bool, count: Float, title: String],
                   items: Array[String],
                 ) {
                   write("<script>\n")

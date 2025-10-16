@@ -983,7 +983,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-json(data: {count: Float, title: String}) {
+                test-json(data: Record[count: Float, title: String]) {
                   write("<script>\n")
                   write("const data = ")
                   write_expr(JsonEncode(data))
@@ -1141,11 +1141,11 @@ mod tests {
             expect![[r#"
                 -- before --
                 test-users(
-                  users: Array[{
+                  users: Array[Record[
                     email: String,
                     name: String,
-                    profile: {age: Float, bio: String},
-                  }],
+                    profile: Record[age: Float, bio: String],
+                  ]],
                 ) {
                   for user in users {
                     write("<div>")
@@ -1287,14 +1287,17 @@ mod tests {
             expect![[r#"
                 -- before --
                 test-deep-config(
-                  config: {
+                  config: Record[
                     api_key: String,
-                    database: {
-                      credentials: {password: String, username: String},
+                    database: Record[
+                      credentials: Record[
+                        password: String,
+                        username: String,
+                      ],
                       host: String,
                       port: Float,
-                    },
-                  },
+                    ],
+                  ],
                 ) {
                   write("<div>API Key: ")
                   write_escaped(config.api_key)

@@ -1345,7 +1345,11 @@ mod tests {
             expect![[r#"
                 -- before --
                 test-user-list(
-                  users: Array[{active: Bool, id: String, name: String}],
+                  users: Array[Record[
+                    active: Bool,
+                    id: String,
+                    name: String,
+                  ]],
                   title: String,
                 ) {
                   write("<div>\n")

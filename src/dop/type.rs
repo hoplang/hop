@@ -122,34 +122,38 @@ impl<'a> Type {
                 None => BoxDoc::text("Array"),
             },
             Type::Object(fields) => {
-                BoxDoc::nil()
-                    .append(BoxDoc::text("{"))
-                    .append(
-                        BoxDoc::nil()
-                            // soft line break
-                            .append(BoxDoc::line_())
-                            .append(BoxDoc::intersperse(
-                                fields.iter().map(|(key, typ)| {
-                                    BoxDoc::nil()
-                                        // key
-                                        .append(BoxDoc::text(key.as_str()))
-                                        // separator
-                                        .append(BoxDoc::text(": "))
-                                        // value
-                                        .append(typ.to_doc())
-                                }),
-                                // intersperse with comma followed by line that acts
-                                // as space if laid out on a single line
-                                BoxDoc::text(",").append(BoxDoc::line()),
-                            ))
-                            // trailing comma if laid out on multiple lines
-                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                            // soft line break
-                            .append(BoxDoc::line_())
-                            .nest(2)
-                            .group(),
-                    )
-                    .append(BoxDoc::text("}"))
+                if fields.is_empty() {
+                    BoxDoc::text("Record[]")
+                } else {
+                    BoxDoc::nil()
+                        .append(BoxDoc::text("Record["))
+                        .append(
+                            BoxDoc::nil()
+                                // soft line break
+                                .append(BoxDoc::line_())
+                                .append(BoxDoc::intersperse(
+                                    fields.iter().map(|(key, typ)| {
+                                        BoxDoc::nil()
+                                            // key
+                                            .append(BoxDoc::text(key.as_str()))
+                                            // separator
+                                            .append(BoxDoc::text(": "))
+                                            // value
+                                            .append(typ.to_doc())
+                                    }),
+                                    // intersperse with comma followed by line that acts
+                                    // as space if laid out on a single line
+                                    BoxDoc::text(",").append(BoxDoc::line()),
+                                ))
+                                // trailing comma if laid out on multiple lines
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                // soft line break
+                                .append(BoxDoc::line_())
+                                .nest(2)
+                                .group(),
+                        )
+                        .append(BoxDoc::text("]"))
+                }
             }
         }
     }

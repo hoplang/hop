@@ -724,7 +724,7 @@ mod tests {
             "config: {users: Array[{profile: {name: String, active: Bool}}]}",
             "config.users.profile.name",
             expect![[r#"
-                error: Array[{profile: {active: Bool, name: String}}] can not be used as an object
+                error: Array[Record[profile: Record[active: Bool, name: String]]] can not be used as an object
                 config.users.profile.name
                 ^^^^^^^^^^^^
             "#]],
@@ -737,7 +737,7 @@ mod tests {
             "users: Array[{name: String}]",
             "users.name",
             expect![[r#"
-                error: Array[{name: String}] can not be used as an object
+                error: Array[Record[name: String]] can not be used as an object
                 users.name
                 ^^^^^
             "#]],
@@ -750,7 +750,7 @@ mod tests {
             "data: {field: String}",
             "data.unknown",
             expect![[r#"
-                error: Property unknown not found in object {field: String}
+                error: Property unknown not found in object Record[field: String]
                 data.unknown
                 ^^^^^^^^^^^^
             "#]],
@@ -973,12 +973,12 @@ mod tests {
 
     #[test]
     fn test_typecheck_empty_object_literal() {
-        check("", "{}", expect!["{}"]);
+        check("", "{}", expect!["Record[]"]);
     }
 
     #[test]
     fn test_typecheck_object_literal_single_property() {
-        check("", r#"{name: "John"}"#, expect!["{name: String}"]);
+        check("", r#"{name: "John"}"#, expect!["Record[name: String]"]);
     }
 
     #[test]
@@ -986,7 +986,7 @@ mod tests {
         check(
             "",
             r#"{a: "foo", b: 1, c: true}"#,
-            expect!["{a: String, b: Int, c: Bool}"],
+            expect!["Record[a: String, b: Int, c: Bool]"],
         );
     }
 
@@ -995,7 +995,7 @@ mod tests {
         check(
             "user: {name: String, disabled: Bool}",
             "{user: user.name, active: !user.disabled}",
-            expect!["{active: Bool, user: String}"],
+            expect!["Record[active: Bool, user: String]"],
         );
     }
 
@@ -1004,7 +1004,7 @@ mod tests {
         check(
             "",
             r#"{nested: {inner: "value"}}"#,
-            expect!["{nested: {inner: String}}"],
+            expect!["Record[nested: Record[inner: String]]"],
         );
     }
 
@@ -1049,7 +1049,7 @@ mod tests {
                 	b: 1,
                 }
             "#},
-            expect!["{a: String, b: Int}"],
+            expect!["Record[a: String, b: Int]"],
         );
     }
 
@@ -1062,7 +1062,7 @@ mod tests {
             	name: "John",
             }
         "#},
-            expect!["{name: String}"],
+            expect!["Record[name: String]"],
         );
     }
 
