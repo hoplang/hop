@@ -117,6 +117,28 @@ impl GoTranspiler {
         }
     }
 
+    fn scan_for_trusted_html(&self, entrypoints: &[IrEntrypoint]) -> bool {
+        for entrypoint in entrypoints {
+            for (_, param_type) in &entrypoint.parameters {
+                if self.type_contains_trusted_html(param_type) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn type_contains_trusted_html(&self, t: &Type) -> bool {
+        match t {
+            Type::TrustedHTML => true,
+            Type::Array(Some(elem)) => self.type_contains_trusted_html(elem),
+            Type::Object(fields) => {
+                fields.values().any(|field_type| self.type_contains_trusted_html(field_type))
+            }
+            _ => false,
+        }
+    }
+
     // Helper method to escape strings for Go string literals
     fn escape_string(&self, s: &str) -> String {
         s.replace('\\', "\\\\")
@@ -138,6 +160,9 @@ impl Transpiler for GoTranspiler {
 
         // We always need strings.Builder for output
         imports.insert("strings".to_string());
+
+        // Check if we need TrustedHTML type
+        let needs_trusted_html = self.scan_for_trusted_html(entrypoints);
 
         // Build the module content using BoxDoc
         let mut result = BoxDoc::nil();
@@ -168,6 +193,14 @@ impl Transpiler for GoTranspiler {
                         .nest(1),
                 )
                 .append(BoxDoc::text(")"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line());
+        }
+
+        // Add TrustedHTML type definition if needed
+        if needs_trusted_html {
+            result = result
+                .append(BoxDoc::text("type TrustedHTML string"))
                 .append(BoxDoc::line())
                 .append(BoxDoc::line());
         }
@@ -343,9 +376,18 @@ impl StatementTranspiler for GoTranspiler {
                 .append(self.transpile_expr(expr))
                 .append(BoxDoc::text("))"))
         } else {
-            BoxDoc::text("output.WriteString(")
-                .append(self.transpile_expr(expr))
-                .append(BoxDoc::text(")"))
+            // Check if the expression is TrustedHTML - needs conversion to string
+            let needs_conversion = matches!(expr.as_type(), Type::TrustedHTML);
+
+            let mut doc = BoxDoc::text("output.WriteString(");
+            if needs_conversion {
+                doc = doc.append(BoxDoc::text("string("));
+            }
+            doc = doc.append(self.transpile_expr(expr));
+            if needs_conversion {
+                doc = doc.append(BoxDoc::text(")"));
+            }
+            doc.append(BoxDoc::text(")"))
         }
     }
 
@@ -738,7 +780,7 @@ impl TypeTranspiler for GoTranspiler {
     }
 
     fn transpile_trusted_html_type<'a>(&self) -> BoxDoc<'a> {
-        BoxDoc::text("string")
+        BoxDoc::text("TrustedHTML")
     }
 
     fn transpile_float_type<'a>(&self) -> BoxDoc<'a> {
@@ -1627,6 +1669,62 @@ mod tests {
                 	}))
                 	output.WriteString(";\n")
                 	output.WriteString("</script>\n")
+                	return output.String()
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_trusted_html_type() {
+        let entrypoints = vec![build_ir_auto(
+            "render-html",
+            vec![("safe_content", Type::TrustedHTML), ("user_input", Type::String)],
+            |t| {
+                t.write("<div>");
+                t.write_expr(t.var("safe_content"), false);
+                t.write("</div><div>");
+                t.write_expr_escaped(t.var("user_input"));
+                t.write("</div>");
+            },
+        )];
+
+        check(
+            &entrypoints,
+            expect![[r#"
+                -- before --
+                render-html(safe_content: TrustedHTML, user_input: String) {
+                  write("<div>")
+                  write_expr(safe_content)
+                  write("</div><div>")
+                  write_escaped(user_input)
+                  write("</div>")
+                }
+
+                -- after --
+                package components
+
+                import (
+                	"html"
+                	"strings"
+                )
+
+                type TrustedHTML string
+
+                type RenderHtmlParams struct {
+                	SafeContent TrustedHTML `json:"safe_content"`
+                	UserInput string `json:"user_input"`
+                }
+
+                func RenderHtml(params RenderHtmlParams) string {
+                	safe_content := params.SafeContent
+                	user_input := params.UserInput
+                	var output strings.Builder
+                	output.WriteString("<div>")
+                	output.WriteString(string(safe_content))
+                	output.WriteString("</div><div>")
+                	output.WriteString(html.EscapeString(user_input))
+                	output.WriteString("</div>")
                 	return output.String()
                 }
             "#]],

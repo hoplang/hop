@@ -98,7 +98,7 @@ impl PythonTranspiler {
             Type::Bool => BoxDoc::text("bool"),
             Type::Float => BoxDoc::text("float"),
             Type::Int => BoxDoc::text("int"),
-            Type::TrustedHTML => BoxDoc::text("str"),
+            Type::TrustedHTML => BoxDoc::text("TrustedHTML"),
             Type::Array(Some(elem)) => BoxDoc::text("list[")
                 .append(Self::get_python_type(elem))
                 .append(BoxDoc::text("]")),
@@ -139,6 +139,28 @@ impl PythonTranspiler {
         (needs_html_escape, needs_json, needs_simple_namespace)
     }
 
+    fn scan_for_trusted_html(&self, entrypoints: &[IrEntrypoint]) -> bool {
+        for entrypoint in entrypoints {
+            for (_, param_type) in &entrypoint.parameters {
+                if self.type_contains_trusted_html(param_type) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn type_contains_trusted_html(&self, t: &Type) -> bool {
+        match t {
+            Type::TrustedHTML => true,
+            Type::Array(Some(elem)) => self.type_contains_trusted_html(elem),
+            Type::Object(fields) => {
+                fields.values().any(|field_type| self.type_contains_trusted_html(field_type))
+            }
+            _ => false,
+        }
+    }
+
     // Helper method to escape strings for Python string literals
     fn escape_string(&self, s: &str) -> String {
         s.replace('\\', "\\\\")
@@ -167,12 +189,20 @@ impl Transpiler for PythonTranspiler {
             }
         }
 
+        let needs_trusted_html = self.scan_for_trusted_html(entrypoints);
+
         let mut result = BoxDoc::nil();
 
         // Add imports if needed
         if needs_dataclasses {
             result = result
                 .append(BoxDoc::text("from dataclasses import dataclass"))
+                .append(BoxDoc::line());
+        }
+
+        if needs_trusted_html {
+            result = result
+                .append(BoxDoc::text("from typing import NewType"))
                 .append(BoxDoc::line());
         }
 
@@ -194,8 +224,16 @@ impl Transpiler for PythonTranspiler {
                 .append(BoxDoc::line());
         }
 
-        if needs_dataclasses || needs_simple_namespace || needs_json || needs_html_escape {
+        if needs_dataclasses || needs_simple_namespace || needs_json || needs_html_escape || needs_trusted_html {
             result = result.append(BoxDoc::line());
+        }
+
+        // Add TrustedHTML type definition if needed
+        if needs_trusted_html {
+            result = result
+                .append(BoxDoc::text("TrustedHTML = NewType('TrustedHTML', str)"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line());
         }
 
         // Generate parameter dataclasses for entrypoints that have parameters
@@ -333,9 +371,18 @@ impl StatementTranspiler for PythonTranspiler {
                 .append(self.transpile_expr(expr))
                 .append(BoxDoc::text("))"))
         } else {
-            BoxDoc::text("output.append(")
-                .append(self.transpile_expr(expr))
-                .append(BoxDoc::text(")"))
+            // Check if the expression is TrustedHTML - needs explicit cast to str for mypy
+            let needs_cast = matches!(expr.as_type(), Type::TrustedHTML);
+
+            let mut doc = BoxDoc::text("output.append(");
+            if needs_cast {
+                doc = doc.append(BoxDoc::text("str("));
+            }
+            doc = doc.append(self.transpile_expr(expr));
+            if needs_cast {
+                doc = doc.append(BoxDoc::text(")"));
+            }
+            doc.append(BoxDoc::text(")"))
         }
     }
 
@@ -707,7 +754,7 @@ impl TypeTranspiler for PythonTranspiler {
     }
 
     fn transpile_trusted_html_type<'a>(&self) -> BoxDoc<'a> {
-        BoxDoc::text("str")
+        BoxDoc::text("TrustedHTML")
     }
 
     fn transpile_float_type<'a>(&self) -> BoxDoc<'a> {
@@ -1340,6 +1387,58 @@ mod tests {
                     output.append("<div>DB Host: ")
                     output.append(html_escape(config.database.host))
                     output.append("</div>\n")
+                    return ''.join(output)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_trusted_html_type() {
+        let entrypoints = vec![build_ir_auto(
+            "render-html",
+            vec![("safe_content", Type::TrustedHTML), ("user_input", Type::String)],
+            |t| {
+                t.write("<div>");
+                t.write_expr(t.var("safe_content"), false);
+                t.write("</div><div>");
+                t.write_expr_escaped(t.var("user_input"));
+                t.write("</div>");
+            },
+        )];
+
+        check(
+            &entrypoints,
+            expect![[r#"
+                -- before --
+                render-html(safe_content: TrustedHTML, user_input: String) {
+                  write("<div>")
+                  write_expr(safe_content)
+                  write("</div><div>")
+                  write_escaped(user_input)
+                  write("</div>")
+                }
+
+                -- after --
+                from dataclasses import dataclass
+                from typing import NewType
+                from html import escape as html_escape
+
+                TrustedHTML = NewType('TrustedHTML', str)
+
+                @dataclass
+                class RenderHtmlParams:
+                    safe_content: TrustedHTML
+                    user_input: str
+
+                def render_html(params: RenderHtmlParams) -> str:
+                    safe_content = params.safe_content
+                    user_input = params.user_input
+                    output = []
+                    output.append("<div>")
+                    output.append(str(safe_content))
+                    output.append("</div><div>")
+                    output.append(html_escape(user_input))
+                    output.append("</div>")
                     return ''.join(output)
             "#]],
         );

@@ -235,7 +235,11 @@ impl IrTestBuilder {
     }
 
     pub fn write_expr(&self, expr: IrExpr, escape: bool) -> IrStatement {
-        assert_eq!(*expr.as_type(), Type::String, "{}", expr);
+        assert!(
+            matches!(expr.as_type(), Type::String | Type::TrustedHTML),
+            "WriteExpr expects String or TrustedHTML, got: {}",
+            expr
+        );
         IrStatement::WriteExpr {
             id: self.next_node_id(),
             expr,

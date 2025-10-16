@@ -710,4 +710,57 @@ mod tests {
 
         run_integration_test(test_case).expect("Integration test failed");
     }
+
+    #[test]
+    #[ignore]
+    fn test_typecheck_trusted_html() {
+        // Test that TrustedHTML type is properly emitted and type-checks
+        let parameters = vec![
+            ("safe_html", Type::TrustedHTML),
+            ("unsafe_text", Type::String),
+        ];
+
+        let test_case =
+            TypeCheckTestCase::new(vec![build_ir_auto("test-trusted-html", parameters, |t| {
+                // TrustedHTML should not be escaped
+                t.write_expr(t.var("safe_html"), false);
+                // Regular strings should be escaped
+                t.write_expr_escaped(t.var("unsafe_text"));
+            })]);
+
+        run_type_check_test(test_case).expect("Type check test failed");
+    }
+
+    #[test]
+    #[ignore]
+    fn test_typecheck_nested_trusted_html() {
+        // Test TrustedHTML in nested structures
+        let parameters = vec![(
+            "content",
+            Type::Object({
+                let mut map = BTreeMap::new();
+                map.insert(PropertyName::new("html").unwrap(), Type::TrustedHTML);
+                map.insert(PropertyName::new("text").unwrap(), Type::String);
+                map.insert(
+                    PropertyName::new("items").unwrap(),
+                    Type::Array(Some(Box::new(Type::TrustedHTML))),
+                );
+                map
+            }),
+        )];
+
+        let test_case = TypeCheckTestCase::new(vec![build_ir_auto(
+            "test-nested-trusted-html",
+            parameters,
+            |t| {
+                t.write_expr(t.prop_access(t.var("content"), "html"), false);
+                t.write_expr_escaped(t.prop_access(t.var("content"), "text"));
+                t.for_loop("item", t.prop_access(t.var("content"), "items"), |t| {
+                    t.write_expr(t.var("item"), false);
+                });
+            },
+        )]);
+
+        run_type_check_test(test_case).expect("Type check test failed");
+    }
 }

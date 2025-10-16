@@ -42,6 +42,28 @@ impl JsTranspiler {
         needs_escape
     }
 
+    fn scan_for_trusted_html(&self, entrypoints: &[IrEntrypoint]) -> bool {
+        for entrypoint in entrypoints {
+            for (_, param_type) in &entrypoint.parameters {
+                if self.type_contains_trusted_html(param_type) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn type_contains_trusted_html(&self, t: &Type) -> bool {
+        match t {
+            Type::TrustedHTML => true,
+            Type::Array(Some(elem)) => self.type_contains_trusted_html(elem),
+            Type::Object(fields) => {
+                fields.values().any(|field_type| self.type_contains_trusted_html(field_type))
+            }
+            _ => false,
+        }
+    }
+
     // Helper method to escape strings for JavaScript literals
     fn escape_string(&self, s: &str) -> String {
         if self.use_template_literals {
@@ -79,7 +101,17 @@ impl Transpiler for JsTranspiler {
             }
         }
 
+        let needs_trusted_html = self.scan_for_trusted_html(entrypoints);
+
         let mut result = BoxDoc::nil();
+
+        // Add TrustedHTML type definition for TypeScript
+        if needs_trusted_html && matches!(self.mode, LanguageMode::TypeScript) {
+            result = result
+                .append(BoxDoc::text("type TrustedHTML = string & { readonly __brand: unique symbol };"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line());
+        }
 
         if needs_escape_html {
             result = result
@@ -625,7 +657,10 @@ impl TypeTranspiler for JsTranspiler {
     }
 
     fn transpile_trusted_html_type<'a>(&self) -> BoxDoc<'a> {
-        BoxDoc::text("string")
+        match self.mode {
+            LanguageMode::TypeScript => BoxDoc::text("TrustedHTML"),
+            LanguageMode::JavaScript => BoxDoc::text("string"),
+        }
     }
 
     fn transpile_float_type<'a>(&self) -> BoxDoc<'a> {
@@ -1438,6 +1473,83 @@ mod tests {
                         }
                         output += "</ul>\n";
                         output += "</div>\n";
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_trusted_html_type() {
+        let entrypoints = vec![build_ir_auto(
+            "render-html",
+            vec![("safe_content", Type::TrustedHTML), ("user_input", Type::String)],
+            |t| {
+                t.write("<div>");
+                // TrustedHTML should not be escaped
+                t.write_expr(t.var("safe_content"), false);
+                t.write("</div><div>");
+                // Regular strings should be escaped
+                t.write_expr_escaped(t.var("user_input"));
+                t.write("</div>");
+            },
+        )];
+
+        check(
+            &entrypoints,
+            expect![[r#"
+                -- before --
+                render-html(safe_content: TrustedHTML, user_input: String) {
+                  write("<div>")
+                  write_expr(safe_content)
+                  write("</div><div>")
+                  write_escaped(user_input)
+                  write("</div>")
+                }
+
+                -- ts --
+                type TrustedHTML = string & { readonly __brand: unique symbol };
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    renderHtml: ({ safe_content, user_input }: { safe_content: TrustedHTML, user_input: string }): string => {
+                        let output: string = "";
+                        output += "<div>";
+                        output += safe_content;
+                        output += "</div><div>";
+                        output += escapeHtml(user_input);
+                        output += "</div>";
+                        return output;
+                    }
+                }
+
+                -- js --
+                function escapeHtml(str) {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    renderHtml: ({ safe_content, user_input }) => {
+                        let output = "";
+                        output += "<div>";
+                        output += safe_content;
+                        output += "</div><div>";
+                        output += escapeHtml(user_input);
+                        output += "</div>";
                         return output;
                     }
                 }
