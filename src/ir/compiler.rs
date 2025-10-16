@@ -494,6 +494,17 @@ impl Compiler {
                 operand_types,
                 annotation: expr_id,
             },
+            TypedExpr::NumericMultiply {
+                left,
+                right,
+                operand_types,
+                ..
+            } => TypedExpr::NumericMultiply {
+                left: Box::new(self.compile_expr(*left)),
+                right: Box::new(self.compile_expr(*right)),
+                operand_types,
+                annotation: expr_id,
+            },
         }
     }
 }

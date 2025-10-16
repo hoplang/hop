@@ -56,6 +56,13 @@ pub enum TypeError {
         right_type: String,
         range: DocumentRange,
     },
+
+    #[error("Cannot multiply values of incompatible types: {left_type} * {right_type}")]
+    IncompatibleTypesForMultiplication {
+        left_type: String,
+        right_type: String,
+        range: DocumentRange,
+    },
 }
 
 impl Ranged for TypeError {
@@ -71,7 +78,8 @@ impl Ranged for TypeError {
             | TypeError::LogicalAndRequiresBoolean { range, .. }
             | TypeError::LogicalOrRequiresBoolean { range, .. }
             | TypeError::IncompatibleTypesForAddition { range, .. }
-            | TypeError::IncompatibleTypesForSubtraction { range, .. } => range,
+            | TypeError::IncompatibleTypesForSubtraction { range, .. }
+            | TypeError::IncompatibleTypesForMultiplication { range, .. } => range,
         }
     }
 }

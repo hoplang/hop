@@ -82,6 +82,14 @@ pub enum TypedExpr<A> {
         annotation: A,
     },
 
+    /// Numeric multiplication expression for multiplying numeric values
+    NumericMultiply {
+        left: Box<Self>,
+        right: Box<Self>,
+        operand_types: NumericType,
+        annotation: A,
+    },
+
     /// Boolean negation expression
     Negation { operand: Box<Self>, annotation: A },
 
@@ -170,7 +178,8 @@ impl<A> TypedExpr<A> {
             | TypedExpr::StringLiteral { .. } => &STRING_TYPE,
 
             TypedExpr::NumericAdd { operand_types, .. }
-            | TypedExpr::NumericSubtract { operand_types, .. } => match operand_types {
+            | TypedExpr::NumericSubtract { operand_types, .. }
+            | TypedExpr::NumericMultiply { operand_types, .. } => match operand_types {
                 NumericType::Int => &INT_TYPE,
                 NumericType::Float => &FLOAT_TYPE,
             },
@@ -203,6 +212,7 @@ impl<A> TypedExpr<A> {
             | TypedExpr::StringConcat { annotation, .. }
             | TypedExpr::NumericAdd { annotation, .. }
             | TypedExpr::NumericSubtract { annotation, .. }
+            | TypedExpr::NumericMultiply { annotation, .. }
             | TypedExpr::Negation { annotation, .. }
             | TypedExpr::Equals { annotation, .. }
             | TypedExpr::NotEquals { annotation, .. }
@@ -295,6 +305,12 @@ impl<A> TypedExpr<A> {
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" - "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
+            TypedExpr::NumericMultiply { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(left.to_doc())
+                .append(BoxDoc::text(" * "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
             TypedExpr::Negation { operand, .. } => BoxDoc::nil()

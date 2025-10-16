@@ -140,6 +140,8 @@ pub trait ExpressionTranspiler {
     fn transpile_float_add<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_subtract<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_subtract<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_int_multiply<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_float_multiply<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_expr<'a>(&self, expr: &'a IrExpr) -> BoxDoc<'a> {
         match expr {
             IrExpr::Var { value, .. } => self.transpile_var(value.as_str()),
@@ -249,6 +251,15 @@ pub trait ExpressionTranspiler {
             } => match operand_types {
                 NumericType::Int => self.transpile_int_subtract(left, right),
                 NumericType::Float => self.transpile_float_subtract(left, right),
+            },
+            IrExpr::NumericMultiply {
+                left,
+                right,
+                operand_types,
+                ..
+            } => match operand_types {
+                NumericType::Int => self.transpile_int_multiply(left, right),
+                NumericType::Float => self.transpile_float_multiply(left, right),
             },
         }
     }

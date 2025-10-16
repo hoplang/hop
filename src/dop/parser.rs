@@ -441,12 +441,12 @@ impl Parser {
         Ok(expr)
     }
 
-    // additive = unary ( ("+" | "-") unary )*
+    // additive = multiplicative ( ("+" | "-") multiplicative )*
     fn parse_additive(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = self.parse_unary()?;
+        let mut expr = self.parse_multiplicative()?;
         loop {
             if self.advance_if(Token::Plus).is_some() {
-                let right = self.parse_unary()?;
+                let right = self.parse_multiplicative()?;
                 expr = AnnotatedExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
@@ -454,7 +454,7 @@ impl Parser {
                     right: Box::new(right),
                 };
             } else if self.advance_if(Token::Minus).is_some() {
-                let right = self.parse_unary()?;
+                let right = self.parse_multiplicative()?;
                 expr = AnnotatedExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
@@ -464,6 +464,21 @@ impl Parser {
             } else {
                 break;
             }
+        }
+        Ok(expr)
+    }
+
+    // multiplicative = unary ( "*" unary )*
+    fn parse_multiplicative(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.parse_unary()?;
+        while self.advance_if(Token::Multiply).is_some() {
+            let right = self.parse_unary()?;
+            expr = AnnotatedExpr::BinaryOp {
+                annotation: expr.range().clone().to(right.range().clone()),
+                left: Box::new(expr),
+                operator: BinaryOp::Multiply,
+                right: Box::new(right),
+            };
         }
         Ok(expr)
     }
