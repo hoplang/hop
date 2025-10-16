@@ -49,6 +49,13 @@ pub enum TypeError {
         right_type: String,
         range: DocumentRange,
     },
+
+    #[error("Cannot subtract values of incompatible types: {left_type} - {right_type}")]
+    IncompatibleTypesForSubtraction {
+        left_type: String,
+        right_type: String,
+        range: DocumentRange,
+    },
 }
 
 impl Ranged for TypeError {
@@ -63,7 +70,8 @@ impl Ranged for TypeError {
             | TypeError::TypeIsNotComparable { range, .. }
             | TypeError::LogicalAndRequiresBoolean { range, .. }
             | TypeError::LogicalOrRequiresBoolean { range, .. }
-            | TypeError::IncompatibleTypesForAddition { range, .. } => range,
+            | TypeError::IncompatibleTypesForAddition { range, .. }
+            | TypeError::IncompatibleTypesForSubtraction { range, .. } => range,
         }
     }
 }

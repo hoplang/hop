@@ -351,6 +351,7 @@ impl IrExpr {
             | TypedExpr::GreaterThanOrEqual { left, right, .. }
             | TypedExpr::StringConcat { left, right, .. }
             | TypedExpr::NumericAdd { left, right, .. }
+            | TypedExpr::NumericSubtract { left, right, .. }
             | TypedExpr::LogicalAnd { left, right, .. }
             | TypedExpr::LogicalOr { left, right, .. } => {
                 left.traverse(f);
@@ -395,6 +396,7 @@ impl IrExpr {
             }
             TypedExpr::StringConcat { left, right, .. }
             | TypedExpr::NumericAdd { left, right, .. }
+            | TypedExpr::NumericSubtract { left, right, .. }
             | TypedExpr::Equals { left, right, .. }
             | TypedExpr::NotEquals { left, right, .. }
             | TypedExpr::LessThan { left, right, .. }

@@ -439,6 +439,44 @@ pub fn typecheck_expr(
                 }
             }
         }
+        AnnotatedExpr::BinaryOp {
+            left,
+            operator: BinaryOp::Minus,
+            right,
+            ..
+        } => {
+            let typed_left = typecheck_expr(left, env, annotations)?;
+            let typed_right = typecheck_expr(right, env, annotations)?;
+            let left_type = typed_left.as_type();
+            let right_type = typed_right.as_type();
+
+            // Minus operator works for:
+            // 1. Integer subtraction (Int - Int)
+            // 2. Float subtraction (Float - Float)
+
+            match (left_type, right_type) {
+                (Type::Int, Type::Int) => Ok(SimpleTypedExpr::NumericSubtract {
+                    left: Box::new(typed_left),
+                    right: Box::new(typed_right),
+                    operand_types: NumericType::Int,
+                    annotation: (),
+                }),
+                (Type::Float, Type::Float) => Ok(SimpleTypedExpr::NumericSubtract {
+                    left: Box::new(typed_left),
+                    right: Box::new(typed_right),
+                    operand_types: NumericType::Float,
+                    annotation: (),
+                }),
+                _ => {
+                    // Incompatible types for subtraction
+                    Err(TypeError::IncompatibleTypesForSubtraction {
+                        left_type: left_type.to_string(),
+                        right_type: right_type.to_string(),
+                        range: left.range().clone().to(right.range().clone()),
+                    })
+                }
+            }
+        }
         AnnotatedExpr::Negation { operand, .. } => {
             let typed_operand = typecheck_expr(operand, env, annotations)?;
             let operand_type = typed_operand.as_type();

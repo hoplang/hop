@@ -57,6 +57,7 @@ impl Iterator for Tokenizer {
                 ':' => Ok((Token::Colon, start)),
                 ',' => Ok((Token::Comma, start)),
                 '+' => Ok((Token::Plus, start)),
+                '-' => Ok((Token::Minus, start)),
                 '&' => match self.iter.next_if(|s| s.ch() == '&') {
                     Some(end) => Ok((Token::LogicalAnd, start.to(end))),
                     None => Err(ParseError::UnexpectedCharacter {

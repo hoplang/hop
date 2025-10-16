@@ -413,6 +413,34 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 }
             }
         }
+
+        IrExpr::NumericSubtract {
+            left,
+            right,
+            operand_types,
+            ..
+        } => {
+            let left_val = evaluate_expr(left, env)?;
+            let right_val = evaluate_expr(right, env)?;
+
+            match operand_types {
+                NumericType::Int => {
+                    let left_int = left_val.as_i64().unwrap_or(0);
+                    let right_int = right_val.as_i64().unwrap_or(0);
+                    Ok(Value::Number(serde_json::Number::from(
+                        left_int - right_int,
+                    )))
+                }
+                NumericType::Float => {
+                    let left_float = left_val.as_f64().unwrap_or(0.0);
+                    let right_float = right_val.as_f64().unwrap_or(0.0);
+                    Ok(Value::Number(
+                        serde_json::Number::from_f64(left_float - right_float)
+                            .unwrap_or_else(|| serde_json::Number::from(0)),
+                    ))
+                }
+            }
+        }
     }
 }
 

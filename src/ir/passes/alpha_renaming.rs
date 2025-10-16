@@ -285,6 +285,17 @@ impl AlphaRenamingPass {
                 operand_types,
                 annotation,
             },
+            TypedExpr::NumericSubtract {
+                left,
+                right,
+                operand_types,
+                annotation,
+            } => TypedExpr::NumericSubtract {
+                left: Box::new(self.rename_expr(*left)),
+                right: Box::new(self.rename_expr(*right)),
+                operand_types,
+                annotation,
+            },
         }
     }
 

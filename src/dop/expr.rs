@@ -18,6 +18,7 @@ pub enum BinaryOp {
     LogicalAnd,
     LogicalOr,
     Plus,
+    Minus,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -181,6 +182,7 @@ impl Display for BinaryOp {
             BinaryOp::LogicalAnd => write!(f, "&&"),
             BinaryOp::LogicalOr => write!(f, "||"),
             BinaryOp::Plus => write!(f, "+"),
+            BinaryOp::Minus => write!(f, "-"),
         }
     }
 }
