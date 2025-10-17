@@ -441,7 +441,7 @@ mod tests {
             [css]
             mode = "tailwind4"
 
-            [target.ts]
+            [target.typescript]
             output = "app.ts"
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();

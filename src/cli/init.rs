@@ -27,8 +27,8 @@ pub fn execute(template: &TargetLanguage) -> Result<()> {
     fs::write("index.hop", index_hop_content)?;
 
     let template_name = match template {
-        TargetLanguage::Ts => "TypeScript",
-        TargetLanguage::Js => "JavaScript",
+        TargetLanguage::Typescript => "TypeScript",
+        TargetLanguage::Javascript => "JavaScript",
         TargetLanguage::Go => "Go",
         TargetLanguage::Python => "Python",
     };
@@ -56,16 +56,16 @@ fn create_hop_config(template: &TargetLanguage) -> HopConfig {
     };
 
     let target_config = match template {
-        TargetLanguage::Ts => create_target_config("frontend.ts"),
-        TargetLanguage::Js => create_target_config("frontend.js"),
+        TargetLanguage::Typescript => create_target_config("frontend.ts"),
+        TargetLanguage::Javascript => create_target_config("frontend.js"),
         TargetLanguage::Go => create_target_config("frontend.go"),
         TargetLanguage::Python => create_target_config("frontend.py"),
     };
 
     let mut target_section = TargetSection::default();
     match template {
-        TargetLanguage::Ts => target_section.ts = Some(target_config),
-        TargetLanguage::Js => target_section.js = Some(target_config),
+        TargetLanguage::Typescript => target_section.typescript = Some(target_config),
+        TargetLanguage::Javascript => target_section.javascript = Some(target_config),
         TargetLanguage::Go => target_section.go = Some(target_config),
         TargetLanguage::Python => target_section.python = Some(target_config),
     }

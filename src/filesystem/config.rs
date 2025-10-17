@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum TargetLanguage {
-    Js,
-    Ts,
+    Javascript,
+    Typescript,
     Python,
     Go,
 }
@@ -21,10 +21,10 @@ pub struct HopConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TargetSection {
     /// JavaScript target config
-    pub js: Option<TargetConfig>,
+    pub javascript: Option<TargetConfig>,
 
     /// TypeScript target config
-    pub ts: Option<TargetConfig>,
+    pub typescript: Option<TargetConfig>,
 
     /// Python target config
     pub python: Option<TargetConfig>,
@@ -59,7 +59,7 @@ pub struct TargetConfig {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    #[error("No targets defined in hop.toml. Please add a target section (e.g., [target.ts])")]
+    #[error("No targets defined in hop.toml. Please add a target section (e.g., [target.typescript])")]
     NoTargets,
     #[error(
         "Multiple targets defined ({targets:?}). Please specify exactly one target in hop.toml"
@@ -74,11 +74,11 @@ impl HopConfig {
 
         // Count defined targets and validate exactly one exists
         let mut targets = vec![];
-        if config.target.js.is_some() {
-            targets.push("js");
+        if config.target.javascript.is_some() {
+            targets.push("javascript");
         }
-        if config.target.ts.is_some() {
-            targets.push("ts");
+        if config.target.typescript.is_some() {
+            targets.push("typescript");
         }
         if config.target.python.is_some() {
             targets.push("python");
@@ -103,11 +103,11 @@ impl HopConfig {
 
     /// Get the target language and config (guaranteed to have exactly one after from_toml_str validation)
     pub fn get_target(&self) -> (TargetLanguage, &TargetConfig) {
-        if let Some(ref config) = self.target.js {
-            return (TargetLanguage::Js, config);
+        if let Some(ref config) = self.target.javascript {
+            return (TargetLanguage::Javascript, config);
         }
-        if let Some(ref config) = self.target.ts {
-            return (TargetLanguage::Ts, config);
+        if let Some(ref config) = self.target.typescript {
+            return (TargetLanguage::Typescript, config);
         }
         if let Some(ref config) = self.target.python {
             return (TargetLanguage::Python, config);
@@ -161,24 +161,24 @@ mod tests {
             [css]
             mode = "tailwind4"
 
-            [target.ts]
+            [target.typescript]
             output = "app.ts"
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         assert_eq!(config.css.mode, Some("tailwind4".to_string()));
-        assert!(config.target.ts.is_some());
-        assert_eq!(config.target.ts.unwrap().output, "app.ts");
+        assert!(config.target.typescript.is_some());
+        assert_eq!(config.target.typescript.unwrap().output, "app.ts");
     }
 
     #[test]
     fn test_get_target_single() {
         let toml_str = indoc! {r#"
-            [target.ts]
+            [target.typescript]
             output = "app.ts"
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         let (target_language, target_config) = config.get_target();
-        assert_eq!(target_language, TargetLanguage::Ts);
+        assert_eq!(target_language, TargetLanguage::Typescript);
         assert_eq!(target_config.output, "app.ts");
         assert!(target_config.compile_and_run.is_empty());
     }
@@ -186,10 +186,10 @@ mod tests {
     #[test]
     fn test_parse_multiple_targets_error() {
         let toml_str = indoc! {r#"
-            [target.js]
+            [target.javascript]
             output = "app.js"
 
-            [target.ts]
+            [target.typescript]
             output = "app.ts"
         "#};
         let result = HopConfig::from_toml_str(toml_str);
@@ -202,13 +202,13 @@ mod tests {
     #[test]
     fn test_parse_config_with_compile_and_run() {
         let toml_str = indoc! {r#"
-            [target.ts]
+            [target.typescript]
             output = "app.ts"
             compile_and_run = ["npm install", "npm start"]
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         let (target_language, target_config) = config.get_target();
-        assert_eq!(target_language, TargetLanguage::Ts);
+        assert_eq!(target_language, TargetLanguage::Typescript);
         assert_eq!(target_config.output, "app.ts");
         assert_eq!(
             target_config.compile_and_run,
@@ -219,11 +219,11 @@ mod tests {
     #[test]
     fn test_parse_config_without_compile_and_run() {
         let toml_str = indoc! {r#"
-            [target.js]
+            [target.javascript]
             output = "app.js"
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
-        let target_config = &config.target.js.as_ref().unwrap();
+        let target_config = &config.target.javascript.as_ref().unwrap();
         assert_eq!(target_config.output, "app.js");
         assert!(target_config.compile_and_run.is_empty());
     }
@@ -234,7 +234,7 @@ mod tests {
             [css.tailwind]
             input = "styles/input.css"
 
-            [target.ts]
+            [target.typescript]
             output = "app.ts"
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();

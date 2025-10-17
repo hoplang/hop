@@ -56,8 +56,8 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
 
     // Convert target language to CompileLanguage
     let language = match target_language {
-        TargetLanguage::Js => CompileLanguage::Js,
-        TargetLanguage::Ts => CompileLanguage::Ts,
+        TargetLanguage::Javascript => CompileLanguage::Js,
+        TargetLanguage::Typescript => CompileLanguage::Ts,
         TargetLanguage::Python => CompileLanguage::Py,
         TargetLanguage::Go => CompileLanguage::Go,
     };
