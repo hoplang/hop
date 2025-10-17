@@ -337,6 +337,13 @@ impl IrTestBuilder {
             annotation: self.next_expr_id(),
         }
     }
+
+    pub fn env_lookup(&self, key: IrExpr) -> IrExpr {
+        TypedExpr::EnvLookup {
+            key: Box::new(key),
+            annotation: self.next_expr_id(),
+        }
+    }
 }
 
 pub struct IrAutoBuilder {
@@ -512,5 +519,9 @@ impl IrAutoBuilder {
 
     pub fn string_concat(&self, left: IrExpr, right: IrExpr) -> IrExpr {
         self.inner.string_concat(left, right)
+    }
+
+    pub fn env_lookup(&self, key: IrExpr) -> IrExpr {
+        self.inner.env_lookup(key)
     }
 }

@@ -104,12 +104,18 @@ impl GoTranspiler {
                 }
             });
 
-            // Check expressions for other imports (like json)
+            // Check expressions for other imports (like json, os)
             stmt.traverse(&mut |s| {
                 if let Some(primary_expr) = s.expr() {
                     primary_expr.traverse(&mut |expr| {
-                        if let IrExpr::JsonEncode { .. } = expr {
-                            imports.insert("encoding/json".to_string());
+                        match expr {
+                            IrExpr::JsonEncode { .. } => {
+                                imports.insert("encoding/json".to_string());
+                            }
+                            IrExpr::EnvLookup { .. } => {
+                                imports.insert("os".to_string());
+                            }
+                            _ => {}
                         }
                     });
                 }
@@ -1725,6 +1731,43 @@ mod tests {
                 	output.WriteString("</div><div>")
                 	output.WriteString(html.EscapeString(user_input))
                 	output.WriteString("</div>")
+                	return output.String()
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_env_lookup() {
+        let entrypoints = vec![build_ir_auto("test-env", vec![], |t| {
+            t.write("<div>API URL: ");
+            t.write_expr(t.env_lookup(t.str("API_URL")), false);
+            t.write("</div>\n");
+        })];
+
+        check(
+            &entrypoints,
+            expect![[r#"
+                -- before --
+                test-env() {
+                  write("<div>API URL: ")
+                  write_expr(EnvLookup("API_URL"))
+                  write("</div>\n")
+                }
+
+                -- after --
+                package components
+
+                import (
+                	"os"
+                	"strings"
+                )
+
+                func TestEnv() string {
+                	var output strings.Builder
+                	output.WriteString("<div>API URL: ")
+                	output.WriteString(os.Getenv("API_URL"))
+                	output.WriteString("</div>\n")
                 	return output.String()
                 }
             "#]],
