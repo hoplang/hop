@@ -22,16 +22,16 @@ pub struct HopConfig {
 #[serde(deny_unknown_fields)]
 pub struct TargetSection {
     /// JavaScript target config
-    pub javascript: Option<TargetConfig>,
+    pub javascript: Option<JavascriptTargetConfig>,
 
     /// TypeScript target config
-    pub typescript: Option<TargetConfig>,
+    pub typescript: Option<TypescriptTargetConfig>,
 
     /// Python target config
-    pub python: Option<TargetConfig>,
+    pub python: Option<PythonTargetConfig>,
 
     /// Go target config
-    pub go: Option<TargetConfig>,
+    pub go: Option<GoTargetConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -50,12 +50,51 @@ pub struct TailwindConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TargetConfig {
+pub struct JavascriptTargetConfig {
     pub output: String,
 
     /// Shell commands to execute after compilation
     #[serde(default)]
     pub compile_and_run: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TypescriptTargetConfig {
+    pub output: String,
+
+    /// Shell commands to execute after compilation
+    #[serde(default)]
+    pub compile_and_run: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PythonTargetConfig {
+    pub output: String,
+
+    /// Shell commands to execute after compilation
+    #[serde(default)]
+    pub compile_and_run: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GoTargetConfig {
+    pub output: String,
+
+    /// Shell commands to execute after compilation
+    #[serde(default)]
+    pub compile_and_run: Vec<String>,
+
+    /// Package name for the Go file
+    pub package: String,
+}
+
+/// Target configuration (tagged enum for each language)
+#[derive(Debug, Clone)]
+pub enum TargetConfig {
+    Javascript(JavascriptTargetConfig),
+    Typescript(TypescriptTargetConfig),
+    Python(PythonTargetConfig),
+    Go(GoTargetConfig),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -102,19 +141,19 @@ impl HopConfig {
         Ok(config)
     }
 
-    /// Get the target language and config (guaranteed to have exactly one after from_toml_str validation)
-    pub fn get_target(&self) -> (TargetLanguage, &TargetConfig) {
+    /// Get the target config (guaranteed to have exactly one after from_toml_str validation)
+    pub fn get_target(&self) -> TargetConfig {
         if let Some(ref config) = self.target.javascript {
-            return (TargetLanguage::Javascript, config);
+            return TargetConfig::Javascript(config.clone());
         }
         if let Some(ref config) = self.target.typescript {
-            return (TargetLanguage::Typescript, config);
+            return TargetConfig::Typescript(config.clone());
         }
         if let Some(ref config) = self.target.python {
-            return (TargetLanguage::Python, config);
+            return TargetConfig::Python(config.clone());
         }
         if let Some(ref config) = self.target.go {
-            return (TargetLanguage::Go, config);
+            return TargetConfig::Go(config.clone());
         }
 
         // This should never happen after from_toml_str validation
@@ -168,7 +207,8 @@ mod tests {
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         assert_eq!(config.css.mode, Some("tailwind4".to_string()));
         assert!(config.target.typescript.is_some());
-        assert_eq!(config.target.typescript.unwrap().output, "app.ts");
+        let ts_config = config.target.typescript.as_ref().unwrap();
+        assert_eq!(ts_config.output, "app.ts");
     }
 
     #[test]
@@ -178,10 +218,12 @@ mod tests {
             output = "app.ts"
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
-        let (target_language, target_config) = config.get_target();
-        assert_eq!(target_language, TargetLanguage::Typescript);
-        assert_eq!(target_config.output, "app.ts");
-        assert!(target_config.compile_and_run.is_empty());
+        let target_config = config.get_target();
+        assert!(matches!(target_config, TargetConfig::Typescript(_)));
+        if let TargetConfig::Typescript(ts_config) = target_config {
+            assert_eq!(ts_config.output, "app.ts");
+            assert!(ts_config.compile_and_run.is_empty());
+        }
     }
 
     #[test]
@@ -208,13 +250,12 @@ mod tests {
             compile_and_run = ["npm install", "npm start"]
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
-        let (target_language, target_config) = config.get_target();
-        assert_eq!(target_language, TargetLanguage::Typescript);
-        assert_eq!(target_config.output, "app.ts");
-        assert_eq!(
-            target_config.compile_and_run,
-            vec!["npm install", "npm start"]
-        );
+        let target_config = config.get_target();
+        assert!(matches!(target_config, TargetConfig::Typescript(_)));
+        if let TargetConfig::Typescript(ts_config) = target_config {
+            assert_eq!(ts_config.output, "app.ts");
+            assert_eq!(ts_config.compile_and_run, vec!["npm install", "npm start"]);
+        }
     }
 
     #[test]
@@ -254,5 +295,36 @@ mod tests {
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("typescritp"));
         assert!(error_msg.contains("unknown field"));
+    }
+
+    #[test]
+    fn test_parse_config_with_go_target() {
+        let toml_str = indoc! {r#"
+            [target.go]
+            output = "main.go"
+            package = "main"
+        "#};
+        let config = HopConfig::from_toml_str(toml_str).unwrap();
+        let target_config = config.get_target();
+
+        // Check that we can access the package field from the Go variant
+        if let TargetConfig::Go(go_config) = target_config {
+            assert_eq!(go_config.output, "main.go");
+            assert_eq!(go_config.package, "main");
+        } else {
+            panic!("Expected Go target config");
+        }
+    }
+
+    #[test]
+    fn test_parse_config_with_go_target_missing_package() {
+        let toml_str = indoc! {r#"
+            [target.go]
+            output = "main.go"
+        "#};
+        let result = HopConfig::from_toml_str(toml_str);
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("package"));
     }
 }

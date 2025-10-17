@@ -5,7 +5,7 @@ use std::{
 };
 use tokio::fs as async_fs;
 
-use super::config::HopConfig;
+use super::config::{HopConfig, TargetConfig};
 use crate::hop::module_name::ModuleName;
 
 /// Check if a directory should be skipped during .hop file search
@@ -191,8 +191,14 @@ impl ProjectRoot {
 
     pub async fn get_output_path(&self) -> anyhow::Result<PathBuf> {
         let config = self.load_config().await?;
-        let (_, target_config) = config.get_target();
-        Ok(self.directory.join(target_config.output.clone()))
+        let target_config = config.get_target();
+        let output = match &target_config {
+            TargetConfig::Javascript(config) => &config.output,
+            TargetConfig::Typescript(config) => &config.output,
+            TargetConfig::Python(config) => &config.output,
+            TargetConfig::Go(config) => &config.output,
+        };
+        Ok(self.directory.join(output))
     }
 
     pub async fn write_output(&self, data: &str) -> anyhow::Result<()> {

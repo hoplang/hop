@@ -7,11 +7,13 @@ use crate::dop::r#type::Type;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub struct GoTranspiler {}
+pub struct GoTranspiler {
+    package_name: String,
+}
 
 impl GoTranspiler {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(package_name: String) -> Self {
+        Self { package_name }
     }
 
     fn extract_and_generate_nested_type<'a>(
@@ -175,7 +177,8 @@ impl Transpiler for GoTranspiler {
 
         // Write package declaration
         result = result
-            .append(BoxDoc::text("package components"))
+            .append(BoxDoc::text("package "))
+            .append(BoxDoc::text(&self.package_name))
             .append(BoxDoc::line())
             .append(BoxDoc::line());
 
@@ -837,7 +840,7 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn transpile_with_pretty(entrypoints: &[IrEntrypoint]) -> String {
-        let transpiler = GoTranspiler::new();
+        let transpiler = GoTranspiler::new("components".to_string());
         transpiler.transpile_module(entrypoints)
     }
 

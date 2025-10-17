@@ -158,7 +158,7 @@ fn run_integration_test(test_case: TestCase) -> Result<(), String> {
     let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
     let ts_code = ts_transpiler.transpile_module(&entrypoints);
 
-    let go_transpiler = GoTranspiler::new();
+    let go_transpiler = GoTranspiler::new("components".to_string());
     let go_code = go_transpiler.transpile_module(&entrypoints);
 
     let python_transpiler = PythonTranspiler::new();
@@ -315,7 +315,7 @@ fn run_type_check_test(test_case: TypeCheckTestCase) -> Result<(), String> {
     let ts_code = ts_transpiler.transpile_module(&test_case.entrypoints);
     typecheck_javascript(&ts_code, true)?;
 
-    let go_transpiler = GoTranspiler::new();
+    let go_transpiler = GoTranspiler::new("components".to_string());
     let go_code = go_transpiler.transpile_module(&test_case.entrypoints);
     typecheck_go(&go_code)?;
 
