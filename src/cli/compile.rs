@@ -164,3 +164,44 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
         timer,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::archive::temp_dir_from_archive;
+    use indoc::indoc;
+    use simple_txtar::Archive;
+    use std::fs;
+
+    #[tokio::test]
+    async fn test_compile_with_custom_go_output_path() {
+        // Create a temporary directory with hop.toml and a simple .hop file
+        let archive = Archive::from(indoc! {r#"
+            -- hop.toml --
+            [target.go]
+            output = "components/frontend.go"
+
+            [css]
+            mode = "tailwind4"
+            -- main.hop --
+            <hello-world>Hello, World!</hello-world>
+        "#});
+
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let project_root = ProjectRoot::from(&temp_dir).unwrap();
+
+        // Execute the compile command
+        let result = execute(&project_root).await;
+        assert!(result.is_ok(), "Compilation should succeed: {:?}", result.err());
+
+        // Verify that the output file was created at the correct path
+        let expected_output_path = temp_dir.join("components/frontend.go");
+        assert!(
+            expected_output_path.exists(),
+            "Output file should exist at components/frontend.go"
+        );
+
+        // Clean up
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
+}
