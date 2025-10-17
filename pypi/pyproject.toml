@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hop-cli"
+version = "0.2.1"
+description = "hop compiler and tooling"
+readme = "README.md"
+requires-python = ">=3.7"
+license = "MIT"
+keywords = ["hop", "compiler", "language"]
+authors = [
+    {name = "Hop Language Team"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/hoplang/hop"
+Repository = "https://github.com/hoplang/hop"
+Issues = "https://github.com/hoplang/hop/issues"
+
+[project.scripts]
+hop = "hop_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hop_cli*"]
+
+[tool.setuptools.package-data]
+hop_cli = ["bin/*"]

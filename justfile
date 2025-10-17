@@ -34,3 +34,10 @@ publish-npm: build-npm
 	cd npm/linux-arm64 && npm publish --access public
 	cd npm/linux-x64 && npm publish --access public
 	cd npm/hop && npm publish --access public
+
+build-pypi:
+	./cross/compile.sh
+	cd pypi && ./build_wheels.sh
+
+publish-pypi: build-pypi
+	cd pypi && twine upload dist/*

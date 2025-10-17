@@ -23,6 +23,8 @@
 			pkgs.bun
 			pkgs.typescript
 			pkgs.python3
+			pkgs.python3Packages.build
+			pkgs.python3Packages.twine
 			pkgs.mypy
 			pkgs.go
             pkgs.just
