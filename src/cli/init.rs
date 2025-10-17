@@ -60,26 +60,26 @@ fn create_hop_config(template: &TargetLanguage) -> HopConfig {
     match template {
         TargetLanguage::Typescript => {
             target_section.typescript = Some(TypescriptTargetConfig {
-                output: "frontend.ts".to_string(),
+                output_path: "frontend.ts".to_string(),
                 compile_and_run: Vec::new(),
             })
         }
         TargetLanguage::Javascript => {
             target_section.javascript = Some(JavascriptTargetConfig {
-                output: "frontend.js".to_string(),
+                output_path: "frontend.js".to_string(),
                 compile_and_run: Vec::new(),
             })
         }
         TargetLanguage::Go => {
             target_section.go = Some(GoTargetConfig {
-                output: "frontend.go".to_string(),
+                output_path: "frontend.go".to_string(),
                 compile_and_run: Vec::new(),
                 package: "main".to_string(),
             })
         }
         TargetLanguage::Python => {
             target_section.python = Some(PythonTargetConfig {
-                output: "frontend.py".to_string(),
+                output_path: "frontend.py".to_string(),
                 compile_and_run: Vec::new(),
             })
         }
