@@ -89,8 +89,7 @@ pub struct GoTargetConfig {
 }
 
 /// Target configuration (tagged enum for each language)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone)]
 pub enum TargetConfig {
     Javascript(JavascriptTargetConfig),
     Typescript(TypescriptTargetConfig),
