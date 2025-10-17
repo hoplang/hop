@@ -11,7 +11,10 @@ mod test_utils;
 mod tui;
 
 use clap::{CommandFactory, Parser, Subcommand};
-use filesystem::{config::TargetLanguage, project_root::ProjectRoot};
+use filesystem::{
+    config::{TargetConfig, TargetLanguage},
+    project_root::ProjectRoot,
+};
 use std::path::Path;
 
 #[derive(Parser)]
@@ -176,7 +179,12 @@ async fn main() -> anyhow::Result<()> {
                 // (6) We block until a subprocess exits or we receive Ctrl-C.
 
                 // Step (1) - Read `compile_and_run`
-                let commands = target_config.compile_and_run();
+                let commands = match &target_config {
+                    TargetConfig::Javascript(config) => &config.compile_and_run,
+                    TargetConfig::Typescript(config) => &config.compile_and_run,
+                    TargetConfig::Python(config) => &config.compile_and_run,
+                    TargetConfig::Go(config) => &config.compile_and_run,
+                };
 
                 // Step (2) - Compile project (generates both dev and prod code)
                 cli::compile::execute(root).await?;

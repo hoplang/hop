@@ -107,16 +107,6 @@ impl TargetConfig {
             TargetConfig::Go(config) => &config.output,
         }
     }
-
-    /// Get the compile_and_run commands (common to all targets)
-    pub fn compile_and_run(&self) -> &[String] {
-        match self {
-            TargetConfig::Javascript(config) => &config.compile_and_run,
-            TargetConfig::Typescript(config) => &config.compile_and_run,
-            TargetConfig::Python(config) => &config.compile_and_run,
-            TargetConfig::Go(config) => &config.compile_and_run,
-        }
-    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -243,7 +233,9 @@ mod tests {
         let target_config = config.get_target();
         assert!(matches!(target_config, TargetConfig::Typescript(_)));
         assert_eq!(target_config.output(), "app.ts");
-        assert!(target_config.compile_and_run().is_empty());
+        if let TargetConfig::Typescript(ts_config) = target_config {
+            assert!(ts_config.compile_and_run.is_empty());
+        }
     }
 
     #[test]
@@ -273,10 +265,9 @@ mod tests {
         let target_config = config.get_target();
         assert!(matches!(target_config, TargetConfig::Typescript(_)));
         assert_eq!(target_config.output(), "app.ts");
-        assert_eq!(
-            target_config.compile_and_run(),
-            vec!["npm install", "npm start"]
-        );
+        if let TargetConfig::Typescript(ts_config) = target_config {
+            assert_eq!(ts_config.compile_and_run, vec!["npm install", "npm start"]);
+        }
     }
 
     #[test]
