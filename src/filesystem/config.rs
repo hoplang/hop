@@ -19,6 +19,7 @@ pub struct HopConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct TargetSection {
     /// JavaScript target config
     pub javascript: Option<TargetConfig>,
@@ -240,5 +241,18 @@ mod tests {
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         assert!(config.css.tailwind.is_some());
         assert_eq!(config.css.tailwind.unwrap().input, "styles/input.css");
+    }
+
+    #[test]
+    fn test_parse_config_with_unknown_target_error() {
+        let toml_str = indoc! {r#"
+            [target.typescritp]
+            output = "app.ts"
+        "#};
+        let result = HopConfig::from_toml_str(toml_str);
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("typescritp"));
+        assert!(error_msg.contains("unknown field"));
     }
 }
