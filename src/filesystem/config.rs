@@ -97,18 +97,6 @@ pub enum TargetConfig {
     Go(GoTargetConfig),
 }
 
-impl TargetConfig {
-    /// Get the output path (common to all targets)
-    pub fn output(&self) -> &str {
-        match self {
-            TargetConfig::Javascript(config) => &config.output,
-            TargetConfig::Typescript(config) => &config.output,
-            TargetConfig::Python(config) => &config.output,
-            TargetConfig::Go(config) => &config.output,
-        }
-    }
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
     #[error("No targets defined in hop.toml. Please add a target section (e.g., [target.typescript])")]
@@ -232,8 +220,8 @@ mod tests {
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         let target_config = config.get_target();
         assert!(matches!(target_config, TargetConfig::Typescript(_)));
-        assert_eq!(target_config.output(), "app.ts");
         if let TargetConfig::Typescript(ts_config) = target_config {
+            assert_eq!(ts_config.output, "app.ts");
             assert!(ts_config.compile_and_run.is_empty());
         }
     }
@@ -264,8 +252,8 @@ mod tests {
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         let target_config = config.get_target();
         assert!(matches!(target_config, TargetConfig::Typescript(_)));
-        assert_eq!(target_config.output(), "app.ts");
         if let TargetConfig::Typescript(ts_config) = target_config {
+            assert_eq!(ts_config.output, "app.ts");
             assert_eq!(ts_config.compile_and_run, vec!["npm install", "npm start"]);
         }
     }
@@ -318,10 +306,10 @@ mod tests {
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         let target_config = config.get_target();
-        assert_eq!(target_config.output(), "main.go");
 
         // Check that we can access the package field from the Go variant
         if let TargetConfig::Go(go_config) = target_config {
+            assert_eq!(go_config.output, "main.go");
             assert_eq!(go_config.package, "main");
         } else {
             panic!("Expected Go target config");
