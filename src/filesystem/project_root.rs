@@ -192,7 +192,7 @@ impl ProjectRoot {
     pub async fn get_output_path(&self) -> anyhow::Result<PathBuf> {
         let config = self.load_config().await?;
         let (_, target_config) = config.get_target();
-        Ok(self.directory.join(target_config.output.clone()))
+        Ok(self.directory.join(target_config.output()))
     }
 
     pub async fn write_output(&self, data: &str) -> anyhow::Result<()> {

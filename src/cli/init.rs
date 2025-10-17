@@ -3,7 +3,8 @@ use std::fs;
 use std::path::Path;
 
 use crate::filesystem::config::{
-    CssConfig, HopConfig, TargetConfig, TargetLanguage, TargetSection,
+    CssConfig, GoTargetConfig, HopConfig, JavascriptTargetConfig, PythonTargetConfig,
+    TargetLanguage, TargetSection, TypescriptTargetConfig,
 };
 
 pub fn execute(template: &TargetLanguage) -> Result<()> {
@@ -55,30 +56,37 @@ fn create_hop_config(template: &TargetLanguage) -> HopConfig {
         tailwind: None,
     };
 
-    let target_config = match template {
-        TargetLanguage::Typescript => create_target_config("frontend.ts"),
-        TargetLanguage::Javascript => create_target_config("frontend.js"),
-        TargetLanguage::Go => create_target_config("frontend.go"),
-        TargetLanguage::Python => create_target_config("frontend.py"),
-    };
-
     let mut target_section = TargetSection::default();
     match template {
-        TargetLanguage::Typescript => target_section.typescript = Some(target_config),
-        TargetLanguage::Javascript => target_section.javascript = Some(target_config),
-        TargetLanguage::Go => target_section.go = Some(target_config),
-        TargetLanguage::Python => target_section.python = Some(target_config),
+        TargetLanguage::Typescript => {
+            target_section.typescript = Some(TypescriptTargetConfig {
+                output: "frontend.ts".to_string(),
+                compile_and_run: Vec::new(),
+            })
+        }
+        TargetLanguage::Javascript => {
+            target_section.javascript = Some(JavascriptTargetConfig {
+                output: "frontend.js".to_string(),
+                compile_and_run: Vec::new(),
+            })
+        }
+        TargetLanguage::Go => {
+            target_section.go = Some(GoTargetConfig {
+                output: "frontend.go".to_string(),
+                compile_and_run: Vec::new(),
+                package: "main".to_string(),
+            })
+        }
+        TargetLanguage::Python => {
+            target_section.python = Some(PythonTargetConfig {
+                output: "frontend.py".to_string(),
+                compile_and_run: Vec::new(),
+            })
+        }
     }
 
     HopConfig {
         css: css_config,
         target: target_section,
-    }
-}
-
-fn create_target_config(output: &str) -> TargetConfig {
-    TargetConfig {
-        output: output.to_string(),
-        compile_and_run: Vec::new(),
     }
 }

@@ -188,7 +188,7 @@ async fn main() -> anyhow::Result<()> {
                 // (6) We block until a subprocess exits or we receive Ctrl-C.
 
                 // Step (1) - Read `compile_and_run`
-                let commands = &target_config.compile_and_run;
+                let commands = target_config.compile_and_run();
 
                 // Step (2) - Compile project (generates both dev and prod code)
                 cli::compile::execute(root).await?;

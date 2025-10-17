@@ -180,6 +180,7 @@ mod tests {
             -- hop.toml --
             [target.go]
             output = "components/frontend.go"
+            package = "main"
 
             [css]
             mode = "tailwind4"
