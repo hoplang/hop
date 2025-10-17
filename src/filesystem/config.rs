@@ -164,19 +164,19 @@ impl HopConfig {
         Ok(config)
     }
 
-    /// Get the target language and config (guaranteed to have exactly one after from_toml_str validation)
-    pub fn get_target(&self) -> (TargetLanguage, TargetConfig) {
+    /// Get the target config (guaranteed to have exactly one after from_toml_str validation)
+    pub fn get_target(&self) -> TargetConfig {
         if let Some(ref config) = self.target.javascript {
-            return (TargetLanguage::Javascript, TargetConfig::Javascript(config.clone()));
+            return TargetConfig::Javascript(config.clone());
         }
         if let Some(ref config) = self.target.typescript {
-            return (TargetLanguage::Typescript, TargetConfig::Typescript(config.clone()));
+            return TargetConfig::Typescript(config.clone());
         }
         if let Some(ref config) = self.target.python {
-            return (TargetLanguage::Python, TargetConfig::Python(config.clone()));
+            return TargetConfig::Python(config.clone());
         }
         if let Some(ref config) = self.target.go {
-            return (TargetLanguage::Go, TargetConfig::Go(config.clone()));
+            return TargetConfig::Go(config.clone());
         }
 
         // This should never happen after from_toml_str validation
@@ -241,8 +241,8 @@ mod tests {
             output = "app.ts"
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
-        let (target_language, target_config) = config.get_target();
-        assert_eq!(target_language, TargetLanguage::Typescript);
+        let target_config = config.get_target();
+        assert!(matches!(target_config, TargetConfig::Typescript(_)));
         assert_eq!(target_config.output(), "app.ts");
         assert!(target_config.compile_and_run().is_empty());
     }
@@ -271,8 +271,8 @@ mod tests {
             compile_and_run = ["npm install", "npm start"]
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
-        let (target_language, target_config) = config.get_target();
-        assert_eq!(target_language, TargetLanguage::Typescript);
+        let target_config = config.get_target();
+        assert!(matches!(target_config, TargetConfig::Typescript(_)));
         assert_eq!(target_config.output(), "app.ts");
         assert_eq!(
             target_config.compile_and_run(),
@@ -327,8 +327,7 @@ mod tests {
             package = "main"
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
-        let (target_language, target_config) = config.get_target();
-        assert_eq!(target_language, TargetLanguage::Go);
+        let target_config = config.get_target();
         assert_eq!(target_config.output(), "main.go");
 
         // Check that we can access the package field from the Go variant

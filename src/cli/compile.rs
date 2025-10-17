@@ -1,6 +1,5 @@
-use crate::CompileLanguage;
 use crate::document::DocumentAnnotator;
-use crate::filesystem::config::TargetLanguage;
+use crate::filesystem::config::TargetConfig;
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::program::Program;
 use crate::ir::{
@@ -52,15 +51,7 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
 
     // Load configuration
     let config = project_root.load_config().await?;
-    let (target_language, _) = config.get_target();
-
-    // Convert target language to CompileLanguage
-    let language = match target_language {
-        TargetLanguage::Javascript => CompileLanguage::Js,
-        TargetLanguage::Typescript => CompileLanguage::Ts,
-        TargetLanguage::Python => CompileLanguage::Py,
-        TargetLanguage::Go => CompileLanguage::Go,
-    };
+    let target_config = config.get_target();
 
     // Truncate output file before running Tailwind to prevent scanning old content
     project_root.write_output("").await?;
@@ -127,23 +118,23 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
     );
 
     // Generate code based on target language
-    let generated_code = match language {
-        CompileLanguage::Js => {
+    let generated_code = match &target_config {
+        TargetConfig::Javascript(_) => {
             timer.start_phase("transpiling to js");
             let transpiler = JsTranspiler::new(LanguageMode::JavaScript);
             transpiler.transpile_module(&ir_entrypoints)
         }
-        CompileLanguage::Ts => {
+        TargetConfig::Typescript(_) => {
             timer.start_phase("transpiling to ts");
             let transpiler = JsTranspiler::new(LanguageMode::TypeScript);
             transpiler.transpile_module(&ir_entrypoints)
         }
-        CompileLanguage::Go => {
+        TargetConfig::Go(_) => {
             timer.start_phase("transpiling to go");
             let transpiler = GoTranspiler::new();
             transpiler.transpile_module(&ir_entrypoints)
         }
-        CompileLanguage::Py => {
+        TargetConfig::Python(_) => {
             timer.start_phase("transpiling to python");
             let transpiler = PythonTranspiler::new();
             transpiler.transpile_module(&ir_entrypoints)
