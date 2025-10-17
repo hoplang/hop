@@ -129,9 +129,9 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
             let transpiler = JsTranspiler::new(LanguageMode::TypeScript);
             transpiler.transpile_module(&ir_entrypoints)
         }
-        TargetConfig::Go(_) => {
+        TargetConfig::Go(config) => {
             timer.start_phase("transpiling to go");
-            let transpiler = GoTranspiler::new();
+            let transpiler = GoTranspiler::new(config.package.clone());
             transpiler.transpile_module(&ir_entrypoints)
         }
         TargetConfig::Python(_) => {
@@ -191,6 +191,13 @@ mod tests {
         assert!(
             expected_output_path.exists(),
             "Output file should exist at components/frontend.go"
+        );
+
+        // Verify that the generated file uses the correct package name
+        let generated_code = fs::read_to_string(&expected_output_path).unwrap();
+        assert!(
+            generated_code.starts_with("package main"),
+            "Generated Go code should use 'package main'"
         );
 
         // Clean up
