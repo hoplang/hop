@@ -103,10 +103,12 @@ impl Compiler {
         } else {
             // Build object with all parameters
             let mut props = Vec::new();
+            let mut object_type = BTreeMap::new();
             for (name, typ) in params {
                 // VarName and PropertyName have the same validation rules (snake_case)
                 // so we can safely convert between them
                 let prop_name = PropertyName::new(name.as_str()).unwrap();
+                object_type.insert(prop_name.clone(), typ.clone());
                 props.push((
                     prop_name,
                     TypedExpr::Var {
@@ -122,7 +124,7 @@ impl Compiler {
                 expr: TypedExpr::JsonEncode {
                     value: Box::new(TypedExpr::ObjectLiteral {
                         properties: props,
-                        kind: Type::Object(BTreeMap::new()),
+                        kind: Type::Object(object_type),
                         annotation: self.next_expr_id(),
                     }),
                     annotation: self.next_expr_id(),
