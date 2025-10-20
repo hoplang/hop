@@ -2,7 +2,8 @@
 
 cargo install --locked cargo-zigbuild
 
-# aarch64-apple-darwin
+###############################################################################
+# compile for aarch64-apple-darwin
 rustup target add aarch64-apple-darwin
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SDK_DIR="$SCRIPT_DIR/MacOSX11.3.sdk"
@@ -15,11 +16,16 @@ fi
 CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS="-L framework=$SDK_DIR/System/Library/Frameworks" \
 		SDKROOT="$SDK_DIR" \
 		cargo zigbuild --target aarch64-apple-darwin --release
+###############################################################################
 
-# aarch64-unknown-linux-gnu
+###############################################################################
+# compile for aarch64-unknown-linux-gnu
 rustup target add aarch64-unknown-linux-gnu
 cargo zigbuild --target aarch64-unknown-linux-gnu --release
+###############################################################################
 
-# x86_64-unknown-linux-gnu
+###############################################################################
+# compile for x86_64-unknown-linux-gnu
 rustup target add x86_64-unknown-linux-gnu
 cargo zigbuild --target x86_64-unknown-linux-gnu --release
+###############################################################################
