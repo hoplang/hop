@@ -14,6 +14,7 @@ use tailwind_runner::{TailwindConfig, TailwindRunner};
 pub struct CompileResult {
     pub entry_points: Vec<String>,
     pub timer: crate::tui::timing::TimingCollector,
+    pub output_path: PathBuf,
 }
 
 async fn compile_tailwind(input_path: &Path) -> Result<String> {
@@ -140,7 +141,7 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
 
     timer.start_phase("writing output");
 
-    project_root.write_output(&generated_code).await?;
+    let output_path = project_root.write_output(&generated_code).await?;
 
     let entry_points: Vec<String> = ir_entrypoints
         .iter()
@@ -150,6 +151,7 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
     Ok(CompileResult {
         entry_points,
         timer,
+        output_path,
     })
 }
 

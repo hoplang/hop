@@ -201,14 +201,14 @@ impl ProjectRoot {
         Ok(self.directory.join(output))
     }
 
-    pub async fn write_output(&self, data: &str) -> anyhow::Result<()> {
+    pub async fn write_output(&self, data: &str) -> anyhow::Result<PathBuf> {
         let path = self.get_output_path().await?;
         // Create parent directory if it doesn't exist
         if let Some(parent) = path.parent() {
             async_fs::create_dir_all(parent).await?;
         }
-        async_fs::write(path, data).await?;
-        Ok(())
+        async_fs::write(&path, data).await?;
+        Ok(path)
     }
 }
 

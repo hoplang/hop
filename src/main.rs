@@ -94,6 +94,15 @@ async fn main() -> anyhow::Result<()> {
 
             print_header("compiled", elapsed.as_millis());
 
+            // Display output file path
+            {
+                use colored::*;
+                println!();
+                println!("  {}", "output".bold());
+                println!();
+                println!("    {}", result.output_path.display());
+            }
+
             if !result.entry_points.is_empty() {
                 println!();
                 use colored::*;
