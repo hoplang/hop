@@ -22,22 +22,24 @@ install: build
 install-release: build-release
 	sudo cp target/release/hop /usr/local/bin/hop
 
-build-npm:
+cross-compile:
 	./cross/compile.sh
-	mkdir -p npm/darwin-arm64/bin npm/linux-arm64/bin npm/linux-x64/bin npm/hop/bin
-	cp target/aarch64-apple-darwin/release/hop npm/darwin-arm64/bin/
-	cp target/aarch64-unknown-linux-gnu/release/hop npm/linux-arm64/bin/
-	cp target/x86_64-unknown-linux-gnu/release/hop npm/linux-x64/bin/
+
+build-npm:
+	mkdir -p distribution/npm/darwin-arm64/bin distribution/npm/linux-arm64/bin distribution/npm/linux-x64/bin distribution/npm/hop/bin
+	cp target/aarch64-apple-darwin/release/hop distribution/npm/darwin-arm64/bin/
+	cp target/aarch64-unknown-linux-gnu/release/hop distribution/npm/linux-arm64/bin/
+	cp target/x86_64-unknown-linux-gnu/release/hop distribution/npm/linux-x64/bin/
 
 publish-npm: build-npm
-	cd npm/darwin-arm64 && npm publish --access public
-	cd npm/linux-arm64 && npm publish --access public
-	cd npm/linux-x64 && npm publish --access public
-	cd npm/hop && npm publish --access public
+	cd distribution/npm/darwin-arm64 && npm publish --access public
+	cd distribution/npm/linux-arm64 && npm publish --access public
+	cd distribution/npm/linux-x64 && npm publish --access public
+	cd distribution/npm/hop && npm publish --access public
 
 build-pypi:
 	./cross/compile.sh
-	cd pypi && ./build_wheels.sh
+	cd distribution/pypi && ./build_wheels.sh
 
 publish-pypi: build-pypi
-	cd pypi && twine upload dist/*
+	cd distribution/pypi && twine upload dist/*

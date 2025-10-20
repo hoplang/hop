@@ -4,7 +4,6 @@ CLAUDE.md
 .claude
 *.ts
 dist
-datafrog
 www
 output
 *.dot
@@ -13,5 +12,5 @@ html
 .envrc
 .hop-cache
 cross/*.sdk
-npm/*/bin/hop
-!npm/hop/bin/hop
+distribution/npm/*/bin/hop
+!distribution/npm/hop/bin/hop

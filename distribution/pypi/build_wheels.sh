@@ -17,7 +17,7 @@ declare -A PLATFORMS=(
 )
 
 # Check if binaries directory exists
-BINARIES_DIR="../target/release"
+BINARIES_DIR="../../target/release"
 if [ ! -d "$BINARIES_DIR" ]; then
     echo "Error: Binaries directory $BINARIES_DIR not found"
     echo "Please build the Rust binaries first"
@@ -36,13 +36,13 @@ for platform in "${!PLATFORMS[@]}"; do
     # Copy the appropriate binary to hop_cli/bin/hop
     case "$platform" in
         "linux-x86_64")
-            binary_path="../target/x86_64-unknown-linux-gnu/release/hop"
+            binary_path="../../target/x86_64-unknown-linux-gnu/release/hop"
             ;;
         "linux-aarch64")
-            binary_path="../target/aarch64-unknown-linux-gnu/release/hop"
+            binary_path="../../target/aarch64-unknown-linux-gnu/release/hop"
             ;;
         "macos-arm64")
-            binary_path="../target/aarch64-apple-darwin/release/hop"
+            binary_path="../../target/aarch64-apple-darwin/release/hop"
             ;;
     esac
 
@@ -52,6 +52,7 @@ for platform in "${!PLATFORMS[@]}"; do
     fi
 
     # Copy binary to package
+	mkdir -p hop_cli/bin
     cp "$binary_path" hop_cli/bin/hop
     chmod +x hop_cli/bin/hop
 
