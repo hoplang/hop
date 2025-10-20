@@ -24,7 +24,10 @@ if [ ! -d "$BINARIES_DIR" ]; then
     exit 1
 fi
 
-echo "Building wheels for hop-cli v0.2.1"
+# Get version from pyproject.toml
+VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+
+echo "Building wheels for hop-cli v$VERSION"
 echo "======================================"
 
 for platform in "${!PLATFORMS[@]}"; do
@@ -60,9 +63,9 @@ for platform in "${!PLATFORMS[@]}"; do
     python -m build --wheel
 
     # Rename the wheel to include the correct platform tag
-    # The built wheel will be something like hop_cli-0.2.1-py3-none-any.whl
-    # We need to rename it to hop_cli-0.2.1-py3-none-$platform_tag.whl
-    mv dist/hop_cli-0.2.1-py3-none-any.whl "dist/hop_cli-0.2.1-py3-none-$platform_tag.whl" 2>/dev/null || true
+    # The built wheel will be something like hop_cli-$VERSION-py3-none-any.whl
+    # We need to rename it to hop_cli-$VERSION-py3-none-$platform_tag.whl
+    mv dist/hop_cli-$VERSION-py3-none-any.whl "dist/hop_cli-$VERSION-py3-none-$platform_tag.whl" 2>/dev/null || true
 
     # Clean up the binary
     rm hop_cli/bin/hop

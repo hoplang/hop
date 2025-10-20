@@ -1,15 +1,15 @@
 {
   "name": "@hoplang/hop",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "hop compiler and tooling",
   "bin": "./bin/hop",
   "scripts": {
     "postinstall": "node postinstall.js"
   },
   "optionalDependencies": {
-    "@hoplang/darwin-arm64": "0.2.1",
-    "@hoplang/linux-arm64": "0.2.1",
-    "@hoplang/linux-x64": "0.2.1"
+    "@hoplang/darwin-arm64": "0.2.2",
+    "@hoplang/linux-arm64": "0.2.2",
+    "@hoplang/linux-x64": "0.2.2"
   },
   "repository": {
     "type": "git",
