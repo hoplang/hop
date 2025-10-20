@@ -160,7 +160,9 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
         }
         IrExpr::EnvLookup { key, .. } => {
             let key_val = evaluate_expr(key, env)?;
-            let key_str = key_val.as_str().ok_or_else(|| anyhow!("EnvLookup key must be a string"))?;
+            let key_str = key_val
+                .as_str()
+                .ok_or_else(|| anyhow!("EnvLookup key must be a string"))?;
             let env_val = std::env::var(key_str).unwrap_or_default();
             Ok(Value::String(env_val))
         }

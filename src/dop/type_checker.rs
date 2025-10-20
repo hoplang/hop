@@ -835,11 +835,7 @@ mod tests {
 
     #[test]
     fn test_typecheck_complex_equality() {
-        check(
-            "a: Bool, b: Bool",
-            "a == b == true",
-            expect!["Bool"],
-        );
+        check("a: Bool, b: Bool", "a == b == true", expect!["Bool"]);
     }
 
     #[test]
@@ -1199,11 +1195,7 @@ mod tests {
 
     #[test]
     fn test_typecheck_logical_and_precedence() {
-        check(
-            "a: Bool, b: Bool, c: Bool",
-            "a && b == c",
-            expect!["Bool"],
-        );
+        check("a: Bool, b: Bool, c: Bool", "a && b == c", expect!["Bool"]);
     }
 
     #[test]
@@ -1275,20 +1267,12 @@ mod tests {
 
     #[test]
     fn test_typecheck_logical_or_precedence() {
-        check(
-            "a: Bool, b: Bool, c: Bool",
-            "a || b == c",
-            expect!["Bool"],
-        );
+        check("a: Bool, b: Bool, c: Bool", "a || b == c", expect!["Bool"]);
     }
 
     #[test]
     fn test_typecheck_mixed_logical_operators() {
-        check(
-            "a: Bool, b: Bool, c: Bool",
-            "a && b || c",
-            expect!["Bool"],
-        );
+        check("a: Bool, b: Bool, c: Bool", "a && b || c", expect!["Bool"]);
     }
 
     #[test]

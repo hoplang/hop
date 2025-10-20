@@ -401,10 +401,7 @@ impl Program {
         generated_tailwind_css: Option<&str>,
     ) -> Result<String> {
         // Use orchestrate to handle inlining and compilation
-        let ir_entrypoints = orchestrate(
-            self.get_typed_modules().clone(),
-            generated_tailwind_css,
-        );
+        let ir_entrypoints = orchestrate(self.get_typed_modules().clone(), generated_tailwind_css);
 
         // Get the entrypoint
         let entrypoint = ir_entrypoints

@@ -57,9 +57,9 @@ impl JsTranspiler {
         match t {
             Type::TrustedHTML => true,
             Type::Array(Some(elem)) => self.type_contains_trusted_html(elem),
-            Type::Object(fields) => {
-                fields.values().any(|field_type| self.type_contains_trusted_html(field_type))
-            }
+            Type::Object(fields) => fields
+                .values()
+                .any(|field_type| self.type_contains_trusted_html(field_type)),
             _ => false,
         }
     }
@@ -108,7 +108,9 @@ impl Transpiler for JsTranspiler {
         // Add TrustedHTML type definition for TypeScript
         if needs_trusted_html && matches!(self.mode, LanguageMode::TypeScript) {
             result = result
-                .append(BoxDoc::text("type TrustedHTML = string & { readonly __brand: unique symbol };"))
+                .append(BoxDoc::text(
+                    "type TrustedHTML = string & { readonly __brand: unique symbol };",
+                ))
                 .append(BoxDoc::line())
                 .append(BoxDoc::line());
         }
@@ -253,7 +255,12 @@ impl StatementTranspiler for JsTranspiler {
         }
     }
 
-    fn transpile_if<'a>(&self, condition: &'a IrExpr, body: &'a [IrStatement], else_body: Option<&'a [IrStatement]>) -> BoxDoc<'a> {
+    fn transpile_if<'a>(
+        &self,
+        condition: &'a IrExpr,
+        body: &'a [IrStatement],
+        else_body: Option<&'a [IrStatement]>,
+    ) -> BoxDoc<'a> {
         let mut doc = BoxDoc::nil()
             .append(BoxDoc::text("if ("))
             .append(self.transpile_expr(condition))
@@ -1157,46 +1164,47 @@ mod tests {
 
     #[test]
     fn test_complex_literals_and_property_access() {
-        let entrypoints = vec![build_ir_auto("test-product-list", vec![], |t| {
-            t.write("<div class=\"products\">\n");
-            t.for_loop(
-                "product",
-                t.array(vec![
-                    t.object(vec![
-                        ("name", t.str("Laptop")),
-                        ("in_stock", t.bool(true)),
-                        ("category", t.str("electronics")),
-                    ]),
-                    t.object(vec![
-                        ("name", t.str("Book")),
-                        ("in_stock", t.bool(false)),
-                        ("category", t.str("books")),
-                    ]),
-                    t.object(vec![
-                        ("name", t.str("T-Shirt")),
-                        ("in_stock", t.bool(true)),
-                        ("category", t.str("clothing")),
-                    ]),
-                ]),
-                |t| {
-                    t.let_stmt(
-                        "display_info",
+        let entrypoints =
+            vec![build_ir_auto("test-product-list", vec![], |t| {
+                t.write("<div class=\"products\">\n");
+                t.for_loop(
+                    "product",
+                    t.array(vec![
                         t.object(vec![
-                            ("currency", t.str("$")),
-                            ("show_stock", t.bool(true)),
-                            ("prefix", t.str("PROD-")),
+                            ("name", t.str("Laptop")),
+                            ("in_stock", t.bool(true)),
+                            ("category", t.str("electronics")),
                         ]),
-                        |t| {
-                            t.write("<article class=\"product\">\n");
-                            t.write("<h3>");
-                            t.write_expr(t.prop_access(t.var("display_info"), "prefix"), false);
-                            t.write_expr_escaped(t.prop_access(t.var("product"), "name"));
-                            t.write("</h3>\n");
-                            t.write("</p>\n");
-                            t.write("<p>Category: ");
-                            t.write_expr_escaped(t.prop_access(t.var("product"), "category"));
-                            t.write("</p>\n");
-                            t.if_stmt(t.prop_access(t.var("display_info"), "show_stock"), |t| {
+                        t.object(vec![
+                            ("name", t.str("Book")),
+                            ("in_stock", t.bool(false)),
+                            ("category", t.str("books")),
+                        ]),
+                        t.object(vec![
+                            ("name", t.str("T-Shirt")),
+                            ("in_stock", t.bool(true)),
+                            ("category", t.str("clothing")),
+                        ]),
+                    ]),
+                    |t| {
+                        t.let_stmt(
+                            "display_info",
+                            t.object(vec![
+                                ("currency", t.str("$")),
+                                ("show_stock", t.bool(true)),
+                                ("prefix", t.str("PROD-")),
+                            ]),
+                            |t| {
+                                t.write("<article class=\"product\">\n");
+                                t.write("<h3>");
+                                t.write_expr(t.prop_access(t.var("display_info"), "prefix"), false);
+                                t.write_expr_escaped(t.prop_access(t.var("product"), "name"));
+                                t.write("</h3>\n");
+                                t.write("</p>\n");
+                                t.write("<p>Category: ");
+                                t.write_expr_escaped(t.prop_access(t.var("product"), "category"));
+                                t.write("</p>\n");
+                                t.if_stmt(t.prop_access(t.var("display_info"), "show_stock"), |t| {
                                 t.if_stmt(t.prop_access(t.var("product"), "in_stock"), |t| {
                                     t.write("<span class=\"in-stock\">✓ In Stock</span>\n");
                                 });
@@ -1204,13 +1212,13 @@ mod tests {
                                     t.write("<span class=\"out-of-stock\">✗ Out of Stock</span>\n");
                                 });
                             });
-                            t.write("</article>\n");
-                        },
-                    );
-                },
-            );
-            t.write("</div>\n");
-        })];
+                                t.write("</article>\n");
+                            },
+                        );
+                    },
+                );
+                t.write("</div>\n");
+            })];
 
         check(
             &entrypoints,
@@ -1484,7 +1492,10 @@ mod tests {
     fn test_trusted_html_type() {
         let entrypoints = vec![build_ir_auto(
             "render-html",
-            vec![("safe_content", Type::TrustedHTML), ("user_input", Type::String)],
+            vec![
+                ("safe_content", Type::TrustedHTML),
+                ("user_input", Type::String),
+            ],
             |t| {
                 t.write("<div>");
                 // TrustedHTML should not be escaped

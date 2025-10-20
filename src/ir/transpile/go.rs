@@ -109,16 +109,14 @@ impl GoTranspiler {
             // Check expressions for other imports (like json, os)
             stmt.traverse(&mut |s| {
                 if let Some(primary_expr) = s.expr() {
-                    primary_expr.traverse(&mut |expr| {
-                        match expr {
-                            IrExpr::JsonEncode { .. } => {
-                                imports.insert("encoding/json".to_string());
-                            }
-                            IrExpr::EnvLookup { .. } => {
-                                imports.insert("os".to_string());
-                            }
-                            _ => {}
+                    primary_expr.traverse(&mut |expr| match expr {
+                        IrExpr::JsonEncode { .. } => {
+                            imports.insert("encoding/json".to_string());
                         }
+                        IrExpr::EnvLookup { .. } => {
+                            imports.insert("os".to_string());
+                        }
+                        _ => {}
                     });
                 }
             });
@@ -140,9 +138,9 @@ impl GoTranspiler {
         match t {
             Type::TrustedHTML => true,
             Type::Array(Some(elem)) => self.type_contains_trusted_html(elem),
-            Type::Object(fields) => {
-                fields.values().any(|field_type| self.type_contains_trusted_html(field_type))
-            }
+            Type::Object(fields) => fields
+                .values()
+                .any(|field_type| self.type_contains_trusted_html(field_type)),
             _ => false,
         }
     }
@@ -400,7 +398,12 @@ impl StatementTranspiler for GoTranspiler {
         }
     }
 
-    fn transpile_if<'a>(&self, condition: &'a IrExpr, body: &'a [IrStatement], else_body: Option<&'a [IrStatement]>) -> BoxDoc<'a> {
+    fn transpile_if<'a>(
+        &self,
+        condition: &'a IrExpr,
+        body: &'a [IrStatement],
+        else_body: Option<&'a [IrStatement]>,
+    ) -> BoxDoc<'a> {
         let mut doc = BoxDoc::nil()
             .append(BoxDoc::text("if "))
             .append(self.transpile_expr(condition))
@@ -1688,7 +1691,10 @@ mod tests {
     fn test_trusted_html_type() {
         let entrypoints = vec![build_ir_auto(
             "render-html",
-            vec![("safe_content", Type::TrustedHTML), ("user_input", Type::String)],
+            vec![
+                ("safe_content", Type::TrustedHTML),
+                ("user_input", Type::String),
+            ],
             |t| {
                 t.write("<div>");
                 t.write_expr(t.var("safe_content"), false);

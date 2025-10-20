@@ -100,7 +100,9 @@ impl IrStatement {
         match self {
             IrStatement::Write { .. } => {}
             IrStatement::WriteExpr { .. } => {}
-            IrStatement::If { body, else_body, .. } => {
+            IrStatement::If {
+                body, else_body, ..
+            } => {
                 for stmt in body {
                     stmt.traverse(f);
                 }
@@ -144,7 +146,9 @@ impl IrStatement {
         match self {
             IrStatement::Write { .. } => {}
             IrStatement::WriteExpr { .. } => {}
-            IrStatement::If { body, else_body, .. } => {
+            IrStatement::If {
+                body, else_body, ..
+            } => {
                 for stmt in body {
                     stmt.traverse_with_scope_impl(scope, f);
                 }
@@ -188,7 +192,9 @@ impl IrStatement {
         match self {
             IrStatement::Write { .. } => {}
             IrStatement::WriteExpr { .. } => {}
-            IrStatement::If { body, else_body, .. } => {
+            IrStatement::If {
+                body, else_body, ..
+            } => {
                 for stmt in body {
                     stmt.traverse_mut(f);
                 }
@@ -229,7 +235,10 @@ impl IrStatement {
                     .append(BoxDoc::text(")"))
             }
             IrStatement::If {
-                condition, body, else_body, ..
+                condition,
+                body,
+                else_body,
+                ..
             } => {
                 let mut doc = BoxDoc::text("if ")
                     .append(condition.to_doc())

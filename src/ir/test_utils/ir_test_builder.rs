@@ -202,7 +202,10 @@ impl IrTestBuilder {
         }
 
         TypedExpr::ObjectLiteral {
-            properties: props.into_iter().map(|(k, v)| (PropertyName::new(k).unwrap(), v)).collect(),
+            properties: props
+                .into_iter()
+                .map(|(k, v)| (PropertyName::new(k).unwrap(), v))
+                .collect(),
             kind: Type::Object(type_map),
             annotation: self.next_expr_id(),
         }
@@ -257,7 +260,12 @@ impl IrTestBuilder {
         }
     }
 
-    pub fn if_else_stmt(&self, cond: IrExpr, body: Vec<IrStatement>, else_body: Vec<IrStatement>) -> IrStatement {
+    pub fn if_else_stmt(
+        &self,
+        cond: IrExpr,
+        body: Vec<IrStatement>,
+        else_body: Vec<IrStatement>,
+    ) -> IrStatement {
         assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
         IrStatement::If {
             id: self.next_node_id(),
@@ -411,7 +419,8 @@ impl IrAutoBuilder {
         else_body_fn(&mut else_builder);
         let else_body = else_builder.statements;
 
-        self.statements.push(self.inner.if_else_stmt(cond, body, else_body));
+        self.statements
+            .push(self.inner.if_else_stmt(cond, body, else_body));
     }
 
     pub fn for_loop<F>(&mut self, var: &str, array: IrExpr, body_fn: F)

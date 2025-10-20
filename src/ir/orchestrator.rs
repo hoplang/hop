@@ -1,6 +1,7 @@
 use crate::dop::SimpleTypedExpr;
 use crate::hop::ast::Ast;
 use crate::hop::module_name::ModuleName;
+use crate::ir::Compiler;
 use crate::ir::ast::IrEntrypoint;
 use crate::ir::inliner::Inliner;
 use crate::ir::passes::{
@@ -8,7 +9,6 @@ use crate::ir::passes::{
     UnusedLetEliminationPass, WriteExprSimplificationPass,
 };
 use crate::ir::transforms::{DoctypeInjector, HtmlStructureInjector, TailwindInjector};
-use crate::ir::Compiler;
 use std::collections::HashMap;
 
 pub fn orchestrate(

@@ -154,9 +154,9 @@ impl PythonTranspiler {
         match t {
             Type::TrustedHTML => true,
             Type::Array(Some(elem)) => self.type_contains_trusted_html(elem),
-            Type::Object(fields) => {
-                fields.values().any(|field_type| self.type_contains_trusted_html(field_type))
-            }
+            Type::Object(fields) => fields
+                .values()
+                .any(|field_type| self.type_contains_trusted_html(field_type)),
             _ => false,
         }
     }
@@ -224,7 +224,12 @@ impl Transpiler for PythonTranspiler {
                 .append(BoxDoc::line());
         }
 
-        if needs_dataclasses || needs_simple_namespace || needs_json || needs_html_escape || needs_trusted_html {
+        if needs_dataclasses
+            || needs_simple_namespace
+            || needs_json
+            || needs_html_escape
+            || needs_trusted_html
+        {
             result = result.append(BoxDoc::line());
         }
 
@@ -386,7 +391,12 @@ impl StatementTranspiler for PythonTranspiler {
         }
     }
 
-    fn transpile_if<'a>(&self, condition: &'a IrExpr, body: &'a [IrStatement], else_body: Option<&'a [IrStatement]>) -> BoxDoc<'a> {
+    fn transpile_if<'a>(
+        &self,
+        condition: &'a IrExpr,
+        body: &'a [IrStatement],
+        else_body: Option<&'a [IrStatement]>,
+    ) -> BoxDoc<'a> {
         let mut doc = BoxDoc::nil()
             .append(BoxDoc::text("if "))
             .append(self.transpile_expr(condition))
@@ -1396,7 +1406,10 @@ mod tests {
     fn test_trusted_html_type() {
         let entrypoints = vec![build_ir_auto(
             "render-html",
-            vec![("safe_content", Type::TrustedHTML), ("user_input", Type::String)],
+            vec![
+                ("safe_content", Type::TrustedHTML),
+                ("user_input", Type::String),
+            ],
             |t| {
                 t.write("<div>");
                 t.write_expr(t.var("safe_content"), false);

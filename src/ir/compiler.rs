@@ -1,8 +1,8 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::StringSpan;
+use crate::dop::r#type::EquatableType;
 use crate::dop::{PropertyName, SimpleTypedExpr, TypedExpr};
 use crate::dop::{Type, VarName};
-use crate::dop::r#type::EquatableType;
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode,
 };

@@ -125,7 +125,10 @@ impl InlinedTestBuilder {
         }
 
         SimpleTypedExpr::ObjectLiteral {
-            properties: props.into_iter().map(|(k, v)| (PropertyName::new(k).unwrap(), v)).collect(),
+            properties: props
+                .into_iter()
+                .map(|(k, v)| (PropertyName::new(k).unwrap(), v))
+                .collect(),
             kind: Type::Object(type_map),
             annotation: (),
         }

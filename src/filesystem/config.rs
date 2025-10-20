@@ -99,7 +99,9 @@ pub enum TargetConfig {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    #[error("No targets defined in hop.toml. Please add a target section (e.g., [target.typescript])")]
+    #[error(
+        "No targets defined in hop.toml. Please add a target section (e.g., [target.typescript])"
+    )]
     NoTargets,
     #[error(
         "Multiple targets defined ({targets:?}). Please specify exactly one target in hop.toml"

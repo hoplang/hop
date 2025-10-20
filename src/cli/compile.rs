@@ -112,10 +112,7 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
 
     timer.start_phase("compiling to IR");
     // Use orchestrate to handle inlining, compilation, and optimization
-    let ir_entrypoints = orchestrate(
-        program.get_typed_modules().clone(),
-        tailwind_css.as_deref(),
-    );
+    let ir_entrypoints = orchestrate(program.get_typed_modules().clone(), tailwind_css.as_deref());
 
     // Generate code based on target language
     let generated_code = match &target_config {
@@ -184,7 +181,11 @@ mod tests {
 
         // Execute the compile command
         let result = execute(&project_root).await;
-        assert!(result.is_ok(), "Compilation should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Compilation should succeed: {:?}",
+            result.err()
+        );
 
         // Verify that the output file was created at the correct path
         let expected_output_path = temp_dir.join("components/frontend.go");

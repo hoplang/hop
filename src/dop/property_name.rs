@@ -208,9 +208,18 @@ mod tests {
 
     #[test]
     fn test_to_pascal_case() {
-        assert_eq!(PropertyName::new("foo_bar").unwrap().to_pascal_case(), "FooBar");
-        assert_eq!(PropertyName::new("hello_world").unwrap().to_pascal_case(), "HelloWorld");
+        assert_eq!(
+            PropertyName::new("foo_bar").unwrap().to_pascal_case(),
+            "FooBar"
+        );
+        assert_eq!(
+            PropertyName::new("hello_world").unwrap().to_pascal_case(),
+            "HelloWorld"
+        );
         assert_eq!(PropertyName::new("x").unwrap().to_pascal_case(), "X");
-        assert_eq!(PropertyName::new("foo_bar_baz").unwrap().to_pascal_case(), "FooBarBaz");
+        assert_eq!(
+            PropertyName::new("foo_bar_baz").unwrap().to_pascal_case(),
+            "FooBarBaz"
+        );
     }
 }

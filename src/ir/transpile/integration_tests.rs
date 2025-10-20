@@ -1,6 +1,6 @@
 use super::{GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler};
-use crate::dop::r#type::Type;
 use crate::dop::PropertyName;
+use crate::dop::r#type::Type;
 use crate::ir::ast::IrEntrypoint;
 use crate::ir::test_utils::build_ir_auto;
 use std::collections::BTreeMap;

@@ -326,19 +326,20 @@ impl Parser {
     ) -> Result<(Type, DocumentRange), ParseError> {
         let left_bracket = self.expect_token(&Token::LeftBracket)?;
         let mut properties = BTreeMap::new();
-        let right_bracket = self.parse_delimited_list(&Token::LeftBracket, &left_bracket, |this| {
-            let (prop_name, prop_name_range) = this.expect_property_name()?;
-            this.expect_token(&Token::Colon)?;
-            let (typ, _range) = this.parse_type()?;
-            if properties.contains_key(&prop_name) {
-                return Err(ParseError::DuplicateProperty {
-                    name: prop_name_range.to_string_span(),
-                    range: prop_name_range.clone(),
-                });
-            }
-            properties.insert(prop_name, typ);
-            Ok(())
-        })?;
+        let right_bracket =
+            self.parse_delimited_list(&Token::LeftBracket, &left_bracket, |this| {
+                let (prop_name, prop_name_range) = this.expect_property_name()?;
+                this.expect_token(&Token::Colon)?;
+                let (typ, _range) = this.parse_type()?;
+                if properties.contains_key(&prop_name) {
+                    return Err(ParseError::DuplicateProperty {
+                        name: prop_name_range.to_string_span(),
+                        range: prop_name_range.clone(),
+                    });
+                }
+                properties.insert(prop_name, typ);
+                Ok(())
+            })?;
         Ok((Type::Object(properties), type_record.to(right_bracket)))
     }
 
@@ -358,7 +359,9 @@ impl Parser {
                     type_array.to(right_bracket),
                 ))
             }
-            Some((Token::TypeRecord, type_record_range)) => self.parse_record_type(type_record_range),
+            Some((Token::TypeRecord, type_record_range)) => {
+                self.parse_record_type(type_record_range)
+            }
             Some((Token::LeftBrace, left_brace_range)) => self.parse_object_type(left_brace_range),
             Some((actual, range)) => Err(ParseError::ExpectedTypeNameButGot { actual, range }),
             None => Err(ParseError::UnexpectedEof {
