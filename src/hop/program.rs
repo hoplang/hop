@@ -406,7 +406,7 @@ impl Program {
         // Get the entrypoint
         let entrypoint = ir_entrypoints
             .iter()
-            .find(|ep| ep.name == entrypoint_name)
+            .find(|ep| ep.name.as_str() == entrypoint_name)
             .ok_or_else(|| anyhow::anyhow!("Entrypoint '{}' not found", entrypoint_name))?;
 
         // Evaluate the entrypoint
@@ -632,23 +632,23 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- hop/components.hop --
-                <hello-world>
+                <HelloWorld>
                   <h1>Hello World</h1>
-                </hello-world>
+                </HelloWorld>
 
                 -- main.hop --
-                <import component="hello-world" from="@/hop/components" />
+                <import component="HelloWorld" from="@/hop/components" />
 
-                <main-comp>
-                  <hello-world />
+                <Main>
+                  <HelloWorld />
                    ^
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 Definition
                   --> hop/components (line 1, col 2)
-                1 | <hello-world>
-                  |  ^^^^^^^^^^^
+                1 | <HelloWorld>
+                  |  ^^^^^^^^^^
             "#]],
         );
     }
@@ -658,24 +658,24 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- hop/components.hop --
-                <hello-world>
+                <HelloWorld>
                   <h1>Hello World</h1>
-                </hello-world>
+                </HelloWorld>
 
                 -- main.hop --
-                <import component="hello-world" from="@/hop/components" />
+                <import component="HelloWorld" from="@/hop/components" />
 
-                <main-comp>
-                  <hello-world>
-                  </hello-world>
+                <Main>
+                  <HelloWorld>
+                  </HelloWorld>
                      ^
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 Definition
                   --> hop/components (line 1, col 2)
-                1 | <hello-world>
-                  |  ^^^^^^^^^^^
+                1 | <HelloWorld>
+                  |  ^^^^^^^^^^
             "#]],
         );
     }
@@ -685,23 +685,23 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- hop/components.hop --
-                <hello-world>
+                <HelloWorld>
                   <h1>Hello World</h1>
-                </hello-world>
+                </HelloWorld>
 
                 -- main.hop --
-                <import component="hello-world" from="@/hop/components" />
+                <import component="HelloWorld" from="@/hop/components" />
                                      ^
 
-                <main-comp>
-                  <hello-world />
-                </main-comp>
+                <Main>
+                  <HelloWorld />
+                </Main>
             "#},
             expect![[r#"
                 Definition
                   --> hop/components (line 1, col 2)
-                1 | <hello-world>
-                  |  ^^^^^^^^^^^
+                1 | <HelloWorld>
+                  |  ^^^^^^^^^^
             "#]],
         );
     }
@@ -711,16 +711,16 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
-                <hello-world>
+                <HelloWorld>
                    ^
                   <h1>Hello World</h1>
-                </hello-world>
+                </HelloWorld>
             "#},
             expect![[r#"
                 Definition
                   --> main (line 1, col 2)
-                1 | <hello-world>
-                  |  ^^^^^^^^^^^
+                1 | <HelloWorld>
+                  |  ^^^^^^^^^^
             "#]],
         );
     }
@@ -730,16 +730,16 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
-                <hello-world>
+                <HelloWorld>
                   <h1>Hello World</h1>
-                </hello-world>
+                </HelloWorld>
                     ^
             "#},
             expect![[r#"
                 Definition
                   --> main (line 1, col 2)
-                1 | <hello-world>
-                  |  ^^^^^^^^^^^
+                1 | <HelloWorld>
+                  |  ^^^^^^^^^^
             "#]],
         );
     }
@@ -749,12 +749,12 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
-                <main-comp>
+                <Main>
                   <div class="container">
                    ^
                     <span>Content</span>
                   </div>
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 Definition
@@ -770,12 +770,12 @@ mod tests {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
-                <main-comp>
+                <Main>
                   <div class="container">
                     <span>Content</span>
                   </div>
                     ^
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 Definition
@@ -795,38 +795,38 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- components.hop --
-                <hello-world>
+                <HelloWorld>
                   <h1>Hello World</h1>
-                </hello-world>
+                </HelloWorld>
 
                 -- main.hop --
-                <import component="hello-world" from="@/components" />
+                <import component="HelloWorld" from="@/components" />
 
-                <main-comp>
-                  <hello-world />
+                <Main>
+                  <HelloWorld />
                    ^
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 Rename
                   --> components.hop (line 1, col 2)
-                1 | <hello-world>
-                  |  ^^^^^^^^^^^
+                1 | <HelloWorld>
+                  |  ^^^^^^^^^^
 
                 Rename
                   --> components.hop (line 3, col 3)
-                3 | </hello-world>
-                  |   ^^^^^^^^^^^
+                3 | </HelloWorld>
+                  |   ^^^^^^^^^^
 
                 Rename
                   --> main.hop (line 1, col 20)
-                1 | <import component="hello-world" from="@/components" />
-                  |                    ^^^^^^^^^^^
+                1 | <import component="HelloWorld" from="@/components" />
+                  |                    ^^^^^^^^^^
 
                 Rename
                   --> main.hop (line 4, col 4)
-                4 |   <hello-world />
-                  |    ^^^^^^^^^^^
+                4 |   <HelloWorld />
+                  |    ^^^^^^^^^^
             "#]],
         );
     }
@@ -836,30 +836,30 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
-                <hello-world>
+                <HelloWorld>
                   <h1>Hello World</h1>
-                </hello-world>
+                </HelloWorld>
 
-                <main-comp>
-                  <hello-world />
+                <Main>
+                  <HelloWorld />
                    ^
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 Rename
                   --> main.hop (line 1, col 2)
-                1 | <hello-world>
-                  |  ^^^^^^^^^^^
+                1 | <HelloWorld>
+                  |  ^^^^^^^^^^
 
                 Rename
                   --> main.hop (line 3, col 3)
-                3 | </hello-world>
-                  |   ^^^^^^^^^^^
+                3 | </HelloWorld>
+                  |   ^^^^^^^^^^
 
                 Rename
                   --> main.hop (line 6, col 4)
-                6 |   <hello-world />
-                  |    ^^^^^^^^^^^
+                6 |   <HelloWorld />
+                  |    ^^^^^^^^^^
             "#]],
         );
     }
@@ -869,38 +869,38 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- components.hop --
-                <hello-world>
+                <HelloWorld>
                  ^
                   <h1>Hello World</h1>
-                </hello-world>
+                </HelloWorld>
 
                 -- main.hop --
-                <import component="hello-world" from="@/components" />
+                <import component="HelloWorld" from="@/components" />
 
-                <main-comp>
-                  <hello-world />
-                </main-comp>
+                <Main>
+                  <HelloWorld />
+                </Main>
             "#},
             expect![[r#"
                 Rename
                   --> components.hop (line 1, col 2)
-                1 | <hello-world>
-                  |  ^^^^^^^^^^^
+                1 | <HelloWorld>
+                  |  ^^^^^^^^^^
 
                 Rename
                   --> components.hop (line 3, col 3)
-                3 | </hello-world>
-                  |   ^^^^^^^^^^^
+                3 | </HelloWorld>
+                  |   ^^^^^^^^^^
 
                 Rename
                   --> main.hop (line 1, col 20)
-                1 | <import component="hello-world" from="@/components" />
-                  |                    ^^^^^^^^^^^
+                1 | <import component="HelloWorld" from="@/components" />
+                  |                    ^^^^^^^^^^
 
                 Rename
                   --> main.hop (line 4, col 4)
-                4 |   <hello-world />
-                  |    ^^^^^^^^^^^
+                4 |   <HelloWorld />
+                  |    ^^^^^^^^^^
             "#]],
         );
     }
@@ -913,33 +913,33 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- components.hop --
-                <hello-world>
+                <HelloWorld>
                   <h1>Hello World</h1>
-                </hello-world>
+                </HelloWorld>
 
-                <main-comp>
+                <Main>
                  ^
-                  <hello-world />
-                </main-comp>
+                  <HelloWorld />
+                </Main>
 
                 -- main.hop --
-                <import component="hello-world" from="@/components" />
+                <import component="HelloWorld" from="@/components" />
 
-                <main-comp>
-                  <hello-world />
-                </main-comp>
+                <Main>
+                  <HelloWorld />
+                </Main>
             "#},
             // The result here should not contain rename locations in main.hop.
             expect![[r#"
                 Rename
                   --> components.hop (line 5, col 2)
-                5 | <main-comp>
-                  |  ^^^^^^^^^
+                5 | <Main>
+                  |  ^^^^
 
                 Rename
                   --> components.hop (line 7, col 3)
-                7 | </main-comp>
-                  |   ^^^^^^^^^
+                7 | </Main>
+                  |   ^^^^
             "#]],
         );
     }
@@ -949,12 +949,12 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
-                <main-comp>
+                <Main>
                     <div>
                      ^
                         <span>Content</span>
                     </div>
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 Rename
@@ -975,14 +975,14 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
-                <main-comp>
+                <Main>
                   <div>
                     <div>
                      ^
                         <div>Content</div>
                     </div>
                   </div>
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 Rename
@@ -1003,12 +1003,12 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
-                <main-comp>
+                <Main>
                     <div>
                         <span>Content</span>
                     </div>
                        ^
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 Rename
@@ -1029,10 +1029,10 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
-                <main-comp>
+                <Main>
                     <br />
                      ^
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 Rename
@@ -1052,16 +1052,16 @@ mod tests {
         check_renameable_symbol(
             indoc! {r#"
                 -- main.hop --
-                <hello-world>
+                <HelloWorld>
                  ^
                   <h1>Hello World</h1>
-                </hello-world>
+                </HelloWorld>
             "#},
             expect![[r#"
-                hello-world
+                HelloWorld
                   --> main.hop (line 1, col 2)
-                1 | <hello-world>
-                  |  ^^^^^^^^^^^
+                1 | <HelloWorld>
+                  |  ^^^^^^^^^^
             "#]],
         );
     }
@@ -1071,10 +1071,10 @@ mod tests {
         check_renameable_symbol(
             indoc! {r#"
                 -- main.hop --
-                <main-comp>
+                <Main>
                     <div>Content</div>
                      ^
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 div
@@ -1094,16 +1094,16 @@ mod tests {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {user: {name: String}}>
-                              ^
+                <Main {user: {name: String}}>
+                       ^
                   <h1>Hello {user.name}</h1>
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 `user`: `Record[name: String]`
-                  --> main.hop (line 1, col 13)
-                1 | <main-comp {user: {name: String}}>
-                  |             ^^^^
+                  --> main.hop (line 1, col 8)
+                1 | <Main {user: {name: String}}>
+                  |        ^^^^
             "#]],
         );
     }
@@ -1117,10 +1117,10 @@ mod tests {
         check_error_diagnostics(
             indoc! {r#"
                 -- main.hop --
-                <main-comp>
+                <Main>
                   <div>
                   <span>unclosed span
-                </main-comp>
+                </Main>
             "#},
             "main",
             expect![[r#"
@@ -1147,22 +1147,22 @@ mod tests {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
-                <main-comp>
+                <Main>
                   ^
                   <div>
                   <span>
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 Rename
                   --> main.hop (line 1, col 2)
-                1 | <main-comp>
-                  |  ^^^^^^^^^
+                1 | <Main>
+                  |  ^^^^
 
                 Rename
                   --> main.hop (line 4, col 3)
-                4 | </main-comp>
-                  |   ^^^^^^^^^
+                4 | </Main>
+                  |   ^^^^
             "#]],
         );
     }
@@ -1175,43 +1175,43 @@ mod tests {
     fn test_cycle_error_reporting() {
         let mut program = program_from_txtar(indoc! {r#"
             -- a.hop --
-            <import component="b-comp" from="@/b" />
-            <a-comp>
-              <b-comp />
-            </a-comp>
+            <import component="BComp" from="@/b" />
+            <AComp>
+              <BComp />
+            </AComp>
 
             -- b.hop --
-            <import component="a-comp" from="@/a" />
-            <b-comp>
-              <a-comp />
-            </b-comp>
+            <import component="AComp" from="@/a" />
+            <BComp>
+              <AComp />
+            </BComp>
 
             -- c.hop --
-            <import component="a-comp" from="@/a" />
-            <c-comp>
-              <a-comp />
-            </c-comp>
+            <import component="AComp" from="@/a" />
+            <CComp>
+              <AComp />
+            </CComp>
         "#});
         check_type_errors(
             &program,
             expect![[r#"
                 Import cycle: a imports from b which creates a dependency cycle: a → b → a
-                  --> a (line 1, col 34)
-                1 | <import component="b-comp" from="@/b" />
-                  |                                  ^^^
+                  --> a (line 1, col 33)
+                1 | <import component="BComp" from="@/b" />
+                  |                                 ^^^
 
                 Import cycle: b imports from a which creates a dependency cycle: a → b → a
-                  --> b (line 1, col 34)
-                1 | <import component="a-comp" from="@/a" />
-                  |                                  ^^^
+                  --> b (line 1, col 33)
+                1 | <import component="AComp" from="@/a" />
+                  |                                 ^^^
             "#]],
         );
         // Resolve cycle
         program.update_module(
             ModuleName::new("a".to_string()).unwrap(),
             indoc! {r#"
-                <a-comp>
-                </a-comp>
+                <AComp>
+                </AComp>
             "#}
             .to_string(),
         );
@@ -1223,59 +1223,59 @@ mod tests {
     fn test_cycle_error_reporting_large() {
         let mut program = program_from_txtar(indoc! {r#"
             -- a.hop --
-            <import component="b-comp" from="@/b" />
-            <a-comp>
-              <b-comp />
-            </a-comp>
+            <import component="BComp" from="@/b" />
+            <AComp>
+              <BComp />
+            </AComp>
 
             -- b.hop --
-            <import component="c-comp" from="@/c" />
-            <b-comp>
-              <c-comp />
-            </b-comp>
+            <import component="CComp" from="@/c" />
+            <BComp>
+              <CComp />
+            </BComp>
 
             -- c.hop --
-            <import component="d-comp" from="@/d" />
-            <c-comp>
-              <d-comp />
-            </c-comp>
+            <import component="DComp" from="@/d" />
+            <CComp>
+              <DComp />
+            </CComp>
 
             -- d.hop --
-            <import component="a-comp" from="@/a" />
-            <d-comp>
-              <a-comp />
-            </d-comp>
+            <import component="AComp" from="@/a" />
+            <DComp>
+              <AComp />
+            </DComp>
         "#});
         check_type_errors(
             &program,
             expect![[r#"
                 Import cycle: a imports from b which creates a dependency cycle: a → b → c → d → a
-                  --> a (line 1, col 34)
-                1 | <import component="b-comp" from="@/b" />
-                  |                                  ^^^
+                  --> a (line 1, col 33)
+                1 | <import component="BComp" from="@/b" />
+                  |                                 ^^^
 
                 Import cycle: b imports from c which creates a dependency cycle: a → b → c → d → a
-                  --> b (line 1, col 34)
-                1 | <import component="c-comp" from="@/c" />
-                  |                                  ^^^
+                  --> b (line 1, col 33)
+                1 | <import component="CComp" from="@/c" />
+                  |                                 ^^^
 
                 Import cycle: c imports from d which creates a dependency cycle: a → b → c → d → a
-                  --> c (line 1, col 34)
-                1 | <import component="d-comp" from="@/d" />
-                  |                                  ^^^
+                  --> c (line 1, col 33)
+                1 | <import component="DComp" from="@/d" />
+                  |                                 ^^^
 
                 Import cycle: d imports from a which creates a dependency cycle: a → b → c → d → a
-                  --> d (line 1, col 34)
-                1 | <import component="a-comp" from="@/a" />
-                  |                                  ^^^
+                  --> d (line 1, col 33)
+                1 | <import component="AComp" from="@/a" />
+                  |                                 ^^^
             "#]],
         );
         // Resolve cycle
         program.update_module(
             ModuleName::new("c".to_string()).unwrap(),
             indoc! {r#"
-                <c-comp>
-                </c-comp>
+                <CComp>
+                </CComp>
             "#}
             .to_string(),
         );
@@ -1285,10 +1285,10 @@ mod tests {
         program.update_module(
             ModuleName::new("b".to_string()).unwrap(),
             indoc! {r#"
-                <import component="a-comp" from="@/a" />
-                <b-comp>
-                  <a-comp />
-                </b-comp>
+                <import component="AComp" from="@/a" />
+                <BComp>
+                  <AComp />
+                </BComp>
             "#}
             .to_string(),
         );
@@ -1296,22 +1296,22 @@ mod tests {
             &program,
             expect![[r#"
                 Import cycle: a imports from b which creates a dependency cycle: a → b → a
-                  --> a (line 1, col 34)
-                1 | <import component="b-comp" from="@/b" />
-                  |                                  ^^^
+                  --> a (line 1, col 33)
+                1 | <import component="BComp" from="@/b" />
+                  |                                 ^^^
 
                 Import cycle: b imports from a which creates a dependency cycle: a → b → a
-                  --> b (line 1, col 34)
-                1 | <import component="a-comp" from="@/a" />
-                  |                                  ^^^
+                  --> b (line 1, col 33)
+                1 | <import component="AComp" from="@/a" />
+                  |                                 ^^^
             "#]],
         );
         // Resolve cycle
         program.update_module(
             ModuleName::new("b".to_string()).unwrap(),
             indoc! {r#"
-                <b-comp>
-                </b-comp>
+                <BComp>
+                </BComp>
             "#}
             .to_string(),
         );
@@ -1323,13 +1323,13 @@ mod tests {
     fn test_evaluate_ir_entrypoint() {
         let program = program_from_txtar(indoc! {r#"
             -- main.hop --
-            <hello-world entrypoint {name: String}>
+            <HelloWorld entrypoint {name: String}>
               <h1>Hello {name}!</h1>
-            </hello-world>
+            </HelloWorld>
 
-            <another-comp entrypoint>
+            <AnotherComp entrypoint>
               <p>Static content</p>
-            </another-comp>
+            </AnotherComp>
         "#});
 
         // Test evaluating hello-world entrypoint with a name parameter
@@ -1337,26 +1337,26 @@ mod tests {
         args.insert("name".to_string(), serde_json::json!("Alice"));
 
         let result = program
-            .evaluate_ir_entrypoint("hello-world", args, "dev", None)
+            .evaluate_ir_entrypoint("HelloWorld", args, "dev", None)
             .expect("Should evaluate successfully");
 
         assert!(result.contains("<h1>Hello Alice!</h1>"));
 
         // Test evaluating another-comp entrypoint without parameters
         let result = program
-            .evaluate_ir_entrypoint("another-comp", HashMap::new(), "dev", None)
+            .evaluate_ir_entrypoint("AnotherComp", HashMap::new(), "dev", None)
             .expect("Should evaluate successfully");
 
         assert!(result.contains("<p>Static content</p>"));
 
         // Test error when entrypoint doesn't exist
-        let result = program.evaluate_ir_entrypoint("non-existent", HashMap::new(), "dev", None);
+        let result = program.evaluate_ir_entrypoint("NonExistent", HashMap::new(), "dev", None);
         assert!(result.is_err());
         assert!(
             result
                 .unwrap_err()
                 .to_string()
-                .contains("Entrypoint 'non-existent' not found")
+                .contains("Entrypoint 'NonExistent' not found")
         );
     }
 }

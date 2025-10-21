@@ -401,19 +401,19 @@ mod tests {
             vec![(
                 "main",
                 r#"
-                    <card-comp {title: String}>
+                    <CardComp {title: String}>
                         <h2>{title}</h2>
-                    </card-comp>
+                    </CardComp>
 
-                    <main-comp entrypoint>
-                        <card-comp {title: "Hello"}/>
-                    </main-comp>
+                    <Main entrypoint>
+                        <CardComp {title: "Hello"}/>
+                    </Main>
                 "#,
             )],
             expect![[r#"
-                <main-comp>
+                <Main>
                   "\n                        "
-                  <div data-hop-id="main/card-comp">
+                  <div data-hop-id="main/CardComp">
                     <let {title = "Hello"}>
                       "\n                        "
                       <h2>
@@ -423,7 +423,7 @@ mod tests {
                     </let>
                   </div>
                   "\n                    "
-                </main-comp>
+                </Main>
             "#]],
         );
     }
@@ -434,23 +434,23 @@ mod tests {
             vec![(
                 "main",
                 r#"
-                    <card-comp>
+                    <CardComp>
                         <div class="card">
                             <slot-default/>
                         </div>
-                    </card-comp>
+                    </CardComp>
 
-                    <main-comp entrypoint>
-                        <card-comp>
+                    <Main entrypoint>
+                        <CardComp>
                             <p>Slot content</p>
-                        </card-comp>
-                    </main-comp>
+                        </CardComp>
+                    </Main>
                 "#,
             )],
             expect![[r#"
-                <main-comp>
+                <Main>
                   "\n                        "
-                  <div data-hop-id="main/card-comp">
+                  <div data-hop-id="main/CardComp">
                     "\n                        "
                     <div class="card">
                       "\n                            "
@@ -464,7 +464,7 @@ mod tests {
                     "\n                    "
                   </div>
                   "\n                    "
-                </main-comp>
+                </Main>
             "#]],
         );
     }

@@ -229,21 +229,21 @@ mod tests {
     #[test]
     fn test_simple_not_folding() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.not(t.bool(false)), |t| {
                     t.write("Should be true");
                 });
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   if (!false) {
                     write("Should be true")
                   }
                 }
 
                 -- after --
-                test() {
+                Test() {
                   if true {
                     write("Should be true")
                   }
@@ -255,21 +255,21 @@ mod tests {
     #[test]
     fn test_double_not_folding() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.not(t.not(t.bool(true))), |t| {
                     t.write("Double negation");
                 });
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   if (!(!true)) {
                     write("Double negation")
                   }
                 }
 
                 -- after --
-                test() {
+                Test() {
                   if true {
                     write("Double negation")
                   }
@@ -281,21 +281,21 @@ mod tests {
     #[test]
     fn test_triple_not_folding() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.not(t.not(t.not(t.bool(false)))), |t| {
                     t.write("Triple negation");
                 });
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   if (!(!(!false))) {
                     write("Triple negation")
                   }
                 }
 
                 -- after --
-                test() {
+                Test() {
                   if true {
                     write("Triple negation")
                   }
@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn test_equality_folding() {
-        let ep = build_ir_auto("test", vec![], |t| {
+        let ep = build_ir_auto("Test", vec![], |t| {
             t.if_stmt(t.eq(t.bool(true), t.bool(true)), |t| {
                 t.write("true == true");
             });
@@ -321,7 +321,7 @@ mod tests {
             ep,
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   if (true == true) {
                     write("true == true")
                   }
@@ -334,7 +334,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   if true {
                     write("true == true")
                   }
@@ -352,7 +352,7 @@ mod tests {
     #[test]
     fn test_complex_equality_with_negations() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(
                     t.eq(t.not(t.not(t.bool(false))), t.not(t.bool(false))),
                     |t| {
@@ -362,14 +362,14 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   if ((!(!false)) == (!false)) {
                     write("Should not appear")
                   }
                 }
 
                 -- after --
-                test() {
+                Test() {
                   if false {
                     write("Should not appear")
                   }
@@ -381,7 +381,7 @@ mod tests {
     #[test]
     fn test_variable_constant_propagation() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("x", t.not(t.not(t.bool(true))), |t| {
                     t.if_stmt(t.var("x"), |t| {
                         t.write("x is true");
@@ -393,7 +393,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let x = (!(!true)) in {
                     if x {
                       write("x is true")
@@ -405,7 +405,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   let x = true in {
                     if true {
                       write("x is true")
@@ -422,7 +422,7 @@ mod tests {
     #[test]
     fn test_variable_in_equality() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("x", t.bool(true), |t| {
                     t.let_stmt("y", t.not(t.bool(true)), |t| {
                         t.if_stmt(t.eq(t.var("x"), t.var("y")), |t| {
@@ -436,7 +436,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let x = true in {
                     let y = (!true) in {
                       if (x == y) {
@@ -450,7 +450,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   let x = true in {
                     let y = false in {
                       if false {
@@ -469,21 +469,21 @@ mod tests {
     #[test]
     fn test_string_constant_propagation() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("message", t.str("Hello, World!"), |t| {
                     t.write_expr_escaped(t.var("message"));
                 });
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let message = "Hello, World!" in {
                     write_escaped(message)
                   }
                 }
 
                 -- after --
-                test() {
+                Test() {
                   let message = "Hello, World!" in {
                     write_escaped("Hello, World!")
                   }
@@ -495,7 +495,7 @@ mod tests {
     #[test]
     fn test_nested_string_variable_propagation() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("greeting", t.str("Hello"), |t| {
                     t.let_stmt("name", t.str("World"), |t| {
                         t.write_expr_escaped(t.var("greeting"));
@@ -505,7 +505,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let greeting = "Hello" in {
                     let name = "World" in {
                       write_escaped(greeting)
@@ -515,7 +515,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   let greeting = "Hello" in {
                     let name = "World" in {
                       write_escaped("Hello")
@@ -530,7 +530,7 @@ mod tests {
     #[test]
     fn test_string_variable_multiple_uses() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("title", t.str("Welcome"), |t| {
                     t.write_expr_escaped(t.var("title"));
                     t.write_expr_escaped(t.var("title"));
@@ -541,7 +541,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let title = "Welcome" in {
                     write_escaped(title)
                     write_escaped(title)
@@ -552,7 +552,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   let title = "Welcome" in {
                     write_escaped("Welcome")
                     write_escaped("Welcome")
@@ -568,7 +568,7 @@ mod tests {
     #[test]
     fn test_string_equality_folding() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.eq(t.str("hello"), t.str("hello")), |t| {
                     t.write("Strings are equal");
                 });
@@ -585,7 +585,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   if ("hello" == "hello") {
                     write("Strings are equal")
                   }
@@ -602,7 +602,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   if true {
                     write("Strings are equal")
                   }
@@ -624,19 +624,19 @@ mod tests {
     #[test]
     fn test_nested_string_concat_folding() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.write_expr_escaped(
                     t.string_concat(t.string_concat(t.str("Hello"), t.str(" ")), t.str("World")),
                 );
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   write_escaped((("Hello" + " ") + "World"))
                 }
 
                 -- after --
-                test() {
+                Test() {
                   write_escaped("Hello World")
                 }
             "#]],
@@ -646,7 +646,7 @@ mod tests {
     #[test]
     fn test_string_concat_in_equality() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(
                     t.eq(t.string_concat(t.str("foo"), t.str("bar")), t.str("foobar")),
                     |t| {
@@ -665,7 +665,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   if (("foo" + "bar") == "foobar") {
                     write("Concatenation matches")
                   }
@@ -675,7 +675,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   if true {
                     write("Concatenation matches")
                   }
@@ -690,7 +690,7 @@ mod tests {
     #[test]
     fn test_string_concat_with_mixed_propagation() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("prefix", t.str("Hello"), |t| {
                     t.let_stmt("suffix", t.string_concat(t.str(" "), t.str("World")), |t| {
                         t.let_stmt(
@@ -705,7 +705,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let prefix = "Hello" in {
                     let suffix = (" " + "World") in {
                       let full = (prefix + suffix) in {
@@ -716,7 +716,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   let prefix = "Hello" in {
                     let suffix = " World" in {
                       let full = "Hello World" in {

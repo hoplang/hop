@@ -12,11 +12,16 @@ pub use python::PythonTranspiler;
 
 use crate::dop::property_name::PropertyName;
 use crate::dop::r#type::{ComparableType, EquatableType, NumericType, Type};
+use crate::hop::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use std::collections::BTreeMap;
 
 pub trait Transpiler {
-    fn transpile_entrypoint<'a>(&self, name: &'a str, entrypoint: &'a IrEntrypoint) -> BoxDoc<'a>;
+    fn transpile_entrypoint<'a>(
+        &self,
+        name: &'a ComponentName,
+        entrypoint: &'a IrEntrypoint,
+    ) -> BoxDoc<'a>;
     fn transpile_module(&self, entrypoints: &[IrEntrypoint]) -> String;
 }
 

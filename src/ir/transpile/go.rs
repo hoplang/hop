@@ -4,6 +4,7 @@ use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspile
 use crate::cased_string::CasedString;
 use crate::dop::property_name::PropertyName;
 use crate::dop::r#type::Type;
+use crate::hop::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -233,10 +234,7 @@ impl Transpiler for GoTranspiler {
 
         for entrypoint in entrypoints {
             if !entrypoint.parameters.is_empty() {
-                let struct_name = format!(
-                    "{}Params",
-                    CasedString::from_kebab_case(&entrypoint.name).to_pascal_case()
-                );
+                let struct_name = format!("{}Params", entrypoint.name.to_pascal_case());
 
                 let mut nested_types = Vec::new();
 
@@ -323,9 +321,12 @@ impl Transpiler for GoTranspiler {
         }
     }
 
-    fn transpile_entrypoint<'a>(&self, name: &'a str, entrypoint: &'a IrEntrypoint) -> BoxDoc<'a> {
-        // Convert kebab-case to PascalCase for Go function name
-        let func_name = CasedString::from_kebab_case(name).to_pascal_case();
+    fn transpile_entrypoint<'a>(
+        &self,
+        name: &'a ComponentName,
+        entrypoint: &'a IrEntrypoint,
+    ) -> BoxDoc<'a> {
+        let func_name = name.to_pascal_case();
 
         let mut result = BoxDoc::text("func ").append(BoxDoc::as_string(func_name.clone()));
 
@@ -866,7 +867,7 @@ mod tests {
 
     #[test]
     fn test_simple_component() {
-        let entrypoints = vec![build_ir_auto("test-main-comp", vec![], |t| {
+        let entrypoints = vec![build_ir_auto("TestMainComp", vec![], |t| {
             t.write("<div>Hello World</div>\n");
         })];
 
@@ -874,7 +875,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-main-comp() {
+                TestMainComp() {
                   write("<div>Hello World</div>\n")
                 }
 
@@ -897,7 +898,7 @@ mod tests {
     #[test]
     fn test_component_with_parameters() {
         let entrypoints = vec![build_ir_auto(
-            "test-greeting-comp",
+            "TestGreetingComp",
             vec![("name", Type::String), ("message", Type::String)],
             |t| {
                 t.write("<h1>Hello ");
@@ -912,7 +913,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-greeting-comp(name: String, message: String) {
+                TestGreetingComp(name: String, message: String) {
                   write("<h1>Hello ")
                   write_escaped(name)
                   write(", ")
@@ -950,7 +951,7 @@ mod tests {
 
     #[test]
     fn test_json_encode_empty_array_literal() {
-        let entrypoints = vec![build_ir_auto("test-main-comp", vec![], |t| {
+        let entrypoints = vec![build_ir_auto("TestMainComp", vec![], |t| {
             t.write_expr(t.json_encode(t.array(vec![])), false);
         })];
 
@@ -959,7 +960,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-main-comp() {
+                TestMainComp() {
                   write_expr(JsonEncode([]))
                 }
 
@@ -988,7 +989,7 @@ mod tests {
     #[test]
     fn test_if_condition() {
         let entrypoints = vec![build_ir_auto(
-            "test-main-comp",
+            "TestMainComp",
             vec![("show", Type::Bool)],
             |t| {
                 t.if_stmt(t.var("show"), |t| {
@@ -1001,7 +1002,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-main-comp(show: Bool) {
+                TestMainComp(show: Bool) {
                   if show {
                     write("<div>Visible</div>\n")
                   }
@@ -1033,7 +1034,7 @@ mod tests {
     #[test]
     fn test_for_loop() {
         let entrypoints = vec![build_ir_auto(
-            "test-main-comp",
+            "TestMainComp",
             vec![("items", Type::Array(Some(Box::new(Type::String))))],
             |t| {
                 t.for_loop("item", t.var("items"), |t| {
@@ -1048,7 +1049,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-main-comp(items: Array[String]) {
+                TestMainComp(items: Array[String]) {
                   for item in items {
                     write("<li>")
                     write_escaped(item)
@@ -1084,7 +1085,7 @@ mod tests {
 
     #[test]
     fn test_object_literals() {
-        let entrypoints = vec![build_ir_auto("test-objects", vec![], |t| {
+        let entrypoints = vec![build_ir_auto("TestObjects", vec![], |t| {
             t.let_stmt(
                 "person",
                 t.object(vec![
@@ -1105,7 +1106,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-objects() {
+                TestObjects() {
                   let person = {
                     name: "Alice",
                     age: "30.0",
@@ -1159,7 +1160,7 @@ mod tests {
             })))),
         )];
 
-        let entrypoints = vec![build_ir_auto("test-nested", parameters, |t| {
+        let entrypoints = vec![build_ir_auto("TestNested", parameters, |t| {
             t.for_loop("user", t.var("users"), |t| {
                 t.write("<div>");
                 t.write_expr_escaped(t.prop_access(t.var("user"), "name"));
@@ -1173,9 +1174,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-nested(
-                  users: Array[Record[id: String, name: String]],
-                ) {
+                TestNested(users: Array[Record[id: String, name: String]]) {
                   for user in users {
                     write("<div>")
                     write_escaped(user.name)
@@ -1220,7 +1219,7 @@ mod tests {
 
     #[test]
     fn test_loop_over_array_literal() {
-        let entrypoints = vec![build_ir_auto("test-array-literal-loop", vec![], |t| {
+        let entrypoints = vec![build_ir_auto("TestArrayLiteralLoop", vec![], |t| {
             t.write("<ul>\n");
             t.for_loop(
                 "color",
@@ -1238,7 +1237,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-array-literal-loop() {
+                TestArrayLiteralLoop() {
                   write("<ul>\n")
                   for color in ["red", "green", "blue"] {
                     write("<li>")
@@ -1273,7 +1272,7 @@ mod tests {
 
     #[test]
     fn test_loop_over_object_array_literal() {
-        let entrypoints = vec![build_ir_auto("test-products", vec![], |t| {
+        let entrypoints = vec![build_ir_auto("TestProducts", vec![], |t| {
             t.for_loop(
                 "product",
                 t.array(vec![
@@ -1311,7 +1310,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-products() {
+                TestProducts() {
                   for product in [
                     {name: "Laptop", price: "999.99", in_stock: true},
                     {name: "Mouse", price: "29.99", in_stock: false},
@@ -1432,7 +1431,7 @@ mod tests {
             }),
         )];
 
-        let entrypoints = vec![build_ir_auto("test-deep-config", parameters, |t| {
+        let entrypoints = vec![build_ir_auto("TestDeepConfig", parameters, |t| {
             t.write("<div>API Key: ");
             t.write_expr_escaped(t.prop_access(t.var("config"), "api_key"));
             t.write("</div>\n");
@@ -1445,7 +1444,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-deep-config(
+                TestDeepConfig(
                   config: Record[
                     api_key: String,
                     database: Record[
@@ -1529,7 +1528,7 @@ mod tests {
     #[test]
     fn test_string_comparison() {
         let entrypoints = vec![build_ir_auto(
-            "test-auth-check",
+            "TestAuthCheck",
             vec![("user_role", Type::String), ("expected_role", Type::String)],
             |t| {
                 t.if_stmt(t.eq(t.var("user_role"), t.var("expected_role")), |t| {
@@ -1545,7 +1544,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-auth-check(user_role: String, expected_role: String) {
+                TestAuthCheck(user_role: String, expected_role: String) {
                   if (user_role == expected_role) {
                     write("<div>Access granted</div>\n")
                   }
@@ -1598,7 +1597,7 @@ mod tests {
             ("items", Type::Array(Some(Box::new(Type::String)))),
         ];
 
-        let entrypoints = vec![build_ir_auto("test-json", parameters, |t| {
+        let entrypoints = vec![build_ir_auto("TestJson", parameters, |t| {
             t.write("<script>\n");
             t.write("const data = ");
             t.write_expr(t.json_encode(t.var("data")), false);
@@ -1619,7 +1618,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-json(
+                TestJson(
                   data: Record[active: Bool, count: Float, title: String],
                   items: Array[String],
                 ) {
@@ -1690,7 +1689,7 @@ mod tests {
     #[test]
     fn test_trusted_html_type() {
         let entrypoints = vec![build_ir_auto(
-            "render-html",
+            "RenderHtml",
             vec![
                 ("safe_content", Type::TrustedHTML),
                 ("user_input", Type::String),
@@ -1708,7 +1707,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                render-html(safe_content: TrustedHTML, user_input: String) {
+                RenderHtml(safe_content: TrustedHTML, user_input: String) {
                   write("<div>")
                   write_expr(safe_content)
                   write("</div><div>")
@@ -1748,7 +1747,7 @@ mod tests {
 
     #[test]
     fn test_env_lookup() {
-        let entrypoints = vec![build_ir_auto("test-env", vec![], |t| {
+        let entrypoints = vec![build_ir_auto("TestEnv", vec![], |t| {
             t.write("<div>API URL: ");
             t.write_expr(t.env_lookup(t.str("API_URL")), false);
             t.write("</div>\n");
@@ -1758,7 +1757,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-env() {
+                TestEnv() {
                   write("<div>API URL: ")
                   write_expr(EnvLookup("API_URL"))
                   write("</div>\n")

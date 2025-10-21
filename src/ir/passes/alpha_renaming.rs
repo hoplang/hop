@@ -433,17 +433,17 @@ mod tests {
     #[test]
     fn test_simple_no_renaming() {
         check(
-            build_ir_auto("test", vec![("x", Type::String)], |t| {
+            build_ir_auto("Test", vec![("x", Type::String)], |t| {
                 t.write_expr_escaped(t.var("x"));
             }),
             expect![[r#"
                 -- before --
-                test(x: String) {
+                Test(x: String) {
                   write_escaped(x)
                 }
 
                 -- after --
-                test(x: String) {
+                Test(x: String) {
                   write_escaped(x)
                 }
             "#]],
@@ -453,21 +453,21 @@ mod tests {
     #[test]
     fn test_shadowing_in_for_loop() {
         check(
-            build_ir_auto("test", vec![("x", Type::String)], |t| {
+            build_ir_auto("Test", vec![("x", Type::String)], |t| {
                 t.for_loop("x", t.array(vec![t.str("a")]), |t| {
                     t.write_expr_escaped(t.var("x"));
                 });
             }),
             expect![[r#"
                 -- before --
-                test(x: String) {
+                Test(x: String) {
                   for x in ["a"] {
                     write_escaped(x)
                   }
                 }
 
                 -- after --
-                test(x: String) {
+                Test(x: String) {
                   for x_1 in ["a"] {
                     write_escaped(x_1)
                   }
@@ -479,7 +479,7 @@ mod tests {
     #[test]
     fn test_sibling_scopes() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.for_loop("x", t.array(vec![t.str("a")]), |t| {
                     t.write_expr_escaped(t.var("x"));
                 });
@@ -489,7 +489,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   for x in ["a"] {
                     write_escaped(x)
                   }
@@ -499,7 +499,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   for x in ["a"] {
                     write_escaped(x)
                   }
@@ -514,7 +514,7 @@ mod tests {
     #[test]
     fn test_nested_let_bindings() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("x", t.str("hello"), |t| {
                     t.write_expr_escaped(t.var("x"));
                     t.let_stmt("x", t.str("world"), |t| {
@@ -524,7 +524,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let x = "hello" in {
                     write_escaped(x)
                     let x = "world" in {
@@ -534,7 +534,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   let x = "hello" in {
                     write_escaped(x)
                     let x_1 = "world" in {
@@ -550,7 +550,7 @@ mod tests {
     fn test_multiple_parameters() {
         check(
             build_ir_auto(
-                "test",
+                "Test",
                 vec![("x", Type::String), ("y", Type::String)],
                 |t| {
                     t.write_expr_escaped(t.var("x"));
@@ -562,7 +562,7 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                test(x: String, y: String) {
+                Test(x: String, y: String) {
                   write_escaped(x)
                   for y in ["a"] {
                     write_escaped(x)
@@ -571,7 +571,7 @@ mod tests {
                 }
 
                 -- after --
-                test(x: String, y: String) {
+                Test(x: String, y: String) {
                   write_escaped(x)
                   for y_1 in ["a"] {
                     write_escaped(x)
@@ -585,7 +585,7 @@ mod tests {
     #[test]
     fn test_sibling_let_bindings() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("x", t.str("first"), |t| {
                     t.write_expr_escaped(t.var("x"));
                 });
@@ -595,7 +595,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let x = "first" in {
                     write_escaped(x)
                   }
@@ -605,7 +605,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   let x = "first" in {
                     write_escaped(x)
                   }
@@ -621,7 +621,7 @@ mod tests {
     fn test_complex_nesting() {
         check(
             build_ir_auto(
-                "test",
+                "Test",
                 vec![("items", Type::Array(Some(Box::new(Type::String))))],
                 |t| {
                     t.for_loop("item", t.var("items"), |t| {
@@ -639,7 +639,7 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                test(items: Array[String]) {
+                Test(items: Array[String]) {
                   for item in items {
                     write("<div>")
                     for item in ["nested"] {
@@ -654,7 +654,7 @@ mod tests {
                 }
 
                 -- after --
-                test(items: Array[String]) {
+                Test(items: Array[String]) {
                   for item in items {
                     write("<div>")
                     for item_1 in ["nested"] {

@@ -41,7 +41,7 @@ pub enum ParseError {
     },
 
     #[error(
-        "Invalid component name '{tag_name}'. Component names must contain a dash and not start or end with one"
+        "Invalid component name '{tag_name}'. Component names must start with an uppercase letter (PascalCase) and contain only alphanumeric characters"
     )]
     InvalidComponentName {
         tag_name: StringSpan,

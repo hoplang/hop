@@ -8,6 +8,7 @@ use crate::hop::tokenizer::{Token, Tokenizer};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::ast::{self, UntypedAst, UntypedComponentDefinition};
+use super::component_name::ComponentName;
 use super::module_name::ModuleName;
 use super::node::{Node, UntypedNode};
 use super::tokenizer;
@@ -278,10 +279,10 @@ fn parse_top_level_node(
                     }))
                 }
 
-                // <component-definition ...>
+                // <ComponentDefinition ...>
                 name => {
                     // Validate component name
-                    if !is_valid_component_name(name) {
+                    if !ComponentName::is_valid(name) {
                         errors.push(ParseError::InvalidComponentName {
                             tag_name: tag_name.to_string_span(),
                             range: tag_name.clone(),
@@ -329,7 +330,13 @@ fn parse_top_level_node(
                         .map(|attr| (attr.name.to_string_span(), attr))
                         .collect();
 
+                    // Create ComponentName from the tag name
+                    // We've already validated above, so this should always succeed
+                    let component_name = ComponentName::new(tag_name.to_string())
+                        .expect("Component name should be valid");
+
                     Some(TopLevelNode::ComponentDefinition(ComponentDefinition {
+                        name: component_name,
                         tag_name: tag_name.clone(),
                         closing_tag_name: tree.closing_tag_name,
                         params,
@@ -344,16 +351,6 @@ fn parse_top_level_node(
             }
         }
     }
-}
-
-fn is_valid_component_name(name: &str) -> bool {
-    if name.is_empty() || name.starts_with('-') || name.ends_with('-') {
-        return false;
-    }
-    if name.starts_with("hop-") {
-        return false;
-    }
-    name.contains('-')
 }
 
 fn construct_node(
@@ -508,9 +505,9 @@ fn construct_node(
                     })
                 }
 
-                // <component-reference>
-                name if name.contains('-') => {
-                    if !is_valid_component_name(tag_name.as_str()) {
+                // <ComponentReference> - PascalCase indicates a component
+                name if ComponentName::is_component_tag(name) => {
+                    if !ComponentName::is_valid(tag_name.as_str()) {
                         errors.push(ParseError::InvalidComponentName {
                             tag_name: tag_name.to_string_span(),
                             range: tag_name.clone(),
@@ -586,7 +583,7 @@ mod tests {
             Node::If { .. } => "if",
             Node::For { .. } => "for",
             Node::Html { tag_name, .. } => tag_name.as_str(),
-            Node::SlotDefinition { .. } => "slot-definition",
+            Node::SlotDefinition { .. } => "SlotDefinition",
             Node::Text { .. } => "text",
             Node::TextExpression { .. } => "text_expression",
             Node::Placeholder { .. } => "error",
@@ -632,7 +629,7 @@ mod tests {
                 .annotate(None, errors.to_vec())
         } else {
             for component in module.get_component_definitions() {
-                if component.tag_name.as_str() == "main-comp" {
+                if component.tag_name.as_str() == "Main" {
                     return expected.assert_eq(&format_component_definition(component));
                 }
             }
@@ -655,12 +652,12 @@ mod tests {
     fn test_parser_unclosed_tag() {
         check(
             indoc! {"
-                <main-comp>
+                <Main>
                     <div>
                     <p>
-                </main-comp>
+                </Main>
 
-                <foo-comp>
+                <Foo>
             "},
             // TODO: It would make more sense if these were reported in the opposite
             // order.
@@ -671,14 +668,14 @@ mod tests {
                   |      ^
 
                 error: Unclosed <div>
-                1 | <main-comp>
+                1 | <Main>
                 2 |     <div>
                   |      ^^^
 
-                error: Unclosed <foo-comp>
+                error: Unclosed <Foo>
                 5 | 
-                6 | <foo-comp>
-                  |  ^^^^^^^^
+                6 | <Foo>
+                  |  ^^^
             "#]],
         );
     }
@@ -688,15 +685,15 @@ mod tests {
     fn test_parser_void_tag_closed() {
         check(
             indoc! {"
-                <main-comp>
+                <Main>
                     <hr></hr>
                     <br></br>
                     <input></input>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 error: <hr> should not be closed using a closing tag
-                1 | <main-comp>
+                1 | <Main>
                 2 |     <hr></hr>
                   |         ^^^^^
 
@@ -734,12 +731,12 @@ mod tests {
         check(
             indoc! {r#"
                 <import component="foo" from="@/bar">
-                <main-comp>
+                <Main>
                     <hr/>
                     <br/>
                     <input/>
-                </main-comp>
-                <foo-comp/>
+                </Main>
+                <Foo/>
             "#},
             expect![[r#"
                 hr                                                2:4-2:9
@@ -749,57 +746,20 @@ mod tests {
         );
     }
 
-    // When a component reference has an invalid tag name, the parser outputs an error.
-    #[test]
-    fn test_parser_invalid_tag_name_in_component_reference() {
-        check(
-            indoc! {"
-                <main-comp>
-                    <foo-></foo->
-                    <foo-bar-></foo-bar->
-                    <X-BAR-></X-BAR->
-                </main-comp>
-
-                <foo-></foo->
-            "},
-            expect![[r#"
-                error: Invalid component name 'foo-'. Component names must contain a dash and not start or end with one
-                1 | <main-comp>
-                2 |     <foo-></foo->
-                  |      ^^^^
-
-                error: Invalid component name 'foo-bar-'. Component names must contain a dash and not start or end with one
-                2 |     <foo-></foo->
-                3 |     <foo-bar-></foo-bar->
-                  |      ^^^^^^^^
-
-                error: Invalid component name 'X-BAR-'. Component names must contain a dash and not start or end with one
-                3 |     <foo-bar-></foo-bar->
-                4 |     <X-BAR-></X-BAR->
-                  |      ^^^^^^
-
-                error: Invalid component name 'foo-'. Component names must contain a dash and not start or end with one
-                6 | 
-                7 | <foo-></foo->
-                  |  ^^^^
-            "#]],
-        );
-    }
-
     // When a closing tag does not have a matching opening tag, the parser outputs an error.
     #[test]
     fn test_parser_unmatched_closing_tag() {
         check(
             indoc! {"
-                <main-comp>
+                <Main>
                     </div>
                     </p>
-                </main-comp>
-                </main-comp>
+                </Main>
+                </Main>
             "},
             expect![[r#"
                 error: Unmatched </div>
-                1 | <main-comp>
+                1 | <Main>
                 2 |     </div>
                   |     ^^^^^^
 
@@ -808,10 +768,10 @@ mod tests {
                 3 |     </p>
                   |     ^^^^
 
-                error: Unmatched </main-comp>
-                4 | </main-comp>
-                5 | </main-comp>
-                  | ^^^^^^^^^^^^
+                error: Unmatched </Main>
+                4 | </Main>
+                5 | </Main>
+                  | ^^^^^^^
             "#]],
         );
     }
@@ -821,19 +781,30 @@ mod tests {
     fn test_parser_invalid_component_name() {
         check(
             indoc! {"
-                <div>
-                </div>
-                <p></p>
+                <foo-bar>
+                </foo-bar>
+                <Component_With_Underscore></Component_With_Underscore>
+                <Component-With-Dash></Component-With-Dash>
             "},
             expect![[r#"
-                error: Invalid component name 'div'. Component names must contain a dash and not start or end with one
-                1 | <div>
-                  |  ^^^
+                error: Unterminated opening tag
+                2 | </foo-bar>
+                3 | <Component_With_Underscore></Component_With_Underscore>
+                  |  ^^^^^^^^^
 
-                error: Invalid component name 'p'. Component names must contain a dash and not start or end with one
-                2 | </div>
-                3 | <p></p>
-                  |  ^
+                error: Unterminated closing tag
+                2 | </foo-bar>
+                3 | <Component_With_Underscore></Component_With_Underscore>
+                  |                              ^^^^^^^^^
+
+                error: Invalid component name 'foo-bar'. Component names must start with an uppercase letter (PascalCase) and contain only alphanumeric characters
+                1 | <foo-bar>
+                  |  ^^^^^^^
+
+                error: Invalid component name 'Component-With-Dash'. Component names must start with an uppercase letter (PascalCase) and contain only alphanumeric characters
+                3 | <Component_With_Underscore></Component_With_Underscore>
+                4 | <Component-With-Dash></Component-With-Dash>
+                  |  ^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -843,13 +814,13 @@ mod tests {
     fn test_parser_unrecognized_hop_tag() {
         check(
             indoc! {"
-                <main-comp>
+                <Main>
                     <hop-whatever>Content</hop-whatever>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 error: Unrecognized hop tag: <hop-whatever>
-                1 | <main-comp>
+                1 | <Main>
                 2 |     <hop-whatever>Content</hop-whatever>
                   |      ^^^^^^^^^^^^
             "#]],
@@ -861,15 +832,15 @@ mod tests {
     fn test_parser_if_no_expression_error() {
         check(
             indoc! {"
-                <main-comp>
+                <Main>
                     <if>
                         <div>Content</div>
                     </if>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 error: Missing expression in <if> tag
-                1 | <main-comp>
+                1 | <Main>
                 2 |     <if>
                   |     ^^^^
             "#]],
@@ -880,14 +851,14 @@ mod tests {
     fn test_parser_uppercase_variable_name() {
         check(
             indoc! {"
-                <main-comp {Data: String}>
+                <Main {Data: String}>
                     <div></div>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 error: Invalid variable name 'Data': Variable name must be lowercase (found uppercase: 'D')
-                1 | <main-comp {Data: String}>
-                  |             ^^^^
+                1 | <Main {Data: String}>
+                  |        ^^^^
             "#]],
         );
     }
@@ -897,15 +868,15 @@ mod tests {
     fn test_parser_for_no_expression_error() {
         check(
             indoc! {"
-                <main-comp>
+                <Main>
                     <for>
                         <div>Content</div>
                     </for>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 error: Missing loop generator expression in <for> tag
-                1 | <main-comp>
+                1 | <Main>
                 2 |     <for>
                   |     ^^^^^
             "#]],
@@ -917,15 +888,15 @@ mod tests {
     fn test_parser_for_invalid_expression_error() {
         check(
             indoc! {"
-                <main-comp>
+                <Main>
                     <for {foo}>
                         <div>Content</div>
                     </for>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 error: Unexpected end of expression
-                1 | <main-comp>
+                1 | <Main>
                 2 |     <for {foo}>
                   |           ^^^
             "#]],
@@ -937,15 +908,15 @@ mod tests {
     fn test_parser_dop_tokenization_error() {
         check(
             indoc! {"
-                <main-comp>
+                <Main>
                     <if {~}>
                         <div>Content</div>
                     </if>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 error: Unexpected character: '~'
-                1 | <main-comp>
+                1 | <Main>
                 2 |     <if {~}>
                   |          ^
             "#]],
@@ -957,14 +928,14 @@ mod tests {
     fn test_parser_param_invalid_type_error() {
         check(
             indoc! {"
-                <main-comp {data: invalid}>
+                <Main {data: invalid}>
                     <div>{data}</div>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 error: Expected type name but got invalid
-                1 | <main-comp {data: invalid}>
-                  |                   ^^^^^^^
+                1 | <Main {data: invalid}>
+                  |              ^^^^^^^
             "#]],
         );
     }
@@ -974,15 +945,15 @@ mod tests {
     fn test_parser_param_malformed_type_error() {
         check(
             indoc! {"
-                <main-comp {data: Array[}>
+                <Main {data: Array[}>
                     <div>{data}</div>
-                </main-comp>
+                </Main>
             "},
             // TODO: Improve error message
             expect![[r#"
                 error: Unexpected end of expression
-                1 | <main-comp {data: Array[}>
-                  |             ^^^^^^^^^^^^
+                1 | <Main {data: Array[}>
+                  |        ^^^^^^^^^^^^
             "#]],
         );
     }
@@ -993,10 +964,10 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp>
+                <Main>
                     <slot-default/>
                     <slot-default/>
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 error: slot-default is already defined
@@ -1011,7 +982,7 @@ mod tests {
     fn test_parser_nested_loops_complex_types() {
         check(
             indoc! {"
-                <main-comp {sections: Array[{title: String, items: Array[String]}]}>
+                <Main {sections: Array[{title: String, items: Array[String]}]}>
                     <div>
                         <for {section in sections}>
                             <div>
@@ -1022,7 +993,7 @@ mod tests {
                             </div>
                         </for>
                     </div>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 div                                               1:4-10:10
@@ -1041,14 +1012,14 @@ mod tests {
     fn test_parser_doctype_html_structure() {
         check(
             indoc! {"
-                <main-comp {foo: String}>
+                <Main {foo: String}>
                     <!DOCTYPE html>
                     <html>
                         <body>
                             <div>hello world</div>
                         </body>
                     </html>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 doctype                                           1:4-1:19
@@ -1063,7 +1034,7 @@ mod tests {
     fn test_parser_entrypoint_with_script_style() {
         check(
             indoc! {r#"
-                <main-comp entrypoint>
+                <Main entrypoint>
                     <script>
                         // note that the <div> inside here is note
                         // parsed as html
@@ -1072,7 +1043,7 @@ mod tests {
                     <style>
                         body { color: red; }
                     </style>
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 script                                            1:4-5:13
@@ -1085,10 +1056,10 @@ mod tests {
     fn test_parser_entrypoint_with_data_param() {
         check(
             indoc! {"
-                <main-comp entrypoint {data: {message: String}}>
+                <Main entrypoint {data: {message: String}}>
                     <h1>Hello World</h1>
                     <p>{data.message}</p>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 h1                                                1:4-1:24
@@ -1102,7 +1073,7 @@ mod tests {
     fn test_parser_if_conditions_various() {
         check(
             indoc! {r#"
-                <main-comp>
+                <Main>
                     <if {user.name == other_user.name}>
                         <div>Same name</div>
                     </if>
@@ -1112,7 +1083,7 @@ mod tests {
                     <if {a == b == c}>
                         <div>Chained equality</div>
                     </if>
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 if                                                1:4-3:9
@@ -1129,11 +1100,11 @@ mod tests {
     fn test_parser_simple_if_condition() {
         check(
             indoc! {"
-                <main-comp>
+                <Main>
                     <if {x == y}>
                         <div>Equal</div>
                     </if>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 if                                                1:4-3:9
@@ -1146,7 +1117,7 @@ mod tests {
     fn test_parser_complex_nested_loops() {
         check(
             indoc! {"
-                <main-comp {i: Array[{s: {t: Array[String]}}]}>
+                <Main {i: Array[{s: {t: Array[String]}}]}>
                     <for {j in i}>
                         <for {k in j.s.t}>
                             <if {k}>
@@ -1159,7 +1130,7 @@ mod tests {
                             </for>
                         </for>
                     </for>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 for                                               1:4-6:10
@@ -1176,12 +1147,12 @@ mod tests {
     fn test_parser_if_with_for_nested() {
         check(
             indoc! {"
-                <main-comp {data: Array[String]}>
+                <Main {data: Array[String]}>
 	                <if {data}>
 		                <for {d in data}>
 		                </for>
 	                </if>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 if                                                1:1-4:6
@@ -1194,11 +1165,11 @@ mod tests {
     fn test_parser_simple_for_loop() {
         check(
             indoc! {"
-                <main-comp {foo: Array[String]}>
+                <Main {foo: Array[String]}>
                     <for {bar in foo}>
                         <div></div>
                     </for>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 for                                               1:4-3:10
@@ -1211,14 +1182,14 @@ mod tests {
     fn test_parser_component_references() {
         check(
             indoc! {"
-                <main-comp {p: String}>
-                    <foo-comp></foo-comp>
-                    <foo-comp></foo-comp>
-                </main-comp>
+                <Main {p: String}>
+                    <Foo></Foo>
+                    <Foo></Foo>
+                </Main>
             "},
             expect![[r#"
-                component_reference                               1:4-1:25
-                component_reference                               2:4-2:25
+                component_reference                               1:4-1:15
+                component_reference                               2:4-2:15
             "#]],
         );
     }
@@ -1227,14 +1198,14 @@ mod tests {
     fn test_parser_component_with_params() {
         check(
             indoc! {"
-                <main-comp {data: {user: String}}>
-                    <foo-comp {a: data}/>
-                    <bar-comp {b: data.user}/>
-                </main-comp>
+                <Main {data: {user: String}}>
+                    <Foo {a: data}/>
+                    <Bar {b: data.user}/>
+                </Main>
             "},
             expect![[r#"
-                component_reference                               1:4-1:25
-                component_reference                               2:4-2:30
+                component_reference                               1:4-1:20
+                component_reference                               2:4-2:25
             "#]],
         );
     }
@@ -1243,11 +1214,11 @@ mod tests {
     fn test_parser_for_loop_with_text_expression() {
         check(
             indoc! {"
-                <main-comp {foo: Array[String]}>
+                <Main {foo: Array[String]}>
                     <for {v in foo}>
                         <div>{v}</div>
                     </for>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 for                                               1:4-3:10
@@ -1261,11 +1232,11 @@ mod tests {
     fn test_parser_script_tag_with_html_content() {
         check(
             indoc! {r#"
-                <main-comp {foo: String}>
+                <Main {foo: String}>
                     <script>
                         const x = "<div></div>";
                     </script>
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 script                                            1:4-3:13
@@ -1277,9 +1248,9 @@ mod tests {
     fn test_parser_expression_attributes() {
         check(
             indoc! {r#"
-                <main-comp {user: {url: String, theme: String}}>
+                <Main {user: {url: String, theme: String}}>
                     <a href={user.url} class={user.theme}>Link</a>
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 a                                                 1:4-1:50
@@ -1291,14 +1262,14 @@ mod tests {
     fn test_parser_slots_default() {
         check(
             indoc! {r#"
-                <main-comp>
+                <Main>
                     <slot-default/>
-                    <button-comp>Custom Button</button-comp>
-                </main-comp>
+                    <ButtonComp>Custom Button</ButtonComp>
+                </Main>
             "#},
             expect![[r#"
-                slot-definition                                   1:4-1:19
-                component_reference                               2:4-2:44
+                SlotDefinition                                    1:4-1:19
+                component_reference                               2:4-2:42
             "#]],
         );
     }
@@ -1308,18 +1279,18 @@ mod tests {
     fn test_parser_component_imported_twice() {
         check(
             indoc! {r#"
-                <import component="foo-comp" from="@/other">
-                <import component="foo-comp" from="@/other">
+                <import component="Foo" from="@/other">
+                <import component="Foo" from="@/other">
 
-                <main-comp>
-                	<foo-comp></foo-comp>
-                </main-comp>
+                <Main>
+                	<Foo></Foo>
+                </Main>
             "#},
             expect![[r#"
-                error: Component foo-comp is already defined
-                1 | <import component="foo-comp" from="@/other">
-                2 | <import component="foo-comp" from="@/other">
-                  |                    ^^^^^^^^
+                error: Component Foo is already defined
+                1 | <import component="Foo" from="@/other">
+                2 | <import component="Foo" from="@/other">
+                  |                    ^^^
             "#]],
         );
     }
@@ -1329,25 +1300,25 @@ mod tests {
     fn test_parser_duplicate_component_definition() {
         check(
             indoc! {r#"
-                <foo-comp>
-                </foo-comp>
+                <Foo>
+                </Foo>
 
-                <foo-comp>
-                </foo-comp>
+                <Foo>
+                </Foo>
 
-                <foo-comp>
-                </foo-comp>
+                <Foo>
+                </Foo>
             "#},
             expect![[r#"
-                error: Component foo-comp is already defined
+                error: Component Foo is already defined
                 3 | 
-                4 | <foo-comp>
-                  |  ^^^^^^^^
+                4 | <Foo>
+                  |  ^^^
 
-                error: Component foo-comp is already defined
+                error: Component Foo is already defined
                 6 | 
-                7 | <foo-comp>
-                  |  ^^^^^^^^
+                7 | <Foo>
+                  |  ^^^
             "#]],
         );
     }
@@ -1358,20 +1329,20 @@ mod tests {
     fn test_component_name_conflicts_with_import() {
         check(
             indoc! {r#"
-                <import component="foo-comp" from="@/other">
+                <import component="Foo" from="@/other">
 
-                <foo-comp>
-                </foo-comp>
+                <Foo>
+                </Foo>
 
-                <bar-comp>
-                	<foo-comp/>
-                </bar-comp>
+                <Bar>
+                	<Foo/>
+                </Bar>
             "#},
             expect![[r#"
-                error: Component foo-comp is already defined
+                error: Component Foo is already defined
                 2 | 
-                3 | <foo-comp>
-                  |  ^^^^^^^^
+                3 | <Foo>
+                  |  ^^^
             "#]],
         );
     }
@@ -1380,16 +1351,16 @@ mod tests {
     fn test_import_without_at_prefix_is_rejected() {
         check(
             indoc! {r#"
-                <import component="foo-comp" from="other">
+                <import component="Foo" from="other">
 
-                <main-comp>
-                	<foo-comp/>
-                </main-comp>
+                <Main>
+                	<Foo/>
+                </Main>
             "#},
             expect![[r#"
                 error: Import paths must start with '@/' where '@' indicates the root directory
-                1 | <import component="foo-comp" from="other">
-                  |                                    ^^^^^
+                1 | <import component="Foo" from="other">
+                  |                               ^^^^^
             "#]],
         );
     }
@@ -1398,16 +1369,16 @@ mod tests {
     fn test_import_with_invalid_module_name() {
         check(
             indoc! {r#"
-                <import component="foo-comp" from="@/../foo">
+                <import component="Foo" from="@/../foo">
 
-                <main-comp>
-                	<foo-comp/>
-                </main-comp>
+                <Main>
+                	<Foo/>
+                </Main>
             "#},
             expect![[r#"
                 error: Module name cannot contain '..'
-                1 | <import component="foo-comp" from="@/../foo">
-                  |                                    ^^^^^^^^
+                1 | <import component="Foo" from="@/../foo">
+                  |                               ^^^^^^^^
             "#]],
         );
     }
@@ -1416,16 +1387,16 @@ mod tests {
     fn test_import_with_invalid_characters_in_module_name() {
         check(
             indoc! {r#"
-                <import component="bar-comp" from="@/foo/bar!baz">
+                <import component="Bar" from="@/foo/bar!baz">
 
-                <main-comp>
-                	<bar-comp/>
-                </main-comp>
+                <Main>
+                	<Bar/>
+                </Main>
             "#},
             expect![[r#"
                 error: Module name contains invalid character: '!'
-                1 | <import component="bar-comp" from="@/foo/bar!baz">
-                  |                                    ^^^^^^^^^^^^^
+                1 | <import component="Bar" from="@/foo/bar!baz">
+                  |                               ^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -1434,7 +1405,7 @@ mod tests {
     fn test_parser_svg_complex_structure() {
         check(
             indoc! {r#"
-                <main-comp>
+                <Main>
                     <div class="navbar">
                         <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" version="1.1" viewBox="0 0 128 128" class="size-12">
                             <g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
@@ -1447,7 +1418,7 @@ mod tests {
                             <li><a href="/">Home</a></li>
                         </ul>
                     </div>
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 div                                               1:4-12:10
@@ -1467,12 +1438,12 @@ mod tests {
     fn test_parser_form_with_inputs() {
         check(
             indoc! {r#"
-                <main-comp>
+                <Main>
                     <form id="form">
                         <input type="text" required>
                         <button type="submit">Send</button>
                     </form>
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 form                                              1:4-4:11
@@ -1487,11 +1458,11 @@ mod tests {
     fn test_parser_if_simple_variable() {
         check(
             indoc! {"
-                <main-comp>
+                <Main>
                     <if {is_visible}>
                         <div>This is visible</div>
                     </if>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 if                                                1:4-3:9
@@ -1505,12 +1476,12 @@ mod tests {
     fn test_parser_if_complex_expression() {
         check(
             indoc! {r#"
-                <main-comp>
+                <Main>
                     <if {user.name == "admin"}>
                         <div>Admin panel</div>
                         <button>Settings</button>
                     </if>
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 if                                                1:4-4:9
@@ -1525,11 +1496,11 @@ mod tests {
     fn test_parser_for_simple_loop() {
         check(
             indoc! {"
-                <main-comp>
+                <Main>
                     <for {item in items}>
                         <div>Item content</div>
                     </for>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 for                                               1:4-3:10
@@ -1543,12 +1514,12 @@ mod tests {
     fn test_parser_for_complex_array() {
         check(
             indoc! {"
-                <main-comp>
+                <Main>
                     <for {user in users.active}>
                         <div>User: {user.name}</div>
                         <p>Role: {user.role}</p>
                     </for>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 for                                               1:4-4:10
@@ -1565,9 +1536,9 @@ mod tests {
     fn test_parser_param_simple_type() {
         check(
             indoc! {"
-                <main-comp {data: String}>
+                <Main {data: String}>
                     <div>{data}</div>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 div                                               1:4-1:21
@@ -1581,11 +1552,11 @@ mod tests {
     fn test_parser_param_array_type() {
         check(
             indoc! {"
-                <main-comp {items: Array[String]}>
+                <Main {items: Array[String]}>
                     <for {item in items}>
                         <div>{item}</div>
                     </for>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 for                                               1:4-3:10
@@ -1600,9 +1571,9 @@ mod tests {
     fn test_parser_param_object_type() {
         check(
             indoc! {"
-                <main-comp {user: {name: String, age: Float}}>
+                <Main {user: {name: String, age: Float}}>
                     <div>{user.name} is {user.age} years old</div>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 div                                               1:4-1:50
@@ -1617,14 +1588,14 @@ mod tests {
     fn test_parser_param_nested_types() {
         check(
             indoc! {"
-                <main-comp {data: Array[{title: String, items: Array[String]}]}>
+                <Main {data: Array[{title: String, items: Array[String]}]}>
                     <for {section in data}>
                         <h1>{section.title}</h1>
                         <for {item in section.items}>
                             <div>{item}</div>
                         </for>
                     </for>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 for                                               1:4-6:10
@@ -1643,9 +1614,9 @@ mod tests {
         check(
             indoc! {r#"
                 <import>
-                <main-comp>
+                <Main>
                     <div>Content</div>
-                </main-comp>
+                </Main>
             "#},
             // TODO: Make this a single error message
             expect![[r#"
@@ -1661,19 +1632,19 @@ mod tests {
     fn test_parser_import_unrecognized_attribute() {
         check(
             indoc! {r#"
-                <import component="button-cmp" from="@/components/button" extra="value" unknown>
-                <main-comp>
+                <import component="ButtonCmp" from="@/components/button" extra="value" unknown>
+                <Main>
                     <button-cmp/>
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 error: Unrecognized attribute 'extra' on <import>
-                1 | <import component="button-cmp" from="@/components/button" extra="value" unknown>
-                  |                                                           ^^^^^^^^^^^^^
+                1 | <import component="ButtonCmp" from="@/components/button" extra="value" unknown>
+                  |                                                          ^^^^^^^^^^^^^
 
                 error: Unrecognized attribute 'unknown' on <import>
-                1 | <import component="button-cmp" from="@/components/button" extra="value" unknown>
-                  |                                                                         ^^^^^^^
+                1 | <import component="ButtonCmp" from="@/components/button" extra="value" unknown>
+                  |                                                                        ^^^^^^^
             "#]],
         );
     }

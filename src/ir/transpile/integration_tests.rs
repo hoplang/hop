@@ -334,7 +334,7 @@ mod tests {
     #[ignore]
     fn test_simple_html() {
         let test_case = TestCase::new(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.write("<h1>Hello, World!</h1>");
             }),
             "<h1>Hello, World!</h1>",
@@ -347,7 +347,7 @@ mod tests {
     #[ignore]
     fn test_with_let_binding() {
         let test_case = TestCase::new(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("name", t.str("Alice"), |t| {
                     t.write("Hello, ");
                     t.write_expr(t.var("name"), false);
@@ -364,7 +364,7 @@ mod tests {
     #[ignore]
     fn test_conditional() {
         let test_case = TestCase::new(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("show", t.bool(true), |t| {
                     t.if_stmt(t.var("show"), |t| {
                         t.write("Visible");
@@ -384,7 +384,7 @@ mod tests {
     #[ignore]
     fn test_if_else() {
         let test_case = TestCase::new(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("show", t.bool(true), |t| {
                     t.if_else_stmt(
                         t.var("show"),
@@ -418,7 +418,7 @@ mod tests {
     #[ignore]
     fn test_for_loop() {
         let test_case = TestCase::new(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.for_loop(
                     "item",
                     t.array(vec![t.str("a"), t.str("b"), t.str("c")]),
@@ -438,7 +438,7 @@ mod tests {
     #[ignore]
     fn test_html_escaping() {
         let test_case = TestCase::new(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("text", t.str("<div>Hello & world</div>"), |t| {
                     t.write_expr_escaped(t.var("text"));
                 });
@@ -453,7 +453,7 @@ mod tests {
     #[ignore]
     fn test_object_property_access() {
         let test_case = TestCase::new(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt(
                     "user",
                     t.object(vec![("name", t.str("Bob")), ("age", t.str("25"))]),
@@ -475,7 +475,7 @@ mod tests {
     #[ignore]
     fn test_let_binding() {
         let test_case = TestCase::new(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("message", t.str("Hello from let"), |t| {
                     t.write_expr(t.var("message"), false);
                 });
@@ -490,7 +490,7 @@ mod tests {
     #[ignore]
     fn test_string_concatenation() {
         let test_case = TestCase::new(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("first", t.str("Hello"), |t| {
                     t.let_stmt("second", t.str(" World"), |t| {
                         t.write_expr(t.string_concat(t.var("first"), t.var("second")), false);
@@ -507,7 +507,7 @@ mod tests {
     #[ignore]
     fn test_json_encode() {
         let test_case = TestCase::new(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.write_expr(
                     t.json_encode(t.array(vec![t.str("Hello"), t.str("World")])),
                     false,
@@ -523,7 +523,7 @@ mod tests {
     #[ignore]
     fn test_complex_nested_structure() {
         let test_case = TestCase::new(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.for_loop("item", t.array(vec![t.str("A"), t.str("B")]), |t| {
                     t.let_stmt("prefix", t.str("["), |t| {
                         t.write_expr(t.var("prefix"), false);
@@ -588,7 +588,7 @@ mod tests {
         )];
 
         let test_case =
-            TypeCheckTestCase::new(vec![build_ir_auto("test-deep-config", parameters, |t| {
+            TypeCheckTestCase::new(vec![build_ir_auto("TestDeepConfig", parameters, |t| {
                 t.write("<div>API Key: ");
                 t.write_expr_escaped(t.prop_access(t.var("config"), "api_key"));
                 t.write("</div>\n");
@@ -624,18 +624,15 @@ mod tests {
             })))),
         )];
 
-        let test_case =
-            TypeCheckTestCase::new(vec![build_ir_auto("test-users", parameters, |t| {
-                t.for_loop("user", t.var("users"), |t| {
-                    t.write("<div>");
-                    t.write_expr_escaped(t.prop_access(t.var("user"), "name"));
-                    t.write(" - ");
-                    t.write_expr_escaped(
-                        t.prop_access(t.prop_access(t.var("user"), "profile"), "bio"),
-                    );
-                    t.write("</div>\n");
-                });
-            })]);
+        let test_case = TypeCheckTestCase::new(vec![build_ir_auto("TestUsers", parameters, |t| {
+            t.for_loop("user", t.var("users"), |t| {
+                t.write("<div>");
+                t.write_expr_escaped(t.prop_access(t.var("user"), "name"));
+                t.write(" - ");
+                t.write_expr_escaped(t.prop_access(t.prop_access(t.var("user"), "profile"), "bio"));
+                t.write("</div>\n");
+            });
+        })]);
 
         run_type_check_test(test_case).expect("Type check test failed");
     }
@@ -643,7 +640,7 @@ mod tests {
     #[test]
     fn test_string_concat_equality() {
         let test_case = TestCase::new(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(
                     t.eq(t.string_concat(t.str("foo"), t.str("bar")), t.str("foobar")),
                     |t| {
@@ -661,7 +658,7 @@ mod tests {
     #[ignore]
     fn test_less_than_comparison() {
         let test_case = TestCase::new(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.less_than(t.int(3), t.int(5)), |t| {
                     t.write("3 < 5");
                 });
@@ -679,7 +676,7 @@ mod tests {
     #[ignore]
     fn test_less_than_float_comparison() {
         let test_case = TestCase::new(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.less_than(t.float(1.5), t.float(2.5)), |t| {
                     t.write("1.5 < 2.5");
                 });
@@ -697,7 +694,7 @@ mod tests {
     #[ignore]
     fn test_float_equality() {
         let test_case = TestCase::new(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.eq(t.float(1.5), t.float(1.5)), |t| {
                     t.write("1.5 == 1.5");
                 });
@@ -721,7 +718,7 @@ mod tests {
         ];
 
         let test_case =
-            TypeCheckTestCase::new(vec![build_ir_auto("test-trusted-html", parameters, |t| {
+            TypeCheckTestCase::new(vec![build_ir_auto("TestTrustedHtml", parameters, |t| {
                 // TrustedHTML should not be escaped
                 t.write_expr(t.var("safe_html"), false);
                 // Regular strings should be escaped
@@ -750,7 +747,7 @@ mod tests {
         )];
 
         let test_case = TypeCheckTestCase::new(vec![build_ir_auto(
-            "test-nested-trusted-html",
+            "TestNestedTrustedHtml",
             parameters,
             |t| {
                 t.write_expr(t.prop_access(t.var("content"), "html"), false);

@@ -259,9 +259,9 @@ mod tests {
         modules.insert(
             crate::hop::module_name::ModuleName::new("test".to_string()).unwrap(),
             r#"
-            <greeting-comp entrypoint {name: String, title: String}><h1>{title}</h1><p>Hello, {name}!</p></greeting-comp>
+            <GreetingComp entrypoint {name: String, title: String}><h1>{title}</h1><p>Hello, {name}!</p></GreetingComp>
 
-            <simple-comp entrypoint><div>Simple content</div></simple-comp>
+            <SimpleComp entrypoint><div>Simple content</div></SimpleComp>
             "#
             .to_string(),
         );
@@ -285,7 +285,7 @@ mod tests {
 
         // Test rendering with parameters
         let body_json = serde_json::json!({
-            "entrypoint": "greeting-comp",
+            "entrypoint": "GreetingComp",
             "params": {
                 "name": "Alice",
                 "title": "Welcome"
@@ -309,7 +309,7 @@ mod tests {
 
         // Test rendering without parameters
         let body_json = serde_json::json!({
-            "entrypoint": "simple-comp",
+            "entrypoint": "SimpleComp",
             "params": {}
         });
 

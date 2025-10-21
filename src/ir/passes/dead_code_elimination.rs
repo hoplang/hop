@@ -75,21 +75,21 @@ mod tests {
     #[test]
     fn test_removes_always_true_if() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.bool(true), |t| {
                     t.write("Always shown");
                 });
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   if true {
                     write("Always shown")
                   }
                 }
 
                 -- after --
-                test() {
+                Test() {
                   write("Always shown")
                 }
             "#]],
@@ -99,7 +99,7 @@ mod tests {
     #[test]
     fn test_removes_always_false_if() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.bool(false), |t| {
                     t.write("Never shown");
                 });
@@ -107,7 +107,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   if false {
                     write("Never shown")
                   }
@@ -115,7 +115,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   write("After if")
                 }
             "#]],
@@ -125,7 +125,7 @@ mod tests {
     #[test]
     fn test_preserves_dynamic_conditions() {
         check(
-            build_ir_auto("test", vec![("show", Type::Bool)], |t| {
+            build_ir_auto("Test", vec![("show", Type::Bool)], |t| {
                 t.if_stmt(t.var("show"), |t| {
                     t.write("Dynamic");
                 });
@@ -138,7 +138,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test(show: Bool) {
+                Test(show: Bool) {
                   if show {
                     write("Dynamic")
                   }
@@ -151,7 +151,7 @@ mod tests {
                 }
 
                 -- after --
-                test(show: Bool) {
+                Test(show: Bool) {
                   if show {
                     write("Dynamic")
                   }
@@ -164,7 +164,7 @@ mod tests {
     #[test]
     fn test_nested_if_elimination() {
         check(
-            build_ir_auto("test", vec![("condition", Type::Bool)], |t| {
+            build_ir_auto("Test", vec![("condition", Type::Bool)], |t| {
                 t.if_stmt(t.var("condition"), |t| {
                     t.write("Before nested");
                     t.if_stmt(t.bool(true), |t| {
@@ -188,7 +188,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test(condition: Bool) {
+                Test(condition: Bool) {
                   if condition {
                     write("Before nested")
                     if true {
@@ -212,7 +212,7 @@ mod tests {
                 }
 
                 -- after --
-                test(condition: Bool) {
+                Test(condition: Bool) {
                   if condition {
                     write("Before nested")
                     write("Nested always true")

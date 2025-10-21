@@ -2,6 +2,7 @@ use crate::dop::PropertyName;
 use crate::dop::TypedExpr;
 use crate::dop::r#type::{ComparableType, EquatableType};
 use crate::dop::{Type, VarName};
+use crate::hop::component_name::ComponentName;
 use crate::ir::ast::IrEntrypoint;
 use crate::ir::ast::{ExprId, IrExpr, IrStatement, StatementId};
 use std::cell::RefCell;
@@ -45,7 +46,8 @@ impl IrTestBuilder {
 
     fn build(&self, name: &str, body: Vec<IrStatement>) -> IrEntrypoint {
         IrEntrypoint {
-            name: name.to_string(),
+            name: ComponentName::new(name.to_string())
+                .expect("Test component name should be valid"),
             parameters: self.params.clone(),
             body,
         }

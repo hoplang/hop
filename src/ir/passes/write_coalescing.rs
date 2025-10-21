@@ -139,7 +139,7 @@ mod tests {
     #[test]
     fn test_coalesce_consecutive_writes() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.write("Hello");
                 t.write(" ");
                 t.write("World");
@@ -147,7 +147,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   write("Hello")
                   write(" ")
                   write("World")
@@ -155,7 +155,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   write("Hello World!")
                 }
             "#]],
@@ -165,7 +165,7 @@ mod tests {
     #[test]
     fn test_coalesce_with_interruption() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.write("Before");
                 t.write(" if");
                 t.if_stmt(t.bool(true), |t| {
@@ -176,7 +176,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   write("Before")
                   write(" if")
                   if true {
@@ -187,7 +187,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   write("Before if")
                   if true {
                     write("Inside if")
@@ -201,7 +201,7 @@ mod tests {
     #[test]
     fn test_coalesce_inside_if() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.bool(true), |t| {
                     t.write("Line");
                     t.write(" ");
@@ -210,7 +210,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   if true {
                     write("Line")
                     write(" ")
@@ -219,7 +219,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   if true {
                     write("Line one")
                   }
@@ -231,7 +231,7 @@ mod tests {
     #[test]
     fn test_coalesce_inside_for() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.for_loop("item", t.array(vec![t.str("x")]), |t| {
                     t.write("Item");
                     t.write(": ");
@@ -242,7 +242,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   for item in ["x"] {
                     write("Item")
                     write(": ")
@@ -253,7 +253,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   for item in ["x"] {
                     write("Item: ")
                     write_escaped(item)
@@ -267,7 +267,7 @@ mod tests {
     #[test]
     fn test_coalesce_inside_let() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("x", t.str("value"), |t| {
                     t.write("The");
                     t.write(" value");
@@ -276,7 +276,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let x = "value" in {
                     write("The")
                     write(" value")
@@ -285,7 +285,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   let x = "value" in {
                     write("The value is")
                   }
@@ -297,7 +297,7 @@ mod tests {
     #[test]
     fn test_nested_coalescing() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.write("Start");
                 t.write(": ");
                 t.if_stmt(t.bool(true), |t| {
@@ -315,7 +315,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   write("Start")
                   write(": ")
                   if true {
@@ -333,7 +333,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   write("Start: ")
                   if true {
                     write("In if")
@@ -351,7 +351,7 @@ mod tests {
     #[test]
     fn test_no_coalescing_with_write_expr() {
         check(
-            build_ir_auto("test", vec![("x", Type::String)], |t| {
+            build_ir_auto("Test", vec![("x", Type::String)], |t| {
                 t.write("Value");
                 t.write(": ");
                 t.write_expr_escaped(t.var("x"));
@@ -360,7 +360,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test(x: String) {
+                Test(x: String) {
                   write("Value")
                   write(": ")
                   write_escaped(x)
@@ -369,7 +369,7 @@ mod tests {
                 }
 
                 -- after --
-                test(x: String) {
+                Test(x: String) {
                   write("Value: ")
                   write_escaped(x)
                   write(" - done")
@@ -381,13 +381,13 @@ mod tests {
     #[test]
     fn test_empty_input() {
         check(
-            build_ir_auto("test", vec![], |_| {}),
+            build_ir_auto("Test", vec![], |_| {}),
             expect![[r#"
                 -- before --
-                test() {}
+                Test() {}
 
                 -- after --
-                test() {}
+                Test() {}
             "#]],
         );
     }
@@ -395,17 +395,17 @@ mod tests {
     #[test]
     fn test_single_write() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.write("Single");
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   write("Single")
                 }
 
                 -- after --
-                test() {
+                Test() {
                   write("Single")
                 }
             "#]],

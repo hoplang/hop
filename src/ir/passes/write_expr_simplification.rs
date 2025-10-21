@@ -46,18 +46,18 @@ mod tests {
     #[test]
     fn test_simplify_constant_string() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 // WriteExpr with constant string should become Write
                 t.write_expr(t.str("Hello, World!"), false);
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   write_expr("Hello, World!")
                 }
 
                 -- after --
-                test() {
+                Test() {
                   write("Hello, World!")
                 }
             "#]],
@@ -67,18 +67,18 @@ mod tests {
     #[test]
     fn test_simplify_with_escaping() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 // WriteExpr with escaping enabled
                 t.write_expr(t.str("<div>Hello & Goodbye</div>"), true);
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   write_escaped("<div>Hello & Goodbye</div>")
                 }
 
                 -- after --
-                test() {
+                Test() {
                   write("&lt;div&gt;Hello &amp; Goodbye&lt;/div&gt;")
                 }
             "#]],
@@ -88,7 +88,7 @@ mod tests {
     #[test]
     fn test_nested_transformations() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.bool(true), |t| {
                     t.write_expr(t.str("Inside if"), false);
                     t.for_loop("item", t.array(vec![t.str("foo")]), |t| {
@@ -101,7 +101,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   if true {
                     write_expr("Inside if")
                     for item in ["foo"] {
@@ -114,7 +114,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   if true {
                     write("Inside if")
                     for item in ["foo"] {
@@ -132,21 +132,21 @@ mod tests {
     #[test]
     fn test_mixed_write_and_write_expr() {
         check(
-            build_ir_auto("test", vec![("x", Type::String)], |t| {
+            build_ir_auto("Test", vec![("x", Type::String)], |t| {
                 t.write("Already a Write statement");
                 t.write_expr(t.str("Will become Write"), false);
                 t.write_expr(t.var("x"), false);
             }),
             expect![[r#"
                 -- before --
-                test(x: String) {
+                Test(x: String) {
                   write("Already a Write statement")
                   write_expr("Will become Write")
                   write_expr(x)
                 }
 
                 -- after --
-                test(x: String) {
+                Test(x: String) {
                   write("Already a Write statement")
                   write("Will become Write")
                   write_expr(x)

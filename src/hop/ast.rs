@@ -5,6 +5,7 @@ use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::Expr;
 use crate::dop::Parameter;
 use crate::dop::SimpleTypedExpr;
+use crate::hop::component_name::ComponentName;
 use crate::hop::module_name::ModuleName;
 
 use super::node::Node;
@@ -142,7 +143,8 @@ pub type TypedComponentDefinition = ComponentDefinition<SimpleTypedExpr>;
 
 #[derive(Debug, Clone)]
 pub struct ComponentDefinition<E> {
-    pub tag_name: DocumentRange,
+    pub name: ComponentName,
+    pub tag_name: DocumentRange, // Keep for source location/error reporting
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<Parameter>, DocumentRange)>,
     pub as_attr: Option<StaticAttribute>,
@@ -211,10 +213,10 @@ mod tests {
     fn test_find_node_at_position_text_content() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
+                <Main>
                     <div>Hello World</div>
                              ^
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 range
@@ -228,10 +230,10 @@ mod tests {
     fn test_find_node_at_position_tag_name() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
+                <Main>
                     <div>Content</div>
                      ^
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 range
@@ -245,15 +247,15 @@ mod tests {
     fn test_find_node_at_position_component_reference() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
-                    <foo-bar>Content</foo-bar>
+                <Main>
+                    <FooBar>Content</FooBar>
                         ^
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 range
-                2 |     <foo-bar>Content</foo-bar>
-                  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+                2 |     <FooBar>Content</FooBar>
+                  |     ^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -262,12 +264,12 @@ mod tests {
     fn test_find_node_at_position_if_tag() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
+                <Main>
                     <if {true}>
                         ^
                         <div/>
                     </if>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 range
@@ -285,12 +287,12 @@ mod tests {
     fn test_find_node_at_position_nested_content() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
+                <Main>
                     <div>
                         <span>Nested text</span>
                                     ^
                     </div>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 range
@@ -304,10 +306,10 @@ mod tests {
     fn test_find_node_at_position_slot_definition() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
+                <Main>
                     <slot-default/>
                           ^
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 range
@@ -321,9 +323,9 @@ mod tests {
     fn test_find_node_at_position_outside_content() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
+                <Main>
                     <div>Content</div>
-                </main-comp>
+                </Main>
                 ^
             "},
             expect!["No node found at position"],
@@ -334,11 +336,11 @@ mod tests {
     fn test_find_node_at_position_doctype() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
+                <Main>
                     <!DOCTYPE html>
                      ^
                     <div>Content</div>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 range
@@ -352,7 +354,7 @@ mod tests {
     fn test_find_node_at_position_deeply_nested() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
+                <Main>
                     <div>
                         <if {condition}>
                             <for {item in items}>
@@ -361,7 +363,7 @@ mod tests {
                             </for>
                         </if>
                     </div>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 range
@@ -375,10 +377,10 @@ mod tests {
     fn test_find_node_at_position_void_tag() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
+                <Main>
                     <p>Some text <br> more text</p>
                                   ^
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 range
@@ -392,10 +394,10 @@ mod tests {
     fn test_find_node_at_position_multiple_nodes_same_line() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
+                <Main>
                     <div><span>Hello</span> <strong>World</strong></div>
                            ^
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 range
@@ -409,10 +411,10 @@ mod tests {
     fn test_find_node_at_position_multiple_nodes_same_line_second_element() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
+                <Main>
                     <div><span>Hello</span> <strong>World</strong></div>
                                                ^
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 range
@@ -426,10 +428,10 @@ mod tests {
     fn test_find_node_at_position_multiple_nodes_same_line_text_between() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
+                <Main>
                     <div><span>Hello</span> and <strong>World</strong></div>
                                             ^
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 range
@@ -443,7 +445,7 @@ mod tests {
     fn test_find_node_at_position_very_deep_nesting() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
+                <Main>
                     <div>
                         <section>
                             <article>
@@ -462,7 +464,7 @@ mod tests {
                             </article>
                         </section>
                     </div>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 range
@@ -476,7 +478,7 @@ mod tests {
     fn test_find_node_at_position_deep_nesting_parent_element() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
+                <Main>
                     <div>
                         <section>
                             <h1>
@@ -489,7 +491,7 @@ mod tests {
                             </h1>
                         </section>
                     </div>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 range
@@ -509,10 +511,10 @@ mod tests {
     fn test_find_node_at_position_inline_elements_with_expressions() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
+                <Main>
                     <p>Hello <em>{user.name}</em>, welcome to <strong>{site.title}</strong>!</p>
                                                                   ^
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 range
@@ -526,15 +528,15 @@ mod tests {
     fn test_find_node_at_position_component_with_inline_content() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
-                    <div><user-card {data: user}><span>Content</span></user-card> more text</div>
+                <Main>
+                    <div><UserCard {data: user}><span>Content</span></UserCard> more text</div>
                                                         ^
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 range
-                2 |     <div><user-card {data: user}><span>Content</span></user-card> more text</div>
-                  |                                        ^^^^^^^
+                2 |     <div><UserCard {data: user}><span>Content</span></UserCard> more text</div>
+                  |                                       ^^^^^^^
             "#]],
         );
     }
@@ -543,7 +545,7 @@ mod tests {
     fn test_find_node_at_position_nested_control_structures() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
+                <Main>
                     <if {users}>
                         <for {user in users}>
                             <if {user.active}>
@@ -554,7 +556,7 @@ mod tests {
                             </if>
                         </for>
                     </if>
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 range
@@ -568,13 +570,13 @@ mod tests {
     fn test_find_node_at_position_self_closing_with_attributes() {
         check_find_node_at_position(
             indoc! {r#"
-                <main-comp>
+                <Main>
                     <div>
                         <input type="text" placeholder="Enter name" required />
                                ^
                         <br/>
                     </div>
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
                 range
@@ -588,10 +590,10 @@ mod tests {
     fn test_find_node_at_position_between_closing_and_opening_tags() {
         check_find_node_at_position(
             indoc! {"
-                <main-comp>
+                <Main>
                     <div>First</div> <div>Second</div>
                                      ^
-                </main-comp>
+                </Main>
             "},
             expect![[r#"
                 range

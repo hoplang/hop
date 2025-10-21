@@ -868,7 +868,7 @@ mod tests {
     fn test_tokenize_component_with_src() {
         check(
             indoc! {r#"
-                <not-found-error entrypoint {path: String, available_routes: Array[String]}>
+                <NotFoundError entrypoint {path: String, available_routes: Array[String]}>
                     <!DOCTYPE html>
                     <html>
                     <head>
@@ -880,20 +880,20 @@ mod tests {
                         </style>
                     </head>
                     <body>
-                        <page-container>
-                            <error-not-found-error {requested_path: path, available_routes: available_routes} />
-                        </page-container>
+                        <PageContainer>
+                            <ErrorNotFoundError {requested_path: path, available_routes: available_routes} />
+                        </PageContainer>
                     </body>
                     </html>
-                </not-found-error>
+                </NotFoundError>
             "#},
             expect![[r#"
-                OpeningTag <not-found-error entrypoint expr="path: String, available_routes: Array[String]">
-                 1 | <not-found-error entrypoint {path: String, available_routes: Array[String]}>
-                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                OpeningTag <NotFoundError entrypoint expr="path: String, available_routes: Array[String]">
+                 1 | <NotFoundError entrypoint {path: String, available_routes: Array[String]}>
+                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 Text [5 byte, "\n    "]
-                 1 | <not-found-error entrypoint {path: String, available_routes: Array[String]}>
+                 1 | <NotFoundError entrypoint {path: String, available_routes: Array[String]}>
                  2 |     <!DOCTYPE html>
                    | ^^^^
 
@@ -998,33 +998,33 @@ mod tests {
 
                 Text [9 byte, "\n        "]
                 12 |     <body>
-                13 |         <page-container>
+                13 |         <PageContainer>
                    | ^^^^^^^^
 
-                OpeningTag <page-container>
-                13 |         <page-container>
-                   |         ^^^^^^^^^^^^^^^^
+                OpeningTag <PageContainer>
+                13 |         <PageContainer>
+                   |         ^^^^^^^^^^^^^^^
 
                 Text [13 byte, "\n            "]
-                13 |         <page-container>
-                14 |             <error-not-found-error {requested_path: path, available_routes: available_routes} />
+                13 |         <PageContainer>
+                14 |             <ErrorNotFoundError {requested_path: path, available_routes: available_routes} />
                    | ^^^^^^^^^^^^
 
-                OpeningTag <error-not-found-error expr="requested_path: path, available_routes: available_routes"/>
-                14 |             <error-not-found-error {requested_path: path, available_routes: available_routes} />
-                   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                OpeningTag <ErrorNotFoundError expr="requested_path: path, available_routes: available_routes"/>
+                14 |             <ErrorNotFoundError {requested_path: path, available_routes: available_routes} />
+                   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 Text [9 byte, "\n        "]
-                14 |             <error-not-found-error {requested_path: path, available_routes: available_routes} />
-                15 |         </page-container>
+                14 |             <ErrorNotFoundError {requested_path: path, available_routes: available_routes} />
+                15 |         </PageContainer>
                    | ^^^^^^^^
 
-                ClosingTag </page-container>
-                15 |         </page-container>
-                   |         ^^^^^^^^^^^^^^^^^
+                ClosingTag </PageContainer>
+                15 |         </PageContainer>
+                   |         ^^^^^^^^^^^^^^^^
 
                 Text [5 byte, "\n    "]
-                15 |         </page-container>
+                15 |         </PageContainer>
                 16 |     </body>
                    | ^^^^
 
@@ -1043,14 +1043,14 @@ mod tests {
 
                 Text [1 byte, "\n"]
                 17 |     </html>
-                18 | </not-found-error>
+                18 | </NotFoundError>
 
-                ClosingTag </not-found-error>
-                18 | </not-found-error>
-                   | ^^^^^^^^^^^^^^^^^^
+                ClosingTag </NotFoundError>
+                18 | </NotFoundError>
+                   | ^^^^^^^^^^^^^^^^
 
                 Text [1 byte, "\n"]
-                18 | </not-found-error>
+                18 | </NotFoundError>
             "#]],
         );
     }
@@ -1705,19 +1705,19 @@ mod tests {
     fn test_tokenize_component_with_expression() {
         check(
             indoc! {r#"
-                <main-comp {foo}>
+                <Main {foo}>
                 	<script>
                 		const x = "<div></div>";
                 	</script>
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
-                OpeningTag <main-comp expr="foo">
-                1 | <main-comp {foo}>
-                  | ^^^^^^^^^^^^^^^^^
+                OpeningTag <Main expr="foo">
+                1 | <Main {foo}>
+                  | ^^^^^^^^^^^^
 
                 Text [2 byte, "\n\t"]
-                1 | <main-comp {foo}>
+                1 | <Main {foo}>
                 2 |     <script>
                   | ^^^^
 
@@ -1738,14 +1738,14 @@ mod tests {
 
                 Text [1 byte, "\n"]
                 4 |     </script>
-                5 | </main-comp>
+                5 | </Main>
 
-                ClosingTag </main-comp>
-                5 | </main-comp>
-                  | ^^^^^^^^^^^^
+                ClosingTag </Main>
+                5 | </Main>
+                  | ^^^^^^^
 
                 Text [1 byte, "\n"]
-                5 | </main-comp>
+                5 | </Main>
             "#]],
         );
     }
@@ -2032,20 +2032,20 @@ mod tests {
     fn test_tokenize_form_with_input() {
         check(
             indoc! {r#"
-                <main-comp>
+                <Main>
                 	<form id="form">
                 		<input type="text" required>
                 		<button type="submit">Send</button>
                 	</form>
-                </main-comp>
+                </Main>
             "#},
             expect![[r#"
-                OpeningTag <main-comp>
-                1 | <main-comp>
-                  | ^^^^^^^^^^^
+                OpeningTag <Main>
+                1 | <Main>
+                  | ^^^^^^
 
                 Text [2 byte, "\n\t"]
-                1 | <main-comp>
+                1 | <Main>
                 2 |     <form id="form">
                   | ^^^^
 
@@ -2090,14 +2090,14 @@ mod tests {
 
                 Text [1 byte, "\n"]
                 5 |     </form>
-                6 | </main-comp>
+                6 | </Main>
 
-                ClosingTag </main-comp>
-                6 | </main-comp>
-                  | ^^^^^^^^^^^^
+                ClosingTag </Main>
+                6 | </Main>
+                  | ^^^^^^^
 
                 Text [1 byte, "\n"]
-                6 | </main-comp>
+                6 | </Main>
             "#]],
         );
     }

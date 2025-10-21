@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod component_name;
 pub mod environment;
 pub mod inlined_ast;
 pub mod module_name;

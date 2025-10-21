@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fmt};
 
 use crate::dop::{VarName, r#type::Type, typed_expr::TypedExpr};
+use crate::hop::component_name::ComponentName;
 use pretty::BoxDoc;
 
 // This module contains the types and implementations for ASTs in
@@ -15,10 +16,10 @@ pub type ExprId = u32;
 /// Unique identifier for each node in the IR
 pub type StatementId = u32;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct IrEntrypoint {
-    /// Component name (e.g. my-component)
-    pub name: String,
+    /// Component name (e.g. MyComponent)
+    pub name: ComponentName,
     /// Original parameter names with their types (for function signature)
     pub parameters: Vec<(VarName, Type)>,
     /// IR nodes for the entrypoint body
@@ -426,7 +427,7 @@ impl IrExpr {
 
 impl<'a> IrEntrypoint {
     pub fn to_doc(&'a self) -> BoxDoc<'a> {
-        BoxDoc::text(&self.name)
+        BoxDoc::text(self.name.as_str())
             .append(BoxDoc::text("("))
             .append(
                 BoxDoc::nil()

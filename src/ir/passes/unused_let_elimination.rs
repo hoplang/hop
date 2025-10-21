@@ -113,7 +113,7 @@ mod tests {
     #[test]
     fn test_eliminate_unused_let() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 // Unused let should be eliminated
                 t.let_stmt("unused", t.str("value"), |t| {
                     t.write("Hello");
@@ -121,14 +121,14 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let unused = "value" in {
                     write("Hello")
                   }
                 }
 
                 -- after --
-                test() {
+                Test() {
                   write("Hello")
                 }
             "#]],
@@ -138,7 +138,7 @@ mod tests {
     #[test]
     fn test_preserve_used_let() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 // Used let should be preserved
                 t.let_stmt("message", t.str("Hello"), |t| {
                     t.write_expr(t.var("message"), false);
@@ -146,14 +146,14 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let message = "Hello" in {
                     write_expr(message)
                   }
                 }
 
                 -- after --
-                test() {
+                Test() {
                   let message = "Hello" in {
                     write_expr(message)
                   }
@@ -165,7 +165,7 @@ mod tests {
     #[test]
     fn test_nested_unused_lets() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("outer", t.str("outer_value"), |t| {
                     t.let_stmt("inner", t.str("inner_value"), |t| {
                         t.write("No variables used");
@@ -174,7 +174,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let outer = "outer_value" in {
                     let inner = "inner_value" in {
                       write("No variables used")
@@ -183,7 +183,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   write("No variables used")
                 }
             "#]],
@@ -193,7 +193,7 @@ mod tests {
     #[test]
     fn test_used_in_nested_structure() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("cond", t.bool(true), |t| {
                     t.if_stmt(t.var("cond"), |t| {
                         t.write("Condition is true");
@@ -202,7 +202,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let cond = true in {
                     if cond {
                       write("Condition is true")
@@ -211,7 +211,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   let cond = true in {
                     if cond {
                       write("Condition is true")
@@ -225,7 +225,7 @@ mod tests {
     #[test]
     fn test_eliminate_in_if_body() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.bool(true), |t| {
                     t.let_stmt("unused", t.str("value"), |t| {
                         t.write("Inside if");
@@ -234,7 +234,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   if true {
                     let unused = "value" in {
                       write("Inside if")
@@ -243,7 +243,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   if true {
                     write("Inside if")
                   }
@@ -255,7 +255,7 @@ mod tests {
     #[test]
     fn test_eliminate_in_for_body() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 let items = t.array(vec![t.str("a"), t.str("b")]);
                 t.for_loop("item", items, |t| {
                     t.let_stmt("unused", t.str("value"), |t| {
@@ -265,7 +265,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   for item in ["a", "b"] {
                     let unused = "value" in {
                       write_expr(item)
@@ -274,7 +274,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   for item in ["a", "b"] {
                     write_expr(item)
                   }
@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn test_used_in_binary_op() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("x", t.bool(true), |t| {
                     t.let_stmt("y", t.bool(false), |t| {
                         t.if_stmt(t.eq(t.var("x"), t.var("y")), |t| {
@@ -297,7 +297,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let x = true in {
                     let y = false in {
                       if (x == y) {
@@ -308,7 +308,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   let x = true in {
                     let y = false in {
                       if (x == y) {
@@ -324,7 +324,7 @@ mod tests {
     #[test]
     fn test_multiple_unused_lets_in_sequence() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("a", t.str("a_value"), |t| {
                     t.write("First");
                 });
@@ -335,7 +335,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let a = "a_value" in {
                     write("First")
                   }
@@ -346,7 +346,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   write("First")
                   write("Second")
                   write("Third")
@@ -358,7 +358,7 @@ mod tests {
     #[test]
     fn test_variable_used_in_array() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 let items = t.array(vec![t.str("a"), t.str("b")]);
                 t.let_stmt("items", items, |t| {
                     t.for_loop("item", t.var("items"), |t| {
@@ -368,7 +368,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let items = ["a", "b"] in {
                     for item in items {
                       write_expr(item)
@@ -377,7 +377,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   let items = ["a", "b"] in {
                     for item in items {
                       write_expr(item)
@@ -391,7 +391,7 @@ mod tests {
     #[test]
     fn test_variable_used_in_property_access() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 let obj = t.object(vec![("name", t.str("value"))]);
                 t.let_stmt("obj", obj, |t| {
                     t.write_expr(t.prop_access(t.var("obj"), "name"), false);
@@ -399,14 +399,14 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let obj = {name: "value"} in {
                     write_expr(obj.name)
                   }
                 }
 
                 -- after --
-                test() {
+                Test() {
                   let obj = {name: "value"} in {
                     write_expr(obj.name)
                   }
@@ -418,7 +418,7 @@ mod tests {
     #[test]
     fn test_sibling_lets_same_name_first_used() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("x", t.str("first x"), |t| {
                     t.write_expr(t.var("x"), false);
                 });
@@ -428,7 +428,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let x = "first x" in {
                     write_expr(x)
                   }
@@ -438,7 +438,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   let x = "first x" in {
                     write_expr(x)
                   }
@@ -451,7 +451,7 @@ mod tests {
     #[test]
     fn test_quadruple_nested_unused_lets() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("level1", t.str("value1"), |t| {
                     t.let_stmt("level2", t.str("value2"), |t| {
                         t.let_stmt("level3", t.str("value3"), |t| {
@@ -464,7 +464,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   let level1 = "value1" in {
                     let level2 = "value2" in {
                       let level3 = "value3" in {
@@ -477,7 +477,7 @@ mod tests {
                 }
 
                 -- after --
-                test() {
+                Test() {
                   write("Deeply nested, no variables used")
                 }
             "#]],

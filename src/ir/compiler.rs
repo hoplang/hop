@@ -3,6 +3,7 @@ use crate::document::document_cursor::StringSpan;
 use crate::dop::r#type::EquatableType;
 use crate::dop::{PropertyName, SimpleTypedExpr, TypedExpr};
 use crate::dop::{Type, VarName};
+use crate::hop::component_name::ComponentName;
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode,
 };
@@ -67,7 +68,8 @@ impl Compiler {
         }];
 
         IrEntrypoint {
-            name: tag_name.to_string(),
+            name: ComponentName::new(tag_name.to_string())
+                .expect("Entrypoint should have valid component name"),
             parameters: param_info,
             body,
         }
@@ -528,20 +530,20 @@ mod tests {
     #[test]
     fn test_simple_text() {
         check(
-            build_inlined_auto("main-comp", vec![], |t| {
+            build_inlined_auto("MainComp", vec![], |t| {
                 t.text("Hello World");
             }),
             expect![[r#"
                 -- before --
-                <main-comp>
+                <MainComp>
                   "Hello World"
-                </main-comp>
+                </MainComp>
 
                 -- after --
-                main-comp() {
+                MainComp() {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"entrypoint\": \"main-comp\", \"params\": ")
+                    write("<script type=\"application/json\">{\"entrypoint\": \"MainComp\", \"params\": ")
                     write("{}")
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
@@ -555,22 +557,22 @@ mod tests {
     #[test]
     fn test_text_expression() {
         check(
-            build_inlined_auto("main-comp", vec![("name", Type::String)], |t| {
+            build_inlined_auto("MainComp", vec![("name", Type::String)], |t| {
                 t.text("Hello ");
                 t.text_expr(t.var_expr("name"));
             }),
             expect![[r#"
                 -- before --
-                <main-comp {name: String}>
+                <MainComp {name: String}>
                   "Hello "
                   {name}
-                </main-comp>
+                </MainComp>
 
                 -- after --
-                main-comp(name: String) {
+                MainComp(name: String) {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"entrypoint\": \"main-comp\", \"params\": ")
+                    write("<script type=\"application/json\">{\"entrypoint\": \"MainComp\", \"params\": ")
                     write_expr(JsonEncode({name: name}))
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
@@ -585,24 +587,24 @@ mod tests {
     #[test]
     fn test_html_element() {
         check(
-            build_inlined_auto("main-comp", vec![], |t| {
+            build_inlined_auto("MainComp", vec![], |t| {
                 t.div(vec![], |t| {
                     t.text("Content");
                 });
             }),
             expect![[r#"
                 -- before --
-                <main-comp>
+                <MainComp>
                   <div>
                     "Content"
                   </div>
-                </main-comp>
+                </MainComp>
 
                 -- after --
-                main-comp() {
+                MainComp() {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"entrypoint\": \"main-comp\", \"params\": ")
+                    write("<script type=\"application/json\">{\"entrypoint\": \"MainComp\", \"params\": ")
                     write("{}")
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
@@ -619,7 +621,7 @@ mod tests {
     #[test]
     fn test_if_node() {
         check(
-            build_inlined_auto("main-comp", vec![("show", Type::Bool)], |t| {
+            build_inlined_auto("MainComp", vec![("show", Type::Bool)], |t| {
                 t.if_node(t.var_expr("show"), |t| {
                     t.div(vec![], |t| {
                         t.text("Visible");
@@ -628,19 +630,19 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                <main-comp {show: Bool}>
+                <MainComp {show: Bool}>
                   <if {show}>
                     <div>
                       "Visible"
                     </div>
                   </if>
-                </main-comp>
+                </MainComp>
 
                 -- after --
-                main-comp(show: Bool) {
+                MainComp(show: Bool) {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"entrypoint\": \"main-comp\", \"params\": ")
+                    write("<script type=\"application/json\">{\"entrypoint\": \"MainComp\", \"params\": ")
                     write_expr(JsonEncode({show: show}))
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
@@ -660,7 +662,7 @@ mod tests {
     fn test_for_node() {
         check(
             build_inlined_auto(
-                "main-comp",
+                "MainComp",
                 vec![("items", Type::Array(Some(Box::new(Type::String))))],
                 |t| {
                     t.ul(vec![], |t| {
@@ -674,7 +676,7 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                <main-comp {items: Array[String]}>
+                <MainComp {items: Array[String]}>
                   <ul>
                     <for {item in items}>
                       <li>
@@ -682,13 +684,13 @@ mod tests {
                       </li>
                     </for>
                   </ul>
-                </main-comp>
+                </MainComp>
 
                 -- after --
-                main-comp(items: Array[String]) {
+                MainComp(items: Array[String]) {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"entrypoint\": \"main-comp\", \"params\": ")
+                    write("<script type=\"application/json\">{\"entrypoint\": \"MainComp\", \"params\": ")
                     write_expr(JsonEncode({items: items}))
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
@@ -710,7 +712,7 @@ mod tests {
     #[test]
     fn test_attributes_static() {
         check(
-            build_inlined_auto("main-comp", vec![], |t| {
+            build_inlined_auto("MainComp", vec![], |t| {
                 t.div(
                     vec![("class", t.attr_str("base")), ("id", t.attr_str("test"))],
                     |t| {
@@ -720,17 +722,17 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                <main-comp>
+                <MainComp>
                   <div class="base" id="test">
                     "Content"
                   </div>
-                </main-comp>
+                </MainComp>
 
                 -- after --
-                main-comp() {
+                MainComp() {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"entrypoint\": \"main-comp\", \"params\": ")
+                    write("<script type=\"application/json\">{\"entrypoint\": \"MainComp\", \"params\": ")
                     write("{}")
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
@@ -749,7 +751,7 @@ mod tests {
     #[test]
     fn test_attributes_dynamic() {
         check(
-            build_inlined_auto("main-comp", vec![("cls", Type::String)], |t| {
+            build_inlined_auto("MainComp", vec![("cls", Type::String)], |t| {
                 t.div(
                     vec![
                         ("class", t.attr_str("base")),
@@ -762,17 +764,17 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                <main-comp {cls: String}>
+                <MainComp {cls: String}>
                   <div class="base" data-value={cls}>
                     "Content"
                   </div>
-                </main-comp>
+                </MainComp>
 
                 -- after --
-                main-comp(cls: String) {
+                MainComp(cls: String) {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"entrypoint\": \"main-comp\", \"params\": ")
+                    write("<script type=\"application/json\">{\"entrypoint\": \"MainComp\", \"params\": ")
                     write_expr(JsonEncode({cls: cls}))
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
@@ -794,7 +796,7 @@ mod tests {
     fn test_development_mode() {
         check(
             build_inlined_auto(
-                "test-comp",
+                "TestComp",
                 vec![("name", Type::String), ("count", Type::String)],
                 |t| {
                     t.div(vec![], |t| {
@@ -807,20 +809,20 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                <test-comp {name: String, count: String}>
+                <TestComp {name: String, count: String}>
                   <div>
                     "Hello "
                     {name}
                     ", count: "
                     {count}
                   </div>
-                </test-comp>
+                </TestComp>
 
                 -- after --
-                test-comp(name: String, count: String) {
+                TestComp(name: String, count: String) {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"entrypoint\": \"test-comp\", \"params\": ")
+                    write("<script type=\"application/json\">{\"entrypoint\": \"TestComp\", \"params\": ")
                     write_expr(JsonEncode({name: name, count: count}))
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {

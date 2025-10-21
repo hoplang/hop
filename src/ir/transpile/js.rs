@@ -1,9 +1,9 @@
 use pretty::BoxDoc;
 
 use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
-use crate::cased_string::CasedString;
 use crate::dop::property_name::PropertyName;
 use crate::dop::r#type::Type;
+use crate::hop::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use std::collections::BTreeMap;
 
@@ -173,8 +173,13 @@ impl Transpiler for JsTranspiler {
         String::from_utf8(buffer).unwrap()
     }
 
-    fn transpile_entrypoint<'a>(&self, name: &'a str, entrypoint: &'a IrEntrypoint) -> BoxDoc<'a> {
-        let camel_case_name = CasedString::from_kebab_case(name).to_camel_case();
+    fn transpile_entrypoint<'a>(
+        &self,
+        name: &'a ComponentName,
+        entrypoint: &'a IrEntrypoint,
+    ) -> BoxDoc<'a> {
+        // Convert PascalCase to camelCase for JavaScript function name
+        let camel_case_name = name.to_camel_case();
 
         let mut result = BoxDoc::as_string(camel_case_name).append(BoxDoc::text(": ("));
 
@@ -740,7 +745,7 @@ mod tests {
 
     #[test]
     fn test_simple_component() {
-        let entrypoints = vec![build_ir_auto("hello-world", vec![], |t| {
+        let entrypoints = vec![build_ir_auto("HelloWorld", vec![], |t| {
             t.write("<h1>Hello, World!</h1>\n");
         })];
 
@@ -748,7 +753,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                hello-world() {
+                HelloWorld() {
                   write("<h1>Hello, World!</h1>\n")
                 }
 
@@ -776,7 +781,7 @@ mod tests {
     #[test]
     fn test_component_with_params_and_escaping() {
         let entrypoints = vec![build_ir_auto(
-            "user-info",
+            "UserInfo",
             vec![("name", Type::String), ("age", Type::String)],
             |t| {
                 t.write("<div>\n");
@@ -794,7 +799,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                user-info(name: String, age: String) {
+                UserInfo(name: String, age: String) {
                   write("<div>\n")
                   write("<h2>Name: ")
                   write_escaped(name)
@@ -861,7 +866,7 @@ mod tests {
     #[test]
     fn test_typescript_with_types() {
         let entrypoints = vec![build_ir_auto(
-            "conditional-display",
+            "ConditionalDisplay",
             vec![("title", Type::String), ("show", Type::Bool)],
             |t| {
                 t.if_stmt(t.var("show"), |t| {
@@ -876,7 +881,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                conditional-display(title: String, show: Bool) {
+                ConditionalDisplay(title: String, show: Bool) {
                   if show {
                     write("<h1>")
                     write_escaped(title)
@@ -934,7 +939,7 @@ mod tests {
     #[test]
     fn test_for_loop_with_array() {
         let entrypoints = vec![build_ir_auto(
-            "list-items",
+            "ListItems",
             vec![("items", Type::Array(Some(Box::new(Type::String))))],
             |t| {
                 t.write("<ul>\n");
@@ -951,7 +956,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                list-items(items: Array[String]) {
+                ListItems(items: Array[String]) {
                   write("<ul>\n")
                   for item in items {
                     write("<li>")
@@ -1014,7 +1019,7 @@ mod tests {
 
     #[test]
     fn test_let_binding() {
-        let entrypoints = vec![build_ir_auto("greeting-card", vec![], |t| {
+        let entrypoints = vec![build_ir_auto("GreetingCard", vec![], |t| {
             t.let_stmt("greeting", t.str("Hello from hop!"), |t| {
                 t.write("<div class=\"card\">\n");
                 t.write("<p>");
@@ -1028,7 +1033,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                greeting-card() {
+                GreetingCard() {
                   let greeting = "Hello from hop!" in {
                     write("<div class=\"card\">\n")
                     write("<p>")
@@ -1089,7 +1094,7 @@ mod tests {
 
     #[test]
     fn test_nested_components_with_let_bindings() {
-        let entrypoints = vec![build_ir_auto("test-main-comp", vec![], |t| {
+        let entrypoints = vec![build_ir_auto("TestMainComp", vec![], |t| {
             t.write("<div data-hop-id=\"test/card-comp\">");
             t.let_stmt("title", t.str("Hello World"), |t| {
                 t.write("<h2>");
@@ -1103,7 +1108,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-main-comp() {
+                TestMainComp() {
                   write("<div data-hop-id=\"test/card-comp\">")
                   let title = "Hello World" in {
                     write("<h2>")
@@ -1165,7 +1170,7 @@ mod tests {
     #[test]
     fn test_complex_literals_and_property_access() {
         let entrypoints =
-            vec![build_ir_auto("test-product-list", vec![], |t| {
+            vec![build_ir_auto("TestProductList", vec![], |t| {
                 t.write("<div class=\"products\">\n");
                 t.for_loop(
                     "product",
@@ -1224,7 +1229,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-product-list() {
+                TestProductList() {
                   write("<div class=\"products\">\n")
                   for product in [
                     {
@@ -1362,7 +1367,7 @@ mod tests {
             ("title", Type::String),
         ];
 
-        let entrypoints = vec![build_ir_auto("test-user-list", parameters, |t| {
+        let entrypoints = vec![build_ir_auto("TestUserList", parameters, |t| {
             t.write("<div>\n");
             t.write("<h1>\n");
             t.write_expr_escaped(t.var("title"));
@@ -1387,7 +1392,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                test-user-list(
+                TestUserList(
                   users: Array[Record[
                     active: Bool,
                     id: String,
@@ -1491,7 +1496,7 @@ mod tests {
     #[test]
     fn test_trusted_html_type() {
         let entrypoints = vec![build_ir_auto(
-            "render-html",
+            "RenderHtml",
             vec![
                 ("safe_content", Type::TrustedHTML),
                 ("user_input", Type::String),
@@ -1511,7 +1516,7 @@ mod tests {
             &entrypoints,
             expect![[r#"
                 -- before --
-                render-html(safe_content: TrustedHTML, user_input: String) {
+                RenderHtml(safe_content: TrustedHTML, user_input: String) {
                   write("<div>")
                   write_expr(safe_content)
                   write("</div><div>")

@@ -496,13 +496,13 @@ mod tests {
     #[test]
     fn test_simple_write() {
         check(
-            build_ir_auto("test", vec![], |t| {
+            build_ir_auto("Test", vec![], |t| {
                 t.write("<div>Hello World</div>");
             }),
             vec![],
             expect![[r#"
                 -- before --
-                test() {
+                Test() {
                   write("<div>Hello World</div>")
                 }
 
@@ -515,13 +515,13 @@ mod tests {
     #[test]
     fn test_escape_html() {
         check(
-            build_ir_auto("test", vec![("content", Type::String)], |t| {
+            build_ir_auto("Test", vec![("content", Type::String)], |t| {
                 t.write_expr_escaped(t.var("content"));
             }),
             vec![("content", json!("<script>alert('xss')</script>"))],
             expect![[r#"
                 -- before --
-                test(content: String) {
+                Test(content: String) {
                   write_escaped(content)
                 }
 
@@ -534,7 +534,7 @@ mod tests {
     #[test]
     fn test_if_true() {
         check(
-            build_ir_auto("test", vec![("show", Type::Bool)], |t| {
+            build_ir_auto("Test", vec![("show", Type::Bool)], |t| {
                 t.if_stmt(t.var("show"), |t| {
                     t.write("<div>Visible</div>");
                 });
@@ -542,7 +542,7 @@ mod tests {
             vec![("show", json!(true))],
             expect![[r#"
                 -- before --
-                test(show: Bool) {
+                Test(show: Bool) {
                   if show {
                     write("<div>Visible</div>")
                   }
@@ -557,7 +557,7 @@ mod tests {
     #[test]
     fn test_if_false() {
         check(
-            build_ir_auto("test", vec![("show", Type::Bool)], |t| {
+            build_ir_auto("Test", vec![("show", Type::Bool)], |t| {
                 t.if_stmt(t.var("show"), |t| {
                     t.write("<div>Hidden</div>");
                 });
@@ -565,7 +565,7 @@ mod tests {
             vec![("show", json!(false))],
             expect![[r#"
                 -- before --
-                test(show: Bool) {
+                Test(show: Bool) {
                   if show {
                     write("<div>Hidden</div>")
                   }
@@ -581,7 +581,7 @@ mod tests {
     fn test_for_loop() {
         check(
             build_ir_auto(
-                "test",
+                "Test",
                 vec![("items", Type::Array(Some(Box::new(Type::String))))],
                 |t| {
                     t.for_loop("item", t.var("items"), |t| {
@@ -594,7 +594,7 @@ mod tests {
             vec![("items", json!(["Apple", "Banana", "Cherry"]))],
             expect![[r#"
                 -- before --
-                test(items: Array[String]) {
+                Test(items: Array[String]) {
                   for item in items {
                     write("<li>")
                     write_escaped(item)

@@ -145,7 +145,7 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
 
     let entry_points: Vec<String> = ir_entrypoints
         .iter()
-        .map(|entrypoint| entrypoint.name.replace(['/', '-'], "_"))
+        .map(|entrypoint| entrypoint.name.as_str().to_string())
         .collect();
 
     Ok(CompileResult {
@@ -175,7 +175,7 @@ mod tests {
             [css]
             mode = "tailwind4"
             -- main.hop --
-            <hello-world>Hello, World!</hello-world>
+            <HelloWorld>Hello, World!</HelloWorld>
         "#});
 
         let temp_dir = temp_dir_from_archive(&archive).unwrap();

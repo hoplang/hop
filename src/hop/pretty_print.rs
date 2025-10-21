@@ -173,7 +173,7 @@ fn format_opening_tag(
 }
 
 /// Format the parameters of a component definition.
-/// E.g. <foo-component {users: Array[{name: String}]}>
+/// E.g. <Foo {users: Array[{name: String}]}>
 ///                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 fn format_parameters(params: Vec<Parameter>) -> RcDoc<'static> {
     RcDoc::nil()
@@ -411,7 +411,7 @@ mod tests {
     fn test_format_adds_consistent_indentation() {
         check_pretty_print(
             indoc! {r#"
-                <main-component>
+                <Main>
                         <div>
                     <p>First paragraph</p>
                             <p>Second paragraph</p>
@@ -420,10 +420,10 @@ mod tests {
                 <li>Item 1</li>
                     <li>Item 2</li>
                         </ul>
-                </main-component>
+                </Main>
             "#},
             expect![[r#"
-                <main-component>
+                <Main>
                   <div>
                     <p>First paragraph</p>
                     <p>Second paragraph</p>
@@ -432,7 +432,7 @@ mod tests {
                     <li>Item 1</li>
                     <li>Item 2</li>
                   </ul>
-                </main-component>
+                </Main>
             "#]],
         );
     }
@@ -442,18 +442,18 @@ mod tests {
     fn test_format_normalizes_attribute_spacing() {
         check_pretty_print(
             indoc! {r#"
-                <main-component>
+                <Main>
                   <div   id="test"    class="foo">
                     <p>Hello world</p>
                   </div>
-                </main-component>
+                </Main>
             "#},
             expect![[r#"
-                <main-component>
+                <Main>
                   <div id="test" class="foo">
                     <p>Hello world</p>
                   </div>
-                </main-component>
+                </Main>
             "#]],
         );
     }
@@ -463,20 +463,20 @@ mod tests {
     fn test_format_leaves_comments_untouched() {
         check_pretty_print(
             indoc! {r#"
-                <main-component>
+                <Main>
                     <!-- this is my single-line comment -->
                     <!--
                         this is my multi-line comment
                     -->
-                </main-component>
+                </Main>
             "#},
             expect![[r#"
-                <main-component>
+                <Main>
                   <!-- this is my single-line comment -->
                   <!--
                         this is my multi-line comment
                     -->
-                </main-component>
+                </Main>
             "#]],
         );
     }
@@ -486,12 +486,12 @@ mod tests {
     fn test_format_leaves_text_expressions_untouched() {
         check_pretty_print(
             indoc! {r#"
-                <main-component>
+                <Main>
                     {x   ==    2}
-                </main-component>
+                </Main>
             "#},
             expect![[r#"
-                <main-component>{x   ==    2}</main-component>
+                <Main>{x   ==    2}</Main>
             "#]],
         );
     }
@@ -502,21 +502,21 @@ mod tests {
     fn test_multiple_imports_grouped() {
         check_pretty_print(
             indoc! {r#"
-                <import from="@/hop/components/nav" component="nav-bar">
-                <import from="@/hop/components/footer" component="footer-bar">
-                <import from="@/hop/components/header" component="header-bar">
-                <main-component>
+                <import from="@/hop/components/nav" component="NavBar">
+                <import from="@/hop/components/footer" component="FooterBar">
+                <import from="@/hop/components/header" component="HeaderBar">
+                <Main>
                   <p>Content</p>
-                </main-component>
+                </Main>
             "#},
             expect![[r#"
-                <import from="@/hop/components/nav" component="nav-bar">
-                <import from="@/hop/components/footer" component="footer-bar">
-                <import from="@/hop/components/header" component="header-bar">
+                <import from="@/hop/components/nav" component="NavBar">
+                <import from="@/hop/components/footer" component="FooterBar">
+                <import from="@/hop/components/header" component="HeaderBar">
 
-                <main-component>
+                <Main>
                   <p>Content</p>
-                </main-component>
+                </Main>
             "#]],
         );
     }
@@ -525,14 +525,14 @@ mod tests {
     fn test_format_self_closing_tag() {
         check_pretty_print(
             indoc! {r#"
-                <foo-component>
-                  <bar-component />
-                </foo-component>
+                <Foo>
+                  <Bar />
+                </Foo>
             "#},
             expect![[r#"
-                <foo-component>
-                  <bar-component />
-                </foo-component>
+                <Foo>
+                  <Bar />
+                </Foo>
             "#]],
         );
     }
@@ -542,18 +542,18 @@ mod tests {
     fn test_format_div_with_many_attributes() {
         check_pretty_print(
             indoc! {r#"
-                <main-component>
+                <Main>
                   <div id="container" class="wrapper main-content" data-role="content" data-index="1" aria-label="Main content area">
                     <p>Hello world</p>
                   </div>
-                </main-component>
+                </Main>
             "#},
             expect![[r#"
-                <main-component>
+                <Main>
                   <div id="container" class="wrapper main-content" data-role="content" data-index="1" aria-label="Main content area">
                     <p>Hello world</p>
                   </div>
-                </main-component>
+                </Main>
             "#]],
         );
     }
@@ -563,14 +563,14 @@ mod tests {
     fn test_format_long_parameter_list_gets_whitespace() {
         check_pretty_print(
             indoc! {r#"
-                <foo-component {users:Array[{name:String}]}>
+                <Foo {users:Array[{name:String}]}>
                   <div>Hello</div>
-                </foo-component>
+                </Foo>
             "#},
             expect![[r#"
-                <foo-component {users: Array[Record[name: String]]}>
+                <Foo {users:Array[{name:String}]}>
                   <div>Hello</div>
-                </foo-component>
+                </Foo>
             "#]],
         );
     }
@@ -581,34 +581,24 @@ mod tests {
     fn test_format_long_parameter_list_has_trailing_comma() {
         check_pretty_print(
             indoc! {r#"
-                <foo-component {users: Array[{name: String}], admins: Array[{name: String, email: String}], others: Array[{name: String, email: String, foo: String, bar: String, baz: String}]}>
+                <Foo {users: Array[{name: String}], admins: Array[{name: String, email: String}], others: Array[{name: String, email: String, foo: String, bar: String, baz: String}]}>
                     <div>
                         <h1>User List</h1>
                         <for {user in users}>
-                            <user-card {user: user}/>
+                            <UserCard {user: user}/>
                         </for>
                     </div>
-                </foo-component>
+                </Foo>
             "#},
             expect![[r#"
-                <foo-component {
-                  users: Array[Record[name: String]],
-                  admins: Array[Record[email: String, name: String]],
-                  others: Array[Record[
-                  bar: String,
-                  baz: String,
-                  email: String,
-                  foo: String,
-                  name: String,
-                ]],
-                }>
+                <Foo {users: Array[{name: String}], admins: Array[{name: String, email: String}], others: Array[{name: String, email: String, foo: String, bar: String, baz: String}]}>
                   <div>
                     <h1>User List</h1>
                     <for {user in users}>
-                      <user-card {user: user} />
+                      <UserCard {user: user} />
                     </for>
                   </div>
-                </foo-component>
+                </Foo>
             "#]],
         );
     }
