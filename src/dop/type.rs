@@ -17,7 +17,6 @@ pub enum EquatableType {
 
 /// A ComparableType is a type where its values can be ordered
 /// using comparison operations like `<`, `>`, `<=`, `>=`.
-/// Only numeric types support ordering comparisons.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ComparableType {
     Int,
@@ -25,8 +24,7 @@ pub enum ComparableType {
 }
 
 /// A NumericType is a type where its values can be used
-/// in arithmetic operations like `+`.
-/// Both integer and floating-point types support arithmetic.
+/// in arithmetic operations like `+`, `-`, `*`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum NumericType {
     Int,
