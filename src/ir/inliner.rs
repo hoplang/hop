@@ -81,11 +81,7 @@ impl Inliner {
         asts: &HashMap<ModuleName, Ast<SimpleTypedExpr>>,
     ) -> InlinedNode {
         // Determine wrapper tag
-        let tag_name = component
-            .as_attr
-            .as_ref()
-            .map(|a| a.value.to_string_span())
-            .unwrap_or_else(|| StringSpan::new("div".to_string()));
+        let tag_name = StringSpan::new("div".to_string());
 
         // Create data-hop-id attribute
         let mut attributes = BTreeMap::new();

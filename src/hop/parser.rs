@@ -47,11 +47,6 @@ impl AttributeValidator {
         }
     }
 
-    fn allow_static(&mut self, key: &str) -> Option<Result<ast::StaticAttribute, ParseError>> {
-        self.handled_attributes.insert(key.to_string());
-        self.attributes.get(key).map(Self::parse_as_static)
-    }
-
     fn allow_boolean(&mut self, key: &str) -> Result<bool, ParseError> {
         self.handled_attributes.insert(key.to_string());
         match self.attributes.get(key) {
@@ -321,9 +316,6 @@ fn parse_top_level_node(
                     let is_entrypoint = errors
                         .ok_or_add(validator.allow_boolean("entrypoint"))
                         .is_some_and(|v| v);
-                    let as_attr = validator
-                        .allow_static("as")
-                        .and_then(|attr| errors.ok_or_add(attr));
                     let attributes = validator
                         .get_unrecognized()
                         .filter_map(|attr| errors.ok_or_add(attr))
@@ -341,7 +333,6 @@ fn parse_top_level_node(
                         closing_tag_name: tree.closing_tag_name,
                         params,
                         is_entrypoint,
-                        as_attr,
                         attributes,
                         range: tree.range.clone(),
                         children,

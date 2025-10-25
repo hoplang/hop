@@ -147,7 +147,6 @@ pub struct ComponentDefinition<E> {
     pub tag_name: DocumentRange, // Keep for source location/error reporting
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<Parameter>, DocumentRange)>,
-    pub as_attr: Option<StaticAttribute>,
     pub attributes: BTreeMap<StringSpan, Attribute<E>>,
     pub children: Vec<Node<E>>,
     pub is_entrypoint: bool,
