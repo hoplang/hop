@@ -78,21 +78,7 @@ impl Inliner {
         args: &[TypedArgument],
         slot_children: &[TypedNode],
         asts: &HashMap<ModuleName, Ast<SimpleTypedExpr>>,
-    ) -> InlinedNode {
-        // Determine wrapper tag
-        let tag_name = StringSpan::new("div".to_string());
-
-        // Create data-hop-id attribute
-        let mut attributes = BTreeMap::new();
-        let data_hop_id = format!("{}/{}", module_name.as_str(), component.tag_name.as_str());
-        attributes.insert(
-            "data-hop-id".to_string(),
-            InlinedAttribute {
-                name: "data-hop-id".to_string(),
-                value: Some(InlinedAttributeValue::String(data_hop_id)),
-            },
-        );
-
+    ) -> Vec<InlinedNode> {
         // Process component children with slot replacement
         let slot_content = if component.has_slot && !slot_children.is_empty() {
             Some(slot_children)
@@ -131,12 +117,8 @@ impl Inliner {
             }
         }
 
-        // Build the wrapper node with inlined children
-        InlinedNode::Html {
-            tag_name,
-            attributes,
-            children: body,
-        }
+        // Return the inlined children without a wrapper
+        body
     }
 
     /// Inline nodes, optionally replacing slot definitions with the provided slot content
@@ -176,9 +158,9 @@ impl Inliner {
 
                 // Inline the component
                 let args_vec = args.as_ref().map(|(v, _)| v.as_slice()).unwrap_or(&[]);
-                vec![Self::inline_component_reference(
+                Self::inline_component_reference(
                     module, component, args_vec, children, asts,
-                )]
+                )
             }
 
             Node::Html {
@@ -315,15 +297,13 @@ mod tests {
             expect![[r#"
                 <Main>
                   "\n                        "
-                  <div data-hop-id="main/CardComp">
-                    <let {title = "Hello"}>
-                      "\n                        "
-                      <h2>
-                        {title}
-                      </h2>
-                      "\n                    "
-                    </let>
-                  </div>
+                  <let {title = "Hello"}>
+                    "\n                        "
+                    <h2>
+                      {title}
+                    </h2>
+                    "\n                    "
+                  </let>
                   "\n                    "
                 </Main>
             "#]],
@@ -352,19 +332,17 @@ mod tests {
             expect![[r#"
                 <Main>
                   "\n                        "
-                  <div data-hop-id="main/CardComp">
+                  "\n                        "
+                  <div class="card">
+                    "\n                            "
+                    "\n                            "
+                    <p>
+                      "Slot content"
+                    </p>
                     "\n                        "
-                    <div class="card">
-                      "\n                            "
-                      "\n                            "
-                      <p>
-                        "Slot content"
-                      </p>
-                      "\n                        "
-                      "\n                        "
-                    </div>
-                    "\n                    "
+                    "\n                        "
                   </div>
+                  "\n                    "
                   "\n                    "
                 </Main>
             "#]],
