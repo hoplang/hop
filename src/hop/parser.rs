@@ -316,11 +316,11 @@ fn parse_top_level_node(
                     let is_entrypoint = errors
                         .ok_or_add(validator.allow_boolean("entrypoint"))
                         .is_some_and(|v| v);
-                    let attributes = validator
-                        .get_unrecognized()
-                        .filter_map(|attr| errors.ok_or_add(attr))
-                        .map(|attr| (attr.name.to_string_span(), attr))
-                        .collect();
+
+                    // Disallow any unrecognized attributes on component definitions
+                    for error in validator.disallow_unrecognized() {
+                        errors.push(error);
+                    }
 
                     // Create ComponentName from the tag name
                     // We've already validated above, so this should always succeed
@@ -333,7 +333,6 @@ fn parse_top_level_node(
                         closing_tag_name: tree.closing_tag_name,
                         params,
                         is_entrypoint,
-                        attributes,
                         range: tree.range.clone(),
                         children,
                         has_slot,
@@ -520,18 +519,16 @@ fn construct_node(
                         imported_components.get(tag_name.as_str()).cloned()
                     };
 
-                    let attributes = validator
-                        .get_unrecognized()
-                        .filter_map(|attr| errors.ok_or_add(attr))
-                        .map(|attr| (attr.name.to_string_span(), attr))
-                        .collect();
+                    // Disallow any unrecognized attributes on component references
+                    for error in validator.disallow_unrecognized() {
+                        errors.push(error);
+                    }
 
                     Some(Node::ComponentReference {
                         tag_name,
                         closing_tag_name: tree.closing_tag_name,
                         definition_module,
                         args,
-                        attributes,
                         range: tree.range,
                         children,
                     })

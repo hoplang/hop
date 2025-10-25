@@ -76,7 +76,6 @@ impl Inliner {
         module_name: &ModuleName,
         component: &TypedComponentDefinition,
         args: &[TypedArgument],
-        reference_attributes: &BTreeMap<StringSpan, TypedAttribute>,
         slot_children: &[TypedNode],
         asts: &HashMap<ModuleName, Ast<SimpleTypedExpr>>,
     ) -> InlinedNode {
@@ -93,9 +92,6 @@ impl Inliner {
                 value: Some(InlinedAttributeValue::String(data_hop_id)),
             },
         );
-
-        // Merge attributes from component definition and reference
-        Self::merge_attributes(&mut attributes, &component.attributes, reference_attributes);
 
         // Process component children with slot replacement
         let slot_content = if component.has_slot && !slot_children.is_empty() {
@@ -143,95 +139,6 @@ impl Inliner {
         }
     }
 
-    /// Merge attributes from component definition and reference, handling class concatenation
-    fn merge_attributes(
-        target: &mut BTreeMap<String, InlinedAttribute>,
-        definition_attributes: &BTreeMap<StringSpan, TypedAttribute>,
-        reference_attributes: &BTreeMap<StringSpan, TypedAttribute>,
-    ) {
-        // First add component's attributes
-        for (name, attr) in definition_attributes {
-            target.insert(name.as_str().to_string(), Self::convert_attribute(attr));
-        }
-
-        // Then override with reference's attributes, handling class specially
-        for (name, ref_attr) in reference_attributes {
-            let name_str = name.as_str();
-            if name_str == "class" {
-                // Special handling for class attribute - concatenation
-                if let Some(def_attr) = definition_attributes.get(name) {
-                    // Both definition and reference have class attributes - concatenate them
-                    let concatenated_value =
-                        Self::create_concatenated_class_value(def_attr, ref_attr);
-                    target.insert(
-                        name_str.to_string(),
-                        InlinedAttribute {
-                            name: name_str.to_string(),
-                            value: Some(concatenated_value),
-                        },
-                    );
-                } else {
-                    // Only reference has class attribute
-                    target.insert(name_str.to_string(), Self::convert_attribute(ref_attr));
-                }
-            } else {
-                // Non-class attributes: reference overrides definition
-                target.insert(name_str.to_string(), Self::convert_attribute(ref_attr));
-            }
-        }
-    }
-
-    /// Create a concatenated class attribute value using StringConcat
-    fn create_concatenated_class_value(
-        def_attr: &TypedAttribute,
-        ref_attr: &TypedAttribute,
-    ) -> InlinedAttributeValue {
-        let def_expr = match &def_attr.value {
-            Some(AttributeValue::String(s)) => SimpleTypedExpr::StringLiteral {
-                value: s.as_str().to_string(),
-                annotation: (),
-            },
-            Some(AttributeValue::Expression(expr)) => expr.clone(),
-            None => SimpleTypedExpr::StringLiteral {
-                value: "".to_string(),
-                annotation: (),
-            },
-        };
-
-        let ref_expr = match &ref_attr.value {
-            Some(AttributeValue::String(s)) => SimpleTypedExpr::StringLiteral {
-                value: s.as_str().to_string(),
-                annotation: (),
-            },
-            Some(AttributeValue::Expression(expr)) => expr.clone(),
-            None => SimpleTypedExpr::StringLiteral {
-                value: "".to_string(),
-                annotation: (),
-            },
-        };
-
-        // Create a space literal
-        let space_expr = SimpleTypedExpr::StringLiteral {
-            value: " ".to_string(),
-            annotation: (),
-        };
-
-        // Concatenate: def_class + " " + ref_class
-        let def_plus_space = SimpleTypedExpr::StringConcat {
-            left: Box::new(def_expr),
-            right: Box::new(space_expr),
-            annotation: (),
-        };
-
-        let final_concat = SimpleTypedExpr::StringConcat {
-            left: Box::new(def_plus_space),
-            right: Box::new(ref_expr),
-            annotation: (),
-        };
-
-        InlinedAttributeValue::Expression(final_concat)
-    }
-
     /// Inline nodes, optionally replacing slot definitions with the provided slot content
     fn inline_nodes(
         nodes: &[TypedNode],
@@ -255,7 +162,6 @@ impl Inliner {
                 tag_name,
                 definition_module,
                 args,
-                attributes,
                 children,
                 ..
             } => {
@@ -271,7 +177,7 @@ impl Inliner {
                 // Inline the component
                 let args_vec = args.as_ref().map(|(v, _)| v.as_slice()).unwrap_or(&[]);
                 vec![Self::inline_component_reference(
-                    module, component, args_vec, attributes, children, asts,
+                    module, component, args_vec, children, asts,
                 )]
             }
 

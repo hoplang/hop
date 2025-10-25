@@ -198,7 +198,6 @@ fn typecheck_module(
             children,
             has_slot,
             is_entrypoint,
-            attributes,
             range,
             closing_tag_name,
         } = component_def;
@@ -227,9 +226,6 @@ fn typecheck_module(
                 let _ = env.push(param.var_name.to_string(), param.var_type.clone());
             }
         }
-
-        // Typecheck attributes
-        let typed_attributes = typecheck_attributes(attributes, &mut env, annotations, errors);
 
         // Typecheck children and collect typed versions
         let typed_children: Vec<_> = children
@@ -267,7 +263,6 @@ fn typecheck_module(
             tag_name: name.clone(),
             closing_tag_name: closing_tag_name.clone(),
             params: params.clone(),
-            attributes: typed_attributes,
             range: range.clone(),
             children: typed_children,
             is_entrypoint: *is_entrypoint,
@@ -393,13 +388,9 @@ fn typecheck_node(
             definition_module,
             closing_tag_name,
             args,
-            attributes,
             children,
             range,
         } => {
-            // Transform attributes
-            let typed_attributes = typecheck_attributes(attributes, env, annotations, errors);
-
             // Transform children
             let typed_children = children
                 .iter()
@@ -512,7 +503,6 @@ fn typecheck_node(
                 definition_module: definition_module.clone(),
                 closing_tag_name: closing_tag_name.clone(),
                 args: typed_args,
-                attributes: typed_attributes,
                 range: range.clone(),
                 children: typed_children,
             })

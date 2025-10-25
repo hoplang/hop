@@ -1,7 +1,5 @@
-use std::collections::BTreeMap;
-
 use crate::document::DocumentPosition;
-use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::Expr;
 use crate::dop::Parameter;
 use crate::dop::SimpleTypedExpr;
@@ -147,7 +145,6 @@ pub struct ComponentDefinition<E> {
     pub tag_name: DocumentRange, // Keep for source location/error reporting
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<Parameter>, DocumentRange)>,
-    pub attributes: BTreeMap<StringSpan, Attribute<E>>,
     pub children: Vec<Node<E>>,
     pub is_entrypoint: bool,
     pub has_slot: bool,
