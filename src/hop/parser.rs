@@ -249,6 +249,20 @@ fn parse_top_level_node(
         Token::TextExpression { .. } => None,
         Token::Comment { .. } => None,
         Token::Doctype { .. } => None,
+        Token::Import { name, path, .. } => {
+            // Handle import declarations like: import UserList from "@/user_list.hop"
+            use crate::hop::ast::{Import, StaticAttribute};
+
+            let from_attr = StaticAttribute { value: path };
+            let (from_attr, module_name) =
+                errors.ok_or_add(AttributeValidator::parse_import_name_from_attr(from_attr))?;
+
+            Some(TopLevelNode::Import(Import {
+                component_attr: StaticAttribute { value: name },
+                from_attr,
+                module_name,
+            }))
+        }
         Token::OpeningTag {
             tag_name,
             attributes,
@@ -257,88 +271,69 @@ fn parse_top_level_node(
         } => {
             let mut validator = AttributeValidator::new(attributes, tag_name.clone());
             //
-            match tag_name.as_str() {
-                // <import ...>
-                "import" => {
-                    let (from_attr, module_name) = errors.ok_or_add(
-                        validator
-                            .require_static("from")
-                            .and_then(AttributeValidator::parse_import_name_from_attr),
-                    )?;
-                    let component_attr = errors.ok_or_add(validator.require_static("component"))?;
-                    errors.extend(validator.disallow_unrecognized());
-                    Some(TopLevelNode::Import(Import {
-                        component_attr,
-                        module_name,
-                        from_attr,
-                    }))
-                }
+            // All opening tags are component definitions
+            let name = tag_name.as_str();
+            // Validate component name
+            if !ComponentName::is_valid(name) {
+                errors.push(ParseError::InvalidComponentName {
+                    tag_name: tag_name.to_string_span(),
+                    range: tag_name.clone(),
+                });
+                return None;
+            }
 
-                // <ComponentDefinition ...>
-                name => {
-                    // Validate component name
-                    if !ComponentName::is_valid(name) {
-                        errors.push(ParseError::InvalidComponentName {
-                            tag_name: tag_name.to_string_span(),
-                            range: tag_name.clone(),
-                        });
-                        return None;
-                    }
+            // Parse parameters
+            let params = expression.as_ref().and_then(|expr| {
+                errors.ok_or_add(
+                    Parser::from(expr.clone())
+                        .parse_parameters()
+                        .map(|params| (params, expr.clone()))
+                        .map_err(|err| err.into()),
+                )
+            });
 
-                    // Parse parameters
-                    let params = expression.as_ref().and_then(|expr| {
-                        errors.ok_or_add(
-                            Parser::from(expr.clone())
-                                .parse_parameters()
-                                .map(|params| (params, expr.clone()))
-                                .map_err(|err| err.into()),
-                        )
-                    });
-
-                    // TODO: Here we iterate over the whole subtree to check
-                    // if it contains a slot. There should be a better way
-                    // to do this.
-                    let mut has_slot = false;
-                    for child in &children {
-                        for node in child.iter_depth_first() {
-                            if let Node::SlotDefinition { range, .. } = node {
-                                if has_slot {
-                                    errors.push(ParseError::SlotIsAlreadyDefined {
-                                        range: range.clone(),
-                                    });
-                                }
-                                has_slot = true;
-                            }
+            // TODO: Here we iterate over the whole subtree to check
+            // if it contains a slot. There should be a better way
+            // to do this.
+            let mut has_slot = false;
+            for child in &children {
+                for node in child.iter_depth_first() {
+                    if let Node::SlotDefinition { range, .. } = node {
+                        if has_slot {
+                            errors.push(ParseError::SlotIsAlreadyDefined {
+                                range: range.clone(),
+                            });
                         }
+                        has_slot = true;
                     }
-
-                    // Parse attributes
-                    let is_entrypoint = errors
-                        .ok_or_add(validator.allow_boolean("entrypoint"))
-                        .is_some_and(|v| v);
-
-                    // Disallow any unrecognized attributes on component definitions
-                    for error in validator.disallow_unrecognized() {
-                        errors.push(error);
-                    }
-
-                    // Create ComponentName from the tag name
-                    // We've already validated above, so this should always succeed
-                    let component_name = ComponentName::new(tag_name.to_string())
-                        .expect("Component name should be valid");
-
-                    Some(TopLevelNode::ComponentDefinition(ComponentDefinition {
-                        name: component_name,
-                        tag_name: tag_name.clone(),
-                        closing_tag_name: tree.closing_tag_name,
-                        params,
-                        is_entrypoint,
-                        range: tree.range.clone(),
-                        children,
-                        has_slot,
-                    }))
                 }
             }
+
+            // Parse attributes
+            let is_entrypoint = errors
+                .ok_or_add(validator.allow_boolean("entrypoint"))
+                .is_some_and(|v| v);
+
+            // Disallow any unrecognized attributes on component definitions
+            for error in validator.disallow_unrecognized() {
+                errors.push(error);
+            }
+
+            // Create ComponentName from the tag name
+            // We've already validated above, so this should always succeed
+            let component_name =
+                ComponentName::new(tag_name.to_string()).expect("Component name should be valid");
+
+            Some(TopLevelNode::ComponentDefinition(ComponentDefinition {
+                name: component_name,
+                tag_name: tag_name.clone(),
+                closing_tag_name: tree.closing_tag_name,
+                params,
+                is_entrypoint,
+                range: tree.range.clone(),
+                children,
+                has_slot,
+            }))
         }
     }
 }
@@ -367,6 +362,10 @@ fn construct_node(
     match tree.token {
         Token::Comment { .. } => {
             // Skip comments
+            None
+        }
+        Token::Import { .. } => {
+            // Import declarations are handled at the top level only
             None
         }
         Token::ClosingTag { .. } => {
@@ -698,27 +697,13 @@ mod tests {
         );
     }
 
-    // Import tags are treated as a void tag.
-    #[test]
-    fn test_parser_import_self_closing() {
-        check(
-            indoc! {r#"
-                <import component="foo" from="@/bar"></import>
-            "#},
-            expect![[r#"
-                error: <import> should not be closed using a closing tag
-                1 | <import component="foo" from="@/bar"></import>
-                  |                                      ^^^^^^^^^
-            "#]],
-        );
-    }
 
     // Void tags are allowed to be self-closing.
     #[test]
     fn test_parser_void_tag_may_be_self_closing() {
         check(
             indoc! {r#"
-                <import component="foo" from="@/bar">
+                import foo from "@/bar"
                 <Main>
                     <hr/>
                     <br/>
@@ -1281,8 +1266,8 @@ mod tests {
     fn test_parser_component_imported_twice() {
         check(
             indoc! {r#"
-                <import component="Foo" from="@/other">
-                <import component="Foo" from="@/other">
+                import Foo from "@/other"
+                import Foo from "@/other"
 
                 <Main>
                 	<Foo></Foo>
@@ -1290,9 +1275,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Component Foo is already defined
-                1 | <import component="Foo" from="@/other">
-                2 | <import component="Foo" from="@/other">
-                  |                    ^^^
+                1 | import Foo from "@/other"
+                2 | import Foo from "@/other"
+                  |        ^^^
             "#]],
         );
     }
@@ -1331,7 +1316,7 @@ mod tests {
     fn test_component_name_conflicts_with_import() {
         check(
             indoc! {r#"
-                <import component="Foo" from="@/other">
+                import Foo from "@/other"
 
                 <Foo>
                 </Foo>
@@ -1353,7 +1338,7 @@ mod tests {
     fn test_import_without_at_prefix_is_rejected() {
         check(
             indoc! {r#"
-                <import component="Foo" from="other">
+                import Foo from "other"
 
                 <Main>
                 	<Foo/>
@@ -1361,8 +1346,8 @@ mod tests {
             "#},
             expect![[r#"
                 error: Import paths must start with '@/' where '@' indicates the root directory
-                1 | <import component="Foo" from="other">
-                  |                               ^^^^^
+                1 | import Foo from "other"
+                  |                  ^^^^^
             "#]],
         );
     }
@@ -1371,7 +1356,7 @@ mod tests {
     fn test_import_with_invalid_module_name() {
         check(
             indoc! {r#"
-                <import component="Foo" from="@/../foo">
+                import Foo from "@/../foo"
 
                 <Main>
                 	<Foo/>
@@ -1379,8 +1364,8 @@ mod tests {
             "#},
             expect![[r#"
                 error: Module name cannot contain '..'
-                1 | <import component="Foo" from="@/../foo">
-                  |                               ^^^^^^^^
+                1 | import Foo from "@/../foo"
+                  |                  ^^^^^^^^
             "#]],
         );
     }
@@ -1389,7 +1374,7 @@ mod tests {
     fn test_import_with_invalid_characters_in_module_name() {
         check(
             indoc! {r#"
-                <import component="Bar" from="@/foo/bar!baz">
+                import Bar from "@/foo/bar!baz"
 
                 <Main>
                 	<Bar/>
@@ -1397,8 +1382,8 @@ mod tests {
             "#},
             expect![[r#"
                 error: Module name contains invalid character: '!'
-                1 | <import component="Bar" from="@/foo/bar!baz">
-                  |                               ^^^^^^^^^^^^^
+                1 | import Bar from "@/foo/bar!baz"
+                  |                  ^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -1610,44 +1595,4 @@ mod tests {
         );
     }
 
-    // Test <import> tag without required attributes produces error.
-    #[test]
-    fn test_parser_import_missing_attributes() {
-        check(
-            indoc! {r#"
-                <import>
-                <Main>
-                    <div>Content</div>
-                </Main>
-            "#},
-            // TODO: Make this a single error message
-            expect![[r#"
-                error: <import> is missing required attribute from
-                1 | <import>
-                  |  ^^^^^^
-            "#]],
-        );
-    }
-
-    // Test <import> tag with unrecognized attribute produces error.
-    #[test]
-    fn test_parser_import_unrecognized_attribute() {
-        check(
-            indoc! {r#"
-                <import component="ButtonCmp" from="@/components/button" extra="value" unknown>
-                <Main>
-                    <button-cmp/>
-                </Main>
-            "#},
-            expect![[r#"
-                error: Unrecognized attribute 'extra' on <import>
-                1 | <import component="ButtonCmp" from="@/components/button" extra="value" unknown>
-                  |                                                          ^^^^^^^^^^^^^
-
-                error: Unrecognized attribute 'unknown' on <import>
-                1 | <import component="ButtonCmp" from="@/components/button" extra="value" unknown>
-                  |                                                                        ^^^^^^^
-            "#]],
-        );
-    }
 }

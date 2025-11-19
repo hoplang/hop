@@ -47,6 +47,11 @@ impl TokenTreePrettyPrint for TokenTree {
                 RcDoc::text(range.to_string())
             }
 
+            Token::Import { name, path, .. } => {
+                // Format import declarations
+                RcDoc::text(format!("import {} from \"{}\"", name, path))
+            }
+
             Token::Text { range } => {
                 let text = range.as_str();
                 if text.trim().is_empty() {
@@ -502,17 +507,19 @@ mod tests {
     fn test_multiple_imports_grouped() {
         check_pretty_print(
             indoc! {r#"
-                <import from="@/hop/components/nav" component="NavBar">
-                <import from="@/hop/components/footer" component="FooterBar">
-                <import from="@/hop/components/header" component="HeaderBar">
+                import NavBar from "@/hop/components/nav"
+                import FooterBar from "@/hop/components/footer"
+                import HeaderBar from "@/hop/components/header"
                 <Main>
                   <p>Content</p>
                 </Main>
             "#},
             expect![[r#"
-                <import from="@/hop/components/nav" component="NavBar">
-                <import from="@/hop/components/footer" component="FooterBar">
-                <import from="@/hop/components/header" component="HeaderBar">
+                import NavBar from "@/hop/components/nav"
+
+                import FooterBar from "@/hop/components/footer"
+
+                import HeaderBar from "@/hop/components/header"
 
                 <Main>
                   <p>Content</p>

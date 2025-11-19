@@ -775,16 +775,16 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <import component="Foo" from="@/other">
+                import Foo from "@/other"
 
                 <Main>
                 </Main>
             "#},
             expect![[r#"
                 error: Module other is not defined
-                  --> main.hop (line 1, col 31)
-                1 | <import component="Foo" from="@/other">
-                  |                               ^^^^^^^
+                  --> main.hop (line 1, col 18)
+                1 | import Foo from "@/other"
+                  |                  ^^^^^^^
             "#]],
         );
     }
@@ -796,16 +796,16 @@ mod tests {
             indoc! {r#"
                 -- other.hop --
                 -- main.hop --
-                <import component="Foo" from="@/other">
+                import Foo from "@/other"
 
                 <Main>
                 </Main>
             "#},
             expect![[r#"
                 error: Module other is not defined
-                  --> main.hop (line 1, col 31)
-                1 | <import component="Foo" from="@/other">
-                  |                               ^^^^^^^
+                  --> main.hop (line 1, col 18)
+                1 | import Foo from "@/other"
+                  |                  ^^^^^^^
             "#]],
         );
     }
@@ -820,7 +820,7 @@ mod tests {
                 </Foo>
 
                 -- main.hop --
-                <import component="Foo" from="@/other">
+                import Foo from "@/other"
 
                 <Main>
                 </Main>
@@ -909,7 +909,7 @@ mod tests {
                     <strong>No slot here</strong>
                 </Foo>
                 -- main.hop --
-                <import component="Foo" from="@/other">
+                import Foo from "@/other"
 
                 <Bar>
                     <Foo>
@@ -2000,7 +2000,7 @@ mod tests {
                 </ButtonComp>
 
                 -- main.hop --
-                <import component="ButtonComp" from="@/utils">
+                import ButtonComp from "@/utils"
 
                 <Main {label: String}>
                   <ButtonComp {text: label}/>
@@ -2051,7 +2051,7 @@ mod tests {
                 </WidgetComp>
 
                 -- foo.hop --
-                <import component="WidgetComp" from="@/bar">
+                import WidgetComp from "@/bar"
 
                 <PanelComp {data: {items: Array[{enabled: Bool, title: String}]}}>
                   <for {item in data.items}>
@@ -2060,7 +2060,7 @@ mod tests {
                 </PanelComp>
 
                 -- main.hop --
-                <import component="PanelComp" from="@/foo">
+                import PanelComp from "@/foo"
 
                 <Main {settings: {dashboard: {items: Array[{enabled: Bool, title: String}]}}}>
                   <PanelComp {data: settings.dashboard}/>
@@ -3930,14 +3930,14 @@ mod tests {
                 	</if>
                 </ItemDisplay>
                 -- data-list.hop --
-                <import component="ItemDisplay" from="@/item-display">
+                import ItemDisplay from "@/item-display"
                 <DataList {items: Array[{id: Float, name: String, active: Bool}]}>
                 	<for {item in items}>
                 		<ItemDisplay {item: item}/>
                 	</for>
                 </DataList>
                 -- main.hop --
-                <import component="DataList" from="@/data-list">
+                import DataList from "@/data-list"
                 <Main {items: Array[{id: Float, name: String, active: Bool}]}>
                 	<DataList {items: items}/>
                 </Main>
