@@ -45,7 +45,7 @@ impl JsTranspiler {
     fn scan_for_trusted_html(&self, entrypoints: &[IrEntrypoint]) -> bool {
         for entrypoint in entrypoints {
             for (_, param_type) in &entrypoint.parameters {
-                if self.type_contains_trusted_html(param_type) {
+                if Self::type_contains_trusted_html(param_type) {
                     return true;
                 }
             }
@@ -53,13 +53,11 @@ impl JsTranspiler {
         false
     }
 
-    fn type_contains_trusted_html(&self, t: &Type) -> bool {
+    fn type_contains_trusted_html(t: &Type) -> bool {
         match t {
             Type::TrustedHTML => true,
-            Type::Array(Some(elem)) => self.type_contains_trusted_html(elem),
-            Type::Object(fields) => fields
-                .values()
-                .any(|field_type| self.type_contains_trusted_html(field_type)),
+            Type::Array(Some(elem)) => Self::type_contains_trusted_html(elem),
+            Type::Object(fields) => fields.values().any(Self::type_contains_trusted_html),
             _ => false,
         }
     }

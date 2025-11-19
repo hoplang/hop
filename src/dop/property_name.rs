@@ -103,7 +103,7 @@ impl PropertyName {
                 match chars.next() {
                     Some(first) => {
                         let mut result = first.to_uppercase().to_string();
-                        result.push_str(&chars.as_str());
+                        result.push_str(chars.as_str());
                         result
                     }
                     None => String::new(),

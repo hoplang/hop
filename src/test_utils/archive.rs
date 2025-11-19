@@ -51,9 +51,7 @@ fn archive_from_dir_recursive(
         if path.is_dir() {
             archive_from_dir_recursive(base_dir, &path, builder)?;
         } else {
-            let relative_path = path
-                .strip_prefix(base_dir)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            let relative_path = path.strip_prefix(base_dir).map_err(std::io::Error::other)?;
             let content = fs::read_to_string(&path)?;
             builder.file((relative_path.to_string_lossy().to_string(), content));
         }

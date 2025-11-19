@@ -60,9 +60,7 @@ impl ComponentName {
     /// This is a quick check used during parsing to determine if a tag should
     /// be treated as a component reference or an HTML element
     pub fn is_component_tag(name: &str) -> bool {
-        name.chars()
-            .next()
-            .map_or(false, |c| c.is_ascii_uppercase())
+        name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
     }
 
     /// Validate a component name string
