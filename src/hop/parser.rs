@@ -38,8 +38,9 @@ impl AttributeValidator {
             tokenizer::AttributeValue::String(range) => {
                 Ok(ast::AttributeValue::String(range.clone()))
             }
-            tokenizer::AttributeValue::Expression(expr) => {
-                match Parser::from(expr.clone()).parse_expr() {
+            tokenizer::AttributeValue::Expression(exprs) => {
+                // TODO: Use all exprs
+                match Parser::from(exprs[0].clone()).parse_expr() {
                     Ok(expr) => Ok(ast::AttributeValue::Expression(expr)),
                     Err(err) => Err(err.into()),
                 }
@@ -98,10 +99,10 @@ impl AttributeValidator {
             Some(tokenizer::AttributeValue::String(s)) => {
                 Ok(ast::StaticAttribute { value: s.clone() })
             }
-            Some(tokenizer::AttributeValue::Expression(expr_range)) => {
+            Some(tokenizer::AttributeValue::Expression(_)) => {
                 Err(ParseError::AttributeMustBeStaticallyKnown {
                     attr_name: attr.name.to_string_span(),
-                    range: expr_range.clone(),
+                    range: attr.range.clone(),
                 })
             }
             None => Err(ParseError::AttributeMissingValue {
@@ -121,11 +122,11 @@ impl AttributeValidator {
                     range: s.clone(),
                 })
             }
-            Some(tokenizer::AttributeValue::Expression(expr_range)) => {
+            Some(tokenizer::AttributeValue::Expression(_)) => {
                 // TODO: Better error
                 Err(ParseError::AttributeMustBeStaticallyKnown {
                     attr_name: attr.name.to_string_span(),
-                    range: expr_range.clone(),
+                    range: attr.range.clone(),
                 })
             }
             None => Ok(true),

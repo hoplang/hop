@@ -233,7 +233,9 @@ fn format_attribute(attr: &Attribute) -> RcDoc<'static> {
                     // '{'
                     .append(RcDoc::text("{"))
                     // value
-                    .append(RcDoc::text(val.as_str().to_string()))
+                    .append(RcDoc::text(
+                        val.iter().map(|r| r.as_str()).join(", ").to_string(),
+                    ))
                     // '}'
                     .append(RcDoc::text("}"))
             }

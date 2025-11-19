@@ -12,7 +12,7 @@ use crate::hop::parse_error::ParseError;
 #[derive(Debug, Clone)]
 pub enum AttributeValue {
     String(DocumentRange),
-    Expression(DocumentRange),
+    Expression(Vec<DocumentRange>),
 }
 
 #[derive(Debug, Clone)]
@@ -106,7 +106,11 @@ impl Display for Token {
                                 format!("{}={:#?}", attr.name, val.to_string())
                             }
                             Some(AttributeValue::Expression(val)) => {
-                                format!("{}={{{:#?}}}", attr.name, val.to_string())
+                                format!(
+                                    "{}={{{:#?}}}",
+                                    attr.name,
+                                    val.iter().map(|r| r.to_string()).join(", ")
+                                )
                             }
                             None => attr.name.to_string(),
                         })
@@ -335,7 +339,7 @@ impl Tokenizer {
             let (expr, expr_range) = self.parse_expression()?;
             return Some(Attribute {
                 name: attr_name.clone(),
-                value: Some(AttributeValue::Expression(expr)),
+                value: Some(AttributeValue::Expression(vec![expr])),
                 range: attr_name.to(expr_range),
             });
         }
