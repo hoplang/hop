@@ -15,10 +15,7 @@
         devShells.default = pkgs.mkShell {
           nativeBuildInputs = [
             pkgs.rustup
-            pkgs.clippy
-            pkgs.rust-analyzer
 			pkgs.zig
-            pkgs.rustfmt
             pkgs.typescript-language-server
 			pkgs.bun
 			pkgs.typescript
