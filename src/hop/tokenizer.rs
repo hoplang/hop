@@ -755,6 +755,26 @@ mod tests {
     }
 
     #[test]
+    fn test_tokenize_expression_attribute_comma_separated() {
+        check(
+            r#"<div class={user.theme, user.classes}>Hello</div>"#,
+            expect![[r#"
+                OpeningTag <div class={"user.theme, user.classes"}>
+                1 | <div class={user.theme, user.classes}>Hello</div>
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                Text [5 byte, "Hello"]
+                1 | <div class={user.theme, user.classes}>Hello</div>
+                  |                                       ^^^^^
+
+                ClosingTag </div>
+                1 | <div class={user.theme, user.classes}>Hello</div>
+                  |                                            ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn test_tokenize_mixed_attributes() {
         check(
             r#"<a href={user.url} target="_blank">Link</a>"#,
