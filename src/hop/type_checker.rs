@@ -590,10 +590,12 @@ fn typecheck_attributes(
 
     for (key, attr) in attributes {
         let typed_value = match &attr.value {
-            Some(AttributeValue::Expression(expr)) => {
-                errors
-                    .ok_or_add(dop::typecheck_expr(expr, env, annotations).map_err(Into::into))
-                    .map(|typed_expr| {
+            Some(AttributeValue::Expressions(exprs)) => {
+                let mut typed_exprs = Vec::new();
+                for expr in exprs {
+                    if let Some(typed_expr) = errors
+                        .ok_or_add(dop::typecheck_expr(expr, env, annotations).map_err(Into::into))
+                    {
                         // Check that HTML attributes are strings
                         let expr_type = typed_expr.as_type();
                         if !expr_type.is_subtype(&Type::String) {
@@ -602,8 +604,14 @@ fn typecheck_attributes(
                                 range: expr.annotation().clone(),
                             });
                         }
-                        AttributeValue::Expression(typed_expr)
-                    })
+                        typed_exprs.push(typed_expr);
+                    }
+                }
+                if !typed_exprs.is_empty() {
+                    Some(AttributeValue::Expressions(typed_exprs))
+                } else {
+                    None
+                }
             }
             Some(AttributeValue::String(s)) => Some(AttributeValue::String(s.clone())),
             None => None,

@@ -22,7 +22,9 @@ impl Inliner {
         InlinedAttribute {
             name: attr.name.as_str().to_string(),
             value: attr.value.as_ref().map(|v| match v {
-                AttributeValue::Expression(expr) => InlinedAttributeValue::Expression(expr.clone()),
+                AttributeValue::Expressions(exprs) => {
+                    InlinedAttributeValue::Expressions(exprs.clone())
+                }
                 AttributeValue::String(s) => InlinedAttributeValue::String(s.as_str().to_string()),
             }),
         }
@@ -158,9 +160,7 @@ impl Inliner {
 
                 // Inline the component
                 let args_vec = args.as_ref().map(|(v, _)| v.as_slice()).unwrap_or(&[]);
-                Self::inline_component_reference(
-                    module, component, args_vec, children, asts,
-                )
+                Self::inline_component_reference(module, component, args_vec, children, asts)
             }
 
             Node::Html {

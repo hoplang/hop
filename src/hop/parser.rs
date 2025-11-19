@@ -38,9 +38,9 @@ impl AttributeValidator {
             tokenizer::AttributeValue::String(range) => {
                 Ok(ast::AttributeValue::String(range.clone()))
             }
-            tokenizer::AttributeValue::Expression(expr) => {
-                match Parser::from(expr.clone()).parse_expr() {
-                    Ok(expr) => Ok(ast::AttributeValue::Expression(expr)),
+            tokenizer::AttributeValue::Expression(range) => {
+                match Parser::from(range.clone()).parse_exprs() {
+                    Ok(exprs) => Ok(ast::AttributeValue::Expressions(exprs)),
                     Err(err) => Err(err.into()),
                 }
             }
@@ -1242,6 +1242,20 @@ mod tests {
             "#},
             expect![[r#"
                 a                                                 1:4-1:50
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parser_multiple_expressions_in_attribute() {
+        check(
+            indoc! {r#"
+                <Main {style1: String, style2: String, style3: String}>
+                    <div class={style1, style2, style3}>Content</div>
+                </Main>
+            "#},
+            expect![[r#"
+                div                                               1:4-1:53
             "#]],
         );
     }

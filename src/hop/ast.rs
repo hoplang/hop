@@ -17,7 +17,7 @@ pub struct StaticAttribute {
 
 #[derive(Debug, Clone)]
 pub enum AttributeValue<T = Expr> {
-    Expression(T),
+    Expressions(Vec<T>),
     String(DocumentRange),
 }
 

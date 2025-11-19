@@ -220,6 +220,20 @@ impl Parser {
         Ok(result)
     }
 
+    // exprs = logical ("," logical)* ","? Eof
+    pub fn parse_exprs(&mut self) -> Result<Vec<Expr>, ParseError> {
+        let mut exprs = Vec::new();
+        self.parse_comma_separated(
+            |this| {
+                exprs.push(this.parse_logical()?);
+                Ok(())
+            },
+            None,
+        )?;
+        self.expect_eof()?;
+        Ok(exprs)
+    }
+
     // loop_header = Identifier "in" logical Eof
     pub fn parse_loop_header(&mut self) -> Result<(VarName, DocumentRange, Expr), ParseError> {
         let (var_name, var_name_range) = self.expect_variable_name()?;
@@ -668,6 +682,18 @@ mod tests {
         expected.assert_eq(&actual);
     }
 
+    fn check_parse_exprs(input: &str, expected: Expect) {
+        let mut parser = Parser::from(input);
+        let actual = match parser.parse_exprs() {
+            Ok(result) => {
+                let exprs: Vec<String> = result.iter().map(|expr| expr.to_string()).collect();
+                format!("[{}]\n", exprs.join(", "))
+            }
+            Err(err) => annotate_error(err),
+        };
+        expected.assert_eq(&actual);
+    }
+
     fn check_parse_parameters(input: &str, expected: Expect) {
         let mut parser = Parser::from(input);
 
@@ -952,6 +978,80 @@ mod tests {
                 error: Unexpected token 'age'
                 name: "John" age: 25
                              ^^^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// EXPRESSION LISTS (parse_exprs)                                      ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn test_parse_exprs_single() {
+        check_parse_exprs(
+            "x",
+            expect![[r#"
+                [x]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_exprs_multiple() {
+        check_parse_exprs(
+            "x, y, z",
+            expect![[r#"
+                [x, y, z]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_exprs_with_property_access() {
+        check_parse_exprs(
+            "user.name, user.age, user.active",
+            expect![[r#"
+                [user.name, user.age, user.active]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_exprs_with_complex_expressions() {
+        check_parse_exprs(
+            r#""hello", 123, true, [1, 2, 3], {name: "John"}"#,
+            expect![[r#"
+                ["hello", 123, true, [1, 2, 3], {name: "John"}]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_exprs_with_operators() {
+        check_parse_exprs(
+            "x + y, a == b, !c",
+            expect![[r#"
+                [(x + y), (a == b), (!c)]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_exprs_with_nested_commas() {
+        check_parse_exprs(
+            "[1, 2, 3], {a: 1, b: 2}",
+            expect![[r#"
+                [[1, 2, 3], {a: 1, b: 2}]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_exprs_trailing_comma() {
+        check_parse_exprs(
+            "x, y,",
+            expect![[r#"
+                [x, y]
             "#]],
         );
     }

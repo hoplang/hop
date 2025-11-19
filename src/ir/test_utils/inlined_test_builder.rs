@@ -278,10 +278,10 @@ impl InlinedTestBuilder {
         }
     }
 
-    pub fn attr_expr(&self, expr: SimpleTypedExpr) -> InlinedAttribute {
+    pub fn attr_exprs(&self, exprs: Vec<SimpleTypedExpr>) -> InlinedAttribute {
         InlinedAttribute {
             name: String::new(), // Will be set when used in html()
-            value: Some(InlinedAttributeValue::Expression(expr)),
+            value: Some(InlinedAttributeValue::Expressions(exprs)),
         }
     }
 
@@ -469,8 +469,8 @@ impl InlinedAutoBuilder {
         self.inner.attr_str(value)
     }
 
-    pub fn attr_expr(&self, expr: SimpleTypedExpr) -> InlinedAttribute {
-        self.inner.attr_expr(expr)
+    pub fn attr_exprs(&self, exprs: Vec<SimpleTypedExpr>) -> InlinedAttribute {
+        self.inner.attr_exprs(exprs)
     }
 
     pub fn attr_bool(&self) -> InlinedAttribute {
