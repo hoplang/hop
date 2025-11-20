@@ -51,7 +51,7 @@ pub struct TailwindConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JavascriptTargetConfig {
-    pub output: String,
+    pub output_path: String,
 
     /// Shell commands to execute after compilation
     #[serde(default)]
@@ -60,7 +60,7 @@ pub struct JavascriptTargetConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypescriptTargetConfig {
-    pub output: String,
+    pub output_path: String,
 
     /// Shell commands to execute after compilation
     #[serde(default)]
@@ -69,7 +69,7 @@ pub struct TypescriptTargetConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PythonTargetConfig {
-    pub output: String,
+    pub output_path: String,
 
     /// Shell commands to execute after compilation
     #[serde(default)]
@@ -78,7 +78,7 @@ pub struct PythonTargetConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GoTargetConfig {
-    pub output: String,
+    pub output_path: String,
 
     /// Shell commands to execute after compilation
     #[serde(default)]
@@ -204,26 +204,26 @@ mod tests {
             mode = "tailwind4"
 
             [target.typescript]
-            output = "app.ts"
+            output_path = "app.ts"
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         assert_eq!(config.css.mode, Some("tailwind4".to_string()));
         assert!(config.target.typescript.is_some());
         let ts_config = config.target.typescript.as_ref().unwrap();
-        assert_eq!(ts_config.output, "app.ts");
+        assert_eq!(ts_config.output_path, "app.ts");
     }
 
     #[test]
     fn test_get_target_single() {
         let toml_str = indoc! {r#"
             [target.typescript]
-            output = "app.ts"
+            output_path = "app.ts"
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         let target_config = config.get_target();
         assert!(matches!(target_config, TargetConfig::Typescript(_)));
         if let TargetConfig::Typescript(ts_config) = target_config {
-            assert_eq!(ts_config.output, "app.ts");
+            assert_eq!(ts_config.output_path, "app.ts");
             assert!(ts_config.compile_and_run.is_empty());
         }
     }
@@ -232,10 +232,10 @@ mod tests {
     fn test_parse_multiple_targets_error() {
         let toml_str = indoc! {r#"
             [target.javascript]
-            output = "app.js"
+            output_path = "app.js"
 
             [target.typescript]
-            output = "app.ts"
+            output_path = "app.ts"
         "#};
         let result = HopConfig::from_toml_str(toml_str);
         assert!(result.is_err());
@@ -248,14 +248,14 @@ mod tests {
     fn test_parse_config_with_compile_and_run() {
         let toml_str = indoc! {r#"
             [target.typescript]
-            output = "app.ts"
+            output_path = "app.ts"
             compile_and_run = ["npm install", "npm start"]
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         let target_config = config.get_target();
         assert!(matches!(target_config, TargetConfig::Typescript(_)));
         if let TargetConfig::Typescript(ts_config) = target_config {
-            assert_eq!(ts_config.output, "app.ts");
+            assert_eq!(ts_config.output_path, "app.ts");
             assert_eq!(ts_config.compile_and_run, vec!["npm install", "npm start"]);
         }
     }
@@ -264,11 +264,11 @@ mod tests {
     fn test_parse_config_without_compile_and_run() {
         let toml_str = indoc! {r#"
             [target.javascript]
-            output = "app.js"
+            output_path = "app.js"
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         let target_config = &config.target.javascript.as_ref().unwrap();
-        assert_eq!(target_config.output, "app.js");
+        assert_eq!(target_config.output_path, "app.js");
         assert!(target_config.compile_and_run.is_empty());
     }
 
@@ -279,7 +279,7 @@ mod tests {
             input = "styles/input.css"
 
             [target.typescript]
-            output = "app.ts"
+            output_path = "app.ts"
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         assert!(config.css.tailwind.is_some());
@@ -290,7 +290,7 @@ mod tests {
     fn test_parse_config_with_unknown_target_error() {
         let toml_str = indoc! {r#"
             [target.typescritp]
-            output = "app.ts"
+            output_path = "app.ts"
         "#};
         let result = HopConfig::from_toml_str(toml_str);
         assert!(result.is_err());
@@ -303,7 +303,7 @@ mod tests {
     fn test_parse_config_with_go_target() {
         let toml_str = indoc! {r#"
             [target.go]
-            output = "main.go"
+            output_path = "main.go"
             package = "main"
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
@@ -311,7 +311,7 @@ mod tests {
 
         // Check that we can access the package field from the Go variant
         if let TargetConfig::Go(go_config) = target_config {
-            assert_eq!(go_config.output, "main.go");
+            assert_eq!(go_config.output_path, "main.go");
             assert_eq!(go_config.package, "main");
         } else {
             panic!("Expected Go target config");
@@ -322,7 +322,7 @@ mod tests {
     fn test_parse_config_with_go_target_missing_package() {
         let toml_str = indoc! {r#"
             [target.go]
-            output = "main.go"
+            output_path = "main.go"
         "#};
         let result = HopConfig::from_toml_str(toml_str);
         assert!(result.is_err());
