@@ -697,13 +697,12 @@ mod tests {
         );
     }
 
-
     // Void tags are allowed to be self-closing.
     #[test]
     fn test_parser_void_tag_may_be_self_closing() {
         check(
             indoc! {r#"
-                import foo from "@/bar"
+                import Bar from "@/bar"
                 <Main>
                     <hr/>
                     <br/>
@@ -1594,5 +1593,4 @@ mod tests {
             "#]],
         );
     }
-
 }
