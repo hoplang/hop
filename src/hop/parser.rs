@@ -269,7 +269,7 @@ fn parse_top_level_node(
             expression,
             ..
         } => {
-            let mut validator = AttributeValidator::new(attributes, tag_name.clone());
+            let validator = AttributeValidator::new(attributes, tag_name.clone());
             //
             // All opening tags are component definitions
             let name = tag_name.as_str();
@@ -309,11 +309,6 @@ fn parse_top_level_node(
                 }
             }
 
-            // Parse attributes
-            let is_entrypoint = errors
-                .ok_or_add(validator.allow_boolean("entrypoint"))
-                .is_some_and(|v| v);
-
             // Disallow any unrecognized attributes on component definitions
             for error in validator.disallow_unrecognized() {
                 errors.push(error);
@@ -329,7 +324,6 @@ fn parse_top_level_node(
                 tag_name: tag_name.clone(),
                 closing_tag_name: tree.closing_tag_name,
                 params,
-                is_entrypoint,
                 range: tree.range.clone(),
                 children,
                 has_slot,
@@ -1003,10 +997,10 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_entrypoint_with_script_style() {
+    fn test_parser_component_with_script_style() {
         check(
             indoc! {r#"
-                <Main entrypoint>
+                <Main>
                     <script>
                         // note that the <div> inside here is note
                         // parsed as html
@@ -1025,10 +1019,10 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_entrypoint_with_data_param() {
+    fn test_parser_component_with_data_param() {
         check(
             indoc! {"
-                <Main entrypoint {data: {message: String}}>
+                <Main {data: {message: String}}>
                     <h1>Hello World</h1>
                     <p>{data.message}</p>
                 </Main>

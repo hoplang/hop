@@ -9,13 +9,15 @@ use crate::ir::passes::{
     UnusedLetEliminationPass, WriteExprSimplificationPass,
 };
 use crate::ir::transforms::{DoctypeInjector, HtmlStructureInjector, TailwindInjector};
+use anyhow::Result;
 use std::collections::HashMap;
 
 pub fn orchestrate(
     typed_asts: HashMap<ModuleName, Ast<SimpleTypedExpr>>,
     generated_tailwind_css: Option<&str>,
-) -> Vec<IrEntrypoint> {
-    Inliner::inline_entrypoints(typed_asts)
+    pages: &[String],
+) -> Result<Vec<IrEntrypoint>> {
+    Ok(Inliner::inline_entrypoints(typed_asts, pages)?
         .into_iter()
         // transform ASTs
         .map(DoctypeInjector::run)
@@ -29,5 +31,5 @@ pub fn orchestrate(
         .map(UnusedLetEliminationPass::run)
         .map(DeadCodeEliminationPass::run)
         .map(WriteExprSimplificationPass::run)
-        .collect()
+        .collect())
 }

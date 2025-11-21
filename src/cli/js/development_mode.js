@@ -12,7 +12,8 @@ const DEBOUNCE_DELAY_MS = 15;
 /**
  * @typedef {object} HopConfig
  *
- * @property {string} entrypoint
+ * @property {string} module
+ * @property {string} component
  * @property {any} params
  */
 
@@ -39,7 +40,8 @@ async function fetchEntryPoint(cfg) {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-            entrypoint: cfg.entrypoint,
+            module: cfg.module,
+            component: cfg.component,
             params: cfg.params,
         }),
     });
@@ -58,7 +60,8 @@ async function morphDOM(html, cfg) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     Idiomorph.morph(document.documentElement, doc.documentElement);
-    localStorage.setItem(`${LOCAL_STORAGE_PREFIX}-${cfg.entrypoint}`, html);
+    const cacheKey = `${LOCAL_STORAGE_PREFIX}-${cfg.module}/${cfg.component}`;
+    localStorage.setItem(cacheKey, html);
 }
 
 /**
@@ -122,7 +125,8 @@ async function bootstrap() {
 		const cfg = loadConfig();
 
         // Check if we have cached HTML in localStorage and render it immediately
-        const cachedHTML = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}-${cfg.entrypoint}`);
+        const cacheKey = `${LOCAL_STORAGE_PREFIX}-${cfg.module}/${cfg.component}`;
+        const cachedHTML = localStorage.getItem(cacheKey);
         if (cachedHTML) {
             const parser = new DOMParser();
             const newDoc = parser.parseFromString(cachedHTML, 'text/html');

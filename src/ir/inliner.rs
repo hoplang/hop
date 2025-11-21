@@ -6,10 +6,11 @@ use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode, InlinedParameter,
 };
 use crate::hop::module_name::ModuleName;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::hop::ast::{TypedAttribute, TypedComponentDefinition};
 use crate::hop::node::{Node, TypedNode};
+use anyhow::Result;
 
 /// The Inliner transforms ASTs by replacing ComponentReference nodes with their
 /// inlined component definitions, using Let nodes for parameter binding and
@@ -39,18 +40,54 @@ impl Inliner {
             .map(|(key, attr)| (key.as_str().to_string(), Self::convert_attribute(attr)))
             .collect()
     }
-    /// Inline all component references in entrypoint components only
+    /// Inline all component references in components listed in pages
     /// Returns a vector of inlined entrypoint components
+    ///
+    /// # Arguments
+    /// * `asts` - Map of module name to typed AST
+    /// * `pages` - List of pages to export (format: "module/Component")
+    ///
+    /// # Returns
+    /// Result containing the list of inlined entrypoints or an error if a page doesn't exist
     pub fn inline_entrypoints(
         asts: HashMap<ModuleName, Ast<SimpleTypedExpr>>,
-    ) -> Vec<InlinedEntrypoint> {
+        pages: &[String],
+    ) -> Result<Vec<InlinedEntrypoint>> {
+        // Parse pages into a lookup structure: module -> set of component names
+        let page_filter = Self::parse_page_filter(pages)?;
+
+        // Build list of all available components for error reporting
+        let mut available_components = Vec::new();
+        for (module_name, ast) in &asts {
+            for component in ast.get_component_definitions() {
+                available_components.push(format!("{}/{}", module_name, component.tag_name.as_str()));
+            }
+        }
+
+        // Validate that all requested pages exist
+        for page in pages {
+            if !available_components.contains(page) {
+                let available_list = available_components
+                    .iter()
+                    .map(|s| format!("  - {}", s))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                anyhow::bail!(
+                    "Component '{}' listed in pages but not found\nAvailable components:\n{}",
+                    page,
+                    available_list
+                );
+            }
+        }
+
         let mut result = Vec::new();
 
-        for ast in asts.values() {
-            // Only process entrypoint components
+        for (module_name, ast) in &asts {
             for component in ast.get_component_definitions() {
-                if component.is_entrypoint {
+                // Check if this component should be included based on pages filter
+                if Self::should_include_component(&page_filter, module_name, component.tag_name.as_str()) {
                     result.push(InlinedEntrypoint {
+                        module_name: module_name.clone(),
                         tag_name: component.tag_name.to_string_span(),
                         children: Self::inline_nodes(&component.children, None, &asts),
                         params: component
@@ -70,7 +107,41 @@ impl Inliner {
             }
         }
 
-        result
+        Ok(result)
+    }
+
+    /// Parse pages list into a HashMap of module -> set of component names
+    /// Format: "module/Component" or "module/submodule/Component"
+    fn parse_page_filter(pages: &[String]) -> Result<HashMap<String, HashSet<String>>> {
+        let mut filter = HashMap::new();
+
+        for page in pages {
+            let Some((module, component)) = page.rsplit_once('/') else {
+                anyhow::bail!(
+                    "Invalid page format '{}'. Expected 'module/Component' (e.g., 'main/HomePage')",
+                    page
+                );
+            };
+
+            filter
+                .entry(module.to_string())
+                .or_insert_with(HashSet::new)
+                .insert(component.to_string());
+        }
+
+        Ok(filter)
+    }
+
+    /// Check if a component should be included based on the page filter
+    fn should_include_component(
+        filter: &HashMap<String, HashSet<String>>,
+        module_name: &ModuleName,
+        component_name: &str,
+    ) -> bool {
+        filter
+            .get(module_name.as_str())
+            .map(|components| components.contains(component_name))
+            .unwrap_or(false)
     }
 
     /// Inline a component reference
@@ -265,9 +336,11 @@ mod tests {
         typechecker.typed_asts
     }
 
-    fn check_inlining(sources: Vec<(&str, &str)>, expected: Expect) {
+    fn check_inlining(sources: Vec<(&str, &str)>, pages: Vec<&str>, expected: Expect) {
         let typed_asts = create_typed_asts_from_sources(sources);
-        let inlined_entrypoints = Inliner::inline_entrypoints(typed_asts);
+        let pages_owned: Vec<String> = pages.iter().map(|s| s.to_string()).collect();
+        let inlined_entrypoints = Inliner::inline_entrypoints(typed_asts, &pages_owned)
+            .expect("Inlining should succeed");
 
         // Format using Display implementation for better readability
         let output = inlined_entrypoints
@@ -289,11 +362,12 @@ mod tests {
                         <h2>{title}</h2>
                     </CardComp>
 
-                    <Main entrypoint>
+                    <Main>
                         <CardComp {title: "Hello"}/>
                     </Main>
                 "#,
             )],
+            vec!["main/Main"],
             expect![[r#"
                 <Main>
                   "\n                        "
@@ -322,13 +396,14 @@ mod tests {
                         </div>
                     </CardComp>
 
-                    <Main entrypoint>
+                    <Main>
                         <CardComp>
                             <p>Slot content</p>
                         </CardComp>
                     </Main>
                 "#,
             )],
+            vec!["main/Main"],
             expect![[r#"
                 <Main>
                   "\n                        "

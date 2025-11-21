@@ -34,10 +34,11 @@ impl Compiler {
             .collect::<Vec<_>>();
 
         let tag_name = entrypoint.tag_name;
+        let module_name = &entrypoint.module_name;
         let children = entrypoint.children;
 
         // Always generate both development and production bodies
-        let dev_body = compiler.generate_development_mode_body(tag_name.as_str(), &param_info);
+        let dev_body = compiler.generate_development_mode_body(module_name.as_str(), tag_name.as_str(), &param_info);
         let prod_body = compiler.compile_nodes(children, None);
 
         // Create condition: EnvLookup("HOP_DEV_MODE") == "enabled"
@@ -77,6 +78,7 @@ impl Compiler {
 
     fn generate_development_mode_body(
         &mut self,
+        module_name: &str,
         component_name: &str,
         params: &[(VarName, Type)],
     ) -> Vec<IrStatement> {
@@ -88,10 +90,12 @@ impl Compiler {
             content: "<!DOCTYPE html>\n".to_string(),
         });
 
+        // Write module and component as separate fields for development mode
         body.push(IrStatement::Write {
             id: self.next_node_id(),
             content: format!(
-                r#"<script type="application/json">{{"entrypoint": "{}", "params": "#,
+                r#"<script type="application/json">{{"module": "{}", "component": "{}", "params": "#,
+                module_name,
                 component_name
             ),
         });
@@ -551,7 +555,7 @@ mod tests {
                 MainComp() {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"entrypoint\": \"MainComp\", \"params\": ")
+                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
                     write("{}")
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
@@ -580,7 +584,7 @@ mod tests {
                 MainComp(name: String) {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"entrypoint\": \"MainComp\", \"params\": ")
+                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
                     write_expr(JsonEncode({name: name}))
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
@@ -612,7 +616,7 @@ mod tests {
                 MainComp() {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"entrypoint\": \"MainComp\", \"params\": ")
+                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
                     write("{}")
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
@@ -650,7 +654,7 @@ mod tests {
                 MainComp(show: Bool) {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"entrypoint\": \"MainComp\", \"params\": ")
+                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
                     write_expr(JsonEncode({show: show}))
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
@@ -698,7 +702,7 @@ mod tests {
                 MainComp(items: Array[String]) {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"entrypoint\": \"MainComp\", \"params\": ")
+                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
                     write_expr(JsonEncode({items: items}))
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
@@ -740,7 +744,7 @@ mod tests {
                 MainComp() {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"entrypoint\": \"MainComp\", \"params\": ")
+                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
                     write("{}")
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
@@ -782,7 +786,7 @@ mod tests {
                 MainComp(cls: String) {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"entrypoint\": \"MainComp\", \"params\": ")
+                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
                     write_expr(JsonEncode({cls: cls}))
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
@@ -842,7 +846,7 @@ mod tests {
                 ) {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"entrypoint\": \"MainComp\", \"params\": ")
+                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
                     write_expr(JsonEncode({
                       base_class: base_class,
                       modifier_class: modifier_class,
@@ -897,7 +901,7 @@ mod tests {
                 TestComp(name: String, count: String) {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"entrypoint\": \"TestComp\", \"params\": ")
+                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"TestComp\", \"params\": ")
                     write_expr(JsonEncode({name: name, count: count}))
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {

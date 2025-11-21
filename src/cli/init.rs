@@ -62,12 +62,14 @@ fn create_hop_config(template: &TargetLanguage) -> HopConfig {
             target_section.typescript = Some(TypescriptTargetConfig {
                 output: "frontend.ts".to_string(),
                 compile_and_run: Vec::new(),
+                pages: vec!["main/App".to_string()],
             })
         }
         TargetLanguage::Javascript => {
             target_section.javascript = Some(JavascriptTargetConfig {
                 output: "frontend.js".to_string(),
                 compile_and_run: Vec::new(),
+                pages: vec!["main/App".to_string()],
             })
         }
         TargetLanguage::Go => {
@@ -75,12 +77,14 @@ fn create_hop_config(template: &TargetLanguage) -> HopConfig {
                 output: "frontend.go".to_string(),
                 compile_and_run: Vec::new(),
                 package: "main".to_string(),
+                pages: vec!["main/App".to_string()],
             })
         }
         TargetLanguage::Python => {
             target_section.python = Some(PythonTargetConfig {
                 output: "frontend.py".to_string(),
                 compile_and_run: Vec::new(),
+                pages: vec!["main/App".to_string()],
             })
         }
     }

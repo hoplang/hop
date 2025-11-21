@@ -56,6 +56,10 @@ pub struct JavascriptTargetConfig {
     /// Shell commands to execute after compilation
     #[serde(default)]
     pub compile_and_run: Vec<String>,
+
+    /// List of pages to export (format: "module/Component")
+    /// Empty array means no pages are exported
+    pub pages: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +69,10 @@ pub struct TypescriptTargetConfig {
     /// Shell commands to execute after compilation
     #[serde(default)]
     pub compile_and_run: Vec<String>,
+
+    /// List of pages to export (format: "module/Component")
+    /// Empty array means no pages are exported
+    pub pages: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +82,10 @@ pub struct PythonTargetConfig {
     /// Shell commands to execute after compilation
     #[serde(default)]
     pub compile_and_run: Vec<String>,
+
+    /// List of pages to export (format: "module/Component")
+    /// Empty array means no pages are exported
+    pub pages: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,6 +98,10 @@ pub struct GoTargetConfig {
 
     /// Package name for the Go file
     pub package: String,
+
+    /// List of pages to export (format: "module/Component")
+    /// Empty array means no pages are exported
+    pub pages: Vec<String>,
 }
 
 /// Target configuration (tagged enum for each language)
@@ -205,12 +221,14 @@ mod tests {
 
             [target.typescript]
             output = "app.ts"
+            pages = ["main/App"]
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         assert_eq!(config.css.mode, Some("tailwind4".to_string()));
         assert!(config.target.typescript.is_some());
         let ts_config = config.target.typescript.as_ref().unwrap();
         assert_eq!(ts_config.output, "app.ts");
+        assert_eq!(ts_config.pages, vec!["main/App"]);
     }
 
     #[test]
@@ -218,6 +236,7 @@ mod tests {
         let toml_str = indoc! {r#"
             [target.typescript]
             output = "app.ts"
+            pages = ["main/App"]
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         let target_config = config.get_target();
@@ -225,6 +244,7 @@ mod tests {
         if let TargetConfig::Typescript(ts_config) = target_config {
             assert_eq!(ts_config.output, "app.ts");
             assert!(ts_config.compile_and_run.is_empty());
+            assert_eq!(ts_config.pages, vec!["main/App"]);
         }
     }
 
@@ -233,9 +253,11 @@ mod tests {
         let toml_str = indoc! {r#"
             [target.javascript]
             output = "app.js"
+            pages = ["main/App"]
 
             [target.typescript]
             output = "app.ts"
+            pages = ["main/App"]
         "#};
         let result = HopConfig::from_toml_str(toml_str);
         assert!(result.is_err());
@@ -249,6 +271,7 @@ mod tests {
         let toml_str = indoc! {r#"
             [target.typescript]
             output = "app.ts"
+            pages = ["main/App"]
             compile_and_run = ["npm install", "npm start"]
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
@@ -265,6 +288,7 @@ mod tests {
         let toml_str = indoc! {r#"
             [target.javascript]
             output = "app.js"
+            pages = ["main/App"]
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         let target_config = &config.target.javascript.as_ref().unwrap();
@@ -280,6 +304,7 @@ mod tests {
 
             [target.typescript]
             output = "app.ts"
+            pages = ["main/App"]
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         assert!(config.css.tailwind.is_some());
@@ -291,6 +316,7 @@ mod tests {
         let toml_str = indoc! {r#"
             [target.typescritp]
             output = "app.ts"
+            pages = ["main/App"]
         "#};
         let result = HopConfig::from_toml_str(toml_str);
         assert!(result.is_err());
@@ -305,6 +331,7 @@ mod tests {
             [target.go]
             output = "main.go"
             package = "main"
+            pages = ["main/App"]
         "#};
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         let target_config = config.get_target();
@@ -323,6 +350,7 @@ mod tests {
         let toml_str = indoc! {r#"
             [target.go]
             output = "main.go"
+            pages = ["main/App"]
         "#};
         let result = HopConfig::from_toml_str(toml_str);
         assert!(result.is_err());

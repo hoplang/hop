@@ -76,16 +76,6 @@ pub enum TypeError {
     #[error("Expected string for text expression, got {found}")]
     ExpectedStringExpression { found: Type, range: DocumentRange },
 
-    #[error(
-        "Duplicate entrypoint: component '{component}' in module '{module}' is already defined as an entrypoint in module '{previous_module}'"
-    )]
-    DuplicateEntrypoint {
-        component: String,
-        module: String,
-        previous_module: String,
-        range: DocumentRange,
-    },
-
     #[error("{err}")]
     DopError { err: dop::type_error::TypeError },
 }
@@ -151,8 +141,7 @@ impl Ranged for TypeError {
             | TypeError::ExpectedStringAttribute { range, .. }
             | TypeError::CannotIterateEmptyArray { range, .. }
             | TypeError::CannotIterateOver { range, .. }
-            | TypeError::ExpectedStringExpression { range, .. }
-            | TypeError::DuplicateEntrypoint { range, .. } => range,
+            | TypeError::ExpectedStringExpression { range, .. } => range,
             TypeError::DopError { err } => err.range(),
         }
     }

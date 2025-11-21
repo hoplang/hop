@@ -112,8 +112,21 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
     }
 
     timer.start_phase("compiling to IR");
+
+    // Extract pages from target config
+    let pages = match &target_config {
+        TargetConfig::Javascript(c) => &c.pages,
+        TargetConfig::Typescript(c) => &c.pages,
+        TargetConfig::Python(c) => &c.pages,
+        TargetConfig::Go(c) => &c.pages,
+    };
+
     // Use orchestrate to handle inlining, compilation, and optimization
-    let ir_entrypoints = orchestrate(program.get_typed_modules().clone(), tailwind_css.as_deref());
+    let ir_entrypoints = orchestrate(
+        program.get_typed_modules().clone(),
+        tailwind_css.as_deref(),
+        pages,
+    )?;
 
     // Generate code based on target language
     let generated_code = match &target_config {
@@ -171,6 +184,7 @@ mod tests {
             [target.go]
             output = "components/frontend.go"
             package = "main"
+            pages = ["main/HelloWorld"]
 
             [css]
             mode = "tailwind4"

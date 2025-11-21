@@ -146,7 +146,6 @@ pub struct ComponentDefinition<E> {
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<Parameter>, DocumentRange)>,
     pub children: Vec<Node<E>>,
-    pub is_entrypoint: bool,
     pub has_slot: bool,
     pub range: DocumentRange,
 }

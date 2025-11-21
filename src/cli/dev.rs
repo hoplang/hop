@@ -61,7 +61,8 @@ async fn handle_event_source(
 
 #[derive(serde::Deserialize)]
 struct RenderParams {
-    entrypoint: String,
+    module: String,
+    component: String,
     params: std::collections::HashMap<String, serde_json::Value>,
 }
 
@@ -75,7 +76,19 @@ async fn handle_render(
     let css = state.tailwind_css.read().unwrap();
     let css_content = css.as_deref();
 
-    match program.evaluate_ir_entrypoint(&body.entrypoint, body.params, "dev", css_content) {
+    // Parse module name
+    let module_name = match crate::hop::module_name::ModuleName::new(body.module.clone()) {
+        Ok(name) => name,
+        Err(e) => {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .header("Content-Type", "text/html")
+                .body(Body::from(format!("Invalid module name: {}", e)))
+                .unwrap();
+        }
+    };
+
+    match program.evaluate_ir_entrypoint(&module_name, &body.component, body.params, "dev", css_content) {
         Ok(html) => Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "text/html")
@@ -259,9 +272,9 @@ mod tests {
         modules.insert(
             crate::hop::module_name::ModuleName::new("test".to_string()).unwrap(),
             r#"
-            <GreetingComp entrypoint {name: String, title: String}><h1>{title}</h1><p>Hello, {name}!</p></GreetingComp>
+            <GreetingComp {name: String, title: String}><h1>{title}</h1><p>Hello, {name}!</p></GreetingComp>
 
-            <SimpleComp entrypoint><div>Simple content</div></SimpleComp>
+            <SimpleComp><div>Simple content</div></SimpleComp>
             "#
             .to_string(),
         );
@@ -285,7 +298,8 @@ mod tests {
 
         // Test rendering with parameters
         let body_json = serde_json::json!({
-            "entrypoint": "GreetingComp",
+            "module": "test",
+            "component": "GreetingComp",
             "params": {
                 "name": "Alice",
                 "title": "Welcome"
@@ -309,7 +323,8 @@ mod tests {
 
         // Test rendering without parameters
         let body_json = serde_json::json!({
-            "entrypoint": "SimpleComp",
+            "module": "test",
+            "component": "SimpleComp",
             "params": {}
         });
 
@@ -331,7 +346,8 @@ mod tests {
 
         // Test non-existent entrypoint
         let body_json = serde_json::json!({
-            "entrypoint": "nonexistent",
+            "module": "test",
+            "component": "NonExistent",
             "params": {}
         });
 
@@ -348,7 +364,7 @@ mod tests {
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let error_msg = String::from_utf8(body.to_vec()).unwrap();
 
-        expect![[r#"Error rendering component: Entrypoint 'nonexistent' not found"#]]
+        expect!["Error rendering component: Component 'NonExistent' not found in module 'test'. Available components: GreetingComp, SimpleComp"]
             .assert_eq(&error_msg);
 
         // Test invalid JSON body

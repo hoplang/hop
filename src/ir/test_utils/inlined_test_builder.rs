@@ -6,6 +6,7 @@ use crate::dop::VarName;
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode, InlinedParameter,
 };
+use crate::hop::module_name::ModuleName;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
@@ -51,6 +52,7 @@ impl InlinedTestBuilder {
 
     fn build(&self, tag_name: &str, children: Vec<InlinedNode>) -> InlinedEntrypoint {
         InlinedEntrypoint {
+            module_name: ModuleName::new("test".to_string()).unwrap(),
             tag_name: StringSpan::new(tag_name.to_string()),
             params: self.params.clone(),
             children,
