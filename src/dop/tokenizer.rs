@@ -111,6 +111,7 @@ impl Iterator for Tokenizer {
                         "in" => Token::In,
                         "true" => Token::BooleanLiteral(true),
                         "false" => Token::BooleanLiteral(false),
+                        "record" => Token::KeywordRecord,
                         // Type keywords
                         "String" => Token::TypeString,
                         "Int" => Token::TypeInt,

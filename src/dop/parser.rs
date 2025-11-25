@@ -30,6 +30,43 @@ impl Display for Parameter {
     }
 }
 
+/// A RecordField represents a field in a record declaration.
+/// E.g. record Foo {bar: String, baz: Int}
+///                  ^^^^^^^^^^^
+#[derive(Debug, Clone)]
+pub struct RecordField {
+    pub name: PropertyName,
+    pub name_range: DocumentRange,
+    pub field_type: Type,
+}
+
+impl Display for RecordField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.name, self.field_type)
+    }
+}
+
+/// A RecordDeclaration represents a full record type declaration.
+/// E.g. record User {name: String, age: Int}
+#[derive(Debug, Clone)]
+pub struct RecordDeclaration {
+    pub name: DocumentRange,
+    pub fields: Vec<RecordField>,
+}
+
+impl Display for RecordDeclaration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "record {} {{", self.name)?;
+        for (i, field) in self.fields.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", field)?;
+        }
+        write!(f, "}}")
+    }
+}
+
 pub type TypedArgument = Argument<SimpleTypedExpr>;
 
 /// An Argument represents a parsed argument with a name and a value.
@@ -309,6 +346,59 @@ impl Parser {
         )?;
         self.expect_eof()?;
         Ok(args)
+    }
+
+    // record_field = Identifier ":" type
+    fn parse_record_field(&mut self) -> Result<RecordField, ParseError> {
+        let (name, name_range) = self.expect_property_name()?;
+        self.expect_token(&Token::Colon)?;
+        let (field_type, _) = self.parse_type()?;
+        Ok(RecordField {
+            name,
+            name_range,
+            field_type,
+        })
+    }
+
+    // record = "record" Identifier "{" (record_field ("," record_field)* ","?)? "}" Eof
+    pub fn parse_record(&mut self) -> Result<RecordDeclaration, ParseError> {
+        // Expect "record" keyword
+        self.expect_token(&Token::KeywordRecord)?;
+
+        // Expect record name (an identifier)
+        let name = match self.iter.next().transpose()? {
+            Some((Token::Identifier(name), _)) => name,
+            Some((actual, range)) => {
+                return Err(ParseError::ExpectedVariableNameButGot { actual, range })
+            }
+            None => {
+                return Err(ParseError::UnexpectedEof {
+                    range: self.range.clone(),
+                })
+            }
+        };
+
+        // Expect opening brace
+        let left_brace = self.expect_token(&Token::LeftBrace)?;
+
+        // Parse fields
+        let mut fields = Vec::new();
+        let mut seen_names = HashSet::new();
+        self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
+            let field = this.parse_record_field()?;
+            if !seen_names.insert(field.name.as_str().to_string()) {
+                return Err(ParseError::DuplicateProperty {
+                    name: field.name_range.to_string_span(),
+                    range: field.name_range.clone(),
+                });
+            }
+            fields.push(field);
+            Ok(())
+        })?;
+
+        self.expect_eof()?;
+
+        Ok(RecordDeclaration { name, fields })
     }
 
     // object_type = "{" (Identifier ":" type ("," Identifier ":" type)*)? "}"
@@ -720,6 +810,123 @@ mod tests {
         };
 
         expected.assert_eq(&actual);
+    }
+
+    fn check_parse_record(input: &str, expected: Expect) {
+        let mut parser = Parser::from(input);
+
+        let actual = match parser.parse_record() {
+            Ok(result) => format!("{}\n", result),
+            Err(err) => annotate_error(err),
+        };
+
+        expected.assert_eq(&actual);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// RECORDS                                                             ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn test_parse_record_simple() {
+        check_parse_record(
+            "record Foo {bar: String}",
+            expect![[r#"
+                record Foo {bar: String}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_record_multiple_fields() {
+        check_parse_record(
+            "record User {name: String, age: Int, active: Bool}",
+            expect![[r#"
+                record User {name: String, age: Int, active: Bool}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_record_multiline_with_trailing_comma() {
+        check_parse_record(
+            indoc! {r#"
+                record User {
+                    name: String,
+                    email: String,
+                    age: Int,
+                }
+            "#},
+            expect![[r#"
+                record User {name: String, email: String, age: Int}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_record_empty() {
+        check_parse_record(
+            "record Empty {}",
+            expect![[r#"
+                record Empty {}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_record_with_array_type() {
+        check_parse_record(
+            "record Container {items: Array[String], count: Int}",
+            expect![[r#"
+                record Container {items: Array[String], count: Int}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_record_with_nested_record_type() {
+        check_parse_record(
+            "record Wrapper {inner: Record[name: String]}",
+            expect![[r#"
+                record Wrapper {inner: Record[name: String]}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_record_duplicate_field_error() {
+        check_parse_record(
+            "record Foo {bar: String, bar: Int}",
+            expect![[r#"
+                error: Duplicate property 'bar'
+                record Foo {bar: String, bar: Int}
+                                         ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_record_missing_brace_error() {
+        check_parse_record(
+            "record Foo {bar: String",
+            expect![[r#"
+                error: Unmatched '{'
+                record Foo {bar: String
+                           ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_record_missing_name_error() {
+        check_parse_record(
+            "record {bar: String}",
+            expect![[r#"
+                error: Expected variable name but got {
+                record {bar: String}
+                       ^
+            "#]],
+        );
     }
 
     ///////////////////////////////////////////////////////////////////////////

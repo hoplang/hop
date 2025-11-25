@@ -31,6 +31,7 @@ pub enum Token {
     Colon,
     Comma,
     In,
+    KeywordRecord,
     // Type tokens
     TypeString,
     TypeInt,
@@ -71,6 +72,7 @@ impl PartialEq for Token {
             (Token::Colon, Token::Colon) => true,
             (Token::Comma, Token::Comma) => true,
             (Token::In, Token::In) => true,
+            (Token::KeywordRecord, Token::KeywordRecord) => true,
             (Token::TypeString, Token::TypeString) => true,
             (Token::TypeInt, Token::TypeInt) => true,
             (Token::TypeFloat, Token::TypeFloat) => true,
@@ -126,6 +128,7 @@ impl fmt::Display for Token {
             Token::Colon => write!(f, ":"),
             Token::Comma => write!(f, ","),
             Token::In => write!(f, "in"),
+            Token::KeywordRecord => write!(f, "record"),
             Token::TypeString => write!(f, "String"),
             Token::TypeInt => write!(f, "Int"),
             Token::TypeFloat => write!(f, "Float"),
