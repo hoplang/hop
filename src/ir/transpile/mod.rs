@@ -80,6 +80,7 @@ pub trait TypeTranspiler {
     fn transpile_trusted_html_type<'a>(&self) -> BoxDoc<'a>;
     fn transpile_array_type<'a>(&self, element_type: Option<&'a Type>) -> BoxDoc<'a>;
     fn transpile_object_type<'a>(&self, fields: &'a BTreeMap<PropertyName, Type>) -> BoxDoc<'a>;
+    fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a>;
     fn transpile_type<'a>(&self, t: &'a Type) -> BoxDoc<'a> {
         match t {
             Type::Bool => self.transpile_bool_type(),
@@ -89,6 +90,7 @@ pub trait TypeTranspiler {
             Type::TrustedHTML => self.transpile_trusted_html_type(),
             Type::Array(elem) => self.transpile_array_type(elem.as_deref()),
             Type::Object(fields) => self.transpile_object_type(fields),
+            Type::Named(name) => self.transpile_named_type(name),
         }
     }
 }

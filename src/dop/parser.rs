@@ -440,6 +440,9 @@ impl Parser {
                 ))
             }
             Some((Token::LeftBrace, left_brace_range)) => self.parse_object_type(left_brace_range),
+            Some((Token::TypeName(name), range)) => {
+                Ok((Type::Named(name.as_str().to_string()), range))
+            }
             Some((actual, range)) => Err(ParseError::ExpectedTypeNameButGot { actual, range }),
             None => Err(ParseError::UnexpectedEof {
                 range: self.range.clone(),
@@ -912,6 +915,26 @@ mod tests {
             "content: TrustedHTML",
             expect![[r#"
                 [content: TrustedHTML]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_parameters_named_type() {
+        check_parse_parameters(
+            "user: User, person: Person",
+            expect![[r#"
+                [user: User, person: Person]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_parameters_named_type_in_array() {
+        check_parse_parameters(
+            "users: Array[User]",
+            expect![[r#"
+                [users: Array[User]]
             "#]],
         );
     }

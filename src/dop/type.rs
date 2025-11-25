@@ -40,6 +40,7 @@ pub enum Type {
     TrustedHTML,
     Object(BTreeMap<PropertyName, Type>),
     Array(Option<Box<Type>>),
+    Named(String),
 }
 
 impl Type {
@@ -49,7 +50,7 @@ impl Type {
             Type::String => Some(EquatableType::String),
             Type::Int => Some(EquatableType::Int),
             Type::Float => Some(EquatableType::Float),
-            Type::TrustedHTML | Type::Object(_) | Type::Array(_) => None,
+            Type::TrustedHTML | Type::Object(_) | Type::Array(_) | Type::Named(_) => None,
         }
     }
 
@@ -57,9 +58,12 @@ impl Type {
         match self {
             Type::Int => Some(ComparableType::Int),
             Type::Float => Some(ComparableType::Float),
-            Type::Bool | Type::String | Type::TrustedHTML | Type::Object(_) | Type::Array(_) => {
-                None
-            }
+            Type::Bool
+            | Type::String
+            | Type::TrustedHTML
+            | Type::Object(_)
+            | Type::Array(_)
+            | Type::Named(_) => None,
         }
     }
 
@@ -91,6 +95,9 @@ impl Type {
                         .is_some_and(|sub_type| sub_type.is_subtype(super_type))
                 })
             }
+
+            // Named types: must have the same name
+            (Type::Named(sub_name), Type::Named(super_name)) => sub_name == super_name,
 
             // Otherwise, not a subtype
             _ => false,
@@ -153,6 +160,7 @@ impl<'a> Type {
                         .append(BoxDoc::text("]"))
                 }
             }
+            Type::Named(name) => BoxDoc::text(name.clone()),
         }
     }
 }

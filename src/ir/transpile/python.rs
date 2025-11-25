@@ -105,6 +105,7 @@ impl PythonTranspiler {
                 .append(BoxDoc::text("]")),
             Type::Array(None) => BoxDoc::text("list"),
             Type::Object(_) => BoxDoc::text("dict"),
+            Type::Named(name) => BoxDoc::text(name.clone()),
         }
     }
 
@@ -807,6 +808,10 @@ impl TypeTranspiler for PythonTranspiler {
         // For Python, we'll use dict with type hints as comments or in docstrings
         // For now, just use dict
         BoxDoc::text("dict")
+    }
+
+    fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
+        BoxDoc::text(name)
     }
 }
 

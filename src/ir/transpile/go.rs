@@ -833,6 +833,10 @@ impl TypeTranspiler for GoTranspiler {
             )
             .append(BoxDoc::text("}"))
     }
+
+    fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
+        BoxDoc::text(name)
+    }
 }
 
 #[cfg(test)]
