@@ -367,7 +367,7 @@ impl Parser {
     // record = "record" Identifier "{" (record_field ("," record_field)* ","?)? "}" Eof
     pub fn parse_record(&mut self) -> Result<RecordDeclaration, ParseError> {
         // Expect "record" keyword
-        self.expect_token(&Token::KeywordRecord)?;
+        self.expect_token(&Token::Record)?;
 
         // Expect record name (a type name)
         let name = match self.iter.next().transpose()? {
