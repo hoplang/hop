@@ -39,7 +39,6 @@ pub enum Token {
     TypeBoolean,
     TypeTrustedHTML,
     TypeArray,
-    TypeRecord,
 }
 
 impl PartialEq for Token {
@@ -79,7 +78,6 @@ impl PartialEq for Token {
             (Token::TypeBoolean, Token::TypeBoolean) => true,
             (Token::TypeTrustedHTML, Token::TypeTrustedHTML) => true,
             (Token::TypeArray, Token::TypeArray) => true,
-            (Token::TypeRecord, Token::TypeRecord) => true,
             _ => false,
         }
     }
@@ -135,7 +133,6 @@ impl fmt::Display for Token {
             Token::TypeBoolean => write!(f, "Bool"),
             Token::TypeTrustedHTML => write!(f, "TrustedHTML"),
             Token::TypeArray => write!(f, "Array"),
-            Token::TypeRecord => write!(f, "Record"),
         }
     }
 }
