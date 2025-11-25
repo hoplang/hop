@@ -559,7 +559,7 @@ impl Parser {
     // multiplicative = unary ( "*" unary )*
     fn parse_multiplicative(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.parse_unary()?;
-        while self.advance_if(Token::Multiply).is_some() {
+        while self.advance_if(Token::Asterisk).is_some() {
             let right = self.parse_unary()?;
             expr = AnnotatedExpr::BinaryOp {
                 annotation: expr.range().clone().to(right.range().clone()),
