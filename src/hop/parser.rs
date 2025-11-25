@@ -196,7 +196,6 @@ fn parse_top_level_node(
         Token::Comment { .. } => None,
         Token::Doctype { .. } => None,
         Token::Record { range, .. } => {
-            // Parse the full record declaration using the dop parser
             let declaration = match Parser::from(range.clone()).parse_record() {
                 Ok(decl) => decl,
                 Err(err) => {
@@ -204,7 +203,6 @@ fn parse_top_level_node(
                     return None;
                 }
             };
-
             Some(TopLevelNode::Record(Record { declaration, range }))
         }
         Token::Import { name, path, .. } => {
