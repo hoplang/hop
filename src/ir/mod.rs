@@ -11,4 +11,6 @@ pub mod transpile;
 
 pub use ast::IrExpr;
 pub use compiler::Compiler;
-pub use transpile::{GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, RecordInfo, Transpiler};
+pub use transpile::{
+    GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, RecordInfo, Transpiler,
+};

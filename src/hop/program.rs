@@ -409,16 +409,17 @@ impl Program {
         generated_tailwind_css: Option<&str>,
     ) -> Result<String> {
         // Validate that the module exists
-        let module = self.get_typed_modules()
-            .get(module_name)
-            .ok_or_else(|| anyhow::anyhow!(
+        let module = self.get_typed_modules().get(module_name).ok_or_else(|| {
+            anyhow::anyhow!(
                 "Module '{}' not found. Available modules: {}",
                 module_name,
-                self.get_typed_modules().keys()
+                self.get_typed_modules()
+                    .keys()
                     .map(|m| m.as_str())
                     .collect::<Vec<_>>()
                     .join(", ")
-            ))?;
+            )
+        })?;
 
         // Check if the component exists in this module
         let component_exists = module
@@ -451,13 +452,13 @@ impl Program {
         )?;
 
         // Get the entrypoint (should be the only one)
-        let entrypoint = ir_entrypoints
-            .first()
-            .ok_or_else(|| anyhow::anyhow!(
+        let entrypoint = ir_entrypoints.first().ok_or_else(|| {
+            anyhow::anyhow!(
                 "Entrypoint '{}/{}' not found after compilation",
                 module_name,
                 component_name
-            ))?;
+            )
+        })?;
 
         // Evaluate the entrypoint
         ir::evaluator::evaluate_entrypoint(entrypoint, args, hop_mode)
@@ -1402,7 +1403,13 @@ mod tests {
         assert!(result.contains("<p>Static content</p>"));
 
         // Test error when entrypoint doesn't exist
-        let result = program.evaluate_ir_entrypoint(&main_module, "NonExistent", HashMap::new(), "dev", None);
+        let result = program.evaluate_ir_entrypoint(
+            &main_module,
+            "NonExistent",
+            HashMap::new(),
+            "dev",
+            None,
+        );
         assert!(result.is_err());
         assert!(
             result

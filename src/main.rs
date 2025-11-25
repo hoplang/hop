@@ -55,11 +55,6 @@ enum Commands {
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
     },
-    /// Format a hop file
-    Fmt {
-        /// Path to the file to format
-        filename: String,
-    },
 }
 
 #[tokio::main]
@@ -295,31 +290,6 @@ async fn main() -> anyhow::Result<()> {
 
             // Run the dev server and ensure cleanup always happens
             run_dev_server(&root, host, *port, start_time).await?
-        }
-        Some(Commands::Fmt { filename }) => {
-            use hop::pretty_print::pretty_print_from_source;
-            use std::fs;
-
-            // Read the file
-            let content = fs::read_to_string(filename)?;
-
-            // Format the content
-            match pretty_print_from_source(&content, 80) {
-                Ok(formatted) => {
-                    // Write the formatted content back to the file
-                    fs::write(filename, formatted)?;
-                    use colored::*;
-                    println!("  {} {}", "✓".green(), filename);
-                }
-                Err(errors) => {
-                    use colored::*;
-                    eprintln!("  {} Failed to format {}", "✗".red(), filename);
-                    for error in errors {
-                        eprintln!("    {}", error);
-                    }
-                    std::process::exit(1);
-                }
-            }
         }
         None => {
             let mut cmd = Cli::command();

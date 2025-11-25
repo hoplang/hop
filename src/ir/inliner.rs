@@ -60,7 +60,11 @@ impl Inliner {
         let mut available_components = Vec::new();
         for (module_name, ast) in &asts {
             for component in ast.get_component_definitions() {
-                available_components.push(format!("{}/{}", module_name, component.tag_name.as_str()));
+                available_components.push(format!(
+                    "{}/{}",
+                    module_name,
+                    component.tag_name.as_str()
+                ));
             }
         }
 
@@ -85,7 +89,11 @@ impl Inliner {
         for (module_name, ast) in &asts {
             for component in ast.get_component_definitions() {
                 // Check if this component should be included based on pages filter
-                if Self::should_include_component(&page_filter, module_name, component.tag_name.as_str()) {
+                if Self::should_include_component(
+                    &page_filter,
+                    module_name,
+                    component.tag_name.as_str(),
+                ) {
                     result.push(InlinedEntrypoint {
                         module_name: module_name.clone(),
                         tag_name: component.tag_name.to_string_span(),
@@ -339,8 +347,8 @@ mod tests {
     fn check_inlining(sources: Vec<(&str, &str)>, pages: Vec<&str>, expected: Expect) {
         let typed_asts = create_typed_asts_from_sources(sources);
         let pages_owned: Vec<String> = pages.iter().map(|s| s.to_string()).collect();
-        let inlined_entrypoints = Inliner::inline_entrypoints(typed_asts, &pages_owned)
-            .expect("Inlining should succeed");
+        let inlined_entrypoints =
+            Inliner::inline_entrypoints(typed_asts, &pages_owned).expect("Inlining should succeed");
 
         // Format using Display implementation for better readability
         let output = inlined_entrypoints

@@ -6,7 +6,6 @@ pub mod module_name;
 pub mod node;
 pub mod parse_error;
 pub mod parser;
-pub mod pretty_print;
 pub mod program;
 pub mod token_tree;
 pub mod tokenizer;
