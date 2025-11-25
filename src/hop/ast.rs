@@ -2,6 +2,7 @@ use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::Expr;
 use crate::dop::Parameter;
+use crate::dop::RecordDeclaration;
 use crate::dop::SimpleTypedExpr;
 use crate::hop::component_name::ComponentName;
 use crate::hop::module_name::ModuleName;
@@ -40,6 +41,7 @@ pub type TypedAst = Ast<SimpleTypedExpr>;
 pub struct Ast<T> {
     pub name: ModuleName,
     imports: Vec<Import>,
+    records: Vec<Record>,
     component_definitions: Vec<ComponentDefinition<T>>,
 }
 
@@ -48,11 +50,13 @@ impl<T> Ast<T> {
         name: ModuleName,
         component_definitions: Vec<ComponentDefinition<T>>,
         imports: Vec<Import>,
+        records: Vec<Record>,
     ) -> Self {
         Self {
             name,
             component_definitions,
             imports,
+            records,
         }
     }
 
@@ -70,6 +74,11 @@ impl<T> Ast<T> {
     /// Returns a reference to all import nodes in the AST.
     pub fn get_imports(&self) -> &[Import] {
         &self.imports
+    }
+
+    /// Returns a reference to all record declarations in the AST.
+    pub fn get_records(&self) -> &[Record] {
+        &self.records
     }
 
     /// Returns an iterator over all nodes in the AST, iterating depth-first.
@@ -133,6 +142,18 @@ impl Import {
     }
     pub fn imports_from(&self, module_name: &ModuleName) -> bool {
         &self.module_name == module_name
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Record {
+    pub declaration: RecordDeclaration,
+    pub range: DocumentRange,
+}
+
+impl Record {
+    pub fn name(&self) -> &str {
+        self.declaration.name.as_str()
     }
 }
 

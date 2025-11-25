@@ -1,7 +1,7 @@
 use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::Parser;
 use crate::error_collector::ErrorCollector;
-use crate::hop::ast::{Ast, ComponentDefinition, Import};
+use crate::hop::ast::{Ast, ComponentDefinition, Import, Record};
 use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{Token, Tokenizer};
@@ -105,6 +105,7 @@ impl AttributeValidator {
 
 enum TopLevelNode {
     Import(Import),
+    Record(Record),
     ComponentDefinition(UntypedComponentDefinition),
 }
 
@@ -117,9 +118,11 @@ pub fn parse(
 
     let mut components = Vec::new();
     let mut imports = Vec::new();
+    let mut records = Vec::new();
 
     let mut defined_components = HashSet::new();
     let mut imported_components = HashMap::new();
+    let mut defined_records = HashSet::new();
 
     for mut tree in trees {
         let children: Vec<UntypedNode> = std::mem::take(&mut tree.children)
@@ -150,6 +153,18 @@ pub fn parse(
                     }
                     imports.push(import);
                 }
+                TopLevelNode::Record(record) => {
+                    let name = record.name();
+                    if defined_records.contains(name) {
+                        errors.push(ParseError::RecordIsAlreadyDefined {
+                            record_name: record.declaration.name.to_string_span(),
+                            range: record.declaration.name.clone(),
+                        });
+                    } else {
+                        defined_records.insert(name.to_string());
+                    }
+                    records.push(record);
+                }
                 TopLevelNode::ComponentDefinition(component) => {
                     let name = component.tag_name.as_str();
                     if defined_components.contains(name) || imported_components.contains_key(name) {
@@ -166,7 +181,7 @@ pub fn parse(
         }
     }
 
-    Ast::new(module_name, components, imports)
+    Ast::new(module_name, components, imports, records)
 }
 
 fn parse_top_level_node(
@@ -180,9 +195,17 @@ fn parse_top_level_node(
         Token::TextExpression { .. } => None,
         Token::Comment { .. } => None,
         Token::Doctype { .. } => None,
-        Token::Record { .. } => {
-            // TODO: Records are handled elsewhere
-            None
+        Token::Record { range, .. } => {
+            // Parse the full record declaration using the dop parser
+            let declaration = match Parser::from(range.clone()).parse_record() {
+                Ok(decl) => decl,
+                Err(err) => {
+                    errors.push(err.into());
+                    return None;
+                }
+            };
+
+            Some(TopLevelNode::Record(Record { declaration, range }))
         }
         Token::Import { name, path, .. } => {
             // Handle import declarations like: import UserList from "@/user_list.hop"

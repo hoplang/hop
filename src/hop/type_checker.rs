@@ -236,6 +236,7 @@ fn typecheck_module(
         module.name.clone(),
         typed_component_definitions,
         module.get_imports().to_vec(),
+        module.get_records().to_vec(),
     )
 }
 
