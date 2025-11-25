@@ -108,10 +108,11 @@ impl PythonTranspiler {
         }
     }
 
-    fn scan_for_imports(&self, entrypoint: &IrEntrypoint) -> (bool, bool, bool) {
+    fn scan_for_imports(&self, entrypoint: &IrEntrypoint) -> (bool, bool, bool, bool) {
         let mut needs_html_escape = false;
         let mut needs_json = false;
         let mut needs_simple_namespace = false;
+        let mut needs_os = false;
 
         for stmt in &entrypoint.body {
             // Check for HTML escaping
@@ -128,6 +129,9 @@ impl PythonTranspiler {
                         IrExpr::JsonEncode { .. } => {
                             needs_json = true;
                         }
+                        IrExpr::EnvLookup { .. } => {
+                            needs_os = true;
+                        }
                         IrExpr::ObjectLiteral { .. } => {
                             needs_simple_namespace = true;
                         }
@@ -137,7 +141,12 @@ impl PythonTranspiler {
             });
         }
 
-        (needs_html_escape, needs_json, needs_simple_namespace)
+        (
+            needs_html_escape,
+            needs_json,
+            needs_simple_namespace,
+            needs_os,
+        )
     }
 
     fn scan_for_trusted_html(&self, entrypoints: &[IrEntrypoint]) -> bool {
@@ -176,13 +185,16 @@ impl Transpiler for PythonTranspiler {
         let mut needs_json = false;
         let mut needs_simple_namespace = false;
         let mut needs_dataclasses = false;
+        let mut needs_os = false;
 
         // First pass: scan all entrypoints to determine imports
         for entrypoint in entrypoints {
-            let (has_escape, has_json, has_simple_namespace) = self.scan_for_imports(entrypoint);
+            let (has_escape, has_json, has_simple_namespace, has_os) =
+                self.scan_for_imports(entrypoint);
             needs_html_escape |= has_escape;
             needs_json |= has_json;
             needs_simple_namespace |= has_simple_namespace;
+            needs_os |= has_os;
             if !entrypoint.parameters.is_empty() {
                 needs_dataclasses = true;
             }
@@ -193,6 +205,12 @@ impl Transpiler for PythonTranspiler {
         let mut result = BoxDoc::nil();
 
         // Add imports if needed
+        if needs_os {
+            result = result
+                .append(BoxDoc::text("import os"))
+                .append(BoxDoc::line());
+        }
+
         if needs_dataclasses {
             result = result
                 .append(BoxDoc::text("from dataclasses import dataclass"))
