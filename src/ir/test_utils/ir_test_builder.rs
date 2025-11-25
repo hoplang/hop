@@ -22,11 +22,31 @@ where
     builder.build(name)
 }
 
+pub fn build_ir_with_records<F>(
+    name: &str,
+    params: Vec<(&str, Type)>,
+    records: Vec<(&str, Vec<(&str, Type)>)>,
+    body_fn: F,
+) -> IrEntrypoint
+where
+    F: FnOnce(&mut IrAutoBuilder),
+{
+    let params_owned: Vec<(String, Type)> = params
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+    let inner_builder = IrTestBuilder::with_records(params_owned, records);
+    let mut builder = IrAutoBuilder::new(inner_builder);
+    body_fn(&mut builder);
+    builder.build(name)
+}
+
 pub struct IrTestBuilder {
     next_expr_id: RefCell<ExprId>,
     next_node_id: RefCell<StatementId>,
     var_stack: RefCell<Vec<(String, Type)>>,
     params: Vec<(VarName, Type)>,
+    records: BTreeMap<String, BTreeMap<String, Type>>,
 }
 
 impl IrTestBuilder {
@@ -41,6 +61,33 @@ impl IrTestBuilder {
                 .into_iter()
                 .map(|(s, t)| (VarName::try_from(s).unwrap(), t))
                 .collect(),
+            records: BTreeMap::new(),
+        }
+    }
+
+    fn with_records(params: Vec<(String, Type)>, records: Vec<(&str, Vec<(&str, Type)>)>) -> Self {
+        let initial_vars = params.clone();
+
+        let records_map: BTreeMap<String, BTreeMap<String, Type>> = records
+            .into_iter()
+            .map(|(name, fields)| {
+                let fields_map: BTreeMap<String, Type> = fields
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v))
+                    .collect();
+                (name.to_string(), fields_map)
+            })
+            .collect();
+
+        Self {
+            next_expr_id: RefCell::new(1),
+            next_node_id: RefCell::new(1),
+            var_stack: RefCell::new(initial_vars),
+            params: params
+                .into_iter()
+                .map(|(s, t)| (VarName::try_from(s).unwrap(), t))
+                .collect(),
+            records: records_map,
         }
     }
 
@@ -220,6 +267,21 @@ impl IrTestBuilder {
                 .get(&property_name)
                 .cloned()
                 .unwrap_or_else(|| panic!("Property '{}' not found in object type", property)),
+            Type::Named(record_name) => {
+                let record_fields = self
+                    .records
+                    .get(record_name)
+                    .unwrap_or_else(|| panic!("Record '{}' not found in test builder", record_name));
+                record_fields
+                    .get(property)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "Property '{}' not found in record type '{}'",
+                            property, record_name
+                        )
+                    })
+            }
             _ => panic!("Cannot access property '{}' on non-object type", property),
         };
 
@@ -376,6 +438,7 @@ impl IrAutoBuilder {
                 next_node_id: self.inner.next_node_id.clone(),
                 var_stack: self.inner.var_stack.clone(),
                 params: self.inner.params.clone(),
+                records: self.inner.records.clone(),
             },
             statements: Vec::new(),
         }

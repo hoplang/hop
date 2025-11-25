@@ -1,6 +1,6 @@
 use pretty::BoxDoc;
 
-use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
+use super::{ExpressionTranspiler, RecordInfo, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::cased_string::CasedString;
 use crate::dop::property_name::PropertyName;
 use crate::dop::r#type::Type;
@@ -181,7 +181,7 @@ impl PythonTranspiler {
 }
 
 impl Transpiler for PythonTranspiler {
-    fn transpile_module(&self, entrypoints: &[IrEntrypoint]) -> String {
+    fn transpile_module(&self, entrypoints: &[IrEntrypoint], records: &[RecordInfo]) -> String {
         let mut needs_html_escape = false;
         let mut needs_json = false;
         let mut needs_simple_namespace = false;
@@ -199,6 +199,11 @@ impl Transpiler for PythonTranspiler {
             if !entrypoint.parameters.is_empty() {
                 needs_dataclasses = true;
             }
+        }
+
+        // Check if we have records to generate
+        if !records.is_empty() {
+            needs_dataclasses = true;
         }
 
         let needs_trusted_html = self.scan_for_trusted_html(entrypoints);
@@ -255,6 +260,33 @@ impl Transpiler for PythonTranspiler {
         if needs_trusted_html {
             result = result
                 .append(BoxDoc::text("TrustedHTML = NewType('TrustedHTML', str)"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line());
+        }
+
+        // Generate record type dataclasses
+        for record in records {
+            let fields: Vec<_> = record
+                .fields
+                .iter()
+                .map(|(field_name, field_type)| {
+                    BoxDoc::text(field_name.as_str())
+                        .append(BoxDoc::text(": "))
+                        .append(Self::get_python_type(field_type))
+                })
+                .collect();
+
+            result = result
+                .append(BoxDoc::text("@dataclass"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("class "))
+                .append(BoxDoc::text(record.name.as_str()))
+                .append(BoxDoc::text(":"))
+                .append(
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(fields, BoxDoc::line()))
+                        .nest(4),
+                )
                 .append(BoxDoc::line())
                 .append(BoxDoc::line());
         }
@@ -823,7 +855,7 @@ mod tests {
 
     fn transpile_with_pretty(entrypoints: &[IrEntrypoint]) -> String {
         let transpiler = PythonTranspiler::new();
-        transpiler.transpile_module(entrypoints)
+        transpiler.transpile_module(entrypoints, &[])
     }
 
     fn check(entrypoints: &[IrEntrypoint], expected: Expect) {
@@ -1475,5 +1507,86 @@ mod tests {
                     return ''.join(output)
             "#]],
         );
+    }
+
+    #[test]
+    fn test_record_declarations() {
+        use crate::ir::test_utils::build_ir_with_records;
+
+        let records_def = vec![
+            (
+                "User",
+                vec![
+                    ("name", Type::String),
+                    ("age", Type::Int),
+                    ("active", Type::Bool),
+                ],
+            ),
+            (
+                "Address",
+                vec![("street", Type::String), ("city", Type::String)],
+            ),
+        ];
+
+        let entrypoints = vec![build_ir_with_records(
+            "UserProfile",
+            vec![("user", Type::Named("User".to_string()))],
+            records_def,
+            |t| {
+                t.write("<div>");
+                t.write_expr_escaped(t.prop_access(t.var("user"), "name"));
+                t.write("</div>");
+            },
+        )];
+
+        let records = vec![
+            RecordInfo {
+                name: "User".to_string(),
+                fields: vec![
+                    ("name".to_string(), Type::String),
+                    ("age".to_string(), Type::Int),
+                    ("active".to_string(), Type::Bool),
+                ],
+            },
+            RecordInfo {
+                name: "Address".to_string(),
+                fields: vec![
+                    ("street".to_string(), Type::String),
+                    ("city".to_string(), Type::String),
+                ],
+            },
+        ];
+
+        let transpiler = PythonTranspiler::new();
+        let output = transpiler.transpile_module(&entrypoints, &records);
+
+        expect![[r#"
+            from dataclasses import dataclass
+            from html import escape as html_escape
+
+            @dataclass
+            class User:
+                name: str
+                age: int
+                active: bool
+
+            @dataclass
+            class Address:
+                street: str
+                city: str
+
+            @dataclass
+            class UserProfileParams:
+                user: User
+
+            def user_profile(params: UserProfileParams) -> str:
+                user = params.user
+                output = []
+                output.append("<div>")
+                output.append(html_escape(user.name))
+                output.append("</div>")
+                return ''.join(output)
+        "#]]
+        .assert_eq(&output);
     }
 }

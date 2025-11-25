@@ -3,7 +3,7 @@ use crate::filesystem::config::TargetConfig;
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::program::Program;
 use crate::ir::{
-    GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler,
+    GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, RecordInfo, Transpiler,
     orchestrator::orchestrate,
 };
 use crate::tui::timing;
@@ -128,27 +128,43 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
         pages,
     )?;
 
+    // Collect record declarations from all modules
+    let records: Vec<RecordInfo> = program
+        .get_typed_modules()
+        .values()
+        .flat_map(|module| module.get_records())
+        .map(|record| RecordInfo {
+            name: record.name().to_string(),
+            fields: record
+                .declaration
+                .fields
+                .iter()
+                .map(|f| (f.name.as_str().to_string(), f.field_type.clone()))
+                .collect(),
+        })
+        .collect();
+
     // Generate code based on target language
     let generated_code = match &target_config {
         TargetConfig::Javascript(_) => {
             timer.start_phase("transpiling to js");
             let transpiler = JsTranspiler::new(LanguageMode::JavaScript);
-            transpiler.transpile_module(&ir_entrypoints)
+            transpiler.transpile_module(&ir_entrypoints, &records)
         }
         TargetConfig::Typescript(_) => {
             timer.start_phase("transpiling to ts");
             let transpiler = JsTranspiler::new(LanguageMode::TypeScript);
-            transpiler.transpile_module(&ir_entrypoints)
+            transpiler.transpile_module(&ir_entrypoints, &records)
         }
         TargetConfig::Go(config) => {
             timer.start_phase("transpiling to go");
             let transpiler = GoTranspiler::new(config.package.clone());
-            transpiler.transpile_module(&ir_entrypoints)
+            transpiler.transpile_module(&ir_entrypoints, &records)
         }
         TargetConfig::Python(_) => {
             timer.start_phase("transpiling to python");
             let transpiler = PythonTranspiler::new();
-            transpiler.transpile_module(&ir_entrypoints)
+            transpiler.transpile_module(&ir_entrypoints, &records)
         }
     };
 

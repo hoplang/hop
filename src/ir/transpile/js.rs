@@ -1,6 +1,6 @@
 use pretty::BoxDoc;
 
-use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
+use super::{ExpressionTranspiler, RecordInfo, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::dop::property_name::PropertyName;
 use crate::dop::r#type::Type;
 use crate::hop::component_name::ComponentName;
@@ -90,7 +90,7 @@ impl JsTranspiler {
 }
 
 impl Transpiler for JsTranspiler {
-    fn transpile_module(&self, entrypoints: &[IrEntrypoint]) -> String {
+    fn transpile_module(&self, entrypoints: &[IrEntrypoint], records: &[RecordInfo]) -> String {
         let mut needs_escape_html = false;
         for entrypoint in entrypoints {
             if self.scan_for_escape_html(entrypoint) {
@@ -111,6 +111,34 @@ impl Transpiler for JsTranspiler {
                 ))
                 .append(BoxDoc::line())
                 .append(BoxDoc::line());
+        }
+
+        // Add record type definitions for TypeScript
+        if matches!(self.mode, LanguageMode::TypeScript) && !records.is_empty() {
+            for record in records {
+                result = result
+                    .append(BoxDoc::text("interface "))
+                    .append(BoxDoc::text(record.name.as_str()))
+                    .append(BoxDoc::text(" {"))
+                    .append(
+                        BoxDoc::nil()
+                            .append(BoxDoc::line())
+                            .append(BoxDoc::intersperse(
+                                record.fields.iter().map(|(name, ty)| {
+                                    BoxDoc::text(name.as_str())
+                                        .append(BoxDoc::text(": "))
+                                        .append(self.transpile_type(ty))
+                                        .append(BoxDoc::text(";"))
+                                }),
+                                BoxDoc::line(),
+                            ))
+                            .append(BoxDoc::line())
+                            .nest(4),
+                    )
+                    .append(BoxDoc::text("}"))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::line());
+            }
         }
 
         if needs_escape_html {
@@ -719,7 +747,7 @@ mod tests {
 
     fn transpile_with_pretty(entrypoints: &[IrEntrypoint], mode: LanguageMode) -> String {
         let transpiler = JsTranspiler::new(mode);
-        transpiler.transpile_module(entrypoints)
+        transpiler.transpile_module(entrypoints, &[])
     }
 
     fn check(entrypoints: &[IrEntrypoint], expected: Expect) {
@@ -1573,5 +1601,116 @@ mod tests {
                 }
             "#]],
         );
+    }
+
+    #[test]
+    fn test_record_declarations() {
+        use crate::ir::test_utils::build_ir_with_records;
+
+        let records_def = vec![
+            (
+                "User",
+                vec![
+                    ("name", Type::String),
+                    ("age", Type::Int),
+                    ("active", Type::Bool),
+                ],
+            ),
+            (
+                "Address",
+                vec![("street", Type::String), ("city", Type::String)],
+            ),
+        ];
+
+        let entrypoints = vec![build_ir_with_records(
+            "UserProfile",
+            vec![("user", Type::Named("User".to_string()))],
+            records_def,
+            |t| {
+                t.write("<div>");
+                t.write_expr_escaped(t.prop_access(t.var("user"), "name"));
+                t.write("</div>");
+            },
+        )];
+
+        let records = vec![
+            RecordInfo {
+                name: "User".to_string(),
+                fields: vec![
+                    ("name".to_string(), Type::String),
+                    ("age".to_string(), Type::Int),
+                    ("active".to_string(), Type::Bool),
+                ],
+            },
+            RecordInfo {
+                name: "Address".to_string(),
+                fields: vec![
+                    ("street".to_string(), Type::String),
+                    ("city".to_string(), Type::String),
+                ],
+            },
+        ];
+
+        let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
+        let ts_output = ts_transpiler.transpile_module(&entrypoints, &records);
+
+        let js_transpiler = JsTranspiler::new(LanguageMode::JavaScript);
+        let js_output = js_transpiler.transpile_module(&entrypoints, &records);
+
+        let output = format!("-- ts --\n{}\n-- js --\n{}", ts_output, js_output);
+
+        expect![[r#"
+            -- ts --
+            interface User {
+                name: string;
+                age: number;
+                active: boolean;
+            }
+
+            interface Address {
+                street: string;
+                city: string;
+            }
+
+            function escapeHtml(str: string): string {
+                return str
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            export default {
+                userProfile: ({ user }: { user: User }): string => {
+                    let output: string = "";
+                    output += "<div>";
+                    output += escapeHtml(user.name);
+                    output += "</div>";
+                    return output;
+                }
+            }
+
+            -- js --
+            function escapeHtml(str) {
+                return str
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            export default {
+                userProfile: ({ user }) => {
+                    let output = "";
+                    output += "<div>";
+                    output += escapeHtml(user.name);
+                    output += "</div>";
+                    return output;
+                }
+            }
+        "#]]
+        .assert_eq(&output);
     }
 }

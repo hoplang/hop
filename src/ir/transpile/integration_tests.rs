@@ -153,16 +153,16 @@ fn run_integration_test(test_case: TestCase) -> Result<(), String> {
     let entrypoints = vec![test_case.entrypoint];
 
     let js_transpiler = JsTranspiler::new(LanguageMode::JavaScript);
-    let js_code = js_transpiler.transpile_module(&entrypoints);
+    let js_code = js_transpiler.transpile_module(&entrypoints, &[]);
 
     let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
-    let ts_code = ts_transpiler.transpile_module(&entrypoints);
+    let ts_code = ts_transpiler.transpile_module(&entrypoints, &[]);
 
     let go_transpiler = GoTranspiler::new("components".to_string());
-    let go_code = go_transpiler.transpile_module(&entrypoints);
+    let go_code = go_transpiler.transpile_module(&entrypoints, &[]);
 
     let python_transpiler = PythonTranspiler::new();
-    let python_code = python_transpiler.transpile_module(&entrypoints);
+    let python_code = python_transpiler.transpile_module(&entrypoints, &[]);
 
     let js_output = execute_javascript(&js_code, false)
         .map_err(|e| format!("JavaScript execution failed: {}", e))?;
@@ -308,19 +308,19 @@ fn typecheck_go(code: &str) -> Result<(), String> {
 
 fn run_type_check_test(test_case: TypeCheckTestCase) -> Result<(), String> {
     let js_transpiler = JsTranspiler::new(LanguageMode::JavaScript);
-    let js_code = js_transpiler.transpile_module(&test_case.entrypoints);
+    let js_code = js_transpiler.transpile_module(&test_case.entrypoints, &[]);
     typecheck_javascript(&js_code, false)?;
 
     let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
-    let ts_code = ts_transpiler.transpile_module(&test_case.entrypoints);
+    let ts_code = ts_transpiler.transpile_module(&test_case.entrypoints, &[]);
     typecheck_javascript(&ts_code, true)?;
 
     let go_transpiler = GoTranspiler::new("components".to_string());
-    let go_code = go_transpiler.transpile_module(&test_case.entrypoints);
+    let go_code = go_transpiler.transpile_module(&test_case.entrypoints, &[]);
     typecheck_go(&go_code)?;
 
     let python_transpiler = PythonTranspiler::new();
-    let python_code = python_transpiler.transpile_module(&test_case.entrypoints);
+    let python_code = python_transpiler.transpile_module(&test_case.entrypoints, &[]);
     typecheck_python(&python_code)?;
 
     Ok(())

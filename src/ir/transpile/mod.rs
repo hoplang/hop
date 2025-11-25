@@ -16,13 +16,20 @@ use crate::hop::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use std::collections::BTreeMap;
 
+/// Information about a record declaration for transpilation.
+#[derive(Debug, Clone)]
+pub struct RecordInfo {
+    pub name: String,
+    pub fields: Vec<(String, Type)>,
+}
+
 pub trait Transpiler {
     fn transpile_entrypoint<'a>(
         &self,
         name: &'a ComponentName,
         entrypoint: &'a IrEntrypoint,
     ) -> BoxDoc<'a>;
-    fn transpile_module(&self, entrypoints: &[IrEntrypoint]) -> String;
+    fn transpile_module(&self, entrypoints: &[IrEntrypoint], records: &[RecordInfo]) -> String;
 }
 
 pub trait StatementTranspiler {

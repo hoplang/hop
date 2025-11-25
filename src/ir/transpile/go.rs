@@ -1,6 +1,6 @@
 use pretty::BoxDoc;
 
-use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
+use super::{ExpressionTranspiler, RecordInfo, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::cased_string::CasedString;
 use crate::dop::property_name::PropertyName;
 use crate::dop::r#type::Type;
@@ -155,7 +155,7 @@ impl GoTranspiler {
 }
 
 impl Transpiler for GoTranspiler {
-    fn transpile_module(&self, entrypoints: &[IrEntrypoint]) -> String {
+    fn transpile_module(&self, entrypoints: &[IrEntrypoint], records: &[RecordInfo]) -> String {
         let mut imports = BTreeSet::new();
 
         // First pass: scan to determine what imports we need
@@ -220,6 +220,37 @@ impl Transpiler for GoTranspiler {
                         .append(BoxDoc::text("data, _ := json.Marshal(v)"))
                         .append(BoxDoc::line())
                         .append(BoxDoc::text("return string(data)"))
+                        .nest(1),
+                )
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("}"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line());
+        }
+
+        // Generate record type structs
+        for record in records {
+            let fields: Vec<_> = record
+                .fields
+                .iter()
+                .map(|(field_name, field_type)| {
+                    let pascal_name = CasedString::from_snake_case(field_name).to_pascal_case();
+                    BoxDoc::as_string(pascal_name)
+                        .append(BoxDoc::text(" "))
+                        .append(self.transpile_type(field_type))
+                        .append(BoxDoc::text(" `json:\""))
+                        .append(BoxDoc::text(field_name.as_str()))
+                        .append(BoxDoc::text("\"`"))
+                })
+                .collect();
+
+            result = result
+                .append(BoxDoc::text("type "))
+                .append(BoxDoc::text(record.name.as_str()))
+                .append(BoxDoc::text(" struct {"))
+                .append(
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(fields, BoxDoc::line()))
                         .nest(1),
                 )
                 .append(BoxDoc::line())
@@ -799,7 +830,7 @@ impl TypeTranspiler for GoTranspiler {
     }
 
     fn transpile_int_type<'a>(&self) -> BoxDoc<'a> {
-        BoxDoc::text("int64")
+        BoxDoc::text("int")
     }
 
     fn transpile_array_type<'a>(&self, element_type: Option<&'a Type>) -> BoxDoc<'a> {
@@ -847,7 +878,7 @@ mod tests {
 
     fn transpile_with_pretty(entrypoints: &[IrEntrypoint]) -> String {
         let transpiler = GoTranspiler::new("components".to_string());
-        transpiler.transpile_module(entrypoints)
+        transpiler.transpile_module(entrypoints, &[])
     }
 
     fn check(entrypoints: &[IrEntrypoint], expected: Expect) {
@@ -1782,5 +1813,91 @@ mod tests {
                 }
             "#]],
         );
+    }
+
+    #[test]
+    fn test_record_declarations() {
+        use crate::ir::test_utils::build_ir_with_records;
+
+        let records_def = vec![
+            (
+                "User",
+                vec![
+                    ("name", Type::String),
+                    ("age", Type::Int),
+                    ("active", Type::Bool),
+                ],
+            ),
+            (
+                "Address",
+                vec![("street", Type::String), ("city", Type::String)],
+            ),
+        ];
+
+        let entrypoints = vec![build_ir_with_records(
+            "UserProfile",
+            vec![("user", Type::Named("User".to_string()))],
+            records_def,
+            |t| {
+                t.write("<div>");
+                t.write_expr_escaped(t.prop_access(t.var("user"), "name"));
+                t.write("</div>");
+            },
+        )];
+
+        let records = vec![
+            RecordInfo {
+                name: "User".to_string(),
+                fields: vec![
+                    ("name".to_string(), Type::String),
+                    ("age".to_string(), Type::Int),
+                    ("active".to_string(), Type::Bool),
+                ],
+            },
+            RecordInfo {
+                name: "Address".to_string(),
+                fields: vec![
+                    ("street".to_string(), Type::String),
+                    ("city".to_string(), Type::String),
+                ],
+            },
+        ];
+
+        let transpiler = GoTranspiler::new("components".to_string());
+        let output = transpiler.transpile_module(&entrypoints, &records);
+
+        expect![[r#"
+            package components
+
+            import (
+            	"html"
+            	"strings"
+            )
+
+            type User struct {
+            	Name string `json:"name"`
+            	Age int `json:"age"`
+            	Active bool `json:"active"`
+            }
+
+            type Address struct {
+            	Street string `json:"street"`
+            	City string `json:"city"`
+            }
+
+            type UserProfileParams struct {
+            	User User `json:"user"`
+            }
+
+            func UserProfile(params UserProfileParams) string {
+            	user := params.User
+            	var output strings.Builder
+            	output.WriteString("<div>")
+            	output.WriteString(html.EscapeString(user.Name))
+            	output.WriteString("</div>")
+            	return output.String()
+            }
+        "#]]
+        .assert_eq(&output);
     }
 }
