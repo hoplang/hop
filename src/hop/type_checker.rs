@@ -180,6 +180,20 @@ fn typecheck_module(
         .map(|r| r.name())
         .collect();
 
+    // Validate record field types
+    for record in module.get_records() {
+        for field in &record.declaration.fields {
+            for (type_name, type_range) in
+                validate_named_types_in_type(&field.field_type, &declared_records, &field.field_type_range)
+            {
+                errors.push(TypeError::UndefinedType {
+                    type_name,
+                    range: type_range,
+                });
+            }
+        }
+    }
+
     // Validate imports
     for import in module.get_imports() {
         let imported_module = import.imported_module();
@@ -4256,6 +4270,56 @@ mod tests {
                 1 | record User {name: String}
                 2 | <Main {users: Array[User]}>
                   |        ^^^^^
+            "#]],
+        );
+    }
+
+    // Test that a record can reference another declared record
+    #[test]
+    fn test_record_referencing_another_record() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record Address {street: String}
+                record User {name: String, address: Address}
+                <Main {user: User}>
+                    <div></div>
+                </Main>
+            "#},
+            // Only unused variable error, no UndefinedType error since Address is declared
+            expect![[r#"
+                error: Unused variable user
+                  --> main.hop (line 3, col 8)
+                2 | record User {name: String, address: Address}
+                3 | <Main {user: User}>
+                  |        ^^^^
+            "#]],
+        );
+    }
+
+    // Test that a record referencing an undefined record produces an error
+    #[test]
+    fn test_record_referencing_undefined_record() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record User {name: String, address: Address}
+                <Main {user: User}>
+                    <div></div>
+                </Main>
+            "#},
+            // Should produce UndefinedType error for Address
+            expect![[r#"
+                error: Type 'Address' is not defined
+                  --> main.hop (line 1, col 37)
+                1 | record User {name: String, address: Address}
+                  |                                     ^^^^^^^
+
+                error: Unused variable user
+                  --> main.hop (line 2, col 8)
+                1 | record User {name: String, address: Address}
+                2 | <Main {user: User}>
+                  |        ^^^^
             "#]],
         );
     }

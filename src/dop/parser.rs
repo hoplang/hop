@@ -39,6 +39,7 @@ pub struct RecordField {
     pub name: PropertyName,
     pub name_range: DocumentRange,
     pub field_type: Type,
+    pub field_type_range: DocumentRange,
 }
 
 impl Display for RecordField {
@@ -354,11 +355,12 @@ impl Parser {
     fn parse_record_field(&mut self) -> Result<RecordField, ParseError> {
         let (name, name_range) = self.expect_property_name()?;
         self.expect_token(&Token::Colon)?;
-        let (field_type, _) = self.parse_type()?;
+        let (field_type, field_type_range) = self.parse_type()?;
         Ok(RecordField {
             name,
             name_range,
             field_type,
+            field_type_range,
         })
     }
 
