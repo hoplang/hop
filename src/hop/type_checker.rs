@@ -173,11 +173,17 @@ fn typecheck_module(
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> TypedAst {
-    // Collect declared record names
+    // Collect declared record names and build record lookup map
     let declared_records: HashSet<&str> = module
         .get_records()
         .iter()
         .map(|r| r.name())
+        .collect();
+
+    let record_map: HashMap<&str, &dop::RecordDeclaration> = module
+        .get_records()
+        .iter()
+        .map(|r| (r.name(), &r.declaration))
         .collect();
 
     // Validate record field types
@@ -255,7 +261,7 @@ fn typecheck_module(
         // Typecheck children and collect typed versions
         let typed_children: Vec<_> = children
             .iter()
-            .filter_map(|child| typecheck_node(child, state, &mut env, annotations, errors))
+            .filter_map(|child| typecheck_node(child, state, &mut env, annotations, errors, &record_map))
             .collect();
 
         // Pop parameters from environment
@@ -302,12 +308,13 @@ fn typecheck_module(
     )
 }
 
-fn typecheck_node(
+fn typecheck_node<'a>(
     node: &UntypedNode,
     state: &State,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
+    records: &HashMap<&'a str, &'a dop::RecordDeclaration>,
 ) -> Option<TypedNode> {
     match node {
         Node::If {
@@ -317,11 +324,11 @@ fn typecheck_node(
         } => {
             let typed_children = children
                 .iter()
-                .filter_map(|child| typecheck_node(child, state, env, annotations, errors))
+                .filter_map(|child| typecheck_node(child, state, env, annotations, errors, records))
                 .collect();
 
             let typed_condition = errors
-                .ok_or_add(dop::typecheck_expr(condition, env, annotations).map_err(Into::into))?;
+                .ok_or_add(dop::typecheck_expr(condition, env, annotations, records).map_err(Into::into))?;
 
             let condition_type = typed_condition.as_type();
             if !condition_type.is_subtype(&Type::Bool) {
@@ -346,7 +353,7 @@ fn typecheck_node(
             range,
         } => {
             let typed_array = errors
-                .ok_or_add(dop::typecheck_expr(array_expr, env, annotations).map_err(Into::into))?;
+                .ok_or_add(dop::typecheck_expr(array_expr, env, annotations, records).map_err(Into::into))?;
             let array_type = typed_array.as_type();
             let element_type = match &array_type {
                 Type::Array(Some(inner)) => *inner.clone(),
@@ -386,7 +393,7 @@ fn typecheck_node(
 
             let typed_children = children
                 .iter()
-                .filter_map(|child| typecheck_node(child, state, env, annotations, errors))
+                .filter_map(|child| typecheck_node(child, state, env, annotations, errors, records))
                 .collect();
 
             if pushed {
@@ -418,7 +425,7 @@ fn typecheck_node(
             // Transform children
             let typed_children = children
                 .iter()
-                .filter_map(|child| typecheck_node(child, state, env, annotations, errors))
+                .filter_map(|child| typecheck_node(child, state, env, annotations, errors, records))
                 .collect();
 
             let module_info = match definition_module
@@ -484,7 +491,7 @@ fn typecheck_node(
                             Some(param) => param,
                         };
 
-                        let typed_expr = match dop::typecheck_expr(&arg.var_expr, env, annotations)
+                        let typed_expr = match dop::typecheck_expr(&arg.var_expr, env, annotations, records)
                         {
                             Ok(t) => t,
                             Err(err) => {
@@ -539,11 +546,11 @@ fn typecheck_node(
             children,
             range,
         } => {
-            let typed_attributes = typecheck_attributes(attributes, env, annotations, errors);
+            let typed_attributes = typecheck_attributes(attributes, env, annotations, errors, records);
 
             let typed_children = children
                 .iter()
-                .filter_map(|child| typecheck_node(child, state, env, annotations, errors))
+                .filter_map(|child| typecheck_node(child, state, env, annotations, errors, records))
                 .collect();
 
             Some(Node::Html {
@@ -557,7 +564,7 @@ fn typecheck_node(
 
         Node::TextExpression { expression, range } => {
             if let Some(typed_expr) = errors
-                .ok_or_add(dop::typecheck_expr(expression, env, annotations).map_err(Into::into))
+                .ok_or_add(dop::typecheck_expr(expression, env, annotations, records).map_err(Into::into))
             {
                 let expr_type = typed_expr.as_type();
                 if !expr_type.is_subtype(&Type::String) && !expr_type.is_subtype(&Type::TrustedHTML)
@@ -579,7 +586,7 @@ fn typecheck_node(
         Node::Placeholder { children, range } => {
             let typed_children = children
                 .iter()
-                .filter_map(|child| typecheck_node(child, state, env, annotations, errors))
+                .filter_map(|child| typecheck_node(child, state, env, annotations, errors, records))
                 .collect();
 
             Some(Node::Placeholder {
@@ -604,11 +611,12 @@ fn typecheck_node(
     }
 }
 
-fn typecheck_attributes(
+fn typecheck_attributes<'a>(
     attributes: &BTreeMap<StringSpan, Attribute>,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
+    records: &HashMap<&'a str, &'a dop::RecordDeclaration>,
 ) -> BTreeMap<StringSpan, TypedAttribute> {
     let mut typed_attributes = BTreeMap::new();
 
@@ -618,7 +626,7 @@ fn typecheck_attributes(
                 let mut typed_exprs = Vec::new();
                 for expr in exprs {
                     if let Some(typed_expr) = errors
-                        .ok_or_add(dop::typecheck_expr(expr, env, annotations).map_err(Into::into))
+                        .ok_or_add(dop::typecheck_expr(expr, env, annotations, records).map_err(Into::into))
                     {
                         // Check that HTML attributes are strings
                         let expr_type = typed_expr.as_type();
@@ -4320,6 +4328,82 @@ mod tests {
                 1 | record User {name: String, address: Address}
                 2 | <Main {user: User}>
                   |        ^^^^
+            "#]],
+        );
+    }
+
+    // Test that accessing a field on a record type works
+    #[test]
+    fn test_record_field_access() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record User {name: String}
+                <Main {user: User}>
+                    <div>{user.name}</div>
+                </Main>
+            "#},
+            expect![[r#"
+                user: User
+                  --> main.hop (line 2, col 8)
+                1 | record User {name: String}
+                2 | <Main {user: User}>
+                  |        ^^^^
+
+                user: User
+                  --> main.hop (line 3, col 11)
+                2 | <Main {user: User}>
+                3 |     <div>{user.name}</div>
+                  |           ^^^^
+            "#]],
+        );
+    }
+
+    // Test that accessing a non-existent field on a record produces an error
+    #[test]
+    fn test_record_field_access_undefined_field() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record User {name: String}
+                <Main {user: User}>
+                    <div>{user.email}</div>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Property 'email' not found in record 'User'
+                  --> main.hop (line 3, col 11)
+                2 | <Main {user: User}>
+                3 |     <div>{user.email}</div>
+                  |           ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    // Test that accessing nested record fields works
+    #[test]
+    fn test_record_nested_field_access() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record Address {city: String}
+                record User {name: String, address: Address}
+                <Main {user: User}>
+                    <div>{user.address.city}</div>
+                </Main>
+            "#},
+            expect![[r#"
+                user: User
+                  --> main.hop (line 3, col 8)
+                2 | record User {name: String, address: Address}
+                3 | <Main {user: User}>
+                  |        ^^^^
+
+                user: User
+                  --> main.hop (line 4, col 11)
+                3 | <Main {user: User}>
+                4 |     <div>{user.address.city}</div>
+                  |           ^^^^
             "#]],
         );
     }
