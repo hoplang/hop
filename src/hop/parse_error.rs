@@ -33,13 +33,6 @@ pub enum ParseError {
         range: DocumentRange,
     },
 
-    #[error("<{tag_name}> is missing required attribute {attr}")]
-    MissingRequiredAttribute {
-        tag_name: StringSpan,
-        attr: String,
-        range: DocumentRange,
-    },
-
     #[error(
         "Invalid component name '{tag_name}'. Component names must start with an uppercase letter (PascalCase) and contain only alphanumeric characters"
     )]
@@ -71,18 +64,6 @@ pub enum ParseError {
 
     #[error("Unmatched {ch}")]
     UnmatchedCharacter { ch: char, range: DocumentRange },
-
-    #[error("Attribute {attr_name} must be statically known")]
-    AttributeMustBeStaticallyKnown {
-        attr_name: StringSpan,
-        range: DocumentRange,
-    },
-
-    #[error("Missing value for attribute {attr_name}")]
-    AttributeMissingValue {
-        attr_name: StringSpan,
-        range: DocumentRange,
-    },
 
     #[error("Unrecognized attribute '{attr_name}' on <{tag_name}>")]
     UnrecognizedAttribute {
@@ -122,14 +103,11 @@ impl Ranged for ParseError {
             | ParseError::UnclosedTag { range, .. }
             | ParseError::ClosedVoidTag { range, .. }
             | ParseError::UnrecognizedHopTag { range, .. }
-            | ParseError::MissingRequiredAttribute { range, .. }
-            | ParseError::AttributeMissingValue { range, .. }
             | ParseError::InvalidComponentName { range, .. }
             | ParseError::ComponentIsAlreadyDefined { range, .. }
             | ParseError::DuplicateAttribute { range, .. }
             | ParseError::MissingAtPrefixInImportPath { range }
             | ParseError::InvalidModuleName { range, .. }
-            | ParseError::AttributeMustBeStaticallyKnown { range, .. }
             | ParseError::UnrecognizedAttribute { range, .. }
             | ParseError::GenericError { range, .. } => range,
         }

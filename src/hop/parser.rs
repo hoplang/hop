@@ -47,35 +47,6 @@ impl AttributeValidator {
         }
     }
 
-    fn allow_boolean(&mut self, key: &str) -> Result<bool, ParseError> {
-        self.handled_attributes.insert(key.to_string());
-        match self.attributes.get(key) {
-            None => Ok(false),
-            Some(attr) => Self::parse_as_boolean(attr),
-        }
-    }
-
-    // Require an attribute.
-    //
-    // Checks that the attributes is present and returns it or returns an error.
-    fn require(&mut self, key: &str) -> Result<&tokenizer::Attribute, ParseError> {
-        self.handled_attributes.insert(key.to_string());
-        self.attributes
-            .get(key)
-            .ok_or_else(|| ParseError::MissingRequiredAttribute {
-                tag_name: self.tag_name.to_string_span(),
-                attr: key.to_string(),
-                range: self.tag_name.clone(),
-            })
-    }
-
-    // Require an attribute and parse it as static.
-    //
-    // Checks that the attributes is present and returns it or returns an error.
-    fn require_static(&mut self, key: &str) -> Result<ast::StaticAttribute, ParseError> {
-        self.require(key).and_then(Self::parse_as_static)
-    }
-
     // Parse an attribute or return an error.
     fn parse(attr: &tokenizer::Attribute) -> Result<ast::Attribute, ParseError> {
         match &attr.value {
@@ -89,46 +60,6 @@ impl AttributeValidator {
                 value: None,
                 range: attr.range.clone(),
             }),
-        }
-    }
-
-    // Parse an attribute as static or return an error.
-    fn parse_as_static(attr: &tokenizer::Attribute) -> Result<ast::StaticAttribute, ParseError> {
-        match &attr.value {
-            Some(tokenizer::AttributeValue::String(s)) => {
-                Ok(ast::StaticAttribute { value: s.clone() })
-            }
-            Some(tokenizer::AttributeValue::Expression(expr_range)) => {
-                Err(ParseError::AttributeMustBeStaticallyKnown {
-                    attr_name: attr.name.to_string_span(),
-                    range: expr_range.clone(),
-                })
-            }
-            None => Err(ParseError::AttributeMissingValue {
-                attr_name: attr.name.to_string_span(),
-                range: attr.name.clone(),
-            }),
-        }
-    }
-
-    // Parse an attribute as boolean return an error.
-    fn parse_as_boolean(attr: &tokenizer::Attribute) -> Result<bool, ParseError> {
-        match &attr.value {
-            Some(tokenizer::AttributeValue::String(s)) => {
-                // TODO: Better error
-                Err(ParseError::AttributeMustBeStaticallyKnown {
-                    attr_name: attr.name.to_string_span(),
-                    range: s.clone(),
-                })
-            }
-            Some(tokenizer::AttributeValue::Expression(expr_range)) => {
-                // TODO: Better error
-                Err(ParseError::AttributeMustBeStaticallyKnown {
-                    attr_name: attr.name.to_string_span(),
-                    range: expr_range.clone(),
-                })
-            }
-            None => Ok(true),
         }
     }
 
