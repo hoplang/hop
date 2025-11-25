@@ -70,6 +70,34 @@ pub enum TypeError {
         right_type: String,
         range: DocumentRange,
     },
+
+    #[error("Record type '{record_name}' is not defined")]
+    UndefinedRecord {
+        record_name: String,
+        range: DocumentRange,
+    },
+
+    #[error("Missing field '{field_name}' in record '{record_name}'")]
+    MissingRecordField {
+        field_name: String,
+        record_name: String,
+        range: DocumentRange,
+    },
+
+    #[error("Unknown field '{field_name}' in record '{record_name}'")]
+    UnknownRecordField {
+        field_name: String,
+        record_name: String,
+        range: DocumentRange,
+    },
+
+    #[error("Field '{field_name}' expects type {expected}, but got {found}")]
+    RecordFieldTypeMismatch {
+        field_name: String,
+        expected: String,
+        found: String,
+        range: DocumentRange,
+    },
 }
 
 impl Ranged for TypeError {
@@ -87,7 +115,11 @@ impl Ranged for TypeError {
             | TypeError::LogicalOrRequiresBoolean { range, .. }
             | TypeError::IncompatibleTypesForAddition { range, .. }
             | TypeError::IncompatibleTypesForSubtraction { range, .. }
-            | TypeError::IncompatibleTypesForMultiplication { range, .. } => range,
+            | TypeError::IncompatibleTypesForMultiplication { range, .. }
+            | TypeError::UndefinedRecord { range, .. }
+            | TypeError::MissingRecordField { range, .. }
+            | TypeError::UnknownRecordField { range, .. }
+            | TypeError::RecordFieldTypeMismatch { range, .. } => range,
         }
     }
 }

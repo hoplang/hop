@@ -612,6 +612,79 @@ pub fn typecheck_expr<'a>(
                 annotation: (),
             })
         }
+        AnnotatedExpr::RecordInstantiation {
+            record_name,
+            fields,
+            annotation: range,
+        } => {
+            // Check if the record type is defined
+            let record_decl = records.get(record_name.as_str()).ok_or_else(|| {
+                TypeError::UndefinedRecord {
+                    record_name: record_name.clone(),
+                    range: range.clone(),
+                }
+            })?;
+
+            // Build a map of expected fields from the record declaration
+            let expected_fields: HashMap<&str, &Type> = record_decl
+                .fields
+                .iter()
+                .map(|f| (f.name.as_str(), &f.field_type))
+                .collect();
+
+            // Check for unknown fields and type mismatches
+            let mut typed_fields = Vec::new();
+            let mut provided_fields: std::collections::HashSet<&str> =
+                std::collections::HashSet::new();
+
+            for (field_name, field_value) in fields {
+                let field_name_str = field_name.as_str();
+
+                // Check if this field exists in the record
+                let expected_type = expected_fields.get(field_name_str).ok_or_else(|| {
+                    TypeError::UnknownRecordField {
+                        field_name: field_name_str.to_string(),
+                        record_name: record_name.clone(),
+                        range: field_value.range().clone(),
+                    }
+                })?;
+
+                // Type check the field value
+                let typed_value = typecheck_expr(field_value, env, annotations, records)?;
+                let actual_type = typed_value.as_type();
+
+                // Check that the types match
+                if !actual_type.is_subtype(expected_type) {
+                    return Err(TypeError::RecordFieldTypeMismatch {
+                        field_name: field_name_str.to_string(),
+                        expected: expected_type.to_string(),
+                        found: actual_type.to_string(),
+                        range: field_value.range().clone(),
+                    });
+                }
+
+                provided_fields.insert(field_name_str);
+                typed_fields.push((field_name.clone(), typed_value));
+            }
+
+            // Check for missing fields
+            for expected_field in expected_fields.keys() {
+                if !provided_fields.contains(expected_field) {
+                    return Err(TypeError::MissingRecordField {
+                        field_name: (*expected_field).to_string(),
+                        record_name: record_name.clone(),
+                        range: range.clone(),
+                    });
+                }
+            }
+
+            Ok(SimpleTypedExpr::RecordInstantiation {
+                record_name: record_name.clone(),
+                fields: typed_fields,
+                kind: Type::Named(record_name.clone()),
+                annotation: (),
+            })
+        }
     }
 }
 
@@ -619,7 +692,7 @@ pub fn typecheck_expr<'a>(
 mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
-    use crate::dop::Parser;
+    use crate::dop::{Parser, RecordDeclaration};
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -1388,5 +1461,141 @@ mod tests {
     #[test]
     fn test_typecheck_mixed_addition_and_comparison() {
         check("a: Int, b: Int, c: Int", "a + b > c", expect!["Bool"]);
+    }
+
+    fn check_with_records(
+        env_str: &str,
+        records_str: &[&str],
+        expr_str: &str,
+        expected: Expect,
+    ) {
+        let mut env = Environment::new();
+
+        if !env_str.is_empty() {
+            let mut parser = Parser::from(env_str);
+            let params = parser
+                .parse_parameters()
+                .expect("Failed to parse environment");
+            for param in params {
+                let _ = env.push(param.var_name.to_string(), param.var_type);
+            }
+        }
+
+        let mut record_declarations = Vec::new();
+        for record_str in records_str {
+            let mut parser = Parser::from(*record_str);
+            let record = parser.parse_record().expect("Failed to parse record");
+            record_declarations.push(record);
+        }
+
+        let records: HashMap<&str, &RecordDeclaration> = record_declarations
+            .iter()
+            .map(|r| (r.name.as_str(), r))
+            .collect();
+
+        let mut parser = Parser::from(expr_str);
+        let expr = parser.parse_expr().expect("Failed to parse expression");
+
+        let mut annotations = Vec::new();
+
+        let actual = match typecheck_expr(&expr, &mut env, &mut annotations, &records) {
+            Ok(typed_expr) => typed_expr.as_type().to_string(),
+            Err(e) => DocumentAnnotator::new()
+                .with_label("error")
+                .without_location()
+                .without_line_numbers()
+                .annotate(None, [e]),
+        };
+
+        expected.assert_eq(&actual);
+    }
+
+    #[test]
+    fn test_typecheck_record_instantiation_simple() {
+        check_with_records(
+            "",
+            &["record User {name: String, age: Int}"],
+            r#"User(name: "John", age: 30)"#,
+            expect!["User"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_record_instantiation_with_variables() {
+        check_with_records(
+            "user_name: String, user_age: Int",
+            &["record User {name: String, age: Int}"],
+            "User(name: user_name, age: user_age)",
+            expect!["User"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_record_instantiation_undefined_record() {
+        check_with_records(
+            "",
+            &[],
+            r#"User(name: "John")"#,
+            expect![[r#"
+                error: Record type 'User' is not defined
+                User(name: "John")
+                ^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_record_instantiation_missing_field() {
+        check_with_records(
+            "",
+            &["record User {name: String, age: Int}"],
+            r#"User(name: "John")"#,
+            expect![[r#"
+                error: Missing field 'age' in record 'User'
+                User(name: "John")
+                ^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_record_instantiation_unknown_field() {
+        check_with_records(
+            "",
+            &["record User {name: String}"],
+            r#"User(name: "John", email: "john@example.com")"#,
+            expect![[r#"
+                error: Unknown field 'email' in record 'User'
+                User(name: "John", email: "john@example.com")
+                                          ^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_record_instantiation_type_mismatch() {
+        check_with_records(
+            "",
+            &["record User {name: String, age: Int}"],
+            r#"User(name: "John", age: "thirty")"#,
+            expect![[r#"
+                error: Field 'age' expects type Int, but got String
+                User(name: "John", age: "thirty")
+                                        ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_record_instantiation_nested() {
+        check_with_records(
+            "",
+            &[
+                "record Address {city: String}",
+                "record User {name: String, address: Address}",
+            ],
+            r#"User(name: "John", address: Address(city: "NYC"))"#,
+            expect!["User"],
+        );
     }
 }

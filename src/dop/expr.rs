@@ -54,6 +54,13 @@ pub enum AnnotatedExpr<A> {
         annotation: A,
     },
 
+    /// A record instantiation expression, e.g. User(name: "John", age: 30)
+    RecordInstantiation {
+        record_name: String,
+        fields: Vec<(PropertyName, Self)>,
+        annotation: A,
+    },
+
     BinaryOp {
         left: Box<Self>,
         operator: BinaryOp,
@@ -76,6 +83,7 @@ impl<A> AnnotatedExpr<A> {
             | AnnotatedExpr::FloatLiteral { annotation, .. }
             | AnnotatedExpr::ArrayLiteral { annotation, .. }
             | AnnotatedExpr::ObjectLiteral { annotation, .. }
+            | AnnotatedExpr::RecordInstantiation { annotation, .. }
             | AnnotatedExpr::BinaryOp { annotation, .. }
             | AnnotatedExpr::Negation { annotation, .. } => annotation,
         }
@@ -143,6 +151,34 @@ impl<'a, T> AnnotatedExpr<T> {
                                 .group(),
                         )
                         .append(BoxDoc::text("}"))
+                }
+            }
+            AnnotatedExpr::RecordInstantiation {
+                record_name,
+                fields,
+                ..
+            } => {
+                if fields.is_empty() {
+                    BoxDoc::text(record_name.as_str()).append(BoxDoc::text("()"))
+                } else {
+                    BoxDoc::text(record_name.as_str())
+                        .append(BoxDoc::text("("))
+                        .append(
+                            BoxDoc::line_()
+                                .append(BoxDoc::intersperse(
+                                    fields.iter().map(|(key, value)| {
+                                        BoxDoc::text(key.as_str())
+                                            .append(BoxDoc::text(": "))
+                                            .append(value.to_doc())
+                                    }),
+                                    BoxDoc::text(",").append(BoxDoc::line()),
+                                ))
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                .append(BoxDoc::line_())
+                                .nest(2)
+                                .group(),
+                        )
+                        .append(BoxDoc::text(")"))
                 }
             }
             AnnotatedExpr::BinaryOp {

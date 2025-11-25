@@ -569,6 +569,33 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text("}"))
     }
 
+    fn transpile_record_instantiation<'a>(
+        &self,
+        record_name: &'a str,
+        fields: &'a [(PropertyName, IrExpr)],
+    ) -> BoxDoc<'a> {
+        // In Go, record instantiation is a struct literal with type name
+        BoxDoc::text(record_name)
+            .append(BoxDoc::text("{"))
+            .append(
+                BoxDoc::nil()
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::intersperse(
+                        fields.iter().map(|(key, value)| {
+                            let field_name = key.to_pascal_case();
+                            BoxDoc::as_string(field_name)
+                                .append(BoxDoc::text(": "))
+                                .append(self.transpile_expr(value))
+                                .append(BoxDoc::text(","))
+                        }),
+                        BoxDoc::line(),
+                    ))
+                    .append(BoxDoc::line())
+                    .nest(1),
+            )
+            .append(BoxDoc::text("}"))
+    }
+
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
@@ -1894,6 +1921,71 @@ mod tests {
             	var output strings.Builder
             	output.WriteString("<div>")
             	output.WriteString(html.EscapeString(user.Name))
+            	output.WriteString("</div>")
+            	return output.String()
+            }
+        "#]]
+        .assert_eq(&output);
+    }
+
+    #[test]
+    fn test_record_instantiation() {
+        use crate::ir::test_utils::build_ir_with_records;
+
+        let records_def = vec![(
+            "User",
+            vec![
+                ("name", Type::String),
+                ("age", Type::Int),
+            ],
+        )];
+
+        let entrypoints = vec![build_ir_with_records(
+            "CreateUser",
+            vec![],
+            records_def,
+            |t| {
+                t.write("<div>");
+                let user = t.record("User", vec![
+                    ("name", t.str("John")),
+                    ("age", t.int(30)),
+                ]);
+                t.write_expr_escaped(t.prop_access(user, "name"));
+                t.write("</div>");
+            },
+        )];
+
+        let records = vec![RecordInfo {
+            name: "User".to_string(),
+            fields: vec![
+                ("name".to_string(), Type::String),
+                ("age".to_string(), Type::Int),
+            ],
+        }];
+
+        let transpiler = GoTranspiler::new("components".to_string());
+        let output = transpiler.transpile_module(&entrypoints, &records);
+
+        expect![[r#"
+            package components
+
+            import (
+            	"html"
+            	"strings"
+            )
+
+            type User struct {
+            	Name string `json:"name"`
+            	Age int `json:"age"`
+            }
+
+            func CreateUser() string {
+            	var output strings.Builder
+            	output.WriteString("<div>")
+            	output.WriteString(html.EscapeString(User{
+            		Name: "John",
+            		Age: 30,
+            	}.Name))
             	output.WriteString("</div>")
             	return output.String()
             }

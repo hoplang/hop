@@ -559,6 +559,25 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(BoxDoc::text(")"))
     }
 
+    fn transpile_record_instantiation<'a>(
+        &self,
+        record_name: &'a str,
+        fields: &'a [(PropertyName, IrExpr)],
+    ) -> BoxDoc<'a> {
+        // In Python, record instantiation is a dataclass constructor call
+        BoxDoc::text(record_name)
+            .append(BoxDoc::text("("))
+            .append(BoxDoc::intersperse(
+                fields.iter().map(|(key, value)| {
+                    BoxDoc::text(key.as_str())
+                        .append(BoxDoc::text("="))
+                        .append(self.transpile_expr(value))
+                }),
+                BoxDoc::text(", "),
+            ))
+            .append(BoxDoc::text(")"))
+    }
+
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
@@ -1584,6 +1603,63 @@ mod tests {
                 output = []
                 output.append("<div>")
                 output.append(html_escape(user.name))
+                output.append("</div>")
+                return ''.join(output)
+        "#]]
+        .assert_eq(&output);
+    }
+
+    #[test]
+    fn test_record_instantiation() {
+        use crate::ir::test_utils::build_ir_with_records;
+
+        let records_def = vec![(
+            "User",
+            vec![
+                ("name", Type::String),
+                ("age", Type::Int),
+            ],
+        )];
+
+        let entrypoints = vec![build_ir_with_records(
+            "CreateUser",
+            vec![],
+            records_def,
+            |t| {
+                t.write("<div>");
+                let user = t.record("User", vec![
+                    ("name", t.str("John")),
+                    ("age", t.int(30)),
+                ]);
+                t.write_expr_escaped(t.prop_access(user, "name"));
+                t.write("</div>");
+            },
+        )];
+
+        let records = vec![RecordInfo {
+            name: "User".to_string(),
+            fields: vec![
+                ("name".to_string(), Type::String),
+                ("age".to_string(), Type::Int),
+            ],
+        }];
+
+        let transpiler = PythonTranspiler::new();
+        let output = transpiler.transpile_module(&entrypoints, &records);
+
+        expect![[r#"
+            from dataclasses import dataclass
+            from html import escape as html_escape
+
+            @dataclass
+            class User:
+                name: str
+                age: int
+
+            def create_user() -> str:
+                output = []
+                output.append("<div>")
+                output.append(html_escape(User(name="John", age=30).name))
                 output.append("</div>")
                 return ''.join(output)
         "#]]

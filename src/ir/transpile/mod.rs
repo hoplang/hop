@@ -164,6 +164,11 @@ pub trait ExpressionTranspiler {
     fn transpile_float_subtract<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_multiply<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_multiply<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_record_instantiation<'a>(
+        &self,
+        record_name: &'a str,
+        fields: &'a [(PropertyName, IrExpr)],
+    ) -> BoxDoc<'a>;
     fn transpile_expr<'a>(&self, expr: &'a IrExpr) -> BoxDoc<'a> {
         match expr {
             IrExpr::Var { value, .. } => self.transpile_var(value.as_str()),
@@ -192,6 +197,11 @@ pub trait ExpressionTranspiler {
                     unreachable!()
                 }
             },
+            IrExpr::RecordInstantiation {
+                record_name,
+                fields,
+                ..
+            } => self.transpile_record_instantiation(record_name, fields),
             IrExpr::JsonEncode { value, .. } => self.transpile_json_encode(value),
             IrExpr::EnvLookup { key, .. } => self.transpile_env_lookup(key),
             IrExpr::StringConcat { left, right, .. } => self.transpile_string_concat(left, right),

@@ -153,6 +153,14 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             }
             Ok(Value::Object(obj))
         }
+        IrExpr::RecordInstantiation { fields, .. } => {
+            // Record instantiation evaluates to an object
+            let mut obj = serde_json::Map::new();
+            for (key, value) in fields {
+                obj.insert(key.as_str().to_string(), evaluate_expr(value, env)?);
+            }
+            Ok(Value::Object(obj))
+        }
         IrExpr::JsonEncode { value, .. } => {
             let val = evaluate_expr(value, env)?;
             let json_str = serde_json::to_string(&val)?;

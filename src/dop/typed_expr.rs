@@ -53,6 +53,14 @@ pub enum TypedExpr<A> {
         annotation: A,
     },
 
+    /// A record instantiation expression, e.g. User(name: "John", age: 30)
+    RecordInstantiation {
+        record_name: String,
+        fields: Vec<(PropertyName, Self)>,
+        kind: Type,
+        annotation: A,
+    },
+
     /// JSON encode expression for converting values to JSON strings
     JsonEncode { value: Box<Self>, annotation: A },
 
@@ -167,7 +175,8 @@ impl<A> TypedExpr<A> {
             TypedExpr::Var { kind, .. }
             | TypedExpr::PropertyAccess { kind, .. }
             | TypedExpr::ArrayLiteral { kind, .. }
-            | TypedExpr::ObjectLiteral { kind, .. } => kind,
+            | TypedExpr::ObjectLiteral { kind, .. }
+            | TypedExpr::RecordInstantiation { kind, .. } => kind,
 
             TypedExpr::FloatLiteral { .. } => &FLOAT_TYPE,
             TypedExpr::IntLiteral { .. } => &INT_TYPE,
@@ -207,6 +216,7 @@ impl<A> TypedExpr<A> {
             | TypedExpr::IntLiteral { annotation, .. }
             | TypedExpr::ArrayLiteral { annotation, .. }
             | TypedExpr::ObjectLiteral { annotation, .. }
+            | TypedExpr::RecordInstantiation { annotation, .. }
             | TypedExpr::JsonEncode { annotation, .. }
             | TypedExpr::EnvLookup { annotation, .. }
             | TypedExpr::StringConcat { annotation, .. }
@@ -279,6 +289,34 @@ impl<A> TypedExpr<A> {
                                 .group(),
                         )
                         .append(BoxDoc::text("}"))
+                }
+            }
+            TypedExpr::RecordInstantiation {
+                record_name,
+                fields,
+                ..
+            } => {
+                if fields.is_empty() {
+                    BoxDoc::text(record_name.as_str()).append(BoxDoc::text("()"))
+                } else {
+                    BoxDoc::text(record_name.as_str())
+                        .append(BoxDoc::text("("))
+                        .append(
+                            BoxDoc::line_()
+                                .append(BoxDoc::intersperse(
+                                    fields.iter().map(|(key, value)| {
+                                        BoxDoc::text(key.as_str())
+                                            .append(BoxDoc::text(": "))
+                                            .append(value.to_doc())
+                                    }),
+                                    BoxDoc::text(",").append(BoxDoc::line()),
+                                ))
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                .append(BoxDoc::line_())
+                                .nest(2)
+                                .group(),
+                        )
+                        .append(BoxDoc::text(")"))
                 }
             }
             TypedExpr::JsonEncode { value, .. } => BoxDoc::nil()

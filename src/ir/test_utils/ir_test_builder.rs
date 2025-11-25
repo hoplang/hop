@@ -260,6 +260,33 @@ impl IrTestBuilder {
         }
     }
 
+    pub fn record(&self, record_name: &str, fields: Vec<(&str, IrExpr)>) -> IrExpr {
+        // Verify the record exists and check field types
+        let record_fields = self
+            .records
+            .get(record_name)
+            .unwrap_or_else(|| panic!("Record '{}' not found in test builder", record_name));
+
+        for (field_name, _) in &fields {
+            if !record_fields.contains_key(*field_name) {
+                panic!(
+                    "Field '{}' not found in record '{}'",
+                    field_name, record_name
+                );
+            }
+        }
+
+        TypedExpr::RecordInstantiation {
+            record_name: record_name.to_string(),
+            fields: fields
+                .into_iter()
+                .map(|(k, v)| (PropertyName::new(k).unwrap(), v))
+                .collect(),
+            kind: Type::Named(record_name.to_string()),
+            annotation: self.next_expr_id(),
+        }
+    }
+
     pub fn prop_access(&self, object: IrExpr, property: &str) -> IrExpr {
         let property_name = PropertyName::new(property).unwrap();
         let property_type = match object.as_type() {
@@ -581,6 +608,10 @@ impl IrAutoBuilder {
 
     pub fn object(&self, props: Vec<(&str, IrExpr)>) -> IrExpr {
         self.inner.object(props)
+    }
+
+    pub fn record(&self, record_name: &str, fields: Vec<(&str, IrExpr)>) -> IrExpr {
+        self.inner.record(record_name, fields)
     }
 
     pub fn prop_access(&self, object: IrExpr, property: &str) -> IrExpr {

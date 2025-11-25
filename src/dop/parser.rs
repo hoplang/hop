@@ -688,6 +688,9 @@ impl Parser {
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
         match self.iter.next().transpose()? {
             Some((Token::Identifier(name), _)) => self.parse_property_access(name),
+            Some((Token::TypeName(name), name_range)) => {
+                self.parse_record_instantiation(name, name_range)
+            }
             Some((Token::StringLiteral(value), range)) => Ok(AnnotatedExpr::StringLiteral {
                 value,
                 annotation: range,
@@ -719,6 +722,26 @@ impl Parser {
                 range: self.range.clone(),
             }),
         }
+    }
+
+    fn parse_record_instantiation(
+        &mut self,
+        name: DocumentRange,
+        name_range: DocumentRange,
+    ) -> Result<Expr, ParseError> {
+        let left_paren = self.expect_token(&Token::LeftParen)?;
+        let mut fields = Vec::new();
+        let right_paren = self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
+            let (field_name, _) = this.expect_property_name()?;
+            this.expect_token(&Token::Colon)?;
+            fields.push((field_name, this.parse_logical()?));
+            Ok(())
+        })?;
+        Ok(AnnotatedExpr::RecordInstantiation {
+            record_name: name.as_str().to_string(),
+            fields,
+            annotation: name_range.to(right_paren),
+        })
     }
 }
 
@@ -895,6 +918,108 @@ mod tests {
                 error: Expected type name but got {
                 record {bar: String}
                        ^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// RECORD INSTANTIATION                                                ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn test_parse_expr_record_instantiation_single_field() {
+        check_parse_expr(
+            r#"User(name: "John")"#,
+            expect![[r#"
+                User(name: "John")
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_record_instantiation_multiple_fields() {
+        check_parse_expr(
+            r#"User(name: "John", age: 30, active: true)"#,
+            expect![[r#"
+                User(name: "John", age: 30, active: true)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_record_instantiation_empty() {
+        check_parse_expr(
+            "Empty()",
+            expect![[r#"
+                Empty()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_record_instantiation_trailing_comma() {
+        check_parse_expr(
+            r#"User(name: "John", age: 30,)"#,
+            expect![[r#"
+                User(name: "John", age: 30)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_record_instantiation_multiline() {
+        check_parse_expr(
+            indoc! {r#"
+                User(
+                  name: "John",
+                )
+            "#},
+            expect![[r#"
+                User(name: "John")
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_record_instantiation_nested() {
+        check_parse_expr(
+            r#"Wrapper(inner: Inner(value: 42))"#,
+            expect![[r#"
+                Wrapper(inner: Inner(value: 42))
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_record_instantiation_with_expressions() {
+        check_parse_expr(
+            "Point(x: a + b, y: c * 2)",
+            expect![[r#"
+                Point(x: (a + b), y: (c * 2))
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_record_instantiation_missing_paren_error() {
+        check_parse_expr(
+            r#"User(name: "John""#,
+            expect![[r#"
+                error: Unmatched '('
+                User(name: "John"
+                    ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_record_instantiation_missing_colon_error() {
+        check_parse_expr(
+            r#"User(name "John")"#,
+            expect![[r#"
+                error: Expected token ':' but got '"John"'
+                User(name "John")
+                          ^^^^^^
             "#]],
         );
     }

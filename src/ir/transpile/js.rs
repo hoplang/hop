@@ -422,6 +422,25 @@ impl ExpressionTranspiler for JsTranspiler {
             .append(BoxDoc::text("}"))
     }
 
+    fn transpile_record_instantiation<'a>(
+        &self,
+        _record_name: &'a str,
+        fields: &'a [(PropertyName, IrExpr)],
+    ) -> BoxDoc<'a> {
+        // In JavaScript/TypeScript, record instantiation is the same as object literal
+        BoxDoc::nil()
+            .append(BoxDoc::text("{"))
+            .append(BoxDoc::intersperse(
+                fields.iter().map(|(key, value)| {
+                    BoxDoc::text(key.as_str())
+                        .append(BoxDoc::text(": "))
+                        .append(self.transpile_expr(value))
+                }),
+                BoxDoc::text(", "),
+            ))
+            .append(BoxDoc::text("}"))
+    }
+
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
@@ -1706,6 +1725,98 @@ mod tests {
                     let output = "";
                     output += "<div>";
                     output += escapeHtml(user.name);
+                    output += "</div>";
+                    return output;
+                }
+            }
+        "#]]
+        .assert_eq(&output);
+    }
+
+    #[test]
+    fn test_record_instantiation() {
+        use crate::ir::test_utils::build_ir_with_records;
+
+        let records_def = vec![(
+            "User",
+            vec![
+                ("name", Type::String),
+                ("age", Type::Int),
+            ],
+        )];
+
+        let entrypoints = vec![build_ir_with_records(
+            "CreateUser",
+            vec![],
+            records_def,
+            |t| {
+                t.write("<div>");
+                let user = t.record("User", vec![
+                    ("name", t.str("John")),
+                    ("age", t.int(30)),
+                ]);
+                t.write_expr_escaped(t.prop_access(user, "name"));
+                t.write("</div>");
+            },
+        )];
+
+        let records = vec![RecordInfo {
+            name: "User".to_string(),
+            fields: vec![
+                ("name".to_string(), Type::String),
+                ("age".to_string(), Type::Int),
+            ],
+        }];
+
+        let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
+        let ts_output = ts_transpiler.transpile_module(&entrypoints, &records);
+
+        let js_transpiler = JsTranspiler::new(LanguageMode::JavaScript);
+        let js_output = js_transpiler.transpile_module(&entrypoints, &records);
+
+        let output = format!("-- ts --\n{}\n-- js --\n{}", ts_output, js_output);
+
+        expect![[r#"
+            -- ts --
+            interface User {
+                name: string;
+                age: number;
+            }
+
+            function escapeHtml(str: string): string {
+                return str
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            export default {
+                createUser: (): string => {
+                    let output: string = "";
+                    output += "<div>";
+                    output += escapeHtml({name: "John", age: 30}.name);
+                    output += "</div>";
+                    return output;
+                }
+            }
+
+            -- js --
+            function escapeHtml(str) {
+                return str
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            export default {
+                createUser: () => {
+                    let output = "";
+                    output += "<div>";
+                    output += escapeHtml({name: "John", age: 30}.name);
                     output += "</div>";
                     return output;
                 }

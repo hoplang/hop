@@ -168,6 +168,20 @@ impl AlphaRenamingPass {
                 kind,
                 annotation,
             },
+            TypedExpr::RecordInstantiation {
+                record_name,
+                fields,
+                kind,
+                annotation,
+            } => TypedExpr::RecordInstantiation {
+                record_name,
+                fields: fields
+                    .into_iter()
+                    .map(|(k, v)| (k, self.rename_expr(v)))
+                    .collect(),
+                kind,
+                annotation,
+            },
             TypedExpr::JsonEncode { value, annotation } => TypedExpr::JsonEncode {
                 value: Box::new(self.rename_expr(*value)),
                 annotation,

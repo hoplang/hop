@@ -383,6 +383,20 @@ impl Compiler {
                 kind,
                 annotation: expr_id,
             },
+            SimpleTypedExpr::RecordInstantiation {
+                record_name,
+                fields,
+                kind,
+                ..
+            } => TypedExpr::RecordInstantiation {
+                record_name,
+                fields: fields
+                    .into_iter()
+                    .map(|(k, v)| (k, self.compile_expr(v)))
+                    .collect(),
+                kind,
+                annotation: expr_id,
+            },
             SimpleTypedExpr::StringLiteral { value, .. } => TypedExpr::StringLiteral {
                 value,
                 annotation: expr_id,
