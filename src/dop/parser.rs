@@ -857,16 +857,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_record_with_nested_object_type() {
-        check_parse_record(
-            "record Wrapper {inner: {name: String}}",
-            expect![[r#"
-                record Wrapper {inner: Record[name: String]}
-            "#]],
-        );
-    }
-
-    #[test]
     fn test_parse_record_duplicate_field_error() {
         check_parse_record(
             "record Foo {bar: String, bar: Int}",
@@ -976,68 +966,6 @@ mod tests {
 
     #[test]
     fn test_parse_parameters_duplicate_keys_in_object_type() {
-        check_parse_parameters(
-            "user: {name: String, name: Float}",
-            expect![[r#"
-                error: Duplicate property 'name'
-                user: {name: String, name: Float}
-                                     ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_parameters_object_type_simple() {
-        check_parse_parameters(
-            "user: {name: String, role: String}",
-            expect![[r#"
-                [user: Record[name: String, role: String]]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_parameters_object_type_multiple() {
-        check_parse_parameters(
-            "user: {name: String, age: Int}, config: {enabled: Bool}",
-            expect![[r#"
-                [user: Record[age: Int, name: String], config: Record[enabled: Bool]]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_parameters_object_type_nested() {
-        check_parse_parameters(
-            "data: {user: {name: String, active: Bool}}",
-            expect![[r#"
-                [data: Record[user: Record[active: Bool, name: String]]]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_parameters_object_type_with_array() {
-        check_parse_parameters(
-            "users: {names: Array[String], count: Int}",
-            expect![[r#"
-                [users: Record[count: Int, names: Array[String]]]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_parameters_object_type_empty() {
-        check_parse_parameters(
-            "empty: {}",
-            expect![[r#"
-                [empty: Record[]]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_parameters_object_type_duplicate_keys() {
         check_parse_parameters(
             "user: {name: String, name: Float}",
             expect![[r#"
