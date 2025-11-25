@@ -15,7 +15,7 @@ use std::fmt::{self, Display};
 pub struct TokenTree {
     pub token: Token,
 
-    /// The closing_token_name_range is the range of the name for the closing
+    /// The closing_tag_name is the range of the name for the closing
     /// tag.
     ///
     /// E.g.
