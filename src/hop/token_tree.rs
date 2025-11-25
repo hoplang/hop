@@ -108,6 +108,7 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut ErrorCollector<ParseError>)
             Token::Comment { .. }
             | Token::Doctype { .. }
             | Token::Import { .. }
+            | Token::Record { .. }
             | Token::Text { .. }
             | Token::TextExpression { .. } => {
                 if let Some(parent) = stack.last_mut() {

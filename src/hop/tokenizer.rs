@@ -41,6 +41,11 @@ pub enum Token {
         path: DocumentRange,
         range: DocumentRange,
     },
+    Record {
+        name: DocumentRange,
+        fields: DocumentRange,
+        range: DocumentRange,
+    },
     TextExpression {
         expression: DocumentRange,
         range: DocumentRange,
@@ -67,6 +72,7 @@ impl Ranged for Token {
             Token::Doctype { range }
             | Token::Comment { range }
             | Token::Import { range, .. }
+            | Token::Record { range, .. }
             | Token::TextExpression { range, .. }
             | Token::OpeningTag { range, .. }
             | Token::ClosingTag { range, .. }
@@ -134,6 +140,9 @@ impl Display for Token {
             }
             Token::Import { name, path, .. } => {
                 write!(f, "Import {} from {:#?}", name, path.to_string())
+            }
+            Token::Record { name, fields, .. } => {
+                write!(f, "Record {} {{{:#?}}}", name, fields.to_string())
             }
             Token::TextExpression { expression, .. } => {
                 write!(f, "Expression {:#?}", expression.to_string())
@@ -757,6 +766,112 @@ impl Tokenizer {
         })
     }
 
+    /// Parse a record declaration.
+    ///
+    /// E.g. record Foo {bar: String, foo: String}
+    /// Expects that the iterator points to the initial 'r' of 'record'.
+    ///
+    fn parse_record(&mut self) -> Option<Token> {
+        // Store the initial position
+        let initial = self.iter.peek()?.clone();
+
+        // Check if this starts with "record" using a cloned iterator
+        let mut check_iter = self.iter.clone();
+        let record_keyword: Vec<_> = check_iter.by_ref().take(6).collect();
+        if record_keyword.len() != 6
+            || record_keyword.iter().map(|s| s.ch()).collect::<String>() != "record"
+        {
+            return None;
+        }
+
+        // Check for whitespace after "record"
+        if !check_iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
+            return None;
+        }
+
+        // Now we know it's a valid record, consume "record" from the main iterator
+        for _ in 0..6 {
+            self.iter.next();
+        }
+
+        // Skip whitespace
+        self.skip_whitespace();
+
+        // Parse the record name (e.g., Foo)
+        let Some(name_start) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
+            self.errors.push(ParseError::new(
+                "Expected record name after 'record'".to_string(),
+                initial.clone(),
+            ));
+            return None;
+        };
+
+        let name = name_start.extend(
+            self.iter
+                .peeking_take_while(|s| s.ch().is_ascii_alphanumeric() || s.ch() == '_'),
+        );
+
+        // Skip whitespace
+        self.skip_whitespace();
+
+        // Parse the opening brace
+        let Some(open_brace) = self.iter.next_if(|s| s.ch() == '{') else {
+            self.errors.push(ParseError::new(
+                "Expected '{' after record name".to_string(),
+                name.clone(),
+            ));
+            return None;
+        };
+
+        // Find the closing brace using find_expression_end
+        let clone = self.iter.clone();
+        let Some(found_close_brace) = Self::find_expression_end(clone) else {
+            self.errors.push(ParseError::UnmatchedCharacter {
+                ch: open_brace.ch(),
+                range: open_brace,
+            });
+            return None;
+        };
+
+        // Handle empty fields
+        if open_brace.end() == found_close_brace.start() {
+            let Some(close_brace) = self.iter.next_if(|s| s.ch() == '}') else {
+                panic!(
+                    "Expected '}}' in parse_record but got {:?}",
+                    self.iter.next().map(|s| s.ch())
+                );
+            };
+            self.errors.push(ParseError::new(
+                "Empty record fields".to_string(),
+                open_brace.to(close_brace),
+            ));
+            return None;
+        }
+
+        // Consume fields content
+        let mut fields = self.iter.next().unwrap();
+        while self.iter.peek().unwrap().start() != found_close_brace.start() {
+            fields = fields.to(self.iter.next()?);
+        }
+
+        // Consume closing brace
+        let Some(close_brace) = self.iter.next_if(|s| s.ch() == '}') else {
+            panic!(
+                "Expected '}}' in parse_record but got {:?}",
+                self.iter.next().map(|s| s.ch())
+            );
+        };
+
+        // Consume any trailing whitespace (including newlines)
+        self.skip_whitespace();
+
+        Some(Token::Record {
+            name,
+            fields,
+            range: initial.to(close_brace),
+        })
+    }
+
     fn parse_tag(&mut self) -> Option<Token> {
         let Some(left_angle) = self.iter.next() else {
             panic!(
@@ -798,6 +913,14 @@ impl Tokenizer {
                 // Try to parse as import, fall back to text if it's not an import
                 if let Some(import_token) = self.parse_import() {
                     Some(import_token)
+                } else {
+                    self.parse_text()
+                }
+            }
+            Some('r') => {
+                // Try to parse as record, fall back to text if it's not a record
+                if let Some(record_token) = self.parse_record() {
+                    Some(record_token)
                 } else {
                     self.parse_text()
                 }
@@ -3111,6 +3234,146 @@ import Footer from "./footer.hop"
                 ClosingTag </div>
                 4 | <div>Content</div>
                   |             ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_record_simple() {
+        check(
+            r#"record Foo {bar: String, foo: String}"#,
+            expect![[r#"
+                Record Foo {"bar: String, foo: String"}
+                1 | record Foo {bar: String, foo: String}
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_record_with_nested_types() {
+        check(
+            r#"record User {name: String, items: Array[Item]}"#,
+            expect![[r#"
+                Record User {"name: String, items: Array[Item]"}
+                1 | record User {name: String, items: Array[Item]}
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_record_followed_by_html() {
+        check(
+            r#"record Foo {bar: String}
+<div>Content</div>"#,
+            expect![[r#"
+                Record Foo {"bar: String"}
+                1 | record Foo {bar: String}
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^
+
+                OpeningTag <div>
+                2 | <div>Content</div>
+                  | ^^^^^
+
+                Text [7 byte, "Content"]
+                2 | <div>Content</div>
+                  |      ^^^^^^^
+
+                ClosingTag </div>
+                2 | <div>Content</div>
+                  |             ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_multiple_records() {
+        check(
+            r#"record Foo {bar: String}
+record Bar {baz: Int}"#,
+            expect![[r#"
+                Record Foo {"bar: String"}
+                1 | record Foo {bar: String}
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^
+
+                Record Bar {"baz: Int"}
+                2 | record Bar {baz: Int}
+                  | ^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_record_with_imports() {
+        check(
+            r#"import Header from "./header.hop"
+record User {name: String}
+<div>Content</div>"#,
+            expect![[r#"
+                Import Header from "./header.hop"
+                1 | import Header from "./header.hop"
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                Record User {"name: String"}
+                2 | record User {name: String}
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                OpeningTag <div>
+                3 | <div>Content</div>
+                  | ^^^^^
+
+                Text [7 byte, "Content"]
+                3 | <div>Content</div>
+                  |      ^^^^^^^
+
+                ClosingTag </div>
+                3 | <div>Content</div>
+                  |             ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_record_multiline_with_trailing_comma() {
+        check(
+            r#"record User {
+    name: String,
+    email: String,
+    age: Int,
+}"#,
+            expect![[r#"
+                Record User {"\n    name: String,\n    email: String,\n    age: Int,\n"}
+                1 | record User {
+                  | ^^^^^^^^^^^^^
+                2 |     name: String,
+                  | ^^^^^^^^^^^^^^^^^
+                3 |     email: String,
+                  | ^^^^^^^^^^^^^^^^^^
+                4 |     age: Int,
+                  | ^^^^^^^^^^^^^
+                5 | }
+                  | ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_text_starting_with_r() {
+        check(
+            r#"<p>running fast</p>"#,
+            expect![[r#"
+                OpeningTag <p>
+                1 | <p>running fast</p>
+                  | ^^^
+
+                Text [12 byte, "running fast"]
+                1 | <p>running fast</p>
+                  |    ^^^^^^^^^^^^
+
+                ClosingTag </p>
+                1 | <p>running fast</p>
+                  |                ^^^^
             "#]],
         );
     }

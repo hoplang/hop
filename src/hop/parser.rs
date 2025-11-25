@@ -180,6 +180,10 @@ fn parse_top_level_node(
         Token::TextExpression { .. } => None,
         Token::Comment { .. } => None,
         Token::Doctype { .. } => None,
+        Token::Record { .. } => {
+            // TODO: Records are handled elsewhere
+            None
+        }
         Token::Import { name, path, .. } => {
             // Handle import declarations like: import UserList from "@/user_list.hop"
             use crate::hop::ast::{Import, StaticAttribute};
@@ -291,6 +295,10 @@ fn construct_node(
         }
         Token::Import { .. } => {
             // Import declarations are handled at the top level only
+            None
+        }
+        Token::Record { .. } => {
+            // Record declarations are handled at the top level only
             None
         }
         Token::ClosingTag { .. } => {

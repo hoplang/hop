@@ -52,6 +52,11 @@ impl TokenTreePrettyPrint for TokenTree {
                 RcDoc::text(format!("import {} from \"{}\"", name, path))
             }
 
+            Token::Record { name, fields, .. } => {
+                // Format record declarations
+                RcDoc::text(format!("record {} {{{}}}", name, fields))
+            }
+
             Token::Text { range } => {
                 let text = range.as_str();
                 if text.trim().is_empty() {
