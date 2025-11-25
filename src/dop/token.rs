@@ -5,6 +5,7 @@ use crate::document::document_cursor::DocumentRange;
 #[derive(Debug, Clone)]
 pub enum Token {
     Identifier(DocumentRange),
+    TypeName(DocumentRange),
     StringLiteral(String),
     BooleanLiteral(bool),
     IntLiteral(i64),
@@ -45,6 +46,7 @@ impl PartialEq for Token {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Token::Identifier(a), Token::Identifier(b)) => a.as_str() == b.as_str(),
+            (Token::TypeName(a), Token::TypeName(b)) => a.as_str() == b.as_str(),
             (Token::StringLiteral(a), Token::StringLiteral(b)) => a == b,
             (Token::BooleanLiteral(a), Token::BooleanLiteral(b)) => a == b,
             (Token::IntLiteral(a), Token::IntLiteral(b)) => a == b,
@@ -100,6 +102,7 @@ impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Token::Identifier(name) => write!(f, "{}", name),
+            Token::TypeName(name) => write!(f, "{}", name),
             Token::StringLiteral(s) => write!(f, "\"{}\"", s),
             Token::BooleanLiteral(b) => write!(f, "{}", b),
             Token::IntLiteral(i) => write!(f, "{}", i),

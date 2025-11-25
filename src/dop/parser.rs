@@ -365,11 +365,11 @@ impl Parser {
         // Expect "record" keyword
         self.expect_token(&Token::KeywordRecord)?;
 
-        // Expect record name (an identifier)
+        // Expect record name (a type name)
         let name = match self.iter.next().transpose()? {
-            Some((Token::Identifier(name), _)) => name,
+            Some((Token::TypeName(name), _)) => name,
             Some((actual, range)) => {
-                return Err(ParseError::ExpectedVariableNameButGot { actual, range })
+                return Err(ParseError::ExpectedTypeNameButGot { actual, range })
             }
             None => {
                 return Err(ParseError::UnexpectedEof {
@@ -885,7 +885,7 @@ mod tests {
         check_parse_record(
             "record {bar: String}",
             expect![[r#"
-                error: Expected variable name but got {
+                error: Expected type name but got {
                 record {bar: String}
                        ^
             "#]],

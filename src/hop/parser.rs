@@ -784,7 +784,7 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                error: Invalid variable name 'Data': Variable name must be lowercase (found uppercase: 'D')
+                error: Expected variable name but got Data
                 1 | <Main {Data: String}>
                   |        ^^^^
             "#]],

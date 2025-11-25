@@ -119,7 +119,14 @@ impl Iterator for Tokenizer {
                         "Bool" => Token::TypeBoolean,
                         "TrustedHTML" => Token::TypeTrustedHTML,
                         "Array" => Token::TypeArray,
-                        _ => Token::Identifier(identifier.clone()),
+                        _ => {
+                            let first_char = identifier.as_str().chars().next().unwrap();
+                            if first_char.is_ascii_uppercase() {
+                                Token::TypeName(identifier.clone())
+                            } else {
+                                Token::Identifier(identifier.clone())
+                            }
+                        }
                     };
                     Ok((t, identifier))
                 }
@@ -565,6 +572,62 @@ mod tests {
                 token: Array
                 String Int Float Bool TrustedHTML Array
                                                   ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_type_names() {
+        check(
+            "User Person MyType CustomRecord",
+            expect![[r#"
+                token: User
+                User Person MyType CustomRecord
+                ^^^^
+
+                token: Person
+                User Person MyType CustomRecord
+                     ^^^^^^
+
+                token: MyType
+                User Person MyType CustomRecord
+                            ^^^^^^
+
+                token: CustomRecord
+                User Person MyType CustomRecord
+                                   ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_identifiers_vs_type_names() {
+        check(
+            "foo Foo bar Bar _test Test",
+            expect![[r#"
+                token: foo
+                foo Foo bar Bar _test Test
+                ^^^
+
+                token: Foo
+                foo Foo bar Bar _test Test
+                    ^^^
+
+                token: bar
+                foo Foo bar Bar _test Test
+                        ^^^
+
+                token: Bar
+                foo Foo bar Bar _test Test
+                            ^^^
+
+                token: _test
+                foo Foo bar Bar _test Test
+                                ^^^^^
+
+                token: Test
+                foo Foo bar Bar _test Test
+                                      ^^^^
             "#]],
         );
     }
