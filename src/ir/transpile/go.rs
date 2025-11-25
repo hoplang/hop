@@ -6,7 +6,7 @@ use crate::dop::property_name::PropertyName;
 use crate::dop::r#type::Type;
 use crate::hop::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 pub struct GoTranspiler {
     package_name: String,
@@ -15,86 +15,6 @@ pub struct GoTranspiler {
 impl GoTranspiler {
     pub fn new(package_name: String) -> Self {
         Self { package_name }
-    }
-
-    fn extract_and_generate_nested_type<'a>(
-        &self,
-        param_type: &'a Type,
-        base_name: &str,
-        field_name: &str,
-        generated_types: &mut Vec<(String, BoxDoc<'a>)>,
-    ) -> BoxDoc<'a> {
-        match param_type {
-            Type::Object(fields) => {
-                // Generate the type name for this struct
-                let type_name = format!(
-                    "{}{}",
-                    base_name,
-                    CasedString::from_snake_case(field_name).to_pascal_case()
-                );
-
-                // Process fields depth-first, collecting nested types
-                let mut field_docs = Vec::new();
-                for (nested_field_name, nested_field_type) in fields {
-                    let field_name_pascal = nested_field_name.to_pascal_case();
-
-                    // Recursively process and get the type reference
-                    let field_type_doc = self.extract_and_generate_nested_type(
-                        nested_field_type,
-                        &type_name, // New base name for nested types
-                        nested_field_name.as_str(),
-                        generated_types,
-                    );
-
-                    // Build field definition
-                    let field_doc = BoxDoc::as_string(field_name_pascal)
-                        .append(BoxDoc::text(" "))
-                        .append(field_type_doc)
-                        .append(BoxDoc::text(" `json:\""))
-                        .append(BoxDoc::text(nested_field_name.as_str()))
-                        .append(BoxDoc::text("\"`"));
-
-                    field_docs.push(field_doc);
-                }
-
-                // Generate the struct definition
-                let struct_def = BoxDoc::text("type ")
-                    .append(BoxDoc::as_string(type_name.clone()))
-                    .append(BoxDoc::text(" struct {"))
-                    .append(
-                        BoxDoc::line()
-                            .append(BoxDoc::intersperse(field_docs, BoxDoc::line()))
-                            .nest(1),
-                    )
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("}"));
-
-                // Add to generated types
-                generated_types.push((type_name.clone(), struct_def));
-
-                // Return reference to this type
-                BoxDoc::as_string(type_name)
-            }
-            Type::Array(Some(elem_type)) => {
-                if matches!(elem_type.as_ref(), Type::Object(_)) {
-                    // Generate type for array elements
-                    let elem_type_doc = self.extract_and_generate_nested_type(
-                        elem_type,
-                        base_name,
-                        &format!("{}_item", field_name),
-                        generated_types,
-                    );
-                    BoxDoc::text("[]").append(elem_type_doc)
-                } else {
-                    // Regular array
-                    BoxDoc::text("[]").append(self.transpile_type(elem_type))
-                }
-            }
-            _ => {
-                // Primitive types - just use regular transpilation
-                self.transpile_type(param_type)
-            }
-        }
     }
 
     fn scan_for_imports(imports: &mut BTreeSet<String>, entrypoint: &IrEntrypoint) {
@@ -139,7 +59,6 @@ impl GoTranspiler {
         match t {
             Type::TrustedHTML => true,
             Type::Array(Some(elem)) => Self::type_contains_trusted_html(elem),
-            Type::Object(fields) => fields.values().any(Self::type_contains_trusted_html),
             _ => false,
         }
     }
@@ -265,22 +184,13 @@ impl Transpiler for GoTranspiler {
             if !entrypoint.parameters.is_empty() {
                 let struct_name = format!("{}Params", entrypoint.name.to_pascal_case());
 
-                let mut nested_types = Vec::new();
-
-                // Process each parameter, extracting nested types
+                // Process each parameter
                 let fields: Vec<_> = entrypoint
                     .parameters
                     .iter()
                     .map(|(param_name, param_type)| {
                         let field_name = param_name.to_pascal_case();
-
-                        // Extract nested types and get the type reference
-                        let field_type_doc = self.extract_and_generate_nested_type(
-                            param_type,
-                            &struct_name,
-                            param_name.as_str(),
-                            &mut nested_types,
-                        );
+                        let field_type_doc = self.transpile_type(param_type);
 
                         BoxDoc::as_string(field_name)
                             .append(BoxDoc::text(" "))
@@ -291,15 +201,7 @@ impl Transpiler for GoTranspiler {
                     })
                     .collect();
 
-                // First, add all nested types that were extracted
-                for (_name, type_def) in &nested_types {
-                    result = result
-                        .append(type_def.clone())
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::line());
-                }
-
-                // Then add the main parameter struct
+                // Add the parameter struct
                 result = result
                     .append(BoxDoc::text("type "))
                     .append(BoxDoc::text(struct_name))
@@ -539,33 +441,6 @@ impl ExpressionTranspiler for GoTranspiler {
                 elements.iter().map(|e| self.transpile_expr(e)),
                 BoxDoc::text(", "),
             ))
-            .append(BoxDoc::text("}"))
-    }
-
-    fn transpile_object_literal<'a>(
-        &self,
-        properties: &'a [(PropertyName, IrExpr)],
-        field_types: &'a BTreeMap<PropertyName, Type>,
-    ) -> BoxDoc<'a> {
-        let struct_type = self.transpile_object_type(field_types);
-        struct_type
-            .append(BoxDoc::text("{"))
-            .append(
-                BoxDoc::nil()
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::intersperse(
-                        properties.iter().map(|(key, value)| {
-                            let field_name = key.to_pascal_case();
-                            BoxDoc::as_string(field_name)
-                                .append(BoxDoc::text(": "))
-                                .append(self.transpile_expr(value))
-                                .append(BoxDoc::text(","))
-                        }),
-                        BoxDoc::line(),
-                    ))
-                    .append(BoxDoc::line())
-                    .nest(1),
-            )
             .append(BoxDoc::text("}"))
     }
 
@@ -867,31 +742,6 @@ impl TypeTranspiler for GoTranspiler {
         }
     }
 
-    fn transpile_object_type<'a>(&self, fields: &'a BTreeMap<PropertyName, Type>) -> BoxDoc<'a> {
-        // Generate anonymous struct type
-        BoxDoc::text("struct{")
-            .append(
-                BoxDoc::nil()
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::intersperse(
-                        fields.iter().map(|(field_name, field_type)| {
-                            let go_field = field_name.to_pascal_case();
-                            BoxDoc::as_string(go_field)
-                                .append(BoxDoc::text(" "))
-                                .append(self.transpile_type(field_type))
-                                .append(BoxDoc::text(" `json:\""))
-                                .append(BoxDoc::text(field_name.as_str()))
-                                .append(BoxDoc::text("\"`"))
-                                .append(BoxDoc::nil().flat_alt(BoxDoc::text(";")))
-                        }),
-                        BoxDoc::line(),
-                    ))
-                    .append(BoxDoc::line())
-                    .nest(1),
-            )
-            .append(BoxDoc::text("}"))
-    }
-
     fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }
@@ -1144,140 +994,6 @@ mod tests {
     }
 
     #[test]
-    fn test_object_literals() {
-        let entrypoints = vec![build_ir_auto("TestObjects", vec![], |t| {
-            t.let_stmt(
-                "person",
-                t.object(vec![
-                    ("name", t.str("Alice")),
-                    ("age", t.str("30.0")),
-                    ("active", t.bool(true)),
-                ]),
-                |t| {
-                    t.write_expr_escaped(t.prop_access(t.var("person"), "name"));
-                    t.write(" is ");
-                    t.write_expr(t.prop_access(t.var("person"), "age"), false);
-                    t.write(" years old");
-                },
-            );
-        })];
-
-        check(
-            &entrypoints,
-            expect![[r#"
-                -- before --
-                TestObjects() {
-                  let person = {
-                    name: "Alice",
-                    age: "30.0",
-                    active: true,
-                  } in {
-                    write_escaped(person.name)
-                    write(" is ")
-                    write_expr(person.age)
-                    write(" years old")
-                  }
-                }
-
-                -- after --
-                package components
-
-                import (
-                	"html"
-                	"strings"
-                )
-
-                func TestObjects() string {
-                	var output strings.Builder
-                	person := struct{
-                		Active bool `json:"active"`
-                		Age string `json:"age"`
-                		Name string `json:"name"`
-                	}{
-                		Name: "Alice",
-                		Age: "30.0",
-                		Active: true,
-                	}
-                	output.WriteString(html.EscapeString(person.Name))
-                	output.WriteString(" is ")
-                	output.WriteString(person.Age)
-                	output.WriteString(" years old")
-                	return output.String()
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_nested_arrays_and_objects() {
-        let parameters = vec![(
-            "users",
-            Type::Array(Some(Box::new(Type::Object({
-                let mut map = BTreeMap::new();
-                map.insert(PropertyName::new("name").unwrap(), Type::String);
-                map.insert(PropertyName::new("id").unwrap(), Type::String);
-                map
-            })))),
-        )];
-
-        let entrypoints = vec![build_ir_auto("TestNested", parameters, |t| {
-            t.for_loop("user", t.var("users"), |t| {
-                t.write("<div>");
-                t.write_expr_escaped(t.prop_access(t.var("user"), "name"));
-                t.write(" (ID: ");
-                t.write_expr(t.prop_access(t.var("user"), "id"), false);
-                t.write(")</div>\n");
-            });
-        })];
-
-        check(
-            &entrypoints,
-            expect![[r#"
-                -- before --
-                TestNested(users: Array[Record[id: String, name: String]]) {
-                  for user in users {
-                    write("<div>")
-                    write_escaped(user.name)
-                    write(" (ID: ")
-                    write_expr(user.id)
-                    write(")</div>\n")
-                  }
-                }
-
-                -- after --
-                package components
-
-                import (
-                	"html"
-                	"strings"
-                )
-
-                type TestNestedParamsUsersItem struct {
-                	Id string `json:"id"`
-                	Name string `json:"name"`
-                }
-
-                type TestNestedParams struct {
-                	Users []TestNestedParamsUsersItem `json:"users"`
-                }
-
-                func TestNested(params TestNestedParams) string {
-                	users := params.Users
-                	var output strings.Builder
-                	for _, user := range users {
-                		output.WriteString("<div>")
-                		output.WriteString(html.EscapeString(user.Name))
-                		output.WriteString(" (ID: ")
-                		output.WriteString(user.Id)
-                		output.WriteString(")</div>\n")
-                	}
-                	return output.String()
-                }
-            "#]],
-        );
-    }
-
-    #[test]
     fn test_loop_over_array_literal() {
         let entrypoints = vec![build_ir_auto("TestArrayLiteralLoop", vec![], |t| {
             t.write("<ul>\n");
@@ -1324,261 +1040,6 @@ mod tests {
                 		output.WriteString("</li>\n")
                 	}
                 	output.WriteString("</ul>\n")
-                	return output.String()
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_loop_over_object_array_literal() {
-        let entrypoints = vec![build_ir_auto("TestProducts", vec![], |t| {
-            t.for_loop(
-                "product",
-                t.array(vec![
-                    t.object(vec![
-                        ("name", t.str("Laptop")),
-                        ("price", t.str("999.99")),
-                        ("in_stock", t.bool(true)),
-                    ]),
-                    t.object(vec![
-                        ("name", t.str("Mouse")),
-                        ("price", t.str("29.99")),
-                        ("in_stock", t.bool(false)),
-                    ]),
-                ]),
-                |t| {
-                    t.write("<div class=\"product\">\n");
-                    t.write("<h3>");
-                    t.write_expr_escaped(t.prop_access(t.var("product"), "name"));
-                    t.write("</h3>\n");
-                    t.write("<p>$");
-                    t.write_expr(t.prop_access(t.var("product"), "price"), false);
-                    t.write("</p>\n");
-                    t.if_stmt(t.prop_access(t.var("product"), "in_stock"), |t| {
-                        t.write("<span class=\"available\">In Stock</span>\n");
-                    });
-                    t.if_stmt(t.not(t.prop_access(t.var("product"), "in_stock")), |t| {
-                        t.write("<span class=\"sold-out\">Sold Out</span>\n");
-                    });
-                    t.write("</div>\n");
-                },
-            );
-        })];
-
-        check(
-            &entrypoints,
-            expect![[r#"
-                -- before --
-                TestProducts() {
-                  for product in [
-                    {name: "Laptop", price: "999.99", in_stock: true},
-                    {name: "Mouse", price: "29.99", in_stock: false},
-                  ] {
-                    write("<div class=\"product\">\n")
-                    write("<h3>")
-                    write_escaped(product.name)
-                    write("</h3>\n")
-                    write("<p>$")
-                    write_expr(product.price)
-                    write("</p>\n")
-                    if product.in_stock {
-                      write("<span class=\"available\">In Stock</span>\n")
-                    }
-                    if (!product.in_stock) {
-                      write("<span class=\"sold-out\">Sold Out</span>\n")
-                    }
-                    write("</div>\n")
-                  }
-                }
-
-                -- after --
-                package components
-
-                import (
-                	"html"
-                	"strings"
-                )
-
-                func TestProducts() string {
-                	var output strings.Builder
-                	for _, product := range []struct{
-                		InStock bool `json:"in_stock"`
-                		Name string `json:"name"`
-                		Price string `json:"price"`
-                	}{struct{
-                		InStock bool `json:"in_stock"`
-                		Name string `json:"name"`
-                		Price string `json:"price"`
-                	}{
-                		Name: "Laptop",
-                		Price: "999.99",
-                		InStock: true,
-                	}, struct{
-                		InStock bool `json:"in_stock"`
-                		Name string `json:"name"`
-                		Price string `json:"price"`
-                	}{
-                		Name: "Mouse",
-                		Price: "29.99",
-                		InStock: false,
-                	}} {
-                		output.WriteString("<div class=\"product\">\n")
-                		output.WriteString("<h3>")
-                		output.WriteString(html.EscapeString(product.Name))
-                		output.WriteString("</h3>\n")
-                		output.WriteString("<p>$")
-                		output.WriteString(product.Price)
-                		output.WriteString("</p>\n")
-                		if product.InStock {
-                			output.WriteString("<span class=\"available\">In Stock</span>\n")
-                		}
-                		if !(product.InStock) {
-                			output.WriteString("<span class=\"sold-out\">Sold Out</span>\n")
-                		}
-                		output.WriteString("</div>\n")
-                	}
-                	return output.String()
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_deeply_nested_structs() {
-        let parameters = vec![(
-            "config",
-            Type::Object({
-                let mut config = BTreeMap::new();
-                config.insert(PropertyName::new("api_key").unwrap(), Type::String);
-                config.insert(
-                    PropertyName::new("database").unwrap(),
-                    Type::Object({
-                        let mut db = BTreeMap::new();
-                        db.insert(PropertyName::new("host").unwrap(), Type::String);
-                        db.insert(PropertyName::new("port").unwrap(), Type::Float);
-                        db.insert(
-                            PropertyName::new("credentials").unwrap(),
-                            Type::Object({
-                                let mut creds = BTreeMap::new();
-                                creds.insert(PropertyName::new("username").unwrap(), Type::String);
-                                creds.insert(PropertyName::new("password").unwrap(), Type::String);
-                                creds
-                            }),
-                        );
-                        db
-                    }),
-                );
-                config.insert(
-                    PropertyName::new("features").unwrap(),
-                    Type::Array(Some(Box::new(Type::Object({
-                        let mut feature = BTreeMap::new();
-                        feature.insert(PropertyName::new("name").unwrap(), Type::String);
-                        feature.insert(PropertyName::new("enabled").unwrap(), Type::Bool);
-                        feature.insert(
-                            PropertyName::new("settings").unwrap(),
-                            Type::Object({
-                                let mut settings = BTreeMap::new();
-                                settings.insert(PropertyName::new("level").unwrap(), Type::String);
-                                settings.insert(PropertyName::new("timeout").unwrap(), Type::Float);
-                                settings
-                            }),
-                        );
-                        feature
-                    })))),
-                );
-                config
-            }),
-        )];
-
-        let entrypoints = vec![build_ir_auto("TestDeepConfig", parameters, |t| {
-            t.write("<div>API Key: ");
-            t.write_expr_escaped(t.prop_access(t.var("config"), "api_key"));
-            t.write("</div>\n");
-            t.write("<div>DB Host: ");
-            t.write_expr_escaped(t.prop_access(t.prop_access(t.var("config"), "database"), "host"));
-            t.write("</div>\n");
-        })];
-
-        check(
-            &entrypoints,
-            expect![[r#"
-                -- before --
-                TestDeepConfig(
-                  config: Record[
-                    api_key: String,
-                    database: Record[
-                      credentials: Record[
-                        password: String,
-                        username: String,
-                      ],
-                      host: String,
-                      port: Float,
-                    ],
-                    features: Array[Record[
-                      enabled: Bool,
-                      name: String,
-                      settings: Record[level: String, timeout: Float],
-                    ]],
-                  ],
-                ) {
-                  write("<div>API Key: ")
-                  write_escaped(config.api_key)
-                  write("</div>\n")
-                  write("<div>DB Host: ")
-                  write_escaped(config.database.host)
-                  write("</div>\n")
-                }
-
-                -- after --
-                package components
-
-                import (
-                	"html"
-                	"strings"
-                )
-
-                type TestDeepConfigParamsConfigDatabaseCredentials struct {
-                	Password string `json:"password"`
-                	Username string `json:"username"`
-                }
-
-                type TestDeepConfigParamsConfigDatabase struct {
-                	Credentials TestDeepConfigParamsConfigDatabaseCredentials `json:"credentials"`
-                	Host string `json:"host"`
-                	Port float64 `json:"port"`
-                }
-
-                type TestDeepConfigParamsConfigFeaturesItemSettings struct {
-                	Level string `json:"level"`
-                	Timeout float64 `json:"timeout"`
-                }
-
-                type TestDeepConfigParamsConfigFeaturesItem struct {
-                	Enabled bool `json:"enabled"`
-                	Name string `json:"name"`
-                	Settings TestDeepConfigParamsConfigFeaturesItemSettings `json:"settings"`
-                }
-
-                type TestDeepConfigParamsConfig struct {
-                	ApiKey string `json:"api_key"`
-                	Database TestDeepConfigParamsConfigDatabase `json:"database"`
-                	Features []TestDeepConfigParamsConfigFeaturesItem `json:"features"`
-                }
-
-                type TestDeepConfigParams struct {
-                	Config TestDeepConfigParamsConfig `json:"config"`
-                }
-
-                func TestDeepConfig(params TestDeepConfigParams) string {
-                	config := params.Config
-                	var output strings.Builder
-                	output.WriteString("<div>API Key: ")
-                	output.WriteString(html.EscapeString(config.ApiKey))
-                	output.WriteString("</div>\n")
-                	output.WriteString("<div>DB Host: ")
-                	output.WriteString(html.EscapeString(config.Database.Host))
-                	output.WriteString("</div>\n")
                 	return output.String()
                 }
             "#]],
@@ -1635,111 +1096,6 @@ mod tests {
                 	if (user_role == "admin") {
                 		output.WriteString("<div>Admin panel available</div>\n")
                 	}
-                	return output.String()
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_json_encode() {
-        let parameters = vec![
-            (
-                "data",
-                Type::Object({
-                    let mut map = BTreeMap::new();
-                    map.insert(PropertyName::new("title").unwrap(), Type::String);
-                    map.insert(PropertyName::new("count").unwrap(), Type::Float);
-                    map.insert(PropertyName::new("active").unwrap(), Type::Bool);
-                    map
-                }),
-            ),
-            ("items", Type::Array(Some(Box::new(Type::String)))),
-        ];
-
-        let entrypoints = vec![build_ir_auto("TestJson", parameters, |t| {
-            t.write("<script>\n");
-            t.write("const data = ");
-            t.write_expr(t.json_encode(t.var("data")), false);
-            t.write(";\n");
-            t.write("const items = ");
-            t.write_expr(t.json_encode(t.var("items")), false);
-            t.write(";\n");
-            t.write("const config = ");
-            t.write_expr(
-                t.json_encode(t.object(vec![("debug", t.bool(true)), ("version", t.float(1.5))])),
-                false,
-            );
-            t.write(";\n");
-            t.write("</script>\n");
-        })];
-
-        check(
-            &entrypoints,
-            expect![[r#"
-                -- before --
-                TestJson(
-                  data: Record[active: Bool, count: Float, title: String],
-                  items: Array[String],
-                ) {
-                  write("<script>\n")
-                  write("const data = ")
-                  write_expr(JsonEncode(data))
-                  write(";\n")
-                  write("const items = ")
-                  write_expr(JsonEncode(items))
-                  write(";\n")
-                  write("const config = ")
-                  write_expr(JsonEncode({debug: true, version: 1.5}))
-                  write(";\n")
-                  write("</script>\n")
-                }
-
-                -- after --
-                package components
-
-                import (
-                	"encoding/json"
-                	"strings"
-                )
-
-                func mustJSONMarshal(v any) string {
-                	data, _ := json.Marshal(v)
-                	return string(data)
-                }
-
-                type TestJsonParamsData struct {
-                	Active bool `json:"active"`
-                	Count float64 `json:"count"`
-                	Title string `json:"title"`
-                }
-
-                type TestJsonParams struct {
-                	Data TestJsonParamsData `json:"data"`
-                	Items []string `json:"items"`
-                }
-
-                func TestJson(params TestJsonParams) string {
-                	data := params.Data
-                	items := params.Items
-                	var output strings.Builder
-                	output.WriteString("<script>\n")
-                	output.WriteString("const data = ")
-                	output.WriteString(mustJSONMarshal(data))
-                	output.WriteString(";\n")
-                	output.WriteString("const items = ")
-                	output.WriteString(mustJSONMarshal(items))
-                	output.WriteString(";\n")
-                	output.WriteString("const config = ")
-                	output.WriteString(mustJSONMarshal(struct{
-                		Debug bool `json:"debug"`
-                		Version float64 `json:"version"`
-                	}{
-                		Debug: true,
-                		Version: 1.5,
-                	}))
-                	output.WriteString(";\n")
-                	output.WriteString("</script>\n")
                 	return output.String()
                 }
             "#]],

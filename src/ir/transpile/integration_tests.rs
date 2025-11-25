@@ -1,9 +1,7 @@
 use super::{GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler};
-use crate::dop::PropertyName;
 use crate::dop::r#type::Type;
 use crate::ir::ast::IrEntrypoint;
 use crate::ir::test_utils::build_ir_auto;
-use std::collections::BTreeMap;
 use std::fs;
 use std::process::Command;
 use tempfile::TempDir;
@@ -451,28 +449,6 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn test_object_property_access() {
-        let test_case = TestCase::new(
-            build_ir_auto("Test", vec![], |t| {
-                t.let_stmt(
-                    "user",
-                    t.object(vec![("name", t.str("Bob")), ("age", t.str("25"))]),
-                    |t| {
-                        t.write_expr(t.prop_access(t.var("user"), "name"), false);
-                        t.write(" is ");
-                        t.write_expr(t.prop_access(t.var("user"), "age"), false);
-                        t.write(" years old");
-                    },
-                );
-            }),
-            "Bob is 25 years old",
-        );
-
-        run_integration_test(test_case).expect("Integration test failed");
-    }
-
-    #[test]
-    #[ignore]
     fn test_let_binding() {
         let test_case = TestCase::new(
             build_ir_auto("Test", vec![], |t| {
@@ -536,105 +512,6 @@ mod tests {
         );
 
         run_integration_test(test_case).expect("Integration test failed");
-    }
-
-    #[test]
-    #[ignore]
-    fn test_typecheck_deeply_nested_params() {
-        // Create deeply nested parameter structure
-        let parameters = vec![(
-            "config",
-            Type::Object({
-                let mut config = BTreeMap::new();
-                config.insert(PropertyName::new("api_key").unwrap(), Type::String);
-                config.insert(
-                    PropertyName::new("database").unwrap(),
-                    Type::Object({
-                        let mut db = BTreeMap::new();
-                        db.insert(PropertyName::new("host").unwrap(), Type::String);
-                        db.insert(PropertyName::new("port").unwrap(), Type::Float);
-                        db.insert(
-                            PropertyName::new("credentials").unwrap(),
-                            Type::Object({
-                                let mut creds = BTreeMap::new();
-                                creds.insert(PropertyName::new("username").unwrap(), Type::String);
-                                creds.insert(PropertyName::new("password").unwrap(), Type::String);
-                                creds
-                            }),
-                        );
-                        db
-                    }),
-                );
-                config.insert(
-                    PropertyName::new("features").unwrap(),
-                    Type::Array(Some(Box::new(Type::Object({
-                        let mut feature = BTreeMap::new();
-                        feature.insert(PropertyName::new("name").unwrap(), Type::String);
-                        feature.insert(PropertyName::new("enabled").unwrap(), Type::Bool);
-                        feature.insert(
-                            PropertyName::new("settings").unwrap(),
-                            Type::Object({
-                                let mut settings = BTreeMap::new();
-                                settings.insert(PropertyName::new("level").unwrap(), Type::String);
-                                settings.insert(PropertyName::new("timeout").unwrap(), Type::Float);
-                                settings
-                            }),
-                        );
-                        feature
-                    })))),
-                );
-                config
-            }),
-        )];
-
-        let test_case =
-            TypeCheckTestCase::new(vec![build_ir_auto("TestDeepConfig", parameters, |t| {
-                t.write("<div>API Key: ");
-                t.write_expr_escaped(t.prop_access(t.var("config"), "api_key"));
-                t.write("</div>\n");
-                t.write("<div>DB Host: ");
-                t.write_expr_escaped(
-                    t.prop_access(t.prop_access(t.var("config"), "database"), "host"),
-                );
-                t.write("</div>\n");
-            })]);
-
-        run_type_check_test(test_case).expect("Type check test failed");
-    }
-
-    #[test]
-    #[ignore]
-    fn test_typecheck_array_of_objects_param() {
-        let parameters = vec![(
-            "users",
-            Type::Array(Some(Box::new(Type::Object({
-                let mut user = BTreeMap::new();
-                user.insert(PropertyName::new("name").unwrap(), Type::String);
-                user.insert(PropertyName::new("email").unwrap(), Type::String);
-                user.insert(
-                    PropertyName::new("profile").unwrap(),
-                    Type::Object({
-                        let mut profile = BTreeMap::new();
-                        profile.insert(PropertyName::new("bio").unwrap(), Type::String);
-                        profile.insert(PropertyName::new("age").unwrap(), Type::Float);
-                        profile
-                    }),
-                );
-                user
-            })))),
-        )];
-
-        let test_case = TypeCheckTestCase::new(vec![build_ir_auto("TestUsers", parameters, |t| {
-            t.for_loop("user", t.var("users"), |t| {
-                t.write("<div>");
-                t.write_expr_escaped(t.prop_access(t.var("user"), "name"));
-                t.write(" - ");
-                t.write_expr_escaped(t.prop_access(t.prop_access(t.var("user"), "profile"), "bio"));
-                t.write("</div>\n");
-            });
-        })]);
-
-        run_type_check_test(test_case).expect("Type check test failed");
     }
 
     #[test]
@@ -724,39 +601,6 @@ mod tests {
                 // Regular strings should be escaped
                 t.write_expr_escaped(t.var("unsafe_text"));
             })]);
-
-        run_type_check_test(test_case).expect("Type check test failed");
-    }
-
-    #[test]
-    #[ignore]
-    fn test_typecheck_nested_trusted_html() {
-        // Test TrustedHTML in nested structures
-        let parameters = vec![(
-            "content",
-            Type::Object({
-                let mut map = BTreeMap::new();
-                map.insert(PropertyName::new("html").unwrap(), Type::TrustedHTML);
-                map.insert(PropertyName::new("text").unwrap(), Type::String);
-                map.insert(
-                    PropertyName::new("items").unwrap(),
-                    Type::Array(Some(Box::new(Type::TrustedHTML))),
-                );
-                map
-            }),
-        )];
-
-        let test_case = TypeCheckTestCase::new(vec![build_ir_auto(
-            "TestNestedTrustedHtml",
-            parameters,
-            |t| {
-                t.write_expr(t.prop_access(t.var("content"), "html"), false);
-                t.write_expr_escaped(t.prop_access(t.var("content"), "text"));
-                t.for_loop("item", t.prop_access(t.var("content"), "items"), |t| {
-                    t.write_expr(t.var("item"), false);
-                });
-            },
-        )]);
 
         run_type_check_test(test_case).expect("Type check test failed");
     }

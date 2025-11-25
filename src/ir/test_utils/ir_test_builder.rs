@@ -243,23 +243,6 @@ impl IrTestBuilder {
         }
     }
 
-    pub fn object(&self, props: Vec<(&str, IrExpr)>) -> IrExpr {
-        // Build a type map from the property types
-        let mut type_map = BTreeMap::new();
-        for (key, expr) in &props {
-            type_map.insert(PropertyName::new(key).unwrap(), expr.as_type().clone());
-        }
-
-        TypedExpr::ObjectLiteral {
-            properties: props
-                .into_iter()
-                .map(|(k, v)| (PropertyName::new(k).unwrap(), v))
-                .collect(),
-            kind: Type::Object(type_map),
-            annotation: self.next_expr_id(),
-        }
-    }
-
     pub fn record(&self, record_name: &str, fields: Vec<(&str, IrExpr)>) -> IrExpr {
         // Verify the record exists and check field types
         let record_fields = self
@@ -290,10 +273,6 @@ impl IrTestBuilder {
     pub fn prop_access(&self, object: IrExpr, property: &str) -> IrExpr {
         let property_name = PropertyName::new(property).unwrap();
         let property_type = match object.as_type() {
-            Type::Object(type_map) => type_map
-                .get(&property_name)
-                .cloned()
-                .unwrap_or_else(|| panic!("Property '{}' not found in object type", property)),
             Type::Named(record_name) => {
                 let record_fields = self
                     .records
@@ -309,7 +288,7 @@ impl IrTestBuilder {
                         )
                     })
             }
-            _ => panic!("Cannot access property '{}' on non-object type", property),
+            _ => panic!("Cannot access property '{}' on non-record type", property),
         };
 
         TypedExpr::PropertyAccess {
@@ -604,10 +583,6 @@ impl IrAutoBuilder {
 
     pub fn array(&self, elements: Vec<IrExpr>) -> IrExpr {
         self.inner.array(elements)
-    }
-
-    pub fn object(&self, props: Vec<(&str, IrExpr)>) -> IrExpr {
-        self.inner.object(props)
     }
 
     pub fn record(&self, record_name: &str, fields: Vec<(&str, IrExpr)>) -> IrExpr {

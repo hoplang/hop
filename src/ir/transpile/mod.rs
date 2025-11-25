@@ -14,7 +14,6 @@ use crate::dop::property_name::PropertyName;
 use crate::dop::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::hop::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
-use std::collections::BTreeMap;
 
 /// Information about a record declaration for transpilation.
 #[derive(Debug, Clone)]
@@ -86,7 +85,6 @@ pub trait TypeTranspiler {
     fn transpile_int_type<'a>(&self) -> BoxDoc<'a>;
     fn transpile_trusted_html_type<'a>(&self) -> BoxDoc<'a>;
     fn transpile_array_type<'a>(&self, element_type: Option<&'a Type>) -> BoxDoc<'a>;
-    fn transpile_object_type<'a>(&self, fields: &'a BTreeMap<PropertyName, Type>) -> BoxDoc<'a>;
     fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a>;
     fn transpile_type<'a>(&self, t: &'a Type) -> BoxDoc<'a> {
         match t {
@@ -96,7 +94,6 @@ pub trait TypeTranspiler {
             Type::Int => self.transpile_int_type(),
             Type::TrustedHTML => self.transpile_trusted_html_type(),
             Type::Array(elem) => self.transpile_array_type(elem.as_deref()),
-            Type::Object(fields) => self.transpile_object_type(fields),
             Type::Named(name) => self.transpile_named_type(name),
         }
     }
@@ -114,11 +111,6 @@ pub trait ExpressionTranspiler {
         &self,
         elements: &'a [IrExpr],
         elem_type: &'a Option<Box<Type>>,
-    ) -> BoxDoc<'a>;
-    fn transpile_object_literal<'a>(
-        &self,
-        properties: &'a [(PropertyName, IrExpr)],
-        property_types: &'a BTreeMap<PropertyName, Type>,
     ) -> BoxDoc<'a>;
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_bool_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
@@ -181,18 +173,6 @@ pub trait ExpressionTranspiler {
             IrExpr::IntLiteral { value, .. } => self.transpile_int_literal(*value),
             IrExpr::ArrayLiteral { elements, .. } => match expr.as_type() {
                 Type::Array(elem_type) => self.transpile_array_literal(elements, elem_type),
-                _ => {
-                    unreachable!()
-                }
-            },
-            IrExpr::ObjectLiteral {
-                properties,
-                kind: typ,
-                ..
-            } => match typ {
-                Type::Object(property_types) => {
-                    self.transpile_object_literal(properties, property_types)
-                }
                 _ => {
                     unreachable!()
                 }

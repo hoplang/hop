@@ -908,7 +908,8 @@ mod tests {
     fn test_parser_nested_loops_complex_types() {
         check(
             indoc! {"
-                <Main {sections: Array[{title: String, items: Array[String]}]}>
+                record Section {title: String, items: Array[String]}
+                <Main {sections: Array[Section]}>
                     <div>
                         <for {section in sections}>
                             <div>
@@ -922,14 +923,14 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                div                                               1:4-10:10
-                    for                                           2:8-9:14
-                        div                                       3:12-8:18
-                            h2                                    4:16-4:40
-                                text_expression                   4:20-4:35
-                            for                                   5:16-7:22
-                                p                                 6:20-6:33
-                                    text_expression               6:23-6:29
+                div                                               2:4-11:10
+                    for                                           3:8-10:14
+                        div                                       4:12-9:18
+                            h2                                    5:16-5:40
+                                text_expression                   5:20-5:35
+                            for                                   6:16-8:22
+                                p                                 7:20-7:33
+                                    text_expression               7:23-7:29
             "#]],
         );
     }
@@ -982,15 +983,16 @@ mod tests {
     fn test_parser_component_with_data_param() {
         check(
             indoc! {"
-                <Main {data: {message: String}}>
+                record Data {message: String}
+                <Main {data: Data}>
                     <h1>Hello World</h1>
                     <p>{data.message}</p>
                 </Main>
             "},
             expect![[r#"
-                h1                                                1:4-1:24
-                p                                                 2:4-2:25
-                    text_expression                               2:7-2:21
+                h1                                                2:4-2:24
+                p                                                 3:4-3:25
+                    text_expression                               3:7-3:21
             "#]],
         );
     }
@@ -1043,7 +1045,9 @@ mod tests {
     fn test_parser_complex_nested_loops() {
         check(
             indoc! {"
-                <Main {i: Array[{s: {t: Array[String]}}]}>
+                record T {t: Array[String]}
+                record S {s: T}
+                <Main {i: Array[S]}>
                     <for {j in i}>
                         <for {k in j.s.t}>
                             <if {k}>
@@ -1059,12 +1063,12 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                for                                               1:4-6:10
-                    for                                           2:8-5:14
-                        if                                        3:12-4:17
-                for                                               7:4-12:10
-                    for                                           8:8-11:14
-                        for                                       9:12-10:18
+                for                                               3:4-8:10
+                    for                                           4:8-7:14
+                        if                                        5:12-6:17
+                for                                               9:4-14:10
+                    for                                           10:8-13:14
+                        for                                       11:12-12:18
             "#]],
         );
     }
@@ -1124,14 +1128,15 @@ mod tests {
     fn test_parser_component_with_params() {
         check(
             indoc! {"
-                <Main {data: {user: String}}>
+                record Data {user: String}
+                <Main {data: Data}>
                     <Foo {a: data}/>
                     <Bar {b: data.user}/>
                 </Main>
             "},
             expect![[r#"
-                component_reference                               1:4-1:20
-                component_reference                               2:4-2:25
+                component_reference                               2:4-2:20
+                component_reference                               3:4-3:25
             "#]],
         );
     }
@@ -1174,12 +1179,13 @@ mod tests {
     fn test_parser_expression_attributes() {
         check(
             indoc! {r#"
-                <Main {user: {url: String, theme: String}}>
+                record User {url: String, theme: String}
+                <Main {user: User}>
                     <a href={user.url} class={user.theme}>Link</a>
                 </Main>
             "#},
             expect![[r#"
-                a                                                 1:4-1:50
+                a                                                 2:4-2:50
             "#]],
         );
     }
@@ -1506,19 +1512,20 @@ mod tests {
         );
     }
 
-    // Component parameter can have an object type annotation.
+    // Component parameter can have a record type annotation.
     #[test]
-    fn test_parser_param_object_type() {
+    fn test_parser_param_record_type() {
         check(
             indoc! {"
-                <Main {user: {name: String, age: Float}}>
+                record User {name: String, age: Float}
+                <Main {user: User}>
                     <div>{user.name} is {user.age} years old</div>
                 </Main>
             "},
             expect![[r#"
-                div                                               1:4-1:50
-                    text_expression                               1:9-1:20
-                    text_expression                               1:24-1:34
+                div                                               2:4-2:50
+                    text_expression                               2:9-2:20
+                    text_expression                               2:24-2:34
             "#]],
         );
     }
@@ -1528,7 +1535,8 @@ mod tests {
     fn test_parser_param_nested_types() {
         check(
             indoc! {"
-                <Main {data: Array[{title: String, items: Array[String]}]}>
+                record Section {title: String, items: Array[String]}
+                <Main {data: Array[Section]}>
                     <for {section in data}>
                         <h1>{section.title}</h1>
                         <for {item in section.items}>
@@ -1538,12 +1546,12 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                for                                               1:4-6:10
-                    h1                                            2:8-2:32
-                        text_expression                           2:12-2:27
-                    for                                           3:8-5:14
-                        div                                       4:12-4:29
-                            text_expression                       4:17-4:23
+                for                                               2:4-7:10
+                    h1                                            3:8-3:32
+                        text_expression                           3:12-3:27
+                    for                                           4:8-6:14
+                        div                                       5:12-5:29
+                            text_expression                       5:17-5:23
             "#]],
         );
     }

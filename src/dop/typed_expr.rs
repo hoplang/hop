@@ -47,12 +47,6 @@ pub enum TypedExpr<A> {
         annotation: A,
     },
 
-    ObjectLiteral {
-        properties: Vec<(PropertyName, Self)>,
-        kind: Type,
-        annotation: A,
-    },
-
     /// A record instantiation expression, e.g. User(name: "John", age: 30)
     RecordInstantiation {
         record_name: String,
@@ -175,7 +169,6 @@ impl<A> TypedExpr<A> {
             TypedExpr::Var { kind, .. }
             | TypedExpr::PropertyAccess { kind, .. }
             | TypedExpr::ArrayLiteral { kind, .. }
-            | TypedExpr::ObjectLiteral { kind, .. }
             | TypedExpr::RecordInstantiation { kind, .. } => kind,
 
             TypedExpr::FloatLiteral { .. } => &FLOAT_TYPE,
@@ -215,7 +208,6 @@ impl<A> TypedExpr<A> {
             | TypedExpr::FloatLiteral { annotation, .. }
             | TypedExpr::IntLiteral { annotation, .. }
             | TypedExpr::ArrayLiteral { annotation, .. }
-            | TypedExpr::ObjectLiteral { annotation, .. }
             | TypedExpr::RecordInstantiation { annotation, .. }
             | TypedExpr::JsonEncode { annotation, .. }
             | TypedExpr::EnvLookup { annotation, .. }
@@ -265,30 +257,6 @@ impl<A> TypedExpr<A> {
                                 .group(),
                         )
                         .append(BoxDoc::text("]"))
-                }
-            }
-            TypedExpr::ObjectLiteral { properties, .. } => {
-                if properties.is_empty() {
-                    BoxDoc::text("{}")
-                } else {
-                    BoxDoc::nil()
-                        .append(BoxDoc::text("{"))
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    properties.iter().map(|(key, value)| {
-                                        BoxDoc::text(key.as_str())
-                                            .append(BoxDoc::text(": "))
-                                            .append(value.to_doc())
-                                    }),
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text("}"))
                 }
             }
             TypedExpr::RecordInstantiation {

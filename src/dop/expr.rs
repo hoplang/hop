@@ -49,11 +49,6 @@ pub enum AnnotatedExpr<A> {
     /// An array literal expression, e.g. [1, 2, 3]
     ArrayLiteral { elements: Vec<Self>, annotation: A },
 
-    ObjectLiteral {
-        properties: Vec<(PropertyName, Self)>,
-        annotation: A,
-    },
-
     /// A record instantiation expression, e.g. User(name: "John", age: 30)
     RecordInstantiation {
         record_name: String,
@@ -82,7 +77,6 @@ impl<A> AnnotatedExpr<A> {
             | AnnotatedExpr::IntLiteral { annotation, .. }
             | AnnotatedExpr::FloatLiteral { annotation, .. }
             | AnnotatedExpr::ArrayLiteral { annotation, .. }
-            | AnnotatedExpr::ObjectLiteral { annotation, .. }
             | AnnotatedExpr::RecordInstantiation { annotation, .. }
             | AnnotatedExpr::BinaryOp { annotation, .. }
             | AnnotatedExpr::Negation { annotation, .. } => annotation,
@@ -127,30 +121,6 @@ impl<'a, T> AnnotatedExpr<T> {
                                 .group(),
                         )
                         .append(BoxDoc::text("]"))
-                }
-            }
-            AnnotatedExpr::ObjectLiteral { properties, .. } => {
-                if properties.is_empty() {
-                    BoxDoc::text("{}")
-                } else {
-                    BoxDoc::nil()
-                        .append(BoxDoc::text("{"))
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    properties.iter().map(|(key, value)| {
-                                        BoxDoc::text(key.as_str())
-                                            .append(BoxDoc::text(": "))
-                                            .append(value.to_doc())
-                                    }),
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text("}"))
                 }
             }
             AnnotatedExpr::RecordInstantiation {

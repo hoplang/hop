@@ -339,11 +339,6 @@ impl IrExpr {
                     elem.traverse(f);
                 }
             }
-            TypedExpr::ObjectLiteral { properties, .. } => {
-                for (_, value) in properties {
-                    value.traverse(f);
-                }
-            }
             TypedExpr::RecordInstantiation { fields, .. } => {
                 for (_, value) in fields {
                     value.traverse(f);
@@ -394,11 +389,6 @@ impl IrExpr {
             TypedExpr::ArrayLiteral { elements, .. } => {
                 for elem in elements {
                     elem.traverse_mut(f);
-                }
-            }
-            TypedExpr::ObjectLiteral { properties, .. } => {
-                for (_, value) in properties {
-                    value.traverse_mut(f);
                 }
             }
             TypedExpr::RecordInstantiation { fields, .. } => {

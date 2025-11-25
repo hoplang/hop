@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::fmt::{self, Display};
 use std::iter::Peekable;
 
@@ -405,28 +405,6 @@ impl Parser {
         Ok(RecordDeclaration { name, fields })
     }
 
-    // object_type = "{" (Identifier ":" type ("," Identifier ":" type)*)? "}"
-    fn parse_object_type(
-        &mut self,
-        left_brace: DocumentRange,
-    ) -> Result<(Type, DocumentRange), ParseError> {
-        let mut properties = BTreeMap::new();
-        let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
-            let (prop_name, prop_name_range) = this.expect_property_name()?;
-            this.expect_token(&Token::Colon)?;
-            let (typ, _range) = this.parse_type()?;
-            if properties.contains_key(&prop_name) {
-                return Err(ParseError::DuplicateProperty {
-                    name: prop_name_range.to_string_span(),
-                    range: prop_name_range.clone(),
-                });
-            }
-            properties.insert(prop_name, typ);
-            Ok(())
-        })?;
-        Ok((Type::Object(properties), left_brace.to(right_brace)))
-    }
-
     fn parse_type(&mut self) -> Result<(Type, DocumentRange), ParseError> {
         match self.iter.next().transpose()? {
             Some((Token::TypeString, range)) => Ok((Type::String, range)),
@@ -443,7 +421,6 @@ impl Parser {
                     type_array.to(right_bracket),
                 ))
             }
-            Some((Token::LeftBrace, left_brace_range)) => self.parse_object_type(left_brace_range),
             Some((Token::TypeName(name), range)) => {
                 Ok((Type::Named(name.as_str().to_string()), range))
             }
@@ -621,27 +598,6 @@ impl Parser {
         })
     }
 
-    fn parse_object_literal(&mut self, left_brace: DocumentRange) -> Result<Expr, ParseError> {
-        let mut properties = Vec::new();
-        let mut seen_names = HashSet::new();
-        let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
-            let (prop_name, prop_name_range) = this.expect_property_name()?;
-            if !seen_names.insert(prop_name.as_str().to_string()) {
-                return Err(ParseError::DuplicateProperty {
-                    name: prop_name_range.to_string_span(),
-                    range: prop_name_range.clone(),
-                });
-            }
-            this.expect_token(&Token::Colon)?;
-            properties.push((prop_name, this.parse_logical()?));
-            Ok(())
-        })?;
-        Ok(AnnotatedExpr::ObjectLiteral {
-            properties,
-            annotation: left_brace.to(right_brace),
-        })
-    }
-
     fn parse_property_access(&mut self, identifier: DocumentRange) -> Result<Expr, ParseError> {
         let var_name =
             VarName::new(identifier.as_str()).map_err(|error| ParseError::InvalidVariableName {
@@ -708,7 +664,6 @@ impl Parser {
                 annotation: range,
             }),
             Some((Token::LeftBracket, left_bracket)) => self.parse_array_literal(left_bracket),
-            Some((Token::LeftBrace, left_brace)) => self.parse_object_literal(left_brace),
             Some((Token::LeftParen, left_paren)) => {
                 let expr = self.parse_logical()?;
                 self.expect_opposite(&Token::LeftParen, &left_paren)?;
@@ -1092,42 +1047,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_parse_parameters_extra_closing_brace() {
-        check_parse_parameters(
-            "params: {i: {j: {k: {l: Bool}}}}}",
-            expect![[r#"
-                error: Unexpected token '}'
-                params: {i: {j: {k: {l: Bool}}}}}
-                                                ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_parameters_missing_closing_brace() {
-        check_parse_parameters(
-            "params: {i: {j: {k: {l: Bool}}}",
-            expect![[r#"
-                error: Unmatched '{'
-                params: {i: {j: {k: {l: Bool}}}
-                        ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_parameters_duplicate_keys_in_object_type() {
-        check_parse_parameters(
-            "user: {name: String, name: Float}",
-            expect![[r#"
-                error: Duplicate property 'name'
-                user: {name: String, name: Float}
-                                     ^^^^
-            "#]],
-        );
-    }
-
     ///////////////////////////////////////////////////////////////////////////
     /// ARGUMENTS                                                           ///
     ///////////////////////////////////////////////////////////////////////////
@@ -1269,9 +1188,9 @@ mod tests {
     #[test]
     fn test_parse_exprs_with_complex_expressions() {
         check_parse_exprs(
-            r#""hello", 123, true, [1, 2, 3], {name: "John"}"#,
+            r#""hello", 123, true, [1, 2, 3]"#,
             expect![[r#"
-                ["hello", 123, true, [1, 2, 3], {name: "John"}]
+                ["hello", 123, true, [1, 2, 3]]
             "#]],
         );
     }
@@ -1289,9 +1208,9 @@ mod tests {
     #[test]
     fn test_parse_exprs_with_nested_commas() {
         check_parse_exprs(
-            "[1, 2, 3], {a: 1, b: 2}",
+            "[1, 2, 3], [4, 5, 6]",
             expect![[r#"
-                [[1, 2, 3], {a: 1, b: 2}]
+                [[1, 2, 3], [4, 5, 6]]
             "#]],
         );
     }
@@ -1330,18 +1249,6 @@ mod tests {
                 error: Unmatched '['
                 [foo, bar == [foo, bar]
                 ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_error_repeated_key_in_array_literal() {
-        check_parse_expr(
-            "{k: 2, k: 2}",
-            expect![[r#"
-                error: Duplicate property 'k'
-                {k: 2, k: 2}
-                       ^
             "#]],
         );
     }
@@ -1797,93 +1704,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_empty_object() {
-        check_parse_expr(
-            "{}",
-            expect![[r#"
-                {}
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_object_single_property() {
-        check_parse_expr(
-            r#"{name: "John"}"#,
-            expect![[r#"
-                {name: "John"}
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_object_multiple_properties() {
-        check_parse_expr(
-            r#"{a: "foo", b: 1}"#,
-            expect![[r#"
-                {a: "foo", b: 1}
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_object_complex_expressions() {
-        check_parse_expr(
-            "{user: user.name, active: !user.disabled}",
-            expect![[r#"
-                {user: user.name, active: (!user.disabled)}
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_object_nested() {
-        check_parse_expr(
-            r#"{nested: {inner: "value"}}"#,
-            expect![[r#"
-                {nested: {inner: "value"}}
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_object_deeply_nested() {
-        check_parse_expr(
-            r#"{user: {profile: {settings: {theme: "dark", notifications: {email: true, push: false}}, name: "Alice"}}, status: "active"}"#,
-            expect![[r#"
-                {
-                  user: {
-                    profile: {
-                      settings: {
-                        theme: "dark",
-                        notifications: {email: true, push: false},
-                      },
-                      name: "Alice",
-                    },
-                  },
-                  status: "active",
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_mixed_arrays_and_objects() {
-        check_parse_expr(
-            r#"{users: [{name: "Alice", tags: ["admin", "user"]}, {name: "Bob", tags: ["user"]}], config: {features: ["auth", "api"], version: 2}}"#,
-            expect![[r#"
-                {
-                  users: [
-                    {name: "Alice", tags: ["admin", "user"]},
-                    {name: "Bob", tags: ["user"]},
-                  ],
-                  config: {features: ["auth", "api"], version: 2},
-                }
-            "#]],
-        );
-    }
-
-    #[test]
     fn test_parse_expr_array_trailing_comma_multiline() {
         check_parse_expr(
             "[\n\t1,\n\t2,\n\t3,\n]",
@@ -1909,115 +1729,6 @@ mod tests {
             "[\n\tuser.name,\n\t!user.disabled,\n]",
             expect![[r#"
                 [user.name, (!user.disabled)]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_object_trailing_comma_multiline() {
-        check_parse_expr(
-            indoc! {r#"
-                {
-                	a: "foo",
-                	b: 1,
-                }
-            "#},
-            expect![[r#"
-                {a: "foo", b: 1}
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_object_trailing_comma_single() {
-        check_parse_expr(
-            indoc! {r#"
-                {
-                	name: "John",
-                }
-            "#},
-            expect![[r#"
-                {name: "John"}
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_object_trailing_comma_complex() {
-        check_parse_expr(
-            "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
-            expect![[r#"
-                {user: user.name, active: (!user.disabled)}
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_object_only_comma_error() {
-        check_parse_expr(
-            "{,}",
-            expect![[r#"
-                error: Expected property name but got ,
-                {,}
-                 ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_object_missing_value_after_colon_error() {
-        check_parse_expr(
-            "{k:,}",
-            expect![[r#"
-                error: Unexpected token ','
-                {k:,}
-                   ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_object_leading_comma_error() {
-        check_parse_expr(
-            "{,k:1}",
-            expect![[r#"
-                error: Expected property name but got ,
-                {,k:1}
-                 ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_object_double_comma_error() {
-        check_parse_expr(
-            "{k:1,,}",
-            expect![[r#"
-                error: Expected property name but got ,
-                {k:1,,}
-                     ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_object_leading_and_trailing_comma_error() {
-        check_parse_expr(
-            "{,k:1,}",
-            expect![[r#"
-                error: Expected property name but got ,
-                {,k:1,}
-                 ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_object_single_trailing_comma_allowed() {
-        check_parse_expr(
-            "{k:1,}",
-            expect![[r#"
-                {k: 1}
             "#]],
         );
     }

@@ -1,9 +1,6 @@
 use core::fmt;
-use std::collections::BTreeMap;
 
 use pretty::BoxDoc;
-
-use super::PropertyName;
 
 /// An EquatableType is a type where its values can be compared
 /// using `==` and `!=`.
@@ -38,7 +35,6 @@ pub enum Type {
     Int,
     Float,
     TrustedHTML,
-    Object(BTreeMap<PropertyName, Type>),
     Array(Option<Box<Type>>),
     Named(String),
 }
@@ -50,7 +46,7 @@ impl Type {
             Type::String => Some(EquatableType::String),
             Type::Int => Some(EquatableType::Int),
             Type::Float => Some(EquatableType::Float),
-            Type::TrustedHTML | Type::Object(_) | Type::Array(_) | Type::Named(_) => None,
+            Type::TrustedHTML | Type::Array(_) | Type::Named(_) => None,
         }
     }
 
@@ -58,12 +54,7 @@ impl Type {
         match self {
             Type::Int => Some(ComparableType::Int),
             Type::Float => Some(ComparableType::Float),
-            Type::Bool
-            | Type::String
-            | Type::TrustedHTML
-            | Type::Object(_)
-            | Type::Array(_)
-            | Type::Named(_) => None,
+            Type::Bool | Type::String | Type::TrustedHTML | Type::Array(_) | Type::Named(_) => None,
         }
     }
 
@@ -85,15 +76,6 @@ impl Type {
                     (None, Some(_)) => true, // Empty array can be subtype of any array
                     (Some(_), None) => false, // Typed array cannot be subtype of empty array
                 }
-            }
-
-            // Objects: subtype must have all properties of supertype with compatible types
-            (Type::Object(sub_props), Type::Object(super_props)) => {
-                super_props.iter().all(|(key, super_type)| {
-                    sub_props
-                        .get(key)
-                        .is_some_and(|sub_type| sub_type.is_subtype(super_type))
-                })
             }
 
             // Named types: must have the same name
@@ -126,40 +108,6 @@ impl<'a> Type {
                     .append(BoxDoc::text("]")),
                 None => BoxDoc::text("Array"),
             },
-            Type::Object(fields) => {
-                if fields.is_empty() {
-                    BoxDoc::text("Record[]")
-                } else {
-                    BoxDoc::nil()
-                        .append(BoxDoc::text("Record["))
-                        .append(
-                            BoxDoc::nil()
-                                // soft line break
-                                .append(BoxDoc::line_())
-                                .append(BoxDoc::intersperse(
-                                    fields.iter().map(|(key, typ)| {
-                                        BoxDoc::nil()
-                                            // key
-                                            .append(BoxDoc::text(key.as_str()))
-                                            // separator
-                                            .append(BoxDoc::text(": "))
-                                            // value
-                                            .append(typ.to_doc())
-                                    }),
-                                    // intersperse with comma followed by line that acts
-                                    // as space if laid out on a single line
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                // trailing comma if laid out on multiple lines
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                // soft line break
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text("]"))
-                }
-            }
             Type::Named(name) => BoxDoc::text(name.clone()),
         }
     }

@@ -1144,15 +1144,16 @@ mod tests {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --
-                <Main {user: {name: String}}>
+                record User {name: String}
+                <Main {user: User}>
                        ^
                   <h1>Hello {user.name}</h1>
                 </Main>
             "#},
             expect![[r#"
-                `user`: `Record[name: String]`
-                  --> main.hop (line 1, col 8)
-                1 | <Main {user: {name: String}}>
+                `user`: `User`
+                  --> main.hop (line 2, col 8)
+                2 | <Main {user: User}>
                   |        ^^^^
             "#]],
         );

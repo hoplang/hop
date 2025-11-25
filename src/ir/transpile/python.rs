@@ -1,96 +1,16 @@
 use pretty::BoxDoc;
 
 use super::{ExpressionTranspiler, RecordInfo, StatementTranspiler, Transpiler, TypeTranspiler};
-use crate::cased_string::CasedString;
 use crate::dop::property_name::PropertyName;
 use crate::dop::r#type::Type;
 use crate::hop::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
-use std::collections::BTreeMap;
 
 pub struct PythonTranspiler {}
 
 impl PythonTranspiler {
     pub fn new() -> Self {
         Self {}
-    }
-
-    fn extract_and_generate_nested_type<'a>(
-        param_type: &'a Type,
-        base_name: &str,
-        field_name: &str,
-        generated_types: &mut Vec<(String, BoxDoc<'a>)>,
-    ) -> BoxDoc<'a> {
-        match param_type {
-            Type::Object(fields) => {
-                // Generate the type name for this dataclass
-                let type_name = format!(
-                    "{}{}",
-                    base_name,
-                    CasedString::from_snake_case(field_name).to_pascal_case()
-                );
-
-                // Process fields depth-first, collecting nested types
-                let mut field_docs = Vec::new();
-                for (nested_field_name, nested_field_type) in fields {
-                    // Recursively process and get the type reference
-                    let field_type_doc = Self::extract_and_generate_nested_type(
-                        nested_field_type,
-                        &type_name, // New base name for nested types
-                        nested_field_name.as_str(),
-                        generated_types,
-                    );
-
-                    // Build field definition with type annotation
-                    let field_doc = BoxDoc::text(nested_field_name.as_str())
-                        .append(BoxDoc::text(": "))
-                        .append(field_type_doc);
-
-                    field_docs.push(field_doc);
-                }
-
-                // Generate the dataclass definition
-                let class_def = BoxDoc::text("@dataclass")
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("class "))
-                    .append(BoxDoc::as_string(type_name.clone()))
-                    .append(BoxDoc::text(":"))
-                    .append(
-                        BoxDoc::line()
-                            .append(BoxDoc::intersperse(field_docs, BoxDoc::line()))
-                            .nest(4),
-                    );
-
-                // Add to generated types
-                generated_types.push((type_name.clone(), class_def));
-
-                // Return reference to this type
-                BoxDoc::as_string(type_name)
-            }
-            Type::Array(Some(elem_type)) => {
-                if matches!(elem_type.as_ref(), Type::Object(_)) {
-                    // Generate type for array elements
-                    let elem_type_doc = Self::extract_and_generate_nested_type(
-                        elem_type,
-                        base_name,
-                        &format!("{}_item", field_name),
-                        generated_types,
-                    );
-                    BoxDoc::text("list[")
-                        .append(elem_type_doc)
-                        .append(BoxDoc::text("]"))
-                } else {
-                    // Regular array
-                    BoxDoc::text("list[")
-                        .append(Self::get_python_type(elem_type))
-                        .append(BoxDoc::text("]"))
-                }
-            }
-            _ => {
-                // Primitive types - just use regular type
-                Self::get_python_type(param_type)
-            }
-        }
     }
 
     fn get_python_type(param_type: &Type) -> BoxDoc<'_> {
@@ -104,15 +24,13 @@ impl PythonTranspiler {
                 .append(Self::get_python_type(elem))
                 .append(BoxDoc::text("]")),
             Type::Array(None) => BoxDoc::text("list"),
-            Type::Object(_) => BoxDoc::text("dict"),
             Type::Named(name) => BoxDoc::text(name.clone()),
         }
     }
 
-    fn scan_for_imports(&self, entrypoint: &IrEntrypoint) -> (bool, bool, bool, bool) {
+    fn scan_for_imports(&self, entrypoint: &IrEntrypoint) -> (bool, bool, bool) {
         let mut needs_html_escape = false;
         let mut needs_json = false;
-        let mut needs_simple_namespace = false;
         let mut needs_os = false;
 
         for stmt in &entrypoint.body {
@@ -123,7 +41,7 @@ impl PythonTranspiler {
                 }
             });
 
-            // Check for JSON encoding and object literals
+            // Check for JSON encoding
             stmt.traverse(&mut |s| {
                 if let Some(primary_expr) = s.expr() {
                     primary_expr.traverse(&mut |expr| match expr {
@@ -133,21 +51,13 @@ impl PythonTranspiler {
                         IrExpr::EnvLookup { .. } => {
                             needs_os = true;
                         }
-                        IrExpr::ObjectLiteral { .. } => {
-                            needs_simple_namespace = true;
-                        }
                         _ => {}
                     });
                 }
             });
         }
 
-        (
-            needs_html_escape,
-            needs_json,
-            needs_simple_namespace,
-            needs_os,
-        )
+        (needs_html_escape, needs_json, needs_os)
     }
 
     fn scan_for_trusted_html(&self, entrypoints: &[IrEntrypoint]) -> bool {
@@ -165,7 +75,6 @@ impl PythonTranspiler {
         match t {
             Type::TrustedHTML => true,
             Type::Array(Some(elem)) => Self::type_contains_trusted_html(elem),
-            Type::Object(fields) => fields.values().any(Self::type_contains_trusted_html),
             _ => false,
         }
     }
@@ -184,17 +93,14 @@ impl Transpiler for PythonTranspiler {
     fn transpile_module(&self, entrypoints: &[IrEntrypoint], records: &[RecordInfo]) -> String {
         let mut needs_html_escape = false;
         let mut needs_json = false;
-        let mut needs_simple_namespace = false;
         let mut needs_dataclasses = false;
         let mut needs_os = false;
 
         // First pass: scan all entrypoints to determine imports
         for entrypoint in entrypoints {
-            let (has_escape, has_json, has_simple_namespace, has_os) =
-                self.scan_for_imports(entrypoint);
+            let (has_escape, has_json, has_os) = self.scan_for_imports(entrypoint);
             needs_html_escape |= has_escape;
             needs_json |= has_json;
-            needs_simple_namespace |= has_simple_namespace;
             needs_os |= has_os;
             if !entrypoint.parameters.is_empty() {
                 needs_dataclasses = true;
@@ -229,12 +135,6 @@ impl Transpiler for PythonTranspiler {
                 .append(BoxDoc::line());
         }
 
-        if needs_simple_namespace {
-            result = result
-                .append(BoxDoc::text("from types import SimpleNamespace"))
-                .append(BoxDoc::line());
-        }
-
         if needs_json {
             result = result
                 .append(BoxDoc::text("import json"))
@@ -247,12 +147,7 @@ impl Transpiler for PythonTranspiler {
                 .append(BoxDoc::line());
         }
 
-        if needs_dataclasses
-            || needs_simple_namespace
-            || needs_json
-            || needs_html_escape
-            || needs_trusted_html
-        {
+        if needs_dataclasses || needs_json || needs_html_escape || needs_trusted_html {
             result = result.append(BoxDoc::line());
         }
 
@@ -296,36 +191,16 @@ impl Transpiler for PythonTranspiler {
             if !entrypoint.parameters.is_empty() {
                 let class_name = format!("{}Params", entrypoint.name.to_pascal_case());
 
-                let mut nested_types = Vec::new();
-
-                // Process each parameter, extracting nested types
                 let fields: Vec<_> = entrypoint
                     .parameters
                     .iter()
                     .map(|(param_name, param_type)| {
-                        // Extract nested types and get the type reference
-                        let field_type_doc = Self::extract_and_generate_nested_type(
-                            param_type,
-                            &class_name,
-                            param_name.as_str(),
-                            &mut nested_types,
-                        );
-
                         BoxDoc::text(param_name.as_str())
                             .append(BoxDoc::text(": "))
-                            .append(field_type_doc)
+                            .append(Self::get_python_type(param_type))
                     })
                     .collect();
 
-                // First, add all nested types that were extracted
-                for (_name, type_def) in &nested_types {
-                    result = result
-                        .append(type_def.clone())
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::line());
-                }
-
-                // Then add the main parameter dataclass
                 result = result
                     .append(BoxDoc::text("@dataclass"))
                     .append(BoxDoc::line())
@@ -540,23 +415,6 @@ impl ExpressionTranspiler for PythonTranspiler {
                 BoxDoc::text(", "),
             ))
             .append(BoxDoc::text("]"))
-    }
-
-    fn transpile_object_literal<'a>(
-        &self,
-        properties: &'a [(PropertyName, IrExpr)],
-        _field_types: &'a BTreeMap<PropertyName, Type>,
-    ) -> BoxDoc<'a> {
-        BoxDoc::text("SimpleNamespace(")
-            .append(BoxDoc::intersperse(
-                properties.iter().map(|(key, value)| {
-                    BoxDoc::text(key.as_str())
-                        .append(BoxDoc::text("="))
-                        .append(self.transpile_expr(value))
-                }),
-                BoxDoc::text(", "),
-            ))
-            .append(BoxDoc::text(")"))
     }
 
     fn transpile_record_instantiation<'a>(
@@ -851,16 +709,6 @@ impl TypeTranspiler for PythonTranspiler {
         }
     }
 
-    fn transpile_object_type<'a>(&self, fields: &'a BTreeMap<PropertyName, Type>) -> BoxDoc<'a> {
-        if fields.is_empty() {
-            return BoxDoc::text("dict");
-        }
-
-        // For Python, we'll use dict with type hints as comments or in docstrings
-        // For now, just use dict
-        BoxDoc::text("dict")
-    }
-
     fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }
@@ -1088,64 +936,6 @@ mod tests {
     }
 
     #[test]
-    fn test_json_encode() {
-        let parameters = vec![(
-            "data",
-            Type::Object({
-                let mut map = BTreeMap::new();
-                map.insert(PropertyName::new("title").unwrap(), Type::String);
-                map.insert(PropertyName::new("count").unwrap(), Type::Float);
-                map
-            }),
-        )];
-
-        let entrypoints = vec![build_ir_auto("TestJson", parameters, |t| {
-            t.write("<script>\n");
-            t.write("const data = ");
-            t.write_expr(t.json_encode(t.var("data")), false);
-            t.write(";\n");
-            t.write("</script>\n");
-        })];
-
-        check(
-            &entrypoints,
-            expect![[r#"
-                -- before --
-                TestJson(data: Record[count: Float, title: String]) {
-                  write("<script>\n")
-                  write("const data = ")
-                  write_expr(JsonEncode(data))
-                  write(";\n")
-                  write("</script>\n")
-                }
-
-                -- after --
-                from dataclasses import dataclass
-                import json
-
-                @dataclass
-                class TestJsonParamsData:
-                    count: float
-                    title: str
-
-                @dataclass
-                class TestJsonParams:
-                    data: TestJsonParamsData
-
-                def test_json(params: TestJsonParams) -> str:
-                    data = params.data
-                    output = []
-                    output.append("<script>\n")
-                    output.append("const data = ")
-                    output.append(json.dumps(data, separators=(',', ':')))
-                    output.append(";\n")
-                    output.append("</script>\n")
-                    return ''.join(output)
-            "#]],
-        );
-    }
-
-    #[test]
     fn test_string_comparison() {
         let entrypoints = vec![build_ir_auto(
             "TestAuthCheck",
@@ -1228,246 +1018,6 @@ mod tests {
                     output = []
                     if not (active):
                         output.append("<div>Inactive</div>\n")
-                    return ''.join(output)
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_array_of_nested_objects() {
-        let parameters = vec![(
-            "users",
-            Type::Array(Some(Box::new(Type::Object({
-                let mut user = BTreeMap::new();
-                user.insert(PropertyName::new("name").unwrap(), Type::String);
-                user.insert(PropertyName::new("email").unwrap(), Type::String);
-                user.insert(
-                    PropertyName::new("profile").unwrap(),
-                    Type::Object({
-                        let mut profile = BTreeMap::new();
-                        profile.insert(PropertyName::new("bio").unwrap(), Type::String);
-                        profile.insert(PropertyName::new("age").unwrap(), Type::Float);
-                        profile
-                    }),
-                );
-                user
-            })))),
-        )];
-
-        let entrypoints = vec![build_ir_auto("TestUsers", parameters, |t| {
-            t.for_loop("user", t.var("users"), |t| {
-                t.write("<div>");
-                t.write_expr_escaped(t.prop_access(t.var("user"), "name"));
-                t.write(" - ");
-                t.write_expr_escaped(t.prop_access(t.prop_access(t.var("user"), "profile"), "bio"));
-                t.write("</div>\n");
-            });
-        })];
-
-        check(
-            &entrypoints,
-            expect![[r#"
-                -- before --
-                TestUsers(
-                  users: Array[Record[
-                    email: String,
-                    name: String,
-                    profile: Record[age: Float, bio: String],
-                  ]],
-                ) {
-                  for user in users {
-                    write("<div>")
-                    write_escaped(user.name)
-                    write(" - ")
-                    write_escaped(user.profile.bio)
-                    write("</div>\n")
-                  }
-                }
-
-                -- after --
-                from dataclasses import dataclass
-                from html import escape as html_escape
-
-                @dataclass
-                class TestUsersParamsUsersItemProfile:
-                    age: float
-                    bio: str
-
-                @dataclass
-                class TestUsersParamsUsersItem:
-                    email: str
-                    name: str
-                    profile: TestUsersParamsUsersItemProfile
-
-                @dataclass
-                class TestUsersParams:
-                    users: list[TestUsersParamsUsersItem]
-
-                def test_users(params: TestUsersParams) -> str:
-                    users = params.users
-                    output = []
-                    for user in users:
-                        output.append("<div>")
-                        output.append(html_escape(user.name))
-                        output.append(" - ")
-                        output.append(html_escape(user.profile.bio))
-                        output.append("</div>\n")
-                    return ''.join(output)
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_object_literal_with_simple_namespace() {
-        let entrypoints = vec![build_ir_auto("TestObjects", vec![], |t| {
-            t.let_stmt(
-                "person",
-                t.object(vec![
-                    ("name", t.str("Alice")),
-                    ("city", t.str("NYC")),
-                    ("active", t.bool(true)),
-                ]),
-                |t| {
-                    t.write("<div>");
-                    t.write_expr_escaped(t.prop_access(t.var("person"), "name"));
-                    t.write(" from ");
-                    t.write_expr_escaped(t.prop_access(t.var("person"), "city"));
-                    t.write("</div>\n");
-                },
-            );
-        })];
-
-        check(
-            &entrypoints,
-            expect![[r#"
-                -- before --
-                TestObjects() {
-                  let person = {
-                    name: "Alice",
-                    city: "NYC",
-                    active: true,
-                  } in {
-                    write("<div>")
-                    write_escaped(person.name)
-                    write(" from ")
-                    write_escaped(person.city)
-                    write("</div>\n")
-                  }
-                }
-
-                -- after --
-                from types import SimpleNamespace
-                from html import escape as html_escape
-
-                def test_objects() -> str:
-                    output = []
-                    person = SimpleNamespace(name="Alice", city="NYC", active=True)
-                    output.append("<div>")
-                    output.append(html_escape(person.name))
-                    output.append(" from ")
-                    output.append(html_escape(person.city))
-                    output.append("</div>\n")
-                    return ''.join(output)
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_deeply_nested_structs() {
-        let parameters = vec![(
-            "config",
-            Type::Object({
-                let mut config = BTreeMap::new();
-                config.insert(PropertyName::new("api_key").unwrap(), Type::String);
-                config.insert(
-                    PropertyName::new("database").unwrap(),
-                    Type::Object({
-                        let mut db = BTreeMap::new();
-                        db.insert(PropertyName::new("host").unwrap(), Type::String);
-                        db.insert(PropertyName::new("port").unwrap(), Type::Float);
-                        db.insert(
-                            PropertyName::new("credentials").unwrap(),
-                            Type::Object({
-                                let mut creds = BTreeMap::new();
-                                creds.insert(PropertyName::new("username").unwrap(), Type::String);
-                                creds.insert(PropertyName::new("password").unwrap(), Type::String);
-                                creds
-                            }),
-                        );
-                        db
-                    }),
-                );
-                config
-            }),
-        )];
-
-        let entrypoints = vec![build_ir_auto("TestDeepConfig", parameters, |t| {
-            t.write("<div>API Key: ");
-            t.write_expr_escaped(t.prop_access(t.var("config"), "api_key"));
-            t.write("</div>\n");
-            t.write("<div>DB Host: ");
-            t.write_expr_escaped(t.prop_access(t.prop_access(t.var("config"), "database"), "host"));
-            t.write("</div>\n");
-        })];
-
-        check(
-            &entrypoints,
-            expect![[r#"
-                -- before --
-                TestDeepConfig(
-                  config: Record[
-                    api_key: String,
-                    database: Record[
-                      credentials: Record[
-                        password: String,
-                        username: String,
-                      ],
-                      host: String,
-                      port: Float,
-                    ],
-                  ],
-                ) {
-                  write("<div>API Key: ")
-                  write_escaped(config.api_key)
-                  write("</div>\n")
-                  write("<div>DB Host: ")
-                  write_escaped(config.database.host)
-                  write("</div>\n")
-                }
-
-                -- after --
-                from dataclasses import dataclass
-                from html import escape as html_escape
-
-                @dataclass
-                class TestDeepConfigParamsConfigDatabaseCredentials:
-                    password: str
-                    username: str
-
-                @dataclass
-                class TestDeepConfigParamsConfigDatabase:
-                    credentials: TestDeepConfigParamsConfigDatabaseCredentials
-                    host: str
-                    port: float
-
-                @dataclass
-                class TestDeepConfigParamsConfig:
-                    api_key: str
-                    database: TestDeepConfigParamsConfigDatabase
-
-                @dataclass
-                class TestDeepConfigParams:
-                    config: TestDeepConfigParamsConfig
-
-                def test_deep_config(params: TestDeepConfigParams) -> str:
-                    config = params.config
-                    output = []
-                    output.append("<div>API Key: ")
-                    output.append(html_escape(config.api_key))
-                    output.append("</div>\n")
-                    output.append("<div>DB Host: ")
-                    output.append(html_escape(config.database.host))
-                    output.append("</div>\n")
                     return ''.join(output)
             "#]],
         );

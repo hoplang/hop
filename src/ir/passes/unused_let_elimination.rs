@@ -389,33 +389,6 @@ mod tests {
     }
 
     #[test]
-    fn test_variable_used_in_property_access() {
-        check(
-            build_ir_auto("Test", vec![], |t| {
-                let obj = t.object(vec![("name", t.str("value"))]);
-                t.let_stmt("obj", obj, |t| {
-                    t.write_expr(t.prop_access(t.var("obj"), "name"), false);
-                });
-            }),
-            expect![[r#"
-                -- before --
-                Test() {
-                  let obj = {name: "value"} in {
-                    write_expr(obj.name)
-                  }
-                }
-
-                -- after --
-                Test() {
-                  let obj = {name: "value"} in {
-                    write_expr(obj.name)
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
     fn test_sibling_lets_same_name_first_used() {
         check(
             build_ir_auto("Test", vec![], |t| {

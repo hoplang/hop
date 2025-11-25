@@ -7,13 +7,6 @@ pub enum TypeError {
     #[error("Undefined variable: {name}")]
     UndefinedVariable { name: String, range: DocumentRange },
 
-    #[error("Property {property} not found in object {dop_type}")]
-    PropertyNotFoundInObject {
-        property: String,
-        dop_type: Type,
-        range: DocumentRange,
-    },
-
     #[error("Property '{property}' not found in record '{record_name}'")]
     PropertyNotFoundInRecord {
         property: String,
@@ -21,8 +14,8 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("{typ} can not be used as an object")]
-    CannotUseAsObject { typ: String, range: DocumentRange },
+    #[error("{typ} can not be used as a record")]
+    CannotUseAsRecord { typ: String, range: DocumentRange },
 
     #[error("Can not compare {left} to {right}")]
     CannotCompareTypes {
@@ -104,9 +97,8 @@ impl Ranged for TypeError {
     fn range(&self) -> &DocumentRange {
         match self {
             TypeError::UndefinedVariable { range, .. }
-            | TypeError::PropertyNotFoundInObject { range, .. }
             | TypeError::PropertyNotFoundInRecord { range, .. }
-            | TypeError::CannotUseAsObject { range, .. }
+            | TypeError::CannotUseAsRecord { range, .. }
             | TypeError::CannotCompareTypes { range, .. }
             | TypeError::NegationRequiresBoolean { range, .. }
             | TypeError::ArrayTypeMismatch { range, .. }

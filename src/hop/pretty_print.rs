@@ -575,12 +575,15 @@ mod tests {
     fn test_format_long_parameter_list_gets_whitespace() {
         check_pretty_print(
             indoc! {r#"
-                <Foo {users:Array[{name:String}]}>
+                record User {name:String}
+                <Foo {users:Array[User]}>
                   <div>Hello</div>
                 </Foo>
             "#},
             expect![[r#"
-                <Foo {users:Array[{name:String}]}>
+                record User {name:String}
+
+                <Foo {users:Array[User]}>
                   <div>Hello</div>
                 </Foo>
             "#]],
@@ -593,7 +596,10 @@ mod tests {
     fn test_format_long_parameter_list_has_trailing_comma() {
         check_pretty_print(
             indoc! {r#"
-                <Foo {users: Array[{name: String}], admins: Array[{name: String, email: String}], others: Array[{name: String, email: String, foo: String, bar: String, baz: String}]}>
+                record User {name: String}
+                record Admin {name: String, email: String}
+                record Other {name: String, email: String, foo: String, bar: String, baz: String}
+                <Foo {users: Array[User], admins: Array[Admin], others: Array[Other]}>
                     <div>
                         <h1>User List</h1>
                         <for {user in users}>
@@ -603,7 +609,13 @@ mod tests {
                 </Foo>
             "#},
             expect![[r#"
-                <Foo {users: Array[{name: String}], admins: Array[{name: String, email: String}], others: Array[{name: String, email: String, foo: String, bar: String, baz: String}]}>
+                record User {name: String}
+
+                record Admin {name: String, email: String}
+
+                record Other {name: String, email: String, foo: String, bar: String, baz: String}
+
+                <Foo {users: Array[User], admins: Array[Admin], others: Array[Other]}>
                   <div>
                     <h1>User List</h1>
                     <for {user in users}>

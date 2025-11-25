@@ -1,7 +1,7 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::StringSpan;
 use crate::dop::r#type::EquatableType;
-use crate::dop::{PropertyName, SimpleTypedExpr, TypedExpr};
+use crate::dop::{SimpleTypedExpr, TypedExpr};
 use crate::dop::{Type, VarName};
 use crate::hop::component_name::ComponentName;
 use crate::hop::inlined_ast::{
@@ -100,37 +100,31 @@ impl Compiler {
             ),
         });
 
-        // Create params object
-        if params.is_empty() {
+        // Create params object by manually building JSON
+        body.push(IrStatement::Write {
+            id: self.next_node_id(),
+            content: "{".to_string(),
+        });
+
+        for (i, (name, typ)) in params.iter().enumerate() {
+            if i > 0 {
+                body.push(IrStatement::Write {
+                    id: self.next_node_id(),
+                    content: ",".to_string(),
+                });
+            }
+            // Write the key
             body.push(IrStatement::Write {
                 id: self.next_node_id(),
-                content: "{}".to_string(),
+                content: format!("\"{}\":", name.as_str()),
             });
-        } else {
-            // Build object with all parameters
-            let mut props = Vec::new();
-            let mut object_type = BTreeMap::new();
-            for (name, typ) in params {
-                // VarName and PropertyName have the same validation rules (snake_case)
-                // so we can safely convert between them
-                let prop_name = PropertyName::new(name.as_str()).unwrap();
-                object_type.insert(prop_name.clone(), typ.clone());
-                props.push((
-                    prop_name,
-                    TypedExpr::Var {
-                        value: name.clone(),
-                        kind: typ.clone(),
-                        annotation: self.next_expr_id(),
-                    },
-                ));
-            }
-
+            // Write the JSON-encoded value
             body.push(IrStatement::WriteExpr {
                 id: self.next_node_id(),
                 expr: TypedExpr::JsonEncode {
-                    value: Box::new(TypedExpr::ObjectLiteral {
-                        properties: props,
-                        kind: Type::Object(object_type),
+                    value: Box::new(TypedExpr::Var {
+                        value: name.clone(),
+                        kind: typ.clone(),
                         annotation: self.next_expr_id(),
                     }),
                     annotation: self.next_expr_id(),
@@ -138,6 +132,11 @@ impl Compiler {
                 escape: false,
             });
         }
+
+        body.push(IrStatement::Write {
+            id: self.next_node_id(),
+            content: "}".to_string(),
+        });
 
         body.push(IrStatement::Write {
             id: self.next_node_id(),
@@ -373,16 +372,6 @@ impl Compiler {
                 kind,
                 annotation: expr_id,
             },
-            SimpleTypedExpr::ObjectLiteral {
-                properties, kind, ..
-            } => TypedExpr::ObjectLiteral {
-                properties: properties
-                    .into_iter()
-                    .map(|(k, v)| (k, self.compile_expr(v)))
-                    .collect(),
-                kind,
-                annotation: expr_id,
-            },
             SimpleTypedExpr::RecordInstantiation {
                 record_name,
                 fields,
@@ -570,7 +559,8 @@ mod tests {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
                     write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
-                    write("{}")
+                    write("{")
+                    write("}")
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
                     write("Hello World")
@@ -599,7 +589,10 @@ mod tests {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
                     write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
-                    write_expr(JsonEncode({name: name}))
+                    write("{")
+                    write("\"name\":")
+                    write_expr(JsonEncode(name))
+                    write("}")
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
                     write("Hello ")
@@ -631,7 +624,8 @@ mod tests {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
                     write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
-                    write("{}")
+                    write("{")
+                    write("}")
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
                     write("<div")
@@ -669,7 +663,10 @@ mod tests {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
                     write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
-                    write_expr(JsonEncode({show: show}))
+                    write("{")
+                    write("\"show\":")
+                    write_expr(JsonEncode(show))
+                    write("}")
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
                     if show {
@@ -717,7 +714,10 @@ mod tests {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
                     write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
-                    write_expr(JsonEncode({items: items}))
+                    write("{")
+                    write("\"items\":")
+                    write_expr(JsonEncode(items))
+                    write("}")
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
                     write("<ul")
@@ -759,7 +759,8 @@ mod tests {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
                     write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
-                    write("{}")
+                    write("{")
+                    write("}")
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
                     write("<div")
@@ -801,7 +802,10 @@ mod tests {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
                     write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
-                    write_expr(JsonEncode({cls: cls}))
+                    write("{")
+                    write("\"cls\":")
+                    write_expr(JsonEncode(cls))
+                    write("}")
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
                     write("<div")
@@ -861,11 +865,16 @@ mod tests {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
                     write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
-                    write_expr(JsonEncode({
-                      base_class: base_class,
-                      modifier_class: modifier_class,
-                      state_class: state_class,
-                    }))
+                    write("{")
+                    write("\"base_class\":")
+                    write_expr(JsonEncode(base_class))
+                    write(",")
+                    write("\"modifier_class\":")
+                    write_expr(JsonEncode(modifier_class))
+                    write(",")
+                    write("\"state_class\":")
+                    write_expr(JsonEncode(state_class))
+                    write("}")
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
                     write("<div")
@@ -916,7 +925,13 @@ mod tests {
                   if (EnvLookup("HOP_DEV_MODE") == "enabled") {
                     write("<!DOCTYPE html>\n")
                     write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"TestComp\", \"params\": ")
-                    write_expr(JsonEncode({name: name, count: count}))
+                    write("{")
+                    write("\"name\":")
+                    write_expr(JsonEncode(name))
+                    write(",")
+                    write("\"count\":")
+                    write_expr(JsonEncode(count))
+                    write("}")
                     write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
                   } else {
                     write("<div")

@@ -851,32 +851,4 @@ mod tests {
             "#]],
         );
     }
-
-    #[test]
-    fn test_tokenize_object_literal_syntax() {
-        check(
-            r#"{name: "John"}"#,
-            expect![[r#"
-                token: {
-                {name: "John"}
-                ^
-
-                token: name
-                {name: "John"}
-                 ^^^^
-
-                token: :
-                {name: "John"}
-                     ^
-
-                token: "John"
-                {name: "John"}
-                       ^^^^^^
-
-                token: }
-                {name: "John"}
-                             ^
-            "#]],
-        );
-    }
 }

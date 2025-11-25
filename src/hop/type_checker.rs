@@ -153,16 +153,12 @@ fn validate_named_types_in_type(
         Type::Array(Some(inner)) => {
             undefined.extend(validate_named_types_in_type(inner, declared_records, range));
         }
-        Type::Object(fields) => {
-            for field_type in fields.values() {
-                undefined.extend(validate_named_types_in_type(
-                    field_type,
-                    declared_records,
-                    range,
-                ));
-            }
-        }
-        Type::String | Type::Bool | Type::Int | Type::Float | Type::TrustedHTML | Type::Array(None) => {}
+        Type::String
+        | Type::Bool
+        | Type::Int
+        | Type::Float
+        | Type::TrustedHTML
+        | Type::Array(None) => {}
     }
     undefined
 }
@@ -174,11 +170,7 @@ fn typecheck_module(
     annotations: &mut Vec<TypeAnnotation>,
 ) -> TypedAst {
     // Collect declared record names and build record lookup map
-    let declared_records: HashSet<&str> = module
-        .get_records()
-        .iter()
-        .map(|r| r.name())
-        .collect();
+    let declared_records: HashSet<&str> = module.get_records().iter().map(|r| r.name()).collect();
 
     let record_map: HashMap<&str, &dop::RecordDeclaration> = module
         .get_records()
@@ -189,9 +181,11 @@ fn typecheck_module(
     // Validate record field types
     for record in module.get_records() {
         for field in &record.declaration.fields {
-            for (type_name, type_range) in
-                validate_named_types_in_type(&field.field_type, &declared_records, &field.field_type_range)
-            {
+            for (type_name, type_range) in validate_named_types_in_type(
+                &field.field_type,
+                &declared_records,
+                &field.field_type_range,
+            ) {
                 errors.push(TypeError::UndefinedType {
                     type_name,
                     range: type_range,
@@ -240,9 +234,11 @@ fn typecheck_module(
         if let Some((params, _)) = params {
             for param in params {
                 // Validate that all named types in the parameter type are declared records
-                for (type_name, type_range) in
-                    validate_named_types_in_type(&param.var_type, &declared_records, &param.var_type_range)
-                {
+                for (type_name, type_range) in validate_named_types_in_type(
+                    &param.var_type,
+                    &declared_records,
+                    &param.var_type_range,
+                ) {
                     errors.push(TypeError::UndefinedType {
                         type_name,
                         range: type_range,
@@ -261,7 +257,9 @@ fn typecheck_module(
         // Typecheck children and collect typed versions
         let typed_children: Vec<_> = children
             .iter()
-            .filter_map(|child| typecheck_node(child, state, &mut env, annotations, errors, &record_map))
+            .filter_map(|child| {
+                typecheck_node(child, state, &mut env, annotations, errors, &record_map)
+            })
             .collect();
 
         // Pop parameters from environment
@@ -327,8 +325,9 @@ fn typecheck_node<'a>(
                 .filter_map(|child| typecheck_node(child, state, env, annotations, errors, records))
                 .collect();
 
-            let typed_condition = errors
-                .ok_or_add(dop::typecheck_expr(condition, env, annotations, records).map_err(Into::into))?;
+            let typed_condition = errors.ok_or_add(
+                dop::typecheck_expr(condition, env, annotations, records).map_err(Into::into),
+            )?;
 
             let condition_type = typed_condition.as_type();
             if !condition_type.is_subtype(&Type::Bool) {
@@ -352,8 +351,9 @@ fn typecheck_node<'a>(
             children,
             range,
         } => {
-            let typed_array = errors
-                .ok_or_add(dop::typecheck_expr(array_expr, env, annotations, records).map_err(Into::into))?;
+            let typed_array = errors.ok_or_add(
+                dop::typecheck_expr(array_expr, env, annotations, records).map_err(Into::into),
+            )?;
             let array_type = typed_array.as_type();
             let element_type = match &array_type {
                 Type::Array(Some(inner)) => *inner.clone(),
@@ -491,14 +491,14 @@ fn typecheck_node<'a>(
                             Some(param) => param,
                         };
 
-                        let typed_expr = match dop::typecheck_expr(&arg.var_expr, env, annotations, records)
-                        {
-                            Ok(t) => t,
-                            Err(err) => {
-                                errors.push(err.into());
-                                continue;
-                            }
-                        };
+                        let typed_expr =
+                            match dop::typecheck_expr(&arg.var_expr, env, annotations, records) {
+                                Ok(t) => t,
+                                Err(err) => {
+                                    errors.push(err.into());
+                                    continue;
+                                }
+                            };
                         let arg_type = typed_expr.as_type().clone();
 
                         if !arg_type.is_subtype(&param.var_type) {
@@ -546,7 +546,8 @@ fn typecheck_node<'a>(
             children,
             range,
         } => {
-            let typed_attributes = typecheck_attributes(attributes, env, annotations, errors, records);
+            let typed_attributes =
+                typecheck_attributes(attributes, env, annotations, errors, records);
 
             let typed_children = children
                 .iter()
@@ -563,9 +564,9 @@ fn typecheck_node<'a>(
         }
 
         Node::TextExpression { expression, range } => {
-            if let Some(typed_expr) = errors
-                .ok_or_add(dop::typecheck_expr(expression, env, annotations, records).map_err(Into::into))
-            {
+            if let Some(typed_expr) = errors.ok_or_add(
+                dop::typecheck_expr(expression, env, annotations, records).map_err(Into::into),
+            ) {
                 let expr_type = typed_expr.as_type();
                 if !expr_type.is_subtype(&Type::String) && !expr_type.is_subtype(&Type::TrustedHTML)
                 {
@@ -625,9 +626,9 @@ fn typecheck_attributes<'a>(
             Some(AttributeValue::Expressions(exprs)) => {
                 let mut typed_exprs = Vec::new();
                 for expr in exprs {
-                    if let Some(typed_expr) = errors
-                        .ok_or_add(dop::typecheck_expr(expr, env, annotations, records).map_err(Into::into))
-                    {
+                    if let Some(typed_expr) = errors.ok_or_add(
+                        dop::typecheck_expr(expr, env, annotations, records).map_err(Into::into),
+                    ) {
                         // Check that HTML attributes are strings
                         let expr_type = typed_expr.as_type();
                         if !expr_type.is_subtype(&Type::String) {
@@ -965,16 +966,17 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {items: {foo: Array[String]}}>
+                record Items {foo: Array[String]}
+                <Main {items: Items}>
                   <for {items in items.foo}>
                   </for>
                 </Main>
             "#},
             expect![[r#"
                 error: Variable items is already defined
-                  --> main.hop (line 2, col 9)
-                1 | <Main {items: {foo: Array[String]}}>
-                2 |   <for {items in items.foo}>
+                  --> main.hop (line 3, col 9)
+                2 | <Main {items: Items}>
+                3 |   <for {items in items.foo}>
                   |         ^^^^^
             "#]],
         );
@@ -1007,7 +1009,8 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {items: {a: Array[String], b: Array[String]}}>
+                record Items {a: Array[String], b: Array[String]}
+                <Main {items: Items}>
                   <for {item in items.a}>
                     <for {item in items.b}>
                       <div>{item}</div>
@@ -1017,9 +1020,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Variable item is already defined
-                  --> main.hop (line 3, col 11)
-                2 |   <for {item in items.a}>
-                3 |     <for {item in items.b}>
+                  --> main.hop (line 4, col 11)
+                3 |   <for {item in items.a}>
+                4 |     <for {item in items.b}>
                   |           ^^^^
             "#]],
         );
@@ -1031,7 +1034,8 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: Array[{active: Bool}]}>
+                record Item {active: Bool}
+                <Main {params: Array[Item]}>
                 	<for {item in params}>
                 	  <if {item.active}>
                 	  </if>
@@ -1042,9 +1046,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Undefined variable: item
-                  --> main.hop (line 6, col 7)
-                5 |     </for>
-                6 |     <if {item.active}>
+                  --> main.hop (line 7, col 7)
+                6 |     </for>
+                7 |     <if {item.active}>
                   |          ^^^^
             "#]],
         );
@@ -1272,7 +1276,8 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: Array[{k: Bool}]}>
+                record Item {k: Bool}
+                <Main {params: Array[Item]}>
                 	<for {item in params}>
                 		<if {item.k}>
                 		</if>
@@ -1286,9 +1291,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Can not iterate over Bool
-                  --> main.hop (line 7, col 18)
-                 6 |     <for {item in params}>
-                 7 |         <for {inner in item.k}>
+                  --> main.hop (line 8, col 18)
+                 7 |     <for {item in params}>
+                 8 |         <for {inner in item.k}>
                    |                        ^^^^^^
             "#]],
         );
@@ -1323,7 +1328,9 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: {items: Array[{active: Bool, name: Bool}]}}>
+                record Item {active: Bool, name: Bool}
+                record Params {items: Array[Item]}
+                <Main {params: Params}>
                 	<for {item in params.items}>
                 		<if {item.active}>
                 		</if>
@@ -1333,34 +1340,35 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Record[items: Array[Record[active: Bool, name: Bool]]]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {params: {items: Array[{active: Bool, name: Bool}]}}>
-                  |        ^^^^^^
-
-                params: Record[items: Array[Record[active: Bool, name: Bool]]]
-                  --> main.hop (line 2, col 16)
-                1 | <Main {params: {items: Array[{active: Bool, name: Bool}]}}>
-                2 |     <for {item in params.items}>
-                  |                   ^^^^^^
-
-                item: Record[active: Bool, name: Bool]
-                  --> main.hop (line 2, col 8)
-                1 | <Main {params: {items: Array[{active: Bool, name: Bool}]}}>
-                2 |     <for {item in params.items}>
-                  |           ^^^^
-
-                item: Record[active: Bool, name: Bool]
+                params: Params
                   --> main.hop (line 3, col 8)
-                2 |     <for {item in params.items}>
-                3 |         <if {item.active}>
-                  |              ^^^^
+                 2 | record Params {items: Array[Item]}
+                 3 | <Main {params: Params}>
+                   |        ^^^^^^
 
-                item: Record[active: Bool, name: Bool]
+                params: Params
+                  --> main.hop (line 4, col 16)
+                 3 | <Main {params: Params}>
+                 4 |     <for {item in params.items}>
+                   |                   ^^^^^^
+
+                item: Item
+                  --> main.hop (line 4, col 8)
+                 3 | <Main {params: Params}>
+                 4 |     <for {item in params.items}>
+                   |           ^^^^
+
+                item: Item
                   --> main.hop (line 5, col 8)
-                4 |         </if>
-                5 |         <if {item.name}>
-                  |              ^^^^
+                 4 |     <for {item in params.items}>
+                 5 |         <if {item.active}>
+                   |              ^^^^
+
+                item: Item
+                  --> main.hop (line 7, col 8)
+                 6 |         </if>
+                 7 |         <if {item.name}>
+                   |              ^^^^
             "#]],
         );
     }
@@ -1386,28 +1394,30 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: {a: String, b: Bool}}>
+                record Params {a: String, b: Bool}
+                <Main {params: Params}>
                   <if {(params.a == "str") == params.b}>
                     <div>Match</div>
                   </if>
                 </Main>
             "#},
             expect![[r#"
-                params: Record[a: String, b: Bool]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {params: {a: String, b: Bool}}>
+                params: Params
+                  --> main.hop (line 2, col 8)
+                1 | record Params {a: String, b: Bool}
+                2 | <Main {params: Params}>
                   |        ^^^^^^
 
-                params: Record[a: String, b: Bool]
-                  --> main.hop (line 2, col 9)
-                1 | <Main {params: {a: String, b: Bool}}>
-                2 |   <if {(params.a == "str") == params.b}>
+                params: Params
+                  --> main.hop (line 3, col 9)
+                2 | <Main {params: Params}>
+                3 |   <if {(params.a == "str") == params.b}>
                   |         ^^^^^^
 
-                params: Record[a: String, b: Bool]
-                  --> main.hop (line 2, col 31)
-                1 | <Main {params: {a: String, b: Bool}}>
-                2 |   <if {(params.a == "str") == params.b}>
+                params: Params
+                  --> main.hop (line 3, col 31)
+                2 | <Main {params: Params}>
+                3 |   <if {(params.a == "str") == params.b}>
                   |                               ^^^^^^
             "#]],
         );
@@ -1418,7 +1428,11 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: {enabled: Bool, users: Array[{profile: {verified: Bool}, posts: Array[{published: Bool}]}]}}>
+                record Post {published: Bool}
+                record Profile {verified: Bool}
+                record User {profile: Profile, posts: Array[Post]}
+                record Params {enabled: Bool, users: Array[User]}
+                <Main {params: Params}>
                 	<if {params.enabled}>
                 		<for {user in params.users}>
                 			<if {user.profile.verified}>
@@ -1433,78 +1447,52 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Record[
-                  enabled: Bool,
-                  users: Array[Record[
-                    posts: Array[Record[published: Bool]],
-                    profile: Record[verified: Bool],
-                  ]],
-                ]
-                  --> main.hop (line 1, col 8)
-                 1 | <Main {params: {enabled: Bool, users: Array[{profile: {verified: Bool}, posts: Array[{published: Bool}]}]}}>
+                params: Params
+                  --> main.hop (line 5, col 8)
+                 4 | record Params {enabled: Bool, users: Array[User]}
+                 5 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Record[
-                  enabled: Bool,
-                  users: Array[Record[
-                    posts: Array[Record[published: Bool]],
-                    profile: Record[verified: Bool],
-                  ]],
-                ]
-                  --> main.hop (line 3, col 17)
-                 2 |     <if {params.enabled}>
-                 3 |         <for {user in params.users}>
+                params: Params
+                  --> main.hop (line 7, col 17)
+                 6 |     <if {params.enabled}>
+                 7 |         <for {user in params.users}>
                    |                       ^^^^^^
 
-                user: Record[
-                  posts: Array[Record[published: Bool]],
-                  profile: Record[verified: Bool],
-                ]
-                  --> main.hop (line 3, col 9)
-                 2 |     <if {params.enabled}>
-                 3 |         <for {user in params.users}>
+                user: User
+                  --> main.hop (line 7, col 9)
+                 6 |     <if {params.enabled}>
+                 7 |         <for {user in params.users}>
                    |               ^^^^
 
-                user: Record[
-                  posts: Array[Record[published: Bool]],
-                  profile: Record[verified: Bool],
-                ]
-                  --> main.hop (line 5, col 19)
-                 4 |             <if {user.profile.verified}>
-                 5 |                 <for {post in user.posts}>
+                user: User
+                  --> main.hop (line 9, col 19)
+                 8 |             <if {user.profile.verified}>
+                 9 |                 <for {post in user.posts}>
                    |                               ^^^^
 
-                post: Record[published: Bool]
-                  --> main.hop (line 5, col 11)
-                 4 |             <if {user.profile.verified}>
-                 5 |                 <for {post in user.posts}>
+                post: Post
+                  --> main.hop (line 9, col 11)
+                 8 |             <if {user.profile.verified}>
+                 9 |                 <for {post in user.posts}>
                    |                       ^^^^
 
-                post: Record[published: Bool]
-                  --> main.hop (line 6, col 11)
-                 5 |                 <for {post in user.posts}>
-                 6 |                     <if {post.published}>
+                post: Post
+                  --> main.hop (line 10, col 11)
+                 9 |                 <for {post in user.posts}>
+                10 |                     <if {post.published}>
                    |                          ^^^^
 
-                user: Record[
-                  posts: Array[Record[published: Bool]],
-                  profile: Record[verified: Bool],
-                ]
-                  --> main.hop (line 4, col 9)
-                 3 |         <for {user in params.users}>
-                 4 |             <if {user.profile.verified}>
+                user: User
+                  --> main.hop (line 8, col 9)
+                 7 |         <for {user in params.users}>
+                 8 |             <if {user.profile.verified}>
                    |                  ^^^^
 
-                params: Record[
-                  enabled: Bool,
-                  users: Array[Record[
-                    posts: Array[Record[published: Bool]],
-                    profile: Record[verified: Bool],
-                  ]],
-                ]
-                  --> main.hop (line 2, col 7)
-                 1 | <Main {params: {enabled: Bool, users: Array[{profile: {verified: Bool}, posts: Array[{published: Bool}]}]}}>
-                 2 |     <if {params.enabled}>
+                params: Params
+                  --> main.hop (line 6, col 7)
+                 5 | <Main {params: Params}>
+                 6 |     <if {params.enabled}>
                    |          ^^^^^^
             "#]],
         );
@@ -1515,7 +1503,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: {sections: Array[{header: {visible: Bool}, items: Array[{data: {valid: Bool}}]}]}}>
+                record Data {valid: Bool}
+                record Item {data: Data}
+                record Header {visible: Bool}
+                record Section {header: Header, items: Array[Item]}
+                record Params {sections: Array[Section]}
+                <Main {params: Params}>
                 	<for {section in params.sections}>
                 		<if {section.header.visible}>
                 			<for {item in section.items}>
@@ -1527,64 +1520,46 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Record[
-                  sections: Array[Record[
-                    header: Record[visible: Bool],
-                    items: Array[Record[data: Record[valid: Bool]]],
-                  ]],
-                ]
-                  --> main.hop (line 1, col 8)
-                 1 | <Main {params: {sections: Array[{header: {visible: Bool}, items: Array[{data: {valid: Bool}}]}]}}>
+                params: Params
+                  --> main.hop (line 6, col 8)
+                 5 | record Params {sections: Array[Section]}
+                 6 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Record[
-                  sections: Array[Record[
-                    header: Record[visible: Bool],
-                    items: Array[Record[data: Record[valid: Bool]]],
-                  ]],
-                ]
-                  --> main.hop (line 2, col 19)
-                 1 | <Main {params: {sections: Array[{header: {visible: Bool}, items: Array[{data: {valid: Bool}}]}]}}>
-                 2 |     <for {section in params.sections}>
+                params: Params
+                  --> main.hop (line 7, col 19)
+                 6 | <Main {params: Params}>
+                 7 |     <for {section in params.sections}>
                    |                      ^^^^^^
 
-                section: Record[
-                  header: Record[visible: Bool],
-                  items: Array[Record[data: Record[valid: Bool]]],
-                ]
-                  --> main.hop (line 2, col 8)
-                 1 | <Main {params: {sections: Array[{header: {visible: Bool}, items: Array[{data: {valid: Bool}}]}]}}>
-                 2 |     <for {section in params.sections}>
+                section: Section
+                  --> main.hop (line 7, col 8)
+                 6 | <Main {params: Params}>
+                 7 |     <for {section in params.sections}>
                    |           ^^^^^^^
 
-                section: Record[
-                  header: Record[visible: Bool],
-                  items: Array[Record[data: Record[valid: Bool]]],
-                ]
-                  --> main.hop (line 4, col 18)
-                 3 |         <if {section.header.visible}>
-                 4 |             <for {item in section.items}>
+                section: Section
+                  --> main.hop (line 9, col 18)
+                 8 |         <if {section.header.visible}>
+                 9 |             <for {item in section.items}>
                    |                           ^^^^^^^
 
-                item: Record[data: Record[valid: Bool]]
-                  --> main.hop (line 4, col 10)
-                 3 |         <if {section.header.visible}>
-                 4 |             <for {item in section.items}>
+                item: Item
+                  --> main.hop (line 9, col 10)
+                 8 |         <if {section.header.visible}>
+                 9 |             <for {item in section.items}>
                    |                   ^^^^
 
-                item: Record[data: Record[valid: Bool]]
-                  --> main.hop (line 5, col 10)
-                 4 |             <for {item in section.items}>
-                 5 |                 <if {item.data.valid}>
+                item: Item
+                  --> main.hop (line 10, col 10)
+                 9 |             <for {item in section.items}>
+                10 |                 <if {item.data.valid}>
                    |                      ^^^^
 
-                section: Record[
-                  header: Record[visible: Bool],
-                  items: Array[Record[data: Record[valid: Bool]]],
-                ]
-                  --> main.hop (line 3, col 8)
-                 2 |     <for {section in params.sections}>
-                 3 |         <if {section.header.visible}>
+                section: Section
+                  --> main.hop (line 8, col 8)
+                 7 |     <for {section in params.sections}>
+                 8 |         <if {section.header.visible}>
                    |              ^^^^^^^
             "#]],
         );
@@ -1595,21 +1570,26 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: {i: {j: {k: {l: Bool}}}}}>
+                record K {l: Bool}
+                record J {k: K}
+                record I {j: J}
+                record Params {i: I}
+                <Main {params: Params}>
                 	<if {params.i.j.k.l}>
                 	</if>
                 </Main>
             "#},
             expect![[r#"
-                params: Record[i: Record[j: Record[k: Record[l: Bool]]]]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {params: {i: {j: {k: {l: Bool}}}}}>
+                params: Params
+                  --> main.hop (line 5, col 8)
+                4 | record Params {i: I}
+                5 | <Main {params: Params}>
                   |        ^^^^^^
 
-                params: Record[i: Record[j: Record[k: Record[l: Bool]]]]
-                  --> main.hop (line 2, col 7)
-                1 | <Main {params: {i: {j: {k: {l: Bool}}}}}>
-                2 |     <if {params.i.j.k.l}>
+                params: Params
+                  --> main.hop (line 6, col 7)
+                5 | <Main {params: Params}>
+                6 |     <if {params.i.j.k.l}>
                   |          ^^^^^^
             "#]],
         );
@@ -1620,7 +1600,16 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: {app: {ui: {theme: {dark: Bool}}, api: {endpoints: {users: {enabled: Bool}}}, database: {connection: {ssl: Bool}}}}}>
+                record Theme {dark: Bool}
+                record UI {theme: Theme}
+                record Users {enabled: Bool}
+                record Endpoints {users: Users}
+                record API {endpoints: Endpoints}
+                record Connection {ssl: Bool}
+                record Database {connection: Connection}
+                record App {ui: UI, api: API, database: Database}
+                record Params {app: App}
+                <Main {params: Params}>
                 	<if {params.app.ui.theme.dark}>
                 	</if>
                 	<if {params.app.api.endpoints.users.enabled}>
@@ -1630,60 +1619,29 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Record[
-                  app: Record[
-                    api: Record[
-                      endpoints: Record[users: Record[enabled: Bool]],
-                    ],
-                    database: Record[connection: Record[ssl: Bool]],
-                    ui: Record[theme: Record[dark: Bool]],
-                  ],
-                ]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {params: {app: {ui: {theme: {dark: Bool}}, api: {endpoints: {users: {enabled: Bool}}}, database: {connection: {ssl: Bool}}}}}>
-                  |        ^^^^^^
+                params: Params
+                  --> main.hop (line 10, col 8)
+                 9 | record Params {app: App}
+                10 | <Main {params: Params}>
+                   |        ^^^^^^
 
-                params: Record[
-                  app: Record[
-                    api: Record[
-                      endpoints: Record[users: Record[enabled: Bool]],
-                    ],
-                    database: Record[connection: Record[ssl: Bool]],
-                    ui: Record[theme: Record[dark: Bool]],
-                  ],
-                ]
-                  --> main.hop (line 2, col 7)
-                1 | <Main {params: {app: {ui: {theme: {dark: Bool}}, api: {endpoints: {users: {enabled: Bool}}}, database: {connection: {ssl: Bool}}}}}>
-                2 |     <if {params.app.ui.theme.dark}>
-                  |          ^^^^^^
+                params: Params
+                  --> main.hop (line 11, col 7)
+                10 | <Main {params: Params}>
+                11 |     <if {params.app.ui.theme.dark}>
+                   |          ^^^^^^
 
-                params: Record[
-                  app: Record[
-                    api: Record[
-                      endpoints: Record[users: Record[enabled: Bool]],
-                    ],
-                    database: Record[connection: Record[ssl: Bool]],
-                    ui: Record[theme: Record[dark: Bool]],
-                  ],
-                ]
-                  --> main.hop (line 4, col 7)
-                3 |     </if>
-                4 |     <if {params.app.api.endpoints.users.enabled}>
-                  |          ^^^^^^
+                params: Params
+                  --> main.hop (line 13, col 7)
+                12 |     </if>
+                13 |     <if {params.app.api.endpoints.users.enabled}>
+                   |          ^^^^^^
 
-                params: Record[
-                  app: Record[
-                    api: Record[
-                      endpoints: Record[users: Record[enabled: Bool]],
-                    ],
-                    database: Record[connection: Record[ssl: Bool]],
-                    ui: Record[theme: Record[dark: Bool]],
-                  ],
-                ]
-                  --> main.hop (line 6, col 7)
-                5 |     </if>
-                6 |     <if {params.app.database.connection.ssl}>
-                  |          ^^^^^^
+                params: Params
+                  --> main.hop (line 15, col 7)
+                14 |     </if>
+                15 |     <if {params.app.database.connection.ssl}>
+                   |          ^^^^^^
             "#]],
         );
     }
@@ -1711,21 +1669,23 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {data: {message: String}}>
+                record Data {message: String}
+                <Main {data: Data}>
                     <h1>Hello World</h1>
                     <p>{data.message}</p>
                 </Main>
             "#},
             expect![[r#"
-                data: Record[message: String]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {data: {message: String}}>
+                data: Data
+                  --> main.hop (line 2, col 8)
+                1 | record Data {message: String}
+                2 | <Main {data: Data}>
                   |        ^^^^
 
-                data: Record[message: String]
-                  --> main.hop (line 3, col 9)
-                2 |     <h1>Hello World</h1>
-                3 |     <p>{data.message}</p>
+                data: Data
+                  --> main.hop (line 4, col 9)
+                3 |     <h1>Hello World</h1>
+                4 |     <p>{data.message}</p>
                   |         ^^^^
             "#]],
         );
@@ -1736,7 +1696,11 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: {user: {name: String}, other_user: {name: String}, data: {x: String, y: String}}}>
+                record User {name: String}
+                record OtherUser {name: String}
+                record Data {x: String, y: String}
+                record Params {user: User, other_user: OtherUser, data: Data}
+                <Main {params: Params}>
                   <if {params.user.name == params.other_user.name}>
                     <div>Same name</div>
                   </if>
@@ -1746,54 +1710,35 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Record[
-                  data: Record[x: String, y: String],
-                  other_user: Record[name: String],
-                  user: Record[name: String],
-                ]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {params: {user: {name: String}, other_user: {name: String}, data: {x: String, y: String}}}>
-                  |        ^^^^^^
+                params: Params
+                  --> main.hop (line 5, col 8)
+                 4 | record Params {user: User, other_user: OtherUser, data: Data}
+                 5 | <Main {params: Params}>
+                   |        ^^^^^^
 
-                params: Record[
-                  data: Record[x: String, y: String],
-                  other_user: Record[name: String],
-                  user: Record[name: String],
-                ]
-                  --> main.hop (line 2, col 8)
-                1 | <Main {params: {user: {name: String}, other_user: {name: String}, data: {x: String, y: String}}}>
-                2 |   <if {params.user.name == params.other_user.name}>
-                  |        ^^^^^^
+                params: Params
+                  --> main.hop (line 6, col 8)
+                 5 | <Main {params: Params}>
+                 6 |   <if {params.user.name == params.other_user.name}>
+                   |        ^^^^^^
 
-                params: Record[
-                  data: Record[x: String, y: String],
-                  other_user: Record[name: String],
-                  user: Record[name: String],
-                ]
-                  --> main.hop (line 2, col 28)
-                1 | <Main {params: {user: {name: String}, other_user: {name: String}, data: {x: String, y: String}}}>
-                2 |   <if {params.user.name == params.other_user.name}>
-                  |                            ^^^^^^
+                params: Params
+                  --> main.hop (line 6, col 28)
+                 5 | <Main {params: Params}>
+                 6 |   <if {params.user.name == params.other_user.name}>
+                   |                            ^^^^^^
 
-                params: Record[
-                  data: Record[x: String, y: String],
-                  other_user: Record[name: String],
-                  user: Record[name: String],
-                ]
-                  --> main.hop (line 5, col 9)
-                4 |   </if>
-                5 |   <if {(params.data.x == params.data.y)}>
-                  |         ^^^^^^
+                params: Params
+                  --> main.hop (line 9, col 9)
+                 8 |   </if>
+                 9 |   <if {(params.data.x == params.data.y)}>
+                   |         ^^^^^^
 
-                params: Record[
-                  data: Record[x: String, y: String],
-                  other_user: Record[name: String],
-                  user: Record[name: String],
-                ]
-                  --> main.hop (line 5, col 26)
-                4 |   </if>
-                5 |   <if {(params.data.x == params.data.y)}>
-                  |                          ^^^^^^
+                params: Params
+                  --> main.hop (line 9, col 26)
+                 8 |   </if>
+                 9 |   <if {(params.data.x == params.data.y)}>
+                   |                          ^^^^^^
             "#]],
         );
     }
@@ -1803,28 +1748,30 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: {x: String, y: String}}>
+                record Params {x: String, y: String}
+                <Main {params: Params}>
                   <if {params.x == params.y}>
                     <div>Values are equal</div>
                   </if>
                 </Main>
             "#},
             expect![[r#"
-                params: Record[x: String, y: String]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {params: {x: String, y: String}}>
-                  |        ^^^^^^
-
-                params: Record[x: String, y: String]
+                params: Params
                   --> main.hop (line 2, col 8)
-                1 | <Main {params: {x: String, y: String}}>
-                2 |   <if {params.x == params.y}>
+                1 | record Params {x: String, y: String}
+                2 | <Main {params: Params}>
                   |        ^^^^^^
 
-                params: Record[x: String, y: String]
-                  --> main.hop (line 2, col 20)
-                1 | <Main {params: {x: String, y: String}}>
-                2 |   <if {params.x == params.y}>
+                params: Params
+                  --> main.hop (line 3, col 8)
+                2 | <Main {params: Params}>
+                3 |   <if {params.x == params.y}>
+                  |        ^^^^^^
+
+                params: Params
+                  --> main.hop (line 3, col 20)
+                2 | <Main {params: Params}>
+                3 |   <if {params.x == params.y}>
                   |                    ^^^^^^
             "#]],
         );
@@ -1835,7 +1782,9 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: {foo: {bar: Array[Bool]}}}>
+                record Foo {bar: Array[Bool]}
+                record Params {foo: Foo}
+                <Main {params: Params}>
                 	<for {j in params.foo.bar}>
                 		<if {j}>
                 		</if>
@@ -1843,27 +1792,28 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Record[foo: Record[bar: Array[Bool]]]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {params: {foo: {bar: Array[Bool]}}}>
+                params: Params
+                  --> main.hop (line 3, col 8)
+                2 | record Params {foo: Foo}
+                3 | <Main {params: Params}>
                   |        ^^^^^^
 
-                params: Record[foo: Record[bar: Array[Bool]]]
-                  --> main.hop (line 2, col 13)
-                1 | <Main {params: {foo: {bar: Array[Bool]}}}>
-                2 |     <for {j in params.foo.bar}>
+                params: Params
+                  --> main.hop (line 4, col 13)
+                3 | <Main {params: Params}>
+                4 |     <for {j in params.foo.bar}>
                   |                ^^^^^^
 
                 j: Bool
-                  --> main.hop (line 2, col 8)
-                1 | <Main {params: {foo: {bar: Array[Bool]}}}>
-                2 |     <for {j in params.foo.bar}>
+                  --> main.hop (line 4, col 8)
+                3 | <Main {params: Params}>
+                4 |     <for {j in params.foo.bar}>
                   |           ^
 
                 j: Bool
-                  --> main.hop (line 3, col 8)
-                2 |     <for {j in params.foo.bar}>
-                3 |         <if {j}>
+                  --> main.hop (line 5, col 8)
+                4 |     <for {j in params.foo.bar}>
+                5 |         <if {j}>
                   |              ^
             "#]],
         );
@@ -1874,7 +1824,8 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: Array[{a: Bool, b: Bool}]}>
+                record Item {a: Bool, b: Bool}
+                <Main {params: Array[Item]}>
                 	<for {j in params}>
                 		<if {j.a}>
                 		</if>
@@ -1886,45 +1837,46 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Array[Record[a: Bool, b: Bool]]
-                  --> main.hop (line 1, col 8)
-                 1 | <Main {params: Array[{a: Bool, b: Bool}]}>
+                params: Array[Item]
+                  --> main.hop (line 2, col 8)
+                 1 | record Item {a: Bool, b: Bool}
+                 2 | <Main {params: Array[Item]}>
                    |        ^^^^^^
 
-                params: Array[Record[a: Bool, b: Bool]]
-                  --> main.hop (line 2, col 13)
-                 1 | <Main {params: Array[{a: Bool, b: Bool}]}>
-                 2 |     <for {j in params}>
+                params: Array[Item]
+                  --> main.hop (line 3, col 13)
+                 2 | <Main {params: Array[Item]}>
+                 3 |     <for {j in params}>
                    |                ^^^^^^
 
-                j: Record[a: Bool, b: Bool]
-                  --> main.hop (line 2, col 8)
-                 1 | <Main {params: Array[{a: Bool, b: Bool}]}>
-                 2 |     <for {j in params}>
+                j: Item
+                  --> main.hop (line 3, col 8)
+                 2 | <Main {params: Array[Item]}>
+                 3 |     <for {j in params}>
                    |           ^
 
-                j: Record[a: Bool, b: Bool]
-                  --> main.hop (line 3, col 8)
-                 2 |     <for {j in params}>
-                 3 |         <if {j.a}>
+                j: Item
+                  --> main.hop (line 4, col 8)
+                 3 |     <for {j in params}>
+                 4 |         <if {j.a}>
                    |              ^
 
-                params: Array[Record[a: Bool, b: Bool]]
-                  --> main.hop (line 6, col 13)
-                 5 |     </for>
-                 6 |     <for {j in params}>
+                params: Array[Item]
+                  --> main.hop (line 7, col 13)
+                 6 |     </for>
+                 7 |     <for {j in params}>
                    |                ^^^^^^
 
-                j: Record[a: Bool, b: Bool]
-                  --> main.hop (line 6, col 8)
-                 5 |     </for>
-                 6 |     <for {j in params}>
+                j: Item
+                  --> main.hop (line 7, col 8)
+                 6 |     </for>
+                 7 |     <for {j in params}>
                    |           ^
 
-                j: Record[a: Bool, b: Bool]
-                  --> main.hop (line 7, col 8)
-                 6 |     <for {j in params}>
-                 7 |         <if {j.b}>
+                j: Item
+                  --> main.hop (line 8, col 8)
+                 7 |     <for {j in params}>
+                 8 |         <if {j.b}>
                    |              ^
             "#]],
         );
@@ -2076,7 +2028,8 @@ mod tests {
         check(
             indoc! {r#"
                 -- bar.hop --
-                <WidgetComp {config: {enabled: Bool, title: String}}>
+                record Config {enabled: Bool, title: String}
+                <WidgetComp {config: Config}>
                   <if {config.enabled}>
                     <div>{config.title}</div>
                   </if>
@@ -2084,8 +2037,10 @@ mod tests {
 
                 -- foo.hop --
                 import WidgetComp from "@/bar"
+                import Config from "@/bar"
+                record Data {items: Array[Config]}
 
-                <PanelComp {data: {items: Array[{enabled: Bool, title: String}]}}>
+                <PanelComp {data: Data}>
                   <for {item in data.items}>
                     <WidgetComp {config: item}/>
                   </for>
@@ -2093,84 +2048,44 @@ mod tests {
 
                 -- main.hop --
                 import PanelComp from "@/foo"
+                import Data from "@/foo"
+                record Dashboard {items: Array[Data]}
+                record Settings {dashboard: Data}
 
-                <Main {settings: {dashboard: {items: Array[{enabled: Bool, title: String}]}}}>
+                <Main {settings: Settings}>
                   <PanelComp {data: settings.dashboard}/>
                 </Main>
             "#},
             expect![[r#"
-                config: Record[enabled: Bool, title: String]
-                  --> bar.hop (line 1, col 14)
-                1 | <WidgetComp {config: {enabled: Bool, title: String}}>
-                  |              ^^^^^^
+                error: Type 'Config' is not defined
+                  --> foo.hop (line 3, col 21)
+                2 | import Config from "@/bar"
+                3 | record Data {items: Array[Config]}
+                  |                     ^^^^^^^^^^^^^
 
-                config: Record[enabled: Bool, title: String]
-                  --> bar.hop (line 3, col 11)
-                2 |   <if {config.enabled}>
-                3 |     <div>{config.title}</div>
-                  |           ^^^^^^
-
-                config: Record[enabled: Bool, title: String]
-                  --> bar.hop (line 2, col 8)
-                1 | <WidgetComp {config: {enabled: Bool, title: String}}>
-                2 |   <if {config.enabled}>
+                error: Module @/bar does not declare a component named Config
+                  --> foo.hop (line 2, col 8)
+                1 | import WidgetComp from "@/bar"
+                2 | import Config from "@/bar"
                   |        ^^^^^^
 
-                data: Record[items: Array[Record[enabled: Bool, title: String]]]
-                  --> foo.hop (line 3, col 13)
-                2 | 
-                3 | <PanelComp {data: {items: Array[{enabled: Bool, title: String}]}}>
-                  |             ^^^^
+                error: Type 'Data' is not defined
+                  --> main.hop (line 3, col 26)
+                2 | import Data from "@/foo"
+                3 | record Dashboard {items: Array[Data]}
+                  |                          ^^^^^^^^^^^
 
-                data: Record[items: Array[Record[enabled: Bool, title: String]]]
-                  --> foo.hop (line 4, col 17)
-                3 | <PanelComp {data: {items: Array[{enabled: Bool, title: String}]}}>
-                4 |   <for {item in data.items}>
-                  |                 ^^^^
+                error: Type 'Data' is not defined
+                  --> main.hop (line 4, col 29)
+                3 | record Dashboard {items: Array[Data]}
+                4 | record Settings {dashboard: Data}
+                  |                             ^^^^
 
-                item: Record[enabled: Bool, title: String]
-                  --> foo.hop (line 4, col 9)
-                3 | <PanelComp {data: {items: Array[{enabled: Bool, title: String}]}}>
-                4 |   <for {item in data.items}>
-                  |         ^^^^
-
-                item: Record[enabled: Bool, title: String]
-                  --> foo.hop (line 5, col 26)
-                4 |   <for {item in data.items}>
-                5 |     <WidgetComp {config: item}/>
-                  |                          ^^^^
-
-                config: Record[enabled: Bool, title: String]
-                  --> foo.hop (line 5, col 26)
-                4 |   <for {item in data.items}>
-                5 |     <WidgetComp {config: item}/>
-                  |                          ^^^^
-
-                settings: Record[
-                  dashboard: Record[
-                    items: Array[Record[enabled: Bool, title: String]],
-                  ],
-                ]
-                  --> main.hop (line 3, col 8)
-                2 | 
-                3 | <Main {settings: {dashboard: {items: Array[{enabled: Bool, title: String}]}}}>
-                  |        ^^^^^^^^
-
-                settings: Record[
-                  dashboard: Record[
-                    items: Array[Record[enabled: Bool, title: String]],
-                  ],
-                ]
-                  --> main.hop (line 4, col 21)
-                3 | <Main {settings: {dashboard: {items: Array[{enabled: Bool, title: String}]}}}>
-                4 |   <PanelComp {data: settings.dashboard}/>
-                  |                     ^^^^^^^^
-
-                data: Record[items: Array[Record[enabled: Bool, title: String]]]
-                  --> main.hop (line 4, col 21)
-                3 | <Main {settings: {dashboard: {items: Array[{enabled: Bool, title: String}]}}}>
-                4 |   <PanelComp {data: settings.dashboard}/>
-                  |                     ^^^^^^^^^^^^^^^^^^
+                error: Module @/foo does not declare a component named Data
+                  --> main.hop (line 2, col 8)
+                1 | import PanelComp from "@/foo"
+                2 | import Data from "@/foo"
+                  |        ^^^^
             "#]],
         );
     }
@@ -2204,7 +2119,10 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: {config: {debug: Bool}, data: Array[{id: Bool, attributes: Array[Bool]}]}}>
+                record Config {debug: Bool}
+                record DataItem {id: Bool, attributes: Array[Bool]}
+                record Params {config: Config, data: Array[DataItem]}
+                <Main {params: Params}>
                 	<if {params.config.debug}>
                 	</if>
                 	<for {item in params.data}>
@@ -2218,60 +2136,52 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Record[
-                  config: Record[debug: Bool],
-                  data: Array[Record[attributes: Array[Bool], id: Bool]],
-                ]
-                  --> main.hop (line 1, col 8)
-                 1 | <Main {params: {config: {debug: Bool}, data: Array[{id: Bool, attributes: Array[Bool]}]}}>
+                params: Params
+                  --> main.hop (line 4, col 8)
+                 3 | record Params {config: Config, data: Array[DataItem]}
+                 4 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Record[
-                  config: Record[debug: Bool],
-                  data: Array[Record[attributes: Array[Bool], id: Bool]],
-                ]
-                  --> main.hop (line 2, col 7)
-                 1 | <Main {params: {config: {debug: Bool}, data: Array[{id: Bool, attributes: Array[Bool]}]}}>
-                 2 |     <if {params.config.debug}>
+                params: Params
+                  --> main.hop (line 5, col 7)
+                 4 | <Main {params: Params}>
+                 5 |     <if {params.config.debug}>
                    |          ^^^^^^
 
-                params: Record[
-                  config: Record[debug: Bool],
-                  data: Array[Record[attributes: Array[Bool], id: Bool]],
-                ]
-                  --> main.hop (line 4, col 16)
-                 3 |     </if>
-                 4 |     <for {item in params.data}>
+                params: Params
+                  --> main.hop (line 7, col 16)
+                 6 |     </if>
+                 7 |     <for {item in params.data}>
                    |                   ^^^^^^
 
-                item: Record[attributes: Array[Bool], id: Bool]
-                  --> main.hop (line 4, col 8)
-                 3 |     </if>
-                 4 |     <for {item in params.data}>
+                item: DataItem
+                  --> main.hop (line 7, col 8)
+                 6 |     </if>
+                 7 |     <for {item in params.data}>
                    |           ^^^^
 
-                item: Record[attributes: Array[Bool], id: Bool]
-                  --> main.hop (line 5, col 8)
-                 4 |     <for {item in params.data}>
-                 5 |         <if {item.id}>
+                item: DataItem
+                  --> main.hop (line 8, col 8)
+                 7 |     <for {item in params.data}>
+                 8 |         <if {item.id}>
                    |              ^^^^
 
-                item: Record[attributes: Array[Bool], id: Bool]
-                  --> main.hop (line 7, col 17)
-                 6 |         </if>
-                 7 |         <for {attr in item.attributes}>
+                item: DataItem
+                  --> main.hop (line 10, col 17)
+                 9 |         </if>
+                10 |         <for {attr in item.attributes}>
                    |                       ^^^^
 
                 attr: Bool
-                  --> main.hop (line 7, col 9)
-                 6 |         </if>
-                 7 |         <for {attr in item.attributes}>
+                  --> main.hop (line 10, col 9)
+                 9 |         </if>
+                10 |         <for {attr in item.attributes}>
                    |               ^^^^
 
                 attr: Bool
-                  --> main.hop (line 8, col 9)
-                 7 |         <for {attr in item.attributes}>
-                 8 |             <if {attr}>
+                  --> main.hop (line 11, col 9)
+                10 |         <for {attr in item.attributes}>
+                11 |             <if {attr}>
                    |                  ^^^^
             "#]],
         );
@@ -2282,87 +2192,92 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Step3Comp {settings: {enabled: Bool}}>
+                record Settings {enabled: Bool}
+                record Config {settings: Settings}
+                record Data {config: Config}
+
+                <Step3Comp {settings: Settings}>
                 	<if {settings.enabled}>
                 	</if>
                 </Step3Comp>
 
-                <Step2Comp {config: {settings: {enabled: Bool}}}>
+                <Step2Comp {config: Config}>
                 	<Step3Comp {settings: config.settings}/>
                 </Step2Comp>
 
-                <Step1Comp {data: {config: {settings: {enabled: Bool}}}}>
+                <Step1Comp {data: Data}>
                 	<Step2Comp {config: data.config}/>
                 </Step1Comp>
 
-                <Main {params: {config: {settings: {enabled: Bool}}}}>
+                <Main {params: Data}>
                 	<Step1Comp {data: params}/>
                 </Main>
             "#},
             expect![[r#"
-                settings: Record[enabled: Bool]
-                  --> main.hop (line 1, col 13)
-                 1 | <Step3Comp {settings: {enabled: Bool}}>
+                settings: Settings
+                  --> main.hop (line 5, col 13)
+                 4 | 
+                 5 | <Step3Comp {settings: Settings}>
                    |             ^^^^^^^^
 
-                settings: Record[enabled: Bool]
-                  --> main.hop (line 2, col 7)
-                 1 | <Step3Comp {settings: {enabled: Bool}}>
-                 2 |     <if {settings.enabled}>
+                settings: Settings
+                  --> main.hop (line 6, col 7)
+                 5 | <Step3Comp {settings: Settings}>
+                 6 |     <if {settings.enabled}>
                    |          ^^^^^^^^
 
-                config: Record[settings: Record[enabled: Bool]]
-                  --> main.hop (line 6, col 13)
-                 5 | 
-                 6 | <Step2Comp {config: {settings: {enabled: Bool}}}>
-                   |             ^^^^^^
-
-                config: Record[settings: Record[enabled: Bool]]
-                  --> main.hop (line 7, col 24)
-                 6 | <Step2Comp {config: {settings: {enabled: Bool}}}>
-                 7 |     <Step3Comp {settings: config.settings}/>
-                   |                           ^^^^^^
-
-                settings: Record[enabled: Bool]
-                  --> main.hop (line 7, col 24)
-                 6 | <Step2Comp {config: {settings: {enabled: Bool}}}>
-                 7 |     <Step3Comp {settings: config.settings}/>
-                   |                           ^^^^^^^^^^^^^^^
-
-                data: Record[config: Record[settings: Record[enabled: Bool]]]
+                config: Config
                   --> main.hop (line 10, col 13)
                  9 | 
-                10 | <Step1Comp {data: {config: {settings: {enabled: Bool}}}}>
+                10 | <Step2Comp {config: Config}>
+                   |             ^^^^^^
+
+                config: Config
+                  --> main.hop (line 11, col 24)
+                10 | <Step2Comp {config: Config}>
+                11 |     <Step3Comp {settings: config.settings}/>
+                   |                           ^^^^^^
+
+                settings: Settings
+                  --> main.hop (line 11, col 24)
+                10 | <Step2Comp {config: Config}>
+                11 |     <Step3Comp {settings: config.settings}/>
+                   |                           ^^^^^^^^^^^^^^^
+
+                data: Data
+                  --> main.hop (line 14, col 13)
+                13 | 
+                14 | <Step1Comp {data: Data}>
                    |             ^^^^
 
-                data: Record[config: Record[settings: Record[enabled: Bool]]]
-                  --> main.hop (line 11, col 22)
-                10 | <Step1Comp {data: {config: {settings: {enabled: Bool}}}}>
-                11 |     <Step2Comp {config: data.config}/>
+                data: Data
+                  --> main.hop (line 15, col 22)
+                14 | <Step1Comp {data: Data}>
+                15 |     <Step2Comp {config: data.config}/>
                    |                         ^^^^
 
-                config: Record[settings: Record[enabled: Bool]]
-                  --> main.hop (line 11, col 22)
-                10 | <Step1Comp {data: {config: {settings: {enabled: Bool}}}}>
-                11 |     <Step2Comp {config: data.config}/>
+                config: Config
+                  --> main.hop (line 15, col 22)
+                14 | <Step1Comp {data: Data}>
+                15 |     <Step2Comp {config: data.config}/>
                    |                         ^^^^^^^^^^^
 
-                params: Record[config: Record[settings: Record[enabled: Bool]]]
-                  --> main.hop (line 14, col 8)
-                13 | 
-                14 | <Main {params: {config: {settings: {enabled: Bool}}}}>
+                params: Data
+                  --> main.hop (line 18, col 8)
+                17 | 
+                18 | <Main {params: Data}>
                    |        ^^^^^^
 
-                params: Record[config: Record[settings: Record[enabled: Bool]]]
-                  --> main.hop (line 15, col 20)
-                14 | <Main {params: {config: {settings: {enabled: Bool}}}}>
-                15 |     <Step1Comp {data: params}/>
+                params: Data
+                  --> main.hop (line 19, col 20)
+                18 | <Main {params: Data}>
+                19 |     <Step1Comp {data: params}/>
                    |                       ^^^^^^
 
-                data: Record[config: Record[settings: Record[enabled: Bool]]]
-                  --> main.hop (line 15, col 20)
-                14 | <Main {params: {config: {settings: {enabled: Bool}}}}>
-                15 |     <Step1Comp {data: params}/>
+                data: Data
+                  --> main.hop (line 19, col 20)
+                18 | <Main {params: Data}>
+                19 |     <Step1Comp {data: params}/>
                    |                       ^^^^^^
             "#]],
         );
@@ -2373,7 +2288,10 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <MainCard {item: {title: String, active: Bool, status: String}}>
+                record Item {title: String, active: Bool, status: String}
+                record Data {items: Array[Item]}
+
+                <MainCard {item: Item}>
                   <div>{item.title}
                   </div>
                   <if {item.active}>
@@ -2382,98 +2300,87 @@ mod tests {
                   </if>
                 </MainCard>
 
-                <MainList {items: Array[{title: String, active: Bool, status: String}]}>
+                <MainList {items: Array[Item]}>
                   <for {item in items}>
                     <MainCard {item: item}/>
                   </for>
                 </MainList>
 
-                <Main {data: {items: Array[{title: String, active: Bool, status: String}]}}>
+                <Main {data: Data}>
                   <MainList {items: data.items}/>
                 </Main>
             "#},
             expect![[r#"
-                item: Record[active: Bool, status: String, title: String]
-                  --> main.hop (line 1, col 12)
-                 1 | <MainCard {item: {title: String, active: Bool, status: String}}>
+                item: Item
+                  --> main.hop (line 4, col 12)
+                 3 | 
+                 4 | <MainCard {item: Item}>
                    |            ^^^^
 
-                item: Record[active: Bool, status: String, title: String]
-                  --> main.hop (line 2, col 9)
-                 1 | <MainCard {item: {title: String, active: Bool, status: String}}>
-                 2 |   <div>{item.title}
+                item: Item
+                  --> main.hop (line 5, col 9)
+                 4 | <MainCard {item: Item}>
+                 5 |   <div>{item.title}
                    |         ^^^^
 
-                item: Record[active: Bool, status: String, title: String]
-                  --> main.hop (line 5, col 12)
-                 4 |   <if {item.active}>
-                 5 |     <span>{item.status}
+                item: Item
+                  --> main.hop (line 8, col 12)
+                 7 |   <if {item.active}>
+                 8 |     <span>{item.status}
                    |            ^^^^
 
-                item: Record[active: Bool, status: String, title: String]
-                  --> main.hop (line 4, col 8)
-                 3 |   </div>
-                 4 |   <if {item.active}>
+                item: Item
+                  --> main.hop (line 7, col 8)
+                 6 |   </div>
+                 7 |   <if {item.active}>
                    |        ^^^^
 
-                items: Array[Record[active: Bool, status: String, title: String]]
-                  --> main.hop (line 10, col 12)
-                 9 | 
-                10 | <MainList {items: Array[{title: String, active: Bool, status: String}]}>
+                items: Array[Item]
+                  --> main.hop (line 13, col 12)
+                12 | 
+                13 | <MainList {items: Array[Item]}>
                    |            ^^^^^
 
-                items: Array[Record[active: Bool, status: String, title: String]]
-                  --> main.hop (line 11, col 17)
-                10 | <MainList {items: Array[{title: String, active: Bool, status: String}]}>
-                11 |   <for {item in items}>
+                items: Array[Item]
+                  --> main.hop (line 14, col 17)
+                13 | <MainList {items: Array[Item]}>
+                14 |   <for {item in items}>
                    |                 ^^^^^
 
-                item: Record[active: Bool, status: String, title: String]
-                  --> main.hop (line 11, col 9)
-                10 | <MainList {items: Array[{title: String, active: Bool, status: String}]}>
-                11 |   <for {item in items}>
+                item: Item
+                  --> main.hop (line 14, col 9)
+                13 | <MainList {items: Array[Item]}>
+                14 |   <for {item in items}>
                    |         ^^^^
 
-                item: Record[active: Bool, status: String, title: String]
-                  --> main.hop (line 12, col 22)
-                11 |   <for {item in items}>
-                12 |     <MainCard {item: item}/>
+                item: Item
+                  --> main.hop (line 15, col 22)
+                14 |   <for {item in items}>
+                15 |     <MainCard {item: item}/>
                    |                      ^^^^
 
-                item: Record[active: Bool, status: String, title: String]
-                  --> main.hop (line 12, col 22)
-                11 |   <for {item in items}>
-                12 |     <MainCard {item: item}/>
+                item: Item
+                  --> main.hop (line 15, col 22)
+                14 |   <for {item in items}>
+                15 |     <MainCard {item: item}/>
                    |                      ^^^^
 
-                data: Record[
-                  items: Array[Record[
-                    active: Bool,
-                    status: String,
-                    title: String,
-                  ]],
-                ]
-                  --> main.hop (line 16, col 8)
-                15 | 
-                16 | <Main {data: {items: Array[{title: String, active: Bool, status: String}]}}>
+                data: Data
+                  --> main.hop (line 19, col 8)
+                18 | 
+                19 | <Main {data: Data}>
                    |        ^^^^
 
-                data: Record[
-                  items: Array[Record[
-                    active: Bool,
-                    status: String,
-                    title: String,
-                  ]],
-                ]
-                  --> main.hop (line 17, col 21)
-                16 | <Main {data: {items: Array[{title: String, active: Bool, status: String}]}}>
-                17 |   <MainList {items: data.items}/>
+                data: Data
+                  --> main.hop (line 20, col 21)
+                19 | <Main {data: Data}>
+                20 |   <MainList {items: data.items}/>
                    |                     ^^^^
 
-                items: Array[Record[active: Bool, status: String, title: String]]
-                  --> main.hop (line 17, col 21)
-                16 | <Main {data: {items: Array[{title: String, active: Bool, status: String}]}}>
-                17 |   <MainList {items: data.items}/>
+                items: Array[Item]
+                  --> main.hop (line 20, col 21)
+                19 | <Main {data: Data}>
+                20 |   <MainList {items: data.items}/>
                    |                     ^^^^^^^^^^
             "#]],
         );
@@ -2484,7 +2391,11 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: {i: {j: {k: {l: Bool}}, k: Bool}}}>
+                record L {l: Bool}
+                record J {k: L}
+                record I {j: J, k: Bool}
+                record Params {i: I}
+                <Main {params: Params}>
                 	<if {params.i.j.k.l}>
                 		<if {params.i.k}>
                 		</if>
@@ -2492,22 +2403,23 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Record[i: Record[j: Record[k: Record[l: Bool]], k: Bool]]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {params: {i: {j: {k: {l: Bool}}, k: Bool}}}>
-                  |        ^^^^^^
+                params: Params
+                  --> main.hop (line 5, col 8)
+                 4 | record Params {i: I}
+                 5 | <Main {params: Params}>
+                   |        ^^^^^^
 
-                params: Record[i: Record[j: Record[k: Record[l: Bool]], k: Bool]]
-                  --> main.hop (line 3, col 8)
-                2 |     <if {params.i.j.k.l}>
-                3 |         <if {params.i.k}>
-                  |              ^^^^^^
+                params: Params
+                  --> main.hop (line 7, col 8)
+                 6 |     <if {params.i.j.k.l}>
+                 7 |         <if {params.i.k}>
+                   |              ^^^^^^
 
-                params: Record[i: Record[j: Record[k: Record[l: Bool]], k: Bool]]
-                  --> main.hop (line 2, col 7)
-                1 | <Main {params: {i: {j: {k: {l: Bool}}, k: Bool}}}>
-                2 |     <if {params.i.j.k.l}>
-                  |          ^^^^^^
+                params: Params
+                  --> main.hop (line 6, col 7)
+                 5 | <Main {params: Params}>
+                 6 |     <if {params.i.j.k.l}>
+                   |          ^^^^^^
             "#]],
         );
     }
@@ -2517,7 +2429,11 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: {i: {j: {k: {l: Bool}}, k: Bool}}}>
+                record L {l: Bool}
+                record J {k: L}
+                record I {j: J, k: Bool}
+                record Params {i: I}
+                <Main {params: Params}>
                 	<if {params.i.j.k.l}>
                 	</if>
                 	<if {params.i.k}>
@@ -2525,22 +2441,23 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Record[i: Record[j: Record[k: Record[l: Bool]], k: Bool]]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {params: {i: {j: {k: {l: Bool}}, k: Bool}}}>
-                  |        ^^^^^^
+                params: Params
+                  --> main.hop (line 5, col 8)
+                 4 | record Params {i: I}
+                 5 | <Main {params: Params}>
+                   |        ^^^^^^
 
-                params: Record[i: Record[j: Record[k: Record[l: Bool]], k: Bool]]
-                  --> main.hop (line 2, col 7)
-                1 | <Main {params: {i: {j: {k: {l: Bool}}, k: Bool}}}>
-                2 |     <if {params.i.j.k.l}>
-                  |          ^^^^^^
+                params: Params
+                  --> main.hop (line 6, col 7)
+                 5 | <Main {params: Params}>
+                 6 |     <if {params.i.j.k.l}>
+                   |          ^^^^^^
 
-                params: Record[i: Record[j: Record[k: Record[l: Bool]], k: Bool]]
-                  --> main.hop (line 4, col 7)
-                3 |     </if>
-                4 |     <if {params.i.k}>
-                  |          ^^^^^^
+                params: Params
+                  --> main.hop (line 8, col 7)
+                 7 |     </if>
+                 8 |     <if {params.i.k}>
+                   |          ^^^^^^
             "#]],
         );
     }
@@ -2550,7 +2467,9 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: {tags: Array[Bool], categories: Array[Bool], metadata: {title: Bool}}}>
+                record Metadata {title: Bool}
+                record Params {tags: Array[Bool], categories: Array[Bool], metadata: Metadata}
+                <Main {params: Params}>
                 	<for {tag in params.tags}>
                 		<if {tag}>
                 		</if>
@@ -2564,67 +2483,52 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Record[
-                  categories: Array[Bool],
-                  metadata: Record[title: Bool],
-                  tags: Array[Bool],
-                ]
-                  --> main.hop (line 1, col 8)
-                 1 | <Main {params: {tags: Array[Bool], categories: Array[Bool], metadata: {title: Bool}}}>
+                params: Params
+                  --> main.hop (line 3, col 8)
+                 2 | record Params {tags: Array[Bool], categories: Array[Bool], metadata: Metadata}
+                 3 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Record[
-                  categories: Array[Bool],
-                  metadata: Record[title: Bool],
-                  tags: Array[Bool],
-                ]
-                  --> main.hop (line 2, col 15)
-                 1 | <Main {params: {tags: Array[Bool], categories: Array[Bool], metadata: {title: Bool}}}>
-                 2 |     <for {tag in params.tags}>
+                params: Params
+                  --> main.hop (line 4, col 15)
+                 3 | <Main {params: Params}>
+                 4 |     <for {tag in params.tags}>
                    |                  ^^^^^^
 
                 tag: Bool
-                  --> main.hop (line 2, col 8)
-                 1 | <Main {params: {tags: Array[Bool], categories: Array[Bool], metadata: {title: Bool}}}>
-                 2 |     <for {tag in params.tags}>
+                  --> main.hop (line 4, col 8)
+                 3 | <Main {params: Params}>
+                 4 |     <for {tag in params.tags}>
                    |           ^^^
 
                 tag: Bool
-                  --> main.hop (line 3, col 8)
-                 2 |     <for {tag in params.tags}>
-                 3 |         <if {tag}>
+                  --> main.hop (line 5, col 8)
+                 4 |     <for {tag in params.tags}>
+                 5 |         <if {tag}>
                    |              ^^^
 
-                params: Record[
-                  categories: Array[Bool],
-                  metadata: Record[title: Bool],
-                  tags: Array[Bool],
-                ]
-                  --> main.hop (line 6, col 20)
-                 5 |     </for>
-                 6 |     <for {category in params.categories}>
+                params: Params
+                  --> main.hop (line 8, col 20)
+                 7 |     </for>
+                 8 |     <for {category in params.categories}>
                    |                       ^^^^^^
 
                 category: Bool
-                  --> main.hop (line 6, col 8)
-                 5 |     </for>
-                 6 |     <for {category in params.categories}>
+                  --> main.hop (line 8, col 8)
+                 7 |     </for>
+                 8 |     <for {category in params.categories}>
                    |           ^^^^^^^^
 
                 category: Bool
-                  --> main.hop (line 7, col 8)
-                 6 |     <for {category in params.categories}>
-                 7 |         <if {category}>
+                  --> main.hop (line 9, col 8)
+                 8 |     <for {category in params.categories}>
+                 9 |         <if {category}>
                    |              ^^^^^^^^
 
-                params: Record[
-                  categories: Array[Bool],
-                  metadata: Record[title: Bool],
-                  tags: Array[Bool],
-                ]
-                  --> main.hop (line 10, col 7)
-                 9 |     </for>
-                10 |     <if {params.metadata.title}>
+                params: Params
+                  --> main.hop (line 12, col 7)
+                11 |     </for>
+                12 |     <if {params.metadata.title}>
                    |          ^^^^^^
             "#]],
         );
@@ -2704,12 +2608,16 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <ExecuteStep {step: {condition: Bool}}>
+                record Step {condition: Bool}
+                record Workflow {enabled: Bool, steps: Array[Step]}
+                record Params {workflows: Array[Workflow]}
+
+                <ExecuteStep {step: Step}>
                 	<if {step.condition}>
                 	</if>
                 </ExecuteStep>
 
-                <ExecuteWorkflow {workflow: {enabled: Bool, steps: Array[{condition: Bool}]}}>
+                <ExecuteWorkflow {workflow: Workflow}>
                 	<if {workflow.enabled}>
                 		<for {step in workflow.steps}>
                 			<ExecuteStep {step: step}/>
@@ -2717,98 +2625,89 @@ mod tests {
                 	</if>
                 </ExecuteWorkflow>
 
-                <Main {params: {workflows: Array[{enabled: Bool, steps: Array[{condition: Bool}]}]}}>
+                <Main {params: Params}>
                 	<for {workflow in params.workflows}>
                 		<ExecuteWorkflow {workflow: workflow}/>
                 	</for>
                 </Main>
             "#},
             expect![[r#"
-                step: Record[condition: Bool]
-                  --> main.hop (line 1, col 15)
-                 1 | <ExecuteStep {step: {condition: Bool}}>
+                step: Step
+                  --> main.hop (line 5, col 15)
+                 4 | 
+                 5 | <ExecuteStep {step: Step}>
                    |               ^^^^
 
-                step: Record[condition: Bool]
-                  --> main.hop (line 2, col 7)
-                 1 | <ExecuteStep {step: {condition: Bool}}>
-                 2 |     <if {step.condition}>
+                step: Step
+                  --> main.hop (line 6, col 7)
+                 5 | <ExecuteStep {step: Step}>
+                 6 |     <if {step.condition}>
                    |          ^^^^
 
-                workflow: Record[enabled: Bool, steps: Array[Record[condition: Bool]]]
-                  --> main.hop (line 6, col 19)
-                 5 | 
-                 6 | <ExecuteWorkflow {workflow: {enabled: Bool, steps: Array[{condition: Bool}]}}>
+                workflow: Workflow
+                  --> main.hop (line 10, col 19)
+                 9 | 
+                10 | <ExecuteWorkflow {workflow: Workflow}>
                    |                   ^^^^^^^^
 
-                workflow: Record[enabled: Bool, steps: Array[Record[condition: Bool]]]
-                  --> main.hop (line 8, col 17)
-                 7 |     <if {workflow.enabled}>
-                 8 |         <for {step in workflow.steps}>
+                workflow: Workflow
+                  --> main.hop (line 12, col 17)
+                11 |     <if {workflow.enabled}>
+                12 |         <for {step in workflow.steps}>
                    |                       ^^^^^^^^
 
-                step: Record[condition: Bool]
-                  --> main.hop (line 8, col 9)
-                 7 |     <if {workflow.enabled}>
-                 8 |         <for {step in workflow.steps}>
+                step: Step
+                  --> main.hop (line 12, col 9)
+                11 |     <if {workflow.enabled}>
+                12 |         <for {step in workflow.steps}>
                    |               ^^^^
 
-                step: Record[condition: Bool]
-                  --> main.hop (line 9, col 24)
-                 8 |         <for {step in workflow.steps}>
-                 9 |             <ExecuteStep {step: step}/>
+                step: Step
+                  --> main.hop (line 13, col 24)
+                12 |         <for {step in workflow.steps}>
+                13 |             <ExecuteStep {step: step}/>
                    |                                 ^^^^
 
-                step: Record[condition: Bool]
-                  --> main.hop (line 9, col 24)
-                 8 |         <for {step in workflow.steps}>
-                 9 |             <ExecuteStep {step: step}/>
+                step: Step
+                  --> main.hop (line 13, col 24)
+                12 |         <for {step in workflow.steps}>
+                13 |             <ExecuteStep {step: step}/>
                    |                                 ^^^^
 
-                workflow: Record[enabled: Bool, steps: Array[Record[condition: Bool]]]
-                  --> main.hop (line 7, col 7)
-                 6 | <ExecuteWorkflow {workflow: {enabled: Bool, steps: Array[{condition: Bool}]}}>
-                 7 |     <if {workflow.enabled}>
+                workflow: Workflow
+                  --> main.hop (line 11, col 7)
+                10 | <ExecuteWorkflow {workflow: Workflow}>
+                11 |     <if {workflow.enabled}>
                    |          ^^^^^^^^
 
-                params: Record[
-                  workflows: Array[Record[
-                    enabled: Bool,
-                    steps: Array[Record[condition: Bool]],
-                  ]],
-                ]
-                  --> main.hop (line 14, col 8)
-                13 | 
-                14 | <Main {params: {workflows: Array[{enabled: Bool, steps: Array[{condition: Bool}]}]}}>
+                params: Params
+                  --> main.hop (line 18, col 8)
+                17 | 
+                18 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Record[
-                  workflows: Array[Record[
-                    enabled: Bool,
-                    steps: Array[Record[condition: Bool]],
-                  ]],
-                ]
-                  --> main.hop (line 15, col 20)
-                14 | <Main {params: {workflows: Array[{enabled: Bool, steps: Array[{condition: Bool}]}]}}>
-                15 |     <for {workflow in params.workflows}>
+                params: Params
+                  --> main.hop (line 19, col 20)
+                18 | <Main {params: Params}>
+                19 |     <for {workflow in params.workflows}>
                    |                       ^^^^^^
 
-                workflow: Record[enabled: Bool, steps: Array[Record[condition: Bool]]]
-                  --> main.hop (line 15, col 8)
-                14 | <Main {params: {workflows: Array[{enabled: Bool, steps: Array[{condition: Bool}]}]}}>
-                15 |     <for {workflow in params.workflows}>
+                workflow: Workflow
+                  --> main.hop (line 19, col 8)
+                18 | <Main {params: Params}>
+                19 |     <for {workflow in params.workflows}>
                    |           ^^^^^^^^
 
-                workflow: Record[enabled: Bool, steps: Array[Record[condition: Bool]]]
-                  --> main.hop (line 16, col 31)
-                15 |     <for {workflow in params.workflows}>
-                16 |         <ExecuteWorkflow {workflow: workflow}/>
+                workflow: Workflow
+                  --> main.hop (line 20, col 31)
+                19 |     <for {workflow in params.workflows}>
+                20 |         <ExecuteWorkflow {workflow: workflow}/>
                    |                                     ^^^^^^^^
 
-                workflow: Record[enabled: Bool, steps: Array[Record[condition: Bool]]]
-                  --> main.hop (line 16, col 31)
-                15 |     <for {workflow in params.workflows}>
-                16 |         <ExecuteWorkflow {workflow: workflow}/>
+                workflow: Workflow
+                  --> main.hop (line 20, col 31)
+                19 |     <for {workflow in params.workflows}>
+                20 |         <ExecuteWorkflow {workflow: workflow}/>
                    |                                     ^^^^^^^^
             "#]],
         );
@@ -2866,12 +2765,11 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <ProcessItem {
-                    item: {
-                        children: Array[{visible: Bool}],
-                        status: {active: Bool}
-                    }
-                }>
+                record Child {visible: Bool}
+                record Status {active: Bool}
+                record Item {children: Array[Child], status: Status}
+                record Params {items: Array[Item]}
+                <ProcessItem {item: Item}>
                 	<if {item.status.active}>
                 	</if>
                 	<for {child in item.children}>
@@ -2880,102 +2778,71 @@ mod tests {
                 	</for>
                 </ProcessItem>
 
-                <Main {params: {
-                    items: Array[{children: Array[{visible: Bool}],
-                    status: {active: Bool}}],
-                }}>
+                <Main {params: Params}>
                 	<for {item in params.items}>
                 		<ProcessItem {item: item}/>
                 	</for>
                 </Main>
             "#},
             expect![[r#"
-                item: Record[
-                  children: Array[Record[visible: Bool]],
-                  status: Record[active: Bool],
-                ]
-                  --> main.hop (line 2, col 5)
-                 1 | <ProcessItem {
-                 2 |     item: {
-                   |     ^^^^
+                item: Item
+                  --> main.hop (line 5, col 15)
+                 4 | record Params {items: Array[Item]}
+                 5 | <ProcessItem {item: Item}>
+                   |               ^^^^
 
-                item: Record[
-                  children: Array[Record[visible: Bool]],
-                  status: Record[active: Bool],
-                ]
-                  --> main.hop (line 7, col 7)
-                 6 | }>
-                 7 |     <if {item.status.active}>
+                item: Item
+                  --> main.hop (line 6, col 7)
+                 5 | <ProcessItem {item: Item}>
+                 6 |     <if {item.status.active}>
                    |          ^^^^
 
-                item: Record[
-                  children: Array[Record[visible: Bool]],
-                  status: Record[active: Bool],
-                ]
-                  --> main.hop (line 9, col 17)
-                 8 |     </if>
-                 9 |     <for {child in item.children}>
+                item: Item
+                  --> main.hop (line 8, col 17)
+                 7 |     </if>
+                 8 |     <for {child in item.children}>
                    |                    ^^^^
 
-                child: Record[visible: Bool]
-                  --> main.hop (line 9, col 8)
-                 8 |     </if>
-                 9 |     <for {child in item.children}>
+                child: Child
+                  --> main.hop (line 8, col 8)
+                 7 |     </if>
+                 8 |     <for {child in item.children}>
                    |           ^^^^^
 
-                child: Record[visible: Bool]
-                  --> main.hop (line 10, col 8)
-                 9 |     <for {child in item.children}>
-                10 |         <if {child.visible}>
+                child: Child
+                  --> main.hop (line 9, col 8)
+                 8 |     <for {child in item.children}>
+                 9 |         <if {child.visible}>
                    |              ^^^^^
 
-                params: Record[
-                  items: Array[Record[
-                    children: Array[Record[visible: Bool]],
-                    status: Record[active: Bool],
-                  ]],
-                ]
-                  --> main.hop (line 15, col 8)
-                14 | 
-                15 | <Main {params: {
+                params: Params
+                  --> main.hop (line 14, col 8)
+                13 | 
+                14 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Record[
-                  items: Array[Record[
-                    children: Array[Record[visible: Bool]],
-                    status: Record[active: Bool],
-                  ]],
-                ]
-                  --> main.hop (line 19, col 16)
-                18 | }}>
-                19 |     <for {item in params.items}>
+                params: Params
+                  --> main.hop (line 15, col 16)
+                14 | <Main {params: Params}>
+                15 |     <for {item in params.items}>
                    |                   ^^^^^^
 
-                item: Record[
-                  children: Array[Record[visible: Bool]],
-                  status: Record[active: Bool],
-                ]
-                  --> main.hop (line 19, col 8)
-                18 | }}>
-                19 |     <for {item in params.items}>
+                item: Item
+                  --> main.hop (line 15, col 8)
+                14 | <Main {params: Params}>
+                15 |     <for {item in params.items}>
                    |           ^^^^
 
-                item: Record[
-                  children: Array[Record[visible: Bool]],
-                  status: Record[active: Bool],
-                ]
-                  --> main.hop (line 20, col 23)
-                19 |     <for {item in params.items}>
-                20 |         <ProcessItem {item: item}/>
+                item: Item
+                  --> main.hop (line 16, col 23)
+                15 |     <for {item in params.items}>
+                16 |         <ProcessItem {item: item}/>
                    |                             ^^^^
 
-                item: Record[
-                  children: Array[Record[visible: Bool]],
-                  status: Record[active: Bool],
-                ]
-                  --> main.hop (line 20, col 23)
-                19 |     <for {item in params.items}>
-                20 |         <ProcessItem {item: item}/>
+                item: Item
+                  --> main.hop (line 16, col 23)
+                15 |     <for {item in params.items}>
+                16 |         <ProcessItem {item: item}/>
                    |                             ^^^^
             "#]],
         );
@@ -2986,26 +2853,28 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {user: {url: String, theme: String}}>
+                record User {url: String, theme: String}
+                <Main {user: User}>
                   <a href={user.url} class={user.theme}>Link</a>
                 </Main>
             "#},
             expect![[r#"
-                user: Record[theme: String, url: String]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {user: {url: String, theme: String}}>
+                user: User
+                  --> main.hop (line 2, col 8)
+                1 | record User {url: String, theme: String}
+                2 | <Main {user: User}>
                   |        ^^^^
 
-                user: Record[theme: String, url: String]
-                  --> main.hop (line 2, col 29)
-                1 | <Main {user: {url: String, theme: String}}>
-                2 |   <a href={user.url} class={user.theme}>Link</a>
+                user: User
+                  --> main.hop (line 3, col 29)
+                2 | <Main {user: User}>
+                3 |   <a href={user.url} class={user.theme}>Link</a>
                   |                             ^^^^
 
-                user: Record[theme: String, url: String]
-                  --> main.hop (line 2, col 12)
-                1 | <Main {user: {url: String, theme: String}}>
-                2 |   <a href={user.url} class={user.theme}>Link</a>
+                user: User
+                  --> main.hop (line 3, col 12)
+                2 | <Main {user: User}>
+                3 |   <a href={user.url} class={user.theme}>Link</a>
                   |            ^^^^
             "#]],
         );
@@ -3037,21 +2906,23 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {data: {message: String}}>
+                record Data {message: String}
+                <Main {data: Data}>
                   <div>{data.message}
                   </div>
                 </Main>
             "#},
             expect![[r#"
-                data: Record[message: String]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {data: {message: String}}>
+                data: Data
+                  --> main.hop (line 2, col 8)
+                1 | record Data {message: String}
+                2 | <Main {data: Data}>
                   |        ^^^^
 
-                data: Record[message: String]
-                  --> main.hop (line 2, col 9)
-                1 | <Main {data: {message: String}}>
-                2 |   <div>{data.message}
+                data: Data
+                  --> main.hop (line 3, col 9)
+                2 | <Main {data: Data}>
+                3 |   <div>{data.message}
                   |         ^^^^
             "#]],
         );
@@ -3062,22 +2933,24 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: {role: String}}>
+                record Params {role: String}
+                <Main {params: Params}>
                   <if {params.role == "admin"}>
                     <div>Admin</div>
                   </if>
                 </Main>
             "#},
             expect![[r#"
-                params: Record[role: String]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {params: {role: String}}>
+                params: Params
+                  --> main.hop (line 2, col 8)
+                1 | record Params {role: String}
+                2 | <Main {params: Params}>
                   |        ^^^^^^
 
-                params: Record[role: String]
-                  --> main.hop (line 2, col 8)
-                1 | <Main {params: {role: String}}>
-                2 |   <if {params.role == "admin"}>
+                params: Params
+                  --> main.hop (line 3, col 8)
+                2 | <Main {params: Params}>
+                3 |   <if {params.role == "admin"}>
                   |        ^^^^^^
             "#]],
         );
@@ -3165,7 +3038,7 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                error: Array[String] can not be used as an object
+                error: Array[String] can not be used as a record
                   --> main.hop (line 5, col 13)
                 4 |     </for>
                 5 |     <for {y in params.foo}>
@@ -3179,21 +3052,23 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {data: {message: String}}>
+                record Data {message: String}
+                <Main {data: Data}>
                 	<hop-x-raw>foo bar</hop-x-raw>
                 	<div>{data.message}</div>
                 </Main>
             "#},
             expect![[r#"
-                data: Record[message: String]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {data: {message: String}}>
+                data: Data
+                  --> main.hop (line 2, col 8)
+                1 | record Data {message: String}
+                2 | <Main {data: Data}>
                   |        ^^^^
 
-                data: Record[message: String]
-                  --> main.hop (line 3, col 8)
-                2 |     <hop-x-raw>foo bar</hop-x-raw>
-                3 |     <div>{data.message}</div>
+                data: Data
+                  --> main.hop (line 4, col 8)
+                3 |     <hop-x-raw>foo bar</hop-x-raw>
+                4 |     <div>{data.message}</div>
                   |           ^^^^
             "#]],
         );
@@ -3239,22 +3114,24 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {user: {is_active: Bool}}>
+                record User {is_active: Bool}
+                <Main {user: User}>
                   <if {user.is_active}>
                     <div>User is active</div>
                   </if>
                 </Main>
             "#},
             expect![[r#"
-                user: Record[is_active: Bool]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {user: {is_active: Bool}}>
+                user: User
+                  --> main.hop (line 2, col 8)
+                1 | record User {is_active: Bool}
+                2 | <Main {user: User}>
                   |        ^^^^
 
-                user: Record[is_active: Bool]
-                  --> main.hop (line 2, col 8)
-                1 | <Main {user: {is_active: Bool}}>
-                2 |   <if {user.is_active}>
+                user: User
+                  --> main.hop (line 3, col 8)
+                2 | <Main {user: User}>
+                3 |   <if {user.is_active}>
                   |        ^^^^
             "#]],
         );
@@ -3266,22 +3143,24 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {data: {status: String}}>
+                record Data {status: String}
+                <Main {data: Data}>
                   <if {data.status == "approved"}>
                     <div>Status is approved</div>
                   </if>
                 </Main>
             "#},
             expect![[r#"
-                data: Record[status: String]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {data: {status: String}}>
+                data: Data
+                  --> main.hop (line 2, col 8)
+                1 | record Data {status: String}
+                2 | <Main {data: Data}>
                   |        ^^^^
 
-                data: Record[status: String]
-                  --> main.hop (line 2, col 8)
-                1 | <Main {data: {status: String}}>
-                2 |   <if {data.status == "approved"}>
+                data: Data
+                  --> main.hop (line 3, col 8)
+                2 | <Main {data: Data}>
+                3 |   <if {data.status == "approved"}>
                   |        ^^^^
             "#]],
         );
@@ -3315,7 +3194,8 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {config: {enabled: Bool, debug: Bool}}>
+                record Config {enabled: Bool, debug: Bool}
+                <Main {config: Config}>
                   <if {config.enabled}>
                     <div>Feature enabled</div>
                     <if {config.debug}>
@@ -3325,21 +3205,22 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                config: Record[debug: Bool, enabled: Bool]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {config: {enabled: Bool, debug: Bool}}>
+                config: Config
+                  --> main.hop (line 2, col 8)
+                1 | record Config {enabled: Bool, debug: Bool}
+                2 | <Main {config: Config}>
                   |        ^^^^^^
 
-                config: Record[debug: Bool, enabled: Bool]
-                  --> main.hop (line 4, col 10)
-                3 |     <div>Feature enabled</div>
-                4 |     <if {config.debug}>
+                config: Config
+                  --> main.hop (line 5, col 10)
+                4 |     <div>Feature enabled</div>
+                5 |     <if {config.debug}>
                   |          ^^^^^^
 
-                config: Record[debug: Bool, enabled: Bool]
-                  --> main.hop (line 2, col 8)
-                1 | <Main {config: {enabled: Bool, debug: Bool}}>
-                2 |   <if {config.enabled}>
+                config: Config
+                  --> main.hop (line 3, col 8)
+                2 | <Main {config: Config}>
+                3 |   <if {config.enabled}>
                   |        ^^^^^^
             "#]],
         );
@@ -3352,7 +3233,8 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {config: {debug: Bool}}>
+                record Config {debug: Bool}
+                <Main {config: Config}>
                   <if {config.debug}>
                     <div>Debug mode on</div>
                   </if>
@@ -3362,10 +3244,10 @@ mod tests {
                 </Foo>
             "#},
             expect![[r#"
-                error: Argument 'config' of type Int is incompatible with expected type Record[debug: Bool]
-                  --> main.hop (line 7, col 18)
-                6 | <Foo>
-                7 |   <Main {config: 1}/>
+                error: Argument 'config' of type Int is incompatible with expected type Config
+                  --> main.hop (line 8, col 18)
+                7 | <Foo>
+                8 |   <Main {config: 1}/>
                   |                  ^
             "#]],
         );
@@ -3428,28 +3310,30 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: {mode: String}}>
+                record Params {mode: String}
+                <Main {params: Params}>
                   <if {params.mode == hop_mode}>
                     <div>Mode matches</div>
                   </if>
                 </Main>
             "#},
             expect![[r#"
-                params: Record[mode: String]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {params: {mode: String}}>
+                params: Params
+                  --> main.hop (line 2, col 8)
+                1 | record Params {mode: String}
+                2 | <Main {params: Params}>
                   |        ^^^^^^
 
-                params: Record[mode: String]
-                  --> main.hop (line 2, col 8)
-                1 | <Main {params: {mode: String}}>
-                2 |   <if {params.mode == hop_mode}>
+                params: Params
+                  --> main.hop (line 3, col 8)
+                2 | <Main {params: Params}>
+                3 |   <if {params.mode == hop_mode}>
                   |        ^^^^^^
 
                 hop_mode: String
-                  --> main.hop (line 2, col 23)
-                1 | <Main {params: {mode: String}}>
-                2 |   <if {params.mode == hop_mode}>
+                  --> main.hop (line 3, col 23)
+                2 | <Main {params: Params}>
+                3 |   <if {params.mode == hop_mode}>
                   |                       ^^^^^^^^
             "#]],
         );
@@ -3460,7 +3344,8 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {params: {foo: String}}>
+                record Params {foo: String}
+                <Main {params: Params}>
                   <if {params.foo == "foo"}>
                     eq 1
                   </if>
@@ -3470,10 +3355,10 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                error: Type Record[foo: String] is not comparable
-                  --> main.hop (line 5, col 8)
-                4 |   </if>
-                5 |   <if {params == params}>
+                error: Type Params is not comparable
+                  --> main.hop (line 6, col 8)
+                5 |   </if>
+                6 |   <if {params == params}>
                   |        ^^^^^^
             "#]],
         );
@@ -3484,7 +3369,8 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main {data: Array[{title: String, items: Array[String]}]}>
+                record Section {title: String, items: Array[String]}
+                <Main {data: Array[Section]}>
                 	<for {section in data}>
                 		<h1>{section.title}</h1>
                 		<for {item in section.items}>
@@ -3494,45 +3380,46 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                data: Array[Record[items: Array[String], title: String]]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {data: Array[{title: String, items: Array[String]}]}>
+                data: Array[Section]
+                  --> main.hop (line 2, col 8)
+                1 | record Section {title: String, items: Array[String]}
+                2 | <Main {data: Array[Section]}>
                   |        ^^^^
 
-                data: Array[Record[items: Array[String], title: String]]
-                  --> main.hop (line 2, col 19)
-                1 | <Main {data: Array[{title: String, items: Array[String]}]}>
-                2 |     <for {section in data}>
+                data: Array[Section]
+                  --> main.hop (line 3, col 19)
+                2 | <Main {data: Array[Section]}>
+                3 |     <for {section in data}>
                   |                      ^^^^
 
-                section: Record[items: Array[String], title: String]
-                  --> main.hop (line 2, col 8)
-                1 | <Main {data: Array[{title: String, items: Array[String]}]}>
-                2 |     <for {section in data}>
+                section: Section
+                  --> main.hop (line 3, col 8)
+                2 | <Main {data: Array[Section]}>
+                3 |     <for {section in data}>
                   |           ^^^^^^^
 
-                section: Record[items: Array[String], title: String]
-                  --> main.hop (line 3, col 8)
-                2 |     <for {section in data}>
-                3 |         <h1>{section.title}</h1>
+                section: Section
+                  --> main.hop (line 4, col 8)
+                3 |     <for {section in data}>
+                4 |         <h1>{section.title}</h1>
                   |              ^^^^^^^
 
-                section: Record[items: Array[String], title: String]
-                  --> main.hop (line 4, col 17)
-                3 |         <h1>{section.title}</h1>
-                4 |         <for {item in section.items}>
+                section: Section
+                  --> main.hop (line 5, col 17)
+                4 |         <h1>{section.title}</h1>
+                5 |         <for {item in section.items}>
                   |                       ^^^^^^^
 
                 item: String
-                  --> main.hop (line 4, col 9)
-                3 |         <h1>{section.title}</h1>
-                4 |         <for {item in section.items}>
+                  --> main.hop (line 5, col 9)
+                4 |         <h1>{section.title}</h1>
+                5 |         <for {item in section.items}>
                   |               ^^^^
 
                 item: String
-                  --> main.hop (line 5, col 10)
-                4 |         <for {item in section.items}>
-                5 |             <div>{item}</div>
+                  --> main.hop (line 6, col 10)
+                5 |         <for {item in section.items}>
+                6 |             <div>{item}</div>
                   |                   ^^^^
             "#]],
         );
@@ -3565,7 +3452,8 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <UserComp {user: {name: String, age: String}}>
+                record User {name: String, age: String}
+                <UserComp {user: User}>
                 	<div>{user.name} ({user.age})</div>
                 </UserComp>
                 <Main>
@@ -3573,10 +3461,10 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                error: Argument 'user' of type String is incompatible with expected type Record[age: String, name: String]
-                  --> main.hop (line 5, col 19)
-                4 | <Main>
-                5 |     <UserComp {user: "invalid"}/>
+                error: Argument 'user' of type String is incompatible with expected type User
+                  --> main.hop (line 6, col 19)
+                5 | <Main>
+                6 |     <UserComp {user: "invalid"}/>
                   |                      ^^^^^^^^^
             "#]],
         );
@@ -3587,47 +3475,50 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <UserComp {user: {name: String, active: String}}>
+                record User {name: String, active: String}
+                record Data {profile: User}
+                <UserComp {user: User}>
                 	<div>{user.name}: {user.active}</div>
                 </UserComp>
-                <Main {data: {profile: {name: String, active: String}}}>
+                <Main {data: Data}>
                 	<UserComp {user: data.profile}/>
                 </Main>
             "#},
             expect![[r#"
-                user: Record[active: String, name: String]
-                  --> main.hop (line 1, col 12)
-                1 | <UserComp {user: {name: String, active: String}}>
+                user: User
+                  --> main.hop (line 3, col 12)
+                2 | record Data {profile: User}
+                3 | <UserComp {user: User}>
                   |            ^^^^
 
-                user: Record[active: String, name: String]
-                  --> main.hop (line 2, col 8)
-                1 | <UserComp {user: {name: String, active: String}}>
-                2 |     <div>{user.name}: {user.active}</div>
+                user: User
+                  --> main.hop (line 4, col 8)
+                3 | <UserComp {user: User}>
+                4 |     <div>{user.name}: {user.active}</div>
                   |           ^^^^
 
-                user: Record[active: String, name: String]
-                  --> main.hop (line 2, col 21)
-                1 | <UserComp {user: {name: String, active: String}}>
-                2 |     <div>{user.name}: {user.active}</div>
+                user: User
+                  --> main.hop (line 4, col 21)
+                3 | <UserComp {user: User}>
+                4 |     <div>{user.name}: {user.active}</div>
                   |                        ^^^^
 
-                data: Record[profile: Record[active: String, name: String]]
-                  --> main.hop (line 4, col 8)
-                3 | </UserComp>
-                4 | <Main {data: {profile: {name: String, active: String}}}>
+                data: Data
+                  --> main.hop (line 6, col 8)
+                5 | </UserComp>
+                6 | <Main {data: Data}>
                   |        ^^^^
 
-                data: Record[profile: Record[active: String, name: String]]
-                  --> main.hop (line 5, col 19)
-                4 | <Main {data: {profile: {name: String, active: String}}}>
-                5 |     <UserComp {user: data.profile}/>
+                data: Data
+                  --> main.hop (line 7, col 19)
+                6 | <Main {data: Data}>
+                7 |     <UserComp {user: data.profile}/>
                   |                      ^^^^
 
-                user: Record[active: String, name: String]
-                  --> main.hop (line 5, col 19)
-                4 | <Main {data: {profile: {name: String, active: String}}}>
-                5 |     <UserComp {user: data.profile}/>
+                user: User
+                  --> main.hop (line 7, col 19)
+                6 | <Main {data: Data}>
+                7 |     <UserComp {user: data.profile}/>
                   |                      ^^^^^^^^^^^^
             "#]],
         );
@@ -3638,7 +3529,8 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <NewComp {user: {name: String}}>
+                record User {name: String}
+                <NewComp {user: User}>
                 	<div>{user.name}</div>
                 </NewComp>
                 <Main>
@@ -3646,10 +3538,10 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                error: Argument 'user' of type String is incompatible with expected type Record[name: String]
-                  --> main.hop (line 5, col 18)
-                4 | <Main>
-                5 |     <NewComp {user: "invalid"}/>
+                error: Argument 'user' of type String is incompatible with expected type User
+                  --> main.hop (line 6, col 18)
+                5 | <Main>
+                6 |     <NewComp {user: "invalid"}/>
                   |                     ^^^^^^^^^
             "#]],
         );
@@ -3661,20 +3553,22 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <UserComp {user: {name: String}}>
+                record User {name: String}
+                <UserComp {user: User}>
                 	<div>{user.name}</div>
                 </UserComp>
             "#},
             expect![[r#"
-                user: Record[name: String]
-                  --> main.hop (line 1, col 12)
-                1 | <UserComp {user: {name: String}}>
+                user: User
+                  --> main.hop (line 2, col 12)
+                1 | record User {name: String}
+                2 | <UserComp {user: User}>
                   |            ^^^^
 
-                user: Record[name: String]
-                  --> main.hop (line 2, col 8)
-                1 | <UserComp {user: {name: String}}>
-                2 |     <div>{user.name}</div>
+                user: User
+                  --> main.hop (line 3, col 8)
+                2 | <UserComp {user: User}>
+                3 |     <div>{user.name}</div>
                   |           ^^^^
             "#]],
         );
@@ -3774,7 +3668,9 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <ProfileComp {profile: {user: {name: String, age: Float}}}>
+                record User {name: String, age: Float}
+                record Profile {user: User}
+                <ProfileComp {profile: Profile}>
                 	<div>{profile.user.name}</div>
                 	<if {profile.user.age == 25}>
                 		<div>Quarter century</div>
@@ -3783,9 +3679,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Can not compare Float to Int
-                  --> main.hop (line 3, col 7)
-                2 |     <div>{profile.user.name}</div>
-                3 |     <if {profile.user.age == 25}>
+                  --> main.hop (line 5, col 7)
+                4 |     <div>{profile.user.name}</div>
+                5 |     <if {profile.user.age == 25}>
                   |          ^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
@@ -3823,12 +3719,9 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <CardComp {data: {
-                    title: String,
-                    content: String,
-                    tags: Array[String],
-                    metadata: {author: String, published: Bool},
-                }}>
+                record Metadata {author: String, published: Bool}
+                record CardData {title: String, content: String, tags: Array[String], metadata: Metadata}
+                <CardComp {data: CardData}>
                 	<h1>{data.title}</h1>
                 	<p>{data.content}</p>
                 	<div>{data.metadata.author}</div>
@@ -3841,81 +3734,52 @@ mod tests {
                 </CardComp>
             "#},
             expect![[r#"
-                data: Record[
-                  content: String,
-                  metadata: Record[author: String, published: Bool],
-                  tags: Array[String],
-                  title: String,
-                ]
-                  --> main.hop (line 1, col 12)
-                 1 | <CardComp {data: {
+                data: CardData
+                  --> main.hop (line 3, col 12)
+                 2 | record CardData {title: String, content: String, tags: Array[String], metadata: Metadata}
+                 3 | <CardComp {data: CardData}>
                    |            ^^^^
 
-                data: Record[
-                  content: String,
-                  metadata: Record[author: String, published: Bool],
-                  tags: Array[String],
-                  title: String,
-                ]
-                  --> main.hop (line 7, col 7)
-                 6 | }}>
-                 7 |     <h1>{data.title}</h1>
+                data: CardData
+                  --> main.hop (line 4, col 7)
+                 3 | <CardComp {data: CardData}>
+                 4 |     <h1>{data.title}</h1>
                    |          ^^^^
 
-                data: Record[
-                  content: String,
-                  metadata: Record[author: String, published: Bool],
-                  tags: Array[String],
-                  title: String,
-                ]
-                  --> main.hop (line 8, col 6)
-                 7 |     <h1>{data.title}</h1>
-                 8 |     <p>{data.content}</p>
+                data: CardData
+                  --> main.hop (line 5, col 6)
+                 4 |     <h1>{data.title}</h1>
+                 5 |     <p>{data.content}</p>
                    |         ^^^^
 
-                data: Record[
-                  content: String,
-                  metadata: Record[author: String, published: Bool],
-                  tags: Array[String],
-                  title: String,
-                ]
-                  --> main.hop (line 9, col 8)
-                 8 |     <p>{data.content}</p>
-                 9 |     <div>{data.metadata.author}</div>
+                data: CardData
+                  --> main.hop (line 6, col 8)
+                 5 |     <p>{data.content}</p>
+                 6 |     <div>{data.metadata.author}</div>
                    |           ^^^^
 
-                data: Record[
-                  content: String,
-                  metadata: Record[author: String, published: Bool],
-                  tags: Array[String],
-                  title: String,
-                ]
-                  --> main.hop (line 10, col 7)
-                 9 |     <div>{data.metadata.author}</div>
-                10 |     <if {data.metadata.published}>
+                data: CardData
+                  --> main.hop (line 7, col 7)
+                 6 |     <div>{data.metadata.author}</div>
+                 7 |     <if {data.metadata.published}>
                    |          ^^^^
 
-                data: Record[
-                  content: String,
-                  metadata: Record[author: String, published: Bool],
-                  tags: Array[String],
-                  title: String,
-                ]
-                  --> main.hop (line 13, col 15)
-                12 |     </if>
-                13 |     <for {tag in data.tags}>
+                data: CardData
+                  --> main.hop (line 10, col 15)
+                 9 |     </if>
+                10 |     <for {tag in data.tags}>
                    |                  ^^^^
 
                 tag: String
-                  --> main.hop (line 13, col 8)
-                12 |     </if>
-                13 |     <for {tag in data.tags}>
+                  --> main.hop (line 10, col 8)
+                 9 |     </if>
+                10 |     <for {tag in data.tags}>
                    |           ^^^
 
                 tag: String
-                  --> main.hop (line 14, col 10)
-                13 |     <for {tag in data.tags}>
-                14 |         <span>{tag}</span>
+                  --> main.hop (line 11, col 10)
+                10 |     <for {tag in data.tags}>
+                11 |         <span>{tag}</span>
                    |                ^^^
             "#]],
         );
@@ -3952,7 +3816,8 @@ mod tests {
         check(
             indoc! {r#"
                 -- item-display.hop --
-                <ItemDisplay {item: {id: Float, name: String, active: Bool}}>
+                record Item {id: Float, name: String, active: Bool}
+                <ItemDisplay {item: Item}>
                 	<div>{item.name}</div>
                 	<if {item.active}>
                 		<span>Active item</span>
@@ -3963,94 +3828,49 @@ mod tests {
                 </ItemDisplay>
                 -- data-list.hop --
                 import ItemDisplay from "@/item-display"
-                <DataList {items: Array[{id: Float, name: String, active: Bool}]}>
+                import Item from "@/item-display"
+                <DataList {items: Array[Item]}>
                 	<for {item in items}>
                 		<ItemDisplay {item: item}/>
                 	</for>
                 </DataList>
                 -- main.hop --
                 import DataList from "@/data-list"
-                <Main {items: Array[{id: Float, name: String, active: Bool}]}>
+                import Item from "@/item-display"
+                <Main {items: Array[Item]}>
                 	<DataList {items: items}/>
                 </Main>
             "#},
             expect![[r#"
                 error: Can not compare Float to Int
-                  --> item-display.hop (line 6, col 7)
-                5 |     </if>
-                6 |     <if {item.id == 1}>
-                  |          ^^^^^^^^^^^^
-            "#]],
-        );
-    }
+                  --> item-display.hop (line 7, col 7)
+                 6 |     </if>
+                 7 |     <if {item.id == 1}>
+                   |          ^^^^^^^^^^^^
 
-    // Structural subtyping should work: an object with properties a and b should be compatible with a component that only needs property a.
-    #[test]
-    fn test_structural_subtyping_success() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                <NeedsA {data: {a: String}}>
-                	<div>{data.a}</div>
-                </NeedsA>
+                error: Module @/item-display does not declare a component named Item
+                  --> data-list.hop (line 2, col 8)
+                1 | import ItemDisplay from "@/item-display"
+                2 | import Item from "@/item-display"
+                  |        ^^^^
 
-                <Main {params: {data: {a: String, b: String}}}>
-                	<NeedsA {data: params.data}/>
-                </Main>
-            "#},
-            expect![[r#"
-                data: Record[a: String]
-                  --> main.hop (line 1, col 10)
-                1 | <NeedsA {data: {a: String}}>
-                  |          ^^^^
+                error: Type 'Item' is not defined
+                  --> data-list.hop (line 3, col 19)
+                2 | import Item from "@/item-display"
+                3 | <DataList {items: Array[Item]}>
+                  |                   ^^^^^^^^^^^
 
-                data: Record[a: String]
+                error: Module @/item-display does not declare a component named Item
                   --> main.hop (line 2, col 8)
-                1 | <NeedsA {data: {a: String}}>
-                2 |     <div>{data.a}</div>
-                  |           ^^^^
+                1 | import DataList from "@/data-list"
+                2 | import Item from "@/item-display"
+                  |        ^^^^
 
-                params: Record[data: Record[a: String, b: String]]
-                  --> main.hop (line 5, col 8)
-                4 | 
-                5 | <Main {params: {data: {a: String, b: String}}}>
-                  |        ^^^^^^
-
-                params: Record[data: Record[a: String, b: String]]
-                  --> main.hop (line 6, col 17)
-                5 | <Main {params: {data: {a: String, b: String}}}>
-                6 |     <NeedsA {data: params.data}/>
-                  |                    ^^^^^^
-
-                data: Record[a: String, b: String]
-                  --> main.hop (line 6, col 17)
-                5 | <Main {params: {data: {a: String, b: String}}}>
-                6 |     <NeedsA {data: params.data}/>
-                  |                    ^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    // Typechecker should print an error if an object lacks required properties.
-    #[test]
-    fn test_structural_subtyping_missing_property() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                <NeedsA {data: {a: String}}>
-                	<div>{data.a}</div>
-                </NeedsA>
-
-                <Main {params: {data: {b: String}}}>
-                	<NeedsA {data: params.data}/>
-                </Main>
-            "#},
-            expect![[r#"
-                error: Argument 'data' of type Record[b: String] is incompatible with expected type Record[a: String]
-                  --> main.hop (line 6, col 17)
-                5 | <Main {params: {data: {b: String}}}>
-                6 |     <NeedsA {data: params.data}/>
-                  |                    ^^^^^^^^^^^
+                error: Type 'Item' is not defined
+                  --> main.hop (line 3, col 15)
+                2 | import Item from "@/item-display"
+                3 | <Main {items: Array[Item]}>
+                  |               ^^^^^^^^^^^
             "#]],
         );
     }

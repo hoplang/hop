@@ -156,18 +156,6 @@ impl AlphaRenamingPass {
                 kind,
                 annotation,
             },
-            TypedExpr::ObjectLiteral {
-                properties,
-                kind,
-                annotation,
-            } => TypedExpr::ObjectLiteral {
-                properties: properties
-                    .into_iter()
-                    .map(|(k, v)| (k, self.rename_expr(v)))
-                    .collect(),
-                kind,
-                annotation,
-            },
             TypedExpr::RecordInstantiation {
                 record_name,
                 fields,

@@ -7,7 +7,7 @@ use super::typed_expr::SimpleTypedExpr;
 use crate::document::document_cursor::Ranged as _;
 use crate::hop::environment::Environment;
 use crate::hop::type_checker::TypeAnnotation;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 pub fn typecheck_expr<'a>(
     expr: &Expr,
@@ -61,25 +61,13 @@ pub fn typecheck_expr<'a>(
             let base_type = typed_base.as_type();
 
             match &base_type {
-                Type::Object(props) => {
-                    if let Some(prop_type) = props.get(property) {
-                        Ok(SimpleTypedExpr::PropertyAccess {
-                            kind: prop_type.clone(),
-                            object: Box::new(typed_base),
-                            property: property.clone(),
-                            annotation: (),
-                        })
-                    } else {
-                        Err(TypeError::PropertyNotFoundInObject {
-                            property: property.to_string(),
-                            dop_type: base_type.clone(),
-                            range: range.clone(),
-                        })
-                    }
-                }
                 Type::Named(record_name) => {
                     if let Some(record_decl) = records.get(record_name.as_str()) {
-                        if let Some(field) = record_decl.fields.iter().find(|f| f.name.as_str() == property.as_str()) {
+                        if let Some(field) = record_decl
+                            .fields
+                            .iter()
+                            .find(|f| f.name.as_str() == property.as_str())
+                        {
                             Ok(SimpleTypedExpr::PropertyAccess {
                                 kind: field.field_type.clone(),
                                 object: Box::new(typed_base),
@@ -95,13 +83,13 @@ pub fn typecheck_expr<'a>(
                         }
                     } else {
                         // Record not found - this should have been caught earlier, but handle gracefully
-                        Err(TypeError::CannotUseAsObject {
+                        Err(TypeError::CannotUseAsRecord {
                             typ: base_type.to_string(),
                             range: base_expr.range().clone(),
                         })
                     }
                 }
-                _ => Err(TypeError::CannotUseAsObject {
+                _ => Err(TypeError::CannotUseAsRecord {
                     typ: base_type.to_string(),
                     range: base_expr.range().clone(),
                 }),
@@ -595,23 +583,6 @@ pub fn typecheck_expr<'a>(
                 })
             }
         }
-        AnnotatedExpr::ObjectLiteral { properties, .. } => {
-            let mut object_properties = BTreeMap::new();
-            let mut typed_properties = Vec::new();
-
-            for (key, value_expr) in properties {
-                let typed_value = typecheck_expr(value_expr, env, annotations, records)?;
-                let value_type = typed_value.as_type().clone();
-                object_properties.insert(key.clone(), value_type);
-                typed_properties.push((key.clone(), typed_value));
-            }
-
-            Ok(SimpleTypedExpr::ObjectLiteral {
-                properties: typed_properties,
-                kind: Type::Object(object_properties),
-                annotation: (),
-            })
-        }
         AnnotatedExpr::RecordInstantiation {
             record_name,
             fields,
@@ -785,7 +756,7 @@ mod tests {
             "count: Float",
             "count.value",
             expect![[r#"
-                error: Float can not be used as an object
+                error: Float can not be used as a record
                 count.value
                 ^^^^^
             "#]],
@@ -820,11 +791,16 @@ mod tests {
 
     #[test]
     fn test_typecheck_nested_array_property_error() {
-        check(
-            "config: {users: Array[{profile: {name: String, active: Bool}}]}",
+        check_with_records(
+            "config: Config",
+            &[
+                "record Profile {name: String, active: Bool}",
+                "record UserInfo {profile: Profile}",
+                "record Config {users: Array[UserInfo]}",
+            ],
             "config.users.profile.name",
             expect![[r#"
-                error: Array[Record[profile: Record[active: Bool, name: String]]] can not be used as an object
+                error: Array[UserInfo] can not be used as a record
                 config.users.profile.name
                 ^^^^^^^^^^^^
             "#]],
@@ -833,11 +809,12 @@ mod tests {
 
     #[test]
     fn test_typecheck_array_property_access_error() {
-        check(
-            "users: Array[{name: String}]",
+        check_with_records(
+            "users: Array[User]",
+            &["record User {name: String}"],
             "users.name",
             expect![[r#"
-                error: Array[Record[name: String]] can not be used as an object
+                error: Array[User] can not be used as a record
                 users.name
                 ^^^^^
             "#]],
@@ -846,11 +823,12 @@ mod tests {
 
     #[test]
     fn test_typecheck_unknown_property() {
-        check(
-            "data: {field: String}",
+        check_with_records(
+            "data: Data",
+            &["record Data {field: String}"],
             "data.unknown",
             expect![[r#"
-                error: Property unknown not found in object Record[field: String]
+                error: Property 'unknown' not found in record 'Data'
                 data.unknown
                 ^^^^^^^^^^^^
             "#]],
@@ -889,13 +867,23 @@ mod tests {
 
     #[test]
     fn test_typecheck_property_access() {
-        check("user: {name: String}", "user.name", expect!["String"]);
+        check_with_records(
+            "user: User",
+            &["record User {name: String}"],
+            "user.name",
+            expect!["String"],
+        );
     }
 
     #[test]
     fn test_typecheck_nested_property_access() {
-        check(
-            "app: {user: {profile: {name: String}}}",
+        check_with_records(
+            "app: App",
+            &[
+                "record Profile {name: String}",
+                "record User {profile: Profile}",
+                "record App {user: User}",
+            ],
             "app.user.profile.name",
             expect!["String"],
         );
@@ -926,8 +914,12 @@ mod tests {
 
     #[test]
     fn test_typecheck_equality_same_object_properties() {
-        check(
-            "user: {name: String}, admin: {name: String}",
+        check_with_records(
+            "user: User, admin: Admin",
+            &[
+                "record User {name: String}",
+                "record Admin {name: String}",
+            ],
             "user.name == admin.name",
             expect!["Bool"],
         );
@@ -1024,8 +1016,9 @@ mod tests {
 
     #[test]
     fn test_typecheck_complex_negation_equality() {
-        check(
-            "user: {active: Bool}",
+        check_with_records(
+            "user: User",
+            &["record User {active: Bool}"],
             "!user.active == false",
             expect!["Bool"],
         );
@@ -1033,8 +1026,12 @@ mod tests {
 
     #[test]
     fn test_typecheck_parenthesized_negation() {
-        check(
-            "status: {enabled: Bool}, config: {active: Bool}",
+        check_with_records(
+            "status: Status, config: Config",
+            &[
+                "record Status {enabled: Bool}",
+                "record Config {active: Bool}",
+            ],
             "!(status.enabled == config.active)",
             expect!["Bool"],
         );
@@ -1042,8 +1039,9 @@ mod tests {
 
     #[test]
     fn test_typecheck_object_array_property() {
-        check(
-            "data: {items: Array[String]}",
+        check_with_records(
+            "data: Data",
+            &["record Data {items: Array[String]}"],
             "data.items",
             expect!["Array[String]"],
         );
@@ -1051,8 +1049,14 @@ mod tests {
 
     #[test]
     fn test_typecheck_deep_property_access() {
-        check(
-            "system: {config: {database: {connection: {host: String}}}}",
+        check_with_records(
+            "system: System",
+            &[
+                "record Connection {host: String}",
+                "record Database {connection: Connection}",
+                "record Config {database: Database}",
+                "record System {config: Config}",
+            ],
             "system.config.database.connection.host",
             expect!["String"],
         );
@@ -1060,47 +1064,11 @@ mod tests {
 
     #[test]
     fn test_typecheck_multiple_property_access() {
-        check(
-            "obj: {name: String, title: String}",
+        check_with_records(
+            "obj: Obj",
+            &["record Obj {name: String, title: String}"],
             "obj.name == obj.title",
             expect!["Bool"],
-        );
-    }
-
-    #[test]
-    fn test_typecheck_empty_object_literal() {
-        check("", "{}", expect!["Record[]"]);
-    }
-
-    #[test]
-    fn test_typecheck_object_literal_single_property() {
-        check("", r#"{name: "John"}"#, expect!["Record[name: String]"]);
-    }
-
-    #[test]
-    fn test_typecheck_object_literal_multiple_properties() {
-        check(
-            "",
-            r#"{a: "foo", b: 1, c: true}"#,
-            expect!["Record[a: String, b: Int, c: Bool]"],
-        );
-    }
-
-    #[test]
-    fn test_typecheck_object_literal_complex_expressions() {
-        check(
-            "user: {name: String, disabled: Bool}",
-            "{user: user.name, active: !user.disabled}",
-            expect!["Record[active: Bool, user: String]"],
-        );
-    }
-
-    #[test]
-    fn test_typecheck_nested_object_literal() {
-        check(
-            "",
-            r#"{nested: {inner: "value"}}"#,
-            expect!["Record[nested: Record[inner: String]]"],
         );
     }
 
@@ -1132,33 +1100,6 @@ mod tests {
             ]
         "#},
             expect!["Array[String]"],
-        );
-    }
-
-    #[test]
-    fn test_typecheck_object_literal_trailing_comma() {
-        check(
-            "",
-            indoc! {r#"
-                {
-                	a: "foo",
-                	b: 1,
-                }
-            "#},
-            expect!["Record[a: String, b: Int]"],
-        );
-    }
-
-    #[test]
-    fn test_typecheck_object_literal_trailing_comma_single() {
-        check(
-            "",
-            indoc! {r#"
-            {
-            	name: "John",
-            }
-        "#},
-            expect!["Record[name: String]"],
         );
     }
 
@@ -1214,8 +1155,9 @@ mod tests {
 
     #[test]
     fn test_typecheck_string_concatenation_with_property_access() {
-        check(
-            "user: {first_name: String, last_name: String}",
+        check_with_records(
+            "user: User",
+            &["record User {first_name: String, last_name: String}"],
             r#"user.first_name + " " + user.last_name"#,
             expect!["String"],
         );
@@ -1238,8 +1180,9 @@ mod tests {
 
     #[test]
     fn test_typecheck_logical_and_property_access() {
-        check(
-            "user: {enabled: Bool, active: Bool}",
+        check_with_records(
+            "user: User",
+            &["record User {enabled: Bool, active: Bool}"],
             "user.enabled && user.active",
             expect!["Bool"],
         );
@@ -1310,8 +1253,9 @@ mod tests {
 
     #[test]
     fn test_typecheck_logical_or_property_access() {
-        check(
-            "user: {enabled: Bool, active: Bool}",
+        check_with_records(
+            "user: User",
+            &["record User {enabled: Bool, active: Bool}"],
             "user.enabled || user.active",
             expect!["Bool"],
         );
@@ -1455,7 +1399,12 @@ mod tests {
 
     #[test]
     fn test_typecheck_addition_with_property_access() {
-        check("user: {x: Int, y: Int}", "user.x + user.y", expect!["Int"]);
+        check_with_records(
+            "user: User",
+            &["record User {x: Int, y: Int}"],
+            "user.x + user.y",
+            expect!["Int"],
+        );
     }
 
     #[test]
