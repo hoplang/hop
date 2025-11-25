@@ -7,6 +7,12 @@ pub enum TypeError {
     #[error("Component {tag_name} is not defined")]
     UndefinedComponent { tag_name: DocumentRange },
 
+    #[error("Type '{type_name}' is not defined")]
+    UndefinedType {
+        type_name: String,
+        range: DocumentRange,
+    },
+
     #[error("Module {module_name} does not declare a component named {component_name}")]
     UndeclaredComponent {
         module_name: DocumentRange,
@@ -121,6 +127,7 @@ impl Ranged for TypeError {
     fn range(&self) -> &DocumentRange {
         match self {
             TypeError::UndefinedComponent { tag_name: range }
+            | TypeError::UndefinedType { range, .. }
             | TypeError::UndeclaredComponent {
                 component_name: range,
                 ..

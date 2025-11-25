@@ -5,7 +5,7 @@ use crate::hop::ast::Ast;
 use crate::hop::ast::{Attribute, ComponentDefinition};
 use crate::hop::environment::Environment;
 use crate::hop::type_error::TypeError;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::{self, Display};
 
 use super::ast::{AttributeValue, TypedAst, TypedAttribute, UntypedAst};
@@ -136,12 +136,50 @@ impl TypeChecker {
     }
 }
 
+/// Validates that all named types in the given type are declared records.
+/// Returns a list of undefined type names with their ranges.
+fn validate_named_types_in_type(
+    typ: &Type,
+    declared_records: &HashSet<&str>,
+    range: &DocumentRange,
+) -> Vec<(String, DocumentRange)> {
+    let mut undefined = Vec::new();
+    match typ {
+        Type::Named(name) => {
+            if !declared_records.contains(name.as_str()) {
+                undefined.push((name.clone(), range.clone()));
+            }
+        }
+        Type::Array(Some(inner)) => {
+            undefined.extend(validate_named_types_in_type(inner, declared_records, range));
+        }
+        Type::Object(fields) => {
+            for field_type in fields.values() {
+                undefined.extend(validate_named_types_in_type(
+                    field_type,
+                    declared_records,
+                    range,
+                ));
+            }
+        }
+        Type::String | Type::Bool | Type::Int | Type::Float | Type::TrustedHTML | Type::Array(None) => {}
+    }
+    undefined
+}
+
 fn typecheck_module(
     module: &UntypedAst,
     state: &mut State,
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> TypedAst {
+    // Collect declared record names
+    let declared_records: HashSet<&str> = module
+        .get_records()
+        .iter()
+        .map(|r| r.name())
+        .collect();
+
     // Validate imports
     for import in module.get_imports() {
         let imported_module = import.imported_module();
@@ -178,9 +216,19 @@ fn typecheck_module(
             closing_tag_name,
         } = component_def;
 
-        // Push parameters to environment
+        // Push parameters to environment and validate their types
         if let Some((params, _)) = params {
             for param in params {
+                // Validate that all named types in the parameter type are declared records
+                for (type_name, type_range) in
+                    validate_named_types_in_type(&param.var_type, &declared_records, &param.var_type_range)
+                {
+                    errors.push(TypeError::UndefinedType {
+                        type_name,
+                        range: type_range,
+                    });
+                }
+
                 annotations.push(TypeAnnotation {
                     range: param.var_name_range.clone(),
                     typ: param.var_type.clone(),
@@ -4110,13 +4158,105 @@ mod tests {
                 <CardComp>
                     <div>Module 1 card</div>
                 </CardComp>
-                
+
                 -- module2.hop --
                 <CardComp>
                     <div>Module 2 card</div>
                 </CardComp>
             "#},
             expect![""],
+        );
+    }
+
+    // Test that using an undefined type name in a parameter produces an error
+    #[test]
+    fn test_undefined_type_in_parameter() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {user: User}>
+                    <div></div>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Type 'User' is not defined
+                  --> main.hop (line 1, col 14)
+                1 | <Main {user: User}>
+                  |              ^^^^
+
+                error: Unused variable user
+                  --> main.hop (line 1, col 8)
+                1 | <Main {user: User}>
+                  |        ^^^^
+            "#]],
+        );
+    }
+
+    // Test that using a declared record type in a parameter is allowed (no UndefinedType error)
+    #[test]
+    fn test_declared_record_type_in_parameter() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record User {name: String}
+                <Main {user: User}>
+                    <div></div>
+                </Main>
+            "#},
+            // Only get UnusedVariable error, not UndefinedType error
+            expect![[r#"
+                error: Unused variable user
+                  --> main.hop (line 2, col 8)
+                1 | record User {name: String}
+                2 | <Main {user: User}>
+                  |        ^^^^
+            "#]],
+        );
+    }
+
+    // Test that using an undefined type name inside an array type produces an error
+    #[test]
+    fn test_undefined_type_in_array_parameter() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {users: Array[User]}>
+                    <div></div>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Type 'User' is not defined
+                  --> main.hop (line 1, col 15)
+                1 | <Main {users: Array[User]}>
+                  |               ^^^^^^^^^^^
+
+                error: Unused variable users
+                  --> main.hop (line 1, col 8)
+                1 | <Main {users: Array[User]}>
+                  |        ^^^^^
+            "#]],
+        );
+    }
+
+    // Test that using a declared record type inside an array type is allowed (no UndefinedType error)
+    #[test]
+    fn test_declared_record_type_in_array_parameter() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record User {name: String}
+                <Main {users: Array[User]}>
+                    <div></div>
+                </Main>
+            "#},
+            // Only get UnusedVariable error, not UndefinedType error
+            expect![[r#"
+                error: Unused variable users
+                  --> main.hop (line 2, col 8)
+                1 | record User {name: String}
+                2 | <Main {users: Array[User]}>
+                  |        ^^^^^
+            "#]],
         );
     }
 }

@@ -22,6 +22,7 @@ pub struct Parameter {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
     pub var_type: Type,
+    pub var_type_range: DocumentRange,
 }
 
 impl Display for Parameter {
@@ -284,11 +285,12 @@ impl Parser {
     fn parse_parameter(&mut self) -> Result<Parameter, ParseError> {
         let (var_name, var_name_range) = self.expect_variable_name()?;
         self.expect_token(&Token::Colon)?;
-        let (var_type, _) = self.parse_type()?;
+        let (var_type, var_type_range) = self.parse_type()?;
         Ok(Parameter {
             var_name,
             var_name_range,
             var_type,
+            var_type_range,
         })
     }
 
