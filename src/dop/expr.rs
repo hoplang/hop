@@ -29,7 +29,7 @@ pub enum AnnotatedExpr<A> {
 
     /// A property access expression, e.g. foo.bar
     PropertyAccess {
-        object: Box<Self>,
+        record: Box<Self>,
         property: PropertyName,
         annotation: A,
     },
@@ -95,7 +95,9 @@ impl<'a, T> AnnotatedExpr<T> {
         match self {
             AnnotatedExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
             AnnotatedExpr::PropertyAccess {
-                object, property, ..
+                record: object,
+                property,
+                ..
             } => object
                 .to_doc()
                 .append(BoxDoc::text("."))

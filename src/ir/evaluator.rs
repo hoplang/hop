@@ -124,7 +124,9 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             .cloned()
             .ok_or_else(|| anyhow!("Undefined variable: {}", name)),
         IrExpr::PropertyAccess {
-            object, property, ..
+            record: object,
+            property,
+            ..
         } => {
             let obj_value = evaluate_expr(object, env)?;
             if let Some(obj) = obj_value.as_object() {

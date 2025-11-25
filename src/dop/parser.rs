@@ -373,12 +373,12 @@ impl Parser {
         let name = match self.iter.next().transpose()? {
             Some((Token::TypeName(name), _)) => name,
             Some((actual, range)) => {
-                return Err(ParseError::ExpectedTypeNameButGot { actual, range })
+                return Err(ParseError::ExpectedTypeNameButGot { actual, range });
             }
             None => {
                 return Err(ParseError::UnexpectedEof {
                     range: self.range.clone(),
-                })
+                });
             }
         };
 
@@ -623,7 +623,7 @@ impl Parser {
                     })?;
                     let range = expr.range().clone().to(prop.clone());
                     expr = AnnotatedExpr::PropertyAccess {
-                        object: Box::new(expr),
+                        record: Box::new(expr),
                         property: prop_name,
                         annotation: range,
                     };

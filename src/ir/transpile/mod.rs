@@ -165,7 +165,9 @@ pub trait ExpressionTranspiler {
         match expr {
             IrExpr::Var { value, .. } => self.transpile_var(value.as_str()),
             IrExpr::PropertyAccess {
-                object, property, ..
+                record: object,
+                property,
+                ..
             } => self.transpile_property_access(object, property.as_str()),
             IrExpr::StringLiteral { value, .. } => self.transpile_string_literal(value),
             IrExpr::BooleanLiteral { value, .. } => self.transpile_boolean_literal(*value),

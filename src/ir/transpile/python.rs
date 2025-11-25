@@ -1163,13 +1163,7 @@ mod tests {
     fn test_record_instantiation() {
         use crate::ir::test_utils::build_ir_with_records;
 
-        let records_def = vec![(
-            "User",
-            vec![
-                ("name", Type::String),
-                ("age", Type::Int),
-            ],
-        )];
+        let records_def = vec![("User", vec![("name", Type::String), ("age", Type::Int)])];
 
         let entrypoints = vec![build_ir_with_records(
             "CreateUser",
@@ -1177,10 +1171,7 @@ mod tests {
             records_def,
             |t| {
                 t.write("<div>");
-                let user = t.record("User", vec![
-                    ("name", t.str("John")),
-                    ("age", t.int(30)),
-                ]);
+                let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
                 t.write_expr_escaped(t.prop_access(user, "name"));
                 t.write("</div>");
             },

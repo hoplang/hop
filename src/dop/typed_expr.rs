@@ -22,7 +22,7 @@ pub enum TypedExpr<A> {
 
     /// A property access expression, e.g. foo.bar
     PropertyAccess {
-        object: Box<Self>,
+        record: Box<Self>,
         property: PropertyName,
         kind: Type,
         annotation: A,
@@ -231,7 +231,9 @@ impl<A> TypedExpr<A> {
         match self {
             TypedExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
             TypedExpr::PropertyAccess {
-                object, property, ..
+                record: object,
+                property,
+                ..
             } => object
                 .to_doc()
                 .append(BoxDoc::text("."))

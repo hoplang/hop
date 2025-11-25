@@ -38,7 +38,11 @@ impl Compiler {
         let children = entrypoint.children;
 
         // Always generate both development and production bodies
-        let dev_body = compiler.generate_development_mode_body(module_name.as_str(), tag_name.as_str(), &param_info);
+        let dev_body = compiler.generate_development_mode_body(
+            module_name.as_str(),
+            tag_name.as_str(),
+            &param_info,
+        );
         let prod_body = compiler.compile_nodes(children, None);
 
         // Create condition: EnvLookup("HOP_DEV_MODE") == "enabled"
@@ -353,12 +357,12 @@ impl Compiler {
                 annotation: expr_id,
             },
             SimpleTypedExpr::PropertyAccess {
-                object,
+                record: object,
                 property,
                 kind,
                 ..
             } => TypedExpr::PropertyAccess {
-                object: Box::new(self.compile_expr(*object)),
+                record: Box::new(self.compile_expr(*object)),
                 property,
                 kind,
                 annotation: expr_id,

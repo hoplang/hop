@@ -52,7 +52,7 @@ pub fn typecheck_expr<'a>(
             annotation: (),
         }),
         AnnotatedExpr::PropertyAccess {
-            object: base_expr,
+            record: base_expr,
             property,
             annotation: range,
             ..
@@ -70,7 +70,7 @@ pub fn typecheck_expr<'a>(
                         {
                             Ok(SimpleTypedExpr::PropertyAccess {
                                 kind: field.field_type.clone(),
-                                object: Box::new(typed_base),
+                                record: Box::new(typed_base),
                                 property: property.clone(),
                                 annotation: (),
                             })
@@ -589,12 +589,13 @@ pub fn typecheck_expr<'a>(
             annotation: range,
         } => {
             // Check if the record type is defined
-            let record_decl = records.get(record_name.as_str()).ok_or_else(|| {
-                TypeError::UndefinedRecord {
-                    record_name: record_name.clone(),
-                    range: range.clone(),
-                }
-            })?;
+            let record_decl =
+                records
+                    .get(record_name.as_str())
+                    .ok_or_else(|| TypeError::UndefinedRecord {
+                        record_name: record_name.clone(),
+                        range: range.clone(),
+                    })?;
 
             // Build a map of expected fields from the record declaration
             let expected_fields: HashMap<&str, &Type> = record_decl
@@ -751,7 +752,7 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_property_access_on_non_object() {
+    fn test_typecheck_property_access_on_non_record() {
         check(
             "count: Float",
             "count.value",
@@ -913,13 +914,10 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_equality_same_object_properties() {
+    fn test_typecheck_equality_same_properties() {
         check_with_records(
             "user: User, admin: Admin",
-            &[
-                "record User {name: String}",
-                "record Admin {name: String}",
-            ],
+            &["record User {name: String}", "record Admin {name: String}"],
             "user.name == admin.name",
             expect!["Bool"],
         );
@@ -1038,7 +1036,7 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_object_array_property() {
+    fn test_typecheck_record_array_property() {
         check_with_records(
             "data: Data",
             &["record Data {items: Array[String]}"],
@@ -1412,12 +1410,7 @@ mod tests {
         check("a: Int, b: Int, c: Int", "a + b > c", expect!["Bool"]);
     }
 
-    fn check_with_records(
-        env_str: &str,
-        records_str: &[&str],
-        expr_str: &str,
-        expected: Expect,
-    ) {
+    fn check_with_records(env_str: &str, records_str: &[&str], expr_str: &str, expected: Expect) {
         let mut env = Environment::new();
 
         if !env_str.is_empty() {

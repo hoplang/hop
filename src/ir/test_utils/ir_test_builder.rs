@@ -274,25 +274,21 @@ impl IrTestBuilder {
         let property_name = PropertyName::new(property).unwrap();
         let property_type = match object.as_type() {
             Type::Named(record_name) => {
-                let record_fields = self
-                    .records
-                    .get(record_name)
-                    .unwrap_or_else(|| panic!("Record '{}' not found in test builder", record_name));
-                record_fields
-                    .get(property)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "Property '{}' not found in record type '{}'",
-                            property, record_name
-                        )
-                    })
+                let record_fields = self.records.get(record_name).unwrap_or_else(|| {
+                    panic!("Record '{}' not found in test builder", record_name)
+                });
+                record_fields.get(property).cloned().unwrap_or_else(|| {
+                    panic!(
+                        "Property '{}' not found in record type '{}'",
+                        property, record_name
+                    )
+                })
             }
             _ => panic!("Cannot access property '{}' on non-record type", property),
         };
 
         TypedExpr::PropertyAccess {
-            object: Box::new(object),
+            record: Box::new(object),
             property: property_name,
             kind: property_type,
             annotation: self.next_expr_id(),
