@@ -139,7 +139,7 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
                 .declaration
                 .fields
                 .iter()
-                .map(|f| (f.name.as_str().to_string(), f.field_type.clone()))
+                .map(|f| (f.name.clone(), f.field_type.clone()))
                 .collect(),
         })
         .collect();

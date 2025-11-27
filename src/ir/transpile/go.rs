@@ -1,7 +1,6 @@
 use pretty::BoxDoc;
 
 use super::{ExpressionTranspiler, RecordInfo, StatementTranspiler, Transpiler, TypeTranspiler};
-use crate::cased_string::CasedString;
 use crate::dop::property_name::PropertyName;
 use crate::dop::r#type::Type;
 use crate::hop::component_name::ComponentName;
@@ -153,7 +152,7 @@ impl Transpiler for GoTranspiler {
                 .fields
                 .iter()
                 .map(|(field_name, field_type)| {
-                    let pascal_name = CasedString::from_snake_case(field_name).to_pascal_case();
+                    let pascal_name = field_name.to_pascal_case();
                     BoxDoc::as_string(pascal_name)
                         .append(BoxDoc::text(" "))
                         .append(self.transpile_type(field_type))
@@ -402,8 +401,12 @@ impl ExpressionTranspiler for GoTranspiler {
         BoxDoc::text(name)
     }
 
-    fn transpile_property_access<'a>(&self, object: &'a IrExpr, property: &'a str) -> BoxDoc<'a> {
-        let prop_name = CasedString::from_snake_case(property).to_pascal_case();
+    fn transpile_property_access<'a>(
+        &self,
+        object: &'a IrExpr,
+        property: &'a PropertyName,
+    ) -> BoxDoc<'a> {
+        let prop_name = property.to_pascal_case();
         self.transpile_expr(object)
             .append(BoxDoc::text("."))
             .append(BoxDoc::as_string(prop_name))
@@ -1232,16 +1235,16 @@ mod tests {
             RecordInfo {
                 name: "User".to_string(),
                 fields: vec![
-                    ("name".to_string(), Type::String),
-                    ("age".to_string(), Type::Int),
-                    ("active".to_string(), Type::Bool),
+                    (PropertyName::new("name").unwrap(), Type::String),
+                    (PropertyName::new("age").unwrap(), Type::Int),
+                    (PropertyName::new("active").unwrap(), Type::Bool),
                 ],
             },
             RecordInfo {
                 name: "Address".to_string(),
                 fields: vec![
-                    ("street".to_string(), Type::String),
-                    ("city".to_string(), Type::String),
+                    (PropertyName::new("street").unwrap(), Type::String),
+                    (PropertyName::new("city").unwrap(), Type::String),
                 ],
             },
         ];
@@ -1305,8 +1308,8 @@ mod tests {
         let records = vec![RecordInfo {
             name: "User".to_string(),
             fields: vec![
-                ("name".to_string(), Type::String),
-                ("age".to_string(), Type::Int),
+                (PropertyName::new("name").unwrap(), Type::String),
+                (PropertyName::new("age").unwrap(), Type::Int),
             ],
         }];
 

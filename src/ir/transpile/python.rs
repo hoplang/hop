@@ -381,11 +381,15 @@ impl ExpressionTranspiler for PythonTranspiler {
         BoxDoc::text(name)
     }
 
-    fn transpile_property_access<'a>(&self, object: &'a IrExpr, property: &'a str) -> BoxDoc<'a> {
+    fn transpile_property_access<'a>(
+        &self,
+        object: &'a IrExpr,
+        property: &'a PropertyName,
+    ) -> BoxDoc<'a> {
         // Python uses dot notation for dataclass attributes
         self.transpile_expr(object)
             .append(BoxDoc::text("."))
-            .append(BoxDoc::text(property))
+            .append(BoxDoc::as_string(property.as_str()))
     }
 
     fn transpile_string_literal<'a>(&self, value: &'a str) -> BoxDoc<'a> {
@@ -1112,16 +1116,16 @@ mod tests {
             RecordInfo {
                 name: "User".to_string(),
                 fields: vec![
-                    ("name".to_string(), Type::String),
-                    ("age".to_string(), Type::Int),
-                    ("active".to_string(), Type::Bool),
+                    (PropertyName::new("name").unwrap(), Type::String),
+                    (PropertyName::new("age").unwrap(), Type::Int),
+                    (PropertyName::new("active").unwrap(), Type::Bool),
                 ],
             },
             RecordInfo {
                 name: "Address".to_string(),
                 fields: vec![
-                    ("street".to_string(), Type::String),
-                    ("city".to_string(), Type::String),
+                    (PropertyName::new("street").unwrap(), Type::String),
+                    (PropertyName::new("city").unwrap(), Type::String),
                 ],
             },
         ];
@@ -1180,8 +1184,8 @@ mod tests {
         let records = vec![RecordInfo {
             name: "User".to_string(),
             fields: vec![
-                ("name".to_string(), Type::String),
-                ("age".to_string(), Type::Int),
+                (PropertyName::new("name").unwrap(), Type::String),
+                (PropertyName::new("age").unwrap(), Type::Int),
             ],
         }];
 

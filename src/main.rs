@@ -1,4 +1,3 @@
-mod cased_string;
 mod cli;
 mod common;
 mod document;

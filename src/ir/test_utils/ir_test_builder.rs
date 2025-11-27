@@ -1,5 +1,5 @@
-use crate::dop::PropertyName;
 use crate::dop::TypedExpr;
+use crate::dop::property_name::PropertyName;
 use crate::dop::r#type::{ComparableType, EquatableType};
 use crate::dop::{Type, VarName};
 use crate::hop::component_name::ComponentName;

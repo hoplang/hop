@@ -19,7 +19,7 @@ use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 #[derive(Debug, Clone)]
 pub struct RecordInfo {
     pub name: String,
-    pub fields: Vec<(String, Type)>,
+    pub fields: Vec<(PropertyName, Type)>,
 }
 
 pub trait Transpiler {
@@ -102,7 +102,11 @@ pub trait TypeTranspiler {
 /// Expression transpilation trait using pretty-printing
 pub trait ExpressionTranspiler {
     fn transpile_var<'a>(&self, name: &'a str) -> BoxDoc<'a>;
-    fn transpile_property_access<'a>(&self, object: &'a IrExpr, property: &'a str) -> BoxDoc<'a>;
+    fn transpile_property_access<'a>(
+        &self,
+        object: &'a IrExpr,
+        property: &'a PropertyName,
+    ) -> BoxDoc<'a>;
     fn transpile_string_literal<'a>(&self, value: &'a str) -> BoxDoc<'a>;
     fn transpile_boolean_literal<'a>(&self, value: bool) -> BoxDoc<'a>;
     fn transpile_float_literal<'a>(&self, value: f64) -> BoxDoc<'a>;
@@ -168,7 +172,7 @@ pub trait ExpressionTranspiler {
                 record: object,
                 property,
                 ..
-            } => self.transpile_property_access(object, property.as_str()),
+            } => self.transpile_property_access(object, property),
             IrExpr::StringLiteral { value, .. } => self.transpile_string_literal(value),
             IrExpr::BooleanLiteral { value, .. } => self.transpile_boolean_literal(*value),
             IrExpr::FloatLiteral { value, .. } => self.transpile_float_literal(*value),

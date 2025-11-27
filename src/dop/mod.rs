@@ -12,7 +12,6 @@ pub mod var_name;
 
 pub use expr::Expr;
 pub use parser::{Argument, Parameter, Parser, RecordDeclaration};
-pub use property_name::PropertyName;
 pub use token::Token;
 pub use tokenizer::Tokenizer;
 pub use r#type::Type;
