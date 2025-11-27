@@ -42,6 +42,7 @@ pub struct ComponentTypeInformation {
 #[derive(Debug, Clone, Default)]
 pub struct ModuleTypeInformation {
     components: HashMap<String, ComponentTypeInformation>,
+    records: HashMap<String, dop::RecordDeclaration>,
 }
 
 impl ModuleTypeInformation {
@@ -70,6 +71,18 @@ impl ModuleTypeInformation {
         self.components
             .insert(component_name.to_string(), type_info);
     }
+
+    fn record_is_declared(&self, record_name: &str) -> bool {
+        self.records.contains_key(record_name)
+    }
+
+    fn get_record(&self, record_name: &str) -> Option<&dop::RecordDeclaration> {
+        self.records.get(record_name)
+    }
+
+    fn set_record(&mut self, record_name: &str, record: dop::RecordDeclaration) {
+        self.records.insert(record_name.to_string(), record);
+    }
 }
 
 #[derive(Debug, Default)]
@@ -88,6 +101,18 @@ impl State {
             .entry(module_name.clone())
             .or_default()
             .set_component_type_info(component_name, type_info);
+    }
+
+    fn set_record(
+        &mut self,
+        module_name: &ModuleName,
+        record_name: &str,
+        record: dop::RecordDeclaration,
+    ) {
+        self.modules
+            .entry(module_name.clone())
+            .or_default()
+            .set_record(record_name, record);
     }
 }
 
@@ -169,16 +194,63 @@ fn typecheck_module(
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> TypedAst {
-    // Collect declared record names and build record lookup map
-    let declared_records: HashSet<&str> = module.get_records().iter().map(|r| r.name()).collect();
+    // Store records from this module in state first (before validating imports)
+    // so that other modules can import them
+    for record in module.get_records() {
+        state.set_record(&module.name, record.name(), record.declaration.clone());
+    }
 
-    let record_map: HashMap<&str, &dop::RecordDeclaration> = module
+    // Collect declared record names (local records only, for now)
+    let mut declared_records: HashSet<&str> =
+        module.get_records().iter().map(|r| r.name()).collect();
+
+    // Build record lookup map (local records only, for now)
+    let mut record_map: HashMap<&str, &dop::RecordDeclaration> = module
         .get_records()
         .iter()
         .map(|r| (r.name(), &r.declaration))
         .collect();
 
-    // Validate record field types
+    // Collect imported records from state
+    // We need to store references to imported records that outlive the loop
+    let mut imported_record_declarations: Vec<(String, dop::RecordDeclaration)> = Vec::new();
+
+    // Validate imports and collect imported records
+    for import in module.get_imports() {
+        let imported_module = import.imported_module();
+        let imported_name = import.imported_component();
+        let Some(module_state) = state.modules.get(imported_module) else {
+            errors.push(TypeError::ModuleNotFound {
+                module: imported_module.as_str().to_string(),
+                range: import.from_attr.value.clone(),
+            });
+            continue;
+        };
+
+        // Check if the import is a component or a record
+        let is_component = module_state.component_is_declared(imported_name.as_str());
+        let is_record = module_state.record_is_declared(imported_name.as_str());
+
+        if !is_component && !is_record {
+            errors.push(TypeError::UndeclaredComponent {
+                module_name: import.from_attr.value.clone(),
+                component_name: imported_name.clone(),
+            });
+        }
+
+        // If it's a record, add it to our available records
+        if let Some(record) = module_state.get_record(imported_name.as_str()) {
+            imported_record_declarations.push((imported_name.as_str().to_string(), record.clone()));
+        }
+    }
+
+    // Add imported records to declared_records and record_map
+    for (name, decl) in &imported_record_declarations {
+        declared_records.insert(name.as_str());
+        record_map.insert(name.as_str(), decl);
+    }
+
+    // Validate record field types (now with imported records available)
     for record in module.get_records() {
         for field in &record.declaration.fields {
             for (type_name, type_range) in validate_named_types_in_type(
@@ -191,25 +263,6 @@ fn typecheck_module(
                     range: type_range,
                 });
             }
-        }
-    }
-
-    // Validate imports
-    for import in module.get_imports() {
-        let imported_module = import.imported_module();
-        let imported_component = import.imported_component();
-        let Some(module_state) = state.modules.get(imported_module) else {
-            errors.push(TypeError::ModuleNotFound {
-                module: imported_module.as_str().to_string(),
-                range: import.from_attr.value.clone(),
-            });
-            continue;
-        };
-        if !module_state.component_is_declared(imported_component.as_str()) {
-            errors.push(TypeError::UndeclaredComponent {
-                module_name: import.from_attr.value.clone(),
-                component_name: imported_component.clone(),
-            });
         }
     }
 
@@ -2084,7 +2137,6 @@ mod tests {
         );
     }
 
-    // TODO: Fix this test
     #[test]
     fn test_multi_module_component_chain() {
         check(
@@ -2131,35 +2183,71 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                error: Type 'Config' is not defined
-                  --> foo.hop (line 5, col 10)
-                 4 | record Data {
-                 5 |   items: Array[Config],
-                   |          ^^^^^^^^^^^^^
+                config: Config
+                  --> bar.hop (line 6, col 14)
+                 5 | 
+                 6 | <WidgetComp {config: Config}>
+                   |              ^^^^^^
 
-                error: Module @/bar does not declare a component named Config
-                  --> foo.hop (line 2, col 8)
-                 1 | import WidgetComp from "@/bar"
-                 2 | import Config from "@/bar"
+                config: Config
+                  --> bar.hop (line 8, col 11)
+                 7 |   <if {config.enabled}>
+                 8 |     <div>{config.title}</div>
+                   |           ^^^^^^
+
+                config: Config
+                  --> bar.hop (line 7, col 8)
+                 6 | <WidgetComp {config: Config}>
+                 7 |   <if {config.enabled}>
                    |        ^^^^^^
 
-                error: Type 'Data' is not defined
-                  --> main.hop (line 5, col 10)
-                 4 | record Dashboard {
-                 5 |   items: Array[Data],
-                   |          ^^^^^^^^^^^
+                data: Data
+                  --> foo.hop (line 8, col 13)
+                 7 | 
+                 8 | <PanelComp {data: Data}>
+                   |             ^^^^
 
-                error: Type 'Data' is not defined
-                  --> main.hop (line 8, col 14)
-                 7 | record Settings {
-                 8 |   dashboard: Data,
-                   |              ^^^^
+                data: Data
+                  --> foo.hop (line 9, col 17)
+                 8 | <PanelComp {data: Data}>
+                 9 |   <for {item in data.items}>
+                   |                 ^^^^
 
-                error: Module @/foo does not declare a component named Data
-                  --> main.hop (line 2, col 8)
-                 1 | import PanelComp from "@/foo"
-                 2 | import Data from "@/foo"
-                   |        ^^^^
+                item: Config
+                  --> foo.hop (line 9, col 9)
+                 8 | <PanelComp {data: Data}>
+                 9 |   <for {item in data.items}>
+                   |         ^^^^
+
+                item: Config
+                  --> foo.hop (line 10, col 26)
+                 9 |   <for {item in data.items}>
+                10 |     <WidgetComp {config: item}/>
+                   |                          ^^^^
+
+                config: Config
+                  --> foo.hop (line 10, col 26)
+                 9 |   <for {item in data.items}>
+                10 |     <WidgetComp {config: item}/>
+                   |                          ^^^^
+
+                settings: Settings
+                  --> main.hop (line 11, col 8)
+                10 | 
+                11 | <Main {settings: Settings}>
+                   |        ^^^^^^^^
+
+                settings: Settings
+                  --> main.hop (line 12, col 21)
+                11 | <Main {settings: Settings}>
+                12 |   <PanelComp {data: settings.dashboard}/>
+                   |                     ^^^^^^^^
+
+                data: Data
+                  --> main.hop (line 12, col 21)
+                11 | <Main {settings: Settings}>
+                12 |   <PanelComp {data: settings.dashboard}/>
+                   |                     ^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -3921,30 +4009,6 @@ mod tests {
                  6 |     </if>
                  7 |     <if {item.id == 1}>
                    |          ^^^^^^^^^^^^
-
-                error: Module @/item-display does not declare a component named Item
-                  --> data-list.hop (line 2, col 8)
-                1 | import ItemDisplay from "@/item-display"
-                2 | import Item from "@/item-display"
-                  |        ^^^^
-
-                error: Type 'Item' is not defined
-                  --> data-list.hop (line 3, col 19)
-                2 | import Item from "@/item-display"
-                3 | <DataList {items: Array[Item]}>
-                  |                   ^^^^^^^^^^^
-
-                error: Module @/item-display does not declare a component named Item
-                  --> main.hop (line 2, col 8)
-                1 | import DataList from "@/data-list"
-                2 | import Item from "@/item-display"
-                  |        ^^^^
-
-                error: Type 'Item' is not defined
-                  --> main.hop (line 3, col 15)
-                2 | import Item from "@/item-display"
-                3 | <Main {items: Array[Item]}>
-                  |               ^^^^^^^^^^^
             "#]],
         );
     }
