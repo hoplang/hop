@@ -356,14 +356,14 @@ impl Compiler {
                 kind,
                 annotation: expr_id,
             },
-            SimpleTypedExpr::PropertyAccess {
+            SimpleTypedExpr::FieldAccess {
                 record: object,
-                property,
+                field,
                 kind,
                 ..
-            } => TypedExpr::PropertyAccess {
+            } => TypedExpr::FieldAccess {
                 record: Box::new(self.compile_expr(*object)),
-                property,
+                field,
                 kind,
                 annotation: expr_id,
             },

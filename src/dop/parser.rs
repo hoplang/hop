@@ -5,8 +5,8 @@ use std::iter::Peekable;
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _};
 use crate::dop::Type;
 use crate::dop::expr::{AnnotatedExpr, BinaryOp};
+use crate::dop::field_name::FieldName;
 use crate::dop::parse_error::ParseError;
-use crate::dop::property_name::PropertyName;
 use crate::dop::token::Token;
 use crate::dop::tokenizer::Tokenizer;
 use crate::dop::var_name::VarName;
@@ -36,7 +36,7 @@ impl Display for Parameter {
 ///                  ^^^^^^^^^^^
 #[derive(Debug, Clone)]
 pub struct RecordField {
-    pub name: PropertyName,
+    pub name: FieldName,
     pub name_range: DocumentRange,
     pub field_type: Type,
     pub field_type_range: DocumentRange,
@@ -178,11 +178,11 @@ impl Parser {
         }
     }
 
-    fn expect_property_name(&mut self) -> Result<(PropertyName, DocumentRange), ParseError> {
+    fn expect_field_name(&mut self) -> Result<(FieldName, DocumentRange), ParseError> {
         match self.iter.next().transpose()? {
             Some((Token::Identifier(name), range)) => {
-                let prop_name = PropertyName::new(name.as_str()).map_err(|error| {
-                    ParseError::InvalidPropertyName {
+                let prop_name = FieldName::new(name.as_str()).map_err(|error| {
+                    ParseError::InvalidFieldName {
                         name: name.to_string_span(),
                         error,
                         range: name.clone(),
@@ -190,7 +190,7 @@ impl Parser {
                 })?;
                 Ok((prop_name, range))
             }
-            Some((token, range)) => Err(ParseError::ExpectedPropertyNameButGot {
+            Some((token, range)) => Err(ParseError::ExpectedFieldNameButGot {
                 actual: token,
                 range: range.clone(),
             }),
@@ -353,7 +353,7 @@ impl Parser {
 
     // record_field = Identifier ":" type
     fn parse_record_field(&mut self) -> Result<RecordField, ParseError> {
-        let (name, name_range) = self.expect_property_name()?;
+        let (name, name_range) = self.expect_field_name()?;
         self.expect_token(&Token::Colon)?;
         let (field_type, field_type_range) = self.parse_type()?;
         Ok(RecordField {
@@ -391,7 +391,7 @@ impl Parser {
         self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
             let field = this.parse_record_field()?;
             if !seen_names.insert(field.name.as_str().to_string()) {
-                return Err(ParseError::DuplicateProperty {
+                return Err(ParseError::DuplicateField {
                     name: field.name_range.to_string_span(),
                     range: field.name_range.clone(),
                 });
@@ -598,7 +598,7 @@ impl Parser {
         })
     }
 
-    fn parse_property_access(&mut self, identifier: DocumentRange) -> Result<Expr, ParseError> {
+    fn parse_field_access(&mut self, identifier: DocumentRange) -> Result<Expr, ParseError> {
         let var_name =
             VarName::new(identifier.as_str()).map_err(|error| ParseError::InvalidVariableName {
                 name: identifier.to_string_span(),
@@ -612,19 +612,19 @@ impl Parser {
 
         while let Some(dot) = self.advance_if(Token::Dot) {
             match self.iter.next().transpose()? {
-                Some((Token::Identifier(prop), _)) => {
-                    // Validate property name
-                    let prop_name = PropertyName::new(prop.as_str()).map_err(|error| {
-                        ParseError::InvalidPropertyName {
-                            name: prop.to_string_span(),
+                Some((Token::Identifier(field_ident), _)) => {
+                    // Validate field name
+                    let field_name = FieldName::new(field_ident.as_str()).map_err(|error| {
+                        ParseError::InvalidFieldName {
+                            name: field_ident.to_string_span(),
                             error,
-                            range: prop.clone(),
+                            range: field_ident.clone(),
                         }
                     })?;
-                    let range = expr.range().clone().to(prop.clone());
-                    expr = AnnotatedExpr::PropertyAccess {
+                    let range = expr.range().clone().to(field_ident.clone());
+                    expr = AnnotatedExpr::FieldAccess {
                         record: Box::new(expr),
-                        property: prop_name,
+                        field: field_name,
                         annotation: range,
                     };
                 }
@@ -632,7 +632,7 @@ impl Parser {
                     return Err(ParseError::ExpectedIdentifierAfterDot { range });
                 }
                 None => {
-                    return Err(ParseError::UnexpectedEndOfPropertyAccess {
+                    return Err(ParseError::UnexpectedEndOfFieldAccess {
                         range: expr.range().clone().to(dot.clone()),
                     });
                 }
@@ -643,7 +643,7 @@ impl Parser {
 
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
         match self.iter.next().transpose()? {
-            Some((Token::Identifier(name), _)) => self.parse_property_access(name),
+            Some((Token::Identifier(name), _)) => self.parse_field_access(name),
             Some((Token::TypeName(name), name_range)) => {
                 self.parse_record_instantiation(name, name_range)
             }
@@ -687,7 +687,7 @@ impl Parser {
         let left_paren = self.expect_token(&Token::LeftParen)?;
         let mut fields = Vec::new();
         let right_paren = self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
-            let (field_name, _) = this.expect_property_name()?;
+            let (field_name, _) = this.expect_field_name()?;
             this.expect_token(&Token::Colon)?;
             fields.push((field_name, this.parse_logical()?));
             Ok(())
@@ -846,7 +846,7 @@ mod tests {
         check_parse_record(
             "record Foo {bar: String, bar: Int}",
             expect![[r#"
-                error: Duplicate property 'bar'
+                error: Duplicate field 'bar'
                 record Foo {bar: String, bar: Int}
                                          ^^^
             "#]],
@@ -1176,7 +1176,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_exprs_with_property_access() {
+    fn test_parse_exprs_with_field_access() {
         check_parse_exprs(
             "user.name, user.age, user.active",
             expect![[r#"
@@ -1294,7 +1294,7 @@ mod tests {
         check_parse_expr(
             "user == user.",
             expect![[r#"
-                error: Unexpected end of property access
+                error: Unexpected end of field access
                 user == user.
                         ^^^^^
             "#]],
@@ -1376,10 +1376,10 @@ mod tests {
     #[test]
     fn test_parse_expr_error_dot_at_start() {
         check_parse_expr(
-            ".property",
+            ".field",
             expect![[r#"
                 error: Unexpected token '.'
-                .property
+                .field
                 ^
             "#]],
         );
@@ -1444,7 +1444,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_property_access_comparison() {
+    fn test_parse_expr_field_access_comparison() {
         check_parse_expr(
             "user.name == admin.name",
             expect![[r#"
@@ -1494,7 +1494,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_property_access() {
+    fn test_parse_expr_field_access() {
         check_parse_expr(
             "app.user.profile.settings.theme",
             expect![[r#"
@@ -1554,7 +1554,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_simple_property_access() {
+    fn test_parse_expr_simple_field_access() {
         check_parse_expr(
             "user.name",
             expect![[r#"
@@ -1614,7 +1614,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_property_string_comparison() {
+    fn test_parse_expr_field_string_comparison() {
         check_parse_expr(
             r#"user.name == "admin""#,
             expect![[r#"
@@ -1774,7 +1774,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_string_concatenation_with_property_access() {
+    fn test_parse_expr_string_concatenation_with_field_access() {
         check_parse_expr(
             r#"user.first_name + " " + user.last_name"#,
             expect![[r#"

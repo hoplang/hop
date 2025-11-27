@@ -331,7 +331,7 @@ impl IrExpr {
     {
         f(self);
         match self {
-            TypedExpr::PropertyAccess { record: object, .. } => {
+            TypedExpr::FieldAccess { record: object, .. } => {
                 object.traverse(f);
             }
             TypedExpr::ArrayLiteral { elements, .. } => {
@@ -383,7 +383,7 @@ impl IrExpr {
     {
         f(self);
         match self {
-            TypedExpr::PropertyAccess { record: object, .. } => {
+            TypedExpr::FieldAccess { record: object, .. } => {
                 object.traverse_mut(f);
             }
             TypedExpr::ArrayLiteral { elements, .. } => {

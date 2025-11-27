@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 
-use crate::dop::property_name::PropertyName;
+use crate::dop::field_name::FieldName;
 use crate::dop::var_name::VarName;
 use pretty::BoxDoc;
 
@@ -20,10 +20,10 @@ pub enum TypedExpr<A> {
         annotation: A,
     },
 
-    /// A property access expression, e.g. foo.bar
-    PropertyAccess {
+    /// A field access expression, e.g. foo.bar
+    FieldAccess {
         record: Box<Self>,
-        property: PropertyName,
+        field: FieldName,
         kind: Type,
         annotation: A,
     },
@@ -50,7 +50,7 @@ pub enum TypedExpr<A> {
     /// A record instantiation expression, e.g. User(name: "John", age: 30)
     RecordInstantiation {
         record_name: String,
-        fields: Vec<(PropertyName, Self)>,
+        fields: Vec<(FieldName, Self)>,
         kind: Type,
         annotation: A,
     },
@@ -167,7 +167,7 @@ impl<A> TypedExpr<A> {
 
         match self {
             TypedExpr::Var { kind, .. }
-            | TypedExpr::PropertyAccess { kind, .. }
+            | TypedExpr::FieldAccess { kind, .. }
             | TypedExpr::ArrayLiteral { kind, .. }
             | TypedExpr::RecordInstantiation { kind, .. } => kind,
 
@@ -202,7 +202,7 @@ impl<A> TypedExpr<A> {
     pub fn annotation(&self) -> &A {
         match self {
             TypedExpr::Var { annotation, .. }
-            | TypedExpr::PropertyAccess { annotation, .. }
+            | TypedExpr::FieldAccess { annotation, .. }
             | TypedExpr::StringLiteral { annotation, .. }
             | TypedExpr::BooleanLiteral { annotation, .. }
             | TypedExpr::FloatLiteral { annotation, .. }
@@ -230,14 +230,14 @@ impl<A> TypedExpr<A> {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
             TypedExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
-            TypedExpr::PropertyAccess {
+            TypedExpr::FieldAccess {
                 record: object,
-                property,
+                field,
                 ..
             } => object
                 .to_doc()
                 .append(BoxDoc::text("."))
-                .append(BoxDoc::text(property.as_str())),
+                .append(BoxDoc::text(field.as_str())),
             TypedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
             TypedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
             TypedExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),

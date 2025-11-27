@@ -1279,7 +1279,7 @@ mod tests {
     }
 
     #[test]
-    fn test_iterate_over_boolean_property() {
+    fn test_iterate_over_boolean_field() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2461,7 +2461,7 @@ mod tests {
     }
 
     #[test]
-    fn test_object_property_name_collision() {
+    fn test_object_field_name_collision() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2499,7 +2499,7 @@ mod tests {
     }
 
     #[test]
-    fn test_object_property_separate_access() {
+    fn test_object_field_separate_access() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4265,7 +4265,7 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                error: Property 'email' not found in record 'User'
+                error: Field 'email' not found in record 'User'
                   --> main.hop (line 3, col 11)
                 2 | <Main {user: User}>
                 3 |     <div>{user.email}</div>

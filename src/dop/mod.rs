@@ -1,7 +1,7 @@
 pub mod expr;
 pub mod parse_error;
 pub mod parser;
-pub mod property_name;
+pub mod field_name;
 pub mod token;
 pub mod tokenizer;
 pub mod r#type;

@@ -51,9 +51,9 @@ pub fn typecheck_expr<'a>(
             value: *value,
             annotation: (),
         }),
-        AnnotatedExpr::PropertyAccess {
+        AnnotatedExpr::FieldAccess {
             record: base_expr,
-            property,
+            field,
             annotation: range,
             ..
         } => {
@@ -63,20 +63,20 @@ pub fn typecheck_expr<'a>(
             match &base_type {
                 Type::Named(record_name) => {
                     if let Some(record_decl) = records.get(record_name.as_str()) {
-                        if let Some(field) = record_decl
+                        if let Some(field_decl) = record_decl
                             .fields
                             .iter()
-                            .find(|f| f.name.as_str() == property.as_str())
+                            .find(|f| f.name.as_str() == field.as_str())
                         {
-                            Ok(SimpleTypedExpr::PropertyAccess {
-                                kind: field.field_type.clone(),
+                            Ok(SimpleTypedExpr::FieldAccess {
+                                kind: field_decl.field_type.clone(),
                                 record: Box::new(typed_base),
-                                property: property.clone(),
+                                field: field.clone(),
                                 annotation: (),
                             })
                         } else {
-                            Err(TypeError::PropertyNotFoundInRecord {
-                                property: property.to_string(),
+                            Err(TypeError::FieldNotFoundInRecord {
+                                field: field.to_string(),
                                 record_name: record_name.clone(),
                                 range: range.clone(),
                             })
@@ -739,7 +739,7 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_property_access_on_undefined_variable() {
+    fn test_typecheck_field_access_on_undefined_variable() {
         check(
             "",
             "notdefined.foo.bar",
@@ -752,7 +752,7 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_property_access_on_non_record() {
+    fn test_typecheck_field_access_on_non_record() {
         check(
             "count: Float",
             "count.value",
@@ -791,7 +791,7 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_nested_array_property_error() {
+    fn test_typecheck_nested_array_field_error() {
         check_with_records(
             "config: Config",
             &[
@@ -809,7 +809,7 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_array_property_access_error() {
+    fn test_typecheck_array_field_access_error() {
         check_with_records(
             "users: Array[User]",
             &["record User {name: String}"],
@@ -823,13 +823,13 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_unknown_property() {
+    fn test_typecheck_unknown_field() {
         check_with_records(
             "data: Data",
             &["record Data {field: String}"],
             "data.unknown",
             expect![[r#"
-                error: Property 'unknown' not found in record 'Data'
+                error: Field 'unknown' not found in record 'Data'
                 data.unknown
                 ^^^^^^^^^^^^
             "#]],
@@ -867,7 +867,7 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_property_access() {
+    fn test_typecheck_field_access() {
         check_with_records(
             "user: User",
             &["record User {name: String}"],
@@ -877,7 +877,7 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_nested_property_access() {
+    fn test_typecheck_nested_field_access() {
         check_with_records(
             "app: App",
             &[
@@ -1036,7 +1036,7 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_record_array_property() {
+    fn test_typecheck_record_array_field() {
         check_with_records(
             "data: Data",
             &["record Data {items: Array[String]}"],
@@ -1046,7 +1046,7 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_deep_property_access() {
+    fn test_typecheck_deep_field_access() {
         check_with_records(
             "system: System",
             &[
@@ -1061,7 +1061,7 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_multiple_property_access() {
+    fn test_typecheck_multiple_field_access() {
         check_with_records(
             "obj: Obj",
             &["record Obj {name: String, title: String}"],
@@ -1152,7 +1152,7 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_string_concatenation_with_property_access() {
+    fn test_typecheck_string_concatenation_with_field_access() {
         check_with_records(
             "user: User",
             &["record User {first_name: String, last_name: String}"],
@@ -1177,7 +1177,7 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_logical_and_property_access() {
+    fn test_typecheck_logical_and_field_access() {
         check_with_records(
             "user: User",
             &["record User {enabled: Bool, active: Bool}"],
@@ -1250,7 +1250,7 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_logical_or_property_access() {
+    fn test_typecheck_logical_or_field_access() {
         check_with_records(
             "user: User",
             &["record User {enabled: Bool, active: Bool}"],
@@ -1396,7 +1396,7 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_addition_with_property_access() {
+    fn test_typecheck_addition_with_field_access() {
         check_with_records(
             "user: User",
             &["record User {x: Int, y: Int}"],

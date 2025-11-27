@@ -2409,7 +2409,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_component_with_property_access() {
+    fn test_tokenize_component_with_field_access() {
         check(
             "<component {obj.prop.subprop}>",
             expect![[r#"
@@ -2505,7 +2505,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_for_with_property_access() {
+    fn test_tokenize_for_with_field_access() {
         check(
             "<for {item in user.items}>",
             expect![[r#"
@@ -2737,7 +2737,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_expression_with_property_access() {
+    fn test_tokenize_expression_with_field_access() {
         check(
             "<span>Item: {item.title}</span>",
             expect![[r#"

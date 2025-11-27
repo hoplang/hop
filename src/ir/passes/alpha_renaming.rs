@@ -129,14 +129,14 @@ impl AlphaRenamingPass {
                     annotation,
                 }
             }
-            TypedExpr::PropertyAccess {
+            TypedExpr::FieldAccess {
                 record: object,
-                property,
+                field,
                 kind,
                 annotation,
-            } => TypedExpr::PropertyAccess {
+            } => TypedExpr::FieldAccess {
                 record: Box::new(self.rename_expr(*object)),
-                property,
+                field,
                 kind,
                 annotation,
             },

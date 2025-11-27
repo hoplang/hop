@@ -1,5 +1,5 @@
 use crate::dop::TypedExpr;
-use crate::dop::property_name::PropertyName;
+use crate::dop::field_name::FieldName;
 use crate::dop::r#type::{ComparableType, EquatableType};
 use crate::dop::{Type, VarName};
 use crate::hop::component_name::ComponentName;
@@ -263,34 +263,34 @@ impl IrTestBuilder {
             record_name: record_name.to_string(),
             fields: fields
                 .into_iter()
-                .map(|(k, v)| (PropertyName::new(k).unwrap(), v))
+                .map(|(k, v)| (FieldName::new(k).unwrap(), v))
                 .collect(),
             kind: Type::Named(record_name.to_string()),
             annotation: self.next_expr_id(),
         }
     }
 
-    pub fn prop_access(&self, object: IrExpr, property: &str) -> IrExpr {
-        let property_name = PropertyName::new(property).unwrap();
-        let property_type = match object.as_type() {
+    pub fn field_access(&self, object: IrExpr, field_str: &str) -> IrExpr {
+        let field_name = FieldName::new(field_str).unwrap();
+        let field_type = match object.as_type() {
             Type::Named(record_name) => {
                 let record_fields = self.records.get(record_name).unwrap_or_else(|| {
                     panic!("Record '{}' not found in test builder", record_name)
                 });
-                record_fields.get(property).cloned().unwrap_or_else(|| {
+                record_fields.get(field_str).cloned().unwrap_or_else(|| {
                     panic!(
-                        "Property '{}' not found in record type '{}'",
-                        property, record_name
+                        "Field '{}' not found in record type '{}'",
+                        field_str, record_name
                     )
                 })
             }
-            _ => panic!("Cannot access property '{}' on non-record type", property),
+            _ => panic!("Cannot access field '{}' on non-record type", field_str),
         };
 
-        TypedExpr::PropertyAccess {
+        TypedExpr::FieldAccess {
             record: Box::new(object),
-            property: property_name,
-            kind: property_type,
+            field: field_name,
+            kind: field_type,
             annotation: self.next_expr_id(),
         }
     }
@@ -585,8 +585,8 @@ impl IrAutoBuilder {
         self.inner.record(record_name, fields)
     }
 
-    pub fn prop_access(&self, object: IrExpr, property: &str) -> IrExpr {
-        self.inner.prop_access(object, property)
+    pub fn field_access(&self, object: IrExpr, field: &str) -> IrExpr {
+        self.inner.field_access(object, field)
     }
 
     pub fn json_encode(&self, value: IrExpr) -> IrExpr {

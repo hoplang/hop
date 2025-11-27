@@ -1,7 +1,7 @@
 use pretty::BoxDoc;
 
 use super::{ExpressionTranspiler, RecordInfo, StatementTranspiler, Transpiler, TypeTranspiler};
-use crate::dop::property_name::PropertyName;
+use crate::dop::field_name::FieldName;
 use crate::dop::r#type::Type;
 use crate::hop::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
@@ -381,15 +381,15 @@ impl ExpressionTranspiler for PythonTranspiler {
         BoxDoc::text(name)
     }
 
-    fn transpile_property_access<'a>(
+    fn transpile_field_access<'a>(
         &self,
         object: &'a IrExpr,
-        property: &'a PropertyName,
+        field: &'a FieldName,
     ) -> BoxDoc<'a> {
         // Python uses dot notation for dataclass attributes
         self.transpile_expr(object)
             .append(BoxDoc::text("."))
-            .append(BoxDoc::as_string(property.as_str()))
+            .append(BoxDoc::as_string(field.as_str()))
     }
 
     fn transpile_string_literal<'a>(&self, value: &'a str) -> BoxDoc<'a> {
@@ -424,7 +424,7 @@ impl ExpressionTranspiler for PythonTranspiler {
     fn transpile_record_instantiation<'a>(
         &self,
         record_name: &'a str,
-        fields: &'a [(PropertyName, IrExpr)],
+        fields: &'a [(FieldName, IrExpr)],
     ) -> BoxDoc<'a> {
         // In Python, record instantiation is a dataclass constructor call
         BoxDoc::text(record_name)
@@ -1107,7 +1107,7 @@ mod tests {
             records_def,
             |t| {
                 t.write("<div>");
-                t.write_expr_escaped(t.prop_access(t.var("user"), "name"));
+                t.write_expr_escaped(t.field_access(t.var("user"), "name"));
                 t.write("</div>");
             },
         )];
@@ -1116,16 +1116,16 @@ mod tests {
             RecordInfo {
                 name: "User".to_string(),
                 fields: vec![
-                    (PropertyName::new("name").unwrap(), Type::String),
-                    (PropertyName::new("age").unwrap(), Type::Int),
-                    (PropertyName::new("active").unwrap(), Type::Bool),
+                    (FieldName::new("name").unwrap(), Type::String),
+                    (FieldName::new("age").unwrap(), Type::Int),
+                    (FieldName::new("active").unwrap(), Type::Bool),
                 ],
             },
             RecordInfo {
                 name: "Address".to_string(),
                 fields: vec![
-                    (PropertyName::new("street").unwrap(), Type::String),
-                    (PropertyName::new("city").unwrap(), Type::String),
+                    (FieldName::new("street").unwrap(), Type::String),
+                    (FieldName::new("city").unwrap(), Type::String),
                 ],
             },
         ];
@@ -1176,7 +1176,7 @@ mod tests {
             |t| {
                 t.write("<div>");
                 let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
-                t.write_expr_escaped(t.prop_access(user, "name"));
+                t.write_expr_escaped(t.field_access(user, "name"));
                 t.write("</div>");
             },
         )];
@@ -1184,8 +1184,8 @@ mod tests {
         let records = vec![RecordInfo {
             name: "User".to_string(),
             fields: vec![
-                (PropertyName::new("name").unwrap(), Type::String),
-                (PropertyName::new("age").unwrap(), Type::Int),
+                (FieldName::new("name").unwrap(), Type::String),
+                (FieldName::new("age").unwrap(), Type::Int),
             ],
         }];
 

@@ -123,14 +123,14 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             .lookup(name.as_str())
             .cloned()
             .ok_or_else(|| anyhow!("Undefined variable: {}", name)),
-        IrExpr::PropertyAccess {
+        IrExpr::FieldAccess {
             record: object,
-            property,
+            field,
             ..
         } => {
             let obj_value = evaluate_expr(object, env)?;
             if let Some(obj) = obj_value.as_object() {
-                Ok(obj.get(property.as_str()).cloned().unwrap_or(Value::Null))
+                Ok(obj.get(field.as_str()).cloned().unwrap_or(Value::Null))
             } else {
                 Ok(Value::Null)
             }

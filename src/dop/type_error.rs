@@ -7,9 +7,9 @@ pub enum TypeError {
     #[error("Undefined variable: {name}")]
     UndefinedVariable { name: String, range: DocumentRange },
 
-    #[error("Property '{property}' not found in record '{record_name}'")]
-    PropertyNotFoundInRecord {
-        property: String,
+    #[error("Field '{field}' not found in record '{record_name}'")]
+    FieldNotFoundInRecord {
+        field: String,
         record_name: String,
         range: DocumentRange,
     },
@@ -97,7 +97,7 @@ impl Ranged for TypeError {
     fn range(&self) -> &DocumentRange {
         match self {
             TypeError::UndefinedVariable { range, .. }
-            | TypeError::PropertyNotFoundInRecord { range, .. }
+            | TypeError::FieldNotFoundInRecord { range, .. }
             | TypeError::CannotUseAsRecord { range, .. }
             | TypeError::CannotCompareTypes { range, .. }
             | TypeError::NegationRequiresBoolean { range, .. }

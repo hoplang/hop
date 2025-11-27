@@ -10,7 +10,7 @@ pub use js::{JsTranspiler, LanguageMode};
 use pretty::BoxDoc;
 pub use python::PythonTranspiler;
 
-use crate::dop::property_name::PropertyName;
+use crate::dop::field_name::FieldName;
 use crate::dop::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::hop::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
@@ -19,7 +19,7 @@ use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 #[derive(Debug, Clone)]
 pub struct RecordInfo {
     pub name: String,
-    pub fields: Vec<(PropertyName, Type)>,
+    pub fields: Vec<(FieldName, Type)>,
 }
 
 pub trait Transpiler {
@@ -102,10 +102,10 @@ pub trait TypeTranspiler {
 /// Expression transpilation trait using pretty-printing
 pub trait ExpressionTranspiler {
     fn transpile_var<'a>(&self, name: &'a str) -> BoxDoc<'a>;
-    fn transpile_property_access<'a>(
+    fn transpile_field_access<'a>(
         &self,
         object: &'a IrExpr,
-        property: &'a PropertyName,
+        field: &'a FieldName,
     ) -> BoxDoc<'a>;
     fn transpile_string_literal<'a>(&self, value: &'a str) -> BoxDoc<'a>;
     fn transpile_boolean_literal<'a>(&self, value: bool) -> BoxDoc<'a>;
@@ -163,16 +163,16 @@ pub trait ExpressionTranspiler {
     fn transpile_record_instantiation<'a>(
         &self,
         record_name: &'a str,
-        fields: &'a [(PropertyName, IrExpr)],
+        fields: &'a [(FieldName, IrExpr)],
     ) -> BoxDoc<'a>;
     fn transpile_expr<'a>(&self, expr: &'a IrExpr) -> BoxDoc<'a> {
         match expr {
             IrExpr::Var { value, .. } => self.transpile_var(value.as_str()),
-            IrExpr::PropertyAccess {
+            IrExpr::FieldAccess {
                 record: object,
-                property,
+                field,
                 ..
-            } => self.transpile_property_access(object, property),
+            } => self.transpile_field_access(object, field),
             IrExpr::StringLiteral { value, .. } => self.transpile_string_literal(value),
             IrExpr::BooleanLiteral { value, .. } => self.transpile_boolean_literal(*value),
             IrExpr::FloatLiteral { value, .. } => self.transpile_float_literal(*value),

@@ -669,7 +669,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_property_access() {
+    fn test_tokenize_field_access() {
         check(
             "user.name",
             expect![[r#"

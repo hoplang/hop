@@ -1,7 +1,7 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use thiserror::Error;
 
-use super::property_name::InvalidPropertyNameError;
+use super::field_name::InvalidFieldNameError;
 use super::token::Token;
 use super::var_name::InvalidVarNameError;
 
@@ -10,8 +10,8 @@ pub enum ParseError {
     #[error("Unexpected end of expression")]
     UnexpectedEof { range: DocumentRange },
 
-    #[error("Unexpected end of property access")]
-    UnexpectedEndOfPropertyAccess { range: DocumentRange },
+    #[error("Unexpected end of field access")]
+    UnexpectedEndOfFieldAccess { range: DocumentRange },
 
     #[error("Unterminated string literal")]
     UnterminatedStringLiteral { range: DocumentRange },
@@ -26,10 +26,10 @@ pub enum ParseError {
         range: DocumentRange,
     },
 
-    #[error("Invalid property name '{name}': {error}")]
-    InvalidPropertyName {
+    #[error("Invalid field name '{name}': {error}")]
+    InvalidFieldName {
         name: StringSpan,
-        error: InvalidPropertyNameError,
+        error: InvalidFieldNameError,
         range: DocumentRange,
     },
 
@@ -49,8 +49,8 @@ pub enum ParseError {
     #[error("Expected variable name but got {actual}")]
     ExpectedVariableNameButGot { actual: Token, range: DocumentRange },
 
-    #[error("Expected property name but got {actual}")]
-    ExpectedPropertyNameButGot { actual: Token, range: DocumentRange },
+    #[error("Expected field name but got {actual}")]
+    ExpectedFieldNameButGot { actual: Token, range: DocumentRange },
 
     #[error("Expected identifier after '.'")]
     ExpectedIdentifierAfterDot { range: DocumentRange },
@@ -70,8 +70,8 @@ pub enum ParseError {
         range: DocumentRange,
     },
 
-    #[error("Duplicate property '{name}'")]
-    DuplicateProperty {
+    #[error("Duplicate field '{name}'")]
+    DuplicateField {
         name: StringSpan,
         range: DocumentRange,
     },
@@ -95,14 +95,14 @@ impl Ranged for ParseError {
             | ParseError::ExpectedDoubleEqButGotSingleEq { range, .. }
             | ParseError::UnexpectedToken { range, .. }
             | ParseError::ExpectedVariableNameButGot { range, .. }
-            | ParseError::ExpectedPropertyNameButGot { range, .. }
+            | ParseError::ExpectedFieldNameButGot { range, .. }
             | ParseError::DuplicateArgument { range, .. }
             | ParseError::InvalidVariableName { range, .. }
-            | ParseError::InvalidPropertyName { range, .. }
+            | ParseError::InvalidFieldName { range, .. }
             | ParseError::ExpectedTypeNameButGot { range, .. }
-            | ParseError::UnexpectedEndOfPropertyAccess { range, .. }
+            | ParseError::UnexpectedEndOfFieldAccess { range, .. }
             | ParseError::DuplicateParameter { range, .. }
-            | ParseError::DuplicateProperty { range, .. }
+            | ParseError::DuplicateField { range, .. }
             | ParseError::ExpectedIdentifierAfterDot { range } => range,
         }
     }

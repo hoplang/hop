@@ -1,7 +1,7 @@
 use std::fmt::{self, Display};
 
 use crate::document::document_cursor::{DocumentRange, Ranged};
-use crate::dop::property_name::PropertyName;
+use crate::dop::field_name::FieldName;
 use crate::dop::var_name::VarName;
 use pretty::BoxDoc;
 
@@ -27,10 +27,10 @@ pub enum AnnotatedExpr<A> {
     /// A variable expression, e.g. foo
     Var { value: VarName, annotation: A },
 
-    /// A property access expression, e.g. foo.bar
-    PropertyAccess {
+    /// A field access expression, e.g. foo.bar
+    FieldAccess {
         record: Box<Self>,
-        property: PropertyName,
+        field: FieldName,
         annotation: A,
     },
 
@@ -52,7 +52,7 @@ pub enum AnnotatedExpr<A> {
     /// A record instantiation expression, e.g. User(name: "John", age: 30)
     RecordInstantiation {
         record_name: String,
-        fields: Vec<(PropertyName, Self)>,
+        fields: Vec<(FieldName, Self)>,
         annotation: A,
     },
 
@@ -71,7 +71,7 @@ impl<A> AnnotatedExpr<A> {
     pub fn annotation(&self) -> &A {
         match self {
             AnnotatedExpr::Var { annotation, .. }
-            | AnnotatedExpr::PropertyAccess { annotation, .. }
+            | AnnotatedExpr::FieldAccess { annotation, .. }
             | AnnotatedExpr::StringLiteral { annotation, .. }
             | AnnotatedExpr::BooleanLiteral { annotation, .. }
             | AnnotatedExpr::IntLiteral { annotation, .. }
@@ -94,14 +94,14 @@ impl<'a, T> AnnotatedExpr<T> {
     pub fn to_doc(&'a self) -> BoxDoc<'a> {
         match self {
             AnnotatedExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
-            AnnotatedExpr::PropertyAccess {
+            AnnotatedExpr::FieldAccess {
                 record: object,
-                property,
+                field,
                 ..
             } => object
                 .to_doc()
                 .append(BoxDoc::text("."))
-                .append(BoxDoc::text(property.as_str())),
+                .append(BoxDoc::text(field.as_str())),
             AnnotatedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
             AnnotatedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
             AnnotatedExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
