@@ -19,8 +19,8 @@ pub enum TypeError {
         component_name: DocumentRange,
     },
 
-    #[error("Module {module} is not defined")]
-    ImportFromUndefinedModule {
+    #[error("Module {module} was not found")]
+    ModuleNotFound {
         module: String,
         range: DocumentRange,
     },
@@ -133,7 +133,7 @@ impl Ranged for TypeError {
                 ..
             }
             | TypeError::UnusedVariable { var_name: range }
-            | TypeError::ImportFromUndefinedModule { range, .. }
+            | TypeError::ModuleNotFound { range, .. }
             | TypeError::VariableIsAlreadyDefined { range, .. }
             | TypeError::UndefinedSlot { range, .. }
             | TypeError::ImportCycle { range, .. }

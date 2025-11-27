@@ -199,7 +199,7 @@ fn typecheck_module(
         let imported_module = import.imported_module();
         let imported_component = import.imported_component();
         let Some(module_state) = state.modules.get(imported_module) else {
-            errors.push(TypeError::ImportFromUndefinedModule {
+            errors.push(TypeError::ModuleNotFound {
                 module: imported_module.as_str().to_string(),
                 range: import.from_attr.value.clone(),
             });
@@ -758,25 +758,25 @@ mod tests {
                 -- main.hop --
                 <Main>
                 	<h1>Hello,
-                        <RenderBar>
+                        <Bar>
                             <div></div>
-                        </RenderBar>
+                        </Bar>
                     </h1>
-                    <RenderFoo></RenderFoo>
+                    <Foo></Foo>
                 </Main>
             "#},
             expect![[r#"
-                error: Component RenderBar is not defined
+                error: Component Bar is not defined
                   --> main.hop (line 3, col 10)
                 2 |     <h1>Hello,
-                3 |         <RenderBar>
-                  |          ^^^^^^^^^
+                3 |         <Bar>
+                  |          ^^^
 
-                error: Component RenderFoo is not defined
+                error: Component Foo is not defined
                   --> main.hop (line 7, col 6)
                 6 |     </h1>
-                7 |     <RenderFoo></RenderFoo>
-                  |      ^^^^^^^^^
+                7 |     <Foo></Foo>
+                  |      ^^^
             "#]],
         );
     }
@@ -802,7 +802,6 @@ mod tests {
     }
 
     // When a component is imported from a module that doesn't exist the typechecker outputs an error.
-    // TODO: Improve error message
     #[test]
     fn test_import_from_nonexistent_module() {
         check(
@@ -814,7 +813,7 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                error: Module other is not defined
+                error: Module other was not found
                   --> main.hop (line 1, col 18)
                 1 | import Foo from "@/other"
                   |                  ^^^^^^^
@@ -835,7 +834,7 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                error: Module other is not defined
+                error: Module other was not found
                   --> main.hop (line 1, col 18)
                 1 | import Foo from "@/other"
                   |                  ^^^^^^^
