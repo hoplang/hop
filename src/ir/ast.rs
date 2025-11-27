@@ -8,12 +8,12 @@ use pretty::BoxDoc;
 // the IR.
 //
 // The AST structure is:
-// * IrEntryPoint -> IrStatement -> IrExpr
+// * IrEntrypoint -> IrStatement -> IrExpr
 
 /// Unique identifier for each expression in the IR
 pub type ExprId = u32;
 
-/// Unique identifier for each node in the IR
+/// Unique identifier for each statement in the IR
 pub type StatementId = u32;
 
 #[derive(Debug, Clone)]
