@@ -4368,4 +4368,35 @@ mod tests {
             "#]],
         );
     }
+
+    // Test that re-exporting imports is not allowed.
+    // If module Foo declares A and module Bar imports A from Foo,
+    // then module Baz should not be able to import A from Bar.
+    #[test]
+    fn test_cannot_reexport_imports() {
+        check(
+            indoc! {r#"
+                -- foo.hop --
+                record User {name: String}
+                <Foo>
+                </Foo>
+
+                -- bar.hop --
+                import User from "@/foo"
+                <Bar>
+                </Bar>
+
+                -- baz.hop --
+                import User from "@/bar"
+                <Baz>
+                </Baz>
+            "#},
+            expect![[r#"
+                error: Module @/bar does not declare a component named User
+                  --> baz.hop (line 1, col 8)
+                1 | import User from "@/bar"
+                  |        ^^^^
+            "#]],
+        );
+    }
 }
