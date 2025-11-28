@@ -170,12 +170,8 @@ fn typecheck_module(
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> TypedAst {
-    // Build record name list for resolve_type (just module + name, no declaration needed)
-    let mut record_names: Vec<(ModuleName, String)> = module
-        .get_records()
-        .iter()
-        .map(|r| (module.name.clone(), r.name().to_string()))
-        .collect();
+    // Build record name list for resolve_type - start with imported records only
+    let mut record_names: Vec<(ModuleName, String)> = Vec::new();
 
     // Validate imports and collect imported record names
     for import in module.get_imports() {
@@ -209,6 +205,7 @@ fn typecheck_module(
     // Validate record field types and build typed records
     let mut typed_records: Vec<TypedRecord> = Vec::new();
     for record in module.get_records() {
+        let record_name = record.name();
         let mut typed_fields = Vec::new();
         let mut has_errors = false;
 
@@ -241,6 +238,8 @@ fn typecheck_module(
                 declaration: typed_decl,
                 range: record.range.clone(),
             });
+            // Add this record to record_names so subsequent records can reference it
+            record_names.push((module.name.clone(), record_name.to_string()));
         }
     }
 
@@ -4273,22 +4272,53 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record User {name: String, address: Address}
-                <Main {user: User}>
-                    <div></div>
+                <Main>
                 </Main>
             "#},
-            // Should produce UndefinedType error for Address
             expect![[r#"
                 error: Type 'Address' is not defined
                   --> main.hop (line 1, col 37)
                 1 | record User {name: String, address: Address}
                   |                                     ^^^^^^^
+            "#]],
+        );
+    }
 
-                error: Unused variable user
-                  --> main.hop (line 2, col 8)
-                1 | record User {name: String, address: Address}
-                2 | <Main {user: User}>
-                  |        ^^^^
+    // Test that a record cannot have a field of its own type (self-referential)
+    #[test]
+    fn test_record_self_referential_disallowed() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record User {name: String, friend: User}
+                <Main>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Type 'User' is not defined
+                  --> main.hop (line 1, col 36)
+                1 | record User {name: String, friend: User}
+                  |                                    ^^^^
+            "#]],
+        );
+    }
+
+    // Test that a record cannot reference another record that is declared after it
+    #[test]
+    fn test_record_forward_reference_disallowed() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record User {address: Address}
+                record Address {city: String}
+                <Main>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Type 'Address' is not defined
+                  --> main.hop (line 1, col 23)
+                1 | record User {address: Address}
+                  |                       ^^^^^^^
             "#]],
         );
     }
