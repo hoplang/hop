@@ -11,9 +11,11 @@ use crate::hop::module_name::ModuleName;
 use crate::hop::type_checker::TypeAnnotation;
 
 /// Resolve a syntactic type to a semantic Type.
+///
+/// The `records` parameter is a list of (module, name) pairs for all available record types.
 pub fn resolve_type(
     syntax_type: &SyntaxType,
-    records: &[(ModuleName, String, RecordDeclaration)],
+    records: &[(ModuleName, String)],
 ) -> Result<Type, TypeError> {
     match syntax_type {
         SyntaxType::String { .. } => Ok(Type::String),
@@ -29,7 +31,7 @@ pub fn resolve_type(
             Ok(Type::Array(elem_type.map(Box::new)))
         }
         SyntaxType::Named { name, range } => {
-            let (module, _, _) = records.iter().find(|(_, n, _)| n == name).ok_or_else(|| {
+            let (module, _) = records.iter().find(|(_, n)| n == name).ok_or_else(|| {
                 TypeError::UndefinedType {
                     type_name: name.clone(),
                     range: range.clone(),
@@ -714,7 +716,7 @@ mod tests {
     /// Helper to resolve a RecordDeclaration<()> to RecordDeclaration<Type>
     fn resolve_record(
         record: &RecordDeclaration,
-        records: &[(ModuleName, String, RecordDeclaration)],
+        record_names: &[(ModuleName, String)],
     ) -> RecordDeclaration<Type> {
         RecordDeclaration {
             name: record.name.clone(),
@@ -725,7 +727,7 @@ mod tests {
                     name: f.name.clone(),
                     name_range: f.name_range.clone(),
                     field_type: f.field_type.clone(),
-                    annotation: resolve_type(&f.field_type, records)
+                    annotation: resolve_type(&f.field_type, record_names)
                         .expect("Test record field type should be valid"),
                 })
                 .collect(),
@@ -734,7 +736,7 @@ mod tests {
 
     fn check(env_str: &str, expr_str: &str, expected: Expect) {
         let mut env = Environment::new();
-        let untyped_records: Vec<(ModuleName, String, RecordDeclaration)> = vec![];
+        let record_names: Vec<(ModuleName, String)> = vec![];
         let records: Vec<(ModuleName, String, RecordDeclaration<Type>)> = vec![];
 
         if !env_str.is_empty() {
@@ -744,7 +746,7 @@ mod tests {
                 .expect("Failed to parse environment");
             for param in params {
                 // In tests without records, only primitive types are used
-                let typ = resolve_type(&param.var_type, &untyped_records)
+                let typ = resolve_type(&param.var_type, &record_names)
                     .expect("Test parameter type should be valid");
                 let _ = env.push(param.var_name.to_string(), typ);
             }
@@ -1482,7 +1484,7 @@ mod tests {
         let mut env = Environment::new();
         let test_module = ModuleName::new("test".to_string()).unwrap();
 
-        // First pass: parse untyped records
+        // First pass: parse untyped records and collect names
         let mut untyped_records: Vec<(ModuleName, String, RecordDeclaration)> = Vec::new();
         for record_str in records_str {
             let mut parser = Parser::from(*record_str);
@@ -1490,11 +1492,17 @@ mod tests {
             untyped_records.push((test_module.clone(), record.name.to_string(), record));
         }
 
+        // Build record names for resolve_type
+        let record_names: Vec<(ModuleName, String)> = untyped_records
+            .iter()
+            .map(|(module, name, _)| (module.clone(), name.clone()))
+            .collect();
+
         // Second pass: resolve record field types
         let records: Vec<(ModuleName, String, RecordDeclaration<Type>)> = untyped_records
             .iter()
             .map(|(module, name, record)| {
-                (module.clone(), name.clone(), resolve_record(record, &untyped_records))
+                (module.clone(), name.clone(), resolve_record(record, &record_names))
             })
             .collect();
 
@@ -1504,7 +1512,7 @@ mod tests {
                 .parse_parameters()
                 .expect("Failed to parse environment");
             for param in params {
-                let typ = resolve_type(&param.var_type, &untyped_records)
+                let typ = resolve_type(&param.var_type, &record_names)
                     .expect("Test parameter type should be valid");
                 let _ = env.push(param.var_name.to_string(), typ);
             }

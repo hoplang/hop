@@ -42,7 +42,6 @@ pub struct ComponentTypeInformation {
 #[derive(Debug, Clone, Default)]
 pub struct ModuleTypeInformation {
     components: HashMap<String, ComponentTypeInformation>,
-    records: HashMap<String, dop::RecordDeclaration>,
     typed_records: HashMap<String, dop::RecordDeclaration<Type>>,
 }
 
@@ -76,15 +75,7 @@ impl ModuleTypeInformation {
     }
 
     fn record_is_declared(&self, record_name: &str) -> bool {
-        self.records.contains_key(record_name)
-    }
-
-    fn get_record(&self, record_name: &str) -> Option<&dop::RecordDeclaration> {
-        self.records.get(record_name)
-    }
-
-    fn set_record(&mut self, record_name: &str, record: dop::RecordDeclaration) {
-        self.records.insert(record_name.to_string(), record);
+        self.typed_records.contains_key(record_name)
     }
 
     fn get_typed_record(&self, record_name: &str) -> Option<&dop::RecordDeclaration<Type>> {
@@ -112,18 +103,6 @@ impl State {
             .entry(module_name.clone())
             .or_default()
             .set_component_type_info(component_name, type_info);
-    }
-
-    fn set_record(
-        &mut self,
-        module_name: &ModuleName,
-        record_name: &str,
-        record: dop::RecordDeclaration,
-    ) {
-        self.modules
-            .entry(module_name.clone())
-            .or_default()
-            .set_record(record_name, record);
     }
 
     fn set_typed_record(
@@ -191,20 +170,14 @@ fn typecheck_module(
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> TypedAst {
-    // Store records from this module in state first (before validating imports)
-    // so that other modules can import them
-    for record in module.get_records() {
-        state.set_record(&module.name, record.name(), record.declaration.clone());
-    }
-
-    // Build record lookup list with module info
-    let mut records_list: Vec<(ModuleName, String, dop::RecordDeclaration)> = module
+    // Build record name list for resolve_type (just module + name, no declaration needed)
+    let mut record_names: Vec<(ModuleName, String)> = module
         .get_records()
         .iter()
-        .map(|r| (module.name.clone(), r.name().to_string(), r.declaration.clone()))
+        .map(|r| (module.name.clone(), r.name().to_string()))
         .collect();
 
-    // Validate imports and collect imported records
+    // Validate imports and collect imported record names
     for import in module.get_imports() {
         let imported_module = import.imported_module();
         let imported_name = import.imported_component();
@@ -228,8 +201,8 @@ fn typecheck_module(
         }
 
         // If it's a record, add it to our available records
-        if let Some(record) = module_state.get_record(imported_name.as_str()) {
-            records_list.push((imported_module.clone(), imported_name.as_str().to_string(), record.clone()));
+        if is_record {
+            record_names.push((imported_module.clone(), imported_name.as_str().to_string()));
         }
     }
 
@@ -240,7 +213,7 @@ fn typecheck_module(
         let mut has_errors = false;
 
         for field in &record.declaration.fields {
-            match resolve_type(&field.field_type, &records_list) {
+            match resolve_type(&field.field_type, &record_names) {
                 Ok(resolved_type) => {
                     typed_fields.push(dop::RecordField {
                         name: field.name.clone(),
@@ -318,7 +291,7 @@ fn typecheck_module(
         let mut typed_params: Vec<Parameter<Type>> = Vec::new();
         if let Some((params, _)) = params {
             for param in params {
-                match resolve_type(&param.var_type, &records_list) {
+                match resolve_type(&param.var_type, &record_names) {
                     Ok(param_type) => {
                         annotations.push(TypeAnnotation {
                             range: param.var_name_range.clone(),
