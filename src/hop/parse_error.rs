@@ -41,17 +41,8 @@ pub enum ParseError {
         range: DocumentRange,
     },
 
-    #[error("Component {component_name} is already defined")]
-    ComponentIsAlreadyDefined {
-        component_name: StringSpan,
-        range: DocumentRange,
-    },
-
-    #[error("Record {record_name} is already defined")]
-    RecordIsAlreadyDefined {
-        record_name: StringSpan,
-        range: DocumentRange,
-    },
+    #[error("{name} is already defined")]
+    TypeNameIsAlreadyDefined { name: StringSpan, range: DocumentRange },
 
     #[error("Duplicate attribute '{name}'")]
     DuplicateAttribute {
@@ -110,8 +101,7 @@ impl Ranged for ParseError {
             | ParseError::ClosedVoidTag { range, .. }
             | ParseError::UnrecognizedHopTag { range, .. }
             | ParseError::InvalidComponentName { range, .. }
-            | ParseError::ComponentIsAlreadyDefined { range, .. }
-            | ParseError::RecordIsAlreadyDefined { range, .. }
+            | ParseError::TypeNameIsAlreadyDefined { range, .. }
             | ParseError::DuplicateAttribute { range, .. }
             | ParseError::MissingAtPrefixInImportPath { range }
             | ParseError::InvalidModuleName { range, .. }
