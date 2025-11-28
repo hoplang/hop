@@ -267,7 +267,6 @@ fn typecheck_module(
     }
 
     let mut env = Environment::new();
-    let _ = env.push("hop_mode".to_string(), Type::String);
 
     // Build typed component definitions
     let mut typed_component_definitions = Vec::new();
@@ -3411,92 +3410,6 @@ mod tests {
                 7 | <Foo>
                 8 |   <Main {config: 1}/>
                   |                  ^
-            "#]],
-        );
-    }
-
-    // Test hop_mode global variable is available and has String type.
-    #[test]
-    fn test_hop_mode_global_variable() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                <Main>
-                  <div>{hop_mode}</div>
-                </Main>
-            "#},
-            expect![[r#"
-                hop_mode: String
-                  --> main.hop (line 2, col 9)
-                1 | <Main>
-                2 |   <div>{hop_mode}</div>
-                  |         ^^^^^^^^
-            "#]],
-        );
-    }
-
-    // Test hop_mode can be used in conditions.
-    #[test]
-    fn test_hop_mode_in_conditions() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                <Main>
-                  <if {hop_mode == "dev"}>
-                    <div>Development mode</div>
-                  </if>
-                  <if {hop_mode == "build"}>
-                    <div>Build mode</div>
-                  </if>
-                </Main>
-            "#},
-            expect![[r#"
-                hop_mode: String
-                  --> main.hop (line 2, col 8)
-                1 | <Main>
-                2 |   <if {hop_mode == "dev"}>
-                  |        ^^^^^^^^
-
-                hop_mode: String
-                  --> main.hop (line 5, col 8)
-                4 |   </if>
-                5 |   <if {hop_mode == "build"}>
-                  |        ^^^^^^^^
-            "#]],
-        );
-    }
-
-    // Test type inference works when comparing variables to hop_mode.
-    #[test]
-    fn test_hop_mode_type_inference() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                record Params {mode: String}
-                <Main {params: Params}>
-                  <if {params.mode == hop_mode}>
-                    <div>Mode matches</div>
-                  </if>
-                </Main>
-            "#},
-            expect![[r#"
-                params: Params
-                  --> main.hop (line 2, col 8)
-                1 | record Params {mode: String}
-                2 | <Main {params: Params}>
-                  |        ^^^^^^
-
-                params: Params
-                  --> main.hop (line 3, col 8)
-                2 | <Main {params: Params}>
-                3 |   <if {params.mode == hop_mode}>
-                  |        ^^^^^^
-
-                hop_mode: String
-                  --> main.hop (line 3, col 23)
-                2 | <Main {params: Params}>
-                3 |   <if {params.mode == hop_mode}>
-                  |                       ^^^^^^^^
             "#]],
         );
     }
