@@ -2,12 +2,28 @@ use super::Type;
 use super::expr::{AnnotatedExpr, BinaryOp, Expr};
 use super::parser::RecordDeclaration;
 use super::r#type::NumericType;
+use super::syntax_type::SyntaxType;
 use super::type_error::TypeError;
 use super::typed_expr::SimpleTypedExpr;
 use crate::document::document_cursor::Ranged as _;
 use crate::hop::environment::Environment;
 use crate::hop::type_checker::TypeAnnotation;
 use std::collections::HashMap;
+
+/// Convert a syntax type to a semantic Type.
+pub fn to_type(syntax_type: &SyntaxType) -> Type {
+    match syntax_type {
+        SyntaxType::String { .. } => Type::String,
+        SyntaxType::Bool { .. } => Type::Bool,
+        SyntaxType::Int { .. } => Type::Int,
+        SyntaxType::Float { .. } => Type::Float,
+        SyntaxType::TrustedHTML { .. } => Type::TrustedHTML,
+        SyntaxType::Array { element, .. } => {
+            Type::Array(element.as_ref().map(|e| Box::new(to_type(e))))
+        }
+        SyntaxType::Named { name, .. } => Type::Named(name.clone()),
+    }
+}
 
 pub fn typecheck_expr<'a>(
     expr: &Expr,
@@ -69,7 +85,7 @@ pub fn typecheck_expr<'a>(
                             .find(|f| f.name.as_str() == field.as_str())
                         {
                             Ok(SimpleTypedExpr::FieldAccess {
-                                kind: field_decl.field_type.clone(),
+                                kind: to_type(&field_decl.field_type),
                                 record: Box::new(typed_base),
                                 field: field.clone(),
                                 annotation: (),
@@ -598,10 +614,10 @@ pub fn typecheck_expr<'a>(
                     })?;
 
             // Build a map of expected fields from the record declaration
-            let expected_fields: HashMap<&str, &Type> = record_decl
+            let expected_fields: HashMap<&str, Type> = record_decl
                 .fields
                 .iter()
-                .map(|f| (f.name.as_str(), &f.field_type))
+                .map(|f| (f.name.as_str(), to_type(&f.field_type)))
                 .collect();
 
             // Check for unknown fields and type mismatches
@@ -626,7 +642,7 @@ pub fn typecheck_expr<'a>(
                 let actual_type = typed_value.as_type();
 
                 // Check that the types match
-                if !actual_type.is_subtype(expected_type) {
+                if !actual_type.is_subtype(&expected_type) {
                     return Err(TypeError::RecordFieldTypeMismatch {
                         field_name: field_name_str.to_string(),
                         expected: expected_type.to_string(),
@@ -677,7 +693,7 @@ mod tests {
                 .parse_parameters()
                 .expect("Failed to parse environment");
             for param in params {
-                let _ = env.push(param.var_name.to_string(), param.var_type);
+                let _ = env.push(param.var_name.to_string(), to_type(&param.var_type));
             }
         }
 
@@ -1419,7 +1435,7 @@ mod tests {
                 .parse_parameters()
                 .expect("Failed to parse environment");
             for param in params {
-                let _ = env.push(param.var_name.to_string(), param.var_type);
+                let _ = env.push(param.var_name.to_string(), to_type(&param.var_type));
             }
         }
 

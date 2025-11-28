@@ -1,7 +1,8 @@
 pub mod expr;
+pub mod field_name;
 pub mod parse_error;
 pub mod parser;
-pub mod field_name;
+pub mod syntax_type;
 pub mod token;
 pub mod tokenizer;
 pub mod r#type;
@@ -12,9 +13,10 @@ pub mod var_name;
 
 pub use expr::Expr;
 pub use parser::{Argument, Parameter, Parser, RecordDeclaration};
+pub use syntax_type::SyntaxType;
 pub use token::Token;
 pub use tokenizer::Tokenizer;
 pub use r#type::Type;
-pub use type_checker::typecheck_expr;
+pub use type_checker::{to_type, typecheck_expr};
 pub use typed_expr::{SimpleTypedExpr, TypedExpr};
 pub use var_name::VarName;

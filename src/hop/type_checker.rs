@@ -1,5 +1,5 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::{self, Argument, Parameter, Type};
+use crate::dop::{self, Argument, Parameter, SyntaxType, Type, to_type};
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::Ast;
 use crate::hop::ast::{Attribute, ComponentDefinition};
@@ -164,26 +164,25 @@ impl TypeChecker {
 /// Validates that all named types in the given type are declared records.
 /// Returns a list of undefined type names with their ranges.
 fn validate_named_types_in_type(
-    typ: &Type,
+    typ: &SyntaxType,
     declared_records: &HashSet<&str>,
-    range: &DocumentRange,
 ) -> Vec<(String, DocumentRange)> {
     let mut undefined = Vec::new();
     match typ {
-        Type::Named(name) => {
+        SyntaxType::Named { name, range } => {
             if !declared_records.contains(name.as_str()) {
                 undefined.push((name.clone(), range.clone()));
             }
         }
-        Type::Array(Some(inner)) => {
-            undefined.extend(validate_named_types_in_type(inner, declared_records, range));
+        SyntaxType::Array { element: Some(inner), .. } => {
+            undefined.extend(validate_named_types_in_type(inner, declared_records));
         }
-        Type::String
-        | Type::Bool
-        | Type::Int
-        | Type::Float
-        | Type::TrustedHTML
-        | Type::Array(None) => {}
+        SyntaxType::String { .. }
+        | SyntaxType::Bool { .. }
+        | SyntaxType::Int { .. }
+        | SyntaxType::Float { .. }
+        | SyntaxType::TrustedHTML { .. }
+        | SyntaxType::Array { element: None, .. } => {}
     }
     undefined
 }
@@ -256,7 +255,6 @@ fn typecheck_module(
             for (type_name, type_range) in validate_named_types_in_type(
                 &field.field_type,
                 &declared_records,
-                &field.field_type_range,
             ) {
                 errors.push(TypeError::UndefinedType {
                     type_name,
@@ -289,7 +287,6 @@ fn typecheck_module(
                 for (type_name, type_range) in validate_named_types_in_type(
                     &param.var_type,
                     &declared_records,
-                    &param.var_type_range,
                 ) {
                     errors.push(TypeError::UndefinedType {
                         type_name,
@@ -299,10 +296,10 @@ fn typecheck_module(
 
                 annotations.push(TypeAnnotation {
                     range: param.var_name_range.clone(),
-                    typ: param.var_type.clone(),
+                    typ: to_type(&param.var_type),
                     name: param.var_name.to_string(),
                 });
-                let _ = env.push(param.var_name.to_string(), param.var_type.clone());
+                let _ = env.push(param.var_name.to_string(), to_type(&param.var_type));
             }
         }
 
@@ -553,9 +550,10 @@ fn typecheck_node<'a>(
                             };
                         let arg_type = typed_expr.as_type().clone();
 
-                        if !arg_type.is_subtype(&param.var_type) {
+                        let param_type = to_type(&param.var_type);
+                        if !arg_type.is_subtype(&param_type) {
                             errors.push(TypeError::ArgumentIsIncompatible {
-                                expected: param.var_type.clone(),
+                                expected: param_type,
                                 found: arg_type.clone(),
                                 arg_name: arg.var_name_range.clone(),
                                 expr_range: arg.var_expr.range().clone(),
@@ -4119,9 +4117,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Type 'User' is not defined
-                  --> main.hop (line 1, col 15)
+                  --> main.hop (line 1, col 21)
                 1 | <Main {users: Array[User]}>
-                  |               ^^^^^^^^^^^
+                  |                     ^^^^
 
                 error: Unused variable users
                   --> main.hop (line 1, col 8)

@@ -1,5 +1,5 @@
 use crate::document::document_cursor::StringSpan;
-use crate::dop::SimpleTypedExpr;
+use crate::dop::{SimpleTypedExpr, to_type};
 use crate::dop::parser::TypedArgument;
 use crate::hop::ast::{Ast, AttributeValue};
 use crate::hop::inlined_ast::{
@@ -105,7 +105,7 @@ impl Inliner {
                                 p.0.into_iter()
                                     .map(|param| InlinedParameter {
                                         var_name: param.var_name,
-                                        var_type: param.var_type,
+                                        var_type: to_type(&param.var_type),
                                     })
                                     .collect()
                             })

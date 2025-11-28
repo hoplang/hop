@@ -3,10 +3,10 @@ use std::fmt::{self, Display};
 use std::iter::Peekable;
 
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _};
-use crate::dop::Type;
 use crate::dop::expr::{AnnotatedExpr, BinaryOp};
 use crate::dop::field_name::FieldName;
 use crate::dop::parse_error::ParseError;
+use crate::dop::syntax_type::SyntaxType;
 use crate::dop::token::Token;
 use crate::dop::tokenizer::Tokenizer;
 use crate::dop::var_name::VarName;
@@ -21,8 +21,7 @@ use super::typed_expr::SimpleTypedExpr;
 pub struct Parameter {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
-    pub var_type: Type,
-    pub var_type_range: DocumentRange,
+    pub var_type: SyntaxType,
 }
 
 impl Display for Parameter {
@@ -38,8 +37,7 @@ impl Display for Parameter {
 pub struct RecordField {
     pub name: FieldName,
     pub name_range: DocumentRange,
-    pub field_type: Type,
-    pub field_type_range: DocumentRange,
+    pub field_type: SyntaxType,
 }
 
 impl Display for RecordField {
@@ -286,12 +284,11 @@ impl Parser {
     fn parse_parameter(&mut self) -> Result<Parameter, ParseError> {
         let (var_name, var_name_range) = self.expect_variable_name()?;
         self.expect_token(&Token::Colon)?;
-        let (var_type, var_type_range) = self.parse_type()?;
+        let var_type = self.parse_type()?;
         Ok(Parameter {
             var_name,
             var_name_range,
             var_type,
-            var_type_range,
         })
     }
 
@@ -355,12 +352,11 @@ impl Parser {
     fn parse_record_field(&mut self) -> Result<RecordField, ParseError> {
         let (name, name_range) = self.expect_field_name()?;
         self.expect_token(&Token::Colon)?;
-        let (field_type, field_type_range) = self.parse_type()?;
+        let field_type = self.parse_type()?;
         Ok(RecordField {
             name,
             name_range,
             field_type,
-            field_type_range,
         })
     }
 
@@ -405,25 +401,26 @@ impl Parser {
         Ok(RecordDeclaration { name, fields })
     }
 
-    fn parse_type(&mut self) -> Result<(Type, DocumentRange), ParseError> {
+    fn parse_type(&mut self) -> Result<SyntaxType, ParseError> {
         match self.iter.next().transpose()? {
-            Some((Token::TypeString, range)) => Ok((Type::String, range)),
-            Some((Token::TypeInt, range)) => Ok((Type::Int, range)),
-            Some((Token::TypeFloat, range)) => Ok((Type::Float, range)),
-            Some((Token::TypeBoolean, range)) => Ok((Type::Bool, range)),
-            Some((Token::TypeTrustedHTML, range)) => Ok((Type::TrustedHTML, range)),
+            Some((Token::TypeString, range)) => Ok(SyntaxType::String { range }),
+            Some((Token::TypeInt, range)) => Ok(SyntaxType::Int { range }),
+            Some((Token::TypeFloat, range)) => Ok(SyntaxType::Float { range }),
+            Some((Token::TypeBoolean, range)) => Ok(SyntaxType::Bool { range }),
+            Some((Token::TypeTrustedHTML, range)) => Ok(SyntaxType::TrustedHTML { range }),
             Some((Token::TypeArray, type_array)) => {
                 let left_bracket = self.expect_token(&Token::LeftBracket)?;
-                let inner_type = self.parse_type()?;
+                let element = self.parse_type()?;
                 let right_bracket = self.expect_opposite(&Token::LeftBracket, &left_bracket)?;
-                Ok((
-                    Type::Array(Some(Box::new(inner_type.0))),
-                    type_array.to(right_bracket),
-                ))
+                Ok(SyntaxType::Array {
+                    element: Some(Box::new(element)),
+                    range: type_array.to(right_bracket),
+                })
             }
-            Some((Token::TypeName(name), range)) => {
-                Ok((Type::Named(name.as_str().to_string()), range))
-            }
+            Some((Token::TypeName(name), range)) => Ok(SyntaxType::Named {
+                name: name.as_str().to_string(),
+                range,
+            }),
             Some((actual, range)) => Err(ParseError::ExpectedTypeNameButGot { actual, range }),
             None => Err(ParseError::UnexpectedEof {
                 range: self.range.clone(),
