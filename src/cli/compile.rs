@@ -129,7 +129,6 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
     )?;
 
     // Collect record declarations from all modules
-    // Field types are already resolved during type checking, so we can use them directly
     let records: Vec<RecordInfo> = program
         .get_typed_modules()
         .values()
