@@ -18,10 +18,11 @@ use super::typed_expr::SimpleTypedExpr;
 /// E.g. <my-comp {x: string, y: string}>
 ///                ^^^^^^^^^
 #[derive(Debug, Clone)]
-pub struct Parameter {
+pub struct Parameter<A = ()> {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
     pub var_type: SyntaxType,
+    pub annotation: A,
 }
 
 impl Display for Parameter {
@@ -34,10 +35,11 @@ impl Display for Parameter {
 /// E.g. record Foo {bar: String, baz: Int}
 ///                  ^^^^^^^^^^^
 #[derive(Debug, Clone)]
-pub struct RecordField {
+pub struct RecordField<A = ()> {
     pub name: FieldName,
     pub name_range: DocumentRange,
     pub field_type: SyntaxType,
+    pub annotation: A,
 }
 
 impl Display for RecordField {
@@ -49,9 +51,9 @@ impl Display for RecordField {
 /// A RecordDeclaration represents a full record type declaration.
 /// E.g. record User {name: String, age: Int}
 #[derive(Debug, Clone)]
-pub struct RecordDeclaration {
+pub struct RecordDeclaration<A = ()> {
     pub name: DocumentRange,
-    pub fields: Vec<RecordField>,
+    pub fields: Vec<RecordField<A>>,
 }
 
 impl Display for RecordDeclaration {
@@ -289,6 +291,7 @@ impl Parser {
             var_name,
             var_name_range,
             var_type,
+            annotation: (),
         })
     }
 
@@ -357,6 +360,7 @@ impl Parser {
             name,
             name_range,
             field_type,
+            annotation: (),
         })
     }
 

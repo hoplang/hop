@@ -4,6 +4,7 @@ use crate::dop::Expr;
 use crate::dop::Parameter;
 use crate::dop::RecordDeclaration;
 use crate::dop::SimpleTypedExpr;
+use crate::dop::Type;
 use crate::hop::component_name::ComponentName;
 use crate::hop::module_name::ModuleName;
 
@@ -34,23 +35,23 @@ pub struct Attribute<T = Expr> {
     pub range: DocumentRange,
 }
 
-pub type UntypedAst = Ast<Expr>;
-pub type TypedAst = Ast<SimpleTypedExpr>;
+pub type UntypedAst = Ast<Expr, ()>;
+pub type TypedAst = Ast<SimpleTypedExpr, Type>;
 
 #[derive(Debug, Clone)]
-pub struct Ast<T> {
+pub struct Ast<T, A = ()> {
     pub name: ModuleName,
     imports: Vec<Import>,
-    records: Vec<Record>,
-    component_definitions: Vec<ComponentDefinition<T>>,
+    records: Vec<Record<A>>,
+    component_definitions: Vec<ComponentDefinition<T, A>>,
 }
 
-impl<T> Ast<T> {
+impl<T, A> Ast<T, A> {
     pub fn new(
         name: ModuleName,
-        component_definitions: Vec<ComponentDefinition<T>>,
+        component_definitions: Vec<ComponentDefinition<T, A>>,
         imports: Vec<Import>,
-        records: Vec<Record>,
+        records: Vec<Record<A>>,
     ) -> Self {
         Self {
             name,
@@ -60,14 +61,14 @@ impl<T> Ast<T> {
         }
     }
 
-    pub fn get_component_definition(&self, name: &str) -> Option<&ComponentDefinition<T>> {
+    pub fn get_component_definition(&self, name: &str) -> Option<&ComponentDefinition<T, A>> {
         self.component_definitions
             .iter()
             .find(|&n| n.tag_name.as_str() == name)
     }
 
     /// Returns a reference to all component definition nodes in the AST.
-    pub fn get_component_definitions(&self) -> &[ComponentDefinition<T>] {
+    pub fn get_component_definitions(&self) -> &[ComponentDefinition<T, A>] {
         &self.component_definitions
     }
 
@@ -77,7 +78,7 @@ impl<T> Ast<T> {
     }
 
     /// Returns a reference to all record declarations in the AST.
-    pub fn get_records(&self) -> &[Record] {
+    pub fn get_records(&self) -> &[Record<A>] {
         &self.records
     }
 
@@ -146,38 +147,41 @@ impl Import {
 }
 
 #[derive(Debug, Clone)]
-pub struct Record {
-    pub declaration: RecordDeclaration,
+pub struct Record<A = ()> {
+    pub declaration: RecordDeclaration<A>,
     pub range: DocumentRange,
 }
 
-impl Record {
+impl<A> Record<A> {
     pub fn name(&self) -> &str {
         self.declaration.name.as_str()
     }
 }
 
-pub type UntypedComponentDefinition = ComponentDefinition<Expr>;
-pub type TypedComponentDefinition = ComponentDefinition<SimpleTypedExpr>;
+pub type UntypedRecord = Record<()>;
+pub type TypedRecord = Record<Type>;
+
+pub type UntypedComponentDefinition = ComponentDefinition<Expr, ()>;
+pub type TypedComponentDefinition = ComponentDefinition<SimpleTypedExpr, Type>;
 
 #[derive(Debug, Clone)]
-pub struct ComponentDefinition<E> {
+pub struct ComponentDefinition<E, P = ()> {
     pub name: ComponentName,
     pub tag_name: DocumentRange, // Keep for source location/error reporting
     pub closing_tag_name: Option<DocumentRange>,
-    pub params: Option<(Vec<Parameter>, DocumentRange)>,
+    pub params: Option<(Vec<Parameter<P>>, DocumentRange)>,
     pub children: Vec<Node<E>>,
     pub has_slot: bool,
     pub range: DocumentRange,
 }
 
-impl<T> Ranged for ComponentDefinition<T> {
+impl<E, P> Ranged for ComponentDefinition<E, P> {
     fn range(&self) -> &DocumentRange {
         &self.range
     }
 }
 
-impl<T> ComponentDefinition<T> {
+impl<E, P> ComponentDefinition<E, P> {
     pub fn tag_name_ranges(&self) -> impl Iterator<Item = &DocumentRange> {
         self.closing_tag_name.iter().chain(Some(&self.tag_name))
     }

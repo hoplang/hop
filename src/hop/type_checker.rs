@@ -8,7 +8,7 @@ use crate::hop::type_error::TypeError;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
-use super::ast::{AttributeValue, TypedAst, TypedAttribute, UntypedAst};
+use super::ast::{AttributeValue, TypedAst, TypedAttribute, TypedRecord, UntypedAst};
 use super::module_name::ModuleName;
 use super::node::{Node, TypedNode, UntypedNode};
 
@@ -212,15 +212,41 @@ fn typecheck_module(
         }
     }
 
-    // Validate record field types (now with imported records available)
+    // Validate record field types and build typed records
+    let mut typed_records: Vec<TypedRecord> = Vec::new();
     for record in module.get_records() {
+        let mut typed_fields = Vec::new();
+        let mut has_errors = false;
+
         for field in &record.declaration.fields {
-            if let Err(e) = to_type(&field.field_type, &records_list) {
-                errors.push(TypeError::UndefinedType {
-                    type_name: e.name,
-                    range: field.field_type.range().clone(),
-                });
+            match to_type(&field.field_type, &records_list) {
+                Ok(resolved_type) => {
+                    typed_fields.push(dop::RecordField {
+                        name: field.name.clone(),
+                        name_range: field.name_range.clone(),
+                        field_type: field.field_type.clone(),
+                        annotation: resolved_type,
+                    });
+                }
+                Err(e) => {
+                    errors.push(TypeError::UndefinedType {
+                        type_name: e.name,
+                        range: field.field_type.range().clone(),
+                    });
+                    has_errors = true;
+                }
             }
+        }
+
+        // Only add record if all fields resolved successfully
+        if !has_errors {
+            typed_records.push(TypedRecord {
+                declaration: dop::RecordDeclaration {
+                    name: record.declaration.name.clone(),
+                    fields: typed_fields,
+                },
+                range: record.range.clone(),
+            });
         }
     }
 
@@ -245,6 +271,8 @@ fn typecheck_module(
         let mut pushed_params: Vec<&Parameter> = Vec::new();
         // Collect resolved parameter types for ComponentTypeInformation
         let mut resolved_param_types: Vec<(String, Type)> = Vec::new();
+        // Build typed parameters with resolved type annotations
+        let mut typed_params: Vec<Parameter<Type>> = Vec::new();
         if let Some((params, _)) = params {
             for param in params {
                 match to_type(&param.var_type, &records_list) {
@@ -256,7 +284,13 @@ fn typecheck_module(
                         });
                         let _ = env.push(param.var_name.to_string(), param_type.clone());
                         pushed_params.push(param);
-                        resolved_param_types.push((param.var_name.to_string(), param_type));
+                        resolved_param_types.push((param.var_name.to_string(), param_type.clone()));
+                        typed_params.push(Parameter {
+                            var_name: param.var_name.clone(),
+                            var_name_range: param.var_name_range.clone(),
+                            var_type: param.var_type.clone(),
+                            annotation: param_type,
+                        });
                     }
                     Err(e) => {
                         errors.push(TypeError::UndefinedType {
@@ -296,12 +330,17 @@ fn typecheck_module(
             },
         );
 
-        // Build typed ComponentDefinition
+        // Build typed ComponentDefinition with resolved parameter types
+        let typed_params_option = if params.is_some() {
+            Some((typed_params, params.as_ref().unwrap().1.clone()))
+        } else {
+            None
+        };
         typed_component_definitions.push(ComponentDefinition {
             name: component_name.clone(),
             tag_name: name.clone(),
             closing_tag_name: closing_tag_name.clone(),
-            params: params.clone(),
+            params: typed_params_option,
             range: range.clone(),
             children: typed_children,
             has_slot: *has_slot,
@@ -313,7 +352,7 @@ fn typecheck_module(
         module.name.clone(),
         typed_component_definitions,
         module.get_imports().to_vec(),
-        module.get_records().to_vec(),
+        typed_records,
     )
 }
 

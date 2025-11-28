@@ -1,15 +1,12 @@
 use crate::document::document_cursor::StringSpan;
 use crate::dop::parser::TypedArgument;
-use crate::dop::{RecordDeclaration, SimpleTypedExpr, to_type};
-use crate::hop::ast::{Ast, AttributeValue};
+use crate::hop::ast::{AttributeValue, TypedAst, TypedAttribute, TypedComponentDefinition};
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode, InlinedParameter,
 };
 use crate::hop::module_name::ModuleName;
-use std::collections::{BTreeMap, HashMap, HashSet};
-
-use crate::hop::ast::{TypedAttribute, TypedComponentDefinition};
 use crate::hop::node::{Node, TypedNode};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use anyhow::Result;
 
 /// The Inliner transforms ASTs by replacing ComponentReference nodes with their
@@ -50,7 +47,7 @@ impl Inliner {
     /// # Returns
     /// Result containing the list of inlined entrypoints or an error if a page doesn't exist
     pub fn inline_entrypoints(
-        asts: HashMap<ModuleName, Ast<SimpleTypedExpr>>,
+        asts: HashMap<ModuleName, TypedAst>,
         pages: &[String],
     ) -> Result<Vec<InlinedEntrypoint>> {
         // Parse pages into a lookup structure: module -> set of component names
@@ -84,16 +81,6 @@ impl Inliner {
             }
         }
 
-        // Build records list for to_type lookups
-        let records_list: Vec<(ModuleName, String, RecordDeclaration)> = asts
-            .iter()
-            .flat_map(|(module_name, ast)| {
-                ast.get_records().iter().map(move |record| {
-                    (module_name.clone(), record.name().to_string(), record.declaration.clone())
-                })
-            })
-            .collect();
-
         let mut result = Vec::new();
 
         for (module_name, ast) in &asts {
@@ -115,9 +102,8 @@ impl Inliner {
                                 p.0.into_iter()
                                     .map(|param| InlinedParameter {
                                         var_name: param.var_name,
-                                        // Parameter types are validated during type checking
-                                        var_type: to_type(&param.var_type, &records_list)
-                                            .expect("Component parameter type should be valid"),
+                                        // Parameter types are resolved during type checking
+                                        var_type: param.annotation,
                                     })
                                     .collect()
                             })
@@ -170,7 +156,7 @@ impl Inliner {
         component: &TypedComponentDefinition,
         args: &[TypedArgument],
         slot_children: &[TypedNode],
-        asts: &HashMap<ModuleName, Ast<SimpleTypedExpr>>,
+        asts: &HashMap<ModuleName, TypedAst>,
     ) -> Vec<InlinedNode> {
         // Process component children with slot replacement
         let slot_content = if component.has_slot && !slot_children.is_empty() {
@@ -218,7 +204,7 @@ impl Inliner {
     fn inline_nodes(
         nodes: &[TypedNode],
         slot_content: Option<&[TypedNode]>,
-        asts: &HashMap<ModuleName, Ast<SimpleTypedExpr>>,
+        asts: &HashMap<ModuleName, TypedAst>,
     ) -> Vec<InlinedNode> {
         nodes
             .iter()
@@ -230,7 +216,7 @@ impl Inliner {
     fn inline_node(
         node: &TypedNode,
         slot_content: Option<&[TypedNode]>,
-        asts: &HashMap<ModuleName, Ast<SimpleTypedExpr>>,
+        asts: &HashMap<ModuleName, TypedAst>,
     ) -> Vec<InlinedNode> {
         match node {
             Node::ComponentReference {
@@ -324,7 +310,7 @@ mod tests {
 
     fn create_typed_asts_from_sources(
         sources: Vec<(&str, &str)>,
-    ) -> HashMap<ModuleName, Ast<SimpleTypedExpr>> {
+    ) -> HashMap<ModuleName, TypedAst> {
         let mut errors = ErrorCollector::new();
 
         // Parse all sources first

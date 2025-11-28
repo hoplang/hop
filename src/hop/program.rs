@@ -13,7 +13,7 @@ use crate::ir::orchestrator::orchestrate;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
-use super::ast::UntypedAst;
+use super::ast::{TypedAst, UntypedAst};
 use super::module_name::ModuleName;
 use super::node::Node;
 use super::type_checker::TypeChecker;
@@ -465,7 +465,7 @@ impl Program {
     }
 
     /// Get all typed modules for compilation
-    pub fn get_typed_modules(&self) -> &HashMap<ModuleName, Ast<SimpleTypedExpr>> {
+    pub fn get_typed_modules(&self) -> &HashMap<ModuleName, TypedAst> {
         &self.type_checker.typed_asts
     }
 }

@@ -12,7 +12,7 @@ pub mod typed_expr;
 pub mod var_name;
 
 pub use expr::Expr;
-pub use parser::{Argument, Parameter, Parser, RecordDeclaration};
+pub use parser::{Argument, Parameter, Parser, RecordDeclaration, RecordField};
 pub use syntax_type::SyntaxType;
 pub use token::Token;
 pub use tokenizer::Tokenizer;
