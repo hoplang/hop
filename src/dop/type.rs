@@ -121,7 +121,7 @@ impl<'a> Type {
                     .append(BoxDoc::text("]")),
                 None => BoxDoc::text("Array"),
             },
-            Type::Named { module, name } => BoxDoc::text(format!("{}/{}", module, name)),
+            Type::Named { module, name } => BoxDoc::text(format!("{}::{}", module, name)),
         }
     }
 }

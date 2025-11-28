@@ -855,7 +855,7 @@ mod tests {
             ],
             "config.users.profile.name",
             expect![[r#"
-                error: Array[test/UserInfo] can not be used as a record
+                error: Array[test::UserInfo] can not be used as a record
                 config.users.profile.name
                 ^^^^^^^^^^^^
             "#]],
@@ -869,7 +869,7 @@ mod tests {
             &["record User {name: String}"],
             "users.name",
             expect![[r#"
-                error: Array[test/User] can not be used as a record
+                error: Array[test::User] can not be used as a record
                 users.name
                 ^^^^^
             "#]],
@@ -1510,7 +1510,7 @@ mod tests {
             "",
             &["record User {name: String, age: Int}"],
             r#"User(name: "John", age: 30)"#,
-            expect!["test/User"],
+            expect!["test::User"],
         );
     }
 
@@ -1520,7 +1520,7 @@ mod tests {
             "user_name: String, user_age: Int",
             &["record User {name: String, age: Int}"],
             "User(name: user_name, age: user_age)",
-            expect!["test/User"],
+            expect!["test::User"],
         );
     }
 
@@ -1589,7 +1589,7 @@ mod tests {
                 "record User {name: String, address: Address}",
             ],
             r#"User(name: "John", address: Address(city: "NYC"))"#,
-            expect!["test/User"],
+            expect!["test::User"],
         );
     }
 }

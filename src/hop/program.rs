@@ -1152,7 +1152,7 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                `user`: `main/User`
+                `user`: `main::User`
                   --> main.hop (line 2, col 8)
                 2 | <Main {user: User}>
                   |        ^^^^
