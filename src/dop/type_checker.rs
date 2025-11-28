@@ -1,8 +1,8 @@
 use super::Type;
 use super::expr::{AnnotatedExpr, BinaryOp, Expr};
 use super::parser::RecordDeclaration;
-use super::r#type::NumericType;
 use super::syntax_type::SyntaxType;
+use super::r#type::NumericType;
 use super::type_error::TypeError;
 use super::typed_expr::SimpleTypedExpr;
 use crate::document::document_cursor::Ranged as _;
@@ -10,7 +10,7 @@ use crate::hop::environment::Environment;
 use crate::hop::module_name::ModuleName;
 use crate::hop::type_checker::TypeAnnotation;
 
-/// Convert a syntax type to a semantic Type.
+/// Resolve a syntactic type to a semantic Type.
 pub fn resolve_type(
     syntax_type: &SyntaxType,
     records: &[(ModuleName, String, RecordDeclaration)],
@@ -22,18 +22,23 @@ pub fn resolve_type(
         SyntaxType::Float { .. } => Ok(Type::Float),
         SyntaxType::TrustedHTML { .. } => Ok(Type::TrustedHTML),
         SyntaxType::Array { element, .. } => {
-            let elem_type = element.as_ref().map(|e| resolve_type(e, records)).transpose()?;
+            let elem_type = element
+                .as_ref()
+                .map(|e| resolve_type(e, records))
+                .transpose()?;
             Ok(Type::Array(elem_type.map(Box::new)))
         }
         SyntaxType::Named { name, range } => {
-            let (module, _, _) = records
-                .iter()
-                .find(|(_, n, _)| n == name)
-                .ok_or_else(|| TypeError::UndefinedType {
+            let (module, _, _) = records.iter().find(|(_, n, _)| n == name).ok_or_else(|| {
+                TypeError::UndefinedType {
                     type_name: name.clone(),
                     range: range.clone(),
-                })?;
-            Ok(Type::Named { module: module.clone(), name: name.clone() })
+                }
+            })?;
+            Ok(Type::Named {
+                module: module.clone(),
+                name: name.clone(),
+            })
         }
     }
 }
@@ -90,8 +95,14 @@ pub fn typecheck_expr(
             let base_type = typed_base.as_type();
 
             match &base_type {
-                Type::Named { module, name: record_name } => {
-                    if let Some((_, _, record_decl)) = records.iter().find(|(m, n, _)| m == module && n == record_name) {
+                Type::Named {
+                    module,
+                    name: record_name,
+                } => {
+                    if let Some((_, _, record_decl)) = records
+                        .iter()
+                        .find(|(m, n, _)| m == module && n == record_name)
+                    {
                         if let Some(field_decl) = record_decl
                             .fields
                             .iter()
@@ -621,14 +632,13 @@ pub fn typecheck_expr(
             annotation: range,
         } => {
             // Check if the record type is defined
-            let (module, _, record_decl) =
-                records
-                    .iter()
-                    .find(|(_, n, _)| n == record_name.as_str())
-                    .ok_or_else(|| TypeError::UndefinedRecord {
-                        record_name: record_name.clone(),
-                        range: range.clone(),
-                    })?;
+            let (module, _, record_decl) = records
+                .iter()
+                .find(|(_, n, _)| n == record_name.as_str())
+                .ok_or_else(|| TypeError::UndefinedRecord {
+                    record_name: record_name.clone(),
+                    range: range.clone(),
+                })?;
 
             // Build a map of expected fields from the record declaration
             // Field types should always resolve since they're part of a valid record
@@ -691,7 +701,10 @@ pub fn typecheck_expr(
             Ok(SimpleTypedExpr::RecordInstantiation {
                 record_name: record_name.clone(),
                 fields: typed_fields,
-                kind: Type::Named { module: module.clone(), name: record_name.clone() },
+                kind: Type::Named {
+                    module: module.clone(),
+                    name: record_name.clone(),
+                },
                 annotation: (),
             })
         }
