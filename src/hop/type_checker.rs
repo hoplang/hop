@@ -1,11 +1,11 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::{self, Argument, Parameter, SyntaxType, Type, to_type};
+use crate::dop::{self, Argument, Parameter, Type, to_type};
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::Ast;
 use crate::hop::ast::{Attribute, ComponentDefinition};
 use crate::hop::environment::Environment;
 use crate::hop::type_error::TypeError;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
 use super::ast::{AttributeValue, TypedAst, TypedAttribute, UntypedAst};
@@ -161,31 +161,6 @@ impl TypeChecker {
     }
 }
 
-/// Validates that all named types in the given type are declared records.
-/// Returns a list of undefined type names with their ranges.
-fn validate_named_types_in_type(
-    typ: &SyntaxType,
-    declared_records: &HashSet<&str>,
-) -> Vec<(String, DocumentRange)> {
-    let mut undefined = Vec::new();
-    match typ {
-        SyntaxType::Named { name, range } => {
-            if !declared_records.contains(name.as_str()) {
-                undefined.push((name.clone(), range.clone()));
-            }
-        }
-        SyntaxType::Array { element: Some(inner), .. } => {
-            undefined.extend(validate_named_types_in_type(inner, declared_records));
-        }
-        SyntaxType::String { .. }
-        | SyntaxType::Bool { .. }
-        | SyntaxType::Int { .. }
-        | SyntaxType::Float { .. }
-        | SyntaxType::TrustedHTML { .. }
-        | SyntaxType::Array { element: None, .. } => {}
-    }
-    undefined
-}
 
 fn typecheck_module(
     module: &UntypedAst,
@@ -199,20 +174,12 @@ fn typecheck_module(
         state.set_record(&module.name, record.name(), record.declaration.clone());
     }
 
-    // Collect declared record names (local records only, for now)
-    let mut declared_records: HashSet<&str> =
-        module.get_records().iter().map(|r| r.name()).collect();
-
-    // Build record lookup map (local records only, for now)
-    let mut record_map: HashMap<&str, &dop::RecordDeclaration> = module
+    // Build record lookup list with module info
+    let mut records_list: Vec<(ModuleName, String, dop::RecordDeclaration)> = module
         .get_records()
         .iter()
-        .map(|r| (r.name(), &r.declaration))
+        .map(|r| (module.name.clone(), r.name().to_string(), r.declaration.clone()))
         .collect();
-
-    // Collect imported records from state
-    // We need to store references to imported records that outlive the loop
-    let mut imported_record_declarations: Vec<(String, dop::RecordDeclaration)> = Vec::new();
 
     // Validate imports and collect imported records
     for import in module.get_imports() {
@@ -239,26 +206,17 @@ fn typecheck_module(
 
         // If it's a record, add it to our available records
         if let Some(record) = module_state.get_record(imported_name.as_str()) {
-            imported_record_declarations.push((imported_name.as_str().to_string(), record.clone()));
+            records_list.push((imported_module.clone(), imported_name.as_str().to_string(), record.clone()));
         }
-    }
-
-    // Add imported records to declared_records and record_map
-    for (name, decl) in &imported_record_declarations {
-        declared_records.insert(name.as_str());
-        record_map.insert(name.as_str(), decl);
     }
 
     // Validate record field types (now with imported records available)
     for record in module.get_records() {
         for field in &record.declaration.fields {
-            for (type_name, type_range) in validate_named_types_in_type(
-                &field.field_type,
-                &declared_records,
-            ) {
+            if let Err(e) = to_type(&field.field_type, &records_list) {
                 errors.push(TypeError::UndefinedType {
-                    type_name,
-                    range: type_range,
+                    type_name: e.name,
+                    range: field.field_type.range().clone(),
                 });
             }
         }
@@ -281,25 +239,27 @@ fn typecheck_module(
         } = component_def;
 
         // Push parameters to environment and validate their types
+        // Track which parameters were successfully pushed for later popping
+        let mut pushed_params: Vec<&Parameter> = Vec::new();
         if let Some((params, _)) = params {
             for param in params {
-                // Validate that all named types in the parameter type are declared records
-                for (type_name, type_range) in validate_named_types_in_type(
-                    &param.var_type,
-                    &declared_records,
-                ) {
-                    errors.push(TypeError::UndefinedType {
-                        type_name,
-                        range: type_range,
-                    });
+                match to_type(&param.var_type, &records_list) {
+                    Ok(param_type) => {
+                        annotations.push(TypeAnnotation {
+                            range: param.var_name_range.clone(),
+                            typ: param_type.clone(),
+                            name: param.var_name.to_string(),
+                        });
+                        let _ = env.push(param.var_name.to_string(), param_type);
+                        pushed_params.push(param);
+                    }
+                    Err(e) => {
+                        errors.push(TypeError::UndefinedType {
+                            type_name: e.name,
+                            range: param.var_type.range().clone(),
+                        });
+                    }
                 }
-
-                annotations.push(TypeAnnotation {
-                    range: param.var_name_range.clone(),
-                    typ: to_type(&param.var_type),
-                    name: param.var_name.to_string(),
-                });
-                let _ = env.push(param.var_name.to_string(), to_type(&param.var_type));
             }
         }
 
@@ -307,20 +267,17 @@ fn typecheck_module(
         let typed_children: Vec<_> = children
             .iter()
             .filter_map(|child| {
-                typecheck_node(child, state, &mut env, annotations, errors, &record_map)
+                typecheck_node(child, state, &mut env, annotations, errors, &records_list)
             })
             .collect();
 
-        // Pop parameters from environment
-        if let Some((params, _)) = params {
-            // iterate in reverse to pop in right order
-            for param in params.iter().rev() {
-                let (_, _, accessed) = env.pop();
-                if !accessed {
-                    errors.push(TypeError::UnusedVariable {
-                        var_name: param.var_name_range.clone(),
-                    })
-                }
+        // Pop parameters from environment (only the ones that were pushed)
+        for param in pushed_params.iter().rev() {
+            let (_, _, accessed) = env.pop();
+            if !accessed {
+                errors.push(TypeError::UnusedVariable {
+                    var_name: param.var_name_range.clone(),
+                })
             }
         }
 
@@ -355,13 +312,13 @@ fn typecheck_module(
     )
 }
 
-fn typecheck_node<'a>(
+fn typecheck_node(
     node: &UntypedNode,
     state: &State,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
-    records: &HashMap<&'a str, &'a dop::RecordDeclaration>,
+    records: &[(ModuleName, String, dop::RecordDeclaration)],
 ) -> Option<TypedNode> {
     match node {
         Node::If {
@@ -550,7 +507,9 @@ fn typecheck_node<'a>(
                             };
                         let arg_type = typed_expr.as_type().clone();
 
-                        let param_type = to_type(&param.var_type);
+                        // Parameter types are validated when components are defined, so this should always succeed
+                        let param_type = to_type(&param.var_type, records)
+                            .expect("Component parameter type should be valid");
                         if !arg_type.is_subtype(&param_type) {
                             errors.push(TypeError::ArgumentIsIncompatible {
                                 expected: param_type,
@@ -662,12 +621,12 @@ fn typecheck_node<'a>(
     }
 }
 
-fn typecheck_attributes<'a>(
+fn typecheck_attributes(
     attributes: &BTreeMap<StringSpan, Attribute>,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
-    records: &HashMap<&'a str, &'a dop::RecordDeclaration>,
+    records: &[(ModuleName, String, dop::RecordDeclaration)],
 ) -> BTreeMap<StringSpan, TypedAttribute> {
     let mut typed_attributes = BTreeMap::new();
 
@@ -1403,31 +1362,31 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Params
+                params: main/Params
                   --> main.hop (line 9, col 8)
                  8 | 
                  9 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 10, col 16)
                  9 | <Main {params: Params}>
                 10 |     <for {item in params.items}>
                    |                   ^^^^^^
 
-                item: Item
+                item: main/Item
                   --> main.hop (line 10, col 8)
                  9 | <Main {params: Params}>
                 10 |     <for {item in params.items}>
                    |           ^^^^
 
-                item: Item
+                item: main/Item
                   --> main.hop (line 11, col 8)
                 10 |     <for {item in params.items}>
                 11 |         <if {item.active}>
                    |              ^^^^
 
-                item: Item
+                item: main/Item
                   --> main.hop (line 13, col 8)
                 12 |         </if>
                 13 |         <if {item.name}>
@@ -1468,19 +1427,19 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Params
+                params: main/Params
                   --> main.hop (line 5, col 8)
                 4 | }
                 5 | <Main {params: Params}>
                   |        ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 6, col 9)
                 5 | <Main {params: Params}>
                 6 |   <if {(params.a == "str") == params.b}>
                   |         ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 6, col 31)
                 5 | <Main {params: Params}>
                 6 |   <if {(params.a == "str") == params.b}>
@@ -1524,49 +1483,49 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Params
+                params: main/Params
                   --> main.hop (line 16, col 8)
                 15 | 
                 16 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 18, col 17)
                 17 |     <if {params.enabled}>
                 18 |         <for {user in params.users}>
                    |                       ^^^^^^
 
-                user: User
+                user: main/User
                   --> main.hop (line 18, col 9)
                 17 |     <if {params.enabled}>
                 18 |         <for {user in params.users}>
                    |               ^^^^
 
-                user: User
+                user: main/User
                   --> main.hop (line 20, col 19)
                 19 |             <if {user.profile.verified}>
                 20 |                 <for {post in user.posts}>
                    |                               ^^^^
 
-                post: Post
+                post: main/Post
                   --> main.hop (line 20, col 11)
                 19 |             <if {user.profile.verified}>
                 20 |                 <for {post in user.posts}>
                    |                       ^^^^
 
-                post: Post
+                post: main/Post
                   --> main.hop (line 21, col 11)
                 20 |                 <for {post in user.posts}>
                 21 |                     <if {post.published}>
                    |                          ^^^^
 
-                user: User
+                user: main/User
                   --> main.hop (line 19, col 9)
                 18 |         <for {user in params.users}>
                 19 |             <if {user.profile.verified}>
                    |                  ^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 17, col 7)
                 16 | <Main {params: Params}>
                 17 |     <if {params.enabled}>
@@ -1609,43 +1568,43 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Params
+                params: main/Params
                   --> main.hop (line 18, col 8)
                 17 | 
                 18 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 19, col 19)
                 18 | <Main {params: Params}>
                 19 |     <for {section in params.sections}>
                    |                      ^^^^^^
 
-                section: Section
+                section: main/Section
                   --> main.hop (line 19, col 8)
                 18 | <Main {params: Params}>
                 19 |     <for {section in params.sections}>
                    |           ^^^^^^^
 
-                section: Section
+                section: main/Section
                   --> main.hop (line 21, col 18)
                 20 |         <if {section.header.visible}>
                 21 |             <for {item in section.items}>
                    |                           ^^^^^^^
 
-                item: Item
+                item: main/Item
                   --> main.hop (line 21, col 10)
                 20 |         <if {section.header.visible}>
                 21 |             <for {item in section.items}>
                    |                   ^^^^
 
-                item: Item
+                item: main/Item
                   --> main.hop (line 22, col 10)
                 21 |             <for {item in section.items}>
                 22 |                 <if {item.data.valid}>
                    |                      ^^^^
 
-                section: Section
+                section: main/Section
                   --> main.hop (line 20, col 8)
                 19 |     <for {section in params.sections}>
                 20 |         <if {section.header.visible}>
@@ -1678,13 +1637,13 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Params
+                params: main/Params
                   --> main.hop (line 14, col 8)
                 13 | 
                 14 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 15, col 7)
                 14 | <Main {params: Params}>
                 15 |     <if {params.i.j.k.l}>
@@ -1717,25 +1676,25 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Params
+                params: main/Params
                   --> main.hop (line 10, col 8)
                  9 | record Params {app: App}
                 10 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 11, col 7)
                 10 | <Main {params: Params}>
                 11 |     <if {params.app.ui.theme.dark}>
                    |          ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 13, col 7)
                 12 |     </if>
                 13 |     <if {params.app.api.endpoints.users.enabled}>
                    |          ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 15, col 7)
                 14 |     </if>
                 15 |     <if {params.app.database.connection.ssl}>
@@ -1774,13 +1733,13 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                data: Data
+                data: main/Data
                   --> main.hop (line 2, col 8)
                 1 | record Data {message: String}
                 2 | <Main {data: Data}>
                   |        ^^^^
 
-                data: Data
+                data: main/Data
                   --> main.hop (line 4, col 9)
                 3 |     <h1>Hello World</h1>
                 4 |     <p>{data.message}</p>
@@ -1808,31 +1767,31 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Params
+                params: main/Params
                   --> main.hop (line 5, col 8)
                  4 | record Params {user: User, other_user: OtherUser, data: Data}
                  5 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 6, col 8)
                  5 | <Main {params: Params}>
                  6 |   <if {params.user.name == params.other_user.name}>
                    |        ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 6, col 28)
                  5 | <Main {params: Params}>
                  6 |   <if {params.user.name == params.other_user.name}>
                    |                            ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 9, col 9)
                  8 |   </if>
                  9 |   <if {(params.data.x == params.data.y)}>
                    |         ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 9, col 26)
                  8 |   </if>
                  9 |   <if {(params.data.x == params.data.y)}>
@@ -1858,19 +1817,19 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Params
+                params: main/Params
                   --> main.hop (line 6, col 8)
                  5 | 
                  6 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 7, col 8)
                  6 | <Main {params: Params}>
                  7 |   <if {params.x == params.y}>
                    |        ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 7, col 20)
                  6 | <Main {params: Params}>
                  7 |   <if {params.x == params.y}>
@@ -1899,13 +1858,13 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Params
+                params: main/Params
                   --> main.hop (line 8, col 8)
                  7 | 
                  8 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 9, col 13)
                  8 | <Main {params: Params}>
                  9 |     <for {j in params.foo.bar}>
@@ -1948,43 +1907,43 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Array[Item]
+                params: Array[main/Item]
                   --> main.hop (line 6, col 8)
                  5 | 
                  6 | <Main {params: Array[Item]}>
                    |        ^^^^^^
 
-                params: Array[Item]
+                params: Array[main/Item]
                   --> main.hop (line 7, col 13)
                  6 | <Main {params: Array[Item]}>
                  7 |     <for {j in params}>
                    |                ^^^^^^
 
-                j: Item
+                j: main/Item
                   --> main.hop (line 7, col 8)
                  6 | <Main {params: Array[Item]}>
                  7 |     <for {j in params}>
                    |           ^
 
-                j: Item
+                j: main/Item
                   --> main.hop (line 8, col 8)
                  7 |     <for {j in params}>
                  8 |         <if {j.a}>
                    |              ^
 
-                params: Array[Item]
+                params: Array[main/Item]
                   --> main.hop (line 11, col 13)
                 10 |     </for>
                 11 |     <for {j in params}>
                    |                ^^^^^^
 
-                j: Item
+                j: main/Item
                   --> main.hop (line 11, col 8)
                 10 |     </for>
                 11 |     <for {j in params}>
                    |           ^
 
-                j: Item
+                j: main/Item
                   --> main.hop (line 12, col 8)
                 11 |     <for {j in params}>
                 12 |         <if {j.b}>
@@ -2180,72 +2139,109 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                config: Config
+                config: bar/Config
                   --> bar.hop (line 6, col 14)
                  5 | 
                  6 | <WidgetComp {config: Config}>
                    |              ^^^^^^
 
-                config: Config
+                config: bar/Config
                   --> bar.hop (line 8, col 11)
                  7 |   <if {config.enabled}>
                  8 |     <div>{config.title}</div>
                    |           ^^^^^^
 
-                config: Config
+                config: bar/Config
                   --> bar.hop (line 7, col 8)
                  6 | <WidgetComp {config: Config}>
                  7 |   <if {config.enabled}>
                    |        ^^^^^^
 
-                data: Data
+                data: foo/Data
                   --> foo.hop (line 8, col 13)
                  7 | 
                  8 | <PanelComp {data: Data}>
                    |             ^^^^
 
-                data: Data
+                data: foo/Data
                   --> foo.hop (line 9, col 17)
                  8 | <PanelComp {data: Data}>
                  9 |   <for {item in data.items}>
                    |                 ^^^^
 
-                item: Config
+                item: bar/Config
                   --> foo.hop (line 9, col 9)
                  8 | <PanelComp {data: Data}>
                  9 |   <for {item in data.items}>
                    |         ^^^^
 
-                item: Config
+                item: bar/Config
                   --> foo.hop (line 10, col 26)
                  9 |   <for {item in data.items}>
                 10 |     <WidgetComp {config: item}/>
                    |                          ^^^^
 
-                config: Config
+                config: bar/Config
                   --> foo.hop (line 10, col 26)
                  9 |   <for {item in data.items}>
                 10 |     <WidgetComp {config: item}/>
                    |                          ^^^^
 
-                settings: Settings
+                settings: main/Settings
                   --> main.hop (line 11, col 8)
                 10 | 
                 11 | <Main {settings: Settings}>
                    |        ^^^^^^^^
 
-                settings: Settings
+                settings: main/Settings
                   --> main.hop (line 12, col 21)
                 11 | <Main {settings: Settings}>
                 12 |   <PanelComp {data: settings.dashboard}/>
                    |                     ^^^^^^^^
 
-                data: Data
+                data: foo/Data
                   --> main.hop (line 12, col 21)
                 11 | <Main {settings: Settings}>
                 12 |   <PanelComp {data: settings.dashboard}/>
                    |                     ^^^^^^^^^^^^^^^^^^
             "#]],
+        );
+    }
+
+    // Test that types with the same name from different modules are not compatible
+    #[test]
+    fn test_same_name_different_module_types_incompatible() {
+        check(
+            indoc! {r#"
+                -- foo.hop --
+                record User {
+                    name: String,
+                }
+
+                <FooComp {user: User}>
+                    <div>{user.name}</div>
+                </FooComp>
+
+                -- bar.hop --
+                record User {
+                    email: String,
+                }
+
+                <BarComp {user: User}>
+                    <div>{user.email}</div>
+                </BarComp>
+
+                -- main.hop --
+                import FooComp from "@/foo"
+                import BarComp from "@/bar"
+                import User from "@/foo"
+
+                <Main {user: User}>
+                    <FooComp {user: user}/>
+                    <BarComp {user: user}/>
+                </Main>
+            "#},
+            expect![""],
         );
     }
 
@@ -2295,37 +2291,37 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Params
+                params: main/Params
                   --> main.hop (line 4, col 8)
                  3 | record Params {config: Config, data: Array[DataItem]}
                  4 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 5, col 7)
                  4 | <Main {params: Params}>
                  5 |     <if {params.config.debug}>
                    |          ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 7, col 16)
                  6 |     </if>
                  7 |     <for {item in params.data}>
                    |                   ^^^^^^
 
-                item: DataItem
+                item: main/DataItem
                   --> main.hop (line 7, col 8)
                  6 |     </if>
                  7 |     <for {item in params.data}>
                    |           ^^^^
 
-                item: DataItem
+                item: main/DataItem
                   --> main.hop (line 8, col 8)
                  7 |     <for {item in params.data}>
                  8 |         <if {item.id}>
                    |              ^^^^
 
-                item: DataItem
+                item: main/DataItem
                   --> main.hop (line 10, col 17)
                  9 |         </if>
                 10 |         <for {attr in item.attributes}>
@@ -2373,67 +2369,67 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                settings: Settings
+                settings: main/Settings
                   --> main.hop (line 5, col 13)
                  4 | 
                  5 | <Step3Comp {settings: Settings}>
                    |             ^^^^^^^^
 
-                settings: Settings
+                settings: main/Settings
                   --> main.hop (line 6, col 7)
                  5 | <Step3Comp {settings: Settings}>
                  6 |     <if {settings.enabled}>
                    |          ^^^^^^^^
 
-                config: Config
+                config: main/Config
                   --> main.hop (line 10, col 13)
                  9 | 
                 10 | <Step2Comp {config: Config}>
                    |             ^^^^^^
 
-                config: Config
+                config: main/Config
                   --> main.hop (line 11, col 24)
                 10 | <Step2Comp {config: Config}>
                 11 |     <Step3Comp {settings: config.settings}/>
                    |                           ^^^^^^
 
-                settings: Settings
+                settings: main/Settings
                   --> main.hop (line 11, col 24)
                 10 | <Step2Comp {config: Config}>
                 11 |     <Step3Comp {settings: config.settings}/>
                    |                           ^^^^^^^^^^^^^^^
 
-                data: Data
+                data: main/Data
                   --> main.hop (line 14, col 13)
                 13 | 
                 14 | <Step1Comp {data: Data}>
                    |             ^^^^
 
-                data: Data
+                data: main/Data
                   --> main.hop (line 15, col 22)
                 14 | <Step1Comp {data: Data}>
                 15 |     <Step2Comp {config: data.config}/>
                    |                         ^^^^
 
-                config: Config
+                config: main/Config
                   --> main.hop (line 15, col 22)
                 14 | <Step1Comp {data: Data}>
                 15 |     <Step2Comp {config: data.config}/>
                    |                         ^^^^^^^^^^^
 
-                params: Data
+                params: main/Data
                   --> main.hop (line 18, col 8)
                 17 | 
                 18 | <Main {params: Data}>
                    |        ^^^^^^
 
-                params: Data
+                params: main/Data
                   --> main.hop (line 19, col 20)
                 18 | <Main {params: Data}>
                 19 |     <Step1Comp {data: params}/>
                    |                       ^^^^^^
 
-                data: Data
+                data: main/Data
                   --> main.hop (line 19, col 20)
                 18 | <Main {params: Data}>
                 19 |     <Step1Comp {data: params}/>
@@ -2470,73 +2466,73 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                item: Item
+                item: main/Item
                   --> main.hop (line 4, col 12)
                  3 | 
                  4 | <MainCard {item: Item}>
                    |            ^^^^
 
-                item: Item
+                item: main/Item
                   --> main.hop (line 5, col 9)
                  4 | <MainCard {item: Item}>
                  5 |   <div>{item.title}
                    |         ^^^^
 
-                item: Item
+                item: main/Item
                   --> main.hop (line 8, col 12)
                  7 |   <if {item.active}>
                  8 |     <span>{item.status}
                    |            ^^^^
 
-                item: Item
+                item: main/Item
                   --> main.hop (line 7, col 8)
                  6 |   </div>
                  7 |   <if {item.active}>
                    |        ^^^^
 
-                items: Array[Item]
+                items: Array[main/Item]
                   --> main.hop (line 13, col 12)
                 12 | 
                 13 | <MainList {items: Array[Item]}>
                    |            ^^^^^
 
-                items: Array[Item]
+                items: Array[main/Item]
                   --> main.hop (line 14, col 17)
                 13 | <MainList {items: Array[Item]}>
                 14 |   <for {item in items}>
                    |                 ^^^^^
 
-                item: Item
+                item: main/Item
                   --> main.hop (line 14, col 9)
                 13 | <MainList {items: Array[Item]}>
                 14 |   <for {item in items}>
                    |         ^^^^
 
-                item: Item
+                item: main/Item
                   --> main.hop (line 15, col 22)
                 14 |   <for {item in items}>
                 15 |     <MainCard {item: item}/>
                    |                      ^^^^
 
-                item: Item
+                item: main/Item
                   --> main.hop (line 15, col 22)
                 14 |   <for {item in items}>
                 15 |     <MainCard {item: item}/>
                    |                      ^^^^
 
-                data: Data
+                data: main/Data
                   --> main.hop (line 19, col 8)
                 18 | 
                 19 | <Main {data: Data}>
                    |        ^^^^
 
-                data: Data
+                data: main/Data
                   --> main.hop (line 20, col 21)
                 19 | <Main {data: Data}>
                 20 |   <MainList {items: data.items}/>
                    |                     ^^^^
 
-                items: Array[Item]
+                items: Array[main/Item]
                   --> main.hop (line 20, col 21)
                 19 | <Main {data: Data}>
                 20 |   <MainList {items: data.items}/>
@@ -2562,19 +2558,19 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Params
+                params: main/Params
                   --> main.hop (line 5, col 8)
                  4 | record Params {i: I}
                  5 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 7, col 8)
                  6 |     <if {params.i.j.k.l}>
                  7 |         <if {params.i.k}>
                    |              ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 6, col 7)
                  5 | <Main {params: Params}>
                  6 |     <if {params.i.j.k.l}>
@@ -2600,19 +2596,19 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Params
+                params: main/Params
                   --> main.hop (line 5, col 8)
                  4 | record Params {i: I}
                  5 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 6, col 7)
                  5 | <Main {params: Params}>
                  6 |     <if {params.i.j.k.l}>
                    |          ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 8, col 7)
                  7 |     </if>
                  8 |     <if {params.i.k}>
@@ -2642,13 +2638,13 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Params
+                params: main/Params
                   --> main.hop (line 3, col 8)
                  2 | record Params {tags: Array[Bool], categories: Array[Bool], metadata: Metadata}
                  3 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 4, col 15)
                  3 | <Main {params: Params}>
                  4 |     <for {tag in params.tags}>
@@ -2666,7 +2662,7 @@ mod tests {
                  5 |         <if {tag}>
                    |              ^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 8, col 20)
                  7 |     </for>
                  8 |     <for {category in params.categories}>
@@ -2684,7 +2680,7 @@ mod tests {
                  9 |         <if {category}>
                    |              ^^^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 12, col 7)
                 11 |     </for>
                 12 |     <if {params.metadata.title}>
@@ -2791,79 +2787,79 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                step: Step
+                step: main/Step
                   --> main.hop (line 5, col 15)
                  4 | 
                  5 | <ExecuteStep {step: Step}>
                    |               ^^^^
 
-                step: Step
+                step: main/Step
                   --> main.hop (line 6, col 7)
                  5 | <ExecuteStep {step: Step}>
                  6 |     <if {step.condition}>
                    |          ^^^^
 
-                workflow: Workflow
+                workflow: main/Workflow
                   --> main.hop (line 10, col 19)
                  9 | 
                 10 | <ExecuteWorkflow {workflow: Workflow}>
                    |                   ^^^^^^^^
 
-                workflow: Workflow
+                workflow: main/Workflow
                   --> main.hop (line 12, col 17)
                 11 |     <if {workflow.enabled}>
                 12 |         <for {step in workflow.steps}>
                    |                       ^^^^^^^^
 
-                step: Step
+                step: main/Step
                   --> main.hop (line 12, col 9)
                 11 |     <if {workflow.enabled}>
                 12 |         <for {step in workflow.steps}>
                    |               ^^^^
 
-                step: Step
+                step: main/Step
                   --> main.hop (line 13, col 24)
                 12 |         <for {step in workflow.steps}>
                 13 |             <ExecuteStep {step: step}/>
                    |                                 ^^^^
 
-                step: Step
+                step: main/Step
                   --> main.hop (line 13, col 24)
                 12 |         <for {step in workflow.steps}>
                 13 |             <ExecuteStep {step: step}/>
                    |                                 ^^^^
 
-                workflow: Workflow
+                workflow: main/Workflow
                   --> main.hop (line 11, col 7)
                 10 | <ExecuteWorkflow {workflow: Workflow}>
                 11 |     <if {workflow.enabled}>
                    |          ^^^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 18, col 8)
                 17 | 
                 18 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 19, col 20)
                 18 | <Main {params: Params}>
                 19 |     <for {workflow in params.workflows}>
                    |                       ^^^^^^
 
-                workflow: Workflow
+                workflow: main/Workflow
                   --> main.hop (line 19, col 8)
                 18 | <Main {params: Params}>
                 19 |     <for {workflow in params.workflows}>
                    |           ^^^^^^^^
 
-                workflow: Workflow
+                workflow: main/Workflow
                   --> main.hop (line 20, col 31)
                 19 |     <for {workflow in params.workflows}>
                 20 |         <ExecuteWorkflow {workflow: workflow}/>
                    |                                     ^^^^^^^^
 
-                workflow: Workflow
+                workflow: main/Workflow
                   --> main.hop (line 20, col 31)
                 19 |     <for {workflow in params.workflows}>
                 20 |         <ExecuteWorkflow {workflow: workflow}/>
@@ -2944,61 +2940,61 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                item: Item
+                item: main/Item
                   --> main.hop (line 5, col 15)
                  4 | record Params {items: Array[Item]}
                  5 | <ProcessItem {item: Item}>
                    |               ^^^^
 
-                item: Item
+                item: main/Item
                   --> main.hop (line 6, col 7)
                  5 | <ProcessItem {item: Item}>
                  6 |     <if {item.status.active}>
                    |          ^^^^
 
-                item: Item
+                item: main/Item
                   --> main.hop (line 8, col 17)
                  7 |     </if>
                  8 |     <for {child in item.children}>
                    |                    ^^^^
 
-                child: Child
+                child: main/Child
                   --> main.hop (line 8, col 8)
                  7 |     </if>
                  8 |     <for {child in item.children}>
                    |           ^^^^^
 
-                child: Child
+                child: main/Child
                   --> main.hop (line 9, col 8)
                  8 |     <for {child in item.children}>
                  9 |         <if {child.visible}>
                    |              ^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 14, col 8)
                 13 | 
                 14 | <Main {params: Params}>
                    |        ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 15, col 16)
                 14 | <Main {params: Params}>
                 15 |     <for {item in params.items}>
                    |                   ^^^^^^
 
-                item: Item
+                item: main/Item
                   --> main.hop (line 15, col 8)
                 14 | <Main {params: Params}>
                 15 |     <for {item in params.items}>
                    |           ^^^^
 
-                item: Item
+                item: main/Item
                   --> main.hop (line 16, col 23)
                 15 |     <for {item in params.items}>
                 16 |         <ProcessItem {item: item}/>
                    |                             ^^^^
 
-                item: Item
+                item: main/Item
                   --> main.hop (line 16, col 23)
                 15 |     <for {item in params.items}>
                 16 |         <ProcessItem {item: item}/>
@@ -3018,19 +3014,19 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                user: User
+                user: main/User
                   --> main.hop (line 2, col 8)
                 1 | record User {url: String, theme: String}
                 2 | <Main {user: User}>
                   |        ^^^^
 
-                user: User
+                user: main/User
                   --> main.hop (line 3, col 29)
                 2 | <Main {user: User}>
                 3 |   <a href={user.url} class={user.theme}>Link</a>
                   |                             ^^^^
 
-                user: User
+                user: main/User
                   --> main.hop (line 3, col 12)
                 2 | <Main {user: User}>
                 3 |   <a href={user.url} class={user.theme}>Link</a>
@@ -3072,13 +3068,13 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                data: Data
+                data: main/Data
                   --> main.hop (line 2, col 8)
                 1 | record Data {message: String}
                 2 | <Main {data: Data}>
                   |        ^^^^
 
-                data: Data
+                data: main/Data
                   --> main.hop (line 3, col 9)
                 2 | <Main {data: Data}>
                 3 |   <div>{data.message}
@@ -3100,13 +3096,13 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Params
+                params: main/Params
                   --> main.hop (line 2, col 8)
                 1 | record Params {role: String}
                 2 | <Main {params: Params}>
                   |        ^^^^^^
 
-                params: Params
+                params: main/Params
                   --> main.hop (line 3, col 8)
                 2 | <Main {params: Params}>
                 3 |   <if {params.role == "admin"}>
@@ -3218,13 +3214,13 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                data: Data
+                data: main/Data
                   --> main.hop (line 2, col 8)
                 1 | record Data {message: String}
                 2 | <Main {data: Data}>
                   |        ^^^^
 
-                data: Data
+                data: main/Data
                   --> main.hop (line 4, col 8)
                 3 |     <hop-x-raw>foo bar</hop-x-raw>
                 4 |     <div>{data.message}</div>
@@ -3281,13 +3277,13 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                user: User
+                user: main/User
                   --> main.hop (line 2, col 8)
                 1 | record User {is_active: Bool}
                 2 | <Main {user: User}>
                   |        ^^^^
 
-                user: User
+                user: main/User
                   --> main.hop (line 3, col 8)
                 2 | <Main {user: User}>
                 3 |   <if {user.is_active}>
@@ -3310,13 +3306,13 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                data: Data
+                data: main/Data
                   --> main.hop (line 2, col 8)
                 1 | record Data {status: String}
                 2 | <Main {data: Data}>
                   |        ^^^^
 
-                data: Data
+                data: main/Data
                   --> main.hop (line 3, col 8)
                 2 | <Main {data: Data}>
                 3 |   <if {data.status == "approved"}>
@@ -3364,19 +3360,19 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                config: Config
+                config: main/Config
                   --> main.hop (line 2, col 8)
                 1 | record Config {enabled: Bool, debug: Bool}
                 2 | <Main {config: Config}>
                   |        ^^^^^^
 
-                config: Config
+                config: main/Config
                   --> main.hop (line 5, col 10)
                 4 |     <div>Feature enabled</div>
                 5 |     <if {config.debug}>
                   |          ^^^^^^
 
-                config: Config
+                config: main/Config
                   --> main.hop (line 3, col 8)
                 2 | <Main {config: Config}>
                 3 |   <if {config.enabled}>
@@ -3403,7 +3399,7 @@ mod tests {
                 </Foo>
             "#},
             expect![[r#"
-                error: Argument 'config' of type Int is incompatible with expected type Config
+                error: Argument 'config' of type Int is incompatible with expected type main/Config
                   --> main.hop (line 8, col 18)
                 7 | <Foo>
                 8 |   <Main {config: 1}/>
@@ -3428,7 +3424,7 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                error: Type Params is not comparable
+                error: Type main/Params is not comparable
                   --> main.hop (line 6, col 8)
                 5 |   </if>
                 6 |   <if {params == params}>
@@ -3453,31 +3449,31 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                data: Array[Section]
+                data: Array[main/Section]
                   --> main.hop (line 2, col 8)
                 1 | record Section {title: String, items: Array[String]}
                 2 | <Main {data: Array[Section]}>
                   |        ^^^^
 
-                data: Array[Section]
+                data: Array[main/Section]
                   --> main.hop (line 3, col 19)
                 2 | <Main {data: Array[Section]}>
                 3 |     <for {section in data}>
                   |                      ^^^^
 
-                section: Section
+                section: main/Section
                   --> main.hop (line 3, col 8)
                 2 | <Main {data: Array[Section]}>
                 3 |     <for {section in data}>
                   |           ^^^^^^^
 
-                section: Section
+                section: main/Section
                   --> main.hop (line 4, col 8)
                 3 |     <for {section in data}>
                 4 |         <h1>{section.title}</h1>
                   |              ^^^^^^^
 
-                section: Section
+                section: main/Section
                   --> main.hop (line 5, col 17)
                 4 |         <h1>{section.title}</h1>
                 5 |         <for {item in section.items}>
@@ -3534,7 +3530,7 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                error: Argument 'user' of type String is incompatible with expected type User
+                error: Argument 'user' of type String is incompatible with expected type main/User
                   --> main.hop (line 6, col 19)
                 5 | <Main>
                 6 |     <UserComp {user: "invalid"}/>
@@ -3558,37 +3554,37 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                user: User
+                user: main/User
                   --> main.hop (line 3, col 12)
                 2 | record Data {profile: User}
                 3 | <UserComp {user: User}>
                   |            ^^^^
 
-                user: User
+                user: main/User
                   --> main.hop (line 4, col 8)
                 3 | <UserComp {user: User}>
                 4 |     <div>{user.name}: {user.active}</div>
                   |           ^^^^
 
-                user: User
+                user: main/User
                   --> main.hop (line 4, col 21)
                 3 | <UserComp {user: User}>
                 4 |     <div>{user.name}: {user.active}</div>
                   |                        ^^^^
 
-                data: Data
+                data: main/Data
                   --> main.hop (line 6, col 8)
                 5 | </UserComp>
                 6 | <Main {data: Data}>
                   |        ^^^^
 
-                data: Data
+                data: main/Data
                   --> main.hop (line 7, col 19)
                 6 | <Main {data: Data}>
                 7 |     <UserComp {user: data.profile}/>
                   |                      ^^^^
 
-                user: User
+                user: main/User
                   --> main.hop (line 7, col 19)
                 6 | <Main {data: Data}>
                 7 |     <UserComp {user: data.profile}/>
@@ -3611,7 +3607,7 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                error: Argument 'user' of type String is incompatible with expected type User
+                error: Argument 'user' of type String is incompatible with expected type main/User
                   --> main.hop (line 6, col 18)
                 5 | <Main>
                 6 |     <NewComp {user: "invalid"}/>
@@ -3632,13 +3628,13 @@ mod tests {
                 </UserComp>
             "#},
             expect![[r#"
-                user: User
+                user: main/User
                   --> main.hop (line 2, col 12)
                 1 | record User {name: String}
                 2 | <UserComp {user: User}>
                   |            ^^^^
 
-                user: User
+                user: main/User
                   --> main.hop (line 3, col 8)
                 2 | <UserComp {user: User}>
                 3 |     <div>{user.name}</div>
@@ -3807,37 +3803,37 @@ mod tests {
                 </CardComp>
             "#},
             expect![[r#"
-                data: CardData
+                data: main/CardData
                   --> main.hop (line 3, col 12)
                  2 | record CardData {title: String, content: String, tags: Array[String], metadata: Metadata}
                  3 | <CardComp {data: CardData}>
                    |            ^^^^
 
-                data: CardData
+                data: main/CardData
                   --> main.hop (line 4, col 7)
                  3 | <CardComp {data: CardData}>
                  4 |     <h1>{data.title}</h1>
                    |          ^^^^
 
-                data: CardData
+                data: main/CardData
                   --> main.hop (line 5, col 6)
                  4 |     <h1>{data.title}</h1>
                  5 |     <p>{data.content}</p>
                    |         ^^^^
 
-                data: CardData
+                data: main/CardData
                   --> main.hop (line 6, col 8)
                  5 |     <p>{data.content}</p>
                  6 |     <div>{data.metadata.author}</div>
                    |           ^^^^
 
-                data: CardData
+                data: main/CardData
                   --> main.hop (line 7, col 7)
                  6 |     <div>{data.metadata.author}</div>
                  7 |     <if {data.metadata.published}>
                    |          ^^^^
 
-                data: CardData
+                data: main/CardData
                   --> main.hop (line 10, col 15)
                  9 |     </if>
                 10 |     <for {tag in data.tags}>
@@ -4074,11 +4070,6 @@ mod tests {
                   --> main.hop (line 1, col 14)
                 1 | <Main {user: User}>
                   |              ^^^^
-
-                error: Unused variable user
-                  --> main.hop (line 1, col 8)
-                1 | <Main {user: User}>
-                  |        ^^^^
             "#]],
         );
     }
@@ -4117,14 +4108,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Type 'User' is not defined
-                  --> main.hop (line 1, col 21)
+                  --> main.hop (line 1, col 15)
                 1 | <Main {users: Array[User]}>
-                  |                     ^^^^
-
-                error: Unused variable users
-                  --> main.hop (line 1, col 8)
-                1 | <Main {users: Array[User]}>
-                  |        ^^^^^
+                  |               ^^^^^^^^^^^
             "#]],
         );
     }
@@ -4213,13 +4199,13 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                user: User
+                user: main/User
                   --> main.hop (line 2, col 8)
                 1 | record User {name: String}
                 2 | <Main {user: User}>
                   |        ^^^^
 
-                user: User
+                user: main/User
                   --> main.hop (line 3, col 11)
                 2 | <Main {user: User}>
                 3 |     <div>{user.name}</div>
@@ -4262,13 +4248,13 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                user: User
+                user: main/User
                   --> main.hop (line 3, col 8)
                 2 | record User {name: String, address: Address}
                 3 | <Main {user: User}>
                   |        ^^^^
 
-                user: User
+                user: main/User
                   --> main.hop (line 4, col 11)
                 3 | <Main {user: User}>
                 4 |     <div>{user.address.city}</div>

@@ -2,6 +2,8 @@ use core::fmt;
 
 use pretty::BoxDoc;
 
+use crate::hop::module_name::ModuleName;
+
 /// An EquatableType is a type where its values can be compared
 /// using `==` and `!=`.
 #[derive(Debug, Clone, PartialEq)]
@@ -36,7 +38,7 @@ pub enum Type {
     Float,
     TrustedHTML,
     Array(Option<Box<Type>>),
-    Named(String),
+    Named { module: ModuleName, name: String },
 }
 
 impl Type {
@@ -46,7 +48,7 @@ impl Type {
             Type::String => Some(EquatableType::String),
             Type::Int => Some(EquatableType::Int),
             Type::Float => Some(EquatableType::Float),
-            Type::TrustedHTML | Type::Array(_) | Type::Named(_) => None,
+            Type::TrustedHTML | Type::Array(_) | Type::Named { .. } => None,
         }
     }
 
@@ -54,7 +56,7 @@ impl Type {
         match self {
             Type::Int => Some(ComparableType::Int),
             Type::Float => Some(ComparableType::Float),
-            Type::Bool | Type::String | Type::TrustedHTML | Type::Array(_) | Type::Named(_) => None,
+            Type::Bool | Type::String | Type::TrustedHTML | Type::Array(_) | Type::Named { .. } => None,
         }
     }
 
@@ -78,8 +80,11 @@ impl Type {
                 }
             }
 
-            // Named types: must have the same name
-            (Type::Named(sub_name), Type::Named(super_name)) => sub_name == super_name,
+            // Named types: must have the same module and name
+            (
+                Type::Named { module: sub_module, name: sub_name },
+                Type::Named { module: super_module, name: super_name },
+            ) => sub_module == super_module && sub_name == super_name,
 
             // Otherwise, not a subtype
             _ => false,
@@ -108,7 +113,7 @@ impl<'a> Type {
                     .append(BoxDoc::text("]")),
                 None => BoxDoc::text("Array"),
             },
-            Type::Named(name) => BoxDoc::text(name.clone()),
+            Type::Named { module, name } => BoxDoc::text(format!("{}/{}", module, name)),
         }
     }
 }

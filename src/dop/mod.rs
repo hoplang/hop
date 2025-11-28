@@ -17,6 +17,6 @@ pub use syntax_type::SyntaxType;
 pub use token::Token;
 pub use tokenizer::Tokenizer;
 pub use r#type::Type;
-pub use type_checker::{to_type, typecheck_expr};
+pub use type_checker::{UndefinedTypeError, to_type, typecheck_expr};
 pub use typed_expr::{SimpleTypedExpr, TypedExpr};
 pub use var_name::VarName;

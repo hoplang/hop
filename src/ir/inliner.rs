@@ -1,6 +1,6 @@
 use crate::document::document_cursor::StringSpan;
-use crate::dop::{SimpleTypedExpr, to_type};
 use crate::dop::parser::TypedArgument;
+use crate::dop::{RecordDeclaration, SimpleTypedExpr, to_type};
 use crate::hop::ast::{Ast, AttributeValue};
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode, InlinedParameter,
@@ -84,6 +84,16 @@ impl Inliner {
             }
         }
 
+        // Build records list for to_type lookups
+        let records_list: Vec<(ModuleName, String, RecordDeclaration)> = asts
+            .iter()
+            .flat_map(|(module_name, ast)| {
+                ast.get_records().iter().map(move |record| {
+                    (module_name.clone(), record.name().to_string(), record.declaration.clone())
+                })
+            })
+            .collect();
+
         let mut result = Vec::new();
 
         for (module_name, ast) in &asts {
@@ -105,7 +115,9 @@ impl Inliner {
                                 p.0.into_iter()
                                     .map(|param| InlinedParameter {
                                         var_name: param.var_name,
-                                        var_type: to_type(&param.var_type),
+                                        // Parameter types are validated during type checking
+                                        var_type: to_type(&param.var_type, &records_list)
+                                            .expect("Component parameter type should be valid"),
                                     })
                                     .collect()
                             })

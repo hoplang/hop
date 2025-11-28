@@ -7,29 +7,45 @@ use super::type_error::TypeError;
 use super::typed_expr::SimpleTypedExpr;
 use crate::document::document_cursor::Ranged as _;
 use crate::hop::environment::Environment;
+use crate::hop::module_name::ModuleName;
 use crate::hop::type_checker::TypeAnnotation;
-use std::collections::HashMap;
+
+/// Error type for when a named type is not found in the records list.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UndefinedTypeError {
+    pub name: String,
+}
 
 /// Convert a syntax type to a semantic Type.
-pub fn to_type(syntax_type: &SyntaxType) -> Type {
+pub fn to_type(
+    syntax_type: &SyntaxType,
+    records: &[(ModuleName, String, RecordDeclaration)],
+) -> Result<Type, UndefinedTypeError> {
     match syntax_type {
-        SyntaxType::String { .. } => Type::String,
-        SyntaxType::Bool { .. } => Type::Bool,
-        SyntaxType::Int { .. } => Type::Int,
-        SyntaxType::Float { .. } => Type::Float,
-        SyntaxType::TrustedHTML { .. } => Type::TrustedHTML,
+        SyntaxType::String { .. } => Ok(Type::String),
+        SyntaxType::Bool { .. } => Ok(Type::Bool),
+        SyntaxType::Int { .. } => Ok(Type::Int),
+        SyntaxType::Float { .. } => Ok(Type::Float),
+        SyntaxType::TrustedHTML { .. } => Ok(Type::TrustedHTML),
         SyntaxType::Array { element, .. } => {
-            Type::Array(element.as_ref().map(|e| Box::new(to_type(e))))
+            let elem_type = element.as_ref().map(|e| to_type(e, records)).transpose()?;
+            Ok(Type::Array(elem_type.map(Box::new)))
         }
-        SyntaxType::Named { name, .. } => Type::Named(name.clone()),
+        SyntaxType::Named { name, .. } => {
+            let (module, _, _) = records
+                .iter()
+                .find(|(_, n, _)| n == name)
+                .ok_or_else(|| UndefinedTypeError { name: name.clone() })?;
+            Ok(Type::Named { module: module.clone(), name: name.clone() })
+        }
     }
 }
 
-pub fn typecheck_expr<'a>(
+pub fn typecheck_expr(
     expr: &Expr,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
-    records: &HashMap<&'a str, &'a RecordDeclaration>,
+    records: &[(ModuleName, String, RecordDeclaration)],
 ) -> Result<SimpleTypedExpr, TypeError> {
     match expr {
         AnnotatedExpr::Var { value: name, .. } => {
@@ -77,15 +93,18 @@ pub fn typecheck_expr<'a>(
             let base_type = typed_base.as_type();
 
             match &base_type {
-                Type::Named(record_name) => {
-                    if let Some(record_decl) = records.get(record_name.as_str()) {
+                Type::Named { module, name: record_name } => {
+                    if let Some((_, _, record_decl)) = records.iter().find(|(m, n, _)| m == module && n == record_name) {
                         if let Some(field_decl) = record_decl
                             .fields
                             .iter()
                             .find(|f| f.name.as_str() == field.as_str())
                         {
+                            // Field types should always resolve since they're part of a valid record
+                            let field_type = to_type(&field_decl.field_type, records)
+                                .expect("Field type should be valid in a declared record");
                             Ok(SimpleTypedExpr::FieldAccess {
-                                kind: to_type(&field_decl.field_type),
+                                kind: field_type,
                                 record: Box::new(typed_base),
                                 field: field.clone(),
                                 annotation: (),
@@ -605,19 +624,25 @@ pub fn typecheck_expr<'a>(
             annotation: range,
         } => {
             // Check if the record type is defined
-            let record_decl =
+            let (module, _, record_decl) =
                 records
-                    .get(record_name.as_str())
+                    .iter()
+                    .find(|(_, n, _)| n == record_name.as_str())
                     .ok_or_else(|| TypeError::UndefinedRecord {
                         record_name: record_name.clone(),
                         range: range.clone(),
                     })?;
 
             // Build a map of expected fields from the record declaration
-            let expected_fields: HashMap<&str, Type> = record_decl
+            // Field types should always resolve since they're part of a valid record
+            let expected_fields: std::collections::HashMap<&str, Type> = record_decl
                 .fields
                 .iter()
-                .map(|f| (f.name.as_str(), to_type(&f.field_type)))
+                .map(|f| {
+                    let typ = to_type(&f.field_type, records)
+                        .expect("Field type should be valid in a declared record");
+                    (f.name.as_str(), typ)
+                })
                 .collect();
 
             // Check for unknown fields and type mismatches
@@ -669,7 +694,7 @@ pub fn typecheck_expr<'a>(
             Ok(SimpleTypedExpr::RecordInstantiation {
                 record_name: record_name.clone(),
                 fields: typed_fields,
-                kind: Type::Named(record_name.clone()),
+                kind: Type::Named { module: module.clone(), name: record_name.clone() },
                 annotation: (),
             })
         }
@@ -686,6 +711,7 @@ mod tests {
 
     fn check(env_str: &str, expr_str: &str, expected: Expect) {
         let mut env = Environment::new();
+        let records: Vec<(ModuleName, String, RecordDeclaration)> = vec![];
 
         if !env_str.is_empty() {
             let mut parser = Parser::from(env_str);
@@ -693,7 +719,10 @@ mod tests {
                 .parse_parameters()
                 .expect("Failed to parse environment");
             for param in params {
-                let _ = env.push(param.var_name.to_string(), to_type(&param.var_type));
+                // In tests without records, only primitive types are used
+                let typ = to_type(&param.var_type, &records)
+                    .expect("Test parameter type should be valid");
+                let _ = env.push(param.var_name.to_string(), typ);
             }
         }
 
@@ -702,7 +731,6 @@ mod tests {
 
         let mut annotations = Vec::new();
 
-        let records = HashMap::new();
         let actual = match typecheck_expr(&expr, &mut env, &mut annotations, &records) {
             Ok(typed_expr) => typed_expr.as_type().to_string(),
             Err(e) => DocumentAnnotator::new()
@@ -817,7 +845,7 @@ mod tests {
             ],
             "config.users.profile.name",
             expect![[r#"
-                error: Array[UserInfo] can not be used as a record
+                error: Array[test/UserInfo] can not be used as a record
                 config.users.profile.name
                 ^^^^^^^^^^^^
             "#]],
@@ -831,7 +859,7 @@ mod tests {
             &["record User {name: String}"],
             "users.name",
             expect![[r#"
-                error: Array[User] can not be used as a record
+                error: Array[test/User] can not be used as a record
                 users.name
                 ^^^^^
             "#]],
@@ -1428,6 +1456,14 @@ mod tests {
 
     fn check_with_records(env_str: &str, records_str: &[&str], expr_str: &str, expected: Expect) {
         let mut env = Environment::new();
+        let test_module = ModuleName::new("test".to_string()).unwrap();
+
+        let mut records: Vec<(ModuleName, String, RecordDeclaration)> = Vec::new();
+        for record_str in records_str {
+            let mut parser = Parser::from(*record_str);
+            let record = parser.parse_record().expect("Failed to parse record");
+            records.push((test_module.clone(), record.name.to_string(), record));
+        }
 
         if !env_str.is_empty() {
             let mut parser = Parser::from(env_str);
@@ -1435,21 +1471,11 @@ mod tests {
                 .parse_parameters()
                 .expect("Failed to parse environment");
             for param in params {
-                let _ = env.push(param.var_name.to_string(), to_type(&param.var_type));
+                let typ = to_type(&param.var_type, &records)
+                    .expect("Test parameter type should be valid");
+                let _ = env.push(param.var_name.to_string(), typ);
             }
         }
-
-        let mut record_declarations = Vec::new();
-        for record_str in records_str {
-            let mut parser = Parser::from(*record_str);
-            let record = parser.parse_record().expect("Failed to parse record");
-            record_declarations.push(record);
-        }
-
-        let records: HashMap<&str, &RecordDeclaration> = record_declarations
-            .iter()
-            .map(|r| (r.name.as_str(), r))
-            .collect();
 
         let mut parser = Parser::from(expr_str);
         let expr = parser.parse_expr().expect("Failed to parse expression");
@@ -1474,7 +1500,7 @@ mod tests {
             "",
             &["record User {name: String, age: Int}"],
             r#"User(name: "John", age: 30)"#,
-            expect!["User"],
+            expect!["test/User"],
         );
     }
 
@@ -1484,7 +1510,7 @@ mod tests {
             "user_name: String, user_age: Int",
             &["record User {name: String, age: Int}"],
             "User(name: user_name, age: user_age)",
-            expect!["User"],
+            expect!["test/User"],
         );
     }
 
@@ -1553,7 +1579,7 @@ mod tests {
                 "record User {name: String, address: Address}",
             ],
             r#"User(name: "John", address: Address(city: "NYC"))"#,
-            expect!["User"],
+            expect!["test/User"],
         );
     }
 }

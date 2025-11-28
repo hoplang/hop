@@ -1,7 +1,8 @@
 use crate::document::DocumentAnnotator;
-use crate::dop::to_type;
+use crate::dop::{RecordDeclaration, to_type};
 use crate::filesystem::config::TargetConfig;
 use crate::filesystem::project_root::ProjectRoot;
+use crate::hop::module_name::ModuleName;
 use crate::hop::program::Program;
 use crate::ir::{
     GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, RecordInfo, Transpiler,
@@ -129,6 +130,17 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
         pages,
     )?;
 
+    // Build records list for to_type lookups
+    let records_list: Vec<(ModuleName, String, RecordDeclaration)> = program
+        .get_typed_modules()
+        .iter()
+        .flat_map(|(module_name, module)| {
+            module.get_records().iter().map(move |record| {
+                (module_name.clone(), record.name().to_string(), record.declaration.clone())
+            })
+        })
+        .collect();
+
     // Collect record declarations from all modules
     let records: Vec<RecordInfo> = program
         .get_typed_modules()
@@ -140,7 +152,12 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
                 .declaration
                 .fields
                 .iter()
-                .map(|f| (f.name.clone(), to_type(&f.field_type)))
+                .map(|f| {
+                    // Field types are validated during type checking, so this should always succeed
+                    let typ = to_type(&f.field_type, &records_list)
+                        .expect("Record field type should be valid");
+                    (f.name.clone(), typ)
+                })
                 .collect(),
         })
         .collect();

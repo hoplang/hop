@@ -4,6 +4,7 @@ use super::{ExpressionTranspiler, RecordInfo, StatementTranspiler, Transpiler, T
 use crate::dop::field_name::FieldName;
 use crate::dop::r#type::Type;
 use crate::hop::component_name::ComponentName;
+use crate::hop::module_name::ModuleName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 
 pub struct PythonTranspiler {}
@@ -24,7 +25,7 @@ impl PythonTranspiler {
                 .append(Self::get_python_type(elem))
                 .append(BoxDoc::text("]")),
             Type::Array(None) => BoxDoc::text("list"),
-            Type::Named(name) => BoxDoc::text(name.clone()),
+            Type::Named { name, .. } => BoxDoc::text(name.clone()),
         }
     }
 
@@ -1103,7 +1104,7 @@ mod tests {
 
         let entrypoints = vec![build_ir_with_records(
             "UserProfile",
-            vec![("user", Type::Named("User".to_string()))],
+            vec![("user", Type::Named { module: ModuleName::new("test".to_string()).unwrap(), name: "User".to_string() })],
             records_def,
             |t| {
                 t.write("<div>");
