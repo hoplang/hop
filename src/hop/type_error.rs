@@ -1,5 +1,5 @@
 use crate::document::document_cursor::{DocumentRange, Ranged};
-use crate::dop::{self, Parameter, Type};
+use crate::dop::{self, Type};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
@@ -113,10 +113,10 @@ impl TypeError {
         }
     }
 
-    pub fn missing_arguments(params: &[Parameter], range: DocumentRange) -> Self {
+    pub fn missing_arguments(params: &[(String, crate::dop::Type)], range: DocumentRange) -> Self {
         let args = params
             .iter()
-            .map(|p| p.var_name.as_str())
+            .map(|(name, _)| name.as_str())
             .collect::<Vec<_>>()
             .join(", ");
         TypeError::MissingArguments { args, range }

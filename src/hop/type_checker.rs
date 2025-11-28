@@ -33,8 +33,8 @@ impl Display for TypeAnnotation {
 
 #[derive(Debug, Clone)]
 pub struct ComponentTypeInformation {
-    // Track the parameter types for the component.
-    parameter_types: Option<Vec<Parameter>>,
+    // Track the resolved parameter types for the component (name, type).
+    parameter_types: Vec<(String, Type)>,
     // Track whether the component has a slot-default.
     has_slot: bool,
 }
@@ -46,11 +46,13 @@ pub struct ModuleTypeInformation {
 }
 
 impl ModuleTypeInformation {
-    fn get_parameter_types(&self, component_name: &str) -> Option<&Vec<Parameter>> {
-        self.components
-            .get(component_name)?
-            .parameter_types
-            .as_ref()
+    fn get_parameter_types(&self, component_name: &str) -> Option<&[(String, Type)]> {
+        let params = &self.components.get(component_name)?.parameter_types;
+        if params.is_empty() {
+            None
+        } else {
+            Some(params.as_slice())
+        }
     }
 
     fn component_has_slot(&self, component_name: &str) -> bool {
@@ -241,6 +243,8 @@ fn typecheck_module(
         // Push parameters to environment and validate their types
         // Track which parameters were successfully pushed for later popping
         let mut pushed_params: Vec<&Parameter> = Vec::new();
+        // Collect resolved parameter types for ComponentTypeInformation
+        let mut resolved_param_types: Vec<(String, Type)> = Vec::new();
         if let Some((params, _)) = params {
             for param in params {
                 match to_type(&param.var_type, &records_list) {
@@ -250,8 +254,9 @@ fn typecheck_module(
                             typ: param_type.clone(),
                             name: param.var_name.to_string(),
                         });
-                        let _ = env.push(param.var_name.to_string(), param_type);
+                        let _ = env.push(param.var_name.to_string(), param_type.clone());
                         pushed_params.push(param);
+                        resolved_param_types.push((param.var_name.to_string(), param_type));
                     }
                     Err(e) => {
                         errors.push(TypeError::UndefinedType {
@@ -286,7 +291,7 @@ fn typecheck_module(
             &module.name,
             name.as_str(),
             ComponentTypeInformation {
-                parameter_types: params.clone().map(|(params, _)| params),
+                parameter_types: resolved_param_types,
                 has_slot: *has_slot,
             },
         );
@@ -470,22 +475,22 @@ fn typecheck_node(
                 }
                 (Some(params), Some((args, args_range))) => {
                     let mut typed_arguments = Vec::new();
-                    for param in params {
+                    for (param_name, _) in params {
                         if !args
                             .iter()
-                            .any(|a| a.var_name.as_str() == param.var_name.as_str())
+                            .any(|a| a.var_name.as_str() == param_name.as_str())
                         {
                             errors.push(TypeError::MissingRequiredParameter {
-                                param: param.var_name.as_str().to_string(),
+                                param: param_name.clone(),
                                 range: args_range.clone(),
                             });
                         }
                     }
 
                     for arg in args {
-                        let param = match params
+                        let (_, param_type) = match params
                             .iter()
-                            .find(|p| p.var_name.as_str() == arg.var_name.as_str())
+                            .find(|(name, _)| name.as_str() == arg.var_name.as_str())
                         {
                             None => {
                                 errors.push(TypeError::UnexpectedArgument {
@@ -507,12 +512,10 @@ fn typecheck_node(
                             };
                         let arg_type = typed_expr.as_type().clone();
 
-                        // Parameter types are validated when components are defined, so this should always succeed
-                        let param_type = to_type(&param.var_type, records)
-                            .expect("Component parameter type should be valid");
-                        if !arg_type.is_subtype(&param_type) {
+                        // param_type is already resolved from the component's defining module
+                        if !arg_type.is_subtype(param_type) {
                             errors.push(TypeError::ArgumentIsIncompatible {
-                                expected: param_type,
+                                expected: param_type.clone(),
                                 found: arg_type.clone(),
                                 arg_name: arg.var_name_range.clone(),
                                 expr_range: arg.var_expr.range().clone(),
@@ -2241,7 +2244,58 @@ mod tests {
                     <BarComp {user: user}/>
                 </Main>
             "#},
-            expect![""],
+            expect![[r#"
+                error: Argument 'user' of type foo/User is incompatible with expected type bar/User
+                  --> main.hop (line 7, col 21)
+                6 |     <FooComp {user: user}/>
+                7 |     <BarComp {user: user}/>
+                  |                     ^^^^
+            "#]],
+        );
+    }
+
+    // Test that identical record definitions in different modules are still incompatible
+    #[test]
+    fn test_identical_records_different_modules_incompatible() {
+        check(
+            indoc! {r#"
+                -- foo.hop --
+                record User {
+                    name: String,
+                    age: Int,
+                }
+
+                <FooComp {user: User}>
+                    <div>{user.name}</div>
+                </FooComp>
+
+                -- bar.hop --
+                record User {
+                    name: String,
+                    age: Int,
+                }
+
+                <BarComp {user: User}>
+                    <div>{user.name}</div>
+                </BarComp>
+
+                -- main.hop --
+                import FooComp from "@/foo"
+                import BarComp from "@/bar"
+                import User from "@/foo"
+
+                <Main {user: User}>
+                    <FooComp {user: user}/>
+                    <BarComp {user: user}/>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Argument 'user' of type foo/User is incompatible with expected type bar/User
+                  --> main.hop (line 7, col 21)
+                6 |     <FooComp {user: user}/>
+                7 |     <BarComp {user: user}/>
+                  |                     ^^^^
+            "#]],
         );
     }
 
