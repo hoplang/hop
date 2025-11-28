@@ -229,10 +229,7 @@ fn typecheck_module(
                     });
                 }
                 Err(e) => {
-                    errors.push(TypeError::UndefinedType {
-                        type_name: e.name,
-                        range: field.field_type.range().clone(),
-                    });
+                    errors.push(e.into());
                     has_errors = true;
                 }
             }
@@ -293,10 +290,7 @@ fn typecheck_module(
                         });
                     }
                     Err(e) => {
-                        errors.push(TypeError::UndefinedType {
-                            type_name: e.name,
-                            range: param.var_type.range().clone(),
-                        });
+                        errors.push(e.into());
                     }
                 }
             }
@@ -4201,9 +4195,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Type 'User' is not defined
-                  --> main.hop (line 1, col 15)
+                  --> main.hop (line 1, col 21)
                 1 | <Main {users: Array[User]}>
-                  |               ^^^^^^^^^^^
+                  |                     ^^^^
             "#]],
         );
     }

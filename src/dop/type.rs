@@ -56,7 +56,9 @@ impl Type {
         match self {
             Type::Int => Some(ComparableType::Int),
             Type::Float => Some(ComparableType::Float),
-            Type::Bool | Type::String | Type::TrustedHTML | Type::Array(_) | Type::Named { .. } => None,
+            Type::Bool | Type::String | Type::TrustedHTML | Type::Array(_) | Type::Named { .. } => {
+                None
+            }
         }
     }
 
@@ -80,10 +82,16 @@ impl Type {
                 }
             }
 
-            // Named types: must have the same module and name
+            // Named types must have the same module and name
             (
-                Type::Named { module: sub_module, name: sub_name },
-                Type::Named { module: super_module, name: super_name },
+                Type::Named {
+                    module: sub_module,
+                    name: sub_name,
+                },
+                Type::Named {
+                    module: super_module,
+                    name: super_name,
+                },
             ) => sub_module == super_module && sub_name == super_name,
 
             // Otherwise, not a subtype

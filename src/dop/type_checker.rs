@@ -10,17 +10,11 @@ use crate::hop::environment::Environment;
 use crate::hop::module_name::ModuleName;
 use crate::hop::type_checker::TypeAnnotation;
 
-/// Error type for when a named type is not found in the records list.
-#[derive(Debug, Clone, PartialEq)]
-pub struct UndefinedTypeError {
-    pub name: String,
-}
-
 /// Convert a syntax type to a semantic Type.
 pub fn resolve_type(
     syntax_type: &SyntaxType,
     records: &[(ModuleName, String, RecordDeclaration)],
-) -> Result<Type, UndefinedTypeError> {
+) -> Result<Type, TypeError> {
     match syntax_type {
         SyntaxType::String { .. } => Ok(Type::String),
         SyntaxType::Bool { .. } => Ok(Type::Bool),
@@ -31,11 +25,14 @@ pub fn resolve_type(
             let elem_type = element.as_ref().map(|e| resolve_type(e, records)).transpose()?;
             Ok(Type::Array(elem_type.map(Box::new)))
         }
-        SyntaxType::Named { name, .. } => {
+        SyntaxType::Named { name, range } => {
             let (module, _, _) = records
                 .iter()
                 .find(|(_, n, _)| n == name)
-                .ok_or_else(|| UndefinedTypeError { name: name.clone() })?;
+                .ok_or_else(|| TypeError::UndefinedType {
+                    type_name: name.clone(),
+                    range: range.clone(),
+                })?;
             Ok(Type::Named { module: module.clone(), name: name.clone() })
         }
     }

@@ -64,6 +64,12 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
+    #[error("Type '{type_name}' is not defined")]
+    UndefinedType {
+        type_name: String,
+        range: DocumentRange,
+    },
+
     #[error("Record type '{record_name}' is not defined")]
     UndefinedRecord {
         record_name: String,
@@ -108,6 +114,7 @@ impl Ranged for TypeError {
             | TypeError::IncompatibleTypesForAddition { range, .. }
             | TypeError::IncompatibleTypesForSubtraction { range, .. }
             | TypeError::IncompatibleTypesForMultiplication { range, .. }
+            | TypeError::UndefinedType { range, .. }
             | TypeError::UndefinedRecord { range, .. }
             | TypeError::MissingRecordField { range, .. }
             | TypeError::UnknownRecordField { range, .. }
