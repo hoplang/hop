@@ -4430,4 +4430,54 @@ mod tests {
         );
     }
 
+    // Test cross-module record usage:
+    // - Foo declares record A with a primitive field
+    // - Bar imports A and declares record B with a field of type A
+    // - Baz imports Bar and User, and passes a User to Bar component via record instantiation
+    #[test]
+    fn test_cross_module_record_usage() {
+        check(
+            indoc! {r#"
+                -- foo.hop --
+                record Address {city: String}
+                <Foo>
+                </Foo>
+
+                -- bar.hop --
+                import Address from "@/foo"
+                record User {name: String, address: Address}
+                <Bar {user: User}>
+                    <div>{user.address.city}</div>
+                </Bar>
+
+                -- baz.hop --
+                import Bar from "@/bar"
+                import User from "@/bar"
+                import Address from "@/foo"
+                <Baz>
+                    <Bar {user: User(name: "Alice", address: Address(city: "NYC"))} />
+                </Baz>
+            "#},
+            expect![[r#"
+                user: bar::User
+                  --> bar.hop (line 3, col 7)
+                2 | record User {name: String, address: Address}
+                3 | <Bar {user: User}>
+                  |       ^^^^
+
+                user: bar::User
+                  --> bar.hop (line 4, col 11)
+                3 | <Bar {user: User}>
+                4 |     <div>{user.address.city}</div>
+                  |           ^^^^
+
+                user: bar::User
+                  --> baz.hop (line 5, col 17)
+                4 | <Baz>
+                5 |     <Bar {user: User(name: "Alice", address: Address(city: "NYC"))} />
+                  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
 }
