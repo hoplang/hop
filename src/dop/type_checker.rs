@@ -47,7 +47,7 @@ pub fn typecheck_expr(
     expr: &Expr,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
-    records: &[(ModuleName, String, RecordDeclaration)],
+    records: &[(ModuleName, String, RecordDeclaration<Type>)],
 ) -> Result<SimpleTypedExpr, TypeError> {
     match expr {
         AnnotatedExpr::Var { value: name, .. } => {
@@ -108,11 +108,8 @@ pub fn typecheck_expr(
                             .iter()
                             .find(|f| f.name.as_str() == field.as_str())
                         {
-                            // Field types should always resolve since they're part of a valid record
-                            let field_type = resolve_type(&field_decl.field_type, records)
-                                .expect("Field type should be valid in a declared record");
                             Ok(SimpleTypedExpr::FieldAccess {
-                                kind: field_type,
+                                kind: field_decl.annotation.clone(),
                                 record: Box::new(typed_base),
                                 field: field.clone(),
                                 annotation: (),
@@ -641,15 +638,10 @@ pub fn typecheck_expr(
                 })?;
 
             // Build a map of expected fields from the record declaration
-            // Field types should always resolve since they're part of a valid record
             let expected_fields: std::collections::HashMap<&str, Type> = record_decl
                 .fields
                 .iter()
-                .map(|f| {
-                    let typ = resolve_type(&f.field_type, records)
-                        .expect("Field type should be valid in a declared record");
-                    (f.name.as_str(), typ)
-                })
+                .map(|f| (f.name.as_str(), f.annotation.clone()))
                 .collect();
 
             // Check for unknown fields and type mismatches
@@ -719,9 +711,31 @@ mod tests {
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
+    /// Helper to resolve a RecordDeclaration<()> to RecordDeclaration<Type>
+    fn resolve_record(
+        record: &RecordDeclaration,
+        records: &[(ModuleName, String, RecordDeclaration)],
+    ) -> RecordDeclaration<Type> {
+        RecordDeclaration {
+            name: record.name.clone(),
+            fields: record
+                .fields
+                .iter()
+                .map(|f| super::super::parser::RecordField {
+                    name: f.name.clone(),
+                    name_range: f.name_range.clone(),
+                    field_type: f.field_type.clone(),
+                    annotation: resolve_type(&f.field_type, records)
+                        .expect("Test record field type should be valid"),
+                })
+                .collect(),
+        }
+    }
+
     fn check(env_str: &str, expr_str: &str, expected: Expect) {
         let mut env = Environment::new();
-        let records: Vec<(ModuleName, String, RecordDeclaration)> = vec![];
+        let untyped_records: Vec<(ModuleName, String, RecordDeclaration)> = vec![];
+        let records: Vec<(ModuleName, String, RecordDeclaration<Type>)> = vec![];
 
         if !env_str.is_empty() {
             let mut parser = Parser::from(env_str);
@@ -730,7 +744,7 @@ mod tests {
                 .expect("Failed to parse environment");
             for param in params {
                 // In tests without records, only primitive types are used
-                let typ = resolve_type(&param.var_type, &records)
+                let typ = resolve_type(&param.var_type, &untyped_records)
                     .expect("Test parameter type should be valid");
                 let _ = env.push(param.var_name.to_string(), typ);
             }
@@ -1468,12 +1482,21 @@ mod tests {
         let mut env = Environment::new();
         let test_module = ModuleName::new("test".to_string()).unwrap();
 
-        let mut records: Vec<(ModuleName, String, RecordDeclaration)> = Vec::new();
+        // First pass: parse untyped records
+        let mut untyped_records: Vec<(ModuleName, String, RecordDeclaration)> = Vec::new();
         for record_str in records_str {
             let mut parser = Parser::from(*record_str);
             let record = parser.parse_record().expect("Failed to parse record");
-            records.push((test_module.clone(), record.name.to_string(), record));
+            untyped_records.push((test_module.clone(), record.name.to_string(), record));
         }
+
+        // Second pass: resolve record field types
+        let records: Vec<(ModuleName, String, RecordDeclaration<Type>)> = untyped_records
+            .iter()
+            .map(|(module, name, record)| {
+                (module.clone(), name.clone(), resolve_record(record, &untyped_records))
+            })
+            .collect();
 
         if !env_str.is_empty() {
             let mut parser = Parser::from(env_str);
@@ -1481,7 +1504,7 @@ mod tests {
                 .parse_parameters()
                 .expect("Failed to parse environment");
             for param in params {
-                let typ = resolve_type(&param.var_type, &records)
+                let typ = resolve_type(&param.var_type, &untyped_records)
                     .expect("Test parameter type should be valid");
                 let _ = env.push(param.var_name.to_string(), typ);
             }

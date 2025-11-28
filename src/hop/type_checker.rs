@@ -43,6 +43,7 @@ pub struct ComponentTypeInformation {
 pub struct ModuleTypeInformation {
     components: HashMap<String, ComponentTypeInformation>,
     records: HashMap<String, dop::RecordDeclaration>,
+    typed_records: HashMap<String, dop::RecordDeclaration<Type>>,
 }
 
 impl ModuleTypeInformation {
@@ -85,6 +86,14 @@ impl ModuleTypeInformation {
     fn set_record(&mut self, record_name: &str, record: dop::RecordDeclaration) {
         self.records.insert(record_name.to_string(), record);
     }
+
+    fn get_typed_record(&self, record_name: &str) -> Option<&dop::RecordDeclaration<Type>> {
+        self.typed_records.get(record_name)
+    }
+
+    fn set_typed_record(&mut self, record_name: &str, record: dop::RecordDeclaration<Type>) {
+        self.typed_records.insert(record_name.to_string(), record);
+    }
 }
 
 #[derive(Debug, Default)]
@@ -115,6 +124,18 @@ impl State {
             .entry(module_name.clone())
             .or_default()
             .set_record(record_name, record);
+    }
+
+    fn set_typed_record(
+        &mut self,
+        module_name: &ModuleName,
+        record_name: &str,
+        record: dop::RecordDeclaration<Type>,
+    ) {
+        self.modules
+            .entry(module_name.clone())
+            .or_default()
+            .set_typed_record(record_name, record);
     }
 }
 
@@ -237,13 +258,38 @@ fn typecheck_module(
 
         // Only add record if all fields resolved successfully
         if !has_errors {
+            let typed_decl = dop::RecordDeclaration {
+                name: record.declaration.name.clone(),
+                fields: typed_fields,
+            };
+            // Store typed record in state so other modules can import it
+            state.set_typed_record(&module.name, record.name(), typed_decl.clone());
             typed_records.push(TypedRecord {
-                declaration: dop::RecordDeclaration {
-                    name: record.declaration.name.clone(),
-                    fields: typed_fields,
-                },
+                declaration: typed_decl,
                 range: record.range.clone(),
             });
+        }
+    }
+
+    // Build typed records list for typecheck_expr
+    let mut typed_records_list: Vec<(ModuleName, String, dop::RecordDeclaration<Type>)> =
+        typed_records
+            .iter()
+            .map(|r| (module.name.clone(), r.name().to_string(), r.declaration.clone()))
+            .collect();
+
+    // Add imported typed records
+    for import in module.get_imports() {
+        let imported_module = import.imported_module();
+        let imported_name = import.imported_component();
+        if let Some(module_state) = state.modules.get(imported_module) {
+            if let Some(record) = module_state.get_typed_record(imported_name.as_str()) {
+                typed_records_list.push((
+                    imported_module.clone(),
+                    imported_name.as_str().to_string(),
+                    record.clone(),
+                ));
+            }
         }
     }
 
@@ -300,7 +346,7 @@ fn typecheck_module(
         let typed_children: Vec<_> = children
             .iter()
             .filter_map(|child| {
-                typecheck_node(child, state, &mut env, annotations, errors, &records_list)
+                typecheck_node(child, state, &mut env, annotations, errors, &typed_records_list)
             })
             .collect();
 
@@ -356,7 +402,7 @@ fn typecheck_node(
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
-    records: &[(ModuleName, String, dop::RecordDeclaration)],
+    records: &[(ModuleName, String, dop::RecordDeclaration<Type>)],
 ) -> Option<TypedNode> {
     match node {
         Node::If {
@@ -662,7 +708,7 @@ fn typecheck_attributes(
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
-    records: &[(ModuleName, String, dop::RecordDeclaration)],
+    records: &[(ModuleName, String, dop::RecordDeclaration<Type>)],
 ) -> BTreeMap<StringSpan, TypedAttribute> {
     let mut typed_attributes = BTreeMap::new();
 
