@@ -17,7 +17,7 @@ pub struct UndefinedTypeError {
 }
 
 /// Convert a syntax type to a semantic Type.
-pub fn to_type(
+pub fn resolve_type(
     syntax_type: &SyntaxType,
     records: &[(ModuleName, String, RecordDeclaration)],
 ) -> Result<Type, UndefinedTypeError> {
@@ -28,7 +28,7 @@ pub fn to_type(
         SyntaxType::Float { .. } => Ok(Type::Float),
         SyntaxType::TrustedHTML { .. } => Ok(Type::TrustedHTML),
         SyntaxType::Array { element, .. } => {
-            let elem_type = element.as_ref().map(|e| to_type(e, records)).transpose()?;
+            let elem_type = element.as_ref().map(|e| resolve_type(e, records)).transpose()?;
             Ok(Type::Array(elem_type.map(Box::new)))
         }
         SyntaxType::Named { name, .. } => {
@@ -101,7 +101,7 @@ pub fn typecheck_expr(
                             .find(|f| f.name.as_str() == field.as_str())
                         {
                             // Field types should always resolve since they're part of a valid record
-                            let field_type = to_type(&field_decl.field_type, records)
+                            let field_type = resolve_type(&field_decl.field_type, records)
                                 .expect("Field type should be valid in a declared record");
                             Ok(SimpleTypedExpr::FieldAccess {
                                 kind: field_type,
@@ -639,7 +639,7 @@ pub fn typecheck_expr(
                 .fields
                 .iter()
                 .map(|f| {
-                    let typ = to_type(&f.field_type, records)
+                    let typ = resolve_type(&f.field_type, records)
                         .expect("Field type should be valid in a declared record");
                     (f.name.as_str(), typ)
                 })
@@ -720,7 +720,7 @@ mod tests {
                 .expect("Failed to parse environment");
             for param in params {
                 // In tests without records, only primitive types are used
-                let typ = to_type(&param.var_type, &records)
+                let typ = resolve_type(&param.var_type, &records)
                     .expect("Test parameter type should be valid");
                 let _ = env.push(param.var_name.to_string(), typ);
             }
@@ -1471,7 +1471,7 @@ mod tests {
                 .parse_parameters()
                 .expect("Failed to parse environment");
             for param in params {
-                let typ = to_type(&param.var_type, &records)
+                let typ = resolve_type(&param.var_type, &records)
                     .expect("Test parameter type should be valid");
                 let _ = env.push(param.var_name.to_string(), typ);
             }

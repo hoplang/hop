@@ -1,5 +1,5 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::{self, Argument, Parameter, Type, to_type};
+use crate::dop::{self, Argument, Parameter, Type, resolve_type};
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::Ast;
 use crate::hop::ast::{Attribute, ComponentDefinition};
@@ -219,7 +219,7 @@ fn typecheck_module(
         let mut has_errors = false;
 
         for field in &record.declaration.fields {
-            match to_type(&field.field_type, &records_list) {
+            match resolve_type(&field.field_type, &records_list) {
                 Ok(resolved_type) => {
                     typed_fields.push(dop::RecordField {
                         name: field.name.clone(),
@@ -275,7 +275,7 @@ fn typecheck_module(
         let mut typed_params: Vec<Parameter<Type>> = Vec::new();
         if let Some((params, _)) = params {
             for param in params {
-                match to_type(&param.var_type, &records_list) {
+                match resolve_type(&param.var_type, &records_list) {
                     Ok(param_type) => {
                         annotations.push(TypeAnnotation {
                             range: param.var_name_range.clone(),
