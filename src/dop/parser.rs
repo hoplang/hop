@@ -3,7 +3,7 @@ use std::fmt::{self, Display};
 use std::iter::Peekable;
 
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _};
-use crate::dop::expr::{AnnotatedExpr, BinaryOp};
+use crate::dop::expr::{BinaryOp, SyntacticExpr};
 use crate::dop::field_name::FieldName;
 use crate::dop::parse_error::ParseError;
 use crate::dop::syntax_type::SyntaxType;
@@ -11,7 +11,6 @@ use crate::dop::token::Token;
 use crate::dop::tokenizer::Tokenizer;
 use crate::dop::var_name::VarName;
 
-use super::Expr;
 use super::typed_expr::SimpleTypedExpr;
 
 /// A Parameter represents a parsed parameter with type annotation.
@@ -73,7 +72,7 @@ pub type TypedArgument = Argument<SimpleTypedExpr>;
 /// E.g. <my-comp {x: [1,2], y: 2}>
 ///                ^^^^^^^^
 #[derive(Debug, Clone)]
-pub struct Argument<T = Expr> {
+pub struct Argument<T = SyntacticExpr> {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
     pub var_expr: T,
@@ -251,14 +250,14 @@ impl Parser {
     }
 
     // expr = logical Eof
-    pub fn parse_expr(&mut self) -> Result<Expr, ParseError> {
+    pub fn parse_expr(&mut self) -> Result<SyntacticExpr, ParseError> {
         let result = self.parse_logical()?;
         self.expect_eof()?;
         Ok(result)
     }
 
     // exprs = logical ("," logical)* ","? Eof
-    pub fn parse_exprs(&mut self) -> Result<Vec<Expr>, ParseError> {
+    pub fn parse_exprs(&mut self) -> Result<Vec<SyntacticExpr>, ParseError> {
         let mut exprs = Vec::new();
         self.parse_comma_separated(
             |this| {
@@ -272,7 +271,9 @@ impl Parser {
     }
 
     // loop_header = Identifier "in" logical Eof
-    pub fn parse_loop_header(&mut self) -> Result<(VarName, DocumentRange, Expr), ParseError> {
+    pub fn parse_loop_header(
+        &mut self,
+    ) -> Result<(VarName, DocumentRange, SyntacticExpr), ParseError> {
         let (var_name, var_name_range) = self.expect_variable_name()?;
         self.expect_token(&Token::In)?;
         let array_expr = self.parse_logical()?;
@@ -428,11 +429,11 @@ impl Parser {
         }
     }
 
-    fn parse_logical(&mut self) -> Result<Expr, ParseError> {
+    fn parse_logical(&mut self) -> Result<SyntacticExpr, ParseError> {
         let mut expr = self.parse_logical_and()?;
         while self.advance_if(Token::LogicalOr).is_some() {
             let right = self.parse_logical_and()?;
-            expr = AnnotatedExpr::BinaryOp {
+            expr = SyntacticExpr::BinaryOp {
                 annotation: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
                 operator: BinaryOp::LogicalOr,
@@ -442,11 +443,11 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_logical_and(&mut self) -> Result<Expr, ParseError> {
+    fn parse_logical_and(&mut self) -> Result<SyntacticExpr, ParseError> {
         let mut expr = self.parse_equality()?;
         while self.advance_if(Token::LogicalAnd).is_some() {
             let right = self.parse_equality()?;
-            expr = AnnotatedExpr::BinaryOp {
+            expr = SyntacticExpr::BinaryOp {
                 annotation: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
                 operator: BinaryOp::LogicalAnd,
@@ -457,12 +458,12 @@ impl Parser {
     }
 
     // equality = relational ( ("==" | "!=") relational )*
-    fn parse_equality(&mut self) -> Result<Expr, ParseError> {
+    fn parse_equality(&mut self) -> Result<SyntacticExpr, ParseError> {
         let mut expr = self.parse_relational()?;
         loop {
             if self.advance_if(Token::Eq).is_some() {
                 let right = self.parse_relational()?;
-                expr = AnnotatedExpr::BinaryOp {
+                expr = SyntacticExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: BinaryOp::Eq,
@@ -470,7 +471,7 @@ impl Parser {
                 };
             } else if self.advance_if(Token::NotEq).is_some() {
                 let right = self.parse_relational()?;
-                expr = AnnotatedExpr::BinaryOp {
+                expr = SyntacticExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: BinaryOp::NotEq,
@@ -484,12 +485,12 @@ impl Parser {
     }
 
     // relational = additive ( ("<" | ">" | "<=" | ">=") additive )*
-    fn parse_relational(&mut self) -> Result<Expr, ParseError> {
+    fn parse_relational(&mut self) -> Result<SyntacticExpr, ParseError> {
         let mut expr = self.parse_additive()?;
         loop {
             if self.advance_if(Token::LessThan).is_some() {
                 let right = self.parse_additive()?;
-                expr = AnnotatedExpr::BinaryOp {
+                expr = SyntacticExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: BinaryOp::LessThan,
@@ -497,7 +498,7 @@ impl Parser {
                 };
             } else if self.advance_if(Token::GreaterThan).is_some() {
                 let right = self.parse_additive()?;
-                expr = AnnotatedExpr::BinaryOp {
+                expr = SyntacticExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: BinaryOp::GreaterThan,
@@ -505,7 +506,7 @@ impl Parser {
                 };
             } else if self.advance_if(Token::LessThanOrEqual).is_some() {
                 let right = self.parse_additive()?;
-                expr = AnnotatedExpr::BinaryOp {
+                expr = SyntacticExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: BinaryOp::LessThanOrEqual,
@@ -513,7 +514,7 @@ impl Parser {
                 };
             } else if self.advance_if(Token::GreaterThanOrEqual).is_some() {
                 let right = self.parse_additive()?;
-                expr = AnnotatedExpr::BinaryOp {
+                expr = SyntacticExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: BinaryOp::GreaterThanOrEqual,
@@ -527,12 +528,12 @@ impl Parser {
     }
 
     // additive = multiplicative ( ("+" | "-") multiplicative )*
-    fn parse_additive(&mut self) -> Result<Expr, ParseError> {
+    fn parse_additive(&mut self) -> Result<SyntacticExpr, ParseError> {
         let mut expr = self.parse_multiplicative()?;
         loop {
             if self.advance_if(Token::Plus).is_some() {
                 let right = self.parse_multiplicative()?;
-                expr = AnnotatedExpr::BinaryOp {
+                expr = SyntacticExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: BinaryOp::Plus,
@@ -540,7 +541,7 @@ impl Parser {
                 };
             } else if self.advance_if(Token::Minus).is_some() {
                 let right = self.parse_multiplicative()?;
-                expr = AnnotatedExpr::BinaryOp {
+                expr = SyntacticExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: BinaryOp::Minus,
@@ -554,11 +555,11 @@ impl Parser {
     }
 
     // multiplicative = unary ( "*" unary )*
-    fn parse_multiplicative(&mut self) -> Result<Expr, ParseError> {
+    fn parse_multiplicative(&mut self) -> Result<SyntacticExpr, ParseError> {
         let mut expr = self.parse_unary()?;
         while self.advance_if(Token::Asterisk).is_some() {
             let right = self.parse_unary()?;
-            expr = AnnotatedExpr::BinaryOp {
+            expr = SyntacticExpr::BinaryOp {
                 annotation: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
                 operator: BinaryOp::Multiply,
@@ -569,10 +570,10 @@ impl Parser {
     }
 
     // unary = ( "!" )* primary
-    fn parse_unary(&mut self) -> Result<Expr, ParseError> {
+    fn parse_unary(&mut self) -> Result<SyntacticExpr, ParseError> {
         if let Some(operator_range) = self.advance_if(Token::Not) {
             let expr = self.parse_unary()?; // Right associative for multiple !
-            Ok(AnnotatedExpr::Negation {
+            Ok(SyntacticExpr::Negation {
                 annotation: operator_range.to(expr.range().clone()),
                 operand: Box::new(expr),
             })
@@ -582,27 +583,33 @@ impl Parser {
     }
 
     // array_literal = "[" ( logical ("," logical)* )? "]"
-    fn parse_array_literal(&mut self, left_bracket: DocumentRange) -> Result<Expr, ParseError> {
+    fn parse_array_literal(
+        &mut self,
+        left_bracket: DocumentRange,
+    ) -> Result<SyntacticExpr, ParseError> {
         let mut elements = Vec::new();
         let right_bracket =
             self.parse_delimited_list(&Token::LeftBracket, &left_bracket, |this| {
                 elements.push(this.parse_logical()?);
                 Ok(())
             })?;
-        Ok(AnnotatedExpr::ArrayLiteral {
+        Ok(SyntacticExpr::ArrayLiteral {
             elements,
             annotation: left_bracket.to(right_bracket),
         })
     }
 
-    fn parse_field_access(&mut self, identifier: DocumentRange) -> Result<Expr, ParseError> {
+    fn parse_field_access(
+        &mut self,
+        identifier: DocumentRange,
+    ) -> Result<SyntacticExpr, ParseError> {
         let var_name =
             VarName::new(identifier.as_str()).map_err(|error| ParseError::InvalidVariableName {
                 name: identifier.to_string_span(),
                 error,
                 range: identifier.clone(),
             })?;
-        let mut expr = AnnotatedExpr::Var {
+        let mut expr = SyntacticExpr::Var {
             annotation: identifier.clone(),
             value: var_name,
         };
@@ -619,7 +626,7 @@ impl Parser {
                         }
                     })?;
                     let range = expr.range().clone().to(field_ident.clone());
-                    expr = AnnotatedExpr::FieldAccess {
+                    expr = SyntacticExpr::FieldAccess {
                         record: Box::new(expr),
                         field: field_name,
                         annotation: range,
@@ -638,25 +645,25 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_primary(&mut self) -> Result<Expr, ParseError> {
+    fn parse_primary(&mut self) -> Result<SyntacticExpr, ParseError> {
         match self.iter.next().transpose()? {
             Some((Token::Identifier(name), _)) => self.parse_field_access(name),
             Some((Token::TypeName(name), name_range)) => {
                 self.parse_record_instantiation(name, name_range)
             }
-            Some((Token::StringLiteral(value), range)) => Ok(AnnotatedExpr::StringLiteral {
+            Some((Token::StringLiteral(value), range)) => Ok(SyntacticExpr::StringLiteral {
                 value,
                 annotation: range,
             }),
-            Some((Token::BooleanLiteral(value), range)) => Ok(AnnotatedExpr::BooleanLiteral {
+            Some((Token::BooleanLiteral(value), range)) => Ok(SyntacticExpr::BooleanLiteral {
                 value,
                 annotation: range,
             }),
-            Some((Token::IntLiteral(value), range)) => Ok(AnnotatedExpr::IntLiteral {
+            Some((Token::IntLiteral(value), range)) => Ok(SyntacticExpr::IntLiteral {
                 value,
                 annotation: range,
             }),
-            Some((Token::FloatLiteral(value), range)) => Ok(AnnotatedExpr::FloatLiteral {
+            Some((Token::FloatLiteral(value), range)) => Ok(SyntacticExpr::FloatLiteral {
                 value,
                 annotation: range,
             }),
@@ -680,7 +687,7 @@ impl Parser {
         &mut self,
         name: DocumentRange,
         name_range: DocumentRange,
-    ) -> Result<Expr, ParseError> {
+    ) -> Result<SyntacticExpr, ParseError> {
         let left_paren = self.expect_token(&Token::LeftParen)?;
         let mut fields = Vec::new();
         let right_paren = self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
@@ -689,7 +696,7 @@ impl Parser {
             fields.push((field_name, this.parse_logical()?));
             Ok(())
         })?;
-        Ok(AnnotatedExpr::RecordInstantiation {
+        Ok(SyntacticExpr::RecordInstantiation {
             record_name: name.as_str().to_string(),
             fields,
             annotation: name_range.to(right_paren),

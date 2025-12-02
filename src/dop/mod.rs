@@ -11,7 +11,7 @@ pub mod type_error;
 pub mod typed_expr;
 pub mod var_name;
 
-pub use expr::Expr;
+pub use expr::SyntacticExpr;
 pub use parser::{Argument, Parameter, Parser, RecordDeclaration};
 pub use syntax_type::SyntaxType;
 pub use token::Token;

@@ -1,8 +1,8 @@
 use super::Type;
-use super::expr::{AnnotatedExpr, BinaryOp, Expr};
+use super::expr::{BinaryOp, SyntacticExpr};
 use super::parser::RecordDeclaration;
-use super::r#type::NumericType;
 use super::syntax_type::SyntaxType;
+use super::r#type::NumericType;
 use super::type_error::TypeError;
 use super::typed_expr::SimpleTypedExpr;
 use crate::document::document_cursor::Ranged as _;
@@ -26,13 +26,13 @@ pub fn to_type(syntax_type: &SyntaxType) -> Type {
 }
 
 pub fn typecheck_expr<'a>(
-    expr: &Expr,
+    expr: &SyntacticExpr,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     records: &HashMap<&'a str, &'a RecordDeclaration>,
 ) -> Result<SimpleTypedExpr, TypeError> {
     match expr {
-        AnnotatedExpr::Var { value: name, .. } => {
+        SyntacticExpr::Var { value: name, .. } => {
             if let Some(var_type) = env.lookup(name.as_str()) {
                 annotations.push(TypeAnnotation {
                     range: expr.range().clone(),
@@ -51,23 +51,23 @@ pub fn typecheck_expr<'a>(
                 })
             }
         }
-        AnnotatedExpr::BooleanLiteral { value, .. } => Ok(SimpleTypedExpr::BooleanLiteral {
+        SyntacticExpr::BooleanLiteral { value, .. } => Ok(SimpleTypedExpr::BooleanLiteral {
             value: *value,
             annotation: (),
         }),
-        AnnotatedExpr::StringLiteral { value, .. } => Ok(SimpleTypedExpr::StringLiteral {
+        SyntacticExpr::StringLiteral { value, .. } => Ok(SimpleTypedExpr::StringLiteral {
             value: value.clone(),
             annotation: (),
         }),
-        AnnotatedExpr::IntLiteral { value, .. } => Ok(SimpleTypedExpr::IntLiteral {
+        SyntacticExpr::IntLiteral { value, .. } => Ok(SimpleTypedExpr::IntLiteral {
             value: *value,
             annotation: (),
         }),
-        AnnotatedExpr::FloatLiteral { value, .. } => Ok(SimpleTypedExpr::FloatLiteral {
+        SyntacticExpr::FloatLiteral { value, .. } => Ok(SimpleTypedExpr::FloatLiteral {
             value: *value,
             annotation: (),
         }),
-        AnnotatedExpr::FieldAccess {
+        SyntacticExpr::FieldAccess {
             record: base_expr,
             field,
             annotation: range,
@@ -111,7 +111,7 @@ pub fn typecheck_expr<'a>(
                 }),
             }
         }
-        AnnotatedExpr::BinaryOp {
+        SyntacticExpr::BinaryOp {
             left,
             operator: BinaryOp::Eq,
             right,
@@ -151,7 +151,7 @@ pub fn typecheck_expr<'a>(
                 annotation: (),
             })
         }
-        AnnotatedExpr::BinaryOp {
+        SyntacticExpr::BinaryOp {
             left,
             operator: BinaryOp::NotEq,
             right,
@@ -191,7 +191,7 @@ pub fn typecheck_expr<'a>(
                 annotation: (),
             })
         }
-        AnnotatedExpr::BinaryOp {
+        SyntacticExpr::BinaryOp {
             left,
             operator: BinaryOp::LessThan,
             right,
@@ -235,7 +235,7 @@ pub fn typecheck_expr<'a>(
             })
         }
 
-        AnnotatedExpr::BinaryOp {
+        SyntacticExpr::BinaryOp {
             left,
             operator: BinaryOp::GreaterThan,
             right,
@@ -279,7 +279,7 @@ pub fn typecheck_expr<'a>(
             })
         }
 
-        AnnotatedExpr::BinaryOp {
+        SyntacticExpr::BinaryOp {
             left,
             operator: BinaryOp::LessThanOrEqual,
             right,
@@ -322,7 +322,7 @@ pub fn typecheck_expr<'a>(
                 annotation: (),
             })
         }
-        AnnotatedExpr::BinaryOp {
+        SyntacticExpr::BinaryOp {
             left,
             operator: BinaryOp::GreaterThanOrEqual,
             right,
@@ -365,7 +365,7 @@ pub fn typecheck_expr<'a>(
                 annotation: (),
             })
         }
-        AnnotatedExpr::BinaryOp {
+        SyntacticExpr::BinaryOp {
             left,
             operator: BinaryOp::LogicalAnd,
             right,
@@ -395,7 +395,7 @@ pub fn typecheck_expr<'a>(
                 annotation: (),
             })
         }
-        AnnotatedExpr::BinaryOp {
+        SyntacticExpr::BinaryOp {
             left,
             operator: BinaryOp::LogicalOr,
             right,
@@ -425,7 +425,7 @@ pub fn typecheck_expr<'a>(
                 annotation: (),
             })
         }
-        AnnotatedExpr::BinaryOp {
+        SyntacticExpr::BinaryOp {
             left,
             operator: BinaryOp::Plus,
             right,
@@ -469,7 +469,7 @@ pub fn typecheck_expr<'a>(
                 }
             }
         }
-        AnnotatedExpr::BinaryOp {
+        SyntacticExpr::BinaryOp {
             left,
             operator: BinaryOp::Minus,
             right,
@@ -507,7 +507,7 @@ pub fn typecheck_expr<'a>(
                 }
             }
         }
-        AnnotatedExpr::BinaryOp {
+        SyntacticExpr::BinaryOp {
             left,
             operator: BinaryOp::Multiply,
             right,
@@ -545,7 +545,7 @@ pub fn typecheck_expr<'a>(
                 }
             }
         }
-        AnnotatedExpr::Negation { operand, .. } => {
+        SyntacticExpr::Negation { operand, .. } => {
             let typed_operand = typecheck_expr(operand, env, annotations, records)?;
             let operand_type = typed_operand.as_type();
 
@@ -562,7 +562,7 @@ pub fn typecheck_expr<'a>(
                 annotation: (),
             })
         }
-        AnnotatedExpr::ArrayLiteral { elements, .. } => {
+        SyntacticExpr::ArrayLiteral { elements, .. } => {
             if elements.is_empty() {
                 // Empty array has unknown element type
                 Ok(SimpleTypedExpr::ArrayLiteral {
@@ -599,7 +599,7 @@ pub fn typecheck_expr<'a>(
                 })
             }
         }
-        AnnotatedExpr::RecordInstantiation {
+        SyntacticExpr::RecordInstantiation {
             record_name,
             fields,
             annotation: range,

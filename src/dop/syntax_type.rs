@@ -6,13 +6,29 @@ use pretty::BoxDoc;
 /// A syntax representation of a type, preserving document ranges.
 #[derive(Debug, Clone)]
 pub enum SyntaxType {
-    String { range: DocumentRange },
-    Bool { range: DocumentRange },
-    Int { range: DocumentRange },
-    Float { range: DocumentRange },
-    TrustedHTML { range: DocumentRange },
-    Array { element: Option<Box<SyntaxType>>, range: DocumentRange },
-    Named { name: String, range: DocumentRange },
+    String {
+        range: DocumentRange,
+    },
+    Bool {
+        range: DocumentRange,
+    },
+    Int {
+        range: DocumentRange,
+    },
+    Float {
+        range: DocumentRange,
+    },
+    TrustedHTML {
+        range: DocumentRange,
+    },
+    Array {
+        element: Option<Box<SyntaxType>>,
+        range: DocumentRange,
+    },
+    Named {
+        name: String,
+        range: DocumentRange,
+    },
 }
 
 impl Ranged for SyntaxType {

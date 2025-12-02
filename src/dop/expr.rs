@@ -5,8 +5,6 @@ use crate::dop::field_name::FieldName;
 use crate::dop::var_name::VarName;
 use pretty::BoxDoc;
 
-pub type Expr = AnnotatedExpr<DocumentRange>;
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
     Eq,
@@ -22,79 +20,92 @@ pub enum BinaryOp {
     Multiply,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum AnnotatedExpr<A> {
+#[derive(Debug, Clone)]
+pub enum SyntacticExpr {
     /// A variable expression, e.g. foo
-    Var { value: VarName, annotation: A },
+    Var {
+        value: VarName,
+        annotation: DocumentRange,
+    },
 
     /// A field access expression, e.g. foo.bar
     FieldAccess {
         record: Box<Self>,
         field: FieldName,
-        annotation: A,
+        annotation: DocumentRange,
     },
 
     /// A string literal expression, e.g. "foo bar"
-    StringLiteral { value: String, annotation: A },
+    StringLiteral {
+        value: String,
+        annotation: DocumentRange,
+    },
 
     /// A boolean literal expression, e.g. true
-    BooleanLiteral { value: bool, annotation: A },
+    BooleanLiteral {
+        value: bool,
+        annotation: DocumentRange,
+    },
 
     /// An integer literal expression, e.g. 42
-    IntLiteral { value: i64, annotation: A },
+    IntLiteral {
+        value: i64,
+        annotation: DocumentRange,
+    },
 
     /// A float literal expression, e.g. 2.5
-    FloatLiteral { value: f64, annotation: A },
+    FloatLiteral {
+        value: f64,
+        annotation: DocumentRange,
+    },
 
     /// An array literal expression, e.g. [1, 2, 3]
-    ArrayLiteral { elements: Vec<Self>, annotation: A },
+    ArrayLiteral {
+        elements: Vec<Self>,
+        annotation: DocumentRange,
+    },
 
     /// A record instantiation expression, e.g. User(name: "John", age: 30)
     RecordInstantiation {
         record_name: String,
         fields: Vec<(FieldName, Self)>,
-        annotation: A,
+        annotation: DocumentRange,
     },
 
     BinaryOp {
         left: Box<Self>,
         operator: BinaryOp,
         right: Box<Self>,
-        annotation: A,
+        annotation: DocumentRange,
     },
 
     /// Boolean negation expression for negating boolean values
-    Negation { operand: Box<Self>, annotation: A },
+    Negation {
+        operand: Box<Self>,
+        annotation: DocumentRange,
+    },
 }
 
-impl<A> AnnotatedExpr<A> {
-    pub fn annotation(&self) -> &A {
+impl SyntacticExpr {
+    pub fn annotation(&self) -> &DocumentRange {
         match self {
-            AnnotatedExpr::Var { annotation, .. }
-            | AnnotatedExpr::FieldAccess { annotation, .. }
-            | AnnotatedExpr::StringLiteral { annotation, .. }
-            | AnnotatedExpr::BooleanLiteral { annotation, .. }
-            | AnnotatedExpr::IntLiteral { annotation, .. }
-            | AnnotatedExpr::FloatLiteral { annotation, .. }
-            | AnnotatedExpr::ArrayLiteral { annotation, .. }
-            | AnnotatedExpr::RecordInstantiation { annotation, .. }
-            | AnnotatedExpr::BinaryOp { annotation, .. }
-            | AnnotatedExpr::Negation { annotation, .. } => annotation,
+            SyntacticExpr::Var { annotation, .. }
+            | SyntacticExpr::FieldAccess { annotation, .. }
+            | SyntacticExpr::StringLiteral { annotation, .. }
+            | SyntacticExpr::BooleanLiteral { annotation, .. }
+            | SyntacticExpr::IntLiteral { annotation, .. }
+            | SyntacticExpr::FloatLiteral { annotation, .. }
+            | SyntacticExpr::ArrayLiteral { annotation, .. }
+            | SyntacticExpr::RecordInstantiation { annotation, .. }
+            | SyntacticExpr::BinaryOp { annotation, .. }
+            | SyntacticExpr::Negation { annotation, .. } => annotation,
         }
     }
-}
 
-impl Ranged for AnnotatedExpr<DocumentRange> {
-    fn range(&self) -> &DocumentRange {
-        self.annotation()
-    }
-}
-
-impl<'a, T> AnnotatedExpr<T> {
-    pub fn to_doc(&'a self) -> BoxDoc<'a> {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            AnnotatedExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
-            AnnotatedExpr::FieldAccess {
+            SyntacticExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
+            SyntacticExpr::FieldAccess {
                 record: object,
                 field,
                 ..
@@ -102,11 +113,11 @@ impl<'a, T> AnnotatedExpr<T> {
                 .to_doc()
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(field.as_str())),
-            AnnotatedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
-            AnnotatedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            AnnotatedExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            AnnotatedExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            AnnotatedExpr::ArrayLiteral { elements, .. } => {
+            SyntacticExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
+            SyntacticExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            SyntacticExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            SyntacticExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            SyntacticExpr::ArrayLiteral { elements, .. } => {
                 if elements.is_empty() {
                     BoxDoc::text("[]")
                 } else {
@@ -125,7 +136,7 @@ impl<'a, T> AnnotatedExpr<T> {
                         .append(BoxDoc::text("]"))
                 }
             }
-            AnnotatedExpr::RecordInstantiation {
+            SyntacticExpr::RecordInstantiation {
                 record_name,
                 fields,
                 ..
@@ -153,7 +164,7 @@ impl<'a, T> AnnotatedExpr<T> {
                         .append(BoxDoc::text(")"))
                 }
             }
-            AnnotatedExpr::BinaryOp {
+            SyntacticExpr::BinaryOp {
                 left,
                 operator,
                 right,
@@ -164,7 +175,7 @@ impl<'a, T> AnnotatedExpr<T> {
                 .append(BoxDoc::text(format!(" {} ", operator)))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            AnnotatedExpr::Negation { operand, .. } => BoxDoc::nil()
+            SyntacticExpr::Negation { operand, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::text("!"))
                 .append(operand.to_doc())
@@ -173,7 +184,13 @@ impl<'a, T> AnnotatedExpr<T> {
     }
 }
 
-impl<T> Display for AnnotatedExpr<T> {
+impl Ranged for SyntacticExpr {
+    fn range(&self) -> &DocumentRange {
+        self.annotation()
+    }
+}
+
+impl Display for SyntacticExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(60))
     }

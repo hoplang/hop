@@ -1,9 +1,9 @@
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged};
-use crate::dop::Expr;
 use crate::dop::Parameter;
 use crate::dop::RecordDeclaration;
 use crate::dop::SimpleTypedExpr;
+use crate::dop::SyntacticExpr;
 use crate::hop::component_name::ComponentName;
 use crate::hop::module_name::ModuleName;
 
@@ -17,7 +17,7 @@ pub struct StaticAttribute {
 }
 
 #[derive(Debug, Clone)]
-pub enum AttributeValue<T = Expr> {
+pub enum AttributeValue<T = SyntacticExpr> {
     Expressions(Vec<T>),
     String(DocumentRange),
 }
@@ -28,13 +28,13 @@ pub type TypedAttribute = Attribute<SimpleTypedExpr>;
 /// be empty, an expression or a string value.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct Attribute<T = Expr> {
+pub struct Attribute<T = SyntacticExpr> {
     pub name: DocumentRange,
     pub value: Option<AttributeValue<T>>,
     pub range: DocumentRange,
 }
 
-pub type UntypedAst = Ast<Expr>;
+pub type UntypedAst = Ast<SyntacticExpr>;
 pub type TypedAst = Ast<SimpleTypedExpr>;
 
 #[derive(Debug, Clone)]
@@ -157,7 +157,7 @@ impl Record {
     }
 }
 
-pub type UntypedComponentDefinition = ComponentDefinition<Expr>;
+pub type UntypedComponentDefinition = ComponentDefinition<SyntacticExpr>;
 pub type TypedComponentDefinition = ComponentDefinition<SimpleTypedExpr>;
 
 #[derive(Debug, Clone)]

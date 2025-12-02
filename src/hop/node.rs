@@ -5,13 +5,13 @@ use crate::document::{
     document_cursor::{DocumentRange, Ranged, StringSpan},
 };
 use crate::dop::Argument;
-use crate::dop::Expr;
 use crate::dop::SimpleTypedExpr;
+use crate::dop::SyntacticExpr;
 use crate::dop::VarName;
 
 use super::{ast::Attribute, module_name::ModuleName};
 
-pub type UntypedNode = Node<Expr>;
+pub type UntypedNode = Node<SyntacticExpr>;
 pub type TypedNode = Node<SimpleTypedExpr>;
 
 #[derive(Debug, Clone)]
