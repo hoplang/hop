@@ -129,7 +129,7 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
     )?;
 
     // Collect record declarations from all modules
-    let records: Vec<RecordInfo> = program
+    let mut records: Vec<RecordInfo> = program
         .get_typed_modules()
         .values()
         .flat_map(|module| module.get_records())
@@ -143,6 +143,7 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
                 .collect(),
         })
         .collect();
+    records.sort_by(|a, b| a.name.cmp(&b.name));
 
     // Generate code based on target language
     let generated_code = match &target_config {
