@@ -1,7 +1,7 @@
 use super::Type;
-use super::expr::{BinaryOp, SyntacticExpr};
+use super::syntactic_expr::{BinaryOp, SyntacticExpr};
 use super::parser::RecordDeclaration;
-use super::syntax_type::SyntaxType;
+use super::syntactic_type::SyntacticType;
 use super::r#type::NumericType;
 use super::type_error::TypeError;
 use super::typed_expr::SimpleTypedExpr;
@@ -11,17 +11,17 @@ use crate::hop::type_checker::TypeAnnotation;
 use std::collections::HashMap;
 
 /// Convert a syntax type to a semantic Type.
-pub fn to_type(syntax_type: &SyntaxType) -> Type {
+pub fn to_type(syntax_type: &SyntacticType) -> Type {
     match syntax_type {
-        SyntaxType::String { .. } => Type::String,
-        SyntaxType::Bool { .. } => Type::Bool,
-        SyntaxType::Int { .. } => Type::Int,
-        SyntaxType::Float { .. } => Type::Float,
-        SyntaxType::TrustedHTML { .. } => Type::TrustedHTML,
-        SyntaxType::Array { element, .. } => {
+        SyntacticType::String { .. } => Type::String,
+        SyntacticType::Bool { .. } => Type::Bool,
+        SyntacticType::Int { .. } => Type::Int,
+        SyntacticType::Float { .. } => Type::Float,
+        SyntacticType::TrustedHTML { .. } => Type::TrustedHTML,
+        SyntacticType::Array { element, .. } => {
             Type::Array(element.as_ref().map(|e| Box::new(to_type(e))))
         }
-        SyntaxType::Named { name, .. } => Type::Named(name.clone()),
+        SyntacticType::Named { name, .. } => Type::Named(name.clone()),
     }
 }
 

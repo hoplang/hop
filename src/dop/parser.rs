@@ -3,10 +3,10 @@ use std::fmt::{self, Display};
 use std::iter::Peekable;
 
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _};
-use crate::dop::expr::{BinaryOp, SyntacticExpr};
+use crate::dop::syntactic_expr::{BinaryOp, SyntacticExpr};
 use crate::dop::field_name::FieldName;
 use crate::dop::parse_error::ParseError;
-use crate::dop::syntax_type::SyntaxType;
+use crate::dop::syntactic_type::SyntacticType;
 use crate::dop::token::Token;
 use crate::dop::tokenizer::Tokenizer;
 use crate::dop::var_name::VarName;
@@ -20,7 +20,7 @@ use super::typed_expr::SimpleTypedExpr;
 pub struct Parameter {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
-    pub var_type: SyntaxType,
+    pub var_type: SyntacticType,
 }
 
 impl Display for Parameter {
@@ -36,7 +36,7 @@ impl Display for Parameter {
 pub struct RecordField {
     pub name: FieldName,
     pub name_range: DocumentRange,
-    pub field_type: SyntaxType,
+    pub field_type: SyntacticType,
 }
 
 impl Display for RecordField {
@@ -402,23 +402,23 @@ impl Parser {
         Ok(RecordDeclaration { name, fields })
     }
 
-    fn parse_type(&mut self) -> Result<SyntaxType, ParseError> {
+    fn parse_type(&mut self) -> Result<SyntacticType, ParseError> {
         match self.iter.next().transpose()? {
-            Some((Token::TypeString, range)) => Ok(SyntaxType::String { range }),
-            Some((Token::TypeInt, range)) => Ok(SyntaxType::Int { range }),
-            Some((Token::TypeFloat, range)) => Ok(SyntaxType::Float { range }),
-            Some((Token::TypeBoolean, range)) => Ok(SyntaxType::Bool { range }),
-            Some((Token::TypeTrustedHTML, range)) => Ok(SyntaxType::TrustedHTML { range }),
+            Some((Token::TypeString, range)) => Ok(SyntacticType::String { range }),
+            Some((Token::TypeInt, range)) => Ok(SyntacticType::Int { range }),
+            Some((Token::TypeFloat, range)) => Ok(SyntacticType::Float { range }),
+            Some((Token::TypeBoolean, range)) => Ok(SyntacticType::Bool { range }),
+            Some((Token::TypeTrustedHTML, range)) => Ok(SyntacticType::TrustedHTML { range }),
             Some((Token::TypeArray, type_array)) => {
                 let left_bracket = self.expect_token(&Token::LeftBracket)?;
                 let element = self.parse_type()?;
                 let right_bracket = self.expect_opposite(&Token::LeftBracket, &left_bracket)?;
-                Ok(SyntaxType::Array {
+                Ok(SyntacticType::Array {
                     element: Some(Box::new(element)),
                     range: type_array.to(right_bracket),
                 })
             }
-            Some((Token::TypeName(name), range)) => Ok(SyntaxType::Named {
+            Some((Token::TypeName(name), range)) => Ok(SyntacticType::Named {
                 name: name.as_str().to_string(),
                 range,
             }),

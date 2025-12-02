@@ -1,5 +1,5 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::{self, Argument, Parameter, SyntaxType, Type, to_type};
+use crate::dop::{self, Argument, Parameter, SyntacticType, Type, to_type};
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::Ast;
 use crate::hop::ast::{Attribute, ComponentDefinition};
@@ -164,25 +164,28 @@ impl TypeChecker {
 /// Validates that all named types in the given type are declared records.
 /// Returns a list of undefined type names with their ranges.
 fn validate_named_types_in_type(
-    typ: &SyntaxType,
+    typ: &SyntacticType,
     declared_records: &HashSet<&str>,
 ) -> Vec<(String, DocumentRange)> {
     let mut undefined = Vec::new();
     match typ {
-        SyntaxType::Named { name, range } => {
+        SyntacticType::Named { name, range } => {
             if !declared_records.contains(name.as_str()) {
                 undefined.push((name.clone(), range.clone()));
             }
         }
-        SyntaxType::Array { element: Some(inner), .. } => {
+        SyntacticType::Array {
+            element: Some(inner),
+            ..
+        } => {
             undefined.extend(validate_named_types_in_type(inner, declared_records));
         }
-        SyntaxType::String { .. }
-        | SyntaxType::Bool { .. }
-        | SyntaxType::Int { .. }
-        | SyntaxType::Float { .. }
-        | SyntaxType::TrustedHTML { .. }
-        | SyntaxType::Array { element: None, .. } => {}
+        SyntacticType::String { .. }
+        | SyntacticType::Bool { .. }
+        | SyntacticType::Int { .. }
+        | SyntacticType::Float { .. }
+        | SyntacticType::TrustedHTML { .. }
+        | SyntacticType::Array { element: None, .. } => {}
     }
     undefined
 }
@@ -252,10 +255,9 @@ fn typecheck_module(
     // Validate record field types (now with imported records available)
     for record in module.get_records() {
         for field in &record.declaration.fields {
-            for (type_name, type_range) in validate_named_types_in_type(
-                &field.field_type,
-                &declared_records,
-            ) {
+            for (type_name, type_range) in
+                validate_named_types_in_type(&field.field_type, &declared_records)
+            {
                 errors.push(TypeError::UndefinedType {
                     type_name,
                     range: type_range,
@@ -284,10 +286,9 @@ fn typecheck_module(
         if let Some((params, _)) = params {
             for param in params {
                 // Validate that all named types in the parameter type are declared records
-                for (type_name, type_range) in validate_named_types_in_type(
-                    &param.var_type,
-                    &declared_records,
-                ) {
+                for (type_name, type_range) in
+                    validate_named_types_in_type(&param.var_type, &declared_records)
+                {
                     errors.push(TypeError::UndefinedType {
                         type_name,
                         range: type_range,

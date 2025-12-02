@@ -5,7 +5,7 @@ use pretty::BoxDoc;
 
 /// A syntax representation of a type, preserving document ranges.
 #[derive(Debug, Clone)]
-pub enum SyntaxType {
+pub enum SyntacticType {
     String {
         range: DocumentRange,
     },
@@ -22,7 +22,7 @@ pub enum SyntaxType {
         range: DocumentRange,
     },
     Array {
-        element: Option<Box<SyntaxType>>,
+        element: Option<Box<SyntacticType>>,
         range: DocumentRange,
     },
     Named {
@@ -31,41 +31,41 @@ pub enum SyntaxType {
     },
 }
 
-impl Ranged for SyntaxType {
+impl Ranged for SyntacticType {
     fn range(&self) -> &DocumentRange {
         match self {
-            SyntaxType::String { range }
-            | SyntaxType::Bool { range }
-            | SyntaxType::Int { range }
-            | SyntaxType::Float { range }
-            | SyntaxType::TrustedHTML { range }
-            | SyntaxType::Array { range, .. }
-            | SyntaxType::Named { range, .. } => range,
+            SyntacticType::String { range }
+            | SyntacticType::Bool { range }
+            | SyntacticType::Int { range }
+            | SyntacticType::Float { range }
+            | SyntacticType::TrustedHTML { range }
+            | SyntacticType::Array { range, .. }
+            | SyntacticType::Named { range, .. } => range,
         }
     }
 }
 
-impl SyntaxType {
+impl SyntacticType {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            SyntaxType::String { .. } => BoxDoc::text("String"),
-            SyntaxType::Bool { .. } => BoxDoc::text("Bool"),
-            SyntaxType::Int { .. } => BoxDoc::text("Int"),
-            SyntaxType::Float { .. } => BoxDoc::text("Float"),
-            SyntaxType::TrustedHTML { .. } => BoxDoc::text("TrustedHTML"),
-            SyntaxType::Array { element, .. } => match element {
+            SyntacticType::String { .. } => BoxDoc::text("String"),
+            SyntacticType::Bool { .. } => BoxDoc::text("Bool"),
+            SyntacticType::Int { .. } => BoxDoc::text("Int"),
+            SyntacticType::Float { .. } => BoxDoc::text("Float"),
+            SyntacticType::TrustedHTML { .. } => BoxDoc::text("TrustedHTML"),
+            SyntacticType::Array { element, .. } => match element {
                 Some(elem) => BoxDoc::nil()
                     .append(BoxDoc::text("Array["))
                     .append(elem.to_doc())
                     .append(BoxDoc::text("]")),
                 None => BoxDoc::text("Array"),
             },
-            SyntaxType::Named { name, .. } => BoxDoc::text(name.clone()),
+            SyntacticType::Named { name, .. } => BoxDoc::text(name.clone()),
         }
     }
 }
 
-impl Display for SyntaxType {
+impl Display for SyntacticType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(60))
     }
