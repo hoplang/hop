@@ -1,4 +1,4 @@
-use crate::dop::TypedExpr;
+use crate::dop::Expr;
 use crate::dop::field_name::FieldName;
 use crate::dop::r#type::{ComparableType, EquatableType};
 use crate::dop::{Type, VarName};
@@ -115,28 +115,28 @@ impl IrTestBuilder {
 
     // Expression builders
     pub fn str(&self, s: &str) -> IrExpr {
-        TypedExpr::StringLiteral {
+        Expr::StringLiteral {
             value: s.to_string(),
             annotation: self.next_expr_id(),
         }
     }
 
     pub fn int(&self, n: i64) -> IrExpr {
-        TypedExpr::IntLiteral {
+        Expr::IntLiteral {
             value: n,
             annotation: self.next_expr_id(),
         }
     }
 
     pub fn float(&self, n: f64) -> IrExpr {
-        TypedExpr::FloatLiteral {
+        Expr::FloatLiteral {
             value: n,
             annotation: self.next_expr_id(),
         }
     }
 
     pub fn bool(&self, b: bool) -> IrExpr {
-        TypedExpr::BooleanLiteral {
+        Expr::BooleanLiteral {
             value: b,
             annotation: self.next_expr_id(),
         }
@@ -163,7 +163,7 @@ impl IrTestBuilder {
                 )
             });
 
-        TypedExpr::Var {
+        Expr::Var {
             value: VarName::try_from(name.to_string()).unwrap(),
             kind: typ,
             annotation: self.next_expr_id(),
@@ -172,25 +172,25 @@ impl IrTestBuilder {
 
     pub fn eq(&self, left: IrExpr, right: IrExpr) -> IrExpr {
         match (left.as_type(), right.as_type()) {
-            (Type::Bool, Type::Bool) => TypedExpr::Equals {
+            (Type::Bool, Type::Bool) => Expr::Equals {
                 left: Box::new(left),
                 right: Box::new(right),
                 operand_types: EquatableType::Bool,
                 annotation: self.next_expr_id(),
             },
-            (Type::String, Type::String) => TypedExpr::Equals {
+            (Type::String, Type::String) => Expr::Equals {
                 left: Box::new(left),
                 right: Box::new(right),
                 operand_types: EquatableType::String,
                 annotation: self.next_expr_id(),
             },
-            (Type::Int, Type::Int) => TypedExpr::Equals {
+            (Type::Int, Type::Int) => Expr::Equals {
                 left: Box::new(left),
                 right: Box::new(right),
                 operand_types: EquatableType::Int,
                 annotation: self.next_expr_id(),
             },
-            (Type::Float, Type::Float) => TypedExpr::Equals {
+            (Type::Float, Type::Float) => Expr::Equals {
                 left: Box::new(left),
                 right: Box::new(right),
                 operand_types: EquatableType::Float,
@@ -205,13 +205,13 @@ impl IrTestBuilder {
 
     pub fn less_than(&self, left: IrExpr, right: IrExpr) -> IrExpr {
         match (left.as_type(), right.as_type()) {
-            (Type::Int, Type::Int) => TypedExpr::LessThan {
+            (Type::Int, Type::Int) => Expr::LessThan {
                 left: Box::new(left),
                 right: Box::new(right),
                 operand_types: ComparableType::Int,
                 annotation: self.next_expr_id(),
             },
-            (Type::Float, Type::Float) => TypedExpr::LessThan {
+            (Type::Float, Type::Float) => Expr::LessThan {
                 left: Box::new(left),
                 right: Box::new(right),
                 operand_types: ComparableType::Float,
@@ -225,7 +225,7 @@ impl IrTestBuilder {
     }
 
     pub fn not(&self, operand: IrExpr) -> IrExpr {
-        TypedExpr::Negation {
+        Expr::Negation {
             operand: Box::new(operand),
             annotation: self.next_expr_id(),
         }
@@ -237,7 +237,7 @@ impl IrTestBuilder {
             .first()
             .map(|first| Box::new(first.as_type().clone()));
 
-        TypedExpr::ArrayLiteral {
+        Expr::ArrayLiteral {
             elements,
             kind: Type::Array(element_type),
             annotation: self.next_expr_id(),
@@ -261,10 +261,11 @@ impl IrTestBuilder {
         }
 
         let test_module = ModuleName::new("test".to_string()).unwrap();
-        let record_fields = self.records.get(record_name).unwrap_or_else(|| {
-            panic!("Record '{}' not found in test builder", record_name)
-        });
-        TypedExpr::RecordInstantiation {
+        let record_fields = self
+            .records
+            .get(record_name)
+            .unwrap_or_else(|| panic!("Record '{}' not found in test builder", record_name));
+        Expr::RecordInstantiation {
             record_name: record_name.to_string(),
             fields: fields
                 .into_iter()
@@ -285,22 +286,24 @@ impl IrTestBuilder {
     pub fn field_access(&self, object: IrExpr, field_str: &str) -> IrExpr {
         let field_name = FieldName::new(field_str).unwrap();
         let field_type = match object.as_type() {
-            Type::Record { fields, name: record_name, .. } => {
-                fields
-                    .iter()
-                    .find(|(f, _)| f.as_str() == field_str)
-                    .map(|(_, t)| t.clone())
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "Field '{}' not found in record type '{}'",
-                            field_str, record_name
-                        )
-                    })
-            }
+            Type::Record {
+                fields,
+                name: record_name,
+                ..
+            } => fields
+                .iter()
+                .find(|(f, _)| f.as_str() == field_str)
+                .map(|(_, t)| t.clone())
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Field '{}' not found in record type '{}'",
+                        field_str, record_name
+                    )
+                }),
             _ => panic!("Cannot access field '{}' on non-record type", field_str),
         };
 
-        TypedExpr::FieldAccess {
+        Expr::FieldAccess {
             record: Box::new(object),
             field: field_name,
             kind: field_type,
@@ -411,14 +414,14 @@ impl IrTestBuilder {
     }
 
     pub fn json_encode(&self, value: IrExpr) -> IrExpr {
-        TypedExpr::JsonEncode {
+        Expr::JsonEncode {
             value: Box::new(value),
             annotation: self.next_expr_id(),
         }
     }
 
     pub fn string_concat(&self, left: IrExpr, right: IrExpr) -> IrExpr {
-        TypedExpr::StringConcat {
+        Expr::StringConcat {
             left: Box::new(left),
             right: Box::new(right),
             annotation: self.next_expr_id(),
@@ -426,7 +429,7 @@ impl IrTestBuilder {
     }
 
     pub fn env_lookup(&self, key: IrExpr) -> IrExpr {
-        TypedExpr::EnvLookup {
+        Expr::EnvLookup {
             key: Box::new(key),
             annotation: self.next_expr_id(),
         }

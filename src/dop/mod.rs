@@ -1,22 +1,22 @@
-pub mod syntactic_expr;
+pub mod expr;
 pub mod field_name;
 pub mod parse_error;
 pub mod parser;
+pub mod syntactic_expr;
 pub mod syntactic_type;
 pub mod token;
 pub mod tokenizer;
 pub mod r#type;
 pub mod type_checker;
 pub mod type_error;
-pub mod typed_expr;
 pub mod var_name;
 
-pub use syntactic_expr::SyntacticExpr;
+pub use expr::{Expr, SimpleExpr};
 pub use parser::{Argument, Parameter, Parser, RecordDeclaration};
+pub use syntactic_expr::SyntacticExpr;
 pub use syntactic_type::SyntacticType;
 pub use token::Token;
 pub use tokenizer::Tokenizer;
 pub use r#type::Type;
 pub use type_checker::{resolve_type, typecheck_expr};
-pub use typed_expr::{SimpleTypedExpr, TypedExpr};
 pub use var_name::VarName;

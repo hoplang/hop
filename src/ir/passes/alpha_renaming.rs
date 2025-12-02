@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::dop::VarName;
 
-use crate::dop::typed_expr::TypedExpr;
+use crate::dop::expr::Expr;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 
 use super::Pass;
@@ -117,51 +117,51 @@ impl AlphaRenamingPass {
     /// Rename variables in an expression
     fn rename_expr(&mut self, expr: IrExpr) -> IrExpr {
         match expr {
-            TypedExpr::Var {
+            Expr::Var {
                 value,
                 kind,
                 annotation,
             } => {
                 let renamed = self.lookup_var(&value);
-                TypedExpr::Var {
+                Expr::Var {
                     value: renamed,
                     kind,
                     annotation,
                 }
             }
-            TypedExpr::FieldAccess {
+            Expr::FieldAccess {
                 record: object,
                 field,
                 kind,
                 annotation,
-            } => TypedExpr::FieldAccess {
+            } => Expr::FieldAccess {
                 record: Box::new(self.rename_expr(*object)),
                 field,
                 kind,
                 annotation,
             },
-            TypedExpr::Negation {
+            Expr::Negation {
                 operand,
                 annotation,
-            } => TypedExpr::Negation {
+            } => Expr::Negation {
                 operand: Box::new(self.rename_expr(*operand)),
                 annotation,
             },
-            TypedExpr::ArrayLiteral {
+            Expr::ArrayLiteral {
                 elements,
                 kind,
                 annotation,
-            } => TypedExpr::ArrayLiteral {
+            } => Expr::ArrayLiteral {
                 elements: elements.into_iter().map(|e| self.rename_expr(e)).collect(),
                 kind,
                 annotation,
             },
-            TypedExpr::RecordInstantiation {
+            Expr::RecordInstantiation {
                 record_name,
                 fields,
                 kind,
                 annotation,
-            } => TypedExpr::RecordInstantiation {
+            } => Expr::RecordInstantiation {
                 record_name,
                 fields: fields
                     .into_iter()
@@ -170,140 +170,140 @@ impl AlphaRenamingPass {
                 kind,
                 annotation,
             },
-            TypedExpr::JsonEncode { value, annotation } => TypedExpr::JsonEncode {
+            Expr::JsonEncode { value, annotation } => Expr::JsonEncode {
                 value: Box::new(self.rename_expr(*value)),
                 annotation,
             },
-            TypedExpr::EnvLookup { key, annotation } => TypedExpr::EnvLookup {
+            Expr::EnvLookup { key, annotation } => Expr::EnvLookup {
                 key: Box::new(self.rename_expr(*key)),
                 annotation,
             },
-            TypedExpr::StringConcat {
+            Expr::StringConcat {
                 left,
                 right,
                 annotation,
-            } => TypedExpr::StringConcat {
+            } => Expr::StringConcat {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 annotation,
             },
-            TypedExpr::Equals {
+            Expr::Equals {
                 left,
                 right,
                 operand_types,
                 annotation,
-            } => TypedExpr::Equals {
-                left: Box::new(self.rename_expr(*left)),
-                right: Box::new(self.rename_expr(*right)),
-                operand_types,
-                annotation,
-            },
-            TypedExpr::NotEquals {
-                left,
-                right,
-                operand_types,
-                annotation,
-            } => TypedExpr::NotEquals {
+            } => Expr::Equals {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,
                 annotation,
             },
-            TypedExpr::LessThan {
+            Expr::NotEquals {
                 left,
                 right,
                 operand_types,
                 annotation,
-            } => TypedExpr::LessThan {
+            } => Expr::NotEquals {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,
                 annotation,
             },
-            TypedExpr::GreaterThan {
+            Expr::LessThan {
                 left,
                 right,
                 operand_types,
                 annotation,
-            } => TypedExpr::GreaterThan {
+            } => Expr::LessThan {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,
                 annotation,
             },
-            TypedExpr::LessThanOrEqual {
+            Expr::GreaterThan {
                 left,
                 right,
                 operand_types,
                 annotation,
-            } => TypedExpr::LessThanOrEqual {
+            } => Expr::GreaterThan {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,
                 annotation,
             },
-            TypedExpr::GreaterThanOrEqual {
+            Expr::LessThanOrEqual {
                 left,
                 right,
                 operand_types,
                 annotation,
-            } => TypedExpr::GreaterThanOrEqual {
+            } => Expr::LessThanOrEqual {
+                left: Box::new(self.rename_expr(*left)),
+                right: Box::new(self.rename_expr(*right)),
+                operand_types,
+                annotation,
+            },
+            Expr::GreaterThanOrEqual {
+                left,
+                right,
+                operand_types,
+                annotation,
+            } => Expr::GreaterThanOrEqual {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,
                 annotation,
             },
             // Literals don't contain variables
-            TypedExpr::StringLiteral { .. } => expr,
-            TypedExpr::BooleanLiteral { .. } => expr,
-            TypedExpr::FloatLiteral { .. } => expr,
-            TypedExpr::IntLiteral { .. } => expr,
-            TypedExpr::LogicalAnd {
+            Expr::StringLiteral { .. } => expr,
+            Expr::BooleanLiteral { .. } => expr,
+            Expr::FloatLiteral { .. } => expr,
+            Expr::IntLiteral { .. } => expr,
+            Expr::LogicalAnd {
                 left,
                 right,
                 annotation,
-            } => TypedExpr::LogicalAnd {
+            } => Expr::LogicalAnd {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 annotation,
             },
-            TypedExpr::LogicalOr {
+            Expr::LogicalOr {
                 left,
                 right,
                 annotation,
-            } => TypedExpr::LogicalOr {
+            } => Expr::LogicalOr {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 annotation,
             },
-            TypedExpr::NumericAdd {
+            Expr::NumericAdd {
                 left,
                 right,
                 operand_types,
                 annotation,
-            } => TypedExpr::NumericAdd {
-                left: Box::new(self.rename_expr(*left)),
-                right: Box::new(self.rename_expr(*right)),
-                operand_types,
-                annotation,
-            },
-            TypedExpr::NumericSubtract {
-                left,
-                right,
-                operand_types,
-                annotation,
-            } => TypedExpr::NumericSubtract {
+            } => Expr::NumericAdd {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,
                 annotation,
             },
-            TypedExpr::NumericMultiply {
+            Expr::NumericSubtract {
                 left,
                 right,
                 operand_types,
                 annotation,
-            } => TypedExpr::NumericMultiply {
+            } => Expr::NumericSubtract {
+                left: Box::new(self.rename_expr(*left)),
+                right: Box::new(self.rename_expr(*right)),
+                operand_types,
+                annotation,
+            },
+            Expr::NumericMultiply {
+                left,
+                right,
+                operand_types,
+                annotation,
+            } => Expr::NumericMultiply {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,
@@ -402,7 +402,7 @@ impl Pass for AlphaRenamingPass {
                 result_body = vec![IrStatement::Let {
                     id: 0, // ID will be assigned later if needed
                     var: renamed,
-                    value: TypedExpr::Var {
+                    value: Expr::Var {
                         value: original.clone(),
                         kind: typ.clone(),
                         annotation: 0,

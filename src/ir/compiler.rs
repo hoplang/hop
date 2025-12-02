@@ -1,7 +1,7 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::StringSpan;
 use crate::dop::r#type::EquatableType;
-use crate::dop::{SimpleTypedExpr, TypedExpr};
+use crate::dop::{Expr, SimpleExpr};
 use crate::dop::{Type, VarName};
 use crate::hop::component_name::ComponentName;
 use crate::hop::inlined_ast::{
@@ -46,17 +46,17 @@ impl Compiler {
         let prod_body = compiler.compile_nodes(children, None);
 
         // Create condition: EnvLookup("HOP_DEV_MODE") == "enabled"
-        let env_lookup_expr = TypedExpr::EnvLookup {
-            key: Box::new(TypedExpr::StringLiteral {
+        let env_lookup_expr = Expr::EnvLookup {
+            key: Box::new(Expr::StringLiteral {
                 value: "HOP_DEV_MODE".to_string(),
                 annotation: compiler.next_expr_id(),
             }),
             annotation: compiler.next_expr_id(),
         };
 
-        let condition_expr = TypedExpr::Equals {
+        let condition_expr = Expr::Equals {
             left: Box::new(env_lookup_expr),
-            right: Box::new(TypedExpr::StringLiteral {
+            right: Box::new(Expr::StringLiteral {
                 value: "enabled".to_string(),
                 annotation: compiler.next_expr_id(),
             }),
@@ -125,8 +125,8 @@ impl Compiler {
             // Write the JSON-encoded value
             body.push(IrStatement::WriteExpr {
                 id: self.next_node_id(),
-                expr: TypedExpr::JsonEncode {
-                    value: Box::new(TypedExpr::Var {
+                expr: Expr::JsonEncode {
+                    value: Box::new(Expr::Var {
                         value: name.clone(),
                         kind: typ.clone(),
                         annotation: self.next_expr_id(),
@@ -347,41 +347,41 @@ impl Compiler {
         }
     }
 
-    fn compile_expr(&mut self, expr: SimpleTypedExpr) -> IrExpr {
+    fn compile_expr(&mut self, expr: SimpleExpr) -> IrExpr {
         let expr_id = self.next_expr_id();
 
         match expr {
-            SimpleTypedExpr::Var { value, kind, .. } => TypedExpr::Var {
+            SimpleExpr::Var { value, kind, .. } => Expr::Var {
                 value,
                 kind,
                 annotation: expr_id,
             },
-            SimpleTypedExpr::FieldAccess {
+            SimpleExpr::FieldAccess {
                 record: object,
                 field,
                 kind,
                 ..
-            } => TypedExpr::FieldAccess {
+            } => Expr::FieldAccess {
                 record: Box::new(self.compile_expr(*object)),
                 field,
                 kind,
                 annotation: expr_id,
             },
-            SimpleTypedExpr::Negation { operand, .. } => TypedExpr::Negation {
+            SimpleExpr::Negation { operand, .. } => Expr::Negation {
                 operand: Box::new(self.compile_expr(*operand)),
                 annotation: expr_id,
             },
-            SimpleTypedExpr::ArrayLiteral { elements, kind, .. } => TypedExpr::ArrayLiteral {
+            SimpleExpr::ArrayLiteral { elements, kind, .. } => Expr::ArrayLiteral {
                 elements: elements.into_iter().map(|e| self.compile_expr(e)).collect(),
                 kind,
                 annotation: expr_id,
             },
-            SimpleTypedExpr::RecordInstantiation {
+            SimpleExpr::RecordInstantiation {
                 record_name,
                 fields,
                 kind,
                 ..
-            } => TypedExpr::RecordInstantiation {
+            } => Expr::RecordInstantiation {
                 record_name,
                 fields: fields
                     .into_iter()
@@ -390,139 +390,139 @@ impl Compiler {
                 kind,
                 annotation: expr_id,
             },
-            SimpleTypedExpr::StringLiteral { value, .. } => TypedExpr::StringLiteral {
+            SimpleExpr::StringLiteral { value, .. } => Expr::StringLiteral {
                 value,
                 annotation: expr_id,
             },
-            SimpleTypedExpr::BooleanLiteral { value, .. } => TypedExpr::BooleanLiteral {
+            SimpleExpr::BooleanLiteral { value, .. } => Expr::BooleanLiteral {
                 value,
                 annotation: expr_id,
             },
-            SimpleTypedExpr::FloatLiteral { value, .. } => TypedExpr::FloatLiteral {
+            SimpleExpr::FloatLiteral { value, .. } => Expr::FloatLiteral {
                 value,
                 annotation: expr_id,
             },
-            SimpleTypedExpr::IntLiteral { value, .. } => TypedExpr::IntLiteral {
+            SimpleExpr::IntLiteral { value, .. } => Expr::IntLiteral {
                 value,
                 annotation: expr_id,
             },
-            SimpleTypedExpr::JsonEncode { value, .. } => TypedExpr::JsonEncode {
+            SimpleExpr::JsonEncode { value, .. } => Expr::JsonEncode {
                 value: Box::new(self.compile_expr(*value)),
                 annotation: expr_id,
             },
-            SimpleTypedExpr::EnvLookup { key, .. } => TypedExpr::EnvLookup {
+            SimpleExpr::EnvLookup { key, .. } => Expr::EnvLookup {
                 key: Box::new(self.compile_expr(*key)),
                 annotation: expr_id,
             },
-            SimpleTypedExpr::StringConcat { left, right, .. } => TypedExpr::StringConcat {
+            SimpleExpr::StringConcat { left, right, .. } => Expr::StringConcat {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 annotation: expr_id,
             },
-            SimpleTypedExpr::Equals {
+            SimpleExpr::Equals {
                 left,
                 right,
                 operand_types,
                 ..
-            } => TypedExpr::Equals {
+            } => Expr::Equals {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
                 annotation: expr_id,
             },
-            SimpleTypedExpr::NotEquals {
+            SimpleExpr::NotEquals {
                 left,
                 right,
                 operand_types,
                 ..
-            } => TypedExpr::NotEquals {
+            } => Expr::NotEquals {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
                 annotation: expr_id,
             },
-            SimpleTypedExpr::LessThan {
+            SimpleExpr::LessThan {
                 left,
                 right,
                 operand_types,
                 ..
-            } => TypedExpr::LessThan {
+            } => Expr::LessThan {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
                 annotation: expr_id,
             },
-            SimpleTypedExpr::GreaterThan {
+            SimpleExpr::GreaterThan {
                 left,
                 right,
                 operand_types,
                 ..
-            } => TypedExpr::GreaterThan {
+            } => Expr::GreaterThan {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
                 annotation: expr_id,
             },
-            SimpleTypedExpr::LessThanOrEqual {
+            SimpleExpr::LessThanOrEqual {
                 left,
                 right,
                 operand_types,
                 ..
-            } => TypedExpr::LessThanOrEqual {
+            } => Expr::LessThanOrEqual {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
                 annotation: expr_id,
             },
-            SimpleTypedExpr::GreaterThanOrEqual {
+            SimpleExpr::GreaterThanOrEqual {
                 left,
                 right,
                 operand_types,
                 ..
-            } => TypedExpr::GreaterThanOrEqual {
+            } => Expr::GreaterThanOrEqual {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
                 annotation: expr_id,
             },
-            TypedExpr::LogicalAnd { left, right, .. } => TypedExpr::LogicalAnd {
+            Expr::LogicalAnd { left, right, .. } => Expr::LogicalAnd {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 annotation: expr_id,
             },
-            TypedExpr::LogicalOr { left, right, .. } => TypedExpr::LogicalOr {
+            Expr::LogicalOr { left, right, .. } => Expr::LogicalOr {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 annotation: expr_id,
             },
-            TypedExpr::NumericAdd {
+            Expr::NumericAdd {
                 left,
                 right,
                 operand_types,
                 ..
-            } => TypedExpr::NumericAdd {
+            } => Expr::NumericAdd {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
                 annotation: expr_id,
             },
-            TypedExpr::NumericSubtract {
+            Expr::NumericSubtract {
                 left,
                 right,
                 operand_types,
                 ..
-            } => TypedExpr::NumericSubtract {
+            } => Expr::NumericSubtract {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
                 annotation: expr_id,
             },
-            TypedExpr::NumericMultiply {
+            Expr::NumericMultiply {
                 left,
                 right,
                 operand_types,
                 ..
-            } => TypedExpr::NumericMultiply {
+            } => Expr::NumericMultiply {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,

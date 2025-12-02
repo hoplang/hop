@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt};
 
-use crate::dop::{VarName, r#type::Type, typed_expr::TypedExpr};
+use crate::dop::{VarName, expr::Expr, r#type::Type};
 use crate::hop::component_name::ComponentName;
 use pretty::BoxDoc;
 
@@ -67,7 +67,7 @@ pub enum IrStatement {
 }
 
 /// Type alias for IR expressions with ExprId annotations
-pub type IrExpr = TypedExpr<ExprId>;
+pub type IrExpr = Expr<ExprId>;
 
 impl IrStatement {
     /// Get the primary expression from this statement, if any
@@ -331,48 +331,48 @@ impl IrExpr {
     {
         f(self);
         match self {
-            TypedExpr::FieldAccess { record: object, .. } => {
+            Expr::FieldAccess { record: object, .. } => {
                 object.traverse(f);
             }
-            TypedExpr::ArrayLiteral { elements, .. } => {
+            Expr::ArrayLiteral { elements, .. } => {
                 for elem in elements {
                     elem.traverse(f);
                 }
             }
-            TypedExpr::RecordInstantiation { fields, .. } => {
+            Expr::RecordInstantiation { fields, .. } => {
                 for (_, value) in fields {
                     value.traverse(f);
                 }
             }
-            TypedExpr::Negation { operand, .. } => {
+            Expr::Negation { operand, .. } => {
                 operand.traverse(f);
             }
-            TypedExpr::JsonEncode { value, .. } => {
+            Expr::JsonEncode { value, .. } => {
                 value.traverse(f);
             }
-            TypedExpr::EnvLookup { key, .. } => {
+            Expr::EnvLookup { key, .. } => {
                 key.traverse(f);
             }
-            TypedExpr::Equals { left, right, .. }
-            | TypedExpr::NotEquals { left, right, .. }
-            | TypedExpr::LessThan { left, right, .. }
-            | TypedExpr::GreaterThan { left, right, .. }
-            | TypedExpr::LessThanOrEqual { left, right, .. }
-            | TypedExpr::GreaterThanOrEqual { left, right, .. }
-            | TypedExpr::StringConcat { left, right, .. }
-            | TypedExpr::NumericAdd { left, right, .. }
-            | TypedExpr::NumericSubtract { left, right, .. }
-            | TypedExpr::NumericMultiply { left, right, .. }
-            | TypedExpr::LogicalAnd { left, right, .. }
-            | TypedExpr::LogicalOr { left, right, .. } => {
+            Expr::Equals { left, right, .. }
+            | Expr::NotEquals { left, right, .. }
+            | Expr::LessThan { left, right, .. }
+            | Expr::GreaterThan { left, right, .. }
+            | Expr::LessThanOrEqual { left, right, .. }
+            | Expr::GreaterThanOrEqual { left, right, .. }
+            | Expr::StringConcat { left, right, .. }
+            | Expr::NumericAdd { left, right, .. }
+            | Expr::NumericSubtract { left, right, .. }
+            | Expr::NumericMultiply { left, right, .. }
+            | Expr::LogicalAnd { left, right, .. }
+            | Expr::LogicalOr { left, right, .. } => {
                 left.traverse(f);
                 right.traverse(f);
             }
-            TypedExpr::Var { .. }
-            | TypedExpr::StringLiteral { .. }
-            | TypedExpr::BooleanLiteral { .. }
-            | TypedExpr::FloatLiteral { .. }
-            | TypedExpr::IntLiteral { .. } => {}
+            Expr::Var { .. }
+            | Expr::StringLiteral { .. }
+            | Expr::BooleanLiteral { .. }
+            | Expr::FloatLiteral { .. }
+            | Expr::IntLiteral { .. } => {}
         }
     }
 
@@ -383,40 +383,40 @@ impl IrExpr {
     {
         f(self);
         match self {
-            TypedExpr::FieldAccess { record: object, .. } => {
+            Expr::FieldAccess { record: object, .. } => {
                 object.traverse_mut(f);
             }
-            TypedExpr::ArrayLiteral { elements, .. } => {
+            Expr::ArrayLiteral { elements, .. } => {
                 for elem in elements {
                     elem.traverse_mut(f);
                 }
             }
-            TypedExpr::RecordInstantiation { fields, .. } => {
+            Expr::RecordInstantiation { fields, .. } => {
                 for (_, value) in fields {
                     value.traverse_mut(f);
                 }
             }
-            TypedExpr::Negation { operand, .. } => {
+            Expr::Negation { operand, .. } => {
                 operand.traverse_mut(f);
             }
-            TypedExpr::JsonEncode { value, .. } => {
+            Expr::JsonEncode { value, .. } => {
                 value.traverse_mut(f);
             }
-            TypedExpr::EnvLookup { key, .. } => {
+            Expr::EnvLookup { key, .. } => {
                 key.traverse_mut(f);
             }
-            TypedExpr::StringConcat { left, right, .. }
-            | TypedExpr::NumericAdd { left, right, .. }
-            | TypedExpr::NumericSubtract { left, right, .. }
-            | TypedExpr::NumericMultiply { left, right, .. }
-            | TypedExpr::Equals { left, right, .. }
-            | TypedExpr::NotEquals { left, right, .. }
-            | TypedExpr::LessThan { left, right, .. }
-            | TypedExpr::GreaterThan { left, right, .. }
-            | TypedExpr::LessThanOrEqual { left, right, .. }
-            | TypedExpr::GreaterThanOrEqual { left, right, .. }
-            | TypedExpr::LogicalAnd { left, right, .. }
-            | TypedExpr::LogicalOr { left, right, .. } => {
+            Expr::StringConcat { left, right, .. }
+            | Expr::NumericAdd { left, right, .. }
+            | Expr::NumericSubtract { left, right, .. }
+            | Expr::NumericMultiply { left, right, .. }
+            | Expr::Equals { left, right, .. }
+            | Expr::NotEquals { left, right, .. }
+            | Expr::LessThan { left, right, .. }
+            | Expr::GreaterThan { left, right, .. }
+            | Expr::LessThanOrEqual { left, right, .. }
+            | Expr::GreaterThanOrEqual { left, right, .. }
+            | Expr::LogicalAnd { left, right, .. }
+            | Expr::LogicalOr { left, right, .. } => {
                 left.traverse_mut(f);
                 right.traverse_mut(f);
             }

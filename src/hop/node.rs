@@ -5,14 +5,14 @@ use crate::document::{
     document_cursor::{DocumentRange, Ranged, StringSpan},
 };
 use crate::dop::Argument;
-use crate::dop::SimpleTypedExpr;
+use crate::dop::SimpleExpr;
 use crate::dop::SyntacticExpr;
 use crate::dop::VarName;
 
 use super::{ast::Attribute, module_name::ModuleName};
 
 pub type UntypedNode = Node<SyntacticExpr>;
-pub type TypedNode = Node<SimpleTypedExpr>;
+pub type TypedNode = Node<SimpleExpr>;
 
 #[derive(Debug, Clone)]
 pub enum Node<E> {

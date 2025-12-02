@@ -11,7 +11,7 @@ use crate::dop::token::Token;
 use crate::dop::tokenizer::Tokenizer;
 use crate::dop::var_name::VarName;
 
-use super::typed_expr::SimpleTypedExpr;
+use super::expr::SimpleExpr;
 
 /// A Parameter represents a parsed parameter with type annotation.
 /// E.g. <my-comp {x: string, y: string}>
@@ -66,7 +66,7 @@ impl Display for RecordDeclaration {
     }
 }
 
-pub type TypedArgument = Argument<SimpleTypedExpr>;
+pub type TypedArgument = Argument<SimpleExpr>;
 
 /// An Argument represents a parsed argument with a name and a value.
 /// E.g. <my-comp {x: [1,2], y: 2}>

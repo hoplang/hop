@@ -2,7 +2,7 @@ use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::Parameter;
 use crate::dop::RecordDeclaration;
-use crate::dop::SimpleTypedExpr;
+use crate::dop::SimpleExpr;
 use crate::dop::SyntacticExpr;
 use crate::dop::SyntacticType;
 use crate::dop::Type;
@@ -24,7 +24,7 @@ pub enum AttributeValue<T = SyntacticExpr> {
     String(DocumentRange),
 }
 
-pub type TypedAttribute = Attribute<SimpleTypedExpr>;
+pub type TypedAttribute = Attribute<SimpleExpr>;
 
 /// An Attribute is an attribute on a node, it can either
 /// be empty, an expression or a string value.
@@ -37,7 +37,7 @@ pub struct Attribute<T = SyntacticExpr> {
 }
 
 pub type UntypedAst = Ast<SyntacticExpr, SyntacticType>;
-pub type TypedAst = Ast<SimpleTypedExpr, Type>;
+pub type TypedAst = Ast<SimpleExpr, Type>;
 
 #[derive(Debug, Clone)]
 pub struct Ast<T, A = ()> {
@@ -163,7 +163,7 @@ pub type UntypedRecord = Record<()>;
 pub type TypedRecord = Record<Type>;
 
 pub type UntypedComponentDefinition = ComponentDefinition<SyntacticExpr, SyntacticType>;
-pub type TypedComponentDefinition = ComponentDefinition<SimpleTypedExpr, Type>;
+pub type TypedComponentDefinition = ComponentDefinition<SimpleExpr, Type>;
 
 #[derive(Debug, Clone)]
 pub struct ComponentDefinition<E, P = SyntacticType> {

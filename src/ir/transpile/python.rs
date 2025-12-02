@@ -4,7 +4,6 @@ use super::{ExpressionTranspiler, RecordInfo, StatementTranspiler, Transpiler, T
 use crate::dop::field_name::FieldName;
 use crate::dop::r#type::Type;
 use crate::hop::component_name::ComponentName;
-use crate::hop::module_name::ModuleName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 
 pub struct PythonTranspiler {}
@@ -382,11 +381,7 @@ impl ExpressionTranspiler for PythonTranspiler {
         BoxDoc::text(name)
     }
 
-    fn transpile_field_access<'a>(
-        &self,
-        object: &'a IrExpr,
-        field: &'a FieldName,
-    ) -> BoxDoc<'a> {
+    fn transpile_field_access<'a>(&self, object: &'a IrExpr, field: &'a FieldName) -> BoxDoc<'a> {
         // Python uses dot notation for dataclass attributes
         self.transpile_expr(object)
             .append(BoxDoc::text("."))
@@ -722,7 +717,7 @@ impl TypeTranspiler for PythonTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::test_utils::build_ir_auto;
+    use crate::{hop::module_name::ModuleName, ir::test_utils::build_ir_auto};
     use expect_test::{Expect, expect};
 
     fn transpile_with_pretty(entrypoints: &[IrEntrypoint]) -> String {
@@ -1104,11 +1099,18 @@ mod tests {
 
         let entrypoints = vec![build_ir_with_records(
             "UserProfile",
-            vec![("user", Type::Record { module: ModuleName::new("test".to_string()).unwrap(), name: "User".to_string(), fields: vec![
-                (FieldName::new("name").unwrap(), Type::String),
-                (FieldName::new("age").unwrap(), Type::Int),
-                (FieldName::new("active").unwrap(), Type::Bool),
-            ] })],
+            vec![(
+                "user",
+                Type::Record {
+                    module: ModuleName::new("test".to_string()).unwrap(),
+                    name: "User".to_string(),
+                    fields: vec![
+                        (FieldName::new("name").unwrap(), Type::String),
+                        (FieldName::new("age").unwrap(), Type::Int),
+                        (FieldName::new("active").unwrap(), Type::Bool),
+                    ],
+                },
+            )],
             records_def,
             |t| {
                 t.write("<div>");

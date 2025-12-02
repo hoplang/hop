@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fmt};
 
 use crate::document::document_cursor::StringSpan;
-use crate::dop::SimpleTypedExpr;
+use crate::dop::SimpleExpr;
 use crate::dop::VarName;
 use crate::hop::module_name::ModuleName;
 use pretty::BoxDoc;
@@ -14,7 +14,7 @@ pub struct InlinedParameter {
 
 #[derive(Debug, Clone)]
 pub enum InlinedAttributeValue {
-    Expressions(Vec<SimpleTypedExpr>),
+    Expressions(Vec<SimpleExpr>),
     String(String),
 }
 
@@ -38,15 +38,15 @@ pub enum InlinedNode {
         value: StringSpan,
     },
     TextExpression {
-        expression: SimpleTypedExpr,
+        expression: SimpleExpr,
     },
     If {
-        condition: SimpleTypedExpr,
+        condition: SimpleExpr,
         children: Vec<Self>,
     },
     For {
         var_name: VarName,
-        array_expr: SimpleTypedExpr,
+        array_expr: SimpleExpr,
         children: Vec<Self>,
     },
     Doctype {
@@ -59,7 +59,7 @@ pub enum InlinedNode {
     },
     Let {
         var: VarName,
-        value: SimpleTypedExpr,
+        value: SimpleExpr,
         children: Vec<Self>,
     },
 }

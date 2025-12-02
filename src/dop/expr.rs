@@ -9,10 +9,10 @@ use super::{
     r#type::{ComparableType, EquatableType, NumericType},
 };
 
-pub type SimpleTypedExpr = TypedExpr<()>;
+pub type SimpleExpr = Expr<()>;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TypedExpr<A> {
+pub enum Expr<A> {
     /// A variable expression, e.g. foo
     Var {
         value: VarName,
@@ -158,7 +158,7 @@ pub enum TypedExpr<A> {
     },
 }
 
-impl<A> TypedExpr<A> {
+impl<A> Expr<A> {
     pub fn as_type(&self) -> &Type {
         static STRING_TYPE: Type = Type::String;
         static BOOL_TYPE: Type = Type::Bool;
@@ -166,71 +166,71 @@ impl<A> TypedExpr<A> {
         static INT_TYPE: Type = Type::Int;
 
         match self {
-            TypedExpr::Var { kind, .. }
-            | TypedExpr::FieldAccess { kind, .. }
-            | TypedExpr::ArrayLiteral { kind, .. }
-            | TypedExpr::RecordInstantiation { kind, .. } => kind,
+            Expr::Var { kind, .. }
+            | Expr::FieldAccess { kind, .. }
+            | Expr::ArrayLiteral { kind, .. }
+            | Expr::RecordInstantiation { kind, .. } => kind,
 
-            TypedExpr::FloatLiteral { .. } => &FLOAT_TYPE,
-            TypedExpr::IntLiteral { .. } => &INT_TYPE,
+            Expr::FloatLiteral { .. } => &FLOAT_TYPE,
+            Expr::IntLiteral { .. } => &INT_TYPE,
 
-            TypedExpr::JsonEncode { .. }
-            | TypedExpr::EnvLookup { .. }
-            | TypedExpr::StringConcat { .. }
-            | TypedExpr::StringLiteral { .. } => &STRING_TYPE,
+            Expr::JsonEncode { .. }
+            | Expr::EnvLookup { .. }
+            | Expr::StringConcat { .. }
+            | Expr::StringLiteral { .. } => &STRING_TYPE,
 
-            TypedExpr::NumericAdd { operand_types, .. }
-            | TypedExpr::NumericSubtract { operand_types, .. }
-            | TypedExpr::NumericMultiply { operand_types, .. } => match operand_types {
+            Expr::NumericAdd { operand_types, .. }
+            | Expr::NumericSubtract { operand_types, .. }
+            | Expr::NumericMultiply { operand_types, .. } => match operand_types {
                 NumericType::Int => &INT_TYPE,
                 NumericType::Float => &FLOAT_TYPE,
             },
 
-            TypedExpr::BooleanLiteral { .. }
-            | TypedExpr::Negation { .. }
-            | TypedExpr::Equals { .. }
-            | TypedExpr::NotEquals { .. }
-            | TypedExpr::LessThan { .. }
-            | TypedExpr::GreaterThan { .. }
-            | TypedExpr::LessThanOrEqual { .. }
-            | TypedExpr::GreaterThanOrEqual { .. }
-            | TypedExpr::LogicalAnd { .. }
-            | TypedExpr::LogicalOr { .. } => &BOOL_TYPE,
+            Expr::BooleanLiteral { .. }
+            | Expr::Negation { .. }
+            | Expr::Equals { .. }
+            | Expr::NotEquals { .. }
+            | Expr::LessThan { .. }
+            | Expr::GreaterThan { .. }
+            | Expr::LessThanOrEqual { .. }
+            | Expr::GreaterThanOrEqual { .. }
+            | Expr::LogicalAnd { .. }
+            | Expr::LogicalOr { .. } => &BOOL_TYPE,
         }
     }
 
     pub fn annotation(&self) -> &A {
         match self {
-            TypedExpr::Var { annotation, .. }
-            | TypedExpr::FieldAccess { annotation, .. }
-            | TypedExpr::StringLiteral { annotation, .. }
-            | TypedExpr::BooleanLiteral { annotation, .. }
-            | TypedExpr::FloatLiteral { annotation, .. }
-            | TypedExpr::IntLiteral { annotation, .. }
-            | TypedExpr::ArrayLiteral { annotation, .. }
-            | TypedExpr::RecordInstantiation { annotation, .. }
-            | TypedExpr::JsonEncode { annotation, .. }
-            | TypedExpr::EnvLookup { annotation, .. }
-            | TypedExpr::StringConcat { annotation, .. }
-            | TypedExpr::NumericAdd { annotation, .. }
-            | TypedExpr::NumericSubtract { annotation, .. }
-            | TypedExpr::NumericMultiply { annotation, .. }
-            | TypedExpr::Negation { annotation, .. }
-            | TypedExpr::Equals { annotation, .. }
-            | TypedExpr::NotEquals { annotation, .. }
-            | TypedExpr::LessThan { annotation, .. }
-            | TypedExpr::GreaterThan { annotation, .. }
-            | TypedExpr::LessThanOrEqual { annotation, .. }
-            | TypedExpr::GreaterThanOrEqual { annotation, .. }
-            | TypedExpr::LogicalAnd { annotation, .. }
-            | TypedExpr::LogicalOr { annotation, .. } => annotation,
+            Expr::Var { annotation, .. }
+            | Expr::FieldAccess { annotation, .. }
+            | Expr::StringLiteral { annotation, .. }
+            | Expr::BooleanLiteral { annotation, .. }
+            | Expr::FloatLiteral { annotation, .. }
+            | Expr::IntLiteral { annotation, .. }
+            | Expr::ArrayLiteral { annotation, .. }
+            | Expr::RecordInstantiation { annotation, .. }
+            | Expr::JsonEncode { annotation, .. }
+            | Expr::EnvLookup { annotation, .. }
+            | Expr::StringConcat { annotation, .. }
+            | Expr::NumericAdd { annotation, .. }
+            | Expr::NumericSubtract { annotation, .. }
+            | Expr::NumericMultiply { annotation, .. }
+            | Expr::Negation { annotation, .. }
+            | Expr::Equals { annotation, .. }
+            | Expr::NotEquals { annotation, .. }
+            | Expr::LessThan { annotation, .. }
+            | Expr::GreaterThan { annotation, .. }
+            | Expr::LessThanOrEqual { annotation, .. }
+            | Expr::GreaterThanOrEqual { annotation, .. }
+            | Expr::LogicalAnd { annotation, .. }
+            | Expr::LogicalOr { annotation, .. } => annotation,
         }
     }
 
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            TypedExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
-            TypedExpr::FieldAccess {
+            Expr::Var { value, .. } => BoxDoc::text(value.as_str()),
+            Expr::FieldAccess {
                 record: object,
                 field,
                 ..
@@ -238,11 +238,11 @@ impl<A> TypedExpr<A> {
                 .to_doc()
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(field.as_str())),
-            TypedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
-            TypedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            TypedExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            TypedExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            TypedExpr::ArrayLiteral { elements, .. } => {
+            Expr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
+            Expr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            Expr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            Expr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            Expr::ArrayLiteral { elements, .. } => {
                 if elements.is_empty() {
                     BoxDoc::text("[]")
                 } else {
@@ -261,7 +261,7 @@ impl<A> TypedExpr<A> {
                         .append(BoxDoc::text("]"))
                 }
             }
-            TypedExpr::RecordInstantiation {
+            Expr::RecordInstantiation {
                 record_name,
                 fields,
                 ..
@@ -289,86 +289,86 @@ impl<A> TypedExpr<A> {
                         .append(BoxDoc::text(")"))
                 }
             }
-            TypedExpr::JsonEncode { value, .. } => BoxDoc::nil()
+            Expr::JsonEncode { value, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("JsonEncode("))
                 .append(value.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::EnvLookup { key, .. } => BoxDoc::nil()
+            Expr::EnvLookup { key, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("EnvLookup("))
                 .append(key.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::StringConcat { left, right, .. } => BoxDoc::nil()
+            Expr::StringConcat { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" + "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::NumericAdd { left, right, .. } => BoxDoc::nil()
+            Expr::NumericAdd { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" + "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::NumericSubtract { left, right, .. } => BoxDoc::nil()
+            Expr::NumericSubtract { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" - "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::NumericMultiply { left, right, .. } => BoxDoc::nil()
+            Expr::NumericMultiply { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" * "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::Negation { operand, .. } => BoxDoc::nil()
+            Expr::Negation { operand, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::text("!"))
                 .append(operand.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::Equals { left, right, .. } => BoxDoc::nil()
+            Expr::Equals { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" == "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::NotEquals { left, right, .. } => BoxDoc::nil()
+            Expr::NotEquals { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" != "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::LessThan { left, right, .. } => BoxDoc::nil()
+            Expr::LessThan { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" < "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::GreaterThan { left, right, .. } => BoxDoc::nil()
+            Expr::GreaterThan { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" > "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::LessThanOrEqual { left, right, .. } => BoxDoc::nil()
+            Expr::LessThanOrEqual { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" <= "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::GreaterThanOrEqual { left, right, .. } => BoxDoc::nil()
+            Expr::GreaterThanOrEqual { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" >= "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::LogicalAnd { left, right, .. } => BoxDoc::nil()
+            Expr::LogicalAnd { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" && "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            TypedExpr::LogicalOr { left, right, .. } => BoxDoc::nil()
+            Expr::LogicalOr { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" || "))
@@ -378,7 +378,7 @@ impl<A> TypedExpr<A> {
     }
 }
 
-impl<A> Display for TypedExpr<A> {
+impl<A> Display for Expr<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(60))
     }

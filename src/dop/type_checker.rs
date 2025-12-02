@@ -1,9 +1,9 @@
 use super::Type;
+use super::expr::SimpleExpr;
 use super::syntactic_expr::{BinaryOp, SyntacticExpr};
 use super::syntactic_type::SyntacticType;
 use super::r#type::NumericType;
 use super::type_error::TypeError;
-use super::typed_expr::SimpleTypedExpr;
 use crate::document::document_cursor::Ranged as _;
 use crate::hop::environment::Environment;
 use crate::hop::type_checker::TypeAnnotation;
@@ -43,7 +43,7 @@ pub fn typecheck_expr(
     env: &mut Environment<Type>,
     type_env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
-) -> Result<SimpleTypedExpr, TypeError> {
+) -> Result<SimpleExpr, TypeError> {
     match expr {
         SyntacticExpr::Var { value: name, .. } => {
             if let Some(var_type) = env.lookup(name.as_str()) {
@@ -52,7 +52,7 @@ pub fn typecheck_expr(
                     typ: var_type.clone(),
                     name: name.to_string(),
                 });
-                Ok(SimpleTypedExpr::Var {
+                Ok(SimpleExpr::Var {
                     value: name.clone(),
                     kind: var_type.clone(),
                     annotation: (),
@@ -64,19 +64,19 @@ pub fn typecheck_expr(
                 })
             }
         }
-        SyntacticExpr::BooleanLiteral { value, .. } => Ok(SimpleTypedExpr::BooleanLiteral {
+        SyntacticExpr::BooleanLiteral { value, .. } => Ok(SimpleExpr::BooleanLiteral {
             value: *value,
             annotation: (),
         }),
-        SyntacticExpr::StringLiteral { value, .. } => Ok(SimpleTypedExpr::StringLiteral {
+        SyntacticExpr::StringLiteral { value, .. } => Ok(SimpleExpr::StringLiteral {
             value: value.clone(),
             annotation: (),
         }),
-        SyntacticExpr::IntLiteral { value, .. } => Ok(SimpleTypedExpr::IntLiteral {
+        SyntacticExpr::IntLiteral { value, .. } => Ok(SimpleExpr::IntLiteral {
             value: *value,
             annotation: (),
         }),
-        SyntacticExpr::FloatLiteral { value, .. } => Ok(SimpleTypedExpr::FloatLiteral {
+        SyntacticExpr::FloatLiteral { value, .. } => Ok(SimpleExpr::FloatLiteral {
             value: *value,
             annotation: (),
         }),
@@ -98,7 +98,7 @@ pub fn typecheck_expr(
                     if let Some((_, field_type)) =
                         fields.iter().find(|(f, _)| f.as_str() == field.as_str())
                     {
-                        Ok(SimpleTypedExpr::FieldAccess {
+                        Ok(SimpleExpr::FieldAccess {
                             kind: field_type.clone(),
                             record: Box::new(typed_base),
                             field: field.clone(),
@@ -151,7 +151,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(SimpleTypedExpr::Equals {
+            Ok(SimpleExpr::Equals {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -191,7 +191,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(SimpleTypedExpr::NotEquals {
+            Ok(SimpleExpr::NotEquals {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -234,7 +234,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(SimpleTypedExpr::LessThan {
+            Ok(SimpleExpr::LessThan {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -278,7 +278,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(SimpleTypedExpr::GreaterThan {
+            Ok(SimpleExpr::GreaterThan {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -322,7 +322,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(SimpleTypedExpr::LessThanOrEqual {
+            Ok(SimpleExpr::LessThanOrEqual {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -365,7 +365,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(SimpleTypedExpr::GreaterThanOrEqual {
+            Ok(SimpleExpr::GreaterThanOrEqual {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -396,7 +396,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(SimpleTypedExpr::LogicalAnd {
+            Ok(SimpleExpr::LogicalAnd {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 annotation: (),
@@ -426,7 +426,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(SimpleTypedExpr::LogicalOr {
+            Ok(SimpleExpr::LogicalOr {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 annotation: (),
@@ -449,18 +449,18 @@ pub fn typecheck_expr(
             // 3. Float addition (Float + Float)
 
             match (left_type, right_type) {
-                (Type::String, Type::String) => Ok(SimpleTypedExpr::StringConcat {
+                (Type::String, Type::String) => Ok(SimpleExpr::StringConcat {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     annotation: (),
                 }),
-                (Type::Int, Type::Int) => Ok(SimpleTypedExpr::NumericAdd {
+                (Type::Int, Type::Int) => Ok(SimpleExpr::NumericAdd {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Int,
                     annotation: (),
                 }),
-                (Type::Float, Type::Float) => Ok(SimpleTypedExpr::NumericAdd {
+                (Type::Float, Type::Float) => Ok(SimpleExpr::NumericAdd {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Float,
@@ -492,13 +492,13 @@ pub fn typecheck_expr(
             // 2. Float subtraction (Float - Float)
 
             match (left_type, right_type) {
-                (Type::Int, Type::Int) => Ok(SimpleTypedExpr::NumericSubtract {
+                (Type::Int, Type::Int) => Ok(SimpleExpr::NumericSubtract {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Int,
                     annotation: (),
                 }),
-                (Type::Float, Type::Float) => Ok(SimpleTypedExpr::NumericSubtract {
+                (Type::Float, Type::Float) => Ok(SimpleExpr::NumericSubtract {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Float,
@@ -530,13 +530,13 @@ pub fn typecheck_expr(
             // 2. Float multiplication (Float * Float)
 
             match (left_type, right_type) {
-                (Type::Int, Type::Int) => Ok(SimpleTypedExpr::NumericMultiply {
+                (Type::Int, Type::Int) => Ok(SimpleExpr::NumericMultiply {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Int,
                     annotation: (),
                 }),
-                (Type::Float, Type::Float) => Ok(SimpleTypedExpr::NumericMultiply {
+                (Type::Float, Type::Float) => Ok(SimpleExpr::NumericMultiply {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Float,
@@ -564,7 +564,7 @@ pub fn typecheck_expr(
             }
 
             // The result of ! is always boolean
-            Ok(SimpleTypedExpr::Negation {
+            Ok(SimpleExpr::Negation {
                 operand: Box::new(typed_operand),
                 annotation: (),
             })
@@ -572,7 +572,7 @@ pub fn typecheck_expr(
         SyntacticExpr::ArrayLiteral { elements, .. } => {
             if elements.is_empty() {
                 // Empty array has unknown element type
-                Ok(SimpleTypedExpr::ArrayLiteral {
+                Ok(SimpleExpr::ArrayLiteral {
                     elements: vec![],
                     kind: Type::Array(None),
                     annotation: (),
@@ -599,7 +599,7 @@ pub fn typecheck_expr(
                     typed_elements.push(typed_element);
                 }
 
-                Ok(SimpleTypedExpr::ArrayLiteral {
+                Ok(SimpleExpr::ArrayLiteral {
                     elements: typed_elements,
                     kind: Type::Array(Some(Box::new(first_type))),
                     annotation: (),
@@ -683,7 +683,7 @@ pub fn typecheck_expr(
                 }
             }
 
-            Ok(SimpleTypedExpr::RecordInstantiation {
+            Ok(SimpleExpr::RecordInstantiation {
                 record_name: record_name.clone(),
                 fields: typed_fields,
                 kind: record_type,
