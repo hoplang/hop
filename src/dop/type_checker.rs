@@ -20,11 +20,8 @@ pub fn resolve_type(
         SyntacticType::Float { .. } => Ok(Type::Float),
         SyntacticType::TrustedHTML { .. } => Ok(Type::TrustedHTML),
         SyntacticType::Array { element, .. } => {
-            let elem_type = element
-                .as_ref()
-                .map(|e| resolve_type(e, type_env))
-                .transpose()?;
-            Ok(Type::Array(elem_type.map(Box::new)))
+            let elem_type = resolve_type(element, type_env)?;
+            Ok(Type::Array(Some(Box::new(elem_type))))
         }
         SyntacticType::Named { name, range } => {
             let record_type = type_env

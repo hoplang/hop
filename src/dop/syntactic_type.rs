@@ -22,7 +22,7 @@ pub enum SyntacticType {
         range: DocumentRange,
     },
     Array {
-        element: Option<Box<SyntacticType>>,
+        element: Box<SyntacticType>,
         range: DocumentRange,
     },
     Named {
@@ -53,13 +53,10 @@ impl SyntacticType {
             SyntacticType::Int { .. } => BoxDoc::text("Int"),
             SyntacticType::Float { .. } => BoxDoc::text("Float"),
             SyntacticType::TrustedHTML { .. } => BoxDoc::text("TrustedHTML"),
-            SyntacticType::Array { element, .. } => match element {
-                Some(elem) => BoxDoc::nil()
-                    .append(BoxDoc::text("Array["))
-                    .append(elem.to_doc())
-                    .append(BoxDoc::text("]")),
-                None => BoxDoc::text("Array"),
-            },
+            SyntacticType::Array { element, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("Array["))
+                .append(element.to_doc())
+                .append(BoxDoc::text("]")),
             SyntacticType::Named { name, .. } => BoxDoc::text(name.clone()),
         }
     }

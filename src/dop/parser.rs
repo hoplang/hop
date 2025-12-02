@@ -414,7 +414,7 @@ impl Parser {
                 let element = self.parse_type()?;
                 let right_bracket = self.expect_opposite(&Token::LeftBracket, &left_bracket)?;
                 Ok(SyntacticType::Array {
-                    element: Some(Box::new(element)),
+                    element: Box::new(element),
                     range: type_array.to(right_bracket),
                 })
             }
