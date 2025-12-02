@@ -84,7 +84,7 @@ pub trait TypeTranspiler {
     fn transpile_float_type<'a>(&self) -> BoxDoc<'a>;
     fn transpile_int_type<'a>(&self) -> BoxDoc<'a>;
     fn transpile_trusted_html_type<'a>(&self) -> BoxDoc<'a>;
-    fn transpile_array_type<'a>(&self, element_type: Option<&'a Type>) -> BoxDoc<'a>;
+    fn transpile_array_type<'a>(&self, element_type: &'a Type) -> BoxDoc<'a>;
     fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a>;
     fn transpile_type<'a>(&self, t: &'a Type) -> BoxDoc<'a> {
         match t {
@@ -93,7 +93,7 @@ pub trait TypeTranspiler {
             Type::Float => self.transpile_float_type(),
             Type::Int => self.transpile_int_type(),
             Type::TrustedHTML => self.transpile_trusted_html_type(),
-            Type::Array(elem) => self.transpile_array_type(elem.as_deref()),
+            Type::Array(elem) => self.transpile_array_type(elem),
             Type::Record { name, .. } => self.transpile_named_type(name),
         }
     }
@@ -110,7 +110,7 @@ pub trait ExpressionTranspiler {
     fn transpile_array_literal<'a>(
         &self,
         elements: &'a [IrExpr],
-        elem_type: &'a Option<Box<Type>>,
+        elem_type: &'a Type,
     ) -> BoxDoc<'a>;
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_bool_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;

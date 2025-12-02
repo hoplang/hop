@@ -67,9 +67,6 @@ pub enum TypeError {
     #[error("Expected string attribute, got {found}")]
     ExpectedStringAttribute { found: String, range: DocumentRange },
 
-    #[error("Cannot iterate over an empty array with unknown element type")]
-    CannotIterateEmptyArray { range: DocumentRange },
-
     #[error("Can not iterate over {typ}")]
     CannotIterateOver { typ: String, range: DocumentRange },
 
@@ -139,7 +136,6 @@ impl Ranged for TypeError {
                 expr_range: range, ..
             }
             | TypeError::ExpectedStringAttribute { range, .. }
-            | TypeError::CannotIterateEmptyArray { range, .. }
             | TypeError::CannotIterateOver { range, .. }
             | TypeError::ExpectedStringExpression { range, .. } => range,
             TypeError::DopError { err } => err.range(),

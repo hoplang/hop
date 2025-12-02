@@ -38,7 +38,7 @@ pub enum Type {
     Int,
     Float,
     TrustedHTML,
-    Array(Option<Box<Type>>),
+    Array(Box<Type>),
     Record {
         module: ModuleName,
         name: String,
@@ -80,14 +80,7 @@ impl Type {
             (Type::TrustedHTML, Type::TrustedHTML) => true,
 
             // Arrays are covariant in their element type
-            (Type::Array(sub_elem), Type::Array(super_elem)) => {
-                match (sub_elem, super_elem) {
-                    (Some(sub_type), Some(super_type)) => sub_type.is_subtype(super_type),
-                    (None, None) => true,
-                    (None, Some(_)) => true, // Empty array can be subtype of any array
-                    (Some(_), None) => false, // Typed array cannot be subtype of empty array
-                }
-            }
+            (Type::Array(sub_elem), Type::Array(super_elem)) => sub_elem.is_subtype(super_elem),
 
             // Record types must have the same module and name
             (
@@ -123,13 +116,10 @@ impl<'a> Type {
             Type::Int => BoxDoc::text("Int"),
             Type::Bool => BoxDoc::text("Bool"),
             Type::TrustedHTML => BoxDoc::text("TrustedHTML"),
-            Type::Array(elem_type) => match elem_type {
-                Some(elem) => BoxDoc::nil()
-                    .append(BoxDoc::text("Array["))
-                    .append(elem.to_doc())
-                    .append(BoxDoc::text("]")),
-                None => BoxDoc::text("Array"),
-            },
+            Type::Array(elem_type) => BoxDoc::nil()
+                .append(BoxDoc::text("Array["))
+                .append(elem_type.to_doc())
+                .append(BoxDoc::text("]")),
             Type::Record { module, name, .. } => BoxDoc::text(format!("{}::{}", module, name)),
         }
     }

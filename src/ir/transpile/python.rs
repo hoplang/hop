@@ -20,10 +20,9 @@ impl PythonTranspiler {
             Type::Float => BoxDoc::text("float"),
             Type::Int => BoxDoc::text("int"),
             Type::TrustedHTML => BoxDoc::text("TrustedHTML"),
-            Type::Array(Some(elem)) => BoxDoc::text("list[")
+            Type::Array(elem) => BoxDoc::text("list[")
                 .append(Self::get_python_type(elem))
                 .append(BoxDoc::text("]")),
-            Type::Array(None) => BoxDoc::text("list"),
             Type::Record { name, .. } => BoxDoc::text(name.clone()),
         }
     }
@@ -74,7 +73,7 @@ impl PythonTranspiler {
     fn type_contains_trusted_html(t: &Type) -> bool {
         match t {
             Type::TrustedHTML => true,
-            Type::Array(Some(elem)) => Self::type_contains_trusted_html(elem),
+            Type::Array(elem) => Self::type_contains_trusted_html(elem),
             _ => false,
         }
     }
@@ -407,7 +406,7 @@ impl ExpressionTranspiler for PythonTranspiler {
     fn transpile_array_literal<'a>(
         &self,
         elements: &'a [IrExpr],
-        _elem_type: &'a Option<Box<Type>>,
+        _elem_type: &'a Type,
     ) -> BoxDoc<'a> {
         BoxDoc::text("[")
             .append(BoxDoc::intersperse(
@@ -700,13 +699,10 @@ impl TypeTranspiler for PythonTranspiler {
         BoxDoc::text("int")
     }
 
-    fn transpile_array_type<'a>(&self, element_type: Option<&'a Type>) -> BoxDoc<'a> {
-        match element_type {
-            Some(elem) => BoxDoc::text("list[")
-                .append(self.transpile_type(elem))
-                .append(BoxDoc::text("]")),
-            None => BoxDoc::text("list"),
-        }
+    fn transpile_array_type<'a>(&self, element_type: &'a Type) -> BoxDoc<'a> {
+        BoxDoc::text("list[")
+            .append(self.transpile_type(element_type))
+            .append(BoxDoc::text("]"))
     }
 
     fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
@@ -857,7 +853,7 @@ mod tests {
     fn test_for_loop() {
         let entrypoints = vec![build_ir_auto(
             "TestMainComp",
-            vec![("items", Type::Array(Some(Box::new(Type::String))))],
+            vec![("items", Type::Array(Box::new(Type::String)))],
             |t| {
                 t.for_loop("item", t.var("items"), |t| {
                     t.write("<li>");

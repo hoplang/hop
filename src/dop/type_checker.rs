@@ -21,7 +21,7 @@ pub fn resolve_type(
         SyntacticType::TrustedHTML { .. } => Ok(Type::TrustedHTML),
         SyntacticType::Array { element, .. } => {
             let elem_type = resolve_type(element, type_env)?;
-            Ok(Type::Array(Some(Box::new(elem_type))))
+            Ok(Type::Array(Box::new(elem_type)))
         }
         SyntacticType::Named { name, range } => {
             let record_type = type_env
@@ -36,11 +36,15 @@ pub fn resolve_type(
 }
 
 /// Resolve a syntactic Expr to a semantic Expr.
+///
+/// The optional `expected_type` is used for bidirectional type checking, allowing
+/// empty array literals to infer their element type from context.
 pub fn typecheck_expr(
     syntactic_expr: &SyntacticExpr,
     env: &mut Environment<Type>,
     type_env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
+    expected_type: Option<&Type>,
 ) -> Result<Expr<()>, TypeError> {
     match syntactic_expr {
         SyntacticExpr::Var { value: name, .. } => {
@@ -84,7 +88,7 @@ pub fn typecheck_expr(
             annotation: range,
             ..
         } => {
-            let typed_base = typecheck_expr(base_expr, env, type_env, annotations)?;
+            let typed_base = typecheck_expr(base_expr, env, type_env, annotations, None)?;
             let base_type = typed_base.as_type();
 
             match &base_type {
@@ -122,8 +126,8 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
-            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations, None)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations, None)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -162,8 +166,8 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
-            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations, None)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations, None)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -202,8 +206,8 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
-            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations, None)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations, None)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -246,8 +250,8 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
-            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations, None)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations, None)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -290,8 +294,8 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
-            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations, None)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations, None)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -333,8 +337,8 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
-            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations, None)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations, None)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -376,8 +380,8 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
-            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations, None)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations, None)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -406,8 +410,8 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
-            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations, None)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations, None)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -435,8 +439,8 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
-            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations, None)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations, None)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -474,8 +478,8 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
-            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations, None)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations, None)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -508,8 +512,8 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
-            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations, None)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations, None)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -541,7 +545,7 @@ pub fn typecheck_expr(
             }
         }
         SyntacticExpr::Negation { operand, .. } => {
-            let typed_operand = typecheck_expr(operand, env, type_env, annotations)?;
+            let typed_operand = typecheck_expr(operand, env, type_env, annotations, None)?;
             let operand_type = typed_operand.as_type();
 
             // Negation only works on Bool expressions
@@ -556,25 +560,54 @@ pub fn typecheck_expr(
                 annotation: (),
             })
         }
-        SyntacticExpr::ArrayLiteral { elements, .. } => {
+        SyntacticExpr::ArrayLiteral {
+            elements,
+            annotation: range,
+        } => {
             if elements.is_empty() {
-                // Empty array has unknown element type
+                // Empty array: infer element type from expected type
+                let elem_type = match expected_type {
+                    Some(Type::Array(elem)) => (**elem).clone(),
+                    _ => {
+                        return Err(TypeError::CannotInferEmptyArrayType {
+                            range: range.clone(),
+                        });
+                    }
+                };
                 Ok(Expr::ArrayLiteral {
                     elements: vec![],
-                    kind: Type::Array(None),
+                    kind: Type::Array(Box::new(elem_type)),
                     annotation: (),
                 })
             } else {
+                // Determine expected element type from context if available
+                let expected_elem_type = match expected_type {
+                    Some(Type::Array(elem)) => Some(elem.as_ref()),
+                    _ => None,
+                };
+
                 let mut typed_elements = Vec::new();
 
                 // Check the type of the first element
-                let first_typed = typecheck_expr(&elements[0], env, type_env, annotations)?;
+                let first_typed = typecheck_expr(
+                    &elements[0],
+                    env,
+                    type_env,
+                    annotations,
+                    expected_elem_type,
+                )?;
                 let first_type = first_typed.as_type().clone();
                 typed_elements.push(first_typed);
 
                 // Check that all elements have the same type
                 for element in elements.iter().skip(1) {
-                    let typed_element = typecheck_expr(element, env, type_env, annotations)?;
+                    let typed_element = typecheck_expr(
+                        element,
+                        env,
+                        type_env,
+                        annotations,
+                        expected_elem_type,
+                    )?;
                     let element_type = typed_element.as_type();
                     if *element_type != first_type {
                         return Err(TypeError::ArrayTypeMismatch {
@@ -588,7 +621,7 @@ pub fn typecheck_expr(
 
                 Ok(Expr::ArrayLiteral {
                     elements: typed_elements,
-                    kind: Type::Array(Some(Box::new(first_type))),
+                    kind: Type::Array(Box::new(first_type)),
                     annotation: (),
                 })
             }
@@ -641,8 +674,8 @@ pub fn typecheck_expr(
                     }
                 })?;
 
-                // Type check the field value
-                let typed_value = typecheck_expr(field_value, env, type_env, annotations)?;
+                // Type check the field value with expected type for bidirectional checking
+                let typed_value = typecheck_expr(field_value, env, type_env, annotations, Some(expected_type))?;
                 let actual_type = typed_value.as_type();
 
                 // Check that the types match
@@ -731,7 +764,7 @@ mod tests {
 
         let mut annotations = Vec::new();
 
-        let actual = match typecheck_expr(&expr, &mut env, &mut records, &mut annotations) {
+        let actual = match typecheck_expr(&expr, &mut env, &mut records, &mut annotations, None) {
             Ok(typed_expr) => typed_expr.as_type().to_string(),
             Err(e) => DocumentAnnotator::new()
                 .with_label("error")
@@ -1499,7 +1532,7 @@ mod tests {
 
         let mut annotations = Vec::new();
 
-        let actual = match typecheck_expr(&expr, &mut env, &mut records, &mut annotations) {
+        let actual = match typecheck_expr(&expr, &mut env, &mut records, &mut annotations, None) {
             Ok(typed_expr) => typed_expr.as_type().to_string(),
             Err(e) => DocumentAnnotator::new()
                 .with_label("error")

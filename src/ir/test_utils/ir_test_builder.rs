@@ -235,11 +235,20 @@ impl IrTestBuilder {
         // Determine the array element type from the first element
         let element_type = elements
             .first()
-            .map(|first| Box::new(first.as_type().clone()));
+            .map(|first| Box::new(first.as_type().clone()))
+            .expect("Cannot create empty array literal in test builder - use typed_array for empty arrays");
 
         Expr::ArrayLiteral {
             elements,
             kind: Type::Array(element_type),
+            annotation: self.next_expr_id(),
+        }
+    }
+
+    pub fn typed_array(&self, element_type: Type, elements: Vec<IrExpr>) -> IrExpr {
+        Expr::ArrayLiteral {
+            elements,
+            kind: Type::Array(Box::new(element_type)),
             annotation: self.next_expr_id(),
         }
     }
@@ -363,8 +372,7 @@ impl IrTestBuilder {
     {
         // Extract element type from array
         let element_type = match array.as_type() {
-            Type::Array(Some(elem_type)) => *elem_type.clone(),
-            Type::Array(None) => panic!("Cannot iterate over array with unknown element type"),
+            Type::Array(elem_type) => (**elem_type).clone(),
             _ => panic!("Cannot iterate over non-array type"),
         };
 
@@ -512,8 +520,7 @@ impl IrAutoBuilder {
     {
         // Extract element type from array
         let element_type = match array.as_type() {
-            Type::Array(Some(elem_type)) => *elem_type.clone(),
-            Type::Array(None) => panic!("Cannot iterate over array with unknown element type"),
+            Type::Array(elem_type) => (**elem_type).clone(),
             _ => panic!("Cannot iterate over non-array type"),
         };
 
@@ -595,6 +602,10 @@ impl IrAutoBuilder {
 
     pub fn array(&self, elements: Vec<IrExpr>) -> IrExpr {
         self.inner.array(elements)
+    }
+
+    pub fn typed_array(&self, element_type: Type, elements: Vec<IrExpr>) -> IrExpr {
+        self.inner.typed_array(element_type, elements)
     }
 
     pub fn record(&self, record_name: &str, fields: Vec<(&str, IrExpr)>) -> IrExpr {

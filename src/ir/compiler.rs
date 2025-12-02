@@ -690,7 +690,7 @@ mod tests {
         check(
             build_inlined_auto(
                 "MainComp",
-                vec![("items", Type::Array(Some(Box::new(Type::String))))],
+                vec![("items", Type::Array(Box::new(Type::String)))],
                 |t| {
                     t.ul(vec![], |t| {
                         t.for_node("item", t.var_expr("items"), |t| {

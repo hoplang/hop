@@ -109,7 +109,8 @@ impl InlinedTestBuilder {
     pub fn array_expr(&self, elements: Vec<SimpleExpr>) -> SimpleExpr {
         let element_type = elements
             .first()
-            .map(|first| Box::new(first.as_type().clone()));
+            .map(|first| Box::new(first.as_type().clone()))
+            .expect("Cannot create empty array literal in test builder");
 
         SimpleExpr::ArrayLiteral {
             elements,
@@ -143,8 +144,7 @@ impl InlinedTestBuilder {
         F: FnOnce(&Self) -> Vec<InlinedNode>,
     {
         let element_type = match array.as_type() {
-            Type::Array(Some(elem_type)) => *elem_type.clone(),
-            Type::Array(None) => panic!("Cannot iterate over array with unknown element type"),
+            Type::Array(elem_type) => (**elem_type).clone(),
             _ => panic!("Cannot iterate over non-array type"),
         };
 
@@ -312,8 +312,7 @@ impl InlinedAutoBuilder {
     {
         // Extract element type from array
         let element_type = match array.as_type() {
-            Type::Array(Some(elem_type)) => *elem_type.clone(),
-            Type::Array(None) => panic!("Cannot iterate over array with unknown element type"),
+            Type::Array(elem_type) => (**elem_type).clone(),
             _ => panic!("Cannot iterate over non-array type"),
         };
 

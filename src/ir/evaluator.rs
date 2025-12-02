@@ -585,7 +585,7 @@ mod tests {
         check(
             build_ir_auto(
                 "Test",
-                vec![("items", Type::Array(Some(Box::new(Type::String))))],
+                vec![("items", Type::Array(Box::new(Type::String)))],
                 |t| {
                     t.for_loop("item", t.var("items"), |t| {
                         t.write("<li>");

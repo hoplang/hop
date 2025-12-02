@@ -390,7 +390,7 @@ fn typecheck_node(
                 .collect();
 
             let typed_condition = errors.ok_or_add(
-                dop::typecheck_expr(condition, env, records, annotations).map_err(Into::into),
+                dop::typecheck_expr(condition, env, records, annotations, None).map_err(Into::into),
             )?;
 
             let condition_type = typed_condition.as_type();
@@ -416,17 +416,11 @@ fn typecheck_node(
             range,
         } => {
             let typed_array = errors.ok_or_add(
-                dop::typecheck_expr(array_expr, env, records, annotations).map_err(Into::into),
+                dop::typecheck_expr(array_expr, env, records, annotations, None).map_err(Into::into),
             )?;
             let array_type = typed_array.as_type();
             let element_type = match &array_type {
-                Type::Array(Some(inner)) => *inner.clone(),
-                Type::Array(None) => {
-                    errors.push(TypeError::CannotIterateEmptyArray {
-                        range: array_expr.range().clone(),
-                    });
-                    return None;
-                }
+                Type::Array(inner) => (**inner).clone(),
                 _ => {
                     errors.push(TypeError::CannotIterateOver {
                         typ: array_type.to_string(),
@@ -556,7 +550,7 @@ fn typecheck_node(
                         };
 
                         let typed_expr =
-                            match dop::typecheck_expr(&arg.var_expr, env, records, annotations) {
+                            match dop::typecheck_expr(&arg.var_expr, env, records, annotations, Some(param_type)) {
                                 Ok(t) => t,
                                 Err(err) => {
                                     errors.push(err.into());
@@ -630,7 +624,7 @@ fn typecheck_node(
 
         Node::TextExpression { expression, range } => {
             if let Some(typed_expr) = errors.ok_or_add(
-                dop::typecheck_expr(expression, env, records, annotations).map_err(Into::into),
+                dop::typecheck_expr(expression, env, records, annotations, None).map_err(Into::into),
             ) {
                 let expr_type = typed_expr.as_type();
                 if !expr_type.is_subtype(&Type::String) && !expr_type.is_subtype(&Type::TrustedHTML)
@@ -692,7 +686,7 @@ fn typecheck_attributes(
                 let mut typed_exprs = Vec::new();
                 for expr in exprs {
                     if let Some(typed_expr) = errors.ok_or_add(
-                        dop::typecheck_expr(expr, env, records, annotations).map_err(Into::into),
+                        dop::typecheck_expr(expr, env, records, annotations, None).map_err(Into::into),
                     ) {
                         // Check that HTML attributes are strings
                         let expr_type = typed_expr.as_type();
@@ -4114,11 +4108,59 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                error: Cannot iterate over an empty array with unknown element type
+                error: Cannot infer type of empty array
                   --> main.hop (line 2, col 16)
                 1 | <Main>
                 2 |     <for {x in []}>
                   |                ^^
+            "#]],
+        );
+    }
+
+    // Empty array literals can infer their type from component arguments
+    #[test]
+    fn test_empty_array_infers_type_from_component_argument() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <List {items: Array[String]}>
+                    <for {item in items}>
+                        <li>{item}</li>
+                    </for>
+                </List>
+                <Main>
+                    <List {items: []}/>
+                </Main>
+            "#},
+            expect![[r#"
+                items: Array[String]
+                  --> main.hop (line 1, col 8)
+                1 | <List {items: Array[String]}>
+                  |        ^^^^^
+
+                items: Array[String]
+                  --> main.hop (line 2, col 19)
+                1 | <List {items: Array[String]}>
+                2 |     <for {item in items}>
+                  |                   ^^^^^
+
+                item: String
+                  --> main.hop (line 2, col 11)
+                1 | <List {items: Array[String]}>
+                2 |     <for {item in items}>
+                  |           ^^^^
+
+                item: String
+                  --> main.hop (line 3, col 14)
+                2 |     <for {item in items}>
+                3 |         <li>{item}</li>
+                  |              ^^^^
+
+                items: Array[String]
+                  --> main.hop (line 7, col 19)
+                6 | <Main>
+                7 |     <List {items: []}/>
+                  |                   ^^
             "#]],
         );
     }

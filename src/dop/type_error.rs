@@ -34,6 +34,9 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
+    #[error("Cannot infer type of empty array")]
+    CannotInferEmptyArrayType { range: DocumentRange },
+
     #[error("Type {t} is not comparable")]
     TypeIsNotComparable { t: Type, range: DocumentRange },
 
@@ -108,6 +111,7 @@ impl Ranged for TypeError {
             | TypeError::CannotCompareTypes { range, .. }
             | TypeError::NegationRequiresBoolean { range, .. }
             | TypeError::ArrayTypeMismatch { range, .. }
+            | TypeError::CannotInferEmptyArrayType { range, .. }
             | TypeError::TypeIsNotComparable { range, .. }
             | TypeError::LogicalAndRequiresBoolean { range, .. }
             | TypeError::LogicalOrRequiresBoolean { range, .. }

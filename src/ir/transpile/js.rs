@@ -55,7 +55,7 @@ impl JsTranspiler {
     fn type_contains_trusted_html(t: &Type) -> bool {
         match t {
             Type::TrustedHTML => true,
-            Type::Array(Some(elem)) => Self::type_contains_trusted_html(elem),
+            Type::Array(elem) => Self::type_contains_trusted_html(elem),
             _ => false,
         }
     }
@@ -391,7 +391,7 @@ impl ExpressionTranspiler for JsTranspiler {
     fn transpile_array_literal<'a>(
         &self,
         elements: &'a [IrExpr],
-        _elem_type: &'a Option<Box<Type>>,
+        _elem_type: &'a Type,
     ) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("["))
@@ -708,11 +708,8 @@ impl TypeTranspiler for JsTranspiler {
         BoxDoc::text("number")
     }
 
-    fn transpile_array_type<'a>(&self, element_type: Option<&'a Type>) -> BoxDoc<'a> {
-        match element_type {
-            Some(elem) => self.transpile_type(elem).append(BoxDoc::text("[]")),
-            None => BoxDoc::text("unknown[]"),
-        }
+    fn transpile_array_type<'a>(&self, element_type: &'a Type) -> BoxDoc<'a> {
+        self.transpile_type(element_type).append(BoxDoc::text("[]"))
     }
 
     fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
@@ -951,7 +948,7 @@ mod tests {
     fn test_for_loop_with_array() {
         let entrypoints = vec![build_ir_auto(
             "ListItems",
-            vec![("items", Type::Array(Some(Box::new(Type::String))))],
+            vec![("items", Type::Array(Box::new(Type::String)))],
             |t| {
                 t.write("<ul>\n");
                 t.for_loop("item", t.var("items"), |t| {

@@ -57,7 +57,7 @@ impl GoTranspiler {
     fn type_contains_trusted_html(t: &Type) -> bool {
         match t {
             Type::TrustedHTML => true,
-            Type::Array(Some(elem)) => Self::type_contains_trusted_html(elem),
+            Type::Array(elem) => Self::type_contains_trusted_html(elem),
             _ => false,
         }
     }
@@ -427,12 +427,9 @@ impl ExpressionTranspiler for GoTranspiler {
     fn transpile_array_literal<'a>(
         &self,
         elements: &'a [IrExpr],
-        elem_type: &'a Option<Box<Type>>,
+        elem_type: &'a Type,
     ) -> BoxDoc<'a> {
-        let type_part = match elem_type.as_ref() {
-            Some(inner_type) => BoxDoc::text("[]").append(self.transpile_type(inner_type)),
-            _ => BoxDoc::text("[]any"),
-        };
+        let type_part = BoxDoc::text("[]").append(self.transpile_type(elem_type));
 
         type_part
             .append(BoxDoc::text("{"))
@@ -734,11 +731,8 @@ impl TypeTranspiler for GoTranspiler {
         BoxDoc::text("int")
     }
 
-    fn transpile_array_type<'a>(&self, element_type: Option<&'a Type>) -> BoxDoc<'a> {
-        match element_type {
-            Some(elem) => BoxDoc::text("[]").append(self.transpile_type(elem)),
-            None => BoxDoc::text("[]any"),
-        }
+    fn transpile_array_type<'a>(&self, element_type: &'a Type) -> BoxDoc<'a> {
+        BoxDoc::text("[]").append(self.transpile_type(element_type))
     }
 
     fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
@@ -861,10 +855,10 @@ mod tests {
     #[test]
     fn test_json_encode_empty_array_literal() {
         let entrypoints = vec![build_ir_auto("TestMainComp", vec![], |t| {
-            t.write_expr(t.json_encode(t.array(vec![])), false);
+            t.write_expr(t.json_encode(t.typed_array(Type::String, vec![])), false);
         })];
 
-        // In Go, []any{} is the correct way to declare an empty slice.
+        // In Go, []string{} is the correct way to declare an empty string slice.
         check(
             &entrypoints,
             expect![[r#"
@@ -888,7 +882,7 @@ mod tests {
 
                 func TestMainComp() string {
                 	var output strings.Builder
-                	output.WriteString(mustJSONMarshal([]any{}))
+                	output.WriteString(mustJSONMarshal([]string{}))
                 	return output.String()
                 }
             "#]],
@@ -944,7 +938,7 @@ mod tests {
     fn test_for_loop() {
         let entrypoints = vec![build_ir_auto(
             "TestMainComp",
-            vec![("items", Type::Array(Some(Box::new(Type::String))))],
+            vec![("items", Type::Array(Box::new(Type::String)))],
             |t| {
                 t.for_loop("item", t.var("items"), |t| {
                     t.write("<li>");
