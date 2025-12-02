@@ -1,14 +1,14 @@
 use super::Type;
-use super::expr::SimpleExpr;
 use super::syntactic_expr::{BinaryOp, SyntacticExpr};
 use super::syntactic_type::SyntacticType;
 use super::r#type::NumericType;
 use super::type_error::TypeError;
 use crate::document::document_cursor::Ranged as _;
+use crate::dop::Expr;
 use crate::hop::environment::Environment;
 use crate::hop::type_checker::TypeAnnotation;
 
-/// Resolve a syntactic type to a semantic Type.
+/// Resolve a syntactic Type to a semantic Type.
 pub fn resolve_type(
     syntactic_type: &SyntacticType,
     type_env: &mut Environment<Type>,
@@ -38,21 +38,22 @@ pub fn resolve_type(
     }
 }
 
+/// Resolve a syntactic Expr to a semantic Expr.
 pub fn typecheck_expr(
-    expr: &SyntacticExpr,
+    syntactic_expr: &SyntacticExpr,
     env: &mut Environment<Type>,
     type_env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
-) -> Result<SimpleExpr, TypeError> {
-    match expr {
+) -> Result<Expr<()>, TypeError> {
+    match syntactic_expr {
         SyntacticExpr::Var { value: name, .. } => {
             if let Some(var_type) = env.lookup(name.as_str()) {
                 annotations.push(TypeAnnotation {
-                    range: expr.range().clone(),
+                    range: syntactic_expr.range().clone(),
                     typ: var_type.clone(),
                     name: name.to_string(),
                 });
-                Ok(SimpleExpr::Var {
+                Ok(Expr::Var {
                     value: name.clone(),
                     kind: var_type.clone(),
                     annotation: (),
@@ -60,23 +61,23 @@ pub fn typecheck_expr(
             } else {
                 Err(TypeError::UndefinedVariable {
                     name: name.as_str().to_string(),
-                    range: expr.range().clone(),
+                    range: syntactic_expr.range().clone(),
                 })
             }
         }
-        SyntacticExpr::BooleanLiteral { value, .. } => Ok(SimpleExpr::BooleanLiteral {
+        SyntacticExpr::BooleanLiteral { value, .. } => Ok(Expr::BooleanLiteral {
             value: *value,
             annotation: (),
         }),
-        SyntacticExpr::StringLiteral { value, .. } => Ok(SimpleExpr::StringLiteral {
+        SyntacticExpr::StringLiteral { value, .. } => Ok(Expr::StringLiteral {
             value: value.clone(),
             annotation: (),
         }),
-        SyntacticExpr::IntLiteral { value, .. } => Ok(SimpleExpr::IntLiteral {
+        SyntacticExpr::IntLiteral { value, .. } => Ok(Expr::IntLiteral {
             value: *value,
             annotation: (),
         }),
-        SyntacticExpr::FloatLiteral { value, .. } => Ok(SimpleExpr::FloatLiteral {
+        SyntacticExpr::FloatLiteral { value, .. } => Ok(Expr::FloatLiteral {
             value: *value,
             annotation: (),
         }),
@@ -98,7 +99,7 @@ pub fn typecheck_expr(
                     if let Some((_, field_type)) =
                         fields.iter().find(|(f, _)| f.as_str() == field.as_str())
                     {
-                        Ok(SimpleExpr::FieldAccess {
+                        Ok(Expr::FieldAccess {
                             kind: field_type.clone(),
                             record: Box::new(typed_base),
                             field: field.clone(),
@@ -147,11 +148,11 @@ pub fn typecheck_expr(
                 return Err(TypeError::CannotCompareTypes {
                     left: left_type.to_string(),
                     right: right_type.to_string(),
-                    range: expr.range().clone(),
+                    range: syntactic_expr.range().clone(),
                 });
             }
 
-            Ok(SimpleExpr::Equals {
+            Ok(Expr::Equals {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -187,11 +188,11 @@ pub fn typecheck_expr(
                 return Err(TypeError::CannotCompareTypes {
                     left: left_type.to_string(),
                     right: right_type.to_string(),
-                    range: expr.range().clone(),
+                    range: syntactic_expr.range().clone(),
                 });
             }
 
-            Ok(SimpleExpr::NotEquals {
+            Ok(Expr::NotEquals {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -230,11 +231,11 @@ pub fn typecheck_expr(
                 return Err(TypeError::CannotCompareTypes {
                     left: left_type.to_string(),
                     right: right_type.to_string(),
-                    range: expr.range().clone(),
+                    range: syntactic_expr.range().clone(),
                 });
             }
 
-            Ok(SimpleExpr::LessThan {
+            Ok(Expr::LessThan {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -274,11 +275,11 @@ pub fn typecheck_expr(
                 return Err(TypeError::CannotCompareTypes {
                     left: left_type.to_string(),
                     right: right_type.to_string(),
-                    range: expr.range().clone(),
+                    range: syntactic_expr.range().clone(),
                 });
             }
 
-            Ok(SimpleExpr::GreaterThan {
+            Ok(Expr::GreaterThan {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -318,11 +319,11 @@ pub fn typecheck_expr(
                 return Err(TypeError::CannotCompareTypes {
                     left: left_type.to_string(),
                     right: right_type.to_string(),
-                    range: expr.range().clone(),
+                    range: syntactic_expr.range().clone(),
                 });
             }
 
-            Ok(SimpleExpr::LessThanOrEqual {
+            Ok(Expr::LessThanOrEqual {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -361,11 +362,11 @@ pub fn typecheck_expr(
                 return Err(TypeError::CannotCompareTypes {
                     left: left_type.to_string(),
                     right: right_type.to_string(),
-                    range: expr.range().clone(),
+                    range: syntactic_expr.range().clone(),
                 });
             }
 
-            Ok(SimpleExpr::GreaterThanOrEqual {
+            Ok(Expr::GreaterThanOrEqual {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -396,7 +397,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(SimpleExpr::LogicalAnd {
+            Ok(Expr::BooleanLogicalAnd {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 annotation: (),
@@ -413,7 +414,6 @@ pub fn typecheck_expr(
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            // LogicalOr only works with Bool expressions
             if !left_type.is_subtype(&Type::Bool) {
                 return Err(TypeError::LogicalOrRequiresBoolean {
                     range: left.range().clone(),
@@ -426,7 +426,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(SimpleExpr::LogicalOr {
+            Ok(Expr::BooleanLogicalOr {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 annotation: (),
@@ -443,24 +443,19 @@ pub fn typecheck_expr(
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            // Plus operator works for:
-            // 1. String concatenation (String + String)
-            // 2. Integer addition (Int + Int)
-            // 3. Float addition (Float + Float)
-
             match (left_type, right_type) {
-                (Type::String, Type::String) => Ok(SimpleExpr::StringConcat {
+                (Type::String, Type::String) => Ok(Expr::StringConcat {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     annotation: (),
                 }),
-                (Type::Int, Type::Int) => Ok(SimpleExpr::NumericAdd {
+                (Type::Int, Type::Int) => Ok(Expr::NumericAdd {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Int,
                     annotation: (),
                 }),
-                (Type::Float, Type::Float) => Ok(SimpleExpr::NumericAdd {
+                (Type::Float, Type::Float) => Ok(Expr::NumericAdd {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Float,
@@ -487,18 +482,14 @@ pub fn typecheck_expr(
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            // Minus operator works for:
-            // 1. Integer subtraction (Int - Int)
-            // 2. Float subtraction (Float - Float)
-
             match (left_type, right_type) {
-                (Type::Int, Type::Int) => Ok(SimpleExpr::NumericSubtract {
+                (Type::Int, Type::Int) => Ok(Expr::NumericSubtract {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Int,
                     annotation: (),
                 }),
-                (Type::Float, Type::Float) => Ok(SimpleExpr::NumericSubtract {
+                (Type::Float, Type::Float) => Ok(Expr::NumericSubtract {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Float,
@@ -530,13 +521,13 @@ pub fn typecheck_expr(
             // 2. Float multiplication (Float * Float)
 
             match (left_type, right_type) {
-                (Type::Int, Type::Int) => Ok(SimpleExpr::NumericMultiply {
+                (Type::Int, Type::Int) => Ok(Expr::NumericMultiply {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Int,
                     annotation: (),
                 }),
-                (Type::Float, Type::Float) => Ok(SimpleExpr::NumericMultiply {
+                (Type::Float, Type::Float) => Ok(Expr::NumericMultiply {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Float,
@@ -563,8 +554,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            // The result of ! is always boolean
-            Ok(SimpleExpr::Negation {
+            Ok(Expr::BooleanNegation {
                 operand: Box::new(typed_operand),
                 annotation: (),
             })
@@ -572,7 +562,7 @@ pub fn typecheck_expr(
         SyntacticExpr::ArrayLiteral { elements, .. } => {
             if elements.is_empty() {
                 // Empty array has unknown element type
-                Ok(SimpleExpr::ArrayLiteral {
+                Ok(Expr::ArrayLiteral {
                     elements: vec![],
                     kind: Type::Array(None),
                     annotation: (),
@@ -599,7 +589,7 @@ pub fn typecheck_expr(
                     typed_elements.push(typed_element);
                 }
 
-                Ok(SimpleExpr::ArrayLiteral {
+                Ok(Expr::ArrayLiteral {
                     elements: typed_elements,
                     kind: Type::Array(Some(Box::new(first_type))),
                     annotation: (),
@@ -659,7 +649,7 @@ pub fn typecheck_expr(
                 let actual_type = typed_value.as_type();
 
                 // Check that the types match
-                if !actual_type.is_subtype(&expected_type) {
+                if !actual_type.is_subtype(expected_type) {
                     return Err(TypeError::RecordInstantiationFieldTypeMismatch {
                         field_name: field_name_str.to_string(),
                         expected: expected_type.to_string(),
@@ -683,7 +673,7 @@ pub fn typecheck_expr(
                 }
             }
 
-            Ok(SimpleExpr::RecordInstantiation {
+            Ok(Expr::RecordInstantiation {
                 record_name: record_name.clone(),
                 fields: typed_fields,
                 kind: record_type,

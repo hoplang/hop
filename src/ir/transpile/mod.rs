@@ -102,11 +102,7 @@ pub trait TypeTranspiler {
 /// Expression transpilation trait using pretty-printing
 pub trait ExpressionTranspiler {
     fn transpile_var<'a>(&self, name: &'a str) -> BoxDoc<'a>;
-    fn transpile_field_access<'a>(
-        &self,
-        object: &'a IrExpr,
-        field: &'a FieldName,
-    ) -> BoxDoc<'a>;
+    fn transpile_field_access<'a>(&self, object: &'a IrExpr, field: &'a FieldName) -> BoxDoc<'a>;
     fn transpile_string_literal<'a>(&self, value: &'a str) -> BoxDoc<'a>;
     fn transpile_boolean_literal<'a>(&self, value: bool) -> BoxDoc<'a>;
     fn transpile_float_literal<'a>(&self, value: f64) -> BoxDoc<'a>;
@@ -191,7 +187,7 @@ pub trait ExpressionTranspiler {
             IrExpr::JsonEncode { value, .. } => self.transpile_json_encode(value),
             IrExpr::EnvLookup { key, .. } => self.transpile_env_lookup(key),
             IrExpr::StringConcat { left, right, .. } => self.transpile_string_concat(left, right),
-            IrExpr::Negation { operand, .. } => self.transpile_not(operand),
+            IrExpr::BooleanNegation { operand, .. } => self.transpile_not(operand),
             IrExpr::Equals {
                 left,
                 right,
@@ -250,8 +246,10 @@ pub trait ExpressionTranspiler {
                 ComparableType::Int => self.transpile_int_greater_than_or_equal(left, right),
                 ComparableType::Float => self.transpile_float_greater_than_or_equal(left, right),
             },
-            IrExpr::LogicalAnd { left, right, .. } => self.transpile_logical_and(left, right),
-            IrExpr::LogicalOr { left, right, .. } => self.transpile_logical_or(left, right),
+            IrExpr::BooleanLogicalAnd { left, right, .. } => {
+                self.transpile_logical_and(left, right)
+            }
+            IrExpr::BooleanLogicalOr { left, right, .. } => self.transpile_logical_or(left, right),
             IrExpr::NumericAdd {
                 left,
                 right,

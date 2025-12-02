@@ -140,10 +140,10 @@ impl AlphaRenamingPass {
                 kind,
                 annotation,
             },
-            Expr::Negation {
+            Expr::BooleanNegation {
                 operand,
                 annotation,
-            } => Expr::Negation {
+            } => Expr::BooleanNegation {
                 operand: Box::new(self.rename_expr(*operand)),
                 annotation,
             },
@@ -258,20 +258,20 @@ impl AlphaRenamingPass {
             Expr::BooleanLiteral { .. } => expr,
             Expr::FloatLiteral { .. } => expr,
             Expr::IntLiteral { .. } => expr,
-            Expr::LogicalAnd {
+            Expr::BooleanLogicalAnd {
                 left,
                 right,
                 annotation,
-            } => Expr::LogicalAnd {
+            } => Expr::BooleanLogicalAnd {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 annotation,
             },
-            Expr::LogicalOr {
+            Expr::BooleanLogicalOr {
                 left,
                 right,
                 annotation,
-            } => Expr::LogicalOr {
+            } => Expr::BooleanLogicalOr {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 annotation,

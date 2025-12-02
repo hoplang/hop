@@ -225,7 +225,7 @@ impl IrTestBuilder {
     }
 
     pub fn not(&self, operand: IrExpr) -> IrExpr {
-        Expr::Negation {
+        Expr::BooleanNegation {
             operand: Box::new(operand),
             annotation: self.next_expr_id(),
         }

@@ -344,7 +344,7 @@ impl IrExpr {
                     value.traverse(f);
                 }
             }
-            Expr::Negation { operand, .. } => {
+            Expr::BooleanNegation { operand, .. } => {
                 operand.traverse(f);
             }
             Expr::JsonEncode { value, .. } => {
@@ -363,8 +363,8 @@ impl IrExpr {
             | Expr::NumericAdd { left, right, .. }
             | Expr::NumericSubtract { left, right, .. }
             | Expr::NumericMultiply { left, right, .. }
-            | Expr::LogicalAnd { left, right, .. }
-            | Expr::LogicalOr { left, right, .. } => {
+            | Expr::BooleanLogicalAnd { left, right, .. }
+            | Expr::BooleanLogicalOr { left, right, .. } => {
                 left.traverse(f);
                 right.traverse(f);
             }
@@ -396,7 +396,7 @@ impl IrExpr {
                     value.traverse_mut(f);
                 }
             }
-            Expr::Negation { operand, .. } => {
+            Expr::BooleanNegation { operand, .. } => {
                 operand.traverse_mut(f);
             }
             Expr::JsonEncode { value, .. } => {
@@ -415,8 +415,8 @@ impl IrExpr {
             | Expr::GreaterThan { left, right, .. }
             | Expr::LessThanOrEqual { left, right, .. }
             | Expr::GreaterThanOrEqual { left, right, .. }
-            | Expr::LogicalAnd { left, right, .. }
-            | Expr::LogicalOr { left, right, .. } => {
+            | Expr::BooleanLogicalAnd { left, right, .. }
+            | Expr::BooleanLogicalOr { left, right, .. } => {
                 left.traverse_mut(f);
                 right.traverse_mut(f);
             }

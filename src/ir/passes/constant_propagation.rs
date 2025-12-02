@@ -41,7 +41,7 @@ impl Pass for ConstantPropagationPass {
                         IrExpr::StringLiteral { value, .. } => {
                             initial_constants.push((expr.id(), Const::String(value.clone())));
                         }
-                        IrExpr::Negation { operand, .. } => {
+                        IrExpr::BooleanNegation { operand, .. } => {
                             not_relations.push((operand.id(), expr.id()));
                         }
                         IrExpr::Equals { left, right, .. } => {

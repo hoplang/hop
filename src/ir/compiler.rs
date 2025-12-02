@@ -367,7 +367,7 @@ impl Compiler {
                 kind,
                 annotation: expr_id,
             },
-            SimpleExpr::Negation { operand, .. } => Expr::Negation {
+            SimpleExpr::BooleanNegation { operand, .. } => Expr::BooleanNegation {
                 operand: Box::new(self.compile_expr(*operand)),
                 annotation: expr_id,
             },
@@ -485,12 +485,12 @@ impl Compiler {
                 operand_types,
                 annotation: expr_id,
             },
-            Expr::LogicalAnd { left, right, .. } => Expr::LogicalAnd {
+            Expr::BooleanLogicalAnd { left, right, .. } => Expr::BooleanLogicalAnd {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 annotation: expr_id,
             },
-            Expr::LogicalOr { left, right, .. } => Expr::LogicalOr {
+            Expr::BooleanLogicalOr { left, right, .. } => Expr::BooleanLogicalOr {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 annotation: expr_id,

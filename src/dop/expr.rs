@@ -93,7 +93,21 @@ pub enum Expr<A> {
     },
 
     /// Boolean negation expression
-    Negation { operand: Box<Self>, annotation: A },
+    BooleanNegation { operand: Box<Self>, annotation: A },
+
+    /// Boolean logical AND expression
+    BooleanLogicalAnd {
+        left: Box<Self>,
+        right: Box<Self>,
+        annotation: A,
+    },
+
+    /// Boolean logical OR expression
+    BooleanLogicalOr {
+        left: Box<Self>,
+        right: Box<Self>,
+        annotation: A,
+    },
 
     /// Equals expression
     Equals {
@@ -142,20 +156,6 @@ pub enum Expr<A> {
         operand_types: ComparableType,
         annotation: A,
     },
-
-    /// Logical AND expression
-    LogicalAnd {
-        left: Box<Self>,
-        right: Box<Self>,
-        annotation: A,
-    },
-
-    /// Logical OR expression
-    LogicalOr {
-        left: Box<Self>,
-        right: Box<Self>,
-        annotation: A,
-    },
 }
 
 impl<A> Expr<A> {
@@ -187,15 +187,15 @@ impl<A> Expr<A> {
             },
 
             Expr::BooleanLiteral { .. }
-            | Expr::Negation { .. }
+            | Expr::BooleanNegation { .. }
             | Expr::Equals { .. }
             | Expr::NotEquals { .. }
             | Expr::LessThan { .. }
             | Expr::GreaterThan { .. }
             | Expr::LessThanOrEqual { .. }
             | Expr::GreaterThanOrEqual { .. }
-            | Expr::LogicalAnd { .. }
-            | Expr::LogicalOr { .. } => &BOOL_TYPE,
+            | Expr::BooleanLogicalAnd { .. }
+            | Expr::BooleanLogicalOr { .. } => &BOOL_TYPE,
         }
     }
 
@@ -215,15 +215,15 @@ impl<A> Expr<A> {
             | Expr::NumericAdd { annotation, .. }
             | Expr::NumericSubtract { annotation, .. }
             | Expr::NumericMultiply { annotation, .. }
-            | Expr::Negation { annotation, .. }
+            | Expr::BooleanNegation { annotation, .. }
             | Expr::Equals { annotation, .. }
             | Expr::NotEquals { annotation, .. }
             | Expr::LessThan { annotation, .. }
             | Expr::GreaterThan { annotation, .. }
             | Expr::LessThanOrEqual { annotation, .. }
             | Expr::GreaterThanOrEqual { annotation, .. }
-            | Expr::LogicalAnd { annotation, .. }
-            | Expr::LogicalOr { annotation, .. } => annotation,
+            | Expr::BooleanLogicalAnd { annotation, .. }
+            | Expr::BooleanLogicalOr { annotation, .. } => annotation,
         }
     }
 
@@ -321,7 +321,7 @@ impl<A> Expr<A> {
                 .append(BoxDoc::text(" * "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            Expr::Negation { operand, .. } => BoxDoc::nil()
+            Expr::BooleanNegation { operand, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::text("!"))
                 .append(operand.to_doc())
@@ -362,13 +362,13 @@ impl<A> Expr<A> {
                 .append(BoxDoc::text(" >= "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            Expr::LogicalAnd { left, right, .. } => BoxDoc::nil()
+            Expr::BooleanLogicalAnd { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" && "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            Expr::LogicalOr { left, right, .. } => BoxDoc::nil()
+            Expr::BooleanLogicalOr { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" || "))

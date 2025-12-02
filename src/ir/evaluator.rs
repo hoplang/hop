@@ -178,7 +178,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 _ => panic!("String concatenation requires two strings"),
             }
         }
-        IrExpr::Negation { operand, .. } => {
+        IrExpr::BooleanNegation { operand, .. } => {
             let val = evaluate_expr(operand, env)?;
             let bool_val = val.as_bool().unwrap_or(false);
             Ok(Value::Bool(!bool_val))
@@ -375,7 +375,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             Ok(Value::Bool(result))
         }
 
-        IrExpr::LogicalAnd { left, right, .. } => {
+        IrExpr::BooleanLogicalAnd { left, right, .. } => {
             let left_val = evaluate_expr(left, env)?;
             let right_val = evaluate_expr(right, env)?;
             let left_bool = left_val.as_bool().unwrap_or(false);
@@ -383,7 +383,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             Ok(Value::Bool(left_bool && right_bool))
         }
 
-        IrExpr::LogicalOr { left, right, .. } => {
+        IrExpr::BooleanLogicalOr { left, right, .. } => {
             let left_val = evaluate_expr(left, env)?;
             let right_val = evaluate_expr(right, env)?;
             let left_bool = left_val.as_bool().unwrap_or(false);
