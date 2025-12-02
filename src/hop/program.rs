@@ -1,8 +1,6 @@
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::SimpleTypedExpr;
 use crate::error_collector::ErrorCollector;
-use crate::hop::ast::Ast;
 use crate::hop::parse_error::ParseError;
 use crate::hop::parser::parse;
 use crate::hop::tokenizer::Tokenizer;
@@ -13,7 +11,7 @@ use crate::ir::orchestrator::orchestrate;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
-use super::ast::UntypedAst;
+use super::ast::{TypedAst, UntypedAst};
 use super::module_name::ModuleName;
 use super::node::Node;
 use super::type_checker::TypeChecker;
@@ -465,7 +463,7 @@ impl Program {
     }
 
     /// Get all typed modules for compilation
-    pub fn get_typed_modules(&self) -> &HashMap<ModuleName, Ast<SimpleTypedExpr>> {
+    pub fn get_typed_modules(&self) -> &HashMap<ModuleName, TypedAst> {
         &self.type_checker.typed_asts
     }
 }
@@ -1152,7 +1150,7 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                `user`: `User`
+                `user`: `main::User`
                   --> main.hop (line 2, col 8)
                 2 | <Main {user: User}>
                   |        ^^^^

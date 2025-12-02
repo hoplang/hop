@@ -1,17 +1,11 @@
 use crate::document::document_cursor::{DocumentRange, Ranged};
-use crate::dop::{self, Parameter, Type};
+use crate::dop::{self, Type};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
 pub enum TypeError {
     #[error("Component {tag_name} is not defined")]
     UndefinedComponent { tag_name: DocumentRange },
-
-    #[error("Type '{type_name}' is not defined")]
-    UndefinedType {
-        type_name: String,
-        range: DocumentRange,
-    },
 
     #[error("Module {module_name} does not declare a component named {component_name}")]
     UndeclaredComponent {
@@ -113,10 +107,10 @@ impl TypeError {
         }
     }
 
-    pub fn missing_arguments(params: &[Parameter], range: DocumentRange) -> Self {
+    pub fn missing_arguments(params: &[(String, crate::dop::Type)], range: DocumentRange) -> Self {
         let args = params
             .iter()
-            .map(|p| p.var_name.as_str())
+            .map(|(name, _)| name.as_str())
             .collect::<Vec<_>>()
             .join(", ");
         TypeError::MissingArguments { args, range }
@@ -127,7 +121,6 @@ impl Ranged for TypeError {
     fn range(&self) -> &DocumentRange {
         match self {
             TypeError::UndefinedComponent { tag_name: range }
-            | TypeError::UndefinedType { range, .. }
             | TypeError::UndeclaredComponent {
                 component_name: range,
                 ..

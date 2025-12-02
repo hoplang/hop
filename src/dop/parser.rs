@@ -3,9 +3,9 @@ use std::fmt::{self, Display};
 use std::iter::Peekable;
 
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _};
-use crate::dop::syntactic_expr::{BinaryOp, SyntacticExpr};
 use crate::dop::field_name::FieldName;
 use crate::dop::parse_error::ParseError;
+use crate::dop::syntactic_expr::{BinaryOp, SyntacticExpr};
 use crate::dop::syntactic_type::SyntacticType;
 use crate::dop::token::Token;
 use crate::dop::tokenizer::Tokenizer;
@@ -17,10 +17,10 @@ use super::typed_expr::SimpleTypedExpr;
 /// E.g. <my-comp {x: string, y: string}>
 ///                ^^^^^^^^^
 #[derive(Debug, Clone)]
-pub struct Parameter {
+pub struct Parameter<T = SyntacticType> {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
-    pub var_type: SyntacticType,
+    pub var_type: T,
 }
 
 impl Display for Parameter {
@@ -33,10 +33,10 @@ impl Display for Parameter {
 /// E.g. record Foo {bar: String, baz: Int}
 ///                  ^^^^^^^^^^^
 #[derive(Debug, Clone)]
-pub struct RecordField {
+pub struct RecordField<T = SyntacticType> {
     pub name: FieldName,
     pub name_range: DocumentRange,
-    pub field_type: SyntacticType,
+    pub field_type: T,
 }
 
 impl Display for RecordField {
@@ -48,9 +48,9 @@ impl Display for RecordField {
 /// A RecordDeclaration represents a full record type declaration.
 /// E.g. record User {name: String, age: Int}
 #[derive(Debug, Clone)]
-pub struct RecordDeclaration {
+pub struct RecordDeclaration<A = SyntacticType> {
     pub name: DocumentRange,
-    pub fields: Vec<RecordField>,
+    pub fields: Vec<RecordField<A>>,
 }
 
 impl Display for RecordDeclaration {

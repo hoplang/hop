@@ -1,6 +1,5 @@
 use super::Type;
 use super::syntactic_expr::{BinaryOp, SyntacticExpr};
-use super::parser::RecordDeclaration;
 use super::syntactic_type::SyntacticType;
 use super::r#type::NumericType;
 use super::type_error::TypeError;
@@ -8,28 +7,42 @@ use super::typed_expr::SimpleTypedExpr;
 use crate::document::document_cursor::Ranged as _;
 use crate::hop::environment::Environment;
 use crate::hop::type_checker::TypeAnnotation;
-use std::collections::HashMap;
 
-/// Convert a syntax type to a semantic Type.
-pub fn to_type(syntax_type: &SyntacticType) -> Type {
-    match syntax_type {
-        SyntacticType::String { .. } => Type::String,
-        SyntacticType::Bool { .. } => Type::Bool,
-        SyntacticType::Int { .. } => Type::Int,
-        SyntacticType::Float { .. } => Type::Float,
-        SyntacticType::TrustedHTML { .. } => Type::TrustedHTML,
+/// Resolve a syntactic type to a semantic Type.
+pub fn resolve_type(
+    syntactic_type: &SyntacticType,
+    type_env: &mut Environment<Type>,
+) -> Result<Type, TypeError> {
+    match syntactic_type {
+        SyntacticType::String { .. } => Ok(Type::String),
+        SyntacticType::Bool { .. } => Ok(Type::Bool),
+        SyntacticType::Int { .. } => Ok(Type::Int),
+        SyntacticType::Float { .. } => Ok(Type::Float),
+        SyntacticType::TrustedHTML { .. } => Ok(Type::TrustedHTML),
         SyntacticType::Array { element, .. } => {
-            Type::Array(element.as_ref().map(|e| Box::new(to_type(e))))
+            let elem_type = element
+                .as_ref()
+                .map(|e| resolve_type(e, type_env))
+                .transpose()?;
+            Ok(Type::Array(elem_type.map(Box::new)))
         }
-        SyntacticType::Named { name, .. } => Type::Named(name.clone()),
+        SyntacticType::Named { name, range } => {
+            let record_type = type_env
+                .lookup(name)
+                .ok_or_else(|| TypeError::UndefinedType {
+                    type_name: name.clone(),
+                    range: range.clone(),
+                })?;
+            Ok(record_type.clone())
+        }
     }
 }
 
-pub fn typecheck_expr<'a>(
+pub fn typecheck_expr(
     expr: &SyntacticExpr,
     env: &mut Environment<Type>,
+    type_env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
-    records: &HashMap<&'a str, &'a RecordDeclaration>,
 ) -> Result<SimpleTypedExpr, TypeError> {
     match expr {
         SyntacticExpr::Var { value: name, .. } => {
@@ -73,35 +86,29 @@ pub fn typecheck_expr<'a>(
             annotation: range,
             ..
         } => {
-            let typed_base = typecheck_expr(base_expr, env, annotations, records)?;
+            let typed_base = typecheck_expr(base_expr, env, type_env, annotations)?;
             let base_type = typed_base.as_type();
 
             match &base_type {
-                Type::Named(record_name) => {
-                    if let Some(record_decl) = records.get(record_name.as_str()) {
-                        if let Some(field_decl) = record_decl
-                            .fields
-                            .iter()
-                            .find(|f| f.name.as_str() == field.as_str())
-                        {
-                            Ok(SimpleTypedExpr::FieldAccess {
-                                kind: to_type(&field_decl.field_type),
-                                record: Box::new(typed_base),
-                                field: field.clone(),
-                                annotation: (),
-                            })
-                        } else {
-                            Err(TypeError::FieldNotFoundInRecord {
-                                field: field.to_string(),
-                                record_name: record_name.clone(),
-                                range: range.clone(),
-                            })
-                        }
+                Type::Record {
+                    name: record_name,
+                    fields,
+                    ..
+                } => {
+                    if let Some((_, field_type)) =
+                        fields.iter().find(|(f, _)| f.as_str() == field.as_str())
+                    {
+                        Ok(SimpleTypedExpr::FieldAccess {
+                            kind: field_type.clone(),
+                            record: Box::new(typed_base),
+                            field: field.clone(),
+                            annotation: (),
+                        })
                     } else {
-                        // Record not found - this should have been caught earlier, but handle gracefully
-                        Err(TypeError::CannotUseAsRecord {
-                            typ: base_type.to_string(),
-                            range: base_expr.range().clone(),
+                        Err(TypeError::FieldNotFoundInRecord {
+                            field: field.to_string(),
+                            record_name: record_name.clone(),
+                            range: range.clone(),
                         })
                     }
                 }
@@ -117,8 +124,8 @@ pub fn typecheck_expr<'a>(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, annotations, records)?;
-            let typed_right = typecheck_expr(right, env, annotations, records)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -157,8 +164,8 @@ pub fn typecheck_expr<'a>(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, annotations, records)?;
-            let typed_right = typecheck_expr(right, env, annotations, records)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -197,8 +204,8 @@ pub fn typecheck_expr<'a>(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, annotations, records)?;
-            let typed_right = typecheck_expr(right, env, annotations, records)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -241,8 +248,8 @@ pub fn typecheck_expr<'a>(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, annotations, records)?;
-            let typed_right = typecheck_expr(right, env, annotations, records)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -285,8 +292,8 @@ pub fn typecheck_expr<'a>(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, annotations, records)?;
-            let typed_right = typecheck_expr(right, env, annotations, records)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -328,8 +335,8 @@ pub fn typecheck_expr<'a>(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, annotations, records)?;
-            let typed_right = typecheck_expr(right, env, annotations, records)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -371,8 +378,8 @@ pub fn typecheck_expr<'a>(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, annotations, records)?;
-            let typed_right = typecheck_expr(right, env, annotations, records)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -401,8 +408,8 @@ pub fn typecheck_expr<'a>(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, annotations, records)?;
-            let typed_right = typecheck_expr(right, env, annotations, records)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -431,8 +438,8 @@ pub fn typecheck_expr<'a>(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, annotations, records)?;
-            let typed_right = typecheck_expr(right, env, annotations, records)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -475,8 +482,8 @@ pub fn typecheck_expr<'a>(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, annotations, records)?;
-            let typed_right = typecheck_expr(right, env, annotations, records)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -513,8 +520,8 @@ pub fn typecheck_expr<'a>(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, annotations, records)?;
-            let typed_right = typecheck_expr(right, env, annotations, records)?;
+            let typed_left = typecheck_expr(left, env, type_env, annotations)?;
+            let typed_right = typecheck_expr(right, env, type_env, annotations)?;
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -546,7 +553,7 @@ pub fn typecheck_expr<'a>(
             }
         }
         SyntacticExpr::Negation { operand, .. } => {
-            let typed_operand = typecheck_expr(operand, env, annotations, records)?;
+            let typed_operand = typecheck_expr(operand, env, type_env, annotations)?;
             let operand_type = typed_operand.as_type();
 
             // Negation only works on Bool expressions
@@ -574,13 +581,13 @@ pub fn typecheck_expr<'a>(
                 let mut typed_elements = Vec::new();
 
                 // Check the type of the first element
-                let first_typed = typecheck_expr(&elements[0], env, annotations, records)?;
+                let first_typed = typecheck_expr(&elements[0], env, type_env, annotations)?;
                 let first_type = first_typed.as_type().clone();
                 typed_elements.push(first_typed);
 
                 // Check that all elements have the same type
                 for element in elements.iter().skip(1) {
-                    let typed_element = typecheck_expr(element, env, annotations, records)?;
+                    let typed_element = typecheck_expr(element, env, type_env, annotations)?;
                     let element_type = typed_element.as_type();
                     if *element_type != first_type {
                         return Err(TypeError::ArrayTypeMismatch {
@@ -605,19 +612,29 @@ pub fn typecheck_expr<'a>(
             annotation: range,
         } => {
             // Check if the record type is defined
-            let record_decl =
-                records
-                    .get(record_name.as_str())
-                    .ok_or_else(|| TypeError::UndefinedRecord {
+            let record_type = type_env
+                .lookup(record_name.as_str())
+                .ok_or_else(|| TypeError::UndefinedRecord {
+                    record_name: record_name.clone(),
+                    range: range.clone(),
+                })?
+                .clone();
+
+            // Extract fields from the record type
+            let record_fields = match &record_type {
+                Type::Record { fields, .. } => fields,
+                _ => {
+                    return Err(TypeError::UndefinedRecord {
                         record_name: record_name.clone(),
                         range: range.clone(),
-                    })?;
+                    });
+                }
+            };
 
-            // Build a map of expected fields from the record declaration
-            let expected_fields: HashMap<&str, Type> = record_decl
-                .fields
+            // Build a map of expected fields from the record type
+            let expected_fields: std::collections::HashMap<&str, Type> = record_fields
                 .iter()
-                .map(|f| (f.name.as_str(), to_type(&f.field_type)))
+                .map(|(name, typ)| (name.as_str(), typ.clone()))
                 .collect();
 
             // Check for unknown fields and type mismatches
@@ -630,7 +647,7 @@ pub fn typecheck_expr<'a>(
 
                 // Check if this field exists in the record
                 let expected_type = expected_fields.get(field_name_str).ok_or_else(|| {
-                    TypeError::UnknownRecordField {
+                    TypeError::RecordInstantiationUnknownRecordField {
                         field_name: field_name_str.to_string(),
                         record_name: record_name.clone(),
                         range: field_value.range().clone(),
@@ -638,12 +655,12 @@ pub fn typecheck_expr<'a>(
                 })?;
 
                 // Type check the field value
-                let typed_value = typecheck_expr(field_value, env, annotations, records)?;
+                let typed_value = typecheck_expr(field_value, env, type_env, annotations)?;
                 let actual_type = typed_value.as_type();
 
                 // Check that the types match
                 if !actual_type.is_subtype(&expected_type) {
-                    return Err(TypeError::RecordFieldTypeMismatch {
+                    return Err(TypeError::RecordInstantiationFieldTypeMismatch {
                         field_name: field_name_str.to_string(),
                         expected: expected_type.to_string(),
                         found: actual_type.to_string(),
@@ -658,7 +675,7 @@ pub fn typecheck_expr<'a>(
             // Check for missing fields
             for expected_field in expected_fields.keys() {
                 if !provided_fields.contains(expected_field) {
-                    return Err(TypeError::MissingRecordField {
+                    return Err(TypeError::RecordInstantiationMissingRecordField {
                         field_name: (*expected_field).to_string(),
                         record_name: record_name.clone(),
                         range: range.clone(),
@@ -669,7 +686,7 @@ pub fn typecheck_expr<'a>(
             Ok(SimpleTypedExpr::RecordInstantiation {
                 record_name: record_name.clone(),
                 fields: typed_fields,
-                kind: Type::Named(record_name.clone()),
+                kind: record_type,
                 annotation: (),
             })
         }
@@ -681,11 +698,33 @@ mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
     use crate::dop::{Parser, RecordDeclaration};
+    use crate::hop::module_name::ModuleName;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
+    /// Helper to resolve a RecordDeclaration<()> to RecordDeclaration<Type>
+    fn resolve_record(
+        record: &RecordDeclaration,
+        records: &mut Environment<Type>,
+    ) -> RecordDeclaration<Type> {
+        RecordDeclaration {
+            name: record.name.clone(),
+            fields: record
+                .fields
+                .iter()
+                .map(|f| super::super::parser::RecordField {
+                    name: f.name.clone(),
+                    name_range: f.name_range.clone(),
+                    field_type: resolve_type(&f.field_type, records)
+                        .expect("Test record field type should be valid"),
+                })
+                .collect(),
+        }
+    }
+
     fn check(env_str: &str, expr_str: &str, expected: Expect) {
         let mut env = Environment::new();
+        let mut records: Environment<Type> = Environment::new();
 
         if !env_str.is_empty() {
             let mut parser = Parser::from(env_str);
@@ -693,7 +732,10 @@ mod tests {
                 .parse_parameters()
                 .expect("Failed to parse environment");
             for param in params {
-                let _ = env.push(param.var_name.to_string(), to_type(&param.var_type));
+                // In tests without records, only primitive types are used
+                let typ = resolve_type(&param.var_type, &mut records)
+                    .expect("Test parameter type should be valid");
+                let _ = env.push(param.var_name.to_string(), typ);
             }
         }
 
@@ -702,8 +744,7 @@ mod tests {
 
         let mut annotations = Vec::new();
 
-        let records = HashMap::new();
-        let actual = match typecheck_expr(&expr, &mut env, &mut annotations, &records) {
+        let actual = match typecheck_expr(&expr, &mut env, &mut records, &mut annotations) {
             Ok(typed_expr) => typed_expr.as_type().to_string(),
             Err(e) => DocumentAnnotator::new()
                 .with_label("error")
@@ -817,7 +858,7 @@ mod tests {
             ],
             "config.users.profile.name",
             expect![[r#"
-                error: Array[UserInfo] can not be used as a record
+                error: Array[test::UserInfo] can not be used as a record
                 config.users.profile.name
                 ^^^^^^^^^^^^
             "#]],
@@ -831,7 +872,7 @@ mod tests {
             &["record User {name: String}"],
             "users.name",
             expect![[r#"
-                error: Array[User] can not be used as a record
+                error: Array[test::User] can not be used as a record
                 users.name
                 ^^^^^
             "#]],
@@ -1428,6 +1469,31 @@ mod tests {
 
     fn check_with_records(env_str: &str, records_str: &[&str], expr_str: &str, expected: Expect) {
         let mut env = Environment::new();
+        let mut records: Environment<Type> = Environment::new();
+        let test_module = ModuleName::new("test".to_string()).unwrap();
+
+        // First pass: parse untyped records
+        let mut untyped_records: Vec<(String, RecordDeclaration)> = Vec::new();
+        for record_str in records_str {
+            let mut parser = Parser::from(*record_str);
+            let record = parser.parse_record().expect("Failed to parse record");
+            untyped_records.push((record.name.to_string(), record));
+        }
+
+        // Second pass: resolve record field types and add to environment
+        for (name, record) in &untyped_records {
+            let typed_record = resolve_record(record, &mut records);
+            let record_type = Type::Record {
+                module: test_module.clone(),
+                name: name.clone(),
+                fields: typed_record
+                    .fields
+                    .iter()
+                    .map(|f| (f.name.clone(), f.field_type.clone()))
+                    .collect(),
+            };
+            let _ = records.push(name.clone(), record_type);
+        }
 
         if !env_str.is_empty() {
             let mut parser = Parser::from(env_str);
@@ -1435,28 +1501,18 @@ mod tests {
                 .parse_parameters()
                 .expect("Failed to parse environment");
             for param in params {
-                let _ = env.push(param.var_name.to_string(), to_type(&param.var_type));
+                let typ = resolve_type(&param.var_type, &mut records)
+                    .expect("Test parameter type should be valid");
+                let _ = env.push(param.var_name.to_string(), typ);
             }
         }
-
-        let mut record_declarations = Vec::new();
-        for record_str in records_str {
-            let mut parser = Parser::from(*record_str);
-            let record = parser.parse_record().expect("Failed to parse record");
-            record_declarations.push(record);
-        }
-
-        let records: HashMap<&str, &RecordDeclaration> = record_declarations
-            .iter()
-            .map(|r| (r.name.as_str(), r))
-            .collect();
 
         let mut parser = Parser::from(expr_str);
         let expr = parser.parse_expr().expect("Failed to parse expression");
 
         let mut annotations = Vec::new();
 
-        let actual = match typecheck_expr(&expr, &mut env, &mut annotations, &records) {
+        let actual = match typecheck_expr(&expr, &mut env, &mut records, &mut annotations) {
             Ok(typed_expr) => typed_expr.as_type().to_string(),
             Err(e) => DocumentAnnotator::new()
                 .with_label("error")
@@ -1474,7 +1530,7 @@ mod tests {
             "",
             &["record User {name: String, age: Int}"],
             r#"User(name: "John", age: 30)"#,
-            expect!["User"],
+            expect!["test::User"],
         );
     }
 
@@ -1484,7 +1540,7 @@ mod tests {
             "user_name: String, user_age: Int",
             &["record User {name: String, age: Int}"],
             "User(name: user_name, age: user_age)",
-            expect!["User"],
+            expect!["test::User"],
         );
     }
 
@@ -1509,7 +1565,7 @@ mod tests {
             &["record User {name: String, age: Int}"],
             r#"User(name: "John")"#,
             expect![[r#"
-                error: Missing field 'age' in record 'User'
+                error: Missing field 'age' in instantiation of record 'User'
                 User(name: "John")
                 ^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1523,7 +1579,7 @@ mod tests {
             &["record User {name: String}"],
             r#"User(name: "John", email: "john@example.com")"#,
             expect![[r#"
-                error: Unknown field 'email' in record 'User'
+                error: Unknown field 'email' in instantiation of record 'User'
                 User(name: "John", email: "john@example.com")
                                           ^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1553,7 +1609,7 @@ mod tests {
                 "record User {name: String, address: Address}",
             ],
             r#"User(name: "John", address: Address(city: "NYC"))"#,
-            expect!["User"],
+            expect!["test::User"],
         );
     }
 }

@@ -4,6 +4,7 @@ use super::{ExpressionTranspiler, RecordInfo, StatementTranspiler, Transpiler, T
 use crate::dop::field_name::FieldName;
 use crate::dop::r#type::Type;
 use crate::hop::component_name::ComponentName;
+use crate::hop::module_name::ModuleName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use std::collections::BTreeSet;
 
@@ -1222,7 +1223,11 @@ mod tests {
 
         let entrypoints = vec![build_ir_with_records(
             "UserProfile",
-            vec![("user", Type::Named("User".to_string()))],
+            vec![("user", Type::Record { module: ModuleName::new("test".to_string()).unwrap(), name: "User".to_string(), fields: vec![
+                (FieldName::new("name").unwrap(), Type::String),
+                (FieldName::new("age").unwrap(), Type::Int),
+                (FieldName::new("active").unwrap(), Type::Bool),
+            ] })],
             records_def,
             |t| {
                 t.write("<div>");

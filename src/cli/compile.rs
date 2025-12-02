@@ -1,5 +1,4 @@
 use crate::document::DocumentAnnotator;
-use crate::dop::to_type;
 use crate::filesystem::config::TargetConfig;
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::program::Program;
@@ -140,7 +139,7 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
                 .declaration
                 .fields
                 .iter()
-                .map(|f| (f.name.clone(), to_type(&f.field_type)))
+                .map(|f| (f.name.clone(), f.field_type.clone()))
                 .collect(),
         })
         .collect();

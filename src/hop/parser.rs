@@ -141,23 +141,25 @@ pub fn parse(
         if let Some(node) = parse_top_level_node(tree, children, errors) {
             match node {
                 TopLevelNode::Import(import) => {
-                    let component_name = import.component_attr.value.as_str();
-                    if imported_components.contains_key(component_name) {
-                        errors.push(ParseError::ComponentIsAlreadyDefined {
-                            component_name: import.component_attr.value.to_string_span(),
+                    let name = import.component_attr.value.as_str();
+                    if imported_components.contains_key(name) {
+                        errors.push(ParseError::TypeNameIsAlreadyDefined {
+                            name: import.component_attr.value.to_string_span(),
                             range: import.component_attr.value.clone(),
                         });
                     } else {
-                        imported_components
-                            .insert(component_name.to_string(), import.module_name.clone());
+                        imported_components.insert(name.to_string(), import.module_name.clone());
                     }
                     imports.push(import);
                 }
                 TopLevelNode::Record(record) => {
                     let name = record.name();
-                    if defined_records.contains(name) {
-                        errors.push(ParseError::RecordIsAlreadyDefined {
-                            record_name: record.declaration.name.to_string_span(),
+                    if defined_records.contains(name)
+                        || defined_components.contains(name)
+                        || imported_components.contains_key(name)
+                    {
+                        errors.push(ParseError::TypeNameIsAlreadyDefined {
+                            name: record.declaration.name.to_string_span(),
                             range: record.declaration.name.clone(),
                         });
                     } else {
@@ -167,9 +169,12 @@ pub fn parse(
                 }
                 TopLevelNode::ComponentDefinition(component) => {
                     let name = component.tag_name.as_str();
-                    if defined_components.contains(name) || imported_components.contains_key(name) {
-                        errors.push(ParseError::ComponentIsAlreadyDefined {
-                            component_name: component.tag_name.to_string_span(),
+                    if defined_components.contains(name)
+                        || imported_components.contains_key(name)
+                        || defined_records.contains(name)
+                    {
+                        errors.push(ParseError::TypeNameIsAlreadyDefined {
+                            name: component.tag_name.to_string_span(),
                             range: component.tag_name.clone(),
                         });
                     } else {
@@ -1233,7 +1238,7 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                error: Component Foo is already defined
+                error: Foo is already defined
                 1 | import Foo from "@/other"
                 2 | import Foo from "@/other"
                   |        ^^^
@@ -1256,12 +1261,12 @@ mod tests {
                 </Foo>
             "#},
             expect![[r#"
-                error: Component Foo is already defined
+                error: Foo is already defined
                 3 | 
                 4 | <Foo>
                   |  ^^^
 
-                error: Component Foo is already defined
+                error: Foo is already defined
                 6 | 
                 7 | <Foo>
                   |  ^^^
@@ -1285,10 +1290,52 @@ mod tests {
                 </Bar>
             "#},
             expect![[r#"
-                error: Component Foo is already defined
+                error: Foo is already defined
                 2 | 
                 3 | <Foo>
                   |  ^^^
+            "#]],
+        );
+    }
+
+    // When a component is defined with the same name as a record, the parser outputs an error.
+    #[test]
+    fn test_component_name_conflicts_with_record() {
+        check(
+            indoc! {r#"
+                record User {name: String}
+
+                <User>
+                </User>
+            "#},
+            expect![[r#"
+                error: User is already defined
+                2 | 
+                3 | <User>
+                  |  ^^^^
+            "#]],
+        );
+    }
+
+    // When a record is defined with the same name as an import, the parser outputs an error.
+    #[test]
+    fn test_record_name_conflicts_with_import() {
+        check(
+            indoc! {r#"
+                import User from "@/other"
+
+                record User {
+                  name: String
+                }
+
+                <Main>
+                </Main>
+            "#},
+            expect![[r#"
+                error: User is already defined
+                2 | 
+                3 | record User {
+                  |        ^^^^
             "#]],
         );
     }

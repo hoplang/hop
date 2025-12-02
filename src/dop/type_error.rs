@@ -64,28 +64,34 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
+    #[error("Type '{type_name}' is not defined")]
+    UndefinedType {
+        type_name: String,
+        range: DocumentRange,
+    },
+
     #[error("Record type '{record_name}' is not defined")]
     UndefinedRecord {
         record_name: String,
         range: DocumentRange,
     },
 
-    #[error("Missing field '{field_name}' in record '{record_name}'")]
-    MissingRecordField {
+    #[error("Missing field '{field_name}' in instantiation of record '{record_name}'")]
+    RecordInstantiationMissingRecordField {
         field_name: String,
         record_name: String,
         range: DocumentRange,
     },
 
-    #[error("Unknown field '{field_name}' in record '{record_name}'")]
-    UnknownRecordField {
+    #[error("Unknown field '{field_name}' in instantiation of record '{record_name}'")]
+    RecordInstantiationUnknownRecordField {
         field_name: String,
         record_name: String,
         range: DocumentRange,
     },
 
     #[error("Field '{field_name}' expects type {expected}, but got {found}")]
-    RecordFieldTypeMismatch {
+    RecordInstantiationFieldTypeMismatch {
         field_name: String,
         expected: String,
         found: String,
@@ -108,10 +114,11 @@ impl Ranged for TypeError {
             | TypeError::IncompatibleTypesForAddition { range, .. }
             | TypeError::IncompatibleTypesForSubtraction { range, .. }
             | TypeError::IncompatibleTypesForMultiplication { range, .. }
+            | TypeError::UndefinedType { range, .. }
             | TypeError::UndefinedRecord { range, .. }
-            | TypeError::MissingRecordField { range, .. }
-            | TypeError::UnknownRecordField { range, .. }
-            | TypeError::RecordFieldTypeMismatch { range, .. } => range,
+            | TypeError::RecordInstantiationMissingRecordField { range, .. }
+            | TypeError::RecordInstantiationUnknownRecordField { range, .. }
+            | TypeError::RecordInstantiationFieldTypeMismatch { range, .. } => range,
         }
     }
 }

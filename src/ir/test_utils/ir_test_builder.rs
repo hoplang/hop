@@ -3,6 +3,7 @@ use crate::dop::field_name::FieldName;
 use crate::dop::r#type::{ComparableType, EquatableType};
 use crate::dop::{Type, VarName};
 use crate::hop::component_name::ComponentName;
+use crate::hop::module_name::ModuleName;
 use crate::ir::ast::IrEntrypoint;
 use crate::ir::ast::{ExprId, IrExpr, IrStatement, StatementId};
 use std::cell::RefCell;
@@ -259,13 +260,24 @@ impl IrTestBuilder {
             }
         }
 
+        let test_module = ModuleName::new("test".to_string()).unwrap();
+        let record_fields = self.records.get(record_name).unwrap_or_else(|| {
+            panic!("Record '{}' not found in test builder", record_name)
+        });
         TypedExpr::RecordInstantiation {
             record_name: record_name.to_string(),
             fields: fields
                 .into_iter()
                 .map(|(k, v)| (FieldName::new(k).unwrap(), v))
                 .collect(),
-            kind: Type::Named(record_name.to_string()),
+            kind: Type::Record {
+                module: test_module,
+                name: record_name.to_string(),
+                fields: record_fields
+                    .iter()
+                    .map(|(k, v)| (FieldName::new(k).unwrap(), v.clone()))
+                    .collect(),
+            },
             annotation: self.next_expr_id(),
         }
     }
@@ -273,16 +285,17 @@ impl IrTestBuilder {
     pub fn field_access(&self, object: IrExpr, field_str: &str) -> IrExpr {
         let field_name = FieldName::new(field_str).unwrap();
         let field_type = match object.as_type() {
-            Type::Named(record_name) => {
-                let record_fields = self.records.get(record_name).unwrap_or_else(|| {
-                    panic!("Record '{}' not found in test builder", record_name)
-                });
-                record_fields.get(field_str).cloned().unwrap_or_else(|| {
-                    panic!(
-                        "Field '{}' not found in record type '{}'",
-                        field_str, record_name
-                    )
-                })
+            Type::Record { fields, name: record_name, .. } => {
+                fields
+                    .iter()
+                    .find(|(f, _)| f.as_str() == field_str)
+                    .map(|(_, t)| t.clone())
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "Field '{}' not found in record type '{}'",
+                            field_str, record_name
+                        )
+                    })
             }
             _ => panic!("Cannot access field '{}' on non-record type", field_str),
         };

@@ -1,5 +1,4 @@
-use crate::dop::SimpleTypedExpr;
-use crate::hop::ast::Ast;
+use crate::hop::ast::TypedAst;
 use crate::hop::module_name::ModuleName;
 use crate::ir::Compiler;
 use crate::ir::ast::IrEntrypoint;
@@ -13,7 +12,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 
 pub fn orchestrate(
-    typed_asts: HashMap<ModuleName, Ast<SimpleTypedExpr>>,
+    typed_asts: HashMap<ModuleName, TypedAst>,
     generated_tailwind_css: Option<&str>,
     pages: &[String],
 ) -> Result<Vec<IrEntrypoint>> {
