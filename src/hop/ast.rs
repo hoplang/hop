@@ -159,7 +159,6 @@ impl<A> Record<A> {
     }
 }
 
-pub type UntypedRecord = Record<()>;
 pub type TypedRecord = Record<Type>;
 
 pub type UntypedComponentDefinition = ComponentDefinition<SyntacticExpr, SyntacticType>;
