@@ -16,7 +16,7 @@ pub fn escape_html(text: &str) -> String {
 // Return true if the string represents a void element
 // The void elements are `area`, `base`, `br`, `col`, `embed`, `hr`,
 // `img`, `input`, `link`, `meta`, `param`, `source`, `track` and `wbr`
-// (native HTML nodes) as well as `import` and `slot-default` (defined by hop).
+// (native HTML nodes) as well as `import` (defined by hop).
 pub fn is_void_element(el: &str) -> bool {
     matches!(
         el,
@@ -35,6 +35,5 @@ pub fn is_void_element(el: &str) -> bool {
             | "track"
             | "wbr"
             | "import"
-            | "slot-default"
     )
 }

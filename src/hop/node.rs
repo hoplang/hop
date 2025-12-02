@@ -44,14 +44,6 @@ pub enum Node<E> {
         range: DocumentRange,
     },
 
-    /// A SlotDefinition node represents the definition of a slot, e.g.
-    /// the <slot-default/> in
-    ///
-    /// <my-component>
-    ///   <slot-default/>
-    /// </my-component>
-    SlotDefinition { range: DocumentRange },
-
     /// An If node contains content that is only evaluated when its condition
     /// expression evaluates to true.
     If {
@@ -107,7 +99,6 @@ impl<T> Node<T> {
             Node::For { children, .. } => children,
             Node::Html { children, .. } => children,
             Node::Placeholder { children, .. } => children,
-            Node::SlotDefinition { .. } => &[],
             Node::Doctype { .. } => &[],
             Node::Text { .. } => &[],
             Node::TextExpression { .. } => &[],
@@ -178,7 +169,6 @@ impl<T> Ranged for Node<T> {
             Node::Text { range, .. }
             | Node::TextExpression { range, .. }
             | Node::ComponentReference { range, .. }
-            | Node::SlotDefinition { range, .. }
             | Node::If { range, .. }
             | Node::For { range, .. }
             | Node::Html { range, .. }

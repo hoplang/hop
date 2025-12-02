@@ -6,9 +6,6 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
 pub enum ParseError {
-    #[error("slot-default is already defined")]
-    SlotIsAlreadyDefined { range: DocumentRange },
-
     #[error("Unmatched </{tag}>")]
     UnmatchedClosingTag {
         tag: StringSpan,
@@ -94,8 +91,7 @@ impl From<dop::parse_error::ParseError> for ParseError {
 impl Ranged for ParseError {
     fn range(&self) -> &DocumentRange {
         match self {
-            ParseError::SlotIsAlreadyDefined { range }
-            | ParseError::UnmatchedClosingTag { range, .. }
+            ParseError::UnmatchedClosingTag { range, .. }
             | ParseError::UnmatchedCharacter { range, .. }
             | ParseError::UnclosedTag { range, .. }
             | ParseError::ClosedVoidTag { range, .. }

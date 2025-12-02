@@ -1,5 +1,6 @@
 use crate::document::document_cursor::StringSpan;
 use crate::dop::parser::TypedArgument;
+use crate::dop::{SimpleExpr, Type};
 use crate::hop::ast::{AttributeValue, TypedAst, TypedAttribute, TypedComponentDefinition};
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode, InlinedParameter,
@@ -149,6 +150,19 @@ impl Inliner {
             .unwrap_or(false)
     }
 
+    /// Check if a component has a children: TrustedHTML parameter
+    fn component_accepts_children(component: &TypedComponentDefinition) -> bool {
+        component
+            .params
+            .as_ref()
+            .map(|(params, _)| {
+                params
+                    .iter()
+                    .any(|p| p.var_name.as_str() == "children" && p.var_type == Type::TrustedHTML)
+            })
+            .unwrap_or(false)
+    }
+
     /// Inline a component reference
     fn inline_component_reference(
         module_name: &ModuleName,
@@ -158,18 +172,25 @@ impl Inliner {
         asts: &HashMap<ModuleName, TypedAst>,
     ) -> Vec<InlinedNode> {
         // Process component children with slot replacement
-        let slot_content = if component.has_slot && !slot_children.is_empty() {
+        // Children are passed if the component has `children: TrustedHTML` parameter
+        let slot_content = if Self::component_accepts_children(component) && !slot_children.is_empty()
+        {
             Some(slot_children)
         } else {
             None
         };
         let inlined_children = Self::inline_nodes(&component.children, slot_content, asts);
 
-        // Build parameter bindings
+        // Build parameter bindings (excluding children - handled via slot mechanism)
         let mut body = inlined_children;
         if let Some((params, _)) = &component.params {
             // Process parameters in reverse order to create proper nesting
+            // Skip the children parameter - it's handled via slot_content
             for param in params.iter().rev() {
+                if param.var_name.as_str() == "children" {
+                    continue;
+                }
+
                 let param_name = param.var_name.clone();
 
                 // Find corresponding argument value
@@ -199,7 +220,7 @@ impl Inliner {
         body
     }
 
-    /// Inline nodes, optionally replacing slot definitions with the provided slot content
+    /// Inline nodes, optionally replacing {children} expressions with the provided slot content
     fn inline_nodes(
         nodes: &[TypedNode],
         slot_content: Option<&[TypedNode]>,
@@ -211,7 +232,7 @@ impl Inliner {
             .collect()
     }
 
-    /// Inline a single node, optionally replacing slots with the provided content
+    /// Inline a single node, optionally replacing {children} expressions with the provided content
     fn inline_node(
         node: &TypedNode,
         slot_content: Option<&[TypedNode]>,
@@ -270,23 +291,30 @@ impl Inliner {
                 children: Self::inline_nodes(children, slot_content, asts),
             }],
 
-            Node::SlotDefinition { .. } => {
-                if let Some(content) = slot_content {
-                    // Replace slot with the provided content
-                    Self::inline_nodes(content, None, asts)
-                } else {
-                    // No slot content provided, return empty vec
-                    vec![]
-                }
-            }
-
             // Leaf nodes - return as is
             Node::Text { value, .. } => vec![InlinedNode::Text {
                 value: value.clone(),
             }],
-            Node::TextExpression { expression, .. } => vec![InlinedNode::TextExpression {
-                expression: expression.clone(),
-            }],
+
+            // Check if this is {children} expression that should be replaced with slot content
+            Node::TextExpression { expression, .. } => {
+                // Check if this is a `children` variable of type TrustedHTML
+                if let SimpleExpr::Var { value, kind, .. } = expression {
+                    if value.as_str() == "children" && *kind == Type::TrustedHTML {
+                        if let Some(content) = slot_content {
+                            // Replace {children} with the provided content
+                            return Self::inline_nodes(content, None, asts);
+                        } else {
+                            // No slot content provided, return empty vec
+                            return vec![];
+                        }
+                    }
+                }
+                // Regular text expression
+                vec![InlinedNode::TextExpression {
+                    expression: expression.clone(),
+                }]
+            }
 
             Node::Doctype { value, .. } => vec![InlinedNode::Doctype {
                 value: value.clone(),
@@ -388,14 +416,14 @@ mod tests {
     }
 
     #[test]
-    fn test_component_with_slot() {
+    fn test_component_with_children() {
         check_inlining(
             vec![(
                 "main",
                 r#"
-                    <CardComp>
+                    <CardComp {children: TrustedHTML}>
                         <div class="card">
-                            <slot-default/>
+                            {children}
                         </div>
                     </CardComp>
 

@@ -36,8 +36,6 @@ impl Display for TypeAnnotation {
 pub struct ComponentTypeInformation {
     // Track the resolved parameter types for the component (name, type).
     parameter_types: Vec<(String, Type)>,
-    // Track whether the component has a slot-default.
-    has_slot: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -56,10 +54,13 @@ impl ModuleTypeInformation {
         }
     }
 
-    fn component_has_slot(&self, component_name: &str) -> bool {
-        self.components
-            .get(component_name)
-            .is_some_and(|c| c.has_slot)
+    /// Check if the component accepts children (has a `children: TrustedHTML` parameter)
+    fn component_accepts_children(&self, component_name: &str) -> bool {
+        self.components.get(component_name).is_some_and(|c| {
+            c.parameter_types
+                .iter()
+                .any(|(name, typ)| name == "children" && *typ == Type::TrustedHTML)
+        })
     }
 
     fn component_is_declared(&self, component_name: &str) -> bool {
@@ -272,7 +273,6 @@ fn typecheck_module(
             tag_name: name,
             params,
             children,
-            has_slot,
             range,
             closing_tag_name,
         } = component_def;
@@ -340,7 +340,6 @@ fn typecheck_module(
             name.as_str(),
             ComponentTypeInformation {
                 parameter_types: resolved_param_types,
-                has_slot: *has_slot,
             },
         );
 
@@ -357,7 +356,6 @@ fn typecheck_module(
             params: typed_params_option,
             range: range.clone(),
             children: typed_children,
-            has_slot: *has_slot,
         });
     }
 
@@ -416,7 +414,8 @@ fn typecheck_node(
             range,
         } => {
             let typed_array = errors.ok_or_add(
-                dop::typecheck_expr(array_expr, env, records, annotations, None).map_err(Into::into),
+                dop::typecheck_expr(array_expr, env, records, annotations, None)
+                    .map_err(Into::into),
             )?;
             let array_type = typed_array.as_type();
             let element_type = match &array_type {
@@ -499,27 +498,48 @@ fn typecheck_node(
                 }
             };
 
-            // Validate that content is only passed to components with slot-default
-            if !children.is_empty() && !module_info.component_has_slot(tag_name.as_str()) {
-                errors.push(TypeError::UndefinedSlot {
+            // Validate that content is only passed to components with children: TrustedHTML parameter
+            if !children.is_empty() && !module_info.component_accepts_children(tag_name.as_str()) {
+                errors.push(TypeError::ComponentDoesNotAcceptChildren {
+                    component: tag_name.as_str().to_string(),
+                    range: tag_name.clone(),
+                });
+            }
+
+            // Check if children: TrustedHTML is required but not provided
+            let accepts_children = module_info.component_accepts_children(tag_name.as_str());
+            if accepts_children && children.is_empty() {
+                errors.push(TypeError::MissingChildren {
                     component: tag_name.as_str().to_string(),
                     range: tag_name.clone(),
                 });
             }
 
             // Validate arguments and build typed versions
-            let typed_args = match (module_info.get_parameter_types(tag_name.as_str()), args) {
-                (None, None) => None,
-                (None, Some((_, args_range))) => {
+            // Filter out children parameter - it's handled separately via component children
+            let params_without_children: Option<Vec<_>> = module_info
+                .get_parameter_types(tag_name.as_str())
+                .map(|params| {
+                    params
+                        .iter()
+                        .filter(|(name, _)| name != "children")
+                        .cloned()
+                        .collect()
+                });
+
+            let typed_args = match (params_without_children.as_deref(), args) {
+                (None | Some([]), None) => None,
+                (None | Some([]), Some((_, args_range))) => {
                     errors.push(TypeError::UnexpectedArguments {
                         range: args_range.clone(),
                     });
                     None
                 }
-                (Some(params), None) => {
+                (Some(params), None) if !params.is_empty() => {
                     errors.push(TypeError::missing_arguments(params, tag_name.clone()));
                     None
                 }
+                (Some(_), None) => None, // params is empty, no args needed
                 (Some(params), Some((args, args_range))) => {
                     let mut typed_arguments = Vec::new();
                     for (param_name, _) in params {
@@ -534,11 +554,22 @@ fn typecheck_node(
                         }
                     }
 
+                    // Get all params (including children) for type checking provided args
+                    let all_params = module_info.get_parameter_types(tag_name.as_str());
+
                     for arg in args {
-                        let (_, param_type) = match params
-                            .iter()
-                            .find(|(name, _)| name.as_str() == arg.var_name.as_str())
-                        {
+                        // Skip children arg - it's handled separately via component children
+                        if arg.var_name.as_str() == "children" {
+                            errors.push(TypeError::ChildrenArgNotAllowed {
+                                range: arg.var_name_range.clone(),
+                            });
+                            continue;
+                        }
+
+                        let (_, param_type) = match all_params.and_then(|p| {
+                            p.iter()
+                                .find(|(name, _)| name.as_str() == arg.var_name.as_str())
+                        }) {
                             None => {
                                 errors.push(TypeError::UnexpectedArgument {
                                     arg: arg.var_name.as_str().to_string(),
@@ -549,14 +580,19 @@ fn typecheck_node(
                             Some(param) => param,
                         };
 
-                        let typed_expr =
-                            match dop::typecheck_expr(&arg.var_expr, env, records, annotations, Some(param_type)) {
-                                Ok(t) => t,
-                                Err(err) => {
-                                    errors.push(err.into());
-                                    continue;
-                                }
-                            };
+                        let typed_expr = match dop::typecheck_expr(
+                            &arg.var_expr,
+                            env,
+                            records,
+                            annotations,
+                            Some(param_type),
+                        ) {
+                            Ok(t) => t,
+                            Err(err) => {
+                                errors.push(err.into());
+                                continue;
+                            }
+                        };
                         let arg_type = typed_expr.as_type().clone();
 
                         // param_type is already resolved from the component's defining module
@@ -624,7 +660,8 @@ fn typecheck_node(
 
         Node::TextExpression { expression, range } => {
             if let Some(typed_expr) = errors.ok_or_add(
-                dop::typecheck_expr(expression, env, records, annotations, None).map_err(Into::into),
+                dop::typecheck_expr(expression, env, records, annotations, None)
+                    .map_err(Into::into),
             ) {
                 let expr_type = typed_expr.as_type();
                 if !expr_type.is_subtype(&Type::String) && !expr_type.is_subtype(&Type::TrustedHTML)
@@ -655,10 +692,6 @@ fn typecheck_node(
             })
         }
 
-        Node::SlotDefinition { range } => Some(Node::SlotDefinition {
-            range: range.clone(),
-        }),
-
         Node::Text { value, range } => Some(Node::Text {
             value: value.clone(),
             range: range.clone(),
@@ -686,7 +719,8 @@ fn typecheck_attributes(
                 let mut typed_exprs = Vec::new();
                 for expr in exprs {
                     if let Some(typed_expr) = errors.ok_or_add(
-                        dop::typecheck_expr(expr, env, records, annotations, None).map_err(Into::into),
+                        dop::typecheck_expr(expr, env, records, annotations, None)
+                            .map_err(Into::into),
                     ) {
                         // Check that HTML attributes are strings
                         let expr_type = typed_expr.as_type();
@@ -966,24 +1000,24 @@ mod tests {
         );
     }
 
-    // When content is passed to a component without slot-default, the typechecker outputs an error.
+    // When content is passed to a component without children: TrustedHTML parameter, the typechecker outputs an error.
     #[test]
-    fn test_undefined_slot_reference() {
+    fn test_component_does_not_accept_children() {
         check(
             indoc! {r#"
                 -- main.hop --
                 <Main>
-                    <strong>No slot here</strong>
+                    <strong>No children parameter here</strong>
                 </Main>
 
                 <Bar>
                     <Main>
-                        This component has no slot
+                        This component has no children parameter
                     </Main>
                 </Bar>
             "#},
             expect![[r#"
-                error: Component Main does not have a slot-default
+                error: Component Main does not accept children (missing `children: TrustedHTML` parameter)
                   --> main.hop (line 6, col 6)
                 5 | <Bar>
                 6 |     <Main>
@@ -992,26 +1026,26 @@ mod tests {
         );
     }
 
-    // Test undefined slot with imported component.
+    // Test component does not accept children with imported component.
     #[test]
-    fn test_undefined_slot_with_imported_component() {
+    fn test_component_does_not_accept_children_imported() {
         check(
             indoc! {r#"
                 -- other.hop --
                 <Foo>
-                    <strong>No slot here</strong>
+                    <strong>No children parameter here</strong>
                 </Foo>
                 -- main.hop --
                 import Foo from "@/other"
 
                 <Bar>
                     <Foo>
-                        This component has no slot
+                        This component has no children parameter
                     </Foo>
                 </Bar>
             "#},
             expect![[r#"
-                error: Component Foo does not have a slot-default
+                error: Component Foo does not accept children (missing `children: TrustedHTML` parameter)
                   --> main.hop (line 4, col 6)
                 3 | <Bar>
                 4 |     <Foo>
@@ -1442,22 +1476,6 @@ mod tests {
                 13 |         <if {item.name}>
                    |              ^^^^
             "#]],
-        );
-    }
-
-    // A component should be able to define the <head> tag and a default slot.
-    #[test]
-    fn test_head_tag_with_default_slot() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                <CustomHead>
-                	<head>
-                		<title><slot-default/></title>
-                	</head>
-                </CustomHead>
-            "#},
-            expect![""],
         );
     }
 
@@ -3137,23 +3155,34 @@ mod tests {
     }
 
     #[test]
-    fn test_slot_usage() {
+    fn test_children_usage() {
         check(
             indoc! {r#"
                 -- main.hop --
-                <Main>
+                <Main {children: TrustedHTML}>
                     <strong>
-                        <slot-default/>
+                        {children}
                     </strong>
                 </Main>
 
                 <Bar>
                     <Main>
-                        Here's the content for the default slot
+                        Here's the content for the children
                     </Main>
                 </Bar>
             "#},
-            expect![""],
+            expect![[r#"
+                children: TrustedHTML
+                  --> main.hop (line 1, col 8)
+                 1 | <Main {children: TrustedHTML}>
+                   |        ^^^^^^^^
+
+                children: TrustedHTML
+                  --> main.hop (line 3, col 10)
+                 2 |     <strong>
+                 3 |         {children}
+                   |          ^^^^^^^^
+            "#]],
         );
     }
 

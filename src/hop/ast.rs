@@ -171,7 +171,6 @@ pub struct ComponentDefinition<E, P = SyntacticType> {
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<Parameter<P>>, DocumentRange)>,
     pub children: Vec<Node<E>>,
-    pub has_slot: bool,
     pub range: DocumentRange,
 }
 
@@ -318,23 +317,6 @@ mod tests {
                 range
                 3 |         <span>Nested text</span>
                   |               ^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_find_node_at_position_slot_definition() {
-        check_find_node_at_position(
-            indoc! {"
-                <Main>
-                    <slot-default/>
-                          ^
-                </Main>
-            "},
-            expect![[r#"
-                range
-                2 |     <slot-default/>
-                  |     ^^^^^^^^^^^^^^^
             "#]],
         );
     }

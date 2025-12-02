@@ -25,11 +25,20 @@ pub enum TypeError {
     #[error("Variable {var} is already defined")]
     VariableIsAlreadyDefined { var: String, range: DocumentRange },
 
-    #[error("Component {component} does not have a slot-default")]
-    UndefinedSlot {
+    #[error("Component {component} does not accept children (missing `children: TrustedHTML` parameter)")]
+    ComponentDoesNotAcceptChildren {
         component: String,
         range: DocumentRange,
     },
+
+    #[error("Component {component} requires children")]
+    MissingChildren {
+        component: String,
+        range: DocumentRange,
+    },
+
+    #[error("The `children` argument cannot be passed explicitly; use component children instead")]
+    ChildrenArgNotAllowed { range: DocumentRange },
 
     #[error(
         "Import cycle: {importer_module} imports from {imported_component} which creates a dependency cycle: {cycle_display}"
@@ -125,7 +134,9 @@ impl Ranged for TypeError {
             | TypeError::UnusedVariable { var_name: range }
             | TypeError::ModuleNotFound { range, .. }
             | TypeError::VariableIsAlreadyDefined { range, .. }
-            | TypeError::UndefinedSlot { range, .. }
+            | TypeError::ComponentDoesNotAcceptChildren { range, .. }
+            | TypeError::MissingChildren { range, .. }
+            | TypeError::ChildrenArgNotAllowed { range, .. }
             | TypeError::ImportCycle { range, .. }
             | TypeError::ExpectedBooleanCondition { range, .. }
             | TypeError::MissingRequiredParameter { range, .. }

@@ -253,23 +253,6 @@ fn parse_top_level_node(
                 )
             });
 
-            // TODO: Here we iterate over the whole subtree to check
-            // if it contains a slot. There should be a better way
-            // to do this.
-            let mut has_slot = false;
-            for child in &children {
-                for node in child.iter_depth_first() {
-                    if let Node::SlotDefinition { range, .. } = node {
-                        if has_slot {
-                            errors.push(ParseError::SlotIsAlreadyDefined {
-                                range: range.clone(),
-                            });
-                        }
-                        has_slot = true;
-                    }
-                }
-            }
-
             // Disallow any unrecognized attributes on component definitions
             for error in validator.disallow_unrecognized() {
                 errors.push(error);
@@ -287,7 +270,6 @@ fn parse_top_level_node(
                 params,
                 range: tree.range.clone(),
                 children,
-                has_slot,
             }))
         }
     }
@@ -420,14 +402,6 @@ fn construct_node(
                     })
                 }
 
-                // <slot-default>
-                "slot-default" => {
-                    errors.extend(validator.disallow_unrecognized());
-                    Some(Node::SlotDefinition {
-                        range: tree.range.clone(),
-                    })
-                }
-
                 // <hop-x-raw>
                 "hop-x-raw" => {
                     errors.extend(validator.disallow_unrecognized());
@@ -529,7 +503,6 @@ mod tests {
             Node::If { .. } => "if",
             Node::For { .. } => "for",
             Node::Html { tag_name, .. } => tag_name.as_str(),
-            Node::SlotDefinition { .. } => "SlotDefinition",
             Node::Text { .. } => "text",
             Node::TextExpression { .. } => "text_expression",
             Node::Placeholder { .. } => "error",
@@ -889,26 +862,6 @@ mod tests {
         );
     }
 
-    // When slot-default is defined twice in a component, the parser outputs an error.
-    #[test]
-    fn test_slot_default_defined_twice() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                <Main>
-                    <slot-default/>
-                    <slot-default/>
-                </Main>
-            "#},
-            expect![[r#"
-                error: slot-default is already defined
-                3 |     <slot-default/>
-                4 |     <slot-default/>
-                  |     ^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
     #[test]
     fn test_parser_nested_loops_complex_types() {
         check(
@@ -1205,22 +1158,6 @@ mod tests {
             "#},
             expect![[r#"
                 div                                               1:4-1:53
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parser_slots_default() {
-        check(
-            indoc! {r#"
-                <Main>
-                    <slot-default/>
-                    <ButtonComp>Custom Button</ButtonComp>
-                </Main>
-            "#},
-            expect![[r#"
-                SlotDefinition                                    1:4-1:19
-                component_reference                               2:4-2:42
             "#]],
         );
     }
