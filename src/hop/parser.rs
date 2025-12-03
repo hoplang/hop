@@ -1,4 +1,5 @@
-use crate::document::document_cursor::{DocumentRange, StringSpan};
+use crate::decl::{Declaration, parse_declarations_from_source};
+use crate::document::document_cursor::{DocumentCursor, DocumentRange, StringSpan};
 use crate::dop::Parser;
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::{Ast, ComponentDefinition, Import, Record};
@@ -82,17 +83,18 @@ impl AttributeValidator {
     }
 }
 
-enum TopLevelNode {
-    Import(Import),
-    Record(Record),
-    ComponentDefinition(UntypedComponentDefinition),
-}
-
 pub fn parse(
     module_name: ModuleName,
-    tokenizer: Tokenizer,
+    source: String,
     errors: &mut ErrorCollector<ParseError>,
 ) -> UntypedAst {
+    // First, parse declarations from source (before tokenization, since the
+    // tokenizer breaks at `{` which would split record declarations)
+    let source_range = DocumentCursor::new(source).range();
+    let declarations = parse_declarations_from_source(source_range.clone(), errors);
+
+    // Then build the token tree
+    let tokenizer = Tokenizer::from_range(source_range);
     let trees = build_tree(tokenizer, errors);
 
     let mut components = Vec::new();
@@ -103,7 +105,58 @@ pub fn parse(
     let mut imported_components = HashMap::new();
     let mut defined_records = HashSet::new();
 
+    // Process declarations
+    for decl in declarations {
+        match decl {
+            Declaration::Import {
+                name,
+                path,
+                module_name,
+                ..
+            } => {
+                let import = Import {
+                    component: name,
+                    from: path,
+                    module_name,
+                };
+                let name_str = import.component.as_str();
+                if imported_components.contains_key(name_str) {
+                    errors.push(ParseError::TypeNameIsAlreadyDefined {
+                        name: import.component.to_string_span(),
+                        range: import.component.clone(),
+                    });
+                } else {
+                    imported_components
+                        .insert(name_str.to_string(), import.module_name.clone());
+                }
+                imports.push(import);
+            }
+            Declaration::Record { declaration, range } => {
+                let record = Record { declaration, range };
+                let name = record.name();
+                if defined_records.contains(name)
+                    || defined_components.contains(name)
+                    || imported_components.contains_key(name)
+                {
+                    errors.push(ParseError::TypeNameIsAlreadyDefined {
+                        name: record.declaration.name.to_string_span(),
+                        range: record.declaration.name.clone(),
+                    });
+                } else {
+                    defined_records.insert(name.to_string());
+                }
+                records.push(record);
+            }
+        }
+    }
+
+    // Process token trees (HTML content)
     for mut tree in trees {
+        // Skip text nodes at the top level (they contain declarations or whitespace)
+        if matches!(tree.token, Token::Text { .. }) {
+            continue;
+        }
+
         let children: Vec<UntypedNode> = std::mem::take(&mut tree.children)
             .into_iter()
             .filter_map(|child| {
@@ -117,152 +170,81 @@ pub fn parse(
             })
             .collect();
 
-        if let Some(node) = parse_top_level_node(tree, children, errors) {
-            match node {
-                TopLevelNode::Import(import) => {
-                    let name = import.component.as_str();
-                    if imported_components.contains_key(name) {
-                        errors.push(ParseError::TypeNameIsAlreadyDefined {
-                            name: import.component.to_string_span(),
-                            range: import.component.clone(),
-                        });
-                    } else {
-                        imported_components.insert(name.to_string(), import.module_name.clone());
-                    }
-                    imports.push(import);
-                }
-                TopLevelNode::Record(record) => {
-                    let name = record.name();
-                    if defined_records.contains(name)
-                        || defined_components.contains(name)
-                        || imported_components.contains_key(name)
-                    {
-                        errors.push(ParseError::TypeNameIsAlreadyDefined {
-                            name: record.declaration.name.to_string_span(),
-                            range: record.declaration.name.clone(),
-                        });
-                    } else {
-                        defined_records.insert(name.to_string());
-                    }
-                    records.push(record);
-                }
-                TopLevelNode::ComponentDefinition(component) => {
-                    let name = component.tag_name.as_str();
-                    if defined_components.contains(name)
-                        || imported_components.contains_key(name)
-                        || defined_records.contains(name)
-                    {
-                        errors.push(ParseError::TypeNameIsAlreadyDefined {
-                            name: component.tag_name.to_string_span(),
-                            range: component.tag_name.clone(),
-                        });
-                    } else {
-                        defined_components.insert(name.to_string());
-                    }
-                    components.push(component);
-                }
+        if let Some(component) = parse_component_definition(tree, children, errors) {
+            let name = component.tag_name.as_str();
+            if defined_components.contains(name)
+                || imported_components.contains_key(name)
+                || defined_records.contains(name)
+            {
+                errors.push(ParseError::TypeNameIsAlreadyDefined {
+                    name: component.tag_name.to_string_span(),
+                    range: component.tag_name.clone(),
+                });
+            } else {
+                defined_components.insert(name.to_string());
             }
+            components.push(component);
         }
     }
 
     Ast::new(module_name, components, imports, records)
 }
 
-fn parse_top_level_node(
+/// Try to parse a token tree as a component definition.
+///
+/// Returns `Some(component)` if the tree is an opening tag (component definition),
+/// or `None` for other token types (text, comments, etc.).
+fn parse_component_definition(
     tree: TokenTree,
     children: Vec<UntypedNode>,
     errors: &mut ErrorCollector<ParseError>,
-) -> Option<TopLevelNode> {
-    match tree.token {
-        Token::Text { .. } => None,
-        Token::ClosingTag { .. } => None,
-        Token::TextExpression { .. } => None,
-        Token::Comment { .. } => None,
-        Token::Doctype { .. } => None,
-        Token::Record { range, .. } => {
-            let declaration = match Parser::from(range.clone()).parse_record() {
-                Ok(decl) => decl,
-                Err(err) => {
-                    errors.push(err.into());
-                    return None;
-                }
-            };
-            Some(TopLevelNode::Record(Record { declaration, range }))
-        }
-        Token::Import { name, path, .. } => {
-            // Handle import declarations like: import UserList from "@/user_list.hop"
-            use crate::hop::ast::Import;
+) -> Option<UntypedComponentDefinition> {
+    let Token::OpeningTag {
+        tag_name,
+        attributes,
+        expression,
+        ..
+    } = tree.token
+    else {
+        return None;
+    };
 
-            // Strip the @/ prefix for internal module resolution
-            let module_name_input = match path.as_str().strip_prefix("@/") {
-                Some(n) => n,
-                None => {
-                    errors.push(ParseError::MissingAtPrefixInImportPath { range: path });
-                    return None;
-                }
-            };
-            let module_name = match ModuleName::new(module_name_input.to_string()) {
-                Ok(name) => name,
-                Err(e) => {
-                    errors.push(ParseError::InvalidModuleName {
-                        error: e,
-                        range: path,
-                    });
-                    return None;
-                }
-            };
+    let validator = AttributeValidator::new(attributes, tag_name.clone());
 
-            Some(TopLevelNode::Import(Import {
-                component: name,
-                from: path,
-                module_name,
-            }))
-        }
-        Token::OpeningTag {
-            tag_name,
-            attributes,
-            expression,
-            ..
-        } => {
-            let validator = AttributeValidator::new(attributes, tag_name.clone());
-            //
-            // All opening tags are component definitions
-            let component_name = match ComponentName::new(tag_name.to_string()) {
-                Ok(name) => name,
-                Err(error) => {
-                    errors.push(ParseError::InvalidComponentName {
-                        error,
-                        range: tag_name.clone(),
-                    });
-                    return None;
-                }
-            };
-
-            // Parse parameters
-            let params = expression.as_ref().and_then(|expr| {
-                errors.ok_or_add(
-                    Parser::from(expr.clone())
-                        .parse_parameters()
-                        .map(|params| (params, expr.clone()))
-                        .map_err(|err| err.into()),
-                )
+    let component_name = match ComponentName::new(tag_name.to_string()) {
+        Ok(name) => name,
+        Err(error) => {
+            errors.push(ParseError::InvalidComponentName {
+                error,
+                range: tag_name.clone(),
             });
-
-            // Disallow any unrecognized attributes on component definitions
-            for error in validator.disallow_unrecognized() {
-                errors.push(error);
-            }
-
-            Some(TopLevelNode::ComponentDefinition(ComponentDefinition {
-                component_name,
-                tag_name: tag_name.clone(),
-                closing_tag_name: tree.closing_tag_name,
-                params,
-                range: tree.range.clone(),
-                children,
-            }))
+            return None;
         }
+    };
+
+    // Parse parameters
+    let params = expression.as_ref().and_then(|expr| {
+        errors.ok_or_add(
+            Parser::from(expr.clone())
+                .parse_parameters()
+                .map(|params| (params, expr.clone()))
+                .map_err(|err| err.into()),
+        )
+    });
+
+    // Disallow any unrecognized attributes on component definitions
+    for error in validator.disallow_unrecognized() {
+        errors.push(error);
     }
+
+    Some(ComponentDefinition {
+        component_name,
+        tag_name: tag_name.clone(),
+        closing_tag_name: tree.closing_tag_name,
+        params,
+        range: tree.range.clone(),
+        children,
+    })
 }
 
 fn construct_node(
@@ -289,14 +271,6 @@ fn construct_node(
     match tree.token {
         Token::Comment { .. } => {
             // Skip comments
-            None
-        }
-        Token::Import { .. } => {
-            // Import declarations are handled at the top level only
-            None
-        }
-        Token::Record { .. } => {
-            // Record declarations are handled at the top level only
             None
         }
         Token::ClosingTag { .. } => {
@@ -533,7 +507,7 @@ mod tests {
         let mut errors = ErrorCollector::new();
         let module = parse(
             ModuleName::new("test".to_string()).unwrap(),
-            Tokenizer::new(input.to_string()),
+            input.to_string(),
             &mut errors,
         );
 

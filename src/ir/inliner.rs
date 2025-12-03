@@ -292,7 +292,6 @@ mod tests {
     use crate::error_collector::ErrorCollector;
     use crate::hop::module_name::ModuleName;
     use crate::hop::parser::parse;
-    use crate::hop::tokenizer::Tokenizer;
     use crate::hop::type_checker::TypeChecker;
     use expect_test::{Expect, expect};
 
@@ -303,8 +302,7 @@ mod tests {
         let mut untyped_asts = HashMap::new();
         for (module_name_str, source) in sources {
             let module_name = ModuleName::new(module_name_str.to_string()).unwrap();
-            let tokenizer = Tokenizer::new(source.to_string());
-            let ast = parse(module_name.clone(), tokenizer, &mut errors);
+            let ast = parse(module_name.clone(), source.to_string(), &mut errors);
             untyped_asts.insert(module_name, ast);
         }
 

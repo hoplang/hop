@@ -36,16 +36,6 @@ pub enum Token {
     Comment {
         range: DocumentRange,
     },
-    Import {
-        name: DocumentRange,
-        path: DocumentRange,
-        range: DocumentRange,
-    },
-    Record {
-        name: DocumentRange,
-        fields: DocumentRange,
-        range: DocumentRange,
-    },
     TextExpression {
         expression: DocumentRange,
         range: DocumentRange,
@@ -71,8 +61,6 @@ impl Ranged for Token {
         match self {
             Token::Doctype { range }
             | Token::Comment { range }
-            | Token::Import { range, .. }
-            | Token::Record { range, .. }
             | Token::TextExpression { range, .. }
             | Token::OpeningTag { range, .. }
             | Token::ClosingTag { range, .. }
@@ -138,12 +126,6 @@ impl Display for Token {
             Token::Comment { .. } => {
                 write!(f, "Comment")
             }
-            Token::Import { name, path, .. } => {
-                write!(f, "Import {} from {:#?}", name, path.to_string())
-            }
-            Token::Record { name, fields, .. } => {
-                write!(f, "Record {} {{{:#?}}}", name, fields.to_string())
-            }
             Token::TextExpression { expression, .. } => {
                 write!(f, "Expression {:#?}", expression.to_string())
             }
@@ -163,9 +145,22 @@ pub struct Tokenizer {
 }
 
 impl Tokenizer {
+    #[allow(dead_code)]
     pub fn new(input: String) -> Self {
         Self {
             iter: DocumentCursor::new(input).peekable(),
+            errors: Vec::new(),
+            raw_text_closing_tag: None,
+        }
+    }
+
+    /// Create a new tokenizer from an existing DocumentRange.
+    ///
+    /// This allows the tokenizer to produce ranges that point to the same
+    /// source document as the provided range.
+    pub fn from_range(range: DocumentRange) -> Self {
+        Self {
+            iter: range.cursor().peekable(),
             errors: Vec::new(),
             raw_text_closing_tag: None,
         }
@@ -656,222 +651,6 @@ impl Tokenizer {
         })
     }
 
-    /// Parse an import declaration.
-    ///
-    /// E.g. import UserList from "@/user_list.hop"
-    /// Expects that the iterator points to the initial 'i' of 'import'.
-    ///
-    fn parse_import(&mut self) -> Option<Token> {
-        // Store the initial position
-        let initial = self.iter.peek()?.clone();
-
-        // Check if this starts with "import" using a cloned iterator
-        let mut check_iter = self.iter.clone();
-        let import_keyword: Vec<_> = check_iter.by_ref().take(6).collect();
-        if import_keyword.len() != 6
-            || import_keyword.iter().map(|s| s.ch()).collect::<String>() != "import"
-        {
-            return None;
-        }
-
-        // Check for whitespace after "import"
-        if !check_iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
-            return None;
-        }
-
-        // Now we know it's a valid import, consume "import" from the main iterator
-        for _ in 0..6 {
-            self.iter.next();
-        }
-
-        // Skip whitespace
-        self.skip_whitespace();
-
-        // Parse the imported name (e.g., UserList)
-        let Some(name_start) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
-            self.errors.push(ParseError::new(
-                "Expected import name after 'import'".to_string(),
-                initial.clone(),
-            ));
-            return None;
-        };
-
-        let name = name_start.extend(
-            self.iter
-                .peeking_take_while(|s| s.ch().is_ascii_alphanumeric()),
-        );
-
-        // Skip whitespace
-        self.skip_whitespace();
-
-        // Check for "from"
-        let from_keyword: Vec<_> = self.iter.clone().take(4).collect();
-        if from_keyword.len() != 4
-            || from_keyword.iter().map(|s| s.ch()).collect::<String>() != "from"
-        {
-            self.errors.push(ParseError::new(
-                "Expected 'from' after import name".to_string(),
-                name.clone(),
-            ));
-            return None;
-        }
-
-        // Consume "from"
-        for _ in 0..4 {
-            self.iter.next();
-        }
-
-        // Skip whitespace
-        self.skip_whitespace();
-
-        // Parse the quoted path (must be double quotes)
-        let Some(open_quote) = self.iter.next_if(|s| s.ch() == '"') else {
-            self.errors.push(ParseError::new(
-                "Expected quoted path after 'from'".to_string(),
-                name.clone(),
-            ));
-            return None;
-        };
-
-        // Consume path content
-        let path_content: Option<DocumentRange> = self
-            .iter
-            .peeking_take_while(|s| s.ch() != open_quote.ch())
-            .collect();
-
-        let Some(path) = path_content else {
-            self.errors.push(ParseError::new(
-                "Empty import path".to_string(),
-                open_quote.clone(),
-            ));
-            return None;
-        };
-
-        // Consume closing quote
-        let Some(close_quote) = self.iter.next_if(|s| s.ch() == open_quote.ch()) else {
-            self.errors.push(ParseError::UnmatchedCharacter {
-                ch: open_quote.ch(),
-                range: open_quote,
-            });
-            return None;
-        };
-
-        // Consume any trailing whitespace (including newlines)
-        self.skip_whitespace();
-
-        Some(Token::Import {
-            name,
-            path,
-            range: initial.to(close_quote),
-        })
-    }
-
-    /// Parse a record declaration.
-    ///
-    /// E.g. record Foo {bar: String, foo: String}
-    /// Expects that the iterator points to the initial 'r' of 'record'.
-    ///
-    fn parse_record(&mut self) -> Option<Token> {
-        // Store the initial position
-        let initial = self.iter.peek()?.clone();
-
-        // Check if this starts with "record" using a cloned iterator
-        let mut check_iter = self.iter.clone();
-        let record_keyword: Vec<_> = check_iter.by_ref().take(6).collect();
-        if record_keyword.len() != 6
-            || record_keyword.iter().map(|s| s.ch()).collect::<String>() != "record"
-        {
-            return None;
-        }
-
-        // Check for whitespace after "record"
-        if !check_iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
-            return None;
-        }
-
-        // Now we know it's a valid record, consume "record" from the main iterator
-        for _ in 0..6 {
-            self.iter.next();
-        }
-
-        // Skip whitespace
-        self.skip_whitespace();
-
-        // Parse the record name (e.g., Foo)
-        let Some(name_start) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
-            self.errors.push(ParseError::new(
-                "Expected record name after 'record'".to_string(),
-                initial.clone(),
-            ));
-            return None;
-        };
-
-        let name = name_start.extend(
-            self.iter
-                .peeking_take_while(|s| s.ch().is_ascii_alphanumeric() || s.ch() == '_'),
-        );
-
-        // Skip whitespace
-        self.skip_whitespace();
-
-        // Parse the opening brace
-        let Some(open_brace) = self.iter.next_if(|s| s.ch() == '{') else {
-            self.errors.push(ParseError::new(
-                "Expected '{' after record name".to_string(),
-                name.clone(),
-            ));
-            return None;
-        };
-
-        // Find the closing brace using find_expression_end
-        let clone = self.iter.clone();
-        let Some(found_close_brace) = Self::find_expression_end(clone) else {
-            self.errors.push(ParseError::UnmatchedCharacter {
-                ch: open_brace.ch(),
-                range: open_brace,
-            });
-            return None;
-        };
-
-        // Handle empty fields
-        if open_brace.end() == found_close_brace.start() {
-            let Some(close_brace) = self.iter.next_if(|s| s.ch() == '}') else {
-                panic!(
-                    "Expected '}}' in parse_record but got {:?}",
-                    self.iter.next().map(|s| s.ch())
-                );
-            };
-            self.errors.push(ParseError::new(
-                "Empty record fields".to_string(),
-                open_brace.to(close_brace),
-            ));
-            return None;
-        }
-
-        // Consume fields content
-        let mut fields = self.iter.next().unwrap();
-        while self.iter.peek().unwrap().start() != found_close_brace.start() {
-            fields = fields.to(self.iter.next()?);
-        }
-
-        // Consume closing brace
-        let Some(close_brace) = self.iter.next_if(|s| s.ch() == '}') else {
-            panic!(
-                "Expected '}}' in parse_record but got {:?}",
-                self.iter.next().map(|s| s.ch())
-            );
-        };
-
-        // Consume any trailing whitespace (including newlines)
-        self.skip_whitespace();
-
-        Some(Token::Record {
-            name,
-            fields,
-            range: initial.to(close_brace),
-        })
-    }
-
     fn parse_tag(&mut self) -> Option<Token> {
         let Some(left_angle) = self.iter.next() else {
             panic!(
@@ -909,22 +688,6 @@ impl Tokenizer {
         match self.iter.peek().map(|s| s.ch()) {
             Some('<') => self.parse_tag(),
             Some('{') => self.parse_text_expression(),
-            Some('i') => {
-                // Try to parse as import, fall back to text if it's not an import
-                if let Some(import_token) = self.parse_import() {
-                    Some(import_token)
-                } else {
-                    self.parse_text()
-                }
-            }
-            Some('r') => {
-                // Try to parse as record, fall back to text if it's not a record
-                if let Some(record_token) = self.parse_record() {
-                    Some(record_token)
-                } else {
-                    self.parse_text()
-                }
-            }
             Some(_) => self.parse_text(),
             None => None,
         }
@@ -3144,216 +2907,6 @@ mod tests {
                 Unterminated opening tag
                 1 | <div foo="bar
                   |  ^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_tokenize_import_simple() {
-        check(
-            r#"import UserList from "@/user_list.hop""#,
-            expect![[r#"
-                Import UserList from "@/user_list.hop"
-                1 | import UserList from "@/user_list.hop"
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_tokenize_import_followed_by_html() {
-        check(
-            r#"import Header from "./header.hop"
-<div>Content</div>"#,
-            expect![[r#"
-                Import Header from "./header.hop"
-                1 | import Header from "./header.hop"
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                OpeningTag <div>
-                2 | <div>Content</div>
-                  | ^^^^^
-
-                Text [7 byte, "Content"]
-                2 | <div>Content</div>
-                  |      ^^^^^^^
-
-                ClosingTag </div>
-                2 | <div>Content</div>
-                  |             ^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_tokenize_multiple_imports() {
-        check(
-            r#"import Header from "./header.hop"
-import Footer from "./footer.hop"
-import Nav from "./nav.hop""#,
-            expect![[r#"
-                Import Header from "./header.hop"
-                1 | import Header from "./header.hop"
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Import Footer from "./footer.hop"
-                2 | import Footer from "./footer.hop"
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Import Nav from "./nav.hop"
-                3 | import Nav from "./nav.hop"
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_tokenize_imports_with_double_newline_before_html() {
-        check(
-            r#"import Header from "./header.hop"
-import Footer from "./footer.hop"
-
-<div>Content</div>"#,
-            expect![[r#"
-                Import Header from "./header.hop"
-                1 | import Header from "./header.hop"
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Import Footer from "./footer.hop"
-                2 | import Footer from "./footer.hop"
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                OpeningTag <div>
-                4 | <div>Content</div>
-                  | ^^^^^
-
-                Text [7 byte, "Content"]
-                4 | <div>Content</div>
-                  |      ^^^^^^^
-
-                ClosingTag </div>
-                4 | <div>Content</div>
-                  |             ^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_tokenize_record_simple() {
-        check(
-            r#"record Foo {bar: String, foo: String}"#,
-            expect![[r#"
-                Record Foo {"bar: String, foo: String"}
-                1 | record Foo {bar: String, foo: String}
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_tokenize_record_with_nested_types() {
-        check(
-            r#"record User {name: String, items: Array[Item]}"#,
-            expect![[r#"
-                Record User {"name: String, items: Array[Item]"}
-                1 | record User {name: String, items: Array[Item]}
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_tokenize_record_followed_by_html() {
-        check(
-            r#"record Foo {bar: String}
-<div>Content</div>"#,
-            expect![[r#"
-                Record Foo {"bar: String"}
-                1 | record Foo {bar: String}
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^
-
-                OpeningTag <div>
-                2 | <div>Content</div>
-                  | ^^^^^
-
-                Text [7 byte, "Content"]
-                2 | <div>Content</div>
-                  |      ^^^^^^^
-
-                ClosingTag </div>
-                2 | <div>Content</div>
-                  |             ^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_tokenize_multiple_records() {
-        check(
-            r#"record Foo {bar: String}
-record Bar {baz: Int}"#,
-            expect![[r#"
-                Record Foo {"bar: String"}
-                1 | record Foo {bar: String}
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Record Bar {"baz: Int"}
-                2 | record Bar {baz: Int}
-                  | ^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_tokenize_record_with_imports() {
-        check(
-            r#"import Header from "./header.hop"
-record User {name: String}
-<div>Content</div>"#,
-            expect![[r#"
-                Import Header from "./header.hop"
-                1 | import Header from "./header.hop"
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Record User {"name: String"}
-                2 | record User {name: String}
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                OpeningTag <div>
-                3 | <div>Content</div>
-                  | ^^^^^
-
-                Text [7 byte, "Content"]
-                3 | <div>Content</div>
-                  |      ^^^^^^^
-
-                ClosingTag </div>
-                3 | <div>Content</div>
-                  |             ^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_tokenize_record_multiline_with_trailing_comma() {
-        check(
-            r#"record User {
-    name: String,
-    email: String,
-    age: Int,
-}"#,
-            expect![[r#"
-                Record User {"\n    name: String,\n    email: String,\n    age: Int,\n"}
-                1 | record User {
-                  | ^^^^^^^^^^^^^
-                2 |     name: String,
-                  | ^^^^^^^^^^^^^^^^^
-                3 |     email: String,
-                  | ^^^^^^^^^^^^^^^^^^
-                4 |     age: Int,
-                  | ^^^^^^^^^^^^^
-                5 | }
-                  | ^
             "#]],
         );
     }

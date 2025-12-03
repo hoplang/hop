@@ -3,7 +3,6 @@ use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::error_collector::ErrorCollector;
 use crate::hop::parse_error::ParseError;
 use crate::hop::parser::parse;
-use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
 use crate::hop::type_error::TypeError;
 use crate::ir;
@@ -76,7 +75,7 @@ impl Program {
         parse_errors.clear();
         let module = parse(
             module_name.clone(),
-            Tokenizer::new(source_code),
+            source_code,
             parse_errors,
         );
 

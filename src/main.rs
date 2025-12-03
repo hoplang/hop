@@ -1,5 +1,6 @@
 mod cli;
 mod common;
+mod decl;
 mod document;
 mod dop;
 mod error_collector;

@@ -766,7 +766,6 @@ mod tests {
     use crate::document::DocumentAnnotator;
     use crate::hop::module_name::ModuleName;
     use crate::hop::parser::parse;
-    use crate::hop::tokenizer::Tokenizer;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use simple_txtar::Archive;
@@ -793,10 +792,9 @@ mod tests {
             }
             let source_code = file.content.trim();
             let mut parse_errors = crate::error_collector::ErrorCollector::new();
-            let tokenizer = Tokenizer::new(source_code.to_string());
             let module_name =
                 ModuleName::new(file.name.trim_end_matches(".hop").to_string()).unwrap();
-            let module = parse(module_name, tokenizer, &mut parse_errors);
+            let module = parse(module_name, source_code.to_string(), &mut parse_errors);
 
             if !parse_errors.is_empty() {
                 panic!("Got parse errors: {:#?}", parse_errors);

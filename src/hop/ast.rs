@@ -185,7 +185,6 @@ mod tests {
     use crate::document::SimpleAnnotation;
     use crate::document::extract_position::extract_position;
     use crate::hop::parser::parse;
-    use crate::hop::tokenizer::Tokenizer;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -196,7 +195,7 @@ mod tests {
         let mut errors = ErrorCollector::new();
         let ast = parse(
             ModuleName::new("test".to_string()).unwrap(),
-            Tokenizer::new(source),
+            source,
             &mut errors,
         );
 
