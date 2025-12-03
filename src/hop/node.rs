@@ -9,7 +9,7 @@ use crate::dop::SimpleExpr;
 use crate::dop::SyntacticExpr;
 use crate::dop::VarName;
 
-use super::{ast::Attribute, module_name::ModuleName};
+use super::{ast::Attribute, component_name::ComponentName, module_name::ModuleName};
 
 pub type UntypedNode = Node<SyntacticExpr>;
 pub type TypedNode = Node<SimpleExpr>;
@@ -36,9 +36,10 @@ pub enum Node<E> {
     ///   ^^^^^^^^^^^^^^^^^^
     /// </my-component>
     ComponentReference {
-        tag_name: DocumentRange,
+        component_name: ComponentName,
+        component_name_opening_range: DocumentRange,
+        component_name_closing_range: Option<DocumentRange>,
         definition_module: Option<ModuleName>,
-        closing_tag_name: Option<DocumentRange>,
         args: Option<(Vec<Argument<E>>, DocumentRange)>,
         children: Vec<Self>,
         range: DocumentRange,
@@ -116,7 +117,10 @@ impl<T> Node<T> {
     ///  ^^^
     pub fn tag_name(&self) -> Option<&DocumentRange> {
         match self {
-            Node::ComponentReference { tag_name, .. } => Some(tag_name),
+            Node::ComponentReference {
+                component_name_opening_range: tag_name,
+                ..
+            } => Some(tag_name),
             Node::Html { tag_name, .. } => Some(tag_name),
             _ => None,
         }
@@ -130,7 +134,8 @@ impl<T> Node<T> {
     pub fn closing_tag_name(&self) -> Option<&DocumentRange> {
         match self {
             Node::ComponentReference {
-                closing_tag_name, ..
+                component_name_closing_range: closing_tag_name,
+                ..
             } => closing_tag_name.as_ref(),
             Node::Html {
                 closing_tag_name, ..

@@ -227,15 +227,16 @@ fn parse_top_level_node(
             let validator = AttributeValidator::new(attributes, tag_name.clone());
             //
             // All opening tags are component definitions
-            let name = tag_name.as_str();
-            // Validate component name
-            if !ComponentName::is_valid(name) {
-                errors.push(ParseError::InvalidComponentName {
-                    tag_name: tag_name.to_string_span(),
-                    range: tag_name.clone(),
-                });
-                return None;
-            }
+            let component_name = match ComponentName::new(tag_name.to_string()) {
+                Ok(name) => name,
+                Err(error) => {
+                    errors.push(ParseError::InvalidComponentName {
+                        error,
+                        range: tag_name.clone(),
+                    });
+                    return None;
+                }
+            };
 
             // Parse parameters
             let params = expression.as_ref().and_then(|expr| {
@@ -251,11 +252,6 @@ fn parse_top_level_node(
             for error in validator.disallow_unrecognized() {
                 errors.push(error);
             }
-
-            // Create ComponentName from the tag name
-            // We've already validated above, so this should always succeed
-            let component_name =
-                ComponentName::new(tag_name.to_string()).expect("Component name should be valid");
 
             Some(TopLevelNode::ComponentDefinition(ComponentDefinition {
                 component_name,
@@ -423,12 +419,16 @@ fn construct_node(
 
                 // <ComponentReference> - PascalCase indicates a component
                 name if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
-                    if !ComponentName::is_valid(tag_name.as_str()) {
-                        errors.push(ParseError::InvalidComponentName {
-                            tag_name: tag_name.to_string_span(),
-                            range: tag_name.clone(),
-                        });
-                    }
+                    let component_name = match ComponentName::new(tag_name.as_str().to_string()) {
+                        Ok(name) => name,
+                        Err(error) => {
+                            errors.push(ParseError::InvalidComponentName {
+                                error,
+                                range: tag_name.clone(),
+                            });
+                            return None;
+                        }
+                    };
 
                     let args = expression.as_ref().and_then(|expr| {
                         errors.ok_or_add(
@@ -439,10 +439,11 @@ fn construct_node(
                         )
                     });
 
-                    let definition_module = if defined_components.contains(tag_name.as_str()) {
+                    let definition_module = if defined_components.contains(component_name.as_str())
+                    {
                         Some(module_name.clone())
                     } else {
-                        imported_components.get(tag_name.as_str()).cloned()
+                        imported_components.get(component_name.as_str()).cloned()
                     };
 
                     // Disallow any unrecognized attributes on component references
@@ -451,8 +452,9 @@ fn construct_node(
                     }
 
                     Some(Node::ComponentReference {
-                        tag_name,
-                        closing_tag_name: tree.closing_tag_name,
+                        component_name,
+                        component_name_opening_range: tag_name,
+                        component_name_closing_range: tree.closing_tag_name,
                         definition_module,
                         args,
                         range: tree.range,
@@ -695,11 +697,11 @@ mod tests {
                 3 | <Component_With_Underscore></Component_With_Underscore>
                   |                              ^^^^^^^^^
 
-                error: Invalid component name 'foo-bar'. Component names must start with an uppercase letter (PascalCase) and contain only alphanumeric characters
+                error: Component name must start with an uppercase letter
                 1 | <foo-bar>
                   |  ^^^^^^^
 
-                error: Invalid component name 'Component-With-Dash'. Component names must start with an uppercase letter (PascalCase) and contain only alphanumeric characters
+                error: Component name contains invalid character: '-'. Only alphanumeric characters are allowed
                 3 | <Component_With_Underscore></Component_With_Underscore>
                 4 | <Component-With-Dash></Component-With-Dash>
                   |  ^^^^^^^^^^^^^^^^^^^

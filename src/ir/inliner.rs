@@ -201,7 +201,7 @@ impl Inliner {
     ) -> Vec<InlinedNode> {
         match node {
             Node::ComponentReference {
-                tag_name,
+                component_name,
                 definition_module,
                 args,
                 children,
@@ -213,7 +213,7 @@ impl Inliner {
                     .expect("Component reference should have module");
                 let ast = asts.get(module).expect("Component module should exist");
                 let component = ast
-                    .get_component_definition(tag_name.as_str())
+                    .get_component_definition(component_name.as_str())
                     .expect("Component definition should exist");
 
                 // Inline the component

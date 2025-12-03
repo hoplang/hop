@@ -7,16 +7,13 @@ pub enum InvalidComponentNameError {
     #[error("Component name cannot be empty")]
     Empty,
 
-    #[error("Component name must start with an uppercase letter (PascalCase)")]
+    #[error("Component name must start with an uppercase letter")]
     NotPascalCase,
 
     #[error(
         "Component name contains invalid character: '{0}'. Only alphanumeric characters are allowed"
     )]
     InvalidCharacter(char),
-
-    #[error("Component name '{0}' is reserved")]
-    Reserved(String),
 }
 
 /// A type-safe wrapper for component names in the hop system.
@@ -28,16 +25,6 @@ pub enum InvalidComponentNameError {
 pub struct ComponentName(String);
 
 impl ComponentName {
-    /// Reserved names that cannot be used as component names
-    const RESERVED_NAMES: &'static [&'static str] = &[
-        // Reserved for future use or special meaning
-        "Component",
-        "Element",
-        "Fragment",
-        "Slot",
-        "Template",
-    ];
-
     /// Create a new ComponentName from a string, validating it
     ///
     /// Returns an error describing why the component name is invalid.
@@ -45,15 +32,9 @@ impl ComponentName {
     /// - Must not be empty
     /// - Must start with an uppercase letter (PascalCase)
     /// - Must contain only alphanumeric characters
-    /// - Must not be a reserved name
     pub fn new(name: String) -> Result<Self, InvalidComponentNameError> {
         Self::validate(&name)?;
         Ok(ComponentName(name))
-    }
-
-    /// Check if a string is a valid component name (used for quick validation)
-    pub fn is_valid(name: &str) -> bool {
-        Self::validate(name).is_ok()
     }
 
     /// Validate a component name string
@@ -61,11 +42,6 @@ impl ComponentName {
         // Must not be empty
         if name.is_empty() {
             return Err(InvalidComponentNameError::Empty);
-        }
-
-        // Check if it's a reserved name
-        if Self::RESERVED_NAMES.contains(&name) {
-            return Err(InvalidComponentNameError::Reserved(name.to_string()));
         }
 
         // Must start with an uppercase letter (PascalCase)
@@ -166,81 +142,57 @@ mod tests {
 
     #[test]
     fn test_valid_component_names() {
-        assert!(ComponentName::new("Button".to_string()).is_ok());
-        assert!(ComponentName::new("UserProfile".to_string()).is_ok());
-        assert!(ComponentName::new("NavBar".to_string()).is_ok());
-        assert!(ComponentName::new("Component123".to_string()).is_ok());
-        assert!(ComponentName::new("MyComponent".to_string()).is_ok());
-        assert!(ComponentName::new("A".to_string()).is_ok());
-        assert!(ComponentName::new("ABC123".to_string()).is_ok());
-        assert!(ComponentName::new("Main".to_string()).is_ok());
-        assert!(ComponentName::new("Foo".to_string()).is_ok());
-        assert!(ComponentName::new("Bar".to_string()).is_ok());
+        let cases = [
+            "Button",
+            "UserProfile",
+            "NavBar",
+            "Component123",
+            "MyComponent",
+            "A",
+            "ABC123",
+            "Main",
+            "Foo",
+            "Bar",
+        ];
+
+        for input in cases {
+            assert!(
+                ComponentName::new(input.to_string()).is_ok(),
+                "{input:?} should be valid"
+            );
+        }
     }
 
     #[test]
     fn test_invalid_component_names() {
-        // Empty name
-        assert_eq!(
-            ComponentName::new("".to_string()),
-            Err(InvalidComponentNameError::Empty)
-        );
+        let cases = [
+            ("", InvalidComponentNameError::Empty),
+            ("button", InvalidComponentNameError::NotPascalCase),
+            ("userProfile", InvalidComponentNameError::NotPascalCase),
+            ("navBar", InvalidComponentNameError::NotPascalCase),
+            (
+                "User-Profile",
+                InvalidComponentNameError::InvalidCharacter('-'),
+            ),
+            (
+                "User_Profile",
+                InvalidComponentNameError::InvalidCharacter('_'),
+            ),
+            (
+                "User Profile",
+                InvalidComponentNameError::InvalidCharacter(' '),
+            ),
+            ("Button!", InvalidComponentNameError::InvalidCharacter('!')),
+            ("Nav.Bar", InvalidComponentNameError::InvalidCharacter('.')),
+        ];
 
-        // Not PascalCase (lowercase start)
-        assert_eq!(
-            ComponentName::new("button".to_string()),
-            Err(InvalidComponentNameError::NotPascalCase)
-        );
-        assert_eq!(
-            ComponentName::new("userProfile".to_string()),
-            Err(InvalidComponentNameError::NotPascalCase)
-        );
-        assert_eq!(
-            ComponentName::new("navBar".to_string()),
-            Err(InvalidComponentNameError::NotPascalCase)
-        );
-
-        // Contains invalid characters
-        assert_eq!(
-            ComponentName::new("User-Profile".to_string()),
-            Err(InvalidComponentNameError::InvalidCharacter('-'))
-        );
-        assert_eq!(
-            ComponentName::new("User_Profile".to_string()),
-            Err(InvalidComponentNameError::InvalidCharacter('_'))
-        );
-        assert_eq!(
-            ComponentName::new("User Profile".to_string()),
-            Err(InvalidComponentNameError::InvalidCharacter(' '))
-        );
-        assert_eq!(
-            ComponentName::new("Button!".to_string()),
-            Err(InvalidComponentNameError::InvalidCharacter('!'))
-        );
-        assert_eq!(
-            ComponentName::new("Nav.Bar".to_string()),
-            Err(InvalidComponentNameError::InvalidCharacter('.'))
-        );
-
-        // Reserved names
-        assert_eq!(
-            ComponentName::new("Component".to_string()),
-            Err(InvalidComponentNameError::Reserved("Component".to_string()))
-        );
-        assert_eq!(
-            ComponentName::new("Template".to_string()),
-            Err(InvalidComponentNameError::Reserved("Template".to_string()))
-        );
-    }
-
-    #[test]
-    fn test_is_valid() {
-        assert!(ComponentName::is_valid("Button"));
-        assert!(ComponentName::is_valid("UserProfile"));
-        assert!(!ComponentName::is_valid("button"));
-        assert!(!ComponentName::is_valid("User-Profile"));
-        assert!(!ComponentName::is_valid(""));
-        assert!(!ComponentName::is_valid("Component")); // Reserved
+        for (input, expected) in cases {
+            assert_eq!(
+                ComponentName::new(input.to_string()),
+                Err(expected),
+                "{input:?} should be invalid"
+            );
+        }
     }
 
     #[test]
@@ -258,56 +210,26 @@ mod tests {
     }
 
     #[test]
-    fn test_to_pascal_case() {
-        let button = ComponentName::new("Button".to_string()).unwrap();
-        assert_eq!(button.to_pascal_case(), "Button");
+    fn test_case_conversions() {
+        let cases = [
+            ("Button", "Button", "button", "button"),
+            ("UserProfile", "UserProfile", "userProfile", "user_profile"),
+            ("NavBar", "NavBar", "navBar", "nav_bar"),
+            ("Main", "Main", "main", "main"),
+            ("Test", "Test", "test", "test"),
+            (
+                "TestAuthCheck",
+                "TestAuthCheck",
+                "testAuthCheck",
+                "test_auth_check",
+            ),
+        ];
 
-        let user_profile = ComponentName::new("UserProfile".to_string()).unwrap();
-        assert_eq!(user_profile.to_pascal_case(), "UserProfile");
-
-        let nav_bar = ComponentName::new("NavBar".to_string()).unwrap();
-        assert_eq!(nav_bar.to_pascal_case(), "NavBar");
-
-        let main = ComponentName::new("Main".to_string()).unwrap();
-        assert_eq!(main.to_pascal_case(), "Main");
-    }
-
-    #[test]
-    fn test_to_camel_case() {
-        let button = ComponentName::new("Button".to_string()).unwrap();
-        assert_eq!(button.to_camel_case(), "button");
-
-        let user_profile = ComponentName::new("UserProfile".to_string()).unwrap();
-        assert_eq!(user_profile.to_camel_case(), "userProfile");
-
-        let nav_bar = ComponentName::new("NavBar".to_string()).unwrap();
-        assert_eq!(nav_bar.to_camel_case(), "navBar");
-
-        let main = ComponentName::new("Main".to_string()).unwrap();
-        assert_eq!(main.to_camel_case(), "main");
-
-        let test = ComponentName::new("Test".to_string()).unwrap();
-        assert_eq!(test.to_camel_case(), "test");
-    }
-
-    #[test]
-    fn test_to_snake_case() {
-        let button = ComponentName::new("Button".to_string()).unwrap();
-        assert_eq!(button.to_snake_case(), "button");
-
-        let user_profile = ComponentName::new("UserProfile".to_string()).unwrap();
-        assert_eq!(user_profile.to_snake_case(), "user_profile");
-
-        let nav_bar = ComponentName::new("NavBar".to_string()).unwrap();
-        assert_eq!(nav_bar.to_snake_case(), "nav_bar");
-
-        let main = ComponentName::new("Main".to_string()).unwrap();
-        assert_eq!(main.to_snake_case(), "main");
-
-        let test = ComponentName::new("Test".to_string()).unwrap();
-        assert_eq!(test.to_snake_case(), "test");
-
-        let test_auth_check = ComponentName::new("TestAuthCheck".to_string()).unwrap();
-        assert_eq!(test_auth_check.to_snake_case(), "test_auth_check");
+        for (input, pascal, camel, snake) in cases {
+            let name = ComponentName::new(input.to_string()).unwrap();
+            assert_eq!(name.to_pascal_case(), pascal, "{input} to_pascal_case");
+            assert_eq!(name.to_camel_case(), camel, "{input} to_camel_case");
+            assert_eq!(name.to_snake_case(), snake, "{input} to_snake_case");
+        }
     }
 }

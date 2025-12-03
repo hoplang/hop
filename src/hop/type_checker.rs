@@ -472,9 +472,10 @@ fn typecheck_node(
         }
 
         Node::ComponentReference {
-            tag_name,
+            component_name,
+            component_name_opening_range: tag_name,
             definition_module,
-            closing_tag_name,
+            component_name_closing_range: closing_tag_name,
             args,
             children,
             range,
@@ -499,18 +500,20 @@ fn typecheck_node(
             };
 
             // Validate that content is only passed to components with children: TrustedHTML parameter
-            if !children.is_empty() && !module_info.component_accepts_children(tag_name.as_str()) {
+            if !children.is_empty()
+                && !module_info.component_accepts_children(component_name.as_str())
+            {
                 errors.push(TypeError::ComponentDoesNotAcceptChildren {
-                    component: tag_name.as_str().to_string(),
+                    component: component_name.as_str().to_string(),
                     range: tag_name.clone(),
                 });
             }
 
             // Check if children: TrustedHTML is required but not provided
-            let accepts_children = module_info.component_accepts_children(tag_name.as_str());
+            let accepts_children = module_info.component_accepts_children(component_name.as_str());
             if accepts_children && children.is_empty() {
                 errors.push(TypeError::MissingChildren {
-                    component: tag_name.as_str().to_string(),
+                    component: component_name.as_str().to_string(),
                     range: tag_name.clone(),
                 });
             }
@@ -518,7 +521,7 @@ fn typecheck_node(
             // Validate arguments and build typed versions
             // Filter out children parameter - it's handled separately via component children
             let params_without_children: Option<Vec<_>> = module_info
-                .get_parameter_types(tag_name.as_str())
+                .get_parameter_types(component_name.as_str())
                 .map(|params| {
                     params
                         .iter()
@@ -555,7 +558,7 @@ fn typecheck_node(
                     }
 
                     // Get all params (including children) for type checking provided args
-                    let all_params = module_info.get_parameter_types(tag_name.as_str());
+                    let all_params = module_info.get_parameter_types(component_name.as_str());
 
                     for arg in args {
                         // Skip children arg - it's handled separately via component children
@@ -625,9 +628,10 @@ fn typecheck_node(
             };
 
             Some(Node::ComponentReference {
-                tag_name: tag_name.clone(),
+                component_name: component_name.clone(),
+                component_name_opening_range: tag_name.clone(),
                 definition_module: definition_module.clone(),
-                closing_tag_name: closing_tag_name.clone(),
+                component_name_closing_range: closing_tag_name.clone(),
                 args: typed_args,
                 range: range.clone(),
                 children: typed_children,

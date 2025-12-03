@@ -180,7 +180,7 @@ impl Program {
 
         match node {
             Node::ComponentReference {
-                tag_name,
+                component_name,
                 definition_module,
                 ..
             } => {
@@ -188,7 +188,7 @@ impl Program {
                 let component_def = self
                     .modules
                     .get(module_name)?
-                    .get_component_definition(tag_name.as_str())?;
+                    .get_component_definition(component_name.as_str())?;
                 Some(DefinitionLocation {
                     module: module_name.clone(),
                     range: component_def.tag_name.clone(),
@@ -217,7 +217,7 @@ impl Program {
                 .any(|r| r.contains_position(position))
             {
                 return Some(
-                    self.collect_component_rename_locations(node.tag_name.as_str(), module_name),
+                    self.collect_component_rename_locations(&node.component_name, module_name),
                 );
             }
         }
@@ -232,11 +232,11 @@ impl Program {
 
         match node {
             Node::ComponentReference {
-                tag_name,
+                component_name,
                 definition_module: definition_location,
                 ..
             } => definition_location.as_ref().map(|target_module| {
-                self.collect_component_rename_locations(tag_name.as_str(), target_module)
+                self.collect_component_rename_locations(component_name, target_module)
             }),
             n @ Node::Html { .. } => Some(
                 n.tag_names()
@@ -289,13 +289,13 @@ impl Program {
     /// - All import statements that import the component
     fn collect_component_rename_locations(
         &self,
-        component_name: &str,
+        component_name: &ComponentName,
         definition_module: &ModuleName,
     ) -> Vec<RenameLocation> {
         let mut locations = Vec::new();
 
         if let Some(module) = self.modules.get(definition_module) {
-            if let Some(component_node) = module.get_component_definition(component_name) {
+            if let Some(component_node) = module.get_component_definition(component_name.as_str()) {
                 // Add the definition's opening tag name
                 locations.push(RenameLocation {
                     module: definition_module.clone(),
@@ -318,7 +318,8 @@ impl Program {
                 ast.get_imports()
                     .iter()
                     .filter(|n| {
-                        n.imports_component(component_name) && n.imports_from(definition_module)
+                        n.imports_component(component_name.as_str())
+                            && n.imports_from(definition_module)
                     })
                     .map(|n| RenameLocation {
                         module: module_name.clone(),
@@ -331,14 +332,14 @@ impl Program {
                 ast.iter_all_nodes()
                     .filter(|node| match node {
                         Node::ComponentReference {
-                            tag_name,
+                            component_name: ref_component_name,
                             definition_module: reference_definition_module,
                             ..
                         } => {
                             reference_definition_module
                                 .as_ref()
                                 .is_some_and(|d| d == definition_module)
-                                && tag_name.as_str() == component_name
+                                && ref_component_name == component_name
                         }
                         _ => false,
                     })
