@@ -16,28 +16,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 pub struct Inliner;
 
 impl Inliner {
-    /// Convert a TypedAttribute to InlinedAttribute
-    fn convert_attribute(attr: &TypedAttribute) -> InlinedAttribute {
-        InlinedAttribute {
-            name: attr.name.as_str().to_string(),
-            value: attr.value.as_ref().map(|v| match v {
-                AttributeValue::Expressions(exprs) => {
-                    InlinedAttributeValue::Expressions(exprs.clone())
-                }
-                AttributeValue::String(s) => InlinedAttributeValue::String(s.as_str().to_string()),
-            }),
-        }
-    }
-
-    /// Convert a BTreeMap of TypedAttributes to InlinedAttributes
-    fn convert_attributes(
-        attrs: &BTreeMap<StringSpan, TypedAttribute>,
-    ) -> BTreeMap<String, InlinedAttribute> {
-        attrs
-            .iter()
-            .map(|(key, attr)| (key.as_str().to_string(), Self::convert_attribute(attr)))
-            .collect()
-    }
     /// Inline all component references in components listed in pages
     /// Returns a vector of inlined entrypoint components
     ///
@@ -116,6 +94,29 @@ impl Inliner {
         Ok(result)
     }
 
+    /// Convert a TypedAttribute to InlinedAttribute
+    fn convert_attribute(attr: &TypedAttribute) -> InlinedAttribute {
+        InlinedAttribute {
+            name: attr.name.as_str().to_string(),
+            value: attr.value.as_ref().map(|v| match v {
+                AttributeValue::Expressions(exprs) => {
+                    InlinedAttributeValue::Expressions(exprs.clone())
+                }
+                AttributeValue::String(s) => InlinedAttributeValue::String(s.as_str().to_string()),
+            }),
+        }
+    }
+
+    /// Convert a BTreeMap of TypedAttributes to InlinedAttributes
+    fn convert_attributes(
+        attrs: &BTreeMap<StringSpan, TypedAttribute>,
+    ) -> BTreeMap<String, InlinedAttribute> {
+        attrs
+            .iter()
+            .map(|(key, attr)| (key.as_str().to_string(), Self::convert_attribute(attr)))
+            .collect()
+    }
+
     /// Parse pages list into a HashMap of module -> set of component names
     /// Format: "module/Component" or "module/submodule/Component"
     fn parse_page_filter(pages: &[String]) -> Result<HashMap<String, HashSet<String>>> {
@@ -173,12 +174,12 @@ impl Inliner {
     ) -> Vec<InlinedNode> {
         // Process component children with slot replacement
         // Children are passed if the component has `children: TrustedHTML` parameter
-        let slot_content = if Self::component_accepts_children(component) && !slot_children.is_empty()
-        {
-            Some(slot_children)
-        } else {
-            None
-        };
+        let slot_content =
+            if Self::component_accepts_children(component) && !slot_children.is_empty() {
+                Some(slot_children)
+            } else {
+                None
+            };
         let inlined_children = Self::inline_nodes(&component.children, slot_content, asts);
 
         // Build parameter bindings (excluding children - handled via slot mechanism)
