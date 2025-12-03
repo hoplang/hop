@@ -31,27 +31,24 @@ pub enum Token {
     LeftBracket,
     /// ]
     RightBracket,
-    /// End of input
-    Eof,
 }
 
 impl PartialEq for Token {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Token::Import, Token::Import) => true,
-            (Token::Record, Token::Record) => true,
-            (Token::From, Token::From) => true,
-            (Token::Identifier(_), Token::Identifier(_)) => true,
-            (Token::String(_), Token::String(_)) => true,
-            (Token::LeftBrace, Token::LeftBrace) => true,
-            (Token::RightBrace, Token::RightBrace) => true,
-            (Token::Colon, Token::Colon) => true,
-            (Token::Comma, Token::Comma) => true,
-            (Token::LeftBracket, Token::LeftBracket) => true,
-            (Token::RightBracket, Token::RightBracket) => true,
-            (Token::Eof, Token::Eof) => true,
-            _ => false,
-        }
+        matches!(
+            (self, other),
+            (Token::Import, Token::Import)
+                | (Token::Record, Token::Record)
+                | (Token::From, Token::From)
+                | (Token::Identifier(_), Token::Identifier(_))
+                | (Token::String(_), Token::String(_))
+                | (Token::LeftBrace, Token::LeftBrace)
+                | (Token::RightBrace, Token::RightBrace)
+                | (Token::Colon, Token::Colon)
+                | (Token::Comma, Token::Comma)
+                | (Token::LeftBracket, Token::LeftBracket)
+                | (Token::RightBracket, Token::RightBracket)
+        )
     }
 }
 
@@ -69,7 +66,6 @@ impl std::fmt::Display for Token {
             Token::Comma => write!(f, ","),
             Token::LeftBracket => write!(f, "["),
             Token::RightBracket => write!(f, "]"),
-            Token::Eof => write!(f, "EOF"),
         }
     }
 }
@@ -77,133 +73,73 @@ impl std::fmt::Display for Token {
 /// Tokenizer for declaration syntax.
 pub struct Tokenizer {
     iter: Peekable<DocumentCursor>,
-    /// The original range being tokenized (used for EOF error reporting).
-    full_range: DocumentRange,
 }
 
-impl Tokenizer {
-    /// Create a new tokenizer from a document range.
-    pub fn new(range: DocumentRange) -> Self {
+impl From<DocumentRange> for Tokenizer {
+    fn from(range: DocumentRange) -> Self {
         Self {
-            iter: range.clone().cursor().peekable(),
-            full_range: range,
+            iter: range.cursor().peekable(),
         }
     }
+}
 
-    /// Skip whitespace characters.
-    fn skip_whitespace(&mut self) {
+impl Iterator for Tokenizer {
+    type Item = Result<(Token, DocumentRange), ParseError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Skip whitespace
         while self.iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
             self.iter.next();
         }
-    }
 
-    /// Get the next token.
-    pub fn next_token(&mut self) -> Result<(Token, DocumentRange), ParseError> {
-        self.skip_whitespace();
-
-        let Some(start) = self.iter.next() else {
-            // Return an error with the full range for context
-            return Err(ParseError::GenericError {
-                message: "Unexpected end of input".to_string(),
-                range: self.full_range.clone(),
-            });
-        };
-
-        match start.ch() {
-            '{' => Ok((Token::LeftBrace, start)),
-            '}' => Ok((Token::RightBrace, start)),
-            ':' => Ok((Token::Colon, start)),
-            ',' => Ok((Token::Comma, start)),
-            '[' => Ok((Token::LeftBracket, start)),
-            ']' => Ok((Token::RightBracket, start)),
-            '"' => self.tokenize_string(start),
-            ch if ch.is_ascii_alphabetic() || ch == '_' => self.tokenize_identifier(start),
-            ch => Err(ParseError::GenericError {
-                message: format!("Unexpected character: '{}'", ch),
-                range: start,
-            }),
-        }
-    }
-
-    /// Check if there are more tokens available.
-    pub fn has_more(&mut self) -> bool {
-        self.skip_whitespace();
-        self.iter.peek().is_some()
-    }
-
-    /// Peek at the next token without consuming it.
-    pub fn peek_token(&mut self) -> Result<Token, ParseError> {
-        self.skip_whitespace();
-
-        let Some(start) = self.iter.peek().cloned() else {
-            return Ok(Token::Eof);
-        };
-
-        match start.ch() {
-            '{' => Ok(Token::LeftBrace),
-            '}' => Ok(Token::RightBrace),
-            ':' => Ok(Token::Colon),
-            ',' => Ok(Token::Comma),
-            '[' => Ok(Token::LeftBracket),
-            ']' => Ok(Token::RightBracket),
-            '"' => Ok(Token::String(start)), // Just indicate it's a string
-            ch if ch.is_ascii_alphabetic() || ch == '_' => {
-                // Need to look ahead to determine keyword vs identifier
-                let mut check_iter = self.iter.clone();
-                // Skip the first character (we already have it in `start`)
-                check_iter.next();
-                let identifier = start.extend(check_iter.peeking_take_while(|s| {
-                    s.ch().is_ascii_alphanumeric() || s.ch() == '_'
-                }));
-                match identifier.as_str() {
-                    "import" => Ok(Token::Import),
-                    "record" => Ok(Token::Record),
-                    "from" => Ok(Token::From),
-                    _ => Ok(Token::Identifier(identifier)),
-                }
-            }
-            _ => Ok(Token::Eof),
-        }
-    }
-
-    /// Tokenize a string literal (the content inside quotes).
-    fn tokenize_string(&mut self, open_quote: DocumentRange) -> Result<(Token, DocumentRange), ParseError> {
-        let mut content_start: Option<DocumentRange> = None;
-        let mut content_end: Option<DocumentRange> = None;
-
-        while let Some(s) = self.iter.next_if(|s| s.ch() != '"') {
-            if content_start.is_none() {
-                content_start = Some(s.clone());
-            }
-            content_end = Some(s);
-        }
-
-        match self.iter.next() {
-            Some(close_quote) => {
-                // Return the content range (without quotes)
-                let content_range = match (content_start, content_end) {
-                    (Some(start), Some(end)) => start.to(end),
-                    (Some(start), None) => start,
-                    _ => {
-                        // Empty string - return the range between quotes
-                        // We need a valid range, so use open_quote position
-                        return Err(ParseError::GenericError {
-                            message: "Empty string literal".to_string(),
-                            range: open_quote.to(close_quote),
-                        });
+        self.iter.next().map(|start| {
+            match start.ch() {
+                '{' => Ok((Token::LeftBrace, start)),
+                '}' => Ok((Token::RightBrace, start)),
+                ':' => Ok((Token::Colon, start)),
+                ',' => Ok((Token::Comma, start)),
+                '[' => Ok((Token::LeftBracket, start)),
+                ']' => Ok((Token::RightBracket, start)),
+                '"' => {
+                    let Some(content_start) = self.iter.next_if(|s| s.ch() != '"') else {
+                        // Empty string or unterminated
+                        return match self.iter.next() {
+                            Some(end) => Err(ParseError::GenericError {
+                                message: "Empty string literal".to_string(),
+                                range: start.to(end),
+                            }),
+                            None => Err(ParseError::UnmatchedCharacter {
+                                ch: '"',
+                                range: start,
+                            }),
+                        };
+                    };
+                    let content = content_start
+                        .extend(self.iter.peeking_take_while(|s| s.ch() != '"'));
+                    match self.iter.next() {
+                        Some(end) => Ok((Token::String(content), start.to(end))),
+                        None => Err(ParseError::UnmatchedCharacter {
+                            ch: '"',
+                            range: start,
+                        }),
                     }
-                };
-                Ok((Token::String(content_range), open_quote.to(close_quote)))
+                }
+                ch if ch.is_ascii_alphabetic() || ch == '_' => self.tokenize_identifier(start),
+                ch => Err(ParseError::GenericError {
+                    message: format!("Unexpected character: '{}'", ch),
+                    range: start,
+                }),
             }
-            None => Err(ParseError::UnmatchedCharacter {
-                ch: '"',
-                range: open_quote,
-            }),
-        }
+        })
     }
+}
 
+impl Tokenizer {
     /// Tokenize an identifier or keyword.
-    fn tokenize_identifier(&mut self, start: DocumentRange) -> Result<(Token, DocumentRange), ParseError> {
+    fn tokenize_identifier(
+        &mut self,
+        start: DocumentRange,
+    ) -> Result<(Token, DocumentRange), ParseError> {
         let identifier = start.extend(
             self.iter
                 .peeking_take_while(|s| s.ch().is_ascii_alphanumeric() || s.ch() == '_'),
@@ -230,11 +166,11 @@ mod tests {
 
     fn check(input: &str, expected: Expect) {
         let range = DocumentCursor::new(input.to_string()).range();
-        let mut tokenizer = Tokenizer::new(range);
+        let tokenizer = Tokenizer::from(range);
         let mut annotations = Vec::new();
 
-        while tokenizer.has_more() {
-            match tokenizer.next_token() {
+        for t in tokenizer {
+            match t {
                 Ok((token, range)) => {
                     annotations.push(SimpleAnnotation {
                         message: format!("token: {}", token),

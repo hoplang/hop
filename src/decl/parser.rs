@@ -1,23 +1,48 @@
 //! Parser for declaration syntax (import and record declarations).
 
+use std::iter::Peekable;
+
 use crate::document::document_cursor::DocumentRange;
 use crate::dop::Parser as DopParser;
 use crate::hop::module_name::ModuleName;
 use crate::hop::parse_error::ParseError;
 
-use super::tokenizer::{Token, Tokenizer};
 use super::Declaration;
+use super::tokenizer::{Token, Tokenizer};
 
 /// Parser for declaration syntax.
 pub struct Parser {
-    tokenizer: Tokenizer,
+    iter: Peekable<Tokenizer>,
+    range: DocumentRange,
+}
+
+impl From<DocumentRange> for Parser {
+    fn from(range: DocumentRange) -> Self {
+        Self {
+            iter: Tokenizer::from(range.clone()).peekable(),
+            range,
+        }
+    }
 }
 
 impl Parser {
-    /// Create a new parser from a document range.
-    pub fn new(range: DocumentRange) -> Self {
-        Self {
-            tokenizer: Tokenizer::new(range),
+    /// Check if the next token matches (without consuming it).
+    fn peek_token(&mut self) -> Option<Token> {
+        self.iter
+            .peek()
+            .and_then(|res| res.as_ref().ok())
+            .map(|(token, _)| token.clone())
+    }
+
+    /// Consume the next token.
+    fn next_token(&mut self) -> Result<(Token, DocumentRange), ParseError> {
+        match self.iter.next() {
+            Some(Ok((token, range))) => Ok((token, range)),
+            Some(Err(e)) => Err(e),
+            None => Err(ParseError::GenericError {
+                message: "Unexpected end of input".to_string(),
+                range: self.range.clone(),
+            }),
         }
     }
 
@@ -28,15 +53,15 @@ impl Parser {
     /// or `Err` if parsing fails after recognizing an import.
     pub fn parse_import(&mut self) -> Result<Option<Declaration>, ParseError> {
         // Check if this looks like an import
-        if self.tokenizer.peek_token()? != Token::Import {
+        if self.peek_token() != Some(Token::Import) {
             return Ok(None);
         }
 
         // Consume "import"
-        let (_, import_range) = self.tokenizer.next_token()?;
+        let (_, import_range) = self.next_token()?;
 
         // Expect identifier (component name)
-        let (token, name_range) = self.tokenizer.next_token()?;
+        let (token, name_range) = self.next_token()?;
         let name = match token {
             Token::Identifier(range) => range,
             _ => {
@@ -48,7 +73,7 @@ impl Parser {
         };
 
         // Expect "from"
-        let (token, from_range) = self.tokenizer.next_token()?;
+        let (token, from_range) = self.next_token()?;
         if token != Token::From {
             return Err(ParseError::new(
                 format!("Expected 'from' after component name, got {}", token),
@@ -57,7 +82,7 @@ impl Parser {
         }
 
         // Expect string (path)
-        let (token, path_token_range) = self.tokenizer.next_token()?;
+        let (token, path_token_range) = self.next_token()?;
         let path = match token {
             Token::String(range) => range,
             _ => {
@@ -98,15 +123,15 @@ impl Parser {
     /// or `Err` if parsing fails after recognizing a record.
     pub fn parse_record(&mut self) -> Result<Option<Declaration>, ParseError> {
         // Check if this looks like a record
-        if self.tokenizer.peek_token()? != Token::Record {
+        if self.peek_token() != Some(Token::Record) {
             return Ok(None);
         }
 
         // Consume "record"
-        let (_, record_range) = self.tokenizer.next_token()?;
+        let (_, record_range) = self.next_token()?;
 
         // Expect identifier (record name)
-        let (token, name_range) = self.tokenizer.next_token()?;
+        let (token, name_range) = self.next_token()?;
         let name = match token {
             Token::Identifier(range) => range,
             _ => {
@@ -118,7 +143,7 @@ impl Parser {
         };
 
         // Expect opening brace
-        let (token, open_brace_range) = self.tokenizer.next_token()?;
+        let (token, open_brace_range) = self.next_token()?;
         if token != Token::LeftBrace {
             return Err(ParseError::new(
                 format!("Expected '{{' after record name, got {}", token),
@@ -133,14 +158,14 @@ impl Parser {
         let mut last_range = open_brace_range.clone();
 
         while brace_count > 0 {
-            if !self.tokenizer.has_more() {
+            let Some(next) = self.iter.next() else {
                 return Err(ParseError::UnmatchedCharacter {
                     ch: '{',
                     range: fields_start,
                 });
-            }
+            };
 
-            let (token, range) = self.tokenizer.next_token()?;
+            let (token, range) = next?;
             last_range = range;
 
             match token {
@@ -187,9 +212,9 @@ impl Parser {
     /// `Ok(None)` if the input doesn't look like a declaration,
     /// or `Err` if parsing fails.
     pub fn parse(&mut self) -> Result<Option<Declaration>, ParseError> {
-        match self.tokenizer.peek_token()? {
-            Token::Import => self.parse_import(),
-            Token::Record => self.parse_record(),
+        match self.peek_token() {
+            Some(Token::Import) => self.parse_import(),
+            Some(Token::Record) => self.parse_record(),
             _ => Ok(None),
         }
     }
@@ -204,7 +229,7 @@ mod tests {
 
     fn check(input: &str, expected: Expect) {
         let range = DocumentCursor::new(input.to_string()).range();
-        let mut parser = Parser::new(range);
+        let mut parser = Parser::from(range);
 
         let result = match parser.parse() {
             Ok(Some(decl)) => format!("{:?}", decl),
@@ -251,7 +276,9 @@ mod tests {
             indoc! {r#"
                 import Header from "./components/header"
             "#},
-            expect!["Error: Import paths must start with '@/' where '@' indicates the root directory"],
+            expect![
+                "Error: Import paths must start with '@/' where '@' indicates the root directory"
+            ],
         );
     }
 

@@ -163,7 +163,7 @@ pub fn parse_declarations_from_source(
                 }
             }
             let sub_range = sub_cursor.range();
-            let mut decl_parser = parser::Parser::new(sub_range);
+            let mut decl_parser = parser::Parser::from(sub_range);
 
             match decl_parser.parse() {
                 Ok(Some(decl)) => {
