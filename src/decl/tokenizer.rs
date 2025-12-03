@@ -223,21 +223,38 @@ impl Tokenizer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document::document_cursor::Ranged as _;
+    use crate::document::{DocumentAnnotator, SimpleAnnotation};
     use expect_test::{Expect, expect};
+    use indoc::indoc;
 
     fn check(input: &str, expected: Expect) {
         let range = DocumentCursor::new(input.to_string()).range();
         let mut tokenizer = Tokenizer::new(range);
-        let mut tokens = Vec::new();
+        let mut annotations = Vec::new();
 
         while tokenizer.has_more() {
             match tokenizer.next_token() {
-                Ok((token, _range)) => tokens.push(format!("{}", token)),
-                Err(e) => tokens.push(format!("Error: {}", e)),
+                Ok((token, range)) => {
+                    annotations.push(SimpleAnnotation {
+                        message: format!("token: {}", token),
+                        range,
+                    });
+                }
+                Err(err) => {
+                    annotations.push(SimpleAnnotation {
+                        message: format!("error: {}", err),
+                        range: err.range().clone(),
+                    });
+                }
             }
         }
 
-        expected.assert_eq(&tokens.join("\n"));
+        expected.assert_eq(
+            &DocumentAnnotator::new()
+                .without_line_numbers()
+                .annotate(None, &annotations),
+        );
     }
 
     #[test]
@@ -245,10 +262,22 @@ mod tests {
         check(
             r#"import UserList from "@/user_list""#,
             expect![[r#"
-                import
-                UserList
-                from
-                "@/user_list""#]],
+                token: import
+                import UserList from "@/user_list"
+                ^^^^^^
+
+                token: UserList
+                import UserList from "@/user_list"
+                       ^^^^^^^^
+
+                token: from
+                import UserList from "@/user_list"
+                                ^^^^
+
+                token: "@/user_list"
+                import UserList from "@/user_list"
+                                     ^^^^^^^^^^^^^
+            "#]],
         );
     }
 
@@ -257,17 +286,50 @@ mod tests {
         check(
             "record User {name: String, age: Int}",
             expect![[r#"
-                record
-                User
-                {
-                name
-                :
-                String
-                ,
-                age
-                :
-                Int
-                }"#]],
+                token: record
+                record User {name: String, age: Int}
+                ^^^^^^
+
+                token: User
+                record User {name: String, age: Int}
+                       ^^^^
+
+                token: {
+                record User {name: String, age: Int}
+                            ^
+
+                token: name
+                record User {name: String, age: Int}
+                             ^^^^
+
+                token: :
+                record User {name: String, age: Int}
+                                 ^
+
+                token: String
+                record User {name: String, age: Int}
+                                   ^^^^^^
+
+                token: ,
+                record User {name: String, age: Int}
+                                         ^
+
+                token: age
+                record User {name: String, age: Int}
+                                           ^^^
+
+                token: :
+                record User {name: String, age: Int}
+                                              ^
+
+                token: Int
+                record User {name: String, age: Int}
+                                                ^^^
+
+                token: }
+                record User {name: String, age: Int}
+                                                   ^
+            "#]],
         );
     }
 
@@ -276,36 +338,357 @@ mod tests {
         check(
             "record UserList {users: Array[User]}",
             expect![[r#"
-                record
-                UserList
-                {
-                users
-                :
-                Array
-                [
-                User
-                ]
-                }"#]],
+                token: record
+                record UserList {users: Array[User]}
+                ^^^^^^
+
+                token: UserList
+                record UserList {users: Array[User]}
+                       ^^^^^^^^
+
+                token: {
+                record UserList {users: Array[User]}
+                                ^
+
+                token: users
+                record UserList {users: Array[User]}
+                                 ^^^^^
+
+                token: :
+                record UserList {users: Array[User]}
+                                      ^
+
+                token: Array
+                record UserList {users: Array[User]}
+                                        ^^^^^
+
+                token: [
+                record UserList {users: Array[User]}
+                                             ^
+
+                token: User
+                record UserList {users: Array[User]}
+                                              ^^^^
+
+                token: ]
+                record UserList {users: Array[User]}
+                                                  ^
+
+                token: }
+                record UserList {users: Array[User]}
+                                                   ^
+            "#]],
         );
     }
 
     #[test]
     fn test_multiline_record() {
         check(
-            "record User {\n    name: String,\n    age: Int,\n}",
+            indoc! {"
+                record User {
+                    name: String,
+                    age: Int,
+                }
+            "},
             expect![[r#"
-                record
-                User
-                {
-                name
-                :
-                String
-                ,
-                age
-                :
-                Int
-                ,
-                }"#]],
+                token: record
+                record User {
+                ^^^^^^
+
+                token: User
+                record User {
+                       ^^^^
+
+                token: {
+                record User {
+                            ^
+
+                token: name
+                    name: String,
+                    ^^^^
+
+                token: :
+                    name: String,
+                        ^
+
+                token: String
+                    name: String,
+                          ^^^^^^
+
+                token: ,
+                    name: String,
+                                ^
+
+                token: age
+                    age: Int,
+                    ^^^
+
+                token: :
+                    age: Int,
+                       ^
+
+                token: Int
+                    age: Int,
+                         ^^^
+
+                token: ,
+                    age: Int,
+                            ^
+
+                token: }
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_unexpected_character() {
+        check(
+            "record User @",
+            expect![[r#"
+                token: record
+                record User @
+                ^^^^^^
+
+                token: User
+                record User @
+                       ^^^^
+
+                error: Unexpected character: '@'
+                record User @
+                            ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_multiple_declarations() {
+        check(
+            indoc! {r#"
+                import Foo from "@/foo"
+                import Bar from "@/bar"
+            "#},
+            expect![[r#"
+                token: import
+                import Foo from "@/foo"
+                ^^^^^^
+
+                token: Foo
+                import Foo from "@/foo"
+                       ^^^
+
+                token: from
+                import Foo from "@/foo"
+                           ^^^^
+
+                token: "@/foo"
+                import Foo from "@/foo"
+                                ^^^^^^^
+
+                token: import
+                import Bar from "@/bar"
+                ^^^^^^
+
+                token: Bar
+                import Bar from "@/bar"
+                       ^^^
+
+                token: from
+                import Bar from "@/bar"
+                           ^^^^
+
+                token: "@/bar"
+                import Bar from "@/bar"
+                                ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_import_then_record() {
+        check(
+            indoc! {r#"
+                import Foo from "@/foo"
+                record Bar {name: String}
+            "#},
+            expect![[r#"
+                token: import
+                import Foo from "@/foo"
+                ^^^^^^
+
+                token: Foo
+                import Foo from "@/foo"
+                       ^^^
+
+                token: from
+                import Foo from "@/foo"
+                           ^^^^
+
+                token: "@/foo"
+                import Foo from "@/foo"
+                                ^^^^^^^
+
+                token: record
+                record Bar {name: String}
+                ^^^^^^
+
+                token: Bar
+                record Bar {name: String}
+                       ^^^
+
+                token: {
+                record Bar {name: String}
+                           ^
+
+                token: name
+                record Bar {name: String}
+                            ^^^^
+
+                token: :
+                record Bar {name: String}
+                                ^
+
+                token: String
+                record Bar {name: String}
+                                  ^^^^^^
+
+                token: }
+                record Bar {name: String}
+                                        ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_whitespace_variations() {
+        check(
+            "record  User  {  name :  String  }",
+            expect![[r#"
+                token: record
+                record  User  {  name :  String  }
+                ^^^^^^
+
+                token: User
+                record  User  {  name :  String  }
+                        ^^^^
+
+                token: {
+                record  User  {  name :  String  }
+                              ^
+
+                token: name
+                record  User  {  name :  String  }
+                                 ^^^^
+
+                token: :
+                record  User  {  name :  String  }
+                                      ^
+
+                token: String
+                record  User  {  name :  String  }
+                                         ^^^^^^
+
+                token: }
+                record  User  {  name :  String  }
+                                                 ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_nested_arrays() {
+        check(
+            "record Data {matrix: Array[Array[Int]]}",
+            expect![[r#"
+                token: record
+                record Data {matrix: Array[Array[Int]]}
+                ^^^^^^
+
+                token: Data
+                record Data {matrix: Array[Array[Int]]}
+                       ^^^^
+
+                token: {
+                record Data {matrix: Array[Array[Int]]}
+                            ^
+
+                token: matrix
+                record Data {matrix: Array[Array[Int]]}
+                             ^^^^^^
+
+                token: :
+                record Data {matrix: Array[Array[Int]]}
+                                   ^
+
+                token: Array
+                record Data {matrix: Array[Array[Int]]}
+                                     ^^^^^
+
+                token: [
+                record Data {matrix: Array[Array[Int]]}
+                                          ^
+
+                token: Array
+                record Data {matrix: Array[Array[Int]]}
+                                           ^^^^^
+
+                token: [
+                record Data {matrix: Array[Array[Int]]}
+                                                ^
+
+                token: Int
+                record Data {matrix: Array[Array[Int]]}
+                                                 ^^^
+
+                token: ]
+                record Data {matrix: Array[Array[Int]]}
+                                                    ^
+
+                token: ]
+                record Data {matrix: Array[Array[Int]]}
+                                                     ^
+
+                token: }
+                record Data {matrix: Array[Array[Int]]}
+                                                      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_identifiers_with_underscores() {
+        check(
+            "record my_record {field_name: String}",
+            expect![[r#"
+                token: record
+                record my_record {field_name: String}
+                ^^^^^^
+
+                token: my_record
+                record my_record {field_name: String}
+                       ^^^^^^^^^
+
+                token: {
+                record my_record {field_name: String}
+                                 ^
+
+                token: field_name
+                record my_record {field_name: String}
+                                  ^^^^^^^^^^
+
+                token: :
+                record my_record {field_name: String}
+                                            ^
+
+                token: String
+                record my_record {field_name: String}
+                                              ^^^^^^
+
+                token: }
+                record my_record {field_name: String}
+                                                    ^
+            "#]],
         );
     }
 }
