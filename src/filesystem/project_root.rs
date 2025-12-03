@@ -192,13 +192,13 @@ impl ProjectRoot {
     pub async fn get_output_path(&self) -> anyhow::Result<PathBuf> {
         let config = self.load_config().await?;
         let target_config = config.get_target();
-        let output = match &target_config {
-            TargetConfig::Javascript(config) => &config.output,
-            TargetConfig::Typescript(config) => &config.output,
-            TargetConfig::Python(config) => &config.output,
-            TargetConfig::Go(config) => &config.output,
+        let output_path = match &target_config {
+            TargetConfig::Javascript(config) => &config.output_path,
+            TargetConfig::Typescript(config) => &config.output_path,
+            TargetConfig::Python(config) => &config.output_path,
+            TargetConfig::Go(config) => &config.output_path,
         };
-        Ok(self.directory.join(output))
+        Ok(self.directory.join(output_path))
     }
 
     pub async fn write_output(&self, data: &str) -> anyhow::Result<PathBuf> {
@@ -452,7 +452,7 @@ mod tests {
             mode = "tailwind4"
 
             [target.typescript]
-            output = "app.ts"
+            output_path = "app.ts"
             pages = ["main/App"]
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();

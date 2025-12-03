@@ -216,7 +216,7 @@ mod tests {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [target.go]
-            output = "components/frontend.go"
+            output_path = "components/frontend.go"
             package = "main"
             pages = ["main/HelloWorld"]
 
