@@ -200,6 +200,7 @@ mod tests {
     use super::*;
     use crate::document::document_cursor::DocumentCursor;
     use expect_test::{Expect, expect};
+    use indoc::indoc;
 
     fn check(input: &str, expected: Expect) {
         let range = DocumentCursor::new(input.to_string()).range();
@@ -217,23 +218,39 @@ mod tests {
     #[test]
     fn test_parse_import() {
         check(
-            r#"import UserList from "@/user_list""#,
-            expect![[r#"Import { name: "UserList", path: "@/user_list", module_name: "user_list", range: "import UserList from \"@/user_list\"" }"#]],
+            indoc! {r#"
+                import UserList from "@/user_list"
+            "#},
+            expect![[r#"
+                Import {
+                  name: UserList,
+                  path: "@/user_list",
+                  module_name: user_list,
+                }"#]],
         );
     }
 
     #[test]
     fn test_parse_import_with_path() {
         check(
-            r#"import Header from "@/components/header""#,
-            expect![[r#"Import { name: "Header", path: "@/components/header", module_name: "components/header", range: "import Header from \"@/components/header\"" }"#]],
+            indoc! {r#"
+                import Header from "@/components/header"
+            "#},
+            expect![[r#"
+                Import {
+                  name: Header,
+                  path: "@/components/header",
+                  module_name: components/header,
+                }"#]],
         );
     }
 
     #[test]
     fn test_parse_import_missing_at_prefix() {
         check(
-            r#"import Header from "./components/header""#,
+            indoc! {r#"
+                import Header from "./components/header"
+            "#},
             expect!["Error: Import paths must start with '@/' where '@' indicates the root directory"],
         );
     }
@@ -241,23 +258,42 @@ mod tests {
     #[test]
     fn test_parse_record() {
         check(
-            "record User {name: String, age: Int}",
-            expect![[r#"Record { name: "User", fields: "[\"name: String\", \"age: Int\"]", range: "record User {name: String, age: Int}" }"#]],
+            indoc! {"
+                record User {name: String, age: Int}
+            "},
+            expect![[r#"
+                Record {
+                  name: User,
+                  fields: {
+                    name: String,
+                    age: Int,
+                  },
+                }"#]],
         );
     }
 
     #[test]
     fn test_parse_record_with_nested_types() {
         check(
-            "record UserList {users: Array[User]}",
-            expect![[r#"Record { name: "UserList", fields: "[\"users: Array[User]\"]", range: "record UserList {users: Array[User]}" }"#]],
+            indoc! {"
+                record UserList {users: Array[User]}
+            "},
+            expect![[r#"
+                Record {
+                  name: UserList,
+                  fields: {
+                    users: Array[User],
+                  },
+                }"#]],
         );
     }
 
     #[test]
     fn test_not_a_declaration() {
         check(
-            "<div>hello</div>",
+            indoc! {"
+                <div>hello</div>
+            "},
             expect!["None"],
         );
     }
@@ -265,7 +301,9 @@ mod tests {
     #[test]
     fn test_text_starting_with_i() {
         check(
-            "important message",
+            indoc! {"
+                important message
+            "},
             expect!["None"],
         );
     }
@@ -273,8 +311,27 @@ mod tests {
     #[test]
     fn test_text_starting_with_r() {
         check(
-            "running fast",
+            indoc! {"
+                running fast
+            "},
             expect!["None"],
+        );
+    }
+
+    #[test]
+    fn test_import_with_leading_empty_lines() {
+        check(
+            indoc! {r#"
+
+
+                import UserList from "@/user_list"
+            "#},
+            expect![[r#"
+                Import {
+                  name: UserList,
+                  path: "@/user_list",
+                  module_name: user_list,
+                }"#]],
         );
     }
 }

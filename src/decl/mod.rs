@@ -19,6 +19,7 @@ use crate::dop::RecordDeclaration;
 use crate::error_collector::ErrorCollector;
 use crate::hop::module_name::ModuleName;
 use crate::hop::parse_error::ParseError;
+use pretty::BoxDoc;
 
 /// A declaration: either an import or a record definition.
 #[derive(Clone)]
@@ -43,25 +44,81 @@ pub enum Declaration {
     },
 }
 
-impl fmt::Debug for Declaration {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Declaration {
+    /// Convert this declaration to a pretty-printable document.
+    pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            Declaration::Import { name, path, module_name, range } => {
-                f.debug_struct("Import")
-                    .field("name", &name.as_str())
-                    .field("path", &path.as_str())
-                    .field("module_name", &module_name.as_str())
-                    .field("range", &range.as_str())
-                    .finish()
-            }
-            Declaration::Record { declaration, range } => {
-                f.debug_struct("Record")
-                    .field("name", &declaration.name.as_str())
-                    .field("fields", &format!("{:?}", declaration.fields.iter().map(|f| format!("{}: {}", f.name, f.field_type)).collect::<Vec<_>>()))
-                    .field("range", &range.as_str())
-                    .finish()
+            Declaration::Import {
+                name,
+                path,
+                module_name,
+                ..
+            } => BoxDoc::text("Import")
+                .append(BoxDoc::space())
+                .append(BoxDoc::text("{"))
+                .append(
+                    BoxDoc::line()
+                        .append(BoxDoc::text("name: "))
+                        .append(BoxDoc::text(name.as_str()))
+                        .append(BoxDoc::text(","))
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("path: "))
+                        .append(BoxDoc::text(format!("\"{}\"", path.as_str())))
+                        .append(BoxDoc::text(","))
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("module_name: "))
+                        .append(BoxDoc::text(module_name.as_str()))
+                        .append(BoxDoc::text(","))
+                        .nest(2),
+                )
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("}")),
+            Declaration::Record { declaration, .. } => {
+                let fields_doc = BoxDoc::intersperse(
+                    declaration.fields.iter().map(|f| {
+                        BoxDoc::text(f.name.to_string())
+                            .append(BoxDoc::text(": "))
+                            .append(BoxDoc::text(f.field_type.to_string()))
+                    }),
+                    BoxDoc::text(",").append(BoxDoc::line()),
+                );
+
+                BoxDoc::text("Record")
+                    .append(BoxDoc::space())
+                    .append(BoxDoc::text("{"))
+                    .append(
+                        BoxDoc::line()
+                            .append(BoxDoc::text("name: "))
+                            .append(BoxDoc::text(declaration.name.as_str()))
+                            .append(BoxDoc::text(","))
+                            .append(BoxDoc::line())
+                            .append(BoxDoc::text("fields: {"))
+                            .append(
+                                BoxDoc::line()
+                                    .append(fields_doc)
+                                    .append(BoxDoc::text(","))
+                                    .nest(2),
+                            )
+                            .append(BoxDoc::line())
+                            .append(BoxDoc::text("},"))
+                            .nest(2),
+                    )
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("}"))
             }
         }
+    }
+}
+
+impl fmt::Display for Declaration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_doc().pretty(80))
+    }
+}
+
+impl fmt::Debug for Declaration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
     }
 }
 
