@@ -1,6 +1,8 @@
 use crate::document::DocumentAnnotator;
 use crate::filesystem::config::TargetConfig;
 use crate::filesystem::project_root::ProjectRoot;
+use crate::hop::component_name::ComponentName;
+use crate::hop::module_name::ModuleName;
 use crate::hop::program::Program;
 use crate::ir::{
     GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, RecordInfo, Transpiler,
@@ -113,19 +115,34 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
 
     timer.start_phase("compiling to IR");
 
-    // Extract pages from target config
-    let pages = match &target_config {
+    let page_strings = match &target_config {
         TargetConfig::Javascript(c) => &c.pages,
         TargetConfig::Typescript(c) => &c.pages,
         TargetConfig::Python(c) => &c.pages,
         TargetConfig::Go(c) => &c.pages,
     };
 
+    let pages: Vec<(ModuleName, ComponentName)> = page_strings
+        .iter()
+        .map(|page| {
+            let (module, component) = page.rsplit_once('/').ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Invalid page format '{}'. Expected 'module/Component' (e.g., 'main/HomePage')",
+                    page
+                )
+            })?;
+            Ok((
+                ModuleName::new(module.to_string())?,
+                ComponentName::new(component.to_string())?,
+            ))
+        })
+        .collect::<Result<Vec<_>>>()?;
+
     // Use orchestrate to handle inlining, compilation, and optimization
     let ir_entrypoints = orchestrate(
         program.get_typed_modules().clone(),
         tailwind_css.as_deref(),
-        pages,
+        &pages,
     )?;
 
     // Collect record declarations from all modules

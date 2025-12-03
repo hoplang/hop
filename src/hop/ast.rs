@@ -158,7 +158,7 @@ pub type TypedComponentDefinition = ComponentDefinition<SimpleExpr, Type>;
 
 #[derive(Debug, Clone)]
 pub struct ComponentDefinition<E, P = SyntacticType> {
-    pub name: ComponentName,
+    pub component_name: ComponentName,
     pub tag_name: DocumentRange, // Keep for source location/error reporting
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<Parameter<P>>, DocumentRange)>,

@@ -1,4 +1,5 @@
 use crate::hop::ast::TypedAst;
+use crate::hop::component_name::ComponentName;
 use crate::hop::module_name::ModuleName;
 use crate::ir::Compiler;
 use crate::ir::ast::IrEntrypoint;
@@ -14,7 +15,7 @@ use std::collections::HashMap;
 pub fn orchestrate(
     typed_asts: HashMap<ModuleName, TypedAst>,
     generated_tailwind_css: Option<&str>,
-    pages: &[String],
+    pages: &[(ModuleName, ComponentName)],
 ) -> Result<Vec<IrEntrypoint>> {
     Ok(Inliner::inline_entrypoints(typed_asts, pages)?
         .into_iter()

@@ -269,7 +269,7 @@ fn typecheck_module(
 
     for component_def in module.get_component_definitions() {
         let ComponentDefinition {
-            name: component_name,
+            component_name,
             tag_name: name,
             params,
             children,
@@ -350,7 +350,7 @@ fn typecheck_module(
             None
         };
         typed_component_definitions.push(ComponentDefinition {
-            name: component_name.clone(),
+            component_name: component_name.clone(),
             tag_name: name.clone(),
             closing_tag_name: closing_tag_name.clone(),
             params: typed_params_option,

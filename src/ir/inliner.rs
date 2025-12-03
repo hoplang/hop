@@ -2,13 +2,14 @@ use crate::document::document_cursor::StringSpan;
 use crate::dop::parser::TypedArgument;
 use crate::dop::{SimpleExpr, Type};
 use crate::hop::ast::{AttributeValue, TypedAst, TypedAttribute, TypedComponentDefinition};
+use crate::hop::component_name::ComponentName;
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode, InlinedParameter,
 };
 use crate::hop::module_name::ModuleName;
 use crate::hop::node::{Node, TypedNode};
 use anyhow::Result;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
 /// The Inliner transforms ASTs by replacing ComponentReference nodes with their
 /// inlined component definitions, using Let nodes for parameter binding and
@@ -21,41 +22,36 @@ impl Inliner {
     ///
     /// # Arguments
     /// * `asts` - Map of module name to typed AST
-    /// * `pages` - List of pages to export (format: "module/Component")
+    /// * `pages` - List of pages to export as (ModuleName, ComponentName) tuples
     ///
     /// # Returns
     /// Result containing the list of inlined entrypoints or an error if a page doesn't exist
     pub fn inline_entrypoints(
         asts: HashMap<ModuleName, TypedAst>,
-        pages: &[String],
+        pages: &[(ModuleName, ComponentName)],
     ) -> Result<Vec<InlinedEntrypoint>> {
-        // Parse pages into a lookup structure: module -> set of component names
-        let page_filter = Self::parse_page_filter(pages)?;
-
-        // Build list of all available components for error reporting
-        let mut available_components = Vec::new();
-        for (module_name, ast) in &asts {
-            for component in ast.get_component_definitions() {
-                available_components.push(format!(
-                    "{}/{}",
-                    module_name,
-                    component.tag_name.as_str()
-                ));
-            }
-        }
-
         // Validate that all requested pages exist
-        for page in pages {
-            if !available_components.contains(page) {
-                let available_list = available_components
+        for (module_name, component_name) in pages {
+            let component_exists = asts.get(module_name).is_some_and(|ast| {
+                ast.get_component_definitions()
                     .iter()
-                    .map(|s| format!("  - {}", s))
-                    .collect::<Vec<_>>()
-                    .join("\n");
+                    .any(|c| &c.component_name == component_name)
+            });
+
+            if !component_exists {
+                let available_list: Vec<_> = asts
+                    .iter()
+                    .flat_map(|(m, ast)| {
+                        ast.get_component_definitions()
+                            .iter()
+                            .map(move |c| format!("  - {}/{}", m, c.component_name))
+                    })
+                    .collect();
                 anyhow::bail!(
-                    "Component '{}' listed in pages but not found\nAvailable components:\n{}",
-                    page,
-                    available_list
+                    "Component '{}/{}' listed in pages but not found\nAvailable components:\n{}",
+                    module_name,
+                    component_name,
+                    available_list.join("\n")
                 );
             }
         }
@@ -64,12 +60,10 @@ impl Inliner {
 
         for (module_name, ast) in &asts {
             for component in ast.get_component_definitions() {
-                // Check if this component should be included based on pages filter
-                if Self::should_include_component(
-                    &page_filter,
-                    module_name,
-                    component.tag_name.as_str(),
-                ) {
+                let included = pages
+                    .iter()
+                    .any(|(m, c)| m == module_name && c == &component.component_name);
+                if included {
                     result.push(InlinedEntrypoint {
                         module_name: module_name.clone(),
                         tag_name: component.tag_name.to_string_span(),
@@ -97,12 +91,12 @@ impl Inliner {
     /// Convert a TypedAttribute to InlinedAttribute
     fn convert_attribute(attr: &TypedAttribute) -> InlinedAttribute {
         InlinedAttribute {
-            name: attr.name.as_str().to_string(),
+            name: attr.name.to_string(),
             value: attr.value.as_ref().map(|v| match v {
                 AttributeValue::Expressions(exprs) => {
                     InlinedAttributeValue::Expressions(exprs.clone())
                 }
-                AttributeValue::String(s) => InlinedAttributeValue::String(s.as_str().to_string()),
+                AttributeValue::String(s) => InlinedAttributeValue::String(s.to_string()),
             }),
         }
     }
@@ -115,40 +109,6 @@ impl Inliner {
             .iter()
             .map(|(key, attr)| (key.as_str().to_string(), Self::convert_attribute(attr)))
             .collect()
-    }
-
-    /// Parse pages list into a HashMap of module -> set of component names
-    /// Format: "module/Component" or "module/submodule/Component"
-    fn parse_page_filter(pages: &[String]) -> Result<HashMap<String, HashSet<String>>> {
-        let mut filter = HashMap::new();
-
-        for page in pages {
-            let Some((module, component)) = page.rsplit_once('/') else {
-                anyhow::bail!(
-                    "Invalid page format '{}'. Expected 'module/Component' (e.g., 'main/HomePage')",
-                    page
-                );
-            };
-
-            filter
-                .entry(module.to_string())
-                .or_insert_with(HashSet::new)
-                .insert(component.to_string());
-        }
-
-        Ok(filter)
-    }
-
-    /// Check if a component should be included based on the page filter
-    fn should_include_component(
-        filter: &HashMap<String, HashSet<String>>,
-        module_name: &ModuleName,
-        component_name: &str,
-    ) -> bool {
-        filter
-            .get(module_name.as_str())
-            .map(|components| components.contains(component_name))
-            .unwrap_or(false)
     }
 
     /// Check if a component has a children: TrustedHTML parameter
@@ -368,9 +328,17 @@ mod tests {
         typechecker.typed_asts
     }
 
-    fn check_inlining(sources: Vec<(&str, &str)>, pages: Vec<&str>, expected: Expect) {
+    fn check_inlining(sources: Vec<(&str, &str)>, pages: Vec<(&str, &str)>, expected: Expect) {
         let typed_asts = create_typed_asts_from_sources(sources);
-        let pages_owned: Vec<String> = pages.iter().map(|s| s.to_string()).collect();
+        let pages_owned: Vec<(ModuleName, ComponentName)> = pages
+            .iter()
+            .map(|(m, c)| {
+                (
+                    ModuleName::new(m.to_string()).unwrap(),
+                    ComponentName::new(c.to_string()).unwrap(),
+                )
+            })
+            .collect();
         let inlined_entrypoints =
             Inliner::inline_entrypoints(typed_asts, &pages_owned).expect("Inlining should succeed");
 
@@ -399,7 +367,7 @@ mod tests {
                     </Main>
                 "#,
             )],
-            vec!["main/Main"],
+            vec![("main", "Main")],
             expect![[r#"
                 <Main>
                   "\n                        "
@@ -435,7 +403,7 @@ mod tests {
                     </Main>
                 "#,
             )],
-            vec!["main/Main"],
+            vec![("main", "Main")],
             expect![[r#"
                 <Main>
                   "\n                        "

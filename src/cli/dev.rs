@@ -88,7 +88,20 @@ async fn handle_render(
         }
     };
 
-    match program.evaluate_ir_entrypoint(&module_name, &body.component, body.params, css_content) {
+    // Parse component name
+    let component_name =
+        match crate::hop::component_name::ComponentName::new(body.component.clone()) {
+            Ok(name) => name,
+            Err(e) => {
+                return Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .header("Content-Type", "text/html")
+                    .body(Body::from(format!("Invalid component name: {}", e)))
+                    .unwrap();
+            }
+        };
+
+    match program.evaluate_ir_entrypoint(&module_name, &component_name, body.params, css_content) {
         Ok(html) => Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "text/html")

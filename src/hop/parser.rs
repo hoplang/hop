@@ -258,7 +258,7 @@ fn parse_top_level_node(
                 ComponentName::new(tag_name.to_string()).expect("Component name should be valid");
 
             Some(TopLevelNode::ComponentDefinition(ComponentDefinition {
-                name: component_name,
+                component_name,
                 tag_name: tag_name.clone(),
                 closing_tag_name: tree.closing_tag_name,
                 params,

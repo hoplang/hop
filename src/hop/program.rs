@@ -12,6 +12,7 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
 use super::ast::{TypedAst, UntypedAst};
+use super::component_name::ComponentName;
 use super::module_name::ModuleName;
 use super::node::Node;
 use super::type_checker::TypeChecker;
@@ -400,7 +401,7 @@ impl Program {
     pub fn evaluate_ir_entrypoint(
         &self,
         module_name: &ModuleName,
-        component_name: &str,
+        component_name: &ComponentName,
         args: HashMap<String, serde_json::Value>,
         generated_tailwind_css: Option<&str>,
     ) -> Result<String> {
@@ -421,7 +422,7 @@ impl Program {
         let component_exists = module
             .get_component_definitions()
             .iter()
-            .any(|comp| comp.tag_name.as_str() == component_name);
+            .any(|comp| comp.tag_name.as_str() == component_name.as_str());
 
         if !component_exists {
             let available_components: Vec<_> = module
@@ -439,8 +440,7 @@ impl Program {
         }
 
         // Use orchestrate to handle inlining and compilation
-        let entrypoint_path = format!("{}/{}", module_name.as_str(), component_name);
-        let pages = vec![entrypoint_path.clone()];
+        let pages = vec![(module_name.clone(), component_name.clone())];
         let ir_entrypoints = orchestrate(
             self.get_typed_modules().clone(),
             generated_tailwind_css,
@@ -1385,22 +1385,25 @@ mod tests {
         args.insert("name".to_string(), serde_json::json!("Alice"));
 
         let main_module = ModuleName::new("main".to_string()).unwrap();
+        let hello_world = ComponentName::new("HelloWorld".to_string()).unwrap();
         let result = program
-            .evaluate_ir_entrypoint(&main_module, "HelloWorld", args, None)
+            .evaluate_ir_entrypoint(&main_module, &hello_world, args, None)
             .expect("Should evaluate successfully");
 
         assert!(result.contains("<h1>Hello Alice!</h1>"));
 
         // Test evaluating another-comp entrypoint without parameters
+        let another_comp = ComponentName::new("AnotherComp".to_string()).unwrap();
         let result = program
-            .evaluate_ir_entrypoint(&main_module, "AnotherComp", HashMap::new(), None)
+            .evaluate_ir_entrypoint(&main_module, &another_comp, HashMap::new(), None)
             .expect("Should evaluate successfully");
 
         assert!(result.contains("<p>Static content</p>"));
 
         // Test error when entrypoint doesn't exist
+        let non_existent = ComponentName::new("NonExistent".to_string()).unwrap();
         let result =
-            program.evaluate_ir_entrypoint(&main_module, "NonExistent", HashMap::new(), None);
+            program.evaluate_ir_entrypoint(&main_module, &non_existent, HashMap::new(), None);
         assert!(result.is_err());
         assert!(
             result
