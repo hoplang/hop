@@ -422,7 +422,7 @@ fn construct_node(
                 }
 
                 // <ComponentReference> - PascalCase indicates a component
-                name if ComponentName::is_component_tag(name) => {
+                name if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
                     if !ComponentName::is_valid(tag_name.as_str()) {
                         errors.push(ParseError::InvalidComponentName {
                             tag_name: tag_name.to_string_span(),

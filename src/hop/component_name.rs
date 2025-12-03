@@ -56,13 +56,6 @@ impl ComponentName {
         Self::validate(name).is_ok()
     }
 
-    /// Check if a tag name looks like a component (starts with uppercase)
-    /// This is a quick check used during parsing to determine if a tag should
-    /// be treated as a component reference or an HTML element
-    pub fn is_component_tag(name: &str) -> bool {
-        name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
-    }
-
     /// Validate a component name string
     fn validate(name: &str) -> Result<(), InvalidComponentNameError> {
         // Must not be empty
@@ -238,26 +231,6 @@ mod tests {
             ComponentName::new("Template".to_string()),
             Err(InvalidComponentNameError::Reserved("Template".to_string()))
         );
-    }
-
-    #[test]
-    fn test_is_component_tag() {
-        // Should return true for PascalCase
-        assert!(ComponentName::is_component_tag("Button"));
-        assert!(ComponentName::is_component_tag("UserProfile"));
-        assert!(ComponentName::is_component_tag("A"));
-        assert!(ComponentName::is_component_tag("Main"));
-
-        // Should return false for lowercase
-        assert!(!ComponentName::is_component_tag("button"));
-        assert!(!ComponentName::is_component_tag("div"));
-        assert!(!ComponentName::is_component_tag("span"));
-        assert!(!ComponentName::is_component_tag(""));
-
-        // Note: is_component_tag is just a quick check, not full validation
-        // These return true even though they're not valid component names
-        assert!(ComponentName::is_component_tag("User-Profile")); // Has dash
-        assert!(ComponentName::is_component_tag("U")); // Single letter
     }
 
     #[test]
