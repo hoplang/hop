@@ -11,13 +11,6 @@ use crate::hop::module_name::ModuleName;
 
 use super::node::Node;
 
-/// A StaticAttribute is an attribute that must
-/// be known at compile time.
-#[derive(Debug, Clone)]
-pub struct StaticAttribute {
-    pub value: DocumentRange,
-}
-
 #[derive(Debug, Clone)]
 pub enum AttributeValue<T = SyntacticExpr> {
     Expressions(Vec<T>),
@@ -127,8 +120,8 @@ impl<T, A> Ast<T, A> {
 
 #[derive(Debug, Clone)]
 pub struct Import {
-    pub component_attr: StaticAttribute,
-    pub from_attr: StaticAttribute,
+    pub component: DocumentRange,
+    pub from: DocumentRange,
     pub module_name: ModuleName,
 }
 
@@ -137,10 +130,10 @@ impl Import {
         &self.module_name
     }
     pub fn imported_component(&self) -> &DocumentRange {
-        &self.component_attr.value
+        &self.component
     }
     pub fn imports_component(&self, component_name: &str) -> bool {
-        self.component_attr.value.as_str() == component_name
+        self.component.as_str() == component_name
     }
     pub fn imports_from(&self, module_name: &ModuleName) -> bool {
         &self.module_name == module_name

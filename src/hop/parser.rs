@@ -63,27 +63,6 @@ impl AttributeValidator {
         }
     }
 
-    fn parse_import_name_from_attr(
-        attr: ast::StaticAttribute,
-    ) -> Result<(ast::StaticAttribute, ModuleName), ParseError> {
-        // Strip the @/ prefix for internal module resolution
-        let module_name_input = match attr.value.as_str().strip_prefix("@/") {
-            Some(n) => n,
-            None => {
-                return Err(ParseError::MissingAtPrefixInImportPath {
-                    range: attr.value.clone(),
-                });
-            }
-        };
-        match ModuleName::new(module_name_input.to_string()) {
-            Ok(name) => Ok((attr.clone(), name)),
-            Err(e) => Err(ParseError::InvalidModuleName {
-                error: e,
-                range: attr.value.clone(),
-            }),
-        }
-    }
-
     fn disallow_unrecognized(&self) -> impl Iterator<Item = ParseError> {
         self.attributes
             .values()
@@ -141,11 +120,11 @@ pub fn parse(
         if let Some(node) = parse_top_level_node(tree, children, errors) {
             match node {
                 TopLevelNode::Import(import) => {
-                    let name = import.component_attr.value.as_str();
+                    let name = import.component.as_str();
                     if imported_components.contains_key(name) {
                         errors.push(ParseError::TypeNameIsAlreadyDefined {
-                            name: import.component_attr.value.to_string_span(),
-                            range: import.component_attr.value.clone(),
+                            name: import.component.to_string_span(),
+                            range: import.component.clone(),
                         });
                     } else {
                         imported_components.insert(name.to_string(), import.module_name.clone());
@@ -212,15 +191,30 @@ fn parse_top_level_node(
         }
         Token::Import { name, path, .. } => {
             // Handle import declarations like: import UserList from "@/user_list.hop"
-            use crate::hop::ast::{Import, StaticAttribute};
+            use crate::hop::ast::Import;
 
-            let from_attr = StaticAttribute { value: path };
-            let (from_attr, module_name) =
-                errors.ok_or_add(AttributeValidator::parse_import_name_from_attr(from_attr))?;
+            // Strip the @/ prefix for internal module resolution
+            let module_name_input = match path.as_str().strip_prefix("@/") {
+                Some(n) => n,
+                None => {
+                    errors.push(ParseError::MissingAtPrefixInImportPath { range: path });
+                    return None;
+                }
+            };
+            let module_name = match ModuleName::new(module_name_input.to_string()) {
+                Ok(name) => name,
+                Err(e) => {
+                    errors.push(ParseError::InvalidModuleName {
+                        error: e,
+                        range: path,
+                    });
+                    return None;
+                }
+            };
 
             Some(TopLevelNode::Import(Import {
-                component_attr: StaticAttribute { value: name },
-                from_attr,
+                component: name,
+                from: path,
                 module_name,
             }))
         }

@@ -137,12 +137,12 @@ impl Program {
     ) -> Option<DefinitionLocation> {
         let ast = self.modules.get(module_name)?;
 
-        // First check if we're on an import node's component attribute
+        // First check if we're on an import node's component name
         for import in ast.get_imports() {
-            if import.component_attr.value.contains_position(position) {
+            if import.component.contains_position(position) {
                 // The import specifies the component name and module
                 let target_module = &import.module_name;
-                let component_name = import.component_attr.value.as_str();
+                let component_name = import.component.as_str();
 
                 // Find the component definition in the target module
                 let target_ast = self.modules.get(target_module)?;
