@@ -60,6 +60,11 @@ impl<T, A> Ast<T, A> {
             .find(|&n| n.tag_name.as_str() == name)
     }
 
+    /// Finds a record declaration by name.
+    pub fn get_record(&self, name: &str) -> Option<&Record<A>> {
+        self.records.iter().find(|&r| r.name() == name)
+    }
+
     /// Returns a reference to all component definition nodes in the AST.
     pub fn get_component_definitions(&self) -> &[ComponentDefinition<T, A>] {
         &self.component_definitions

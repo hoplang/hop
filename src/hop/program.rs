@@ -73,11 +73,7 @@ impl Program {
         // Parse the module
         let parse_errors = self.parse_errors.entry(module_name.clone()).or_default();
         parse_errors.clear();
-        let module = parse(
-            module_name.clone(),
-            source_code,
-            parse_errors,
-        );
+        let module = parse(module_name.clone(), source_code, parse_errors);
 
         // Get all modules that this module depends on
         let module_dependencies = module
@@ -137,21 +133,29 @@ impl Program {
     ) -> Option<DefinitionLocation> {
         let ast = self.modules.get(module_name)?;
 
-        // First check if we're on an import node's component name
+        // First check if we're on an import node's name
         for import in ast.get_imports() {
             if import.component.contains_position(position) {
-                // The import specifies the component name and module
                 let target_module = &import.module_name;
-                let component_name = import.component.as_str();
+                let imported_name = import.component.as_str();
 
-                // Find the component definition in the target module
                 let target_ast = self.modules.get(target_module)?;
-                let component_def = target_ast.get_component_definition(component_name)?;
 
-                return Some(DefinitionLocation {
-                    module: target_module.clone(),
-                    range: component_def.tag_name.clone(),
-                });
+                // Check if it's a component definition
+                if let Some(component_def) = target_ast.get_component_definition(imported_name) {
+                    return Some(DefinitionLocation {
+                        module: target_module.clone(),
+                        range: component_def.tag_name.clone(),
+                    });
+                }
+
+                // Check if it's a record definition
+                if let Some(record) = target_ast.get_record(imported_name) {
+                    return Some(DefinitionLocation {
+                        module: target_module.clone(),
+                        range: record.declaration.name.clone(),
+                    });
+                }
             }
         }
 
@@ -749,6 +753,29 @@ mod tests {
                   --> hop/components (line 1, col 2)
                 1 | <HelloWorld>
                   |  ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_get_definition_from_import_record_name() {
+        check_definition_location(
+            indoc! {r#"
+                -- types.hop --
+                record User {name: String, age: Int}
+                -- main.hop --
+                import User from "@/types"
+                         ^
+
+                <Main {user: User}>
+                  <div>{user.name}</div>
+                </Main>
+            "#},
+            expect![[r#"
+                Definition
+                  --> types (line 1, col 8)
+                1 | record User {name: String, age: Int}
+                  |        ^^^^
             "#]],
         );
     }
