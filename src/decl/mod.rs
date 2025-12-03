@@ -137,27 +137,24 @@ pub fn parse_declarations_from_source(
     let source = text_range.as_str();
     let mut declarations = Vec::new();
 
-    // Scan through the source looking for declarations
-    let mut pos = 0;
-    let bytes = source.as_bytes();
+    // Scan through the source looking for declarations using char indices
+    let mut char_indices = source.char_indices().peekable();
 
-    while pos < bytes.len() {
+    while let Some((byte_pos, ch)) = char_indices.next() {
         // Skip whitespace
-        while pos < bytes.len() && bytes[pos].is_ascii_whitespace() {
-            pos += 1;
-        }
-
-        if pos >= bytes.len() {
-            break;
+        if ch.is_whitespace() {
+            continue;
         }
 
         // Check if we're at an import or record declaration
-        let remaining_text = &source[pos..];
+        let remaining_text = &source[byte_pos..];
 
         if remaining_text.starts_with("import ") || remaining_text.starts_with("record ") {
             // Create a subrange starting at the current position
             let mut sub_cursor = text_range.clone().cursor();
-            for _ in 0..pos {
+            // Skip `byte_pos` characters (not bytes) to get to the current position
+            let chars_to_skip = source[..byte_pos].chars().count();
+            for _ in 0..chars_to_skip {
                 if sub_cursor.next().is_none() {
                     break;
                 }
@@ -172,7 +169,14 @@ pub fn parse_declarations_from_source(
                         Declaration::Record { range, .. } => range.as_str().len(),
                     };
                     declarations.push(decl);
-                    pos += decl_len;
+                    // Skip past the declaration by advancing char_indices
+                    let target_byte_pos = byte_pos + decl_len;
+                    while char_indices
+                        .peek()
+                        .is_some_and(|(pos, _)| *pos < target_byte_pos)
+                    {
+                        char_indices.next();
+                    }
                     continue;
                 }
                 Ok(None) => {
@@ -183,9 +187,6 @@ pub fn parse_declarations_from_source(
                 }
             }
         }
-
-        // Move to next character
-        pos += 1;
     }
 
     declarations
@@ -269,5 +270,14 @@ import Footer from "@/footer"
         let range = DocumentCursor::new("recording started".to_string()).range();
         let declarations = parse_declarations_from_source(range, &mut errors);
         assert!(declarations.is_empty());
+    }
+
+    #[test]
+    fn test_multibyte_characters_before_declaration() {
+        check_declarations(
+            r#"• bullet point
+record User {name: String}"#,
+            expect!["Record User {name: String}"],
+        );
     }
 }
