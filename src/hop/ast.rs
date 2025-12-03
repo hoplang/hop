@@ -21,7 +21,6 @@ pub type TypedAttribute = Attribute<SimpleExpr>;
 
 /// An Attribute is an attribute on a node, it can either
 /// be empty, an expression or a string value.
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Attribute<T = SyntacticExpr> {
     pub name: DocumentRange,
