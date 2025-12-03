@@ -88,13 +88,7 @@ async fn handle_render(
         }
     };
 
-    match program.evaluate_ir_entrypoint(
-        &module_name,
-        &body.component,
-        body.params,
-        "dev",
-        css_content,
-    ) {
+    match program.evaluate_ir_entrypoint(&module_name, &body.component, body.params, css_content) {
         Ok(html) => Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "text/html")

@@ -396,14 +396,12 @@ impl Program {
     /// * `module_name` - Module containing the component (e.g., "main")
     /// * `component_name` - Component name (e.g., "HomePage")
     /// * `args` - Parameters to pass to the component
-    /// * `hop_mode` - Mode for evaluation (e.g., "dev")
     /// * `generated_tailwind_css` - Optional Tailwind CSS content
     pub fn evaluate_ir_entrypoint(
         &self,
         module_name: &ModuleName,
         component_name: &str,
         args: HashMap<String, serde_json::Value>,
-        hop_mode: &str,
         generated_tailwind_css: Option<&str>,
     ) -> Result<String> {
         // Validate that the module exists
@@ -459,7 +457,7 @@ impl Program {
         })?;
 
         // Evaluate the entrypoint
-        ir::evaluator::evaluate_entrypoint(entrypoint, args, hop_mode)
+        ir::evaluator::evaluate_entrypoint(entrypoint, args)
     }
 
     /// Get all typed modules for compilation
@@ -1388,26 +1386,21 @@ mod tests {
 
         let main_module = ModuleName::new("main".to_string()).unwrap();
         let result = program
-            .evaluate_ir_entrypoint(&main_module, "HelloWorld", args, "dev", None)
+            .evaluate_ir_entrypoint(&main_module, "HelloWorld", args, None)
             .expect("Should evaluate successfully");
 
         assert!(result.contains("<h1>Hello Alice!</h1>"));
 
         // Test evaluating another-comp entrypoint without parameters
         let result = program
-            .evaluate_ir_entrypoint(&main_module, "AnotherComp", HashMap::new(), "dev", None)
+            .evaluate_ir_entrypoint(&main_module, "AnotherComp", HashMap::new(), None)
             .expect("Should evaluate successfully");
 
         assert!(result.contains("<p>Static content</p>"));
 
         // Test error when entrypoint doesn't exist
-        let result = program.evaluate_ir_entrypoint(
-            &main_module,
-            "NonExistent",
-            HashMap::new(),
-            "dev",
-            None,
-        );
+        let result =
+            program.evaluate_ir_entrypoint(&main_module, "NonExistent", HashMap::new(), None);
         assert!(result.is_err());
         assert!(
             result

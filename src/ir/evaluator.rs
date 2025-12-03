@@ -14,7 +14,6 @@ use super::ast::{IrEntrypoint, IrStatement};
 pub fn evaluate_entrypoint(
     entrypoint: &IrEntrypoint,
     args: HashMap<String, Value>,
-    _hop_mode: &str,
 ) -> Result<String> {
     let mut env = Environment::new();
 
@@ -489,8 +488,7 @@ mod tests {
         let before = entrypoint.to_string();
         let args_map: HashMap<String, Value> =
             args.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
-        let after =
-            evaluate_entrypoint(&entrypoint, args_map, "dev").expect("Evaluation should succeed");
+        let after = evaluate_entrypoint(&entrypoint, args_map).expect("Evaluation should succeed");
 
         let output = format!("-- before --\n{}\n-- after --\n{}\n", before, after);
         expected.assert_eq(&output);
