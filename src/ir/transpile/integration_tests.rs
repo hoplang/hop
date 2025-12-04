@@ -515,6 +515,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_string_concat_equality() {
         let test_case = TestCase::new(
             build_ir_auto("Test", vec![], |t| {

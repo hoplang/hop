@@ -268,34 +268,29 @@ pub async fn execute(root: &ProjectRoot) -> anyhow::Result<DevelopmentServer> {
     })
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// TESTS                                                                     //
+///////////////////////////////////////////////////////////////////////////////
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
     use super::*;
+    use crate::hop::module_name::ModuleName;
     use axum::body::to_bytes;
     use axum::http::Request;
     use expect_test::expect;
-    use indoc::indoc;
+    use simple_txtar::Archive;
     use tower::ServiceExt;
 
-    fn create_test_app() -> axum::Router {
+    fn create_test_app(input: &str) -> axum::Router {
+        let archive = Archive::from(input);
         let mut modules = HashMap::new();
-        modules.insert(
-            crate::hop::module_name::ModuleName::new("test".to_string()).unwrap(),
-            indoc! {"
-                <GreetingComp {name: String, title: String}>
-                  <h1>{title}</h1>
-                  <p>Hello, {name}!</p>
-                </GreetingComp>
-
-                <SimpleComp>
-                  <div>Simple content</div>
-                </SimpleComp>
-            "}
-            .to_string(),
-        );
-
+        for file in archive.iter() {
+            let module_name = ModuleName::new(file.name.replace(".hop", "")).unwrap();
+            modules.insert(module_name, file.content.clone());
+        }
         let program = Program::new(modules);
         let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
         let tmp_dir = tempfile::tempdir().unwrap();
@@ -314,16 +309,25 @@ mod tests {
             .with_state(app_state)
     }
 
+    /// Tests that the render endpoint correctly renders a component with props.
+    /// The component receives `name` and `title` parameters and should interpolate
+    /// them into the HTML output.
     #[tokio::test]
     async fn test_render_component_with_parameters() {
-        let app = create_test_app();
+        let app = create_test_app(indoc::indoc! {r#"
+            -- test.hop --
+            <GreetingComp {name: String, title: String}>
+              <h1>{title}</h1>
+              <p>Hello, {name}!</p>
+            </GreetingComp>
+        "#});
 
         let body_json = serde_json::json!({
             "module": "test",
             "component": "GreetingComp",
             "params": {
                 "name": "Alice",
-                "title": "Welcome"
+                "title": "Welcome",
             }
         });
 
@@ -348,9 +352,16 @@ mod tests {
         .assert_eq(&html);
     }
 
+    /// Tests that the render endpoint correctly renders a component with no props.
+    /// The component has no parameters and should render its static content.
     #[tokio::test]
     async fn test_render_component_without_parameters() {
-        let app = create_test_app();
+        let app = create_test_app(indoc::indoc! {r#"
+            -- test.hop --
+            <SimpleComp>
+              <div>Simple content</div>
+            </SimpleComp>
+        "#});
 
         let body_json = serde_json::json!({
             "module": "test",
@@ -378,9 +389,20 @@ mod tests {
         .assert_eq(&html);
     }
 
+    /// Tests that requesting a component that doesn't exist returns a 500 error
+    /// with a helpful message listing the available components in that module.
     #[tokio::test]
     async fn test_render_nonexistent_component_returns_error() {
-        let app = create_test_app();
+        let app = create_test_app(indoc::indoc! {r#"
+            -- test.hop --
+            <GreetingComp {name: String}>
+              <p>Hello, {name}!</p>
+            </GreetingComp>
+
+            <SimpleComp>
+              <div>Simple content</div>
+            </SimpleComp>
+        "#});
 
         let body_json = serde_json::json!({
             "module": "test",
@@ -405,9 +427,15 @@ mod tests {
             .assert_eq(&error_msg);
     }
 
+    /// Tests that sending malformed JSON to the render endpoint returns a 400 Bad Request.
     #[tokio::test]
     async fn test_render_invalid_json_returns_bad_request() {
-        let app = create_test_app();
+        let app = create_test_app(indoc::indoc! {r#"
+            -- test.hop --
+            <SimpleComp>
+              <div>Simple content</div>
+            </SimpleComp>
+        "#});
 
         let request = Request::builder()
             .uri("/render")
