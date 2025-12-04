@@ -419,4 +419,40 @@ mod tests {
 
         response.assert_status_bad_request();
     }
+
+    /// Tests that a component can import and use another component from a different module.
+    #[tokio::test]
+    async fn test_render_component_with_import() {
+        let server = create_test_server(indoc::indoc! {r#"
+            -- components.hop --
+            <Button {label: String}>
+              <button>{label}</button>
+            </Button>
+
+            -- page.hop --
+            import Button from "@/components"
+
+            <Page>
+              <div><Button {label: "Click me"} /></div>
+            </Page>
+        "#});
+
+        let response = server
+            .post("/render")
+            .json(&json!({
+                "module": "page",
+                "component": "Page",
+                "params": {}
+            }))
+            .await;
+
+        response.assert_status_ok();
+        expect![[r#"
+            <!DOCTYPE html>
+              <html><head></head><body><div>
+              <button>Click me</button>
+            </div>
+            </body></html>"#]]
+        .assert_eq(&response.text());
+    }
 }
