@@ -311,8 +311,6 @@ mod tests {
     }
 
     /// Tests that the render endpoint correctly renders a component with props.
-    /// The component receives `name` and `title` parameters and should interpolate
-    /// them into the HTML output.
     #[tokio::test]
     async fn test_render_component_with_parameters() {
         let server = create_test_server(indoc::indoc! {r#"
@@ -345,7 +343,6 @@ mod tests {
     }
 
     /// Tests that the render endpoint correctly renders a component with no props.
-    /// The component has no parameters and should render its static content.
     #[tokio::test]
     async fn test_render_component_without_parameters() {
         let server = create_test_server(indoc::indoc! {r#"
@@ -418,6 +415,68 @@ mod tests {
             .await;
 
         response.assert_status_bad_request();
+
+        expect!["Failed to parse the request body as JSON: expected value at line 1 column 1"]
+            .assert_eq(&response.text());
+    }
+
+    /// Tests that requesting a component from a module with syntax errors returns an error.
+    #[tokio::test]
+    async fn test_render_component_with_syntax_error() {
+        let server = create_test_server(indoc::indoc! {r#"
+            -- test.hop --
+            <FooComp>
+              <div>Foo</div>
+            </FooComp>
+
+            <BrokenComp {name: String}>
+              <p>Hello, {name}!</p>
+            </BrokenComp
+        "#});
+
+        let response = server
+            .post("/render")
+            .json(&json!({
+                "module": "test",
+                "component": "FooComp",
+                "params": {}
+            }))
+            .await;
+
+        response.assert_status_internal_server_error();
+        expect![[r#"Error rendering component: Module 'test' has syntax errors:
+  - Unterminated closing tag
+  - Unclosed <BrokenComp>"#]]
+            .assert_eq(&response.text());
+    }
+
+    /// Tests that requesting a component from a module with type errors returns an error.
+    #[tokio::test]
+    async fn test_render_component_with_type_error() {
+        let server = create_test_server(indoc::indoc! {r#"
+            -- test.hop --
+            <Foo {name: String}>
+              <p>{name}</p>
+            </Foo>
+
+            <Bar>
+              <Foo {name: undefined_variable} />
+            </Bar>
+        "#});
+
+        let response = server
+            .post("/render")
+            .json(&json!({
+                "module": "test",
+                "component": "Bar",
+                "params": {}
+            }))
+            .await;
+
+        response.assert_status_internal_server_error();
+        expect![[r#"Error rendering component: Module 'test' has type errors:
+  - Undefined variable: undefined_variable"#]]
+            .assert_eq(&response.text());
     }
 
     /// Tests that a component can import and use another component from a different module.
