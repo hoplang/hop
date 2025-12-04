@@ -279,9 +279,7 @@ mod tests {
     use indoc::indoc;
     use tower::ServiceExt;
 
-    #[tokio::test]
-    async fn test_handle_render_with_ir_entrypoint() {
-        // Create a test program with an entrypoint
+    fn create_test_app() -> axum::Router {
         let mut modules = HashMap::new();
         modules.insert(
             crate::hop::module_name::ModuleName::new("test".to_string()).unwrap(),
@@ -311,11 +309,15 @@ mod tests {
             tailwind_css_output_path: Arc::new(css_output_path),
         };
 
-        let app = axum::Router::new()
+        axum::Router::new()
             .route("/render", axum::routing::post(handle_render))
-            .with_state(app_state);
+            .with_state(app_state)
+    }
 
-        // Test rendering with parameters
+    #[tokio::test]
+    async fn test_render_component_with_parameters() {
+        let app = create_test_app();
+
         let body_json = serde_json::json!({
             "module": "test",
             "component": "GreetingComp",
@@ -332,7 +334,7 @@ mod tests {
             .body(Body::from(body_json.to_string()))
             .unwrap();
 
-        let response = app.clone().oneshot(request).await.unwrap();
+        let response = app.oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
 
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
@@ -342,9 +344,14 @@ mod tests {
             <!DOCTYPE html>
               <html><head></head><body><h1>Welcome</h1>
               <p>Hello, Alice!</p>
-            </body></html>"#]].assert_eq(&html);
+            </body></html>"#]]
+        .assert_eq(&html);
+    }
 
-        // Test rendering without parameters
+    #[tokio::test]
+    async fn test_render_component_without_parameters() {
+        let app = create_test_app();
+
         let body_json = serde_json::json!({
             "module": "test",
             "component": "SimpleComp",
@@ -358,7 +365,7 @@ mod tests {
             .body(Body::from(body_json.to_string()))
             .unwrap();
 
-        let response = app.clone().oneshot(request).await.unwrap();
+        let response = app.oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
 
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
@@ -368,9 +375,13 @@ mod tests {
             <!DOCTYPE html>
               <html><head></head><body><div>Simple content</div>
             </body></html>"#]]
-            .assert_eq(&html);
+        .assert_eq(&html);
+    }
 
-        // Test non-existent entrypoint
+    #[tokio::test]
+    async fn test_render_nonexistent_component_returns_error() {
+        let app = create_test_app();
+
         let body_json = serde_json::json!({
             "module": "test",
             "component": "NonExistent",
@@ -384,7 +395,7 @@ mod tests {
             .body(Body::from(body_json.to_string()))
             .unwrap();
 
-        let response = app.clone().oneshot(request).await.unwrap();
+        let response = app.oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
 
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
@@ -392,8 +403,12 @@ mod tests {
 
         expect!["Error rendering component: Component 'NonExistent' not found in module 'test'. Available components: GreetingComp, SimpleComp"]
             .assert_eq(&error_msg);
+    }
 
-        // Test invalid JSON body
+    #[tokio::test]
+    async fn test_render_invalid_json_returns_bad_request() {
+        let app = create_test_app();
+
         let request = Request::builder()
             .uri("/render")
             .method("POST")
