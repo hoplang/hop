@@ -9,6 +9,7 @@ pub enum TargetLanguage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct HopConfig {
     #[serde(default)]
     pub css: CssConfig,
@@ -35,6 +36,7 @@ pub struct TargetSection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct CssConfig {
     pub mode: Option<String>,
 
@@ -44,12 +46,14 @@ pub struct CssConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TailwindConfig {
     /// Path to the input CSS file for Tailwind
     pub input: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct JavascriptTargetConfig {
     pub output_path: String,
 
@@ -63,6 +67,7 @@ pub struct JavascriptTargetConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TypescriptTargetConfig {
     pub output_path: String,
 
@@ -76,6 +81,7 @@ pub struct TypescriptTargetConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PythonTargetConfig {
     pub output_path: String,
 
@@ -89,6 +95,7 @@ pub struct PythonTargetConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GoTargetConfig {
     pub output_path: String,
 
@@ -356,5 +363,20 @@ mod tests {
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("package"));
+    }
+
+    #[test]
+    fn test_parse_config_with_unknown_field_in_go_target_error() {
+        let toml_str = indoc! {r#"
+            [target.go]
+            output_path = "main.go"
+            package = "main"
+            pages = ["main/App"]
+            unknown_field = "should error"
+        "#};
+        let result = HopConfig::from_toml_str(toml_str);
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("unknown_field"));
     }
 }
