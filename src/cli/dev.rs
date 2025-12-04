@@ -276,6 +276,7 @@ mod tests {
     use axum::body::to_bytes;
     use axum::http::Request;
     use expect_test::expect;
+    use indoc::indoc;
     use tower::ServiceExt;
 
     #[tokio::test]
@@ -284,11 +285,16 @@ mod tests {
         let mut modules = HashMap::new();
         modules.insert(
             crate::hop::module_name::ModuleName::new("test".to_string()).unwrap(),
-            r#"
-            <GreetingComp {name: String, title: String}><h1>{title}</h1><p>Hello, {name}!</p></GreetingComp>
+            indoc! {"
+                <GreetingComp {name: String, title: String}>
+                  <h1>{title}</h1>
+                  <p>Hello, {name}!</p>
+                </GreetingComp>
 
-            <SimpleComp><div>Simple content</div></SimpleComp>
-            "#
+                <SimpleComp>
+                  <div>Simple content</div>
+                </SimpleComp>
+            "}
             .to_string(),
         );
 
@@ -332,7 +338,11 @@ mod tests {
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let html = String::from_utf8(body.to_vec()).unwrap();
 
-        expect!["<!DOCTYPE html><html><head></head><body><h1>Welcome</h1><p>Hello, Alice!</p></body></html>"].assert_eq(&html);
+        expect![[r#"
+            <!DOCTYPE html>
+              <html><head></head><body><h1>Welcome</h1>
+              <p>Hello, Alice!</p>
+            </body></html>"#]].assert_eq(&html);
 
         // Test rendering without parameters
         let body_json = serde_json::json!({
@@ -354,7 +364,10 @@ mod tests {
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let html = String::from_utf8(body.to_vec()).unwrap();
 
-        expect!["<!DOCTYPE html><html><head></head><body><div>Simple content</div></body></html>"]
+        expect![[r#"
+            <!DOCTYPE html>
+              <html><head></head><body><div>Simple content</div>
+            </body></html>"#]]
             .assert_eq(&html);
 
         // Test non-existent entrypoint
