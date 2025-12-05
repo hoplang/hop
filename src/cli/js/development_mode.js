@@ -9,6 +9,13 @@ const EVENT_SOURCE_URL = `${DEV_SERVER_URL}/event_source`;
 const RENDER_URL = `${DEV_SERVER_URL}/render`;
 const DEBOUNCE_DELAY_MS = 15;
 
+const uiState = {
+	/**
+	 * @type {null | any}
+	 */
+	error: null,
+};
+
 /**
  * @typedef {object} HopConfig
  *
@@ -46,7 +53,7 @@ async function fetchEntryPoint(cfg) {
         }),
     });
     if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+		throw new Error(`HTTP error! status: ${response.status}`);
     }
     return await response.text();
 }
@@ -90,9 +97,13 @@ function setupHMR(cfg) {
                 try {
                     const html = await fetchEntryPoint(cfg);
                     await morphDOM(html, cfg);
+					uiState.error = null;
                 } catch (error) {
+					uiState.error = error;
                     console.error('Hot reload fetch error:', error);
-                }
+                } finally {
+					setupUI();
+				}
                 reloadTimeout = null;
             }, DEBOUNCE_DELAY_MS);
         }
@@ -116,12 +127,30 @@ function setupHMR(cfg) {
     });
 }
 
+function setupUI() {
+	function initializeWrapper() {
+		let div = document.querySelector('#hop-dev-ui');
+		if (div == null) {
+			div = document.createElement('div');
+			document.body.appendChild(div);
+		}
+		return div;
+	}
+	const div = initializeWrapper();
+    Idiomorph.morph(div, `
+		<div id="hop-dev-ui" style="position: fixed; bottom: 0; left: 0; padding: 4px; margin: 8px; border: 1px solid #ddd;">
+		    ${uiState.error?.message}
+		</div>
+	`);
+}
+
 /**
  * Main bootstrap function that initializes the development environment
  * Fetches the initial component, updates the DOM, and sets up HMR
  */
 async function bootstrap() {
     try {
+
 		const cfg = loadConfig();
 
         // Check if we have cached HTML in localStorage and render it immediately
