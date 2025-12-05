@@ -1,3 +1,4 @@
+use crate::document::DocumentAnnotator;
 use crate::filesystem::adaptive_watcher::{AdaptiveWatcher, WatchEvent};
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::component_name::ComponentName;
@@ -101,6 +102,39 @@ async fn handle_render(
                 .unwrap();
         }
     };
+
+    // Check for compilation errors
+    let mut error_output_parts = Vec::new();
+    let annotator = DocumentAnnotator::new()
+        .with_label("error")
+        .with_lines_before(1)
+        .with_location();
+
+    // Check for parse errors
+    for (module_name, errors) in program.get_parse_errors() {
+        if !errors.is_empty() {
+            let filename = format!("{}.hop", module_name);
+            error_output_parts.push(annotator.annotate(Some(&filename), errors.iter()));
+        }
+    }
+
+    // Check for type errors if there are no parse errors
+    if error_output_parts.is_empty() {
+        for (module_name, errors) in program.get_type_errors() {
+            if !errors.is_empty() {
+                let filename = format!("{}.hop", module_name);
+                error_output_parts.push(annotator.annotate(Some(&filename), errors));
+            }
+        }
+    }
+
+    if !error_output_parts.is_empty() {
+        return Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .header("Content-Type", "text/plain")
+            .body(Body::from(error_output_parts.join("\n")))
+            .unwrap();
+    }
 
     match program.evaluate_ir_entrypoint(&module_name, &component_name, body.params, css_content) {
         Ok(html) => Response::builder()
@@ -445,11 +479,19 @@ mod tests {
             .await;
 
         response.assert_status_internal_server_error();
-        expect![[
-            r#"Error rendering component: Module 'test' has syntax errors:
-  - Unterminated closing tag
-  - Unclosed <BrokenComp>"#
-        ]]
+        expect![[r#"
+            error: Unterminated closing tag
+              --> test.hop (line 7, col 3)
+            6 |   <p>Hello, {name}!</p>
+            7 | </BrokenComp
+              |   ^^^^^^^^^^
+
+            error: Unclosed <BrokenComp>
+              --> test.hop (line 5, col 2)
+            4 | 
+            5 | <BrokenComp {name: String}>
+              |  ^^^^^^^^^^
+        "#]]
         .assert_eq(&response.text());
     }
 
@@ -478,10 +520,13 @@ mod tests {
             .await;
 
         response.assert_status_internal_server_error();
-        expect![[
-            r#"Error rendering component: Module 'broken' has syntax errors:
-  - Unclosed <div>"#
-        ]]
+        expect![[r#"
+            error: Unclosed <div>
+              --> broken.hop (line 2, col 4)
+            1 | <BrokenComp>
+            2 |   <div>Broken
+              |    ^^^
+        "#]]
         .assert_eq(&response.text());
     }
 
@@ -509,10 +554,13 @@ mod tests {
             .await;
 
         response.assert_status_internal_server_error();
-        expect![
-            [r#"Error rendering component: Module 'test' has type errors:
-  - Undefined variable: undefined_variable"#]
-        ]
+        expect![[r#"
+            error: Undefined variable: undefined_variable
+              --> test.hop (line 6, col 15)
+            5 | <Bar>
+            6 |   <Foo {name: undefined_variable} />
+              |               ^^^^^^^^^^^^^^^^^^
+        "#]]
         .assert_eq(&response.text());
     }
 
