@@ -8,13 +8,19 @@ const DEV_SERVER_URL = "http://localhost:33861";
 const EVENT_SOURCE_URL = `${DEV_SERVER_URL}/event_source`;
 const RENDER_URL = `${DEV_SERVER_URL}/render`;
 const DEBOUNCE_DELAY_MS = 15;
+const MONOSPACE_FONTS = 'Menlo, Consolas, Monaco, Adwaita Mono, Liberation Mono, Lucida Console, monospace';
+const EXCLAMATION_MARK_SVG = "url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' fill='%23ff6a6a' viewBox='0 0 256 256'%3E%3Cpath d='M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm-8-80V80a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,172Z'%3E%3C/path%3E%3C/svg%3E&quot;)";
 
-const uiState = {
-	/**
-	 * @type {null | any}
-	 */
-	error: null,
-};
+/**
+ * @param {string} str
+ * @returns {string}
+ */
+function escapeHtml(str) {
+	return str
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;');
+}
 
 /**
  * @typedef {object} HopConfig
@@ -53,7 +59,8 @@ async function fetchEntryPoint(cfg) {
         }),
     });
     if (!response.ok) {
-		throw new Error(`HTTP error! status: ${response.status}`);
+		const body = await response.text();
+		throw new Error(body || `HTTP error! status: ${response.status}`);
     }
     return await response.text();
 }
@@ -86,15 +93,41 @@ function setupHMR(cfg) {
 		let html = '';
 		try {
 			html = await fetchEntryPoint(cfg);
-			uiState.error = null;
 		} catch (error) {
 			if (error instanceof Error) {
-				html = error?.message ?? '';
+				const escaped = escapeHtml(error?.message ?? '');
+				// Match "  --> ..." lines (using --&gt; because > is escaped)
+				const styled_error = escaped
+					.replace(/^(  --&gt; .+)$/gm, '<span style="font-weight: bold;">$1</span>')
+					.replace(/^(\s*\d*\s*\|)/gm, '<span style="color: rgba(255,255,255,0.5);">$1</span>');
+				html = `
+					<body style="background: #292727; margin: 64px 32px;">
+						<style>
+							@keyframes fadeIn {
+								from {
+									opacity: 0;
+									transform: translateY(-10px);
+								}
+								to {
+									opacity: 1;
+									transform: translateY(0);
+								}
+							}
+						</style>
+						<div style="max-width: 840px; margin: 0 auto;">
+							<div style="display: flex; justify-content: center; margin-bottom: 16px;">
+								<pre style="color: #ff6a6a; font-family: ${MONOSPACE_FONTS}; font-size: 14px; font-weight: bold;">  ___  ______________  _____
+ / _ \\/ ___/ ___/ __ \\/ ___/
+/  __/ /  / /  / /_/ / /
+\\___/_/  /_/   \\____/_/</pre>
+							</div>
+							<pre style="animation: fadeIn 0.2s ease-in-out; font-family: ${MONOSPACE_FONTS}; overflow-x: auto; font-size: 16px; line-height: 1.8; background: #201f1f ${EXCLAMATION_MARK_SVG} no-repeat calc(100% - 48px) 32px; padding: 32px 48px 48px; border-radius: 4px; color: white; border-top: 5px solid #ff6a6a; box-shadow: 0 12px 0px -6px rgba(0,0,0,0.05);">${styled_error}</pre>
+						</div>
+					</body>
+				`;
 			}
-			uiState.error = error;
 		} finally {
 			await morphDOM(html, cfg);
-			setupUI();
 		}
 		reloadTimeout = null;
 	}
@@ -134,22 +167,6 @@ function setupHMR(cfg) {
     });
 }
 
-function setupUI() {
-	function initializeWrapper() {
-		let div = document.querySelector('#hop-dev-ui');
-		if (div == null) {
-			div = document.createElement('div');
-			document.body.appendChild(div);
-		}
-		return div;
-	}
-	const div = initializeWrapper();
-    Idiomorph.morph(div, `
-		<div id="hop-dev-ui" style="position: fixed; bottom: 0; left: 0; padding: 4px; margin: 8px; border: 1px solid #ddd;">
-		    ${uiState.error?.message}
-		</div>
-	`);
-}
 
 /**
  * Main bootstrap function that initializes the development environment
