@@ -138,6 +138,9 @@ async function bootstrap() {
         setupHMR(cfg);
     } catch (error) {
         console.error('Failed to load from development server:', error);
+		if (!(error instanceof Error)) {
+			return;
+		}
         
         // Show error message (pass a minimal config for error display)
         morphDOM(`
@@ -155,13 +158,23 @@ async function bootstrap() {
             </div>
 			</body>
 			</html>
-        `, { entrypoint: 'error', params: {} });
+        `, { module: '', component: '', params: {} });
         document.close();
     }
 }
 
 // Execute the bootstrap function
 bootstrap();
+
+/**
+ * ----------------------------------------------------------------------------
+ * Idiomorph
+ * ----------------------------------------------------------------------------
+ * ----------------------------------------------------------------------------
+ * ----------------------------------------------------------------------------
+ * ----------------------------------------------------------------------------
+ * ----------------------------------------------------------------------------
+ */
 
 /**
  * @typedef {object} ConfigHead

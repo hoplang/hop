@@ -11,6 +11,7 @@ update-tests:
 	UPDATE_EXPECT=1 cargo test
 
 build:
+	tsc --project src/cli/js/tsconfig.json
 	cargo build -vv
 
 build-release:
