@@ -114,8 +114,8 @@ impl Iterator for Tokenizer {
                             }),
                         };
                     };
-                    let content = content_start
-                        .extend(self.iter.peeking_take_while(|s| s.ch() != '"'));
+                    let content =
+                        content_start.extend(self.iter.peeking_take_while(|s| s.ch() != '"'));
                     match self.iter.next() {
                         Some(end) => Ok((Token::String(content), start.to(end))),
                         None => Err(ParseError::UnmatchedCharacter {

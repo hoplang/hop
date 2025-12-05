@@ -444,10 +444,12 @@ mod tests {
             .await;
 
         response.assert_status_internal_server_error();
-        expect![[r#"Error rendering component: Module 'test' has syntax errors:
+        expect![[
+            r#"Error rendering component: Module 'test' has syntax errors:
   - Unterminated closing tag
-  - Unclosed <BrokenComp>"#]]
-            .assert_eq(&response.text());
+  - Unclosed <BrokenComp>"#
+        ]]
+        .assert_eq(&response.text());
     }
 
     /// Tests that requesting a component from a module with type errors returns an error.
@@ -474,9 +476,11 @@ mod tests {
             .await;
 
         response.assert_status_internal_server_error();
-        expect![[r#"Error rendering component: Module 'test' has type errors:
-  - Undefined variable: undefined_variable"#]]
-            .assert_eq(&response.text());
+        expect![
+            [r#"Error rendering component: Module 'test' has type errors:
+  - Undefined variable: undefined_variable"#]
+        ]
+        .assert_eq(&response.text());
     }
 
     /// Tests that a component can import and use another component from a different module.

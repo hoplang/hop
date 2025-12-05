@@ -589,25 +589,15 @@ pub fn typecheck_expr(
                 let mut typed_elements = Vec::new();
 
                 // Check the type of the first element
-                let first_typed = typecheck_expr(
-                    &elements[0],
-                    env,
-                    type_env,
-                    annotations,
-                    expected_elem_type,
-                )?;
+                let first_typed =
+                    typecheck_expr(&elements[0], env, type_env, annotations, expected_elem_type)?;
                 let first_type = first_typed.as_type().clone();
                 typed_elements.push(first_typed);
 
                 // Check that all elements have the same type
                 for element in elements.iter().skip(1) {
-                    let typed_element = typecheck_expr(
-                        element,
-                        env,
-                        type_env,
-                        annotations,
-                        expected_elem_type,
-                    )?;
+                    let typed_element =
+                        typecheck_expr(element, env, type_env, annotations, expected_elem_type)?;
                     let element_type = typed_element.as_type();
                     if *element_type != first_type {
                         return Err(TypeError::ArrayTypeMismatch {
@@ -675,7 +665,8 @@ pub fn typecheck_expr(
                 })?;
 
                 // Type check the field value with expected type for bidirectional checking
-                let typed_value = typecheck_expr(field_value, env, type_env, annotations, Some(expected_type))?;
+                let typed_value =
+                    typecheck_expr(field_value, env, type_env, annotations, Some(expected_type))?;
                 let actual_type = typed_value.as_type();
 
                 // Check that the types match

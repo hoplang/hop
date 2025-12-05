@@ -126,8 +126,7 @@ pub fn parse(
                         range: import.component.clone(),
                     });
                 } else {
-                    imported_components
-                        .insert(name_str.to_string(), import.module_name.clone());
+                    imported_components.insert(name_str.to_string(), import.module_name.clone());
                 }
                 imports.push(import);
             }

@@ -25,7 +25,9 @@ pub enum TypeError {
     #[error("Variable {var} is already defined")]
     VariableIsAlreadyDefined { var: String, range: DocumentRange },
 
-    #[error("Component {component} does not accept children (missing `children: TrustedHTML` parameter)")]
+    #[error(
+        "Component {component} does not accept children (missing `children: TrustedHTML` parameter)"
+    )]
     ComponentDoesNotAcceptChildren {
         component: String,
         range: DocumentRange,

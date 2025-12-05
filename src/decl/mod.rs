@@ -12,9 +12,9 @@ pub mod tokenizer;
 
 use std::fmt;
 
-use crate::document::document_cursor::DocumentRange;
 #[cfg(test)]
 use crate::document::document_cursor::DocumentCursor;
+use crate::document::document_cursor::DocumentRange;
 use crate::dop::RecordDeclaration;
 use crate::error_collector::ErrorCollector;
 use crate::hop::module_name::ModuleName;
@@ -214,7 +214,11 @@ mod tests {
                         .iter()
                         .map(|f| format!("{}: {}", f.name, f.field_type))
                         .collect();
-                    format!("Record {} {{{}}}", declaration.name.as_str(), fields.join(", "))
+                    format!(
+                        "Record {} {{{}}}",
+                        declaration.name.as_str(),
+                        fields.join(", ")
+                    )
                 }
             })
             .collect();

@@ -37,7 +37,10 @@ pub enum ParseError {
     },
 
     #[error("{name} is already defined")]
-    TypeNameIsAlreadyDefined { name: StringSpan, range: DocumentRange },
+    TypeNameIsAlreadyDefined {
+        name: StringSpan,
+        range: DocumentRange,
+    },
 
     #[error("Duplicate attribute '{name}'")]
     DuplicateAttribute {
