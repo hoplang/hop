@@ -1,5 +1,7 @@
 use crate::filesystem::adaptive_watcher::{AdaptiveWatcher, WatchEvent};
 use crate::filesystem::project_root::ProjectRoot;
+use crate::hop::component_name::ComponentName;
+use crate::hop::module_name::ModuleName;
 use crate::hop::program::Program;
 use axum::body::Body;
 use axum::extract::State;
@@ -77,7 +79,7 @@ async fn handle_render(
     let css_content = css.as_deref();
 
     // Parse module name
-    let module_name = match crate::hop::module_name::ModuleName::new(body.module.clone()) {
+    let module_name = match ModuleName::new(body.module.clone()) {
         Ok(name) => name,
         Err(e) => {
             return Response::builder()
@@ -89,17 +91,16 @@ async fn handle_render(
     };
 
     // Parse component name
-    let component_name =
-        match crate::hop::component_name::ComponentName::new(body.component.clone()) {
-            Ok(name) => name,
-            Err(e) => {
-                return Response::builder()
-                    .status(StatusCode::BAD_REQUEST)
-                    .header("Content-Type", "text/html")
-                    .body(Body::from(format!("Invalid component name: {}", e)))
-                    .unwrap();
-            }
-        };
+    let component_name = match ComponentName::new(body.component.clone()) {
+        Ok(name) => name,
+        Err(e) => {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .header("Content-Type", "text/html")
+                .body(Body::from(format!("Invalid component name: {}", e)))
+                .unwrap();
+        }
+    };
 
     match program.evaluate_ir_entrypoint(&module_name, &component_name, body.params, css_content) {
         Ok(html) => Response::builder()
@@ -448,6 +449,38 @@ mod tests {
             r#"Error rendering component: Module 'test' has syntax errors:
   - Unterminated closing tag
   - Unclosed <BrokenComp>"#
+        ]]
+        .assert_eq(&response.text());
+    }
+
+    /// Tests that a syntax error in an unrelated module still prevents rendering.
+    #[tokio::test]
+    async fn test_render_fails_when_unrelated_module_has_syntax_error() {
+        let server = create_test_server(indoc::indoc! {r#"
+            -- good.hop --
+            <GoodComp>
+              <div>This is fine</div>
+            </GoodComp>
+
+            -- broken.hop --
+            <BrokenComp>
+              <div>Broken
+            </BrokenComp>
+        "#});
+
+        let response = server
+            .post("/render")
+            .json(&json!({
+                "module": "good",
+                "component": "GoodComp",
+                "params": {}
+            }))
+            .await;
+
+        response.assert_status_internal_server_error();
+        expect![[
+            r#"Error rendering component: Module 'broken' has syntax errors:
+  - Unclosed <div>"#
         ]]
         .assert_eq(&response.text());
     }
