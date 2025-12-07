@@ -25,15 +25,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Run the Language Server Protocol (LSP) server
-    Lsp,
-    /// Compile hop templates using target from hop.toml
+    /// Compile a hop project to native code
     Compile {
         /// Path to project root
         #[arg(long)]
         projectdir: Option<String>,
     },
-    /// Start development server for serving hop templates from a manifest
+    /// Start development server for serving a hop project
     Dev {
         /// Path to project root
         #[arg(long)]
@@ -45,6 +43,8 @@ enum Commands {
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
     },
+    /// Run the LSP server
+    Lsp,
 }
 
 #[tokio::main]
