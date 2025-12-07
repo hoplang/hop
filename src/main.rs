@@ -11,10 +11,7 @@ mod test_utils;
 mod tui;
 
 use clap::{CommandFactory, Parser, Subcommand};
-use filesystem::{
-    config::{TargetConfig, TargetLanguage},
-    project_root::ProjectRoot,
-};
+use filesystem::{config::TargetConfig, project_root::ProjectRoot};
 use std::path::Path;
 
 #[derive(Parser)]
@@ -28,13 +25,6 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize a new hop project
-    #[command(arg_required_else_help = true)]
-    Init {
-        /// Target language for the project
-        #[arg(value_enum)]
-        target: TargetLanguage,
-    },
     /// Run the Language Server Protocol (LSP) server
     Lsp,
     /// Compile hop templates using target from hop.toml
@@ -69,9 +59,6 @@ async fn main() -> anyhow::Result<()> {
     }
 
     match &cli.command {
-        Some(Commands::Init { target }) => {
-            cli::init::execute(target)?;
-        }
         Some(Commands::Lsp) => {
             cli::lsp::execute().await;
         }
