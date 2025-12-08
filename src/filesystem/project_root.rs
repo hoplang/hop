@@ -5,7 +5,7 @@ use std::{
 };
 use tokio::fs as async_fs;
 
-use super::config::{HopConfig, TargetConfig};
+use super::config::HopConfig;
 use crate::hop::module_name::ModuleName;
 
 /// Check if a directory should be skipped during .hop file search
@@ -191,14 +191,8 @@ impl ProjectRoot {
 
     pub async fn get_output_path(&self) -> anyhow::Result<PathBuf> {
         let config = self.load_config().await?;
-        let target_config = config.get_target();
-        let output_path = match &target_config {
-            TargetConfig::Javascript(config) => &config.output_path,
-            TargetConfig::Typescript(config) => &config.output_path,
-            TargetConfig::Python(config) => &config.output_path,
-            TargetConfig::Go(config) => &config.output_path,
-        };
-        Ok(self.directory.join(output_path))
+        let resolved = config.get_resolved_config();
+        Ok(self.directory.join(&resolved.output_path))
     }
 
     pub async fn write_output(&self, data: &str) -> anyhow::Result<PathBuf> {
@@ -223,8 +217,9 @@ mod tests {
     fn test_find_config_file() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [css]
-            mode = "tailwind4"
+            [compile]
+            target = "ts"
+            output_path = "app.ts"
             -- src/components/.gitkeep --
 
         "#});
@@ -265,8 +260,9 @@ mod tests {
     fn test_path_to_module_name() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [css]
-            mode = "tailwind4"
+            [compile]
+            target = "ts"
+            output_path = "app.ts"
             -- main.hop --
             <main-component>Test</main-component>
             -- src/components/button.hop --
@@ -292,8 +288,9 @@ mod tests {
     fn test_module_name_to_path() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [css]
-            mode = "tailwind4"
+            [compile]
+            target = "ts"
+            output_path = "app.ts"
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::from(&temp_dir).unwrap();
@@ -317,8 +314,9 @@ mod tests {
     fn test_load_all_hop_modules() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [css]
-            mode = "tailwind4"
+            [compile]
+            target = "ts"
+            output_path = "app.ts"
             -- src/main.hop --
             <main-comp>
               <button-comp />
@@ -360,8 +358,9 @@ mod tests {
     fn test_files_with_dots_in_names_are_rejected() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [css]
-            mode = "tailwind4"
+            [compile]
+            target = "ts"
+            output_path = "app.ts"
             -- src/foo.bar.hop --
             <foo-bar-comp>Component with dots</foo-bar-comp>
             -- src/utils/helper_test.hop --
@@ -411,8 +410,9 @@ mod tests {
     fn test_skip_directories() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [css]
-            mode = "tailwind4"
+            [compile]
+            target = "ts"
+            output_path = "app.ts"
             -- src/main.hop --
             <main-comp>Main</main-comp>
             -- node_modules/package/index.hop --
@@ -451,7 +451,8 @@ mod tests {
             [css]
             mode = "tailwind4"
 
-            [target.typescript]
+            [compile]
+            target = "ts"
             output_path = "app.ts"
             pages = ["main/App"]
         "#});
@@ -469,8 +470,9 @@ mod tests {
     async fn test_load_config_missing_hop_toml_error() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [css]
-            mode = "tailwind4"
+            [compile]
+            target = "ts"
+            output_path = "app.ts"
             -- main.hop --
             <main-component>Test</main-component>
         "#});

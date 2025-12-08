@@ -1,5 +1,5 @@
 use crate::document::DocumentAnnotator;
-use crate::filesystem::config::TargetConfig;
+use crate::filesystem::config::TargetLanguage;
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::component_name::ComponentName;
 use crate::hop::module_name::ModuleName;
@@ -54,7 +54,7 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
 
     // Load configuration
     let config = project_root.load_config().await?;
-    let target_config = config.get_target();
+    let resolved = config.get_resolved_config();
 
     // Truncate output file before running Tailwind to prevent scanning old content
     project_root.write_output("").await?;
@@ -115,14 +115,8 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
 
     timer.start_phase("compiling to IR");
 
-    let page_strings = match &target_config {
-        TargetConfig::Javascript(c) => &c.pages,
-        TargetConfig::Typescript(c) => &c.pages,
-        TargetConfig::Python(c) => &c.pages,
-        TargetConfig::Go(c) => &c.pages,
-    };
-
-    let pages: Vec<(ModuleName, ComponentName)> = page_strings
+    let pages: Vec<(ModuleName, ComponentName)> = resolved
+        .pages
         .iter()
         .map(|page| {
             let (module, component) = page.rsplit_once('/').ok_or_else(|| {
@@ -163,23 +157,24 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
     records.sort_by(|a, b| a.name.cmp(&b.name));
 
     // Generate code based on target language
-    let generated_code = match &target_config {
-        TargetConfig::Javascript(_) => {
+    let generated_code = match resolved.target {
+        TargetLanguage::Javascript => {
             timer.start_phase("transpiling to js");
             let transpiler = JsTranspiler::new(LanguageMode::JavaScript);
             transpiler.transpile_module(&ir_entrypoints, &records)
         }
-        TargetConfig::Typescript(_) => {
+        TargetLanguage::Typescript => {
             timer.start_phase("transpiling to ts");
             let transpiler = JsTranspiler::new(LanguageMode::TypeScript);
             transpiler.transpile_module(&ir_entrypoints, &records)
         }
-        TargetConfig::Go(config) => {
+        TargetLanguage::Go => {
             timer.start_phase("transpiling to go");
-            let transpiler = GoTranspiler::new(config.package.clone());
+            let package = resolved.go_package.clone().unwrap_or_else(|| "main".to_string());
+            let transpiler = GoTranspiler::new(package);
             transpiler.transpile_module(&ir_entrypoints, &records)
         }
-        TargetConfig::Python(_) => {
+        TargetLanguage::Python => {
             timer.start_phase("transpiling to python");
             let transpiler = PythonTranspiler::new();
             transpiler.transpile_module(&ir_entrypoints, &records)
@@ -216,9 +211,9 @@ mod tests {
         // Create a temporary directory with hop.toml and a simple .hop file
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
-            [target.go]
+            [compile]
+            target = "go"
             output_path = "components/frontend.go"
-            package = "main"
             pages = ["main/HelloWorld"]
 
             [css]
@@ -245,11 +240,11 @@ mod tests {
             "Output file should exist at components/frontend.go"
         );
 
-        // Verify that the generated file uses the correct package name
+        // Verify that the generated file uses the correct package name (derived from directory)
         let generated_code = fs::read_to_string(&expected_output_path).unwrap();
         assert!(
-            generated_code.starts_with("package main"),
-            "Generated Go code should use 'package main'"
+            generated_code.starts_with("package components"),
+            "Generated Go code should use 'package components' (derived from output path)"
         );
 
         // Clean up
