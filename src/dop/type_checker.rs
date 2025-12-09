@@ -768,7 +768,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_equality_incompatible_string_number() {
+    fn equality_incompatible_string_number() {
         check(
             "name: String, count: Float",
             "name == count",
@@ -781,7 +781,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_equality_incompatible_boolean_string() {
+    fn equality_incompatible_boolean_string() {
         check(
             "enabled: Bool, name: String",
             "enabled == name",
@@ -794,7 +794,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_undefined_variable() {
+    fn undefined_variable() {
         check(
             "",
             "undefined_var",
@@ -807,7 +807,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_field_access_on_undefined_variable() {
+    fn field_access_on_undefined_variable() {
         check(
             "",
             "notdefined.foo.bar",
@@ -820,7 +820,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_field_access_on_non_record() {
+    fn field_access_on_non_record() {
         check(
             "count: Float",
             "count.value",
@@ -833,7 +833,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_negation_string_error() {
+    fn negation_string_error() {
         check(
             "name: String",
             "!name",
@@ -846,7 +846,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_negation_number_error() {
+    fn negation_number_error() {
         check(
             "count: Float",
             "!count",
@@ -859,7 +859,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_nested_array_field_error() {
+    fn nested_array_field_error() {
         check_with_records(
             "config: Config",
             &[
@@ -877,7 +877,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_array_field_access_error() {
+    fn array_field_access_error() {
         check_with_records(
             "users: Array[User]",
             &["record User {name: String}"],
@@ -891,7 +891,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_unknown_field() {
+    fn unknown_field() {
         check_with_records(
             "data: Data",
             &["record Data {field: String}"],
@@ -905,37 +905,37 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_basic_variable_lookup() {
+    fn basic_variable_lookup() {
         check("name: String", "name", expect!["String"]);
     }
 
     #[test]
-    fn typecheck_string_literal() {
+    fn string_literal() {
         check("", r#""hello world""#, expect!["String"]);
     }
 
     #[test]
-    fn typecheck_boolean_literal_true() {
+    fn boolean_literal_true() {
         check("", "true", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_boolean_literal_false() {
+    fn boolean_literal_false() {
         check("", "false", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_int_literal() {
+    fn int_literal() {
         check("", "42", expect!["Int"]);
     }
 
     #[test]
-    fn typecheck_number_literal_float() {
+    fn number_literal_float() {
         check("", "3.14", expect!["Float"]);
     }
 
     #[test]
-    fn typecheck_field_access() {
+    fn field_access() {
         check_with_records(
             "user: User",
             &["record User {name: String}"],
@@ -945,7 +945,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_nested_field_access() {
+    fn nested_field_access() {
         check_with_records(
             "app: App",
             &[
@@ -959,12 +959,12 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_equality_string() {
+    fn equality_string() {
         check("name: String", r#"name == "alice""#, expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_equality_number() {
+    fn equality_number() {
         check(
             "count: Float",
             "count == 42",
@@ -977,12 +977,12 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_equality_boolean() {
+    fn equality_boolean() {
         check("enabled: Bool", "enabled == true", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_equality_same_properties() {
+    fn equality_same_properties() {
         check_with_records(
             "user: User, admin: Admin",
             &["record User {name: String}", "record Admin {name: String}"],
@@ -992,37 +992,37 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_complex_equality() {
+    fn complex_equality() {
         check("a: Bool, b: Bool", "a == b == true", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_negation_variable() {
+    fn negation_variable() {
         check("enabled: Bool", "!enabled", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_negation_true() {
+    fn negation_true() {
         check("", "!true", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_negation_false() {
+    fn negation_false() {
         check("", "!false", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_greater_than_int() {
+    fn greater_than_int() {
         check("x: Int, y: Int", "x > y", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_greater_than_float() {
+    fn greater_than_float() {
         check("x: Float, y: Float", "x > y", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_greater_than_mixed_error() {
+    fn greater_than_mixed_error() {
         check(
             "x: Int, y: Float",
             "x > y",
@@ -1035,17 +1035,17 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_less_than_or_equal_int() {
+    fn less_than_or_equal_int() {
         check("x: Int, y: Int", "x <= y", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_less_than_or_equal_float() {
+    fn less_than_or_equal_float() {
         check("x: Float, y: Float", "x <= y", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_less_than_or_equal_mixed_error() {
+    fn less_than_or_equal_mixed_error() {
         check(
             "x: Int, y: Float",
             "x <= y",
@@ -1058,17 +1058,17 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_greater_than_or_equal_int() {
+    fn greater_than_or_equal_int() {
         check("x: Int, y: Int", "x >= y", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_greater_than_or_equal_float() {
+    fn greater_than_or_equal_float() {
         check("x: Float, y: Float", "x >= y", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_greater_than_or_equal_mixed_error() {
+    fn greater_than_or_equal_mixed_error() {
         check(
             "x: Int, y: Float",
             "x >= y",
@@ -1081,7 +1081,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_complex_negation_equality() {
+    fn complex_negation_equality() {
         check_with_records(
             "user: User",
             &["record User {active: Bool}"],
@@ -1091,7 +1091,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_parenthesized_negation() {
+    fn parenthesized_negation() {
         check_with_records(
             "status: Status, config: Config",
             &[
@@ -1104,7 +1104,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_record_array_field() {
+    fn record_array_field() {
         check_with_records(
             "data: Data",
             &["record Data {items: Array[String]}"],
@@ -1114,7 +1114,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_deep_field_access() {
+    fn deep_field_access() {
         check_with_records(
             "system: System",
             &[
@@ -1129,7 +1129,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_multiple_field_access() {
+    fn multiple_field_access() {
         check_with_records(
             "obj: Obj",
             &["record Obj {name: String, title: String}"],
@@ -1139,7 +1139,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_array_different_types() {
+    fn array_different_types() {
         check(
             "",
             "[1, true]",
@@ -1152,12 +1152,12 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_array_trailing_comma_numbers() {
+    fn array_trailing_comma_numbers() {
         check("", "[\n\t1,\n\t2,\n\t3,\n]", expect!["Array[Int]"]);
     }
 
     #[test]
-    fn typecheck_array_trailing_comma_single() {
+    fn array_trailing_comma_single() {
         check(
             "",
             indoc! {r#"
@@ -1170,17 +1170,17 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_string_concatenation() {
+    fn string_concatenation() {
         check("", r#""hello" + "world""#, expect!["String"]);
     }
 
     #[test]
-    fn typecheck_string_concatenation_multiple() {
+    fn string_concatenation_multiple() {
         check("", r#""hello" + " " + "world""#, expect!["String"]);
     }
 
     #[test]
-    fn typecheck_string_concatenation_with_variables() {
+    fn string_concatenation_with_variables() {
         check(
             "greeting: String, name: String",
             r#"greeting + " " + name"#,
@@ -1189,7 +1189,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_string_concatenation_error_left_number() {
+    fn string_concatenation_error_left_number() {
         check(
             "",
             r#"42 + "hello""#,
@@ -1202,7 +1202,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_string_concatenation_error_right_boolean() {
+    fn string_concatenation_error_right_boolean() {
         check(
             "",
             r#""hello" + true"#,
@@ -1215,12 +1215,12 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_string_concatenation_error_both_numbers() {
+    fn string_concatenation_error_both_numbers() {
         check("", r#"42 + 58"#, expect!["Int"]);
     }
 
     #[test]
-    fn typecheck_string_concatenation_with_field_access() {
+    fn string_concatenation_with_field_access() {
         check_with_records(
             "user: User",
             &["record User {first_name: String, last_name: String}"],
@@ -1230,22 +1230,22 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_string_concatenation_result_comparison() {
+    fn string_concatenation_result_comparison() {
         check("", r#""a" + "b" == "ab""#, expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_logical_and_boolean_variables() {
+    fn logical_and_boolean_variables() {
         check("a: Bool, b: Bool", "a && b", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_logical_and_boolean_literals() {
+    fn logical_and_boolean_literals() {
         check("", "true && false", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_logical_and_field_access() {
+    fn logical_and_field_access() {
         check_with_records(
             "user: User",
             &["record User {enabled: Bool, active: Bool}"],
@@ -1255,7 +1255,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_logical_and_with_comparison() {
+    fn logical_and_with_comparison() {
         check(
             "x: Int, y: Int, enabled: Bool",
             "x > y && enabled",
@@ -1264,7 +1264,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_logical_and_error_left_string() {
+    fn logical_and_error_left_string() {
         check(
             "name: String, enabled: Bool",
             "name && enabled",
@@ -1277,7 +1277,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_logical_and_error_right_int() {
+    fn logical_and_error_right_int() {
         check(
             "enabled: Bool, count: Int",
             "enabled && count",
@@ -1290,7 +1290,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_logical_and_error_both_strings() {
+    fn logical_and_error_both_strings() {
         check(
             "a: String, b: String",
             "a && b",
@@ -1303,22 +1303,22 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_logical_and_precedence() {
+    fn logical_and_precedence() {
         check("a: Bool, b: Bool, c: Bool", "a && b == c", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_logical_or_boolean_variables() {
+    fn logical_or_boolean_variables() {
         check("a: Bool, b: Bool", "a || b", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_logical_or_boolean_literals() {
+    fn logical_or_boolean_literals() {
         check("", "true || false", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_logical_or_field_access() {
+    fn logical_or_field_access() {
         check_with_records(
             "user: User",
             &["record User {enabled: Bool, active: Bool}"],
@@ -1328,7 +1328,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_logical_or_with_comparison() {
+    fn logical_or_with_comparison() {
         check(
             "x: Int, y: Int, enabled: Bool",
             "x > y || enabled",
@@ -1337,7 +1337,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_logical_or_error_left_string() {
+    fn logical_or_error_left_string() {
         check(
             "name: String, enabled: Bool",
             "name || enabled",
@@ -1350,7 +1350,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_logical_or_error_right_int() {
+    fn logical_or_error_right_int() {
         check(
             "enabled: Bool, count: Int",
             "enabled || count",
@@ -1363,7 +1363,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_logical_or_error_both_strings() {
+    fn logical_or_error_both_strings() {
         check(
             "a: String, b: String",
             "a || b",
@@ -1376,17 +1376,17 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_logical_or_precedence() {
+    fn logical_or_precedence() {
         check("a: Bool, b: Bool, c: Bool", "a || b == c", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_mixed_logical_operators() {
+    fn mixed_logical_operators() {
         check("a: Bool, b: Bool, c: Bool", "a && b || c", expect!["Bool"]);
     }
 
     #[test]
-    fn typecheck_logical_operator_precedence_complex() {
+    fn logical_operator_precedence_complex() {
         check(
             "a: Bool, b: Bool, c: Bool, d: Bool",
             "a || b && c || d",
@@ -1395,37 +1395,37 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_int_addition() {
+    fn int_addition() {
         check("x: Int, y: Int", "x + y", expect!["Int"]);
     }
 
     #[test]
-    fn typecheck_float_addition() {
+    fn float_addition() {
         check("x: Float, y: Float", "x + y", expect!["Float"]);
     }
 
     #[test]
-    fn typecheck_string_addition() {
+    fn string_addition() {
         check("s1: String, s2: String", "s1 + s2", expect!["String"]);
     }
 
     #[test]
-    fn typecheck_int_literal_addition() {
+    fn int_literal_addition() {
         check("", "42 + 17", expect!["Int"]);
     }
 
     #[test]
-    fn typecheck_float_literal_addition() {
+    fn float_literal_addition() {
         check("", "3.14 + 2.71", expect!["Float"]);
     }
 
     #[test]
-    fn typecheck_string_literal_concatenation() {
+    fn string_literal_concatenation() {
         check("", r#""hello" + " world""#, expect!["String"]);
     }
 
     #[test]
-    fn typecheck_addition_error_int_plus_float() {
+    fn addition_error_int_plus_float() {
         check(
             "x: Int, y: Float",
             "x + y",
@@ -1438,7 +1438,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_addition_error_string_plus_int() {
+    fn addition_error_string_plus_int() {
         check(
             "name: String, count: Int",
             "name + count",
@@ -1451,7 +1451,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_addition_error_boolean_plus_int() {
+    fn addition_error_boolean_plus_int() {
         check(
             "flag: Bool, count: Int",
             "flag + count",
@@ -1464,7 +1464,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_addition_with_field_access() {
+    fn addition_with_field_access() {
         check_with_records(
             "user: User",
             &["record User {x: Int, y: Int}"],
@@ -1474,7 +1474,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_mixed_addition_and_comparison() {
+    fn mixed_addition_and_comparison() {
         check("a: Int, b: Int, c: Int", "a + b > c", expect!["Bool"]);
     }
 
@@ -1536,7 +1536,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_record_instantiation_simple() {
+    fn record_instantiation_simple() {
         check_with_records(
             "",
             &["record User {name: String, age: Int}"],
@@ -1546,7 +1546,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_record_instantiation_with_variables() {
+    fn record_instantiation_with_variables() {
         check_with_records(
             "user_name: String, user_age: Int",
             &["record User {name: String, age: Int}"],
@@ -1556,7 +1556,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_record_instantiation_undefined_record() {
+    fn record_instantiation_undefined_record() {
         check_with_records(
             "",
             &[],
@@ -1570,7 +1570,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_record_instantiation_missing_field() {
+    fn record_instantiation_missing_field() {
         check_with_records(
             "",
             &["record User {name: String, age: Int}"],
@@ -1584,7 +1584,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_record_instantiation_unknown_field() {
+    fn record_instantiation_unknown_field() {
         check_with_records(
             "",
             &["record User {name: String}"],
@@ -1598,7 +1598,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_record_instantiation_type_mismatch() {
+    fn record_instantiation_type_mismatch() {
         check_with_records(
             "",
             &["record User {name: String, age: Int}"],
@@ -1612,7 +1612,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_record_instantiation_nested() {
+    fn record_instantiation_nested() {
         check_with_records(
             "",
             &[
