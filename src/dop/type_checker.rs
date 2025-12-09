@@ -1351,7 +1351,7 @@ mod tests {
             &[("name", "String"), ("enabled", "Bool")],
             "name && enabled",
             expect![[r#"
-                error: Logical AND operator can only be applied to Bool values
+                error: && operator can only be applied to Bool values
                 name && enabled
                 ^^^^
             "#]],
@@ -1365,7 +1365,7 @@ mod tests {
             &[("enabled", "Bool"), ("count", "Int")],
             "enabled && count",
             expect![[r#"
-                error: Logical AND operator can only be applied to Bool values
+                error: && operator can only be applied to Bool values
                 enabled && count
                            ^^^^^
             "#]],
@@ -1379,7 +1379,7 @@ mod tests {
             &[("a", "String"), ("b", "String")],
             "a && b",
             expect![[r#"
-                error: Logical AND operator can only be applied to Bool values
+                error: && operator can only be applied to Bool values
                 a && b
                 ^
             "#]],
@@ -1438,7 +1438,7 @@ mod tests {
             &[("name", "String"), ("enabled", "Bool")],
             "name || enabled",
             expect![[r#"
-                error: Logical OR operator can only be applied to Bool values
+                error: || operator can only be applied to Bool values
                 name || enabled
                 ^^^^
             "#]],
@@ -1452,7 +1452,7 @@ mod tests {
             &[("enabled", "Bool"), ("count", "Int")],
             "enabled || count",
             expect![[r#"
-                error: Logical OR operator can only be applied to Bool values
+                error: || operator can only be applied to Bool values
                 enabled || count
                            ^^^^^
             "#]],
@@ -1466,7 +1466,7 @@ mod tests {
             &[("a", "String"), ("b", "String")],
             "a || b",
             expect![[r#"
-                error: Logical OR operator can only be applied to Bool values
+                error: || operator can only be applied to Bool values
                 a || b
                 ^
             "#]],
