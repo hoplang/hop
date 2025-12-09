@@ -365,31 +365,6 @@ fn construct_node(
                     })
                 }
 
-                // <hop-x-raw>
-                "hop-x-raw" => {
-                    errors.extend(validator.disallow_unrecognized());
-
-                    // XRaw should contain either no children or a single Text node
-                    match children.into_iter().next() {
-                        None => None,
-                        Some(text_node @ Node::Text { .. }) => Some(text_node),
-                        _ => panic!(
-                            "hop-x-raw should contain either no children or a single Text node"
-                        ),
-                    }
-                }
-
-                name if name.starts_with("hop-") => {
-                    errors.push(ParseError::UnrecognizedHopTag {
-                        tag: tag_name.to_string_span(),
-                        range: tag_name.clone(),
-                    });
-                    Some(Node::Placeholder {
-                        range: tree.range.clone(),
-                        children: vec![],
-                    })
-                }
-
                 // <ComponentReference> - PascalCase indicates a component
                 name if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
                     let component_name = match ComponentName::new(tag_name.as_str().to_string()) {
@@ -529,15 +504,70 @@ mod tests {
         expected.assert_eq(&actual);
     }
 
-    // The parser allows empty file and the resulting output is empty.
     #[test]
-    fn parser_empty_file() {
+    fn should_allow_empty_file() {
         check("", expect![[""]]);
     }
 
-    // When a tag is not properly closed the parser outputs an error.
     #[test]
-    fn parser_unclosed_tag() {
+    fn should_allow_nested_loops() {
+        check(
+            indoc! {"
+                record Section {
+                  title: String,
+                  items: Array[String],
+                }
+
+                <Main {sections: Array[Section]}>
+                    <div>
+                        <for {section in sections}>
+                            <div>
+                                <h2>{section.title}</h2>
+                                <for {item in section.items}>
+                                    <p>{item}</p>
+                                </for>
+                            </div>
+                        </for>
+                    </div>
+                </Main>
+            "},
+            expect![[r#"
+                div                                               6:4-15:10
+                    for                                           7:8-14:14
+                        div                                       8:12-13:18
+                            h2                                    9:16-9:40
+                                text_expression                   9:20-9:35
+                            for                                   10:16-12:22
+                                p                                 11:20-11:33
+                                    text_expression               11:23-11:29
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_script_and_style_tag_content_as_raw_text() {
+        check(
+            indoc! {r#"
+                <Main>
+                    <script>
+                        // note that the <div> inside here is note
+                        // parsed as html
+                        console.log("<div>test</div>");
+                    </script>
+                    <style>
+                        body { color: red; }
+                    </style>
+                </Main>
+            "#},
+            expect![[r#"
+                script                                            1:4-5:13
+                style                                             6:4-8:12
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_raise_error_when_tags_are_not_closed() {
         check(
             indoc! {"
                 <Main>
@@ -568,9 +598,8 @@ mod tests {
         );
     }
 
-    // When a void tag is closed with an end tag the parser outputs an error.
     #[test]
-    fn parser_void_tag_closed() {
+    fn should_raise_error_when_void_tag_is_closed_with_closing_tag() {
         check(
             indoc! {"
                 <Main>
@@ -598,9 +627,8 @@ mod tests {
         );
     }
 
-    // Void tags are allowed to be self-closing.
     #[test]
-    fn parser_void_tag_may_be_self_closing() {
+    fn should_allow_void_tags_to_be_self_closing() {
         check(
             indoc! {r#"
                 import Bar from "@/bar"
@@ -619,9 +647,30 @@ mod tests {
         );
     }
 
-    // When a closing tag does not have a matching opening tag, the parser outputs an error.
     #[test]
-    fn parser_unmatched_closing_tag() {
+    fn should_allow_doctype_tags_inside_components() {
+        check(
+            indoc! {"
+                <Main {foo: String}>
+                    <!DOCTYPE html>
+                    <html>
+                        <body>
+                            <div>hello world</div>
+                        </body>
+                    </html>
+                </Main>
+            "},
+            expect![[r#"
+                doctype                                           1:4-1:19
+                html                                              2:4-6:11
+                    body                                          3:8-5:15
+                        div                                       4:12-4:34
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_raise_error_when_closing_tag_does_not_have_matching_opening_tag() {
         check(
             indoc! {"
                 <Main>
@@ -649,60 +698,23 @@ mod tests {
         );
     }
 
-    // To declare a component at the top level scope it must have a valid name.
     #[test]
-    fn parser_invalid_component_name() {
+    fn should_raise_error_when_component_name_contains_dash() {
         check(
             indoc! {"
-                <foo-bar>
-                </foo-bar>
-                <Component_With_Underscore></Component_With_Underscore>
-                <Component-With-Dash></Component-With-Dash>
+                <Foo-bar>
+                </Foo-bar>
             "},
             expect![[r#"
-                error: Unterminated opening tag
-                2 | </foo-bar>
-                3 | <Component_With_Underscore></Component_With_Underscore>
-                  |  ^^^^^^^^^
-
-                error: Unterminated closing tag
-                2 | </foo-bar>
-                3 | <Component_With_Underscore></Component_With_Underscore>
-                  |                              ^^^^^^^^^
-
-                error: Component name must start with an uppercase letter
-                1 | <foo-bar>
-                  |  ^^^^^^^
-
                 error: Component name contains invalid character: '-'. Only alphanumeric characters are allowed
-                3 | <Component_With_Underscore></Component_With_Underscore>
-                4 | <Component-With-Dash></Component-With-Dash>
-                  |  ^^^^^^^^^^^^^^^^^^^
+                1 | <Foo-bar>
+                  |  ^^^^^^^
             "#]],
         );
     }
 
-    // An unrecognized hop tag should produce an error.
     #[test]
-    fn parser_unrecognized_hop_tag() {
-        check(
-            indoc! {"
-                <Main>
-                    <hop-whatever>Content</hop-whatever>
-                </Main>
-            "},
-            expect![[r#"
-                error: Unrecognized hop tag: <hop-whatever>
-                1 | <Main>
-                2 |     <hop-whatever>Content</hop-whatever>
-                  |      ^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    // An if tag without expression should produce error.
-    #[test]
-    fn parser_if_no_expression_error() {
+    fn should_raise_error_when_expression_is_missing_in_if_tag() {
         check(
             indoc! {"
                 <Main>
@@ -721,24 +733,7 @@ mod tests {
     }
 
     #[test]
-    fn parser_uppercase_variable_name() {
-        check(
-            indoc! {"
-                <Main {Data: String}>
-                    <div></div>
-                </Main>
-            "},
-            expect![[r#"
-                error: Expected variable name but got Data
-                1 | <Main {Data: String}>
-                  |        ^^^^
-            "#]],
-        );
-    }
-
-    // A for tag without expression should produce error.
-    #[test]
-    fn parser_for_no_expression_error() {
+    fn should_raise_error_when_expression_is_missing_in_for_tag() {
         check(
             indoc! {"
                 <Main>
@@ -756,9 +751,24 @@ mod tests {
         );
     }
 
-    // A for tag with non-loop-generator expression should produce error.
     #[test]
-    fn parser_for_invalid_expression_error() {
+    fn should_raise_error_when_component_parameter_name_starts_with_uppercase_letter() {
+        check(
+            indoc! {"
+                <Main {Data: String}>
+                    <div></div>
+                </Main>
+            "},
+            expect![[r#"
+                error: Expected variable name but got Data
+                1 | <Main {Data: String}>
+                  |        ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_raise_error_when_for_tag_has_invalid_expression() {
         check(
             indoc! {"
                 <Main>
@@ -776,9 +786,8 @@ mod tests {
         );
     }
 
-    // An if expression without valid tokens should produce an error.
     #[test]
-    fn parser_dop_tokenization_error() {
+    fn should_raise_error_when_if_tag_has_invalid_expression() {
         check(
             indoc! {"
                 <Main>
@@ -796,9 +805,8 @@ mod tests {
         );
     }
 
-    // Component parameter with invalid type should produce an error.
     #[test]
-    fn parser_param_invalid_type_error() {
+    fn should_raise_error_when_component_parameter_has_invalid_type_name() {
         check(
             indoc! {"
                 <Main {data: invalid}>
@@ -813,113 +821,18 @@ mod tests {
         );
     }
 
-    // Component parameter with malformed type should produce error.
     #[test]
-    fn parser_param_malformed_type_error() {
+    fn should_raise_error_when_component_parameter_has_parse_error_in_type_name() {
         check(
             indoc! {"
                 <Main {data: Array[}>
                     <div>{data}</div>
                 </Main>
             "},
-            // TODO: Improve error message
             expect![[r#"
                 error: Unexpected end of expression
                 1 | <Main {data: Array[}>
                   |        ^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn parser_nested_loops_complex_types() {
-        check(
-            indoc! {"
-                record Section {title: String, items: Array[String]}
-                <Main {sections: Array[Section]}>
-                    <div>
-                        <for {section in sections}>
-                            <div>
-                                <h2>{section.title}</h2>
-                                <for {item in section.items}>
-                                    <p>{item}</p>
-                                </for>
-                            </div>
-                        </for>
-                    </div>
-                </Main>
-            "},
-            expect![[r#"
-                div                                               2:4-11:10
-                    for                                           3:8-10:14
-                        div                                       4:12-9:18
-                            h2                                    5:16-5:40
-                                text_expression                   5:20-5:35
-                            for                                   6:16-8:22
-                                p                                 7:20-7:33
-                                    text_expression               7:23-7:29
-            "#]],
-        );
-    }
-
-    #[test]
-    fn parser_doctype_html_structure() {
-        check(
-            indoc! {"
-                <Main {foo: String}>
-                    <!DOCTYPE html>
-                    <html>
-                        <body>
-                            <div>hello world</div>
-                        </body>
-                    </html>
-                </Main>
-            "},
-            expect![[r#"
-                doctype                                           1:4-1:19
-                html                                              2:4-6:11
-                    body                                          3:8-5:15
-                        div                                       4:12-4:34
-            "#]],
-        );
-    }
-
-    #[test]
-    fn parser_component_with_script_style() {
-        check(
-            indoc! {r#"
-                <Main>
-                    <script>
-                        // note that the <div> inside here is note
-                        // parsed as html
-                        console.log("<div>test</div>");
-                    </script>
-                    <style>
-                        body { color: red; }
-                    </style>
-                </Main>
-            "#},
-            expect![[r#"
-                script                                            1:4-5:13
-                style                                             6:4-8:12
-            "#]],
-        );
-    }
-
-    #[test]
-    fn parser_component_with_data_param() {
-        check(
-            indoc! {"
-                record Data {message: String}
-                <Main {data: Data}>
-                    <h1>Hello World</h1>
-                    <p>{data.message}</p>
-                </Main>
-            "},
-            expect![[r#"
-                h1                                                2:4-2:24
-                p                                                 3:4-3:25
-                    text_expression                               3:7-3:21
             "#]],
         );
     }
@@ -1430,9 +1343,8 @@ mod tests {
         );
     }
 
-    // Component parameter can have a simple type annotation.
     #[test]
-    fn parser_param_simple_type() {
+    fn should_allow_component_parameter_to_have_a_string_type_annotation() {
         check(
             indoc! {"
                 <Main {data: String}>
@@ -1442,6 +1354,27 @@ mod tests {
             expect![[r#"
                 div                                               1:4-1:21
                     text_expression                               1:9-1:15
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_allow_component_parameter_to_have_a_record_type_annotation() {
+        check(
+            indoc! {"
+                record Data {
+                  message: String,
+                }
+
+                <Main {data: Data}>
+                    <h1>Hello World</h1>
+                    <p>{data.message}</p>
+                </Main>
+            "},
+            expect![[r#"
+                h1                                                5:4-5:24
+                p                                                 6:4-6:25
+                    text_expression                               6:7-6:21
             "#]],
         );
     }

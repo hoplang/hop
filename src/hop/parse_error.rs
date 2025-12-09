@@ -24,12 +24,6 @@ pub enum ParseError {
         range: DocumentRange,
     },
 
-    #[error("Unrecognized hop tag: <{tag}>")]
-    UnrecognizedHopTag {
-        tag: StringSpan,
-        range: DocumentRange,
-    },
-
     #[error("{error}")]
     InvalidComponentName {
         error: crate::hop::component_name::InvalidComponentNameError,
@@ -96,7 +90,6 @@ impl Ranged for ParseError {
             | ParseError::UnmatchedCharacter { range, .. }
             | ParseError::UnclosedTag { range, .. }
             | ParseError::ClosedVoidTag { range, .. }
-            | ParseError::UnrecognizedHopTag { range, .. }
             | ParseError::InvalidComponentName { range, .. }
             | ParseError::TypeNameIsAlreadyDefined { range, .. }
             | ParseError::DuplicateAttribute { range, .. }
