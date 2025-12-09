@@ -194,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn test_import_statement() {
+    fn import_statement() {
         check(
             r#"import UserList from "@/user_list""#,
             expect![[r#"
@@ -218,7 +218,7 @@ mod tests {
     }
 
     #[test]
-    fn test_record_statement() {
+    fn record_statement() {
         check(
             "record User {name: String, age: Int}",
             expect![[r#"
@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn test_record_with_array() {
+    fn record_with_array() {
         check(
             "record UserList {users: Array[User]}",
             expect![[r#"
@@ -318,7 +318,7 @@ mod tests {
     }
 
     #[test]
-    fn test_multiline_record() {
+    fn multiline_record() {
         check(
             indoc! {"
                 record User {
@@ -379,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn test_unexpected_character() {
+    fn unexpected_character() {
         check(
             "record User @",
             expect![[r#"
@@ -399,7 +399,7 @@ mod tests {
     }
 
     #[test]
-    fn test_multiple_declarations() {
+    fn multiple_declarations() {
         check(
             indoc! {r#"
                 import Foo from "@/foo"
@@ -442,7 +442,7 @@ mod tests {
     }
 
     #[test]
-    fn test_import_then_record() {
+    fn import_then_record() {
         check(
             indoc! {r#"
                 import Foo from "@/foo"
@@ -497,7 +497,7 @@ mod tests {
     }
 
     #[test]
-    fn test_whitespace_variations() {
+    fn whitespace_variations() {
         check(
             "record  User  {  name :  String  }",
             expect![[r#"
@@ -533,7 +533,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_arrays() {
+    fn nested_arrays() {
         check(
             "record Data {matrix: Array[Array[Int]]}",
             expect![[r#"
@@ -593,7 +593,7 @@ mod tests {
     }
 
     #[test]
-    fn test_identifiers_with_underscores() {
+    fn identifiers_with_underscores() {
         check(
             "record my_record {field_name: String}",
             expect![[r#"

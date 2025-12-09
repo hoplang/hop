@@ -790,7 +790,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn test_parse_record_simple() {
+    fn parse_record_simple() {
         check_parse_record(
             "record Foo {bar: String}",
             expect![[r#"
@@ -800,7 +800,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_record_multiple_fields() {
+    fn parse_record_multiple_fields() {
         check_parse_record(
             "record User {name: String, age: Int, active: Bool}",
             expect![[r#"
@@ -810,7 +810,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_record_multiline_with_trailing_comma() {
+    fn parse_record_multiline_with_trailing_comma() {
         check_parse_record(
             indoc! {r#"
                 record User {
@@ -826,7 +826,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_record_empty() {
+    fn parse_record_empty() {
         check_parse_record(
             "record Empty {}",
             expect![[r#"
@@ -836,7 +836,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_record_with_array_type() {
+    fn parse_record_with_array_type() {
         check_parse_record(
             "record Container {items: Array[String], count: Int}",
             expect![[r#"
@@ -846,7 +846,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_record_duplicate_field_error() {
+    fn parse_record_duplicate_field_error() {
         check_parse_record(
             "record Foo {bar: String, bar: Int}",
             expect![[r#"
@@ -858,7 +858,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_record_missing_brace_error() {
+    fn parse_record_missing_brace_error() {
         check_parse_record(
             "record Foo {bar: String",
             expect![[r#"
@@ -870,7 +870,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_record_missing_name_error() {
+    fn parse_record_missing_name_error() {
         check_parse_record(
             "record {bar: String}",
             expect![[r#"
@@ -886,7 +886,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn test_parse_expr_record_instantiation_single_field() {
+    fn parse_expr_record_instantiation_single_field() {
         check_parse_expr(
             r#"User(name: "John")"#,
             expect![[r#"
@@ -896,7 +896,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_record_instantiation_multiple_fields() {
+    fn parse_expr_record_instantiation_multiple_fields() {
         check_parse_expr(
             r#"User(name: "John", age: 30, active: true)"#,
             expect![[r#"
@@ -906,7 +906,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_record_instantiation_empty() {
+    fn parse_expr_record_instantiation_empty() {
         check_parse_expr(
             "Empty()",
             expect![[r#"
@@ -916,7 +916,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_record_instantiation_trailing_comma() {
+    fn parse_expr_record_instantiation_trailing_comma() {
         check_parse_expr(
             r#"User(name: "John", age: 30,)"#,
             expect![[r#"
@@ -926,7 +926,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_record_instantiation_multiline() {
+    fn parse_expr_record_instantiation_multiline() {
         check_parse_expr(
             indoc! {r#"
                 User(
@@ -940,7 +940,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_record_instantiation_nested() {
+    fn parse_expr_record_instantiation_nested() {
         check_parse_expr(
             r#"Wrapper(inner: Inner(value: 42))"#,
             expect![[r#"
@@ -950,7 +950,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_record_instantiation_with_expressions() {
+    fn parse_expr_record_instantiation_with_expressions() {
         check_parse_expr(
             "Point(x: a + b, y: c * 2)",
             expect![[r#"
@@ -960,7 +960,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_record_instantiation_missing_paren_error() {
+    fn parse_expr_record_instantiation_missing_paren_error() {
         check_parse_expr(
             r#"User(name: "John""#,
             expect![[r#"
@@ -972,7 +972,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_record_instantiation_missing_colon_error() {
+    fn parse_expr_record_instantiation_missing_colon_error() {
         check_parse_expr(
             r#"User(name "John")"#,
             expect![[r#"
@@ -988,7 +988,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn test_parse_parameters_type_keywords() {
+    fn parse_parameters_type_keywords() {
         check_parse_parameters(
             "name: String, age: Int, score: Float, active: Bool, items: Array[String]",
             expect![[r#"
@@ -998,7 +998,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_parameters_trusted_html_type() {
+    fn parse_parameters_trusted_html_type() {
         check_parse_parameters(
             "content: TrustedHTML",
             expect![[r#"
@@ -1008,7 +1008,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_parameters_named_type() {
+    fn parse_parameters_named_type() {
         check_parse_parameters(
             "user: User, person: Person",
             expect![[r#"
@@ -1018,7 +1018,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_parameters_named_type_in_array() {
+    fn parse_parameters_named_type_in_array() {
         check_parse_parameters(
             "users: Array[User]",
             expect![[r#"
@@ -1028,7 +1028,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_parameters_duplicate_parameters_with_different_type_error() {
+    fn parse_parameters_duplicate_parameters_with_different_type_error() {
         check_parse_parameters(
             "foo: String, foo: Float",
             expect![[r#"
@@ -1040,7 +1040,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_parameters_duplicate_parameters_with_same_type_error() {
+    fn parse_parameters_duplicate_parameters_with_same_type_error() {
         check_parse_parameters(
             "foo: String, foo: String",
             expect![[r#"
@@ -1056,7 +1056,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn test_parse_arguments_single() {
+    fn parse_arguments_single() {
         check_parse_arguments(
             r#"name: "John""#,
             expect![[r#"
@@ -1066,7 +1066,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_arguments_multiple() {
+    fn parse_arguments_multiple() {
         check_parse_arguments(
             r#"name: "John", age: 25, active: true"#,
             expect![[r#"
@@ -1076,7 +1076,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_named_arguments_complex_expressions() {
+    fn parse_named_arguments_complex_expressions() {
         check_parse_arguments(
             "user: user.name, enabled: !user.disabled",
             expect![[r#"
@@ -1086,7 +1086,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_named_arguments_trailing_comma() {
+    fn parse_named_arguments_trailing_comma() {
         check_parse_arguments(
             r#"name: "John", age: 25,"#,
             expect![[r#"
@@ -1096,7 +1096,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_arguments_duplicate_argument_error() {
+    fn parse_arguments_duplicate_argument_error() {
         check_parse_arguments(
             r#"name: "John", name: "Jane""#,
             expect![[r#"
@@ -1108,7 +1108,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_named_arguments_missing_colon_error() {
+    fn parse_named_arguments_missing_colon_error() {
         check_parse_arguments(
             r#"name "John""#,
             expect![[r#"
@@ -1120,7 +1120,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_named_arguments_missing_value_error() {
+    fn parse_named_arguments_missing_value_error() {
         check_parse_arguments(
             "name:",
             expect![[r#"
@@ -1132,7 +1132,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_named_arguments_invalid_start_error() {
+    fn parse_named_arguments_invalid_start_error() {
         check_parse_arguments(
             r#"123: "value""#,
             expect![[r#"
@@ -1144,7 +1144,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_named_arguments_unexpected_token_error() {
+    fn parse_named_arguments_unexpected_token_error() {
         check_parse_arguments(
             r#"name: "John" age: 25"#,
             expect![[r#"
@@ -1160,7 +1160,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn test_parse_exprs_single() {
+    fn parse_exprs_single() {
         check_parse_exprs(
             "x",
             expect![[r#"
@@ -1170,7 +1170,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_exprs_multiple() {
+    fn parse_exprs_multiple() {
         check_parse_exprs(
             "x, y, z",
             expect![[r#"
@@ -1180,7 +1180,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_exprs_with_field_access() {
+    fn parse_exprs_with_field_access() {
         check_parse_exprs(
             "user.name, user.age, user.active",
             expect![[r#"
@@ -1190,7 +1190,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_exprs_with_complex_expressions() {
+    fn parse_exprs_with_complex_expressions() {
         check_parse_exprs(
             r#""hello", 123, true, [1, 2, 3]"#,
             expect![[r#"
@@ -1200,7 +1200,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_exprs_with_operators() {
+    fn parse_exprs_with_operators() {
         check_parse_exprs(
             "x + y, a == b, !c",
             expect![[r#"
@@ -1210,7 +1210,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_exprs_with_nested_commas() {
+    fn parse_exprs_with_nested_commas() {
         check_parse_exprs(
             "[1, 2, 3], [4, 5, 6]",
             expect![[r#"
@@ -1220,7 +1220,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_exprs_trailing_comma() {
+    fn parse_exprs_trailing_comma() {
         check_parse_exprs(
             "x, y,",
             expect![[r#"
@@ -1234,7 +1234,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn test_parse_expr_error_trailing_tokens() {
+    fn parse_expr_error_trailing_tokens() {
         check_parse_expr(
             "x y",
             expect![[r#"
@@ -1246,7 +1246,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_error_invalid_token_in_array_literal() {
+    fn parse_expr_error_invalid_token_in_array_literal() {
         check_parse_expr(
             "[foo, bar == [foo, bar]",
             expect![[r#"
@@ -1258,7 +1258,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_error_invalid_token_in_array_literal_after_comma() {
+    fn parse_expr_error_invalid_token_in_array_literal_after_comma() {
         check_parse_expr(
             "[foo, bar, == [foo, bar]",
             expect![[r#"
@@ -1270,7 +1270,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_unmatched_left_bracket() {
+    fn parse_expr_unmatched_left_bracket() {
         check_parse_expr(
             "[1,2",
             expect![[r#"
@@ -1282,7 +1282,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_array_unexpected_token() {
+    fn parse_expr_array_unexpected_token() {
         check_parse_expr(
             "[1,2 id",
             expect![[r#"
@@ -1294,7 +1294,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_error_dot_no_identifier() {
+    fn parse_expr_error_dot_no_identifier() {
         check_parse_expr(
             "user == user.",
             expect![[r#"
@@ -1306,7 +1306,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_error_dot_number() {
+    fn parse_expr_error_dot_number() {
         check_parse_expr(
             "user.123",
             expect![[r#"
@@ -1318,7 +1318,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_error_invalid_start() {
+    fn parse_expr_error_invalid_start() {
         check_parse_expr(
             "== x",
             expect![[r#"
@@ -1330,7 +1330,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_error_unclosed_paren() {
+    fn parse_expr_error_unclosed_paren() {
         check_parse_expr(
             "(x == y",
             expect![[r#"
@@ -1342,7 +1342,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_error_unmatched_closing_paren() {
+    fn parse_expr_error_unmatched_closing_paren() {
         check_parse_expr(
             "x == y)",
             expect![[r#"
@@ -1354,7 +1354,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_error_empty_parens() {
+    fn parse_expr_error_empty_parens() {
         check_parse_expr(
             "()",
             expect![[r#"
@@ -1366,7 +1366,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_error_invalid_after_equals() {
+    fn parse_expr_error_invalid_after_equals() {
         check_parse_expr(
             "x == )",
             expect![[r#"
@@ -1378,7 +1378,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_error_dot_at_start() {
+    fn parse_expr_error_dot_at_start() {
         check_parse_expr(
             ".field",
             expect![[r#"
@@ -1390,7 +1390,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_error_double_dot() {
+    fn parse_expr_error_double_dot() {
         check_parse_expr(
             "user..name",
             expect![[r#"
@@ -1402,7 +1402,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_error_operator_at_end() {
+    fn parse_expr_error_operator_at_end() {
         check_parse_expr(
             "x ==",
             expect![[r#"
@@ -1414,7 +1414,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_error_not_without_operand() {
+    fn parse_expr_error_not_without_operand() {
         check_parse_expr(
             "!",
             expect![[r#"
@@ -1426,7 +1426,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_error_trailing_not() {
+    fn parse_expr_error_trailing_not() {
         check_parse_expr(
             "x !",
             expect![[r#"
@@ -1438,7 +1438,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_binary_op_chained() {
+    fn parse_expr_binary_op_chained() {
         check_parse_expr(
             "a == b == c",
             expect![[r#"
@@ -1448,7 +1448,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_field_access_comparison() {
+    fn parse_expr_field_access_comparison() {
         check_parse_expr(
             "user.name == admin.name",
             expect![[r#"
@@ -1458,7 +1458,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_less_than_or_equal() {
+    fn parse_expr_less_than_or_equal() {
         check_parse_expr(
             "x <= y",
             expect![[r#"
@@ -1468,7 +1468,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_less_than_or_equal_chained() {
+    fn parse_expr_less_than_or_equal_chained() {
         check_parse_expr(
             "a <= b <= c",
             expect![[r#"
@@ -1478,7 +1478,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_greater_than_or_equal() {
+    fn parse_expr_greater_than_or_equal() {
         check_parse_expr(
             "x >= y",
             expect![[r#"
@@ -1488,7 +1488,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_greater_than_or_equal_chained() {
+    fn parse_expr_greater_than_or_equal_chained() {
         check_parse_expr(
             "a >= b >= c",
             expect![[r#"
@@ -1498,7 +1498,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_field_access() {
+    fn parse_expr_field_access() {
         check_parse_expr(
             "app.user.profile.settings.theme",
             expect![[r#"
@@ -1508,7 +1508,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_empty_string() {
+    fn parse_expr_empty_string() {
         check_parse_expr(
             r#""""#,
             expect![[r#"
@@ -1518,7 +1518,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_int_literal() {
+    fn parse_expr_int_literal() {
         check_parse_expr(
             "99",
             expect![[r#"
@@ -1528,7 +1528,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_number_literal_float() {
+    fn parse_expr_number_literal_float() {
         check_parse_expr(
             "3.14",
             expect![[r#"
@@ -1538,7 +1538,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_mixed_int_and_float() {
+    fn parse_expr_mixed_int_and_float() {
         check_parse_expr(
             "42 + 3.14",
             expect![[r#"
@@ -1548,7 +1548,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_parenthesized() {
+    fn parse_expr_parenthesized() {
         check_parse_expr(
             "(x == y)",
             expect![[r#"
@@ -1558,7 +1558,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_simple_field_access() {
+    fn parse_expr_simple_field_access() {
         check_parse_expr(
             "user.name",
             expect![[r#"
@@ -1568,7 +1568,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_string_comparison() {
+    fn parse_expr_string_comparison() {
         check_parse_expr(
             r#""guest" == user.role"#,
             expect![[r#"
@@ -1578,7 +1578,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_variable_comparison() {
+    fn parse_expr_variable_comparison() {
         check_parse_expr(
             "x == y",
             expect![[r#"
@@ -1588,7 +1588,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_string_literal() {
+    fn parse_expr_string_literal() {
         check_parse_expr(
             r#""hello""#,
             expect![[r#"
@@ -1598,7 +1598,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_variable() {
+    fn parse_expr_variable() {
         check_parse_expr(
             "x",
             expect![[r#"
@@ -1608,7 +1608,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_string_literal_comparison() {
+    fn parse_expr_string_literal_comparison() {
         check_parse_expr(
             r#""apple" == "orange""#,
             expect![[r#"
@@ -1618,7 +1618,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_field_string_comparison() {
+    fn parse_expr_field_string_comparison() {
         check_parse_expr(
             r#"user.name == "admin""#,
             expect![[r#"
@@ -1628,7 +1628,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_string_with_space() {
+    fn parse_expr_string_with_space() {
         check_parse_expr(
             r#""hello world""#,
             expect![[r#"
@@ -1638,7 +1638,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_whitespace_handling() {
+    fn parse_expr_whitespace_handling() {
         check_parse_expr(
             "  user . name   ==   admin . name  ",
             expect![[r#"
@@ -1648,7 +1648,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_empty_array() {
+    fn parse_expr_empty_array() {
         check_parse_expr(
             "[]",
             expect![[r#"
@@ -1658,7 +1658,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_array_integers() {
+    fn parse_expr_array_integers() {
         check_parse_expr(
             "[1, 2, 3]",
             expect![[r#"
@@ -1668,7 +1668,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_array_mixed_types() {
+    fn parse_expr_array_mixed_types() {
         check_parse_expr(
             r#"[1, "hello", true]"#,
             expect![[r#"
@@ -1678,7 +1678,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_nested_arrays() {
+    fn parse_expr_nested_arrays() {
         check_parse_expr(
             "[[1, 2], [3, 4]]",
             expect![[r#"
@@ -1688,7 +1688,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_nested_array_with_expressions() {
+    fn parse_expr_nested_array_with_expressions() {
         check_parse_expr(
             "[[1 == [1 == 2], [] == []], [3, 4]]",
             expect![[r#"
@@ -1698,7 +1698,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_array_variables() {
+    fn parse_expr_array_variables() {
         check_parse_expr(
             "[x, user.name]",
             expect![[r#"
@@ -1708,7 +1708,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_array_trailing_comma_multiline() {
+    fn parse_expr_array_trailing_comma_multiline() {
         check_parse_expr(
             "[\n\t1,\n\t2,\n\t3,\n]",
             expect![[r#"
@@ -1718,7 +1718,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_array_trailing_comma_single() {
+    fn parse_expr_array_trailing_comma_single() {
         check_parse_expr(
             "[\n\t1,\n]",
             expect![[r#"
@@ -1728,7 +1728,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_array_trailing_comma_complex() {
+    fn parse_expr_array_trailing_comma_complex() {
         check_parse_expr(
             "[\n\tuser.name,\n\t!user.disabled,\n]",
             expect![[r#"
@@ -1738,7 +1738,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_string_concatenation() {
+    fn parse_expr_string_concatenation() {
         check_parse_expr(
             r#""hello" + "world""#,
             expect![[r#"
@@ -1748,7 +1748,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_string_concatenation_multiple() {
+    fn parse_expr_string_concatenation_multiple() {
         check_parse_expr(
             r#""hello" + " " + "world""#,
             expect![[r#"
@@ -1758,7 +1758,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_string_concatenation_with_variables() {
+    fn parse_expr_string_concatenation_with_variables() {
         check_parse_expr(
             r#"greeting + " " + name"#,
             expect![[r#"
@@ -1768,7 +1768,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_string_concatenation_precedence() {
+    fn parse_expr_string_concatenation_precedence() {
         check_parse_expr(
             r#""a" + "b" == "ab""#,
             expect![[r#"
@@ -1778,7 +1778,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_string_concatenation_with_field_access() {
+    fn parse_expr_string_concatenation_with_field_access() {
         check_parse_expr(
             r#"user.first_name + " " + user.last_name"#,
             expect![[r#"
@@ -1788,7 +1788,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_not_equals_simple() {
+    fn parse_expr_not_equals_simple() {
         check_parse_expr(
             "x != y",
             expect![[r#"
@@ -1798,7 +1798,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_not_equals_string() {
+    fn parse_expr_not_equals_string() {
         check_parse_expr(
             r#""hello" != "world""#,
             expect![[r#"
@@ -1808,7 +1808,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_not_equals_chained() {
+    fn parse_expr_not_equals_chained() {
         check_parse_expr(
             "a != b != c",
             expect![[r#"
@@ -1818,7 +1818,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_mixed_equals_not_equals() {
+    fn parse_expr_mixed_equals_not_equals() {
         check_parse_expr(
             "a == b != c",
             expect![[r#"
@@ -1828,7 +1828,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_logical_and() {
+    fn parse_expr_logical_and() {
         check_parse_expr(
             "a && b",
             expect![[r#"
@@ -1838,7 +1838,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_logical_and_chained() {
+    fn parse_expr_logical_and_chained() {
         check_parse_expr(
             "a && b && c",
             expect![[r#"
@@ -1848,7 +1848,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_logical_and_with_equals() {
+    fn parse_expr_logical_and_with_equals() {
         check_parse_expr(
             "a && b == c",
             expect![[r#"
@@ -1858,7 +1858,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_logical_and_precedence() {
+    fn parse_expr_logical_and_precedence() {
         check_parse_expr(
             "a == b && c != d",
             expect![[r#"
@@ -1868,7 +1868,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_logical_and_with_comparison() {
+    fn parse_expr_logical_and_with_comparison() {
         check_parse_expr(
             "x > y && a <= b",
             expect![[r#"
@@ -1878,7 +1878,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_logical_and_with_negation() {
+    fn parse_expr_logical_and_with_negation() {
         check_parse_expr(
             "!a && !b",
             expect![[r#"
@@ -1888,7 +1888,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_logical_or() {
+    fn parse_expr_logical_or() {
         check_parse_expr(
             "a || b",
             expect![[r#"
@@ -1898,7 +1898,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_logical_or_chained() {
+    fn parse_expr_logical_or_chained() {
         check_parse_expr(
             "a || b || c",
             expect![[r#"
@@ -1908,7 +1908,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_logical_or_with_equals() {
+    fn parse_expr_logical_or_with_equals() {
         check_parse_expr(
             "a || b == c",
             expect![[r#"
@@ -1918,7 +1918,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_mixed_logical_operators() {
+    fn parse_expr_mixed_logical_operators() {
         check_parse_expr(
             "a && b || c",
             expect![[r#"
@@ -1928,7 +1928,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_mixed_logical_operators_complex() {
+    fn parse_expr_mixed_logical_operators_complex() {
         check_parse_expr(
             "a || b && c || d",
             expect![[r#"
@@ -1938,7 +1938,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_logical_operators_precedence_with_comparison() {
+    fn parse_expr_logical_operators_precedence_with_comparison() {
         check_parse_expr(
             "x > y && a || b < c",
             expect![[r#"
@@ -1948,7 +1948,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_logical_or_with_negation() {
+    fn parse_expr_logical_or_with_negation() {
         check_parse_expr(
             "!a || !b",
             expect![[r#"
@@ -1958,7 +1958,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_addition_precedence() {
+    fn parse_expr_addition_precedence() {
         check_parse_expr(
             "x + y == z",
             expect![[r#"
@@ -1968,7 +1968,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_addition_with_logical_and() {
+    fn parse_expr_addition_with_logical_and() {
         check_parse_expr(
             "x + y > z && enabled",
             expect![[r#"
@@ -1978,7 +1978,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expr_chained_addition() {
+    fn parse_expr_chained_addition() {
         check_parse_expr(
             "x + y + z",
             expect![[r#"

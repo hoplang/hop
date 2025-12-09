@@ -433,7 +433,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_no_renaming() {
+    fn simple_no_renaming() {
         check(
             build_ir_auto("Test", vec![("x", Type::String)], |t| {
                 t.write_expr_escaped(t.var("x"));
@@ -453,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    fn test_shadowing_in_for_loop() {
+    fn shadowing_in_for_loop() {
         check(
             build_ir_auto("Test", vec![("x", Type::String)], |t| {
                 t.for_loop("x", t.array(vec![t.str("a")]), |t| {
@@ -479,7 +479,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sibling_scopes() {
+    fn sibling_scopes() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.for_loop("x", t.array(vec![t.str("a")]), |t| {
@@ -514,7 +514,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_let_bindings() {
+    fn nested_let_bindings() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("x", t.str("hello"), |t| {
@@ -549,7 +549,7 @@ mod tests {
     }
 
     #[test]
-    fn test_multiple_parameters() {
+    fn multiple_parameters() {
         check(
             build_ir_auto(
                 "Test",
@@ -585,7 +585,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sibling_let_bindings() {
+    fn sibling_let_bindings() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("x", t.str("first"), |t| {
@@ -620,7 +620,7 @@ mod tests {
     }
 
     #[test]
-    fn test_complex_nesting() {
+    fn complex_nesting() {
         check(
             build_ir_auto(
                 "Test",

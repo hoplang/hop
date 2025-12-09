@@ -44,7 +44,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simplify_constant_string() {
+    fn simplify_constant_string() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 // WriteExpr with constant string should become Write
@@ -65,7 +65,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simplify_with_escaping() {
+    fn simplify_with_escaping() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 // WriteExpr with escaping enabled
@@ -86,7 +86,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_transformations() {
+    fn nested_transformations() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.bool(true), |t| {
@@ -130,7 +130,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mixed_write_and_write_expr() {
+    fn mixed_write_and_write_expr() {
         check(
             build_ir_auto("Test", vec![("x", Type::String)], |t| {
                 t.write("Already a Write statement");

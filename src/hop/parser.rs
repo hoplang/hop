@@ -531,13 +531,13 @@ mod tests {
 
     // The parser allows empty file and the resulting output is empty.
     #[test]
-    fn test_parser_empty_file() {
+    fn parser_empty_file() {
         check("", expect![[""]]);
     }
 
     // When a tag is not properly closed the parser outputs an error.
     #[test]
-    fn test_parser_unclosed_tag() {
+    fn parser_unclosed_tag() {
         check(
             indoc! {"
                 <Main>
@@ -570,7 +570,7 @@ mod tests {
 
     // When a void tag is closed with an end tag the parser outputs an error.
     #[test]
-    fn test_parser_void_tag_closed() {
+    fn parser_void_tag_closed() {
         check(
             indoc! {"
                 <Main>
@@ -600,7 +600,7 @@ mod tests {
 
     // Void tags are allowed to be self-closing.
     #[test]
-    fn test_parser_void_tag_may_be_self_closing() {
+    fn parser_void_tag_may_be_self_closing() {
         check(
             indoc! {r#"
                 import Bar from "@/bar"
@@ -621,7 +621,7 @@ mod tests {
 
     // When a closing tag does not have a matching opening tag, the parser outputs an error.
     #[test]
-    fn test_parser_unmatched_closing_tag() {
+    fn parser_unmatched_closing_tag() {
         check(
             indoc! {"
                 <Main>
@@ -651,7 +651,7 @@ mod tests {
 
     // To declare a component at the top level scope it must have a valid name.
     #[test]
-    fn test_parser_invalid_component_name() {
+    fn parser_invalid_component_name() {
         check(
             indoc! {"
                 <foo-bar>
@@ -684,7 +684,7 @@ mod tests {
 
     // An unrecognized hop tag should produce an error.
     #[test]
-    fn test_parser_unrecognized_hop_tag() {
+    fn parser_unrecognized_hop_tag() {
         check(
             indoc! {"
                 <Main>
@@ -702,7 +702,7 @@ mod tests {
 
     // An if tag without expression should produce error.
     #[test]
-    fn test_parser_if_no_expression_error() {
+    fn parser_if_no_expression_error() {
         check(
             indoc! {"
                 <Main>
@@ -721,7 +721,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_uppercase_variable_name() {
+    fn parser_uppercase_variable_name() {
         check(
             indoc! {"
                 <Main {Data: String}>
@@ -738,7 +738,7 @@ mod tests {
 
     // A for tag without expression should produce error.
     #[test]
-    fn test_parser_for_no_expression_error() {
+    fn parser_for_no_expression_error() {
         check(
             indoc! {"
                 <Main>
@@ -758,7 +758,7 @@ mod tests {
 
     // A for tag with non-loop-generator expression should produce error.
     #[test]
-    fn test_parser_for_invalid_expression_error() {
+    fn parser_for_invalid_expression_error() {
         check(
             indoc! {"
                 <Main>
@@ -778,7 +778,7 @@ mod tests {
 
     // An if expression without valid tokens should produce an error.
     #[test]
-    fn test_parser_dop_tokenization_error() {
+    fn parser_dop_tokenization_error() {
         check(
             indoc! {"
                 <Main>
@@ -798,7 +798,7 @@ mod tests {
 
     // Component parameter with invalid type should produce an error.
     #[test]
-    fn test_parser_param_invalid_type_error() {
+    fn parser_param_invalid_type_error() {
         check(
             indoc! {"
                 <Main {data: invalid}>
@@ -815,7 +815,7 @@ mod tests {
 
     // Component parameter with malformed type should produce error.
     #[test]
-    fn test_parser_param_malformed_type_error() {
+    fn parser_param_malformed_type_error() {
         check(
             indoc! {"
                 <Main {data: Array[}>
@@ -832,7 +832,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_nested_loops_complex_types() {
+    fn parser_nested_loops_complex_types() {
         check(
             indoc! {"
                 record Section {title: String, items: Array[String]}
@@ -863,7 +863,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_doctype_html_structure() {
+    fn parser_doctype_html_structure() {
         check(
             indoc! {"
                 <Main {foo: String}>
@@ -885,7 +885,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_component_with_script_style() {
+    fn parser_component_with_script_style() {
         check(
             indoc! {r#"
                 <Main>
@@ -907,7 +907,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_component_with_data_param() {
+    fn parser_component_with_data_param() {
         check(
             indoc! {"
                 record Data {message: String}
@@ -925,7 +925,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_if_conditions_various() {
+    fn parser_if_conditions_various() {
         check(
             indoc! {r#"
                 <Main>
@@ -952,7 +952,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_simple_if_condition() {
+    fn parser_simple_if_condition() {
         check(
             indoc! {"
                 <Main>
@@ -969,7 +969,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_complex_nested_loops() {
+    fn parser_complex_nested_loops() {
         check(
             indoc! {"
                 record T {t: Array[String]}
@@ -1001,7 +1001,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_if_with_for_nested() {
+    fn parser_if_with_for_nested() {
         check(
             indoc! {"
                 <Main {data: Array[String]}>
@@ -1019,7 +1019,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_simple_for_loop() {
+    fn parser_simple_for_loop() {
         check(
             indoc! {"
                 <Main {foo: Array[String]}>
@@ -1036,7 +1036,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_component_references() {
+    fn parser_component_references() {
         check(
             indoc! {"
                 <Main {p: String}>
@@ -1052,7 +1052,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_component_with_params() {
+    fn parser_component_with_params() {
         check(
             indoc! {"
                 record Data {user: String}
@@ -1069,7 +1069,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_for_loop_with_text_expression() {
+    fn parser_for_loop_with_text_expression() {
         check(
             indoc! {"
                 <Main {foo: Array[String]}>
@@ -1087,7 +1087,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_script_tag_with_html_content() {
+    fn parser_script_tag_with_html_content() {
         check(
             indoc! {r#"
                 <Main {foo: String}>
@@ -1103,7 +1103,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_expression_attributes() {
+    fn parser_expression_attributes() {
         check(
             indoc! {r#"
                 record User {url: String, theme: String}
@@ -1118,7 +1118,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_multiple_expressions_in_attribute() {
+    fn parser_multiple_expressions_in_attribute() {
         check(
             indoc! {r#"
                 <Main {style1: String, style2: String, style3: String}>
@@ -1133,7 +1133,7 @@ mod tests {
 
     // When a component is imported twice, the parser outputs an error.
     #[test]
-    fn test_parser_component_imported_twice() {
+    fn parser_component_imported_twice() {
         check(
             indoc! {r#"
                 import Foo from "@/other"
@@ -1154,7 +1154,7 @@ mod tests {
 
     // When a component is defined twice, the parser outputs an error.
     #[test]
-    fn test_parser_duplicate_component_definition() {
+    fn parser_duplicate_component_definition() {
         check(
             indoc! {r#"
                 <Foo>
@@ -1183,7 +1183,7 @@ mod tests {
     // When a component is defined with the same name as an imported component, the parser
     // outputs an error.
     #[test]
-    fn test_component_name_conflicts_with_import() {
+    fn component_name_conflicts_with_import() {
         check(
             indoc! {r#"
                 import Foo from "@/other"
@@ -1206,7 +1206,7 @@ mod tests {
 
     // When a component is defined with the same name as a record, the parser outputs an error.
     #[test]
-    fn test_component_name_conflicts_with_record() {
+    fn component_name_conflicts_with_record() {
         check(
             indoc! {r#"
                 record User {name: String}
@@ -1225,7 +1225,7 @@ mod tests {
 
     // When a record is defined with the same name as an import, the parser outputs an error.
     #[test]
-    fn test_record_name_conflicts_with_import() {
+    fn record_name_conflicts_with_import() {
         check(
             indoc! {r#"
                 import User from "@/other"
@@ -1247,7 +1247,7 @@ mod tests {
     }
 
     #[test]
-    fn test_import_without_at_prefix_is_rejected() {
+    fn import_without_at_prefix_is_rejected() {
         check(
             indoc! {r#"
                 import Foo from "other"
@@ -1265,7 +1265,7 @@ mod tests {
     }
 
     #[test]
-    fn test_import_with_invalid_module_name() {
+    fn import_with_invalid_module_name() {
         check(
             indoc! {r#"
                 import Foo from "@/../foo"
@@ -1283,7 +1283,7 @@ mod tests {
     }
 
     #[test]
-    fn test_import_with_invalid_characters_in_module_name() {
+    fn import_with_invalid_characters_in_module_name() {
         check(
             indoc! {r#"
                 import Bar from "@/foo/bar!baz"
@@ -1301,7 +1301,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_svg_complex_structure() {
+    fn parser_svg_complex_structure() {
         check(
             indoc! {r#"
                 <Main>
@@ -1334,7 +1334,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_form_with_inputs() {
+    fn parser_form_with_inputs() {
         check(
             indoc! {r#"
                 <Main>
@@ -1354,7 +1354,7 @@ mod tests {
 
     // Test basic <if> tag with simple variable expression.
     #[test]
-    fn test_parser_if_simple_variable() {
+    fn parser_if_simple_variable() {
         check(
             indoc! {"
                 <Main>
@@ -1372,7 +1372,7 @@ mod tests {
 
     // Test <if> tag with complex expression.
     #[test]
-    fn test_parser_if_complex_expression() {
+    fn parser_if_complex_expression() {
         check(
             indoc! {r#"
                 <Main>
@@ -1392,7 +1392,7 @@ mod tests {
 
     // Test basic <for> tag with simple loop generator expression.
     #[test]
-    fn test_parser_for_simple_loop() {
+    fn parser_for_simple_loop() {
         check(
             indoc! {"
                 <Main>
@@ -1410,7 +1410,7 @@ mod tests {
 
     // Test <for> tag with complex array expression.
     #[test]
-    fn test_parser_for_complex_array() {
+    fn parser_for_complex_array() {
         check(
             indoc! {"
                 <Main>
@@ -1432,7 +1432,7 @@ mod tests {
 
     // Component parameter can have a simple type annotation.
     #[test]
-    fn test_parser_param_simple_type() {
+    fn parser_param_simple_type() {
         check(
             indoc! {"
                 <Main {data: String}>
@@ -1448,7 +1448,7 @@ mod tests {
 
     // Component parameter can have an array type annotation.
     #[test]
-    fn test_parser_param_array_type() {
+    fn parser_param_array_type() {
         check(
             indoc! {"
                 <Main {items: Array[String]}>
@@ -1467,7 +1467,7 @@ mod tests {
 
     // Component parameter can have a record type annotation.
     #[test]
-    fn test_parser_param_record_type() {
+    fn parser_param_record_type() {
         check(
             indoc! {"
                 record User {name: String, age: Float}
@@ -1485,7 +1485,7 @@ mod tests {
 
     // Component parameter can have nested type annotations.
     #[test]
-    fn test_parser_param_nested_types() {
+    fn parser_param_nested_types() {
         check(
             indoc! {"
                 record Section {title: String, items: Array[String]}

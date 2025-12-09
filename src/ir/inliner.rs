@@ -351,7 +351,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_component_inlining() {
+    fn simple_component_inlining() {
         check_inlining(
             vec![(
                 "main",
@@ -383,7 +383,7 @@ mod tests {
     }
 
     #[test]
-    fn test_component_with_children() {
+    fn component_with_children() {
         check_inlining(
             vec![(
                 "main",

@@ -152,7 +152,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_valid_field_names() {
+    fn valid_field_names() {
         assert!(FieldName::new("valid_name").is_ok());
         assert!(FieldName::new("x").is_ok());
         assert!(FieldName::new("name_with_underscores").is_ok());
@@ -163,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_field_names() {
+    fn invalid_field_names() {
         // Original invalid cases
         assert_eq!(
             FieldName::new("123invalid"),
@@ -207,7 +207,7 @@ mod tests {
     }
 
     #[test]
-    fn test_to_pascal_case() {
+    fn to_pascal_case() {
         assert_eq!(
             FieldName::new("foo_bar").unwrap().to_pascal_case(),
             "FooBar"

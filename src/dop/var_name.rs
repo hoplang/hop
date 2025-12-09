@@ -138,7 +138,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_valid_var_names() {
+    fn valid_var_names() {
         assert!(VarName::new("valid_name").is_ok());
         assert!(VarName::new("x").is_ok());
         assert!(VarName::new("name_with_underscores").is_ok());
@@ -149,7 +149,7 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_var_names() {
+    fn invalid_var_names() {
         // Original invalid cases
         assert_eq!(
             VarName::new("123invalid"),

@@ -131,7 +131,7 @@ mod tests {
     }
 
     #[test]
-    fn test_inject_css_into_head() {
+    fn inject_css_into_head() {
         let entrypoint = build_inlined_auto("MainComp", vec![], |t| {
             t.html("html", vec![], |t| {
                 t.html("head", vec![], |_| {});

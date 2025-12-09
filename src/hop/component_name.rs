@@ -141,7 +141,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_valid_component_names() {
+    fn valid_component_names() {
         let cases = [
             "Button",
             "UserProfile",
@@ -164,7 +164,7 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_component_names() {
+    fn invalid_component_names() {
         let cases = [
             ("", InvalidComponentNameError::Empty),
             ("button", InvalidComponentNameError::NotPascalCase),
@@ -196,21 +196,21 @@ mod tests {
     }
 
     #[test]
-    fn test_display() {
+    fn display() {
         let name = ComponentName::new("Button".to_string()).unwrap();
         assert_eq!(format!("{}", name), "Button");
         assert_eq!(name.to_string(), "Button");
     }
 
     #[test]
-    fn test_as_str() {
+    fn as_str() {
         let name = ComponentName::new("UserProfile".to_string()).unwrap();
         assert_eq!(name.as_str(), "UserProfile");
         assert_eq!(name.as_ref(), "UserProfile");
     }
 
     #[test]
-    fn test_case_conversions() {
+    fn case_conversions() {
         let cases = [
             ("Button", "Button", "button", "button"),
             ("UserProfile", "UserProfile", "userProfile", "user_profile"),

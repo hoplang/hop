@@ -227,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_not_folding() {
+    fn simple_not_folding() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.not(t.bool(false)), |t| {
@@ -253,7 +253,7 @@ mod tests {
     }
 
     #[test]
-    fn test_double_not_folding() {
+    fn double_not_folding() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.not(t.not(t.bool(true))), |t| {
@@ -279,7 +279,7 @@ mod tests {
     }
 
     #[test]
-    fn test_triple_not_folding() {
+    fn triple_not_folding() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.not(t.not(t.not(t.bool(false)))), |t| {
@@ -305,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn test_equality_folding() {
+    fn equality_folding() {
         let ep = build_ir_auto("Test", vec![], |t| {
             t.if_stmt(t.eq(t.bool(true), t.bool(true)), |t| {
                 t.write("true == true");
@@ -350,7 +350,7 @@ mod tests {
     }
 
     #[test]
-    fn test_complex_equality_with_negations() {
+    fn complex_equality_with_negations() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(
@@ -379,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn test_variable_constant_propagation() {
+    fn variable_constant_propagation() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("x", t.not(t.not(t.bool(true))), |t| {
@@ -420,7 +420,7 @@ mod tests {
     }
 
     #[test]
-    fn test_variable_in_equality() {
+    fn variable_in_equality() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("x", t.bool(true), |t| {
@@ -467,7 +467,7 @@ mod tests {
     }
 
     #[test]
-    fn test_string_constant_propagation() {
+    fn string_constant_propagation() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("message", t.str("Hello, World!"), |t| {
@@ -493,7 +493,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_string_variable_propagation() {
+    fn nested_string_variable_propagation() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("greeting", t.str("Hello"), |t| {
@@ -528,7 +528,7 @@ mod tests {
     }
 
     #[test]
-    fn test_string_variable_multiple_uses() {
+    fn string_variable_multiple_uses() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("title", t.str("Welcome"), |t| {
@@ -566,7 +566,7 @@ mod tests {
     }
 
     #[test]
-    fn test_string_equality_folding() {
+    fn string_equality_folding() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.eq(t.str("hello"), t.str("hello")), |t| {
@@ -622,7 +622,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_string_concat_folding() {
+    fn nested_string_concat_folding() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.write_expr_escaped(
@@ -644,7 +644,7 @@ mod tests {
     }
 
     #[test]
-    fn test_string_concat_in_equality() {
+    fn string_concat_in_equality() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(
@@ -688,7 +688,7 @@ mod tests {
     }
 
     #[test]
-    fn test_string_concat_with_mixed_propagation() {
+    fn string_concat_with_mixed_propagation() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("prefix", t.str("Hello"), |t| {

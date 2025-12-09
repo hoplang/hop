@@ -203,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_tag() {
+    fn simple_tag() {
         check(
             indoc! {"
                 <div>Hello</div>
@@ -217,7 +217,7 @@ mod tests {
     }
 
     #[test]
-    fn test_void_element() {
+    fn void_element() {
         check(
             indoc! {"
                 <div>
@@ -238,7 +238,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_tags() {
+    fn nested_tags() {
         check(
             indoc! {"
                 <div>

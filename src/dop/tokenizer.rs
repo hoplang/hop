@@ -201,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_unexpected_character() {
+    fn tokenize_unexpected_character() {
         check(
             "~",
             expect![[r#"
@@ -213,7 +213,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_eq_does_not_eat_identifier() {
+    fn tokenize_eq_does_not_eat_identifier() {
         check(
             "=foo",
             expect![[r#"
@@ -229,7 +229,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_unexpected_characters() {
+    fn tokenize_unexpected_characters() {
         check(
             "~ ~ ~@ #",
             expect![[r#"
@@ -257,7 +257,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_valid_numbers() {
+    fn tokenize_valid_numbers() {
         check(
             "1.0 0.0 0.0000 1000000 0.0000 0.1010",
             expect![[r#"
@@ -289,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_integers() {
+    fn tokenize_integers() {
         check(
             "42 0 123 999",
             expect![[r#"
@@ -313,7 +313,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_mixed_integers_and_floats() {
+    fn tokenize_mixed_integers_and_floats() {
         check(
             "42 3.14 0 0.0 123 99.99",
             expect![[r#"
@@ -345,7 +345,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_invalid_numbers() {
+    fn tokenize_invalid_numbers() {
         check(
             "1. 1000. 1. 000 0. 0123 01010",
             expect![[r#"
@@ -381,7 +381,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_simple_punctuation() {
+    fn tokenize_simple_punctuation() {
         check(
             "( ) . ! == < >",
             expect![[r#"
@@ -417,7 +417,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_not_equals() {
+    fn tokenize_not_equals() {
         check(
             "!=",
             expect![[r#"
@@ -429,7 +429,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_not_equals_in_expression() {
+    fn tokenize_not_equals_in_expression() {
         check(
             "x != y",
             expect![[r#"
@@ -449,7 +449,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_less_than_or_equal() {
+    fn tokenize_less_than_or_equal() {
         check(
             "<=",
             expect![[r#"
@@ -461,7 +461,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_less_than_or_equal_in_expression() {
+    fn tokenize_less_than_or_equal_in_expression() {
         check(
             "x <= y",
             expect![[r#"
@@ -481,7 +481,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_greater_than_or_equal() {
+    fn tokenize_greater_than_or_equal() {
         check(
             ">=",
             expect![[r#"
@@ -493,7 +493,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_greater_than_or_equal_in_expression() {
+    fn tokenize_greater_than_or_equal_in_expression() {
         check(
             "x >= y",
             expect![[r#"
@@ -513,7 +513,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_identifiers_keywords() {
+    fn tokenize_identifiers_keywords() {
         check(
             "foo in true false _test var123",
             expect![[r#"
@@ -545,7 +545,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_type_keywords() {
+    fn tokenize_type_keywords() {
         check(
             "String Int Float Bool TrustedHTML Array",
             expect![[r#"
@@ -577,7 +577,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_type_names() {
+    fn tokenize_type_names() {
         check(
             "User Person MyType CustomRecord",
             expect![[r#"
@@ -601,7 +601,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_identifiers_vs_type_names() {
+    fn tokenize_identifiers_vs_type_names() {
         check(
             "foo Foo bar Bar _test Test",
             expect![[r#"
@@ -633,7 +633,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_string_literals() {
+    fn tokenize_string_literals() {
         check(
             r#""hello" "world with spaces" """#,
             expect![[r#"
@@ -653,7 +653,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_multiline() {
+    fn tokenize_multiline() {
         check(
             "foo\nbar",
             expect![[r#"
@@ -669,7 +669,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_field_access() {
+    fn tokenize_field_access() {
         check(
             "user.name",
             expect![[r#"
@@ -689,7 +689,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_whitespace_handling() {
+    fn tokenize_whitespace_handling() {
         check(
             "  foo   bar  ",
             expect![[r#"
@@ -705,7 +705,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_complex_expression() {
+    fn tokenize_complex_expression() {
         check(
             r#"user.name == "admin""#,
             expect![[r#"
@@ -733,7 +733,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_parenthesized_expression() {
+    fn tokenize_parenthesized_expression() {
         check(
             "!(foo == true)",
             expect![[r#"
@@ -765,7 +765,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_array_brackets() {
+    fn tokenize_array_brackets() {
         check(
             "[1, 2, 3]",
             expect![[r#"
@@ -801,7 +801,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_number_array() {
+    fn tokenize_number_array() {
         check(
             "[1.0, 12.0, 343.0]",
             expect![[r#"
@@ -837,7 +837,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_empty_array() {
+    fn tokenize_empty_array() {
         check(
             "[]",
             expect![[r#"

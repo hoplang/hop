@@ -308,14 +308,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_string_cursor_new() {
+    fn string_cursor_new() {
         let cursor = DocumentCursor::new("hello".to_string());
         assert_eq!(cursor.offset, 0);
         assert_eq!(cursor.end, 5);
     }
 
     #[test]
-    fn test_string_cursor_single_line() {
+    fn string_cursor_single_line() {
         let mut cursor = DocumentCursor::new("abc".to_string());
 
         let range1 = cursor.next().unwrap();
@@ -355,7 +355,7 @@ mod tests {
     }
 
     #[test]
-    fn test_string_cursor_multiline() {
+    fn string_cursor_multiline() {
         let mut cursor = DocumentCursor::new("a\nb\nc".to_string());
 
         let range1 = cursor.next().unwrap();
@@ -417,7 +417,7 @@ mod tests {
     }
 
     #[test]
-    fn test_string_range_extend() {
+    fn string_range_extend() {
         let mut cursor = DocumentCursor::new("abc".to_string());
         let range1 = cursor.next().unwrap();
         let _range2 = cursor.next().unwrap();
@@ -437,7 +437,7 @@ mod tests {
     }
 
     #[test]
-    fn test_string_range_to_string() {
+    fn string_range_to_string() {
         let mut cursor = DocumentCursor::new("hello world".to_string());
         let ranges: Vec<_> = cursor.by_ref().take(5).collect();
 
@@ -452,13 +452,13 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_string_cursor() {
+    fn empty_string_cursor() {
         let mut cursor = DocumentCursor::new("".to_string());
         assert!(cursor.next().is_none());
     }
 
     #[test]
-    fn test_string_cursor_clone() {
+    fn string_cursor_clone() {
         let cursor1 = DocumentCursor::new("test".to_string());
         let mut cursor2 = cursor1.clone();
 
@@ -467,7 +467,7 @@ mod tests {
     }
 
     #[test]
-    fn test_collect_string_ranges() {
+    fn collect_string_ranges() {
         let result: Option<DocumentRange> = DocumentCursor::new("   hello".to_string())
             .take_while(|s| s.ch() == ' ')
             .collect();
@@ -485,7 +485,7 @@ mod tests {
     }
 
     #[test]
-    fn test_collect_empty_ranges() {
+    fn collect_empty_ranges() {
         let result: Option<DocumentRange> = DocumentCursor::new("hello".to_string())
             .take_while(|s| s.ch() == ' ')
             .collect();
@@ -494,7 +494,7 @@ mod tests {
     }
 
     #[test]
-    fn test_collect_multiline_ranges() {
+    fn collect_multiline_ranges() {
         let result: Option<DocumentRange> = DocumentCursor::new("aaa\nbbb".to_string())
             .take_while(|s| s.ch() == 'a')
             .collect();
@@ -512,7 +512,7 @@ mod tests {
     }
 
     #[test]
-    fn test_collect_with_skip() {
+    fn collect_with_skip() {
         let result: Option<DocumentRange> = DocumentCursor::new("   hello   ".to_string())
             .skip(3)
             .take_while(|s| s.ch().is_alphabetic())
@@ -531,7 +531,7 @@ mod tests {
     }
 
     #[test]
-    fn test_string_cursor_utf16_single_line() {
+    fn string_cursor_utf16_single_line() {
         // "a\u{20AC}b" - \u{20AC} is € (Euro sign)
         // UTF-8 bytes:  a(1) €(3) b(1) = positions 0,1,4,5
         // UTF-16 units: a(1) €(1) b(1) = positions 0,1,2,3
@@ -572,7 +572,7 @@ mod tests {
     }
 
     #[test]
-    fn test_string_cursor_utf16_multiline() {
+    fn string_cursor_utf16_multiline() {
         // "\u{20AC}\n\u{1F3A8}\nc" - Testing multi-line with different UTF-16 widths
         // \u{20AC} = € (1 UTF-16 code unit, in BMP)
         // \u{1F3A8} = 🎨 (2 UTF-16 code units, surrogate pair)
@@ -638,7 +638,7 @@ mod tests {
     }
 
     #[test]
-    fn test_contains_position_utf16() {
+    fn contains_position_utf16() {
         // "hello\nworld" - ASCII text for simple position testing
         let cursor = DocumentCursor::new("hello\nworld".to_string());
         let ranges: Vec<_> = cursor.collect();
@@ -654,7 +654,7 @@ mod tests {
     }
 
     #[test]
-    fn test_string_cursor_utf32_single_line() {
+    fn string_cursor_utf32_single_line() {
         // "a\u{20AC}b\u{1F3A8}c" - Testing UTF-32 (character count)
         // a = 1 char, \u{20AC} (€) = 1 char, b = 1 char, \u{1F3A8} (🎨) = 1 char, c = 1 char
         // UTF-8:  a(1) €(3) b(1) 🎨(4) c(1) = byte positions
@@ -719,7 +719,7 @@ mod tests {
     }
 
     #[test]
-    fn test_string_cursor_utf32_multiline() {
+    fn string_cursor_utf32_multiline() {
         // "\u{1F3A8}\n\u{20AC}x" - Testing UTF-32 with newlines
         // Line 0: 🎨(1 char) \n(1 char)
         // Line 1: €(1 char) x(1 char)
@@ -771,7 +771,7 @@ mod tests {
     }
 
     #[test]
-    fn test_contains_position_utf32() {
+    fn contains_position_utf32() {
         // "\u{1F3A8}hello" - Emoji followed by ASCII
         let cursor = DocumentCursor::new("\u{1F3A8}hello".to_string());
         let ranges: Vec<_> = cursor.collect();
@@ -787,7 +787,7 @@ mod tests {
     }
 
     #[test]
-    fn test_compare_utf_encodings() {
+    fn compare_utf_encodings() {
         // "\u{1F3A8}ab" - Compare UTF-16 and UTF-32 encodings
         // 🎨 = U+1F3A8: 2 code units UTF-16, 1 char UTF-32
         let mut cursor = DocumentCursor::new("\u{1F3A8}ab".to_string());

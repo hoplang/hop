@@ -137,7 +137,7 @@ mod tests {
     }
 
     #[test]
-    fn test_coalesce_consecutive_writes() {
+    fn coalesce_consecutive_writes() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.write("Hello");
@@ -163,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn test_coalesce_with_interruption() {
+    fn coalesce_with_interruption() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.write("Before");
@@ -199,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn test_coalesce_inside_if() {
+    fn coalesce_inside_if() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.bool(true), |t| {
@@ -229,7 +229,7 @@ mod tests {
     }
 
     #[test]
-    fn test_coalesce_inside_for() {
+    fn coalesce_inside_for() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.for_loop("item", t.array(vec![t.str("x")]), |t| {
@@ -265,7 +265,7 @@ mod tests {
     }
 
     #[test]
-    fn test_coalesce_inside_let() {
+    fn coalesce_inside_let() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("x", t.str("value"), |t| {
@@ -295,7 +295,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_coalescing() {
+    fn nested_coalescing() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.write("Start");
@@ -349,7 +349,7 @@ mod tests {
     }
 
     #[test]
-    fn test_no_coalescing_with_write_expr() {
+    fn no_coalescing_with_write_expr() {
         check(
             build_ir_auto("Test", vec![("x", Type::String)], |t| {
                 t.write("Value");
@@ -379,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_input() {
+    fn empty_input() {
         check(
             build_ir_auto("Test", vec![], |_| {}),
             expect![[r#"
@@ -393,7 +393,7 @@ mod tests {
     }
 
     #[test]
-    fn test_single_write() {
+    fn single_write() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.write("Single");

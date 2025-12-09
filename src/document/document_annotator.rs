@@ -222,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn test_with_label() {
+    fn with_label() {
         let source = "line one\nline two\nline three\nline four";
 
         let annotations = create_annotations_from_chunks(source, |ch| ch == '\n');
@@ -252,7 +252,7 @@ mod tests {
     }
 
     #[test]
-    fn test_with_location_info() {
+    fn with_location_info() {
         let source = "line one\nline two\nline three\nline four";
 
         let annotations = create_annotations_from_chunks(source, |ch| ch == '\n');
@@ -286,7 +286,7 @@ mod tests {
     }
 
     #[test]
-    fn test_with_lines_before() {
+    fn with_lines_before() {
         let source = "line one\nline two\nline three\nline four";
 
         let annotations = create_annotations_from_chunks(source, |ch| ch == '\n');
@@ -321,7 +321,7 @@ mod tests {
     }
 
     #[test]
-    fn test_with_lines_after() {
+    fn with_lines_after() {
         let source = "line one\nline two\nline three\nline four";
 
         let annotations = create_annotations_from_chunks(source, |ch| ch == '\n');
@@ -356,7 +356,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tab_expansion() {
+    fn tab_expansion() {
         let source = "code\n\t\tcode\n\tcode";
 
         let annotations = create_annotations_from_chunks(source, |ch| ch.is_whitespace());
@@ -385,7 +385,7 @@ mod tests {
     }
 
     #[test]
-    fn test_unicode_emoji_width() {
+    fn unicode_emoji_width() {
         let source = "😀 code";
 
         let annotations = create_annotations_from_chunks(source, |ch| ch.is_whitespace());
@@ -409,7 +409,7 @@ mod tests {
     }
 
     #[test]
-    fn test_location_without_filename() {
+    fn location_without_filename() {
         let source = "some code";
 
         let annotations = create_annotations_from_chunks(source, |ch| ch.is_whitespace());
@@ -433,7 +433,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lines_before_exceeds_start() {
+    fn lines_before_exceeds_start() {
         let source = "line one\nline two\nline three\nline four\nline five\nline six";
 
         let annotations = create_annotations_from_chunks(source, |ch| ch == '\n');
@@ -486,7 +486,7 @@ mod tests {
     }
 
     #[test]
-    fn test_multi_line_annotation() {
+    fn multi_line_annotation() {
         let source = "line one\nline two\nline three\nline four\nline five";
 
         let annotations = create_annotations_from_chunks(source, |ch| ch == 'n');

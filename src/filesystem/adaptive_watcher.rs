@@ -172,7 +172,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[tokio::test]
-    async fn test_file_creation_event() {
+    async fn file_creation_event() {
         let temp_dir = TempDir::new().unwrap();
         let root_path = temp_dir.path();
 
@@ -195,7 +195,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_file_modification_event() {
+    async fn file_modification_event() {
         let temp_dir = TempDir::new().unwrap();
         let root_path = temp_dir.path();
 
@@ -222,7 +222,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_dynamic_directory_watching() {
+    async fn dynamic_directory_watching() {
         let temp_dir = TempDir::new().unwrap();
         let root_path = temp_dir.path();
 
@@ -260,7 +260,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_ignored_directory_not_watched() {
+    async fn ignored_directory_not_watched() {
         let temp_dir = TempDir::new().unwrap();
         let root_path = temp_dir.path();
 

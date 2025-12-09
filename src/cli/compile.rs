@@ -207,7 +207,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
-    async fn test_compile_with_custom_go_output_path() {
+    async fn compile_with_custom_go_output_path() {
         // Create a temporary directory with hop.toml and a simple .hop file
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --

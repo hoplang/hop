@@ -120,7 +120,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_valid_module_names() {
+    fn valid_module_names() {
         assert!(ModuleName::new("utils".to_string()).is_ok());
         assert!(ModuleName::new("components/button".to_string()).is_ok());
         assert!(ModuleName::new("hop/ui".to_string()).is_ok());
@@ -130,7 +130,7 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_module_names() {
+    fn invalid_module_names() {
         assert_eq!(
             ModuleName::new("".to_string()),
             Err(InvalidModuleNameError::Empty)

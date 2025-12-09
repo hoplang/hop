@@ -739,7 +739,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_component() {
+    fn simple_component() {
         let entrypoints = vec![build_ir_auto("TestMainComp", vec![], |t| {
             t.write("<div>Hello World</div>\n");
         })];
@@ -762,7 +762,7 @@ mod tests {
     }
 
     #[test]
-    fn test_component_with_parameters() {
+    fn component_with_parameters() {
         let entrypoints = vec![build_ir_auto(
             "TestGreetingComp",
             vec![("name", Type::String), ("message", Type::String)],
@@ -811,7 +811,7 @@ mod tests {
     }
 
     #[test]
-    fn test_if_condition() {
+    fn if_condition() {
         let entrypoints = vec![build_ir_auto(
             "TestMainComp",
             vec![("show", Type::Bool)],
@@ -850,7 +850,7 @@ mod tests {
     }
 
     #[test]
-    fn test_for_loop() {
+    fn for_loop() {
         let entrypoints = vec![build_ir_auto(
             "TestMainComp",
             vec![("items", Type::Array(Box::new(Type::String)))],
@@ -896,7 +896,7 @@ mod tests {
     }
 
     #[test]
-    fn test_let_binding() {
+    fn let_binding() {
         let entrypoints = vec![build_ir_auto("TestGreeting", vec![], |t| {
             t.let_stmt("greeting", t.str("Hello from Python!"), |t| {
                 t.write("<p>");
@@ -932,7 +932,7 @@ mod tests {
     }
 
     #[test]
-    fn test_string_comparison() {
+    fn string_comparison() {
         let entrypoints = vec![build_ir_auto(
             "TestAuthCheck",
             vec![("user_role", Type::String), ("expected_role", Type::String)],
@@ -981,7 +981,7 @@ mod tests {
     }
 
     #[test]
-    fn test_not_operator() {
+    fn not_operator() {
         let entrypoints = vec![build_ir_auto(
             "TestNot",
             vec![("active", Type::Bool)],
@@ -1020,7 +1020,7 @@ mod tests {
     }
 
     #[test]
-    fn test_trusted_html_type() {
+    fn trusted_html_type() {
         let entrypoints = vec![build_ir_auto(
             "RenderHtml",
             vec![
@@ -1075,7 +1075,7 @@ mod tests {
     }
 
     #[test]
-    fn test_record_declarations() {
+    fn record_declarations() {
         use crate::ir::test_utils::build_ir_with_records;
 
         let records_def = vec![
@@ -1167,7 +1167,7 @@ mod tests {
     }
 
     #[test]
-    fn test_record_instantiation() {
+    fn record_instantiation() {
         use crate::ir::test_utils::build_ir_with_records;
 
         let records_def = vec![("User", vec![("name", Type::String), ("age", Type::Int)])];

@@ -149,7 +149,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple() {
+    fn simple() {
         let mut ts: TopoSorter<String> = TopoSorter::default();
         // a → b → c
         assert_eq!(
@@ -163,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn test_with_cycle() {
+    fn with_cycle() {
         let mut ts: TopoSorter<String> = TopoSorter::default();
         // a → b
         //  ↖ ↙
@@ -183,7 +183,7 @@ mod tests {
     }
 
     #[test]
-    fn test_multiple_components() {
+    fn multiple_components() {
         let mut ts: TopoSorter<String> = TopoSorter::default();
         // a ⇄ b
         //     ↓
@@ -213,7 +213,7 @@ mod tests {
     }
 
     #[test]
-    fn test_scc_disconnected_graph() {
+    fn scc_disconnected_graph() {
         let mut ts: TopoSorter<String> = TopoSorter::default();
         // a   b   c
         assert_eq!(
@@ -231,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn test_scc_complex_graph() {
+    fn scc_complex_graph() {
         let mut ts: TopoSorter<String> = TopoSorter::default();
         ts.update_node("1".to_string(), set(&["2"]));
         ts.update_node("2".to_string(), set(&["3"]));

@@ -56,7 +56,7 @@ mod tests {
     use indoc::indoc;
 
     #[test]
-    fn test_extract_position_start_of_line() {
+    fn extract_position_start_of_line() {
         let input = indoc! {r#"
             <hello-world>
             ^
@@ -79,7 +79,7 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_position_middle_of_line() {
+    fn extract_position_middle_of_line() {
         let input = indoc! {r#"
             <hello-world>
                     ^
@@ -102,7 +102,7 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_position_end_of_line() {
+    fn extract_position_end_of_line() {
         let input = indoc! {r#"
             <hello-world>
                         ^
@@ -128,7 +128,7 @@ mod tests {
     }
 
     #[test]
-    fn test_marker_on_last_line() {
+    fn marker_on_last_line() {
         let input = indoc! {r#"
             <hello-world>
               <h1>Hello World</h1>
@@ -154,7 +154,7 @@ mod tests {
     }
 
     #[test]
-    fn test_no_position_returns_none() {
+    fn no_position_returns_none() {
         let input = indoc! {r#"
             <hello-world>
               <h1>Hello World</h1>
@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Multiple position markers")]
-    fn test_multiple_positions_panics() {
+    fn multiple_positions_panics() {
         let input = indoc! {r#"
             <hello-world>
               ^
@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Marker does not point to a valid position")]
-    fn test_marker_on_first_line_panics() {
+    fn marker_on_first_line_panics() {
         let input = indoc! {r#"
             ^
             <hello-world>
@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Marker does not point to a valid position")]
-    fn test_marker_in_middle_of_first_line_panics() {
+    fn marker_in_middle_of_first_line_panics() {
         let input = indoc! {r#"
                  ^
             <hello-world>
@@ -206,7 +206,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Marker does not point to a valid position")]
-    fn test_marker_past_end_of_line_panics() {
+    fn marker_past_end_of_line_panics() {
         let input = indoc! {r#"
             <hello-world>
                           ^
@@ -218,7 +218,7 @@ mod tests {
     }
 
     #[test]
-    fn test_no_trailing_newline_preserved() {
+    fn no_trailing_newline_preserved() {
         // Note: we manually create the string without trailing newline
         // since indoc! always adds one
         let input = "<hello-world>\n        ^\n  <h1>Hello World</h1>\n</hello-world>";

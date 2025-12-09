@@ -214,7 +214,7 @@ mod tests {
     use simple_txtar::Archive;
 
     #[test]
-    fn test_find_config_file() {
+    fn find_config_file() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [compile]
@@ -235,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn test_find_config_file_not_found() {
+    fn find_config_file_not_found() {
         let archive = Archive::from(indoc! {r#"
             -- src/components/test.hop --
             <test-comp>Hello</test-comp>
@@ -257,7 +257,7 @@ mod tests {
     }
 
     #[test]
-    fn test_path_to_module_name() {
+    fn path_to_module_name() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [compile]
@@ -285,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn test_module_name_to_path() {
+    fn module_name_to_path() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [compile]
@@ -311,7 +311,7 @@ mod tests {
     }
 
     #[test]
-    fn test_load_all_hop_modules() {
+    fn load_all_hop_modules() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [compile]
@@ -355,7 +355,7 @@ mod tests {
     }
 
     #[test]
-    fn test_files_with_dots_in_names_are_rejected() {
+    fn files_with_dots_in_names_are_rejected() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [compile]
@@ -407,7 +407,7 @@ mod tests {
     }
 
     #[test]
-    fn test_skip_directories() {
+    fn skip_directories() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [compile]
@@ -445,7 +445,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_load_css_config() {
+    async fn load_css_config() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [css]
@@ -467,7 +467,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_load_config_missing_hop_toml_error() {
+    async fn load_config_missing_hop_toml_error() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             [compile]
@@ -495,7 +495,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_load_config_with_empty_hop_toml() {
+    async fn load_config_with_empty_hop_toml() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
             # Empty config file

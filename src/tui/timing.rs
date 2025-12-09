@@ -109,7 +109,7 @@ mod tests {
     }
 
     #[test]
-    fn test_timing_visualization_with_multiple_phases() {
+    fn timing_visualization_with_multiple_phases() {
         let timings = vec![
             ("module loading", 10),
             ("compilation", 50),
@@ -130,7 +130,7 @@ mod tests {
     }
 
     #[test]
-    fn test_timing_visualization_with_two_phases() {
+    fn timing_visualization_with_two_phases() {
         let timings = vec![("module loading", 100), ("compilation", 0)];
 
         check(

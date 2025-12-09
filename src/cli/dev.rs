@@ -347,7 +347,7 @@ mod tests {
 
     /// Tests that the render endpoint correctly renders a component with props.
     #[tokio::test]
-    async fn test_render_component_with_parameters() {
+    async fn render_component_with_parameters() {
         let server = create_test_server(indoc::indoc! {r#"
             -- test.hop --
             <GreetingComp {name: String, title: String}>
@@ -379,7 +379,7 @@ mod tests {
 
     /// Tests that the render endpoint correctly renders a component with no props.
     #[tokio::test]
-    async fn test_render_component_without_parameters() {
+    async fn render_component_without_parameters() {
         let server = create_test_server(indoc::indoc! {r#"
             -- test.hop --
             <SimpleComp>
@@ -407,7 +407,7 @@ mod tests {
     /// Tests that requesting a component that doesn't exist returns a 500 error
     /// with a helpful message listing the available components in that module.
     #[tokio::test]
-    async fn test_render_nonexistent_component_returns_error() {
+    async fn render_nonexistent_component_returns_error() {
         let server = create_test_server(indoc::indoc! {r#"
             -- test.hop --
             <GreetingComp {name: String}>
@@ -435,7 +435,7 @@ mod tests {
 
     /// Tests that sending malformed JSON to the render endpoint returns a 400 Bad Request.
     #[tokio::test]
-    async fn test_render_invalid_json_returns_bad_request() {
+    async fn render_invalid_json_returns_bad_request() {
         let server = create_test_server(indoc::indoc! {r#"
             -- test.hop --
             <SimpleComp>
@@ -457,7 +457,7 @@ mod tests {
 
     /// Tests that requesting a component from a module with syntax errors returns an error.
     #[tokio::test]
-    async fn test_render_component_with_syntax_error() {
+    async fn render_component_with_syntax_error() {
         let server = create_test_server(indoc::indoc! {r#"
             -- test.hop --
             <FooComp>
@@ -497,7 +497,7 @@ mod tests {
 
     /// Tests that a syntax error in an unrelated module still prevents rendering.
     #[tokio::test]
-    async fn test_render_fails_when_unrelated_module_has_syntax_error() {
+    async fn render_fails_when_unrelated_module_has_syntax_error() {
         let server = create_test_server(indoc::indoc! {r#"
             -- good.hop --
             <GoodComp>
@@ -532,7 +532,7 @@ mod tests {
 
     /// Tests that requesting a component from a module with type errors returns an error.
     #[tokio::test]
-    async fn test_render_component_with_type_error() {
+    async fn render_component_with_type_error() {
         let server = create_test_server(indoc::indoc! {r#"
             -- test.hop --
             <Foo {name: String}>
@@ -566,7 +566,7 @@ mod tests {
 
     /// Tests that a component can import and use another component from a different module.
     #[tokio::test]
-    async fn test_render_component_with_import() {
+    async fn render_component_with_import() {
         let server = create_test_server(indoc::indoc! {r#"
             -- components.hop --
             <Button {label: String}>

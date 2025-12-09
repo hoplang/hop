@@ -547,7 +547,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_text() {
+    fn simple_text() {
         check(
             build_inlined_auto("MainComp", vec![], |t| {
                 t.text("Hello World");
@@ -575,7 +575,7 @@ mod tests {
     }
 
     #[test]
-    fn test_text_expression() {
+    fn text_expression() {
         check(
             build_inlined_auto("MainComp", vec![("name", Type::String)], |t| {
                 t.text("Hello ");
@@ -608,7 +608,7 @@ mod tests {
     }
 
     #[test]
-    fn test_html_element() {
+    fn html_element() {
         check(
             build_inlined_auto("MainComp", vec![], |t| {
                 t.div(vec![], |t| {
@@ -643,7 +643,7 @@ mod tests {
     }
 
     #[test]
-    fn test_if_node() {
+    fn if_node() {
         check(
             build_inlined_auto("MainComp", vec![("show", Type::Bool)], |t| {
                 t.if_node(t.var_expr("show"), |t| {
@@ -686,7 +686,7 @@ mod tests {
     }
 
     #[test]
-    fn test_for_node() {
+    fn for_node() {
         check(
             build_inlined_auto(
                 "MainComp",
@@ -740,7 +740,7 @@ mod tests {
     }
 
     #[test]
-    fn test_attributes_static() {
+    fn attributes_static() {
         check(
             build_inlined_auto("MainComp", vec![], |t| {
                 t.div(
@@ -780,7 +780,7 @@ mod tests {
     }
 
     #[test]
-    fn test_attributes_dynamic() {
+    fn attributes_dynamic() {
         check(
             build_inlined_auto("MainComp", vec![("cls", Type::String)], |t| {
                 t.div(
@@ -827,7 +827,7 @@ mod tests {
     }
 
     #[test]
-    fn test_attributes_multiple_expressions() {
+    fn attributes_multiple_expressions() {
         check(
             build_inlined_auto(
                 "MainComp",
@@ -899,7 +899,7 @@ mod tests {
     }
 
     #[test]
-    fn test_development_mode() {
+    fn development_mode() {
         check(
             build_inlined_auto(
                 "TestComp",

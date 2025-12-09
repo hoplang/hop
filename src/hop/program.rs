@@ -709,7 +709,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn test_get_definition_from_component_reference() {
+    fn get_definition_from_component_reference() {
         check_definition_location(
             indoc! {r#"
                 -- hop/components.hop --
@@ -735,7 +735,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_definition_from_component_reference_closing() {
+    fn get_definition_from_component_reference_closing() {
         check_definition_location(
             indoc! {r#"
                 -- hop/components.hop --
@@ -762,7 +762,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_definition_from_import_component_name() {
+    fn get_definition_from_import_component_name() {
         check_definition_location(
             indoc! {r#"
                 -- hop/components.hop --
@@ -788,7 +788,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_definition_from_import_record_name() {
+    fn get_definition_from_import_record_name() {
         check_definition_location(
             indoc! {r#"
                 -- types.hop --
@@ -811,7 +811,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_definition_from_component_definition_opening_tag() {
+    fn get_definition_from_component_definition_opening_tag() {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
@@ -830,7 +830,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_definition_from_component_definition_closing_tag() {
+    fn get_definition_from_component_definition_closing_tag() {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
@@ -849,7 +849,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_definition_from_html_opening_tag() {
+    fn get_definition_from_html_opening_tag() {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
@@ -870,7 +870,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_definition_from_html_closing_tag() {
+    fn get_definition_from_html_closing_tag() {
         check_definition_location(
             indoc! {r#"
                 -- main.hop --
@@ -895,7 +895,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn test_get_rename_locations_from_component_reference() {
+    fn get_rename_locations_from_component_reference() {
         check_rename_locations(
             indoc! {r#"
                 -- components.hop --
@@ -936,7 +936,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_rename_locations_from_component_reference_same_component() {
+    fn get_rename_locations_from_component_reference_same_component() {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
@@ -969,7 +969,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_rename_locations_from_component_definition() {
+    fn get_rename_locations_from_component_definition() {
         check_rename_locations(
             indoc! {r#"
                 -- components.hop --
@@ -1013,7 +1013,7 @@ mod tests {
     // the same name as a module in some other component, the module in
     // the other component is left unchanged.
     #[test]
-    fn test_get_rename_locations_main_comp_scoped() {
+    fn get_rename_locations_main_comp_scoped() {
         check_rename_locations(
             indoc! {r#"
                 -- components.hop --
@@ -1049,7 +1049,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_rename_locations_from_native_html_opening_tag() {
+    fn get_rename_locations_from_native_html_opening_tag() {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
@@ -1075,7 +1075,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_rename_locations_from_native_html_nested() {
+    fn get_rename_locations_from_native_html_nested() {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
@@ -1103,7 +1103,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_rename_locations_from_native_html_closing_tag() {
+    fn get_rename_locations_from_native_html_closing_tag() {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
@@ -1129,7 +1129,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_rename_locations_from_self_closing_html_tag() {
+    fn get_rename_locations_from_self_closing_html_tag() {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
@@ -1152,7 +1152,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn test_get_renameable_symbol() {
+    fn get_renameable_symbol() {
         check_renameable_symbol(
             indoc! {r#"
                 -- main.hop --
@@ -1171,7 +1171,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_renameable_symbol_native_html() {
+    fn get_renameable_symbol_native_html() {
         check_renameable_symbol(
             indoc! {r#"
                 -- main.hop --
@@ -1194,7 +1194,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn test_get_hover_info_parameter() {
+    fn get_hover_info_parameter() {
         check_hover_info(
             indoc! {r#"
                 -- main.hop --
@@ -1218,7 +1218,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn test_get_error_diagnostics_parse_errors() {
+    fn get_error_diagnostics_parse_errors() {
         check_error_diagnostics(
             indoc! {r#"
                 -- main.hop --
@@ -1248,7 +1248,7 @@ mod tests {
 
     // Even when there's parse errors we should be able to rename.
     #[test]
-    fn test_rename_with_parse_errors() {
+    fn rename_with_parse_errors() {
         check_rename_locations(
             indoc! {r#"
                 -- main.hop --
@@ -1277,7 +1277,7 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn test_cycle_error_reporting() {
+    fn cycle_error_reporting() {
         let mut program = program_from_txtar(indoc! {r#"
             -- a.hop --
             import BComp from "@/b"
@@ -1325,7 +1325,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cycle_error_reporting_large() {
+    fn cycle_error_reporting_large() {
         let mut program = program_from_txtar(indoc! {r#"
             -- a.hop --
             import BComp from "@/b"
@@ -1425,7 +1425,7 @@ mod tests {
     }
 
     #[test]
-    fn test_evaluate_ir_entrypoint() {
+    fn evaluate_ir_entrypoint() {
         let program = program_from_txtar(indoc! {r#"
             -- main.hop --
             <HelloWorld {name: String}>

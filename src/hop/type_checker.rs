@@ -828,13 +828,13 @@ mod tests {
 
     // The typechecker allows empty files, and no types are emitted for them.
     #[test]
-    fn test_empty_file() {
+    fn empty_file() {
         check("-- main.hop --", expect![[r#""#]]);
     }
 
     // The parameter type of a single component without any content is `{}`.
     #[test]
-    fn test_single_component_no_parameters() {
+    fn single_component_no_parameters() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -847,7 +847,7 @@ mod tests {
 
     // When an undefined component is referenced, the typechecker outputs an error.
     #[test]
-    fn test_undefined_component_error() {
+    fn undefined_component_error() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -878,7 +878,7 @@ mod tests {
 
     // When a component references itself, the typechecker outputs an error.
     #[test]
-    fn test_component_references_itself() {
+    fn component_references_itself() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -899,7 +899,7 @@ mod tests {
     // When a component is imported from a module that doesn't exist the typechecker outputs an
     // error.
     #[test]
-    fn test_import_from_nonexistent_module() {
+    fn import_from_nonexistent_module() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -920,7 +920,7 @@ mod tests {
     // When a component that doesn't exist is imported from a module that does exist the
     // typechecker outputs an error.
     #[test]
-    fn test_import_nonexistent_component_from_existing_module() {
+    fn import_nonexistent_component_from_existing_module() {
         check(
             indoc! {r#"
                 -- other.hop --
@@ -941,7 +941,7 @@ mod tests {
 
     // A component may be imported without being used.
     #[test]
-    fn test_unused_import() {
+    fn unused_import() {
         check(
             indoc! {r#"
                 -- other.hop --
@@ -960,7 +960,7 @@ mod tests {
 
     // The typechecker collects all errors rather than returning at the first error.
     #[test]
-    fn test_multiple_errors_collected() {
+    fn multiple_errors_collected() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -987,7 +987,7 @@ mod tests {
 
     // Defining a component with the same name in two different modules is allowed.
     #[test]
-    fn test_same_component_name_in_different_modules() {
+    fn same_component_name_in_different_modules() {
         check(
             indoc! {r#"
                 -- other.hop --
@@ -1004,7 +1004,7 @@ mod tests {
 
     // When content is passed to a component without children: TrustedHTML parameter, the typechecker outputs an error.
     #[test]
-    fn test_component_does_not_accept_children() {
+    fn component_does_not_accept_children() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1030,7 +1030,7 @@ mod tests {
 
     // Test component does not accept children with imported component.
     #[test]
-    fn test_component_does_not_accept_children_imported() {
+    fn component_does_not_accept_children_imported() {
         check(
             indoc! {r#"
                 -- other.hop --
@@ -1058,7 +1058,7 @@ mod tests {
 
     // When a variable shadows a parameter, the typechecker outputs an error.
     #[test]
-    fn test_variable_shadowing_param() {
+    fn variable_shadowing_param() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1100,7 +1100,7 @@ mod tests {
 
     // When a variable shadows another variable, the typechecker outputs an error.
     #[test]
-    fn test_variable_shadowing_nested_loops() {
+    fn variable_shadowing_nested_loops() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1129,7 +1129,7 @@ mod tests {
 
     // When an undefined variable is referenced, the typechecker outputs an error.
     #[test]
-    fn test_undefined_variable_reference() {
+    fn undefined_variable_reference() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1158,7 +1158,7 @@ mod tests {
 
     // When a variable is unused, the typechecker outputs an error.
     #[test]
-    fn test_unused_variable_second_loop() {
+    fn unused_variable_second_loop() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1182,7 +1182,7 @@ mod tests {
 
     // When a variable is unused, the typechecker outputs an error.
     #[test]
-    fn test_unused_variable_first_loop() {
+    fn unused_variable_first_loop() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1206,7 +1206,7 @@ mod tests {
 
     // When a variable is unused, the typechecker outputs an error.
     #[test]
-    fn test_unused_variable_loop() {
+    fn unused_variable_loop() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1227,7 +1227,7 @@ mod tests {
 
     // When a variable is unused, the typechecker outputs an error.
     #[test]
-    fn test_unused_parameter() {
+    fn unused_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1248,7 +1248,7 @@ mod tests {
 
     // Arguments may be passed in any order to a component.
     #[test]
-    fn test_component_handles_arguments_in_any_order() {
+    fn component_handles_arguments_in_any_order() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1301,7 +1301,7 @@ mod tests {
 
     // When a parameter is missing the typechecker reports an error.
     #[test]
-    fn test_component_missing_required_parameter_error() {
+    fn component_missing_required_parameter_error() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1326,7 +1326,7 @@ mod tests {
 
     // When the whole parameter expression is missing the typechecker reports an error.
     #[test]
-    fn test_component_does_not_specify_required_parameters_error() {
+    fn component_does_not_specify_required_parameters_error() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1352,7 +1352,7 @@ mod tests {
     // When arguments are specified but the component does not expect any the typechecker reports
     // an error.
     #[test]
-    fn test_component_has_no_parameters_but_arguments_were_supplied_error() {
+    fn component_has_no_parameters_but_arguments_were_supplied_error() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1374,7 +1374,7 @@ mod tests {
     }
 
     #[test]
-    fn test_iterate_over_boolean_field() {
+    fn iterate_over_boolean_field() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1402,7 +1402,7 @@ mod tests {
     }
 
     #[test]
-    fn test_iterate_over_boolean_parameter() {
+    fn iterate_over_boolean_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1426,7 +1426,7 @@ mod tests {
 
     // When successful, the typechecker identifies the parameter type of the component.
     #[test]
-    fn test_successful_typechecking_with_complex_params() {
+    fn successful_typechecking_with_complex_params() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1482,7 +1482,7 @@ mod tests {
     }
 
     #[test]
-    fn test_boolean_equality_comparison() {
+    fn boolean_equality_comparison() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1519,7 +1519,7 @@ mod tests {
     }
 
     #[test]
-    fn test_complex_nested_object_access() {
+    fn complex_nested_object_access() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1605,7 +1605,7 @@ mod tests {
     }
 
     #[test]
-    fn test_complex_nested_structure_2() {
+    fn complex_nested_structure_2() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1684,7 +1684,7 @@ mod tests {
     }
 
     #[test]
-    fn test_deep_nested_object_access() {
+    fn deep_nested_object_access() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1723,7 +1723,7 @@ mod tests {
     }
 
     #[test]
-    fn test_very_deep_nested_object_access() {
+    fn very_deep_nested_object_access() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1774,7 +1774,7 @@ mod tests {
     }
 
     #[test]
-    fn test_component_with_script_and_style() {
+    fn component_with_script_and_style() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1792,7 +1792,7 @@ mod tests {
     }
 
     #[test]
-    fn test_component_with_data_param() {
+    fn component_with_data_param() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1819,7 +1819,7 @@ mod tests {
     }
 
     #[test]
-    fn test_complex_string_comparisons() {
+    fn complex_string_comparisons() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1871,7 +1871,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_string_comparison() {
+    fn simple_string_comparison() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1909,7 +1909,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_array_access() {
+    fn nested_array_access() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1956,7 +1956,7 @@ mod tests {
     }
 
     #[test]
-    fn test_multiple_loops_same_variable() {
+    fn multiple_loops_same_variable() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2023,7 +2023,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_array_iteration() {
+    fn nested_array_iteration() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2076,7 +2076,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_array_iteration() {
+    fn simple_array_iteration() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2115,7 +2115,7 @@ mod tests {
     }
 
     #[test]
-    fn test_component_import_with_parameters() {
+    fn component_import_with_parameters() {
         check(
             indoc! {r#"
                 -- utils.hop --
@@ -2164,7 +2164,7 @@ mod tests {
     }
 
     #[test]
-    fn test_multi_module_component_chain() {
+    fn multi_module_component_chain() {
         check(
             indoc! {r#"
                 -- bar.hop --
@@ -2280,7 +2280,7 @@ mod tests {
 
     // Test that types with the same name from different modules are not compatible
     #[test]
-    fn test_same_name_different_module_types_incompatible() {
+    fn same_name_different_module_types_incompatible() {
         check(
             indoc! {r#"
                 -- foo.hop --
@@ -2323,7 +2323,7 @@ mod tests {
 
     // Test that identical record definitions in different modules are still incompatible
     #[test]
-    fn test_identical_records_different_modules_incompatible() {
+    fn identical_records_different_modules_incompatible() {
         check(
             indoc! {r#"
                 -- foo.hop --
@@ -2367,7 +2367,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_string_parameter() {
+    fn simple_string_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2391,7 +2391,7 @@ mod tests {
     }
 
     #[test]
-    fn test_complex_data_structure() {
+    fn complex_data_structure() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2464,7 +2464,7 @@ mod tests {
     }
 
     #[test]
-    fn test_component_chain_with_parameters() {
+    fn component_chain_with_parameters() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2560,7 +2560,7 @@ mod tests {
     }
 
     #[test]
-    fn test_three_level_component_hierarchy() {
+    fn three_level_component_hierarchy() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2663,7 +2663,7 @@ mod tests {
     }
 
     #[test]
-    fn test_object_field_name_collision() {
+    fn object_field_name_collision() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2701,7 +2701,7 @@ mod tests {
     }
 
     #[test]
-    fn test_object_field_separate_access() {
+    fn object_field_separate_access() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2739,7 +2739,7 @@ mod tests {
     }
 
     #[test]
-    fn test_multiple_array_properties() {
+    fn multiple_array_properties() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2811,7 +2811,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_component_chain() {
+    fn simple_component_chain() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2880,7 +2880,7 @@ mod tests {
     }
 
     #[test]
-    fn test_workflow_execution_pattern() {
+    fn workflow_execution_pattern() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2990,7 +2990,7 @@ mod tests {
     }
 
     #[test]
-    fn test_two_component_chain() {
+    fn two_component_chain() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3037,7 +3037,7 @@ mod tests {
     }
 
     #[test]
-    fn test_process_item_pattern() {
+    fn process_item_pattern() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3125,7 +3125,7 @@ mod tests {
     }
 
     #[test]
-    fn test_expr_attributes() {
+    fn expr_attributes() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3157,7 +3157,7 @@ mod tests {
     }
 
     #[test]
-    fn test_children_usage() {
+    fn children_usage() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3189,7 +3189,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_text_expression() {
+    fn simple_text_expression() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3216,7 +3216,7 @@ mod tests {
     }
 
     #[test]
-    fn test_string_comparison_conditional() {
+    fn string_comparison_conditional() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3244,7 +3244,7 @@ mod tests {
     }
 
     #[test]
-    fn test_triple_nested_array() {
+    fn triple_nested_array() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3311,7 +3311,7 @@ mod tests {
     }
 
     #[test]
-    fn test_array_used_as_object_error() {
+    fn array_used_as_object_error() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3335,7 +3335,7 @@ mod tests {
     }
 
     #[test]
-    fn test_hop_x_raw_simple() {
+    fn hop_x_raw_simple() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3362,7 +3362,7 @@ mod tests {
     }
 
     #[test]
-    fn test_hop_x_raw_with_html() {
+    fn hop_x_raw_with_html() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3379,7 +3379,7 @@ mod tests {
 
     // Content inside <hop-x-raw> tags are not parsed nor typechecked.
     #[test]
-    fn test_hop_x_raw_not_typechecked() {
+    fn hop_x_raw_not_typechecked() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3397,7 +3397,7 @@ mod tests {
 
     // Test <if> tag with Bool expression.
     #[test]
-    fn test_if_with_boolean_expression() {
+    fn if_with_boolean_expression() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3426,7 +3426,7 @@ mod tests {
 
     // Test <if> tag with comparison expression.
     #[test]
-    fn test_if_with_comparison_expression() {
+    fn if_with_comparison_expression() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3455,7 +3455,7 @@ mod tests {
 
     // Comparison only works when the types of each operand are equal.
     #[test]
-    fn test_comparison_type_mismatch_error() {
+    fn comparison_type_mismatch_error() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3477,7 +3477,7 @@ mod tests {
 
     // Test <if> tag with nested conditionals.
     #[test]
-    fn test_if_with_nested_conditionals() {
+    fn if_with_nested_conditionals() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3516,7 +3516,7 @@ mod tests {
     // When an argument type does not match a parameter type the typechecker
     // reports an error.
     #[test]
-    fn test_component_argument_type_mismatch() {
+    fn component_argument_type_mismatch() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3541,7 +3541,7 @@ mod tests {
     }
 
     #[test]
-    fn test_object_equality_and_string_equality() {
+    fn object_equality_and_string_equality() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3566,7 +3566,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_data_structure_access() {
+    fn nested_data_structure_access() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3627,7 +3627,7 @@ mod tests {
     }
 
     #[test]
-    fn test_component_parameter_type_error_float() {
+    fn component_parameter_type_error_float() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3649,7 +3649,7 @@ mod tests {
     }
 
     #[test]
-    fn test_component_parameter_type_error_object() {
+    fn component_parameter_type_error_object() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3672,7 +3672,7 @@ mod tests {
     }
 
     #[test]
-    fn test_component_parameter_correct_object_passing() {
+    fn component_parameter_correct_object_passing() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3726,7 +3726,7 @@ mod tests {
     }
 
     #[test]
-    fn test_component_parameter_type_error_string() {
+    fn component_parameter_type_error_string() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3750,7 +3750,7 @@ mod tests {
 
     // Component with explicit object parameter type.
     #[test]
-    fn test_explicit_object_parameter() {
+    fn explicit_object_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3777,7 +3777,7 @@ mod tests {
 
     // Component with explicit array parameter type.
     #[test]
-    fn test_explicit_array_parameter() {
+    fn explicit_array_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3816,7 +3816,7 @@ mod tests {
 
     // Component with explicit Bool parameter type.
     #[test]
-    fn test_explicit_boolean_parameter() {
+    fn explicit_boolean_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3843,7 +3843,7 @@ mod tests {
 
     // Component with explicit Float parameter type.
     #[test]
-    fn test_explicit_float_parameter() {
+    fn explicit_float_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3865,7 +3865,7 @@ mod tests {
 
     // Component with nested object parameter type.
     #[test]
-    fn test_nested_object_parameter() {
+    fn nested_object_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3890,7 +3890,7 @@ mod tests {
 
     // Component with nested array parameter type.
     #[test]
-    fn test_nested_array_parameter() {
+    fn nested_array_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3916,7 +3916,7 @@ mod tests {
 
     // Component with complex object with multiple properties.
     #[test]
-    fn test_complex_object_multiple_properties() {
+    fn complex_object_multiple_properties() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -3988,7 +3988,7 @@ mod tests {
 
     // Error when passing wrong type to Bool parameter.
     #[test]
-    fn test_wrong_type_to_boolean_parameter() {
+    fn wrong_type_to_boolean_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4013,7 +4013,7 @@ mod tests {
 
     // Multi-file component with complex parameter types.
     #[test]
-    fn test_multi_file_complex_parameters() {
+    fn multi_file_complex_parameters() {
         check(
             indoc! {r#"
                 -- item-display.hop --
@@ -4054,7 +4054,7 @@ mod tests {
 
     // Using a condition that is not a Bool should produce an error
     #[test]
-    fn test_if_condition_must_be_boolean() {
+    fn if_condition_must_be_boolean() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4076,7 +4076,7 @@ mod tests {
 
     // Passing an argument that is not in the parameter list should produce an error
     #[test]
-    fn test_unexpected_argument_error() {
+    fn unexpected_argument_error() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4099,7 +4099,7 @@ mod tests {
 
     // Type errors in argument list should be reported
     #[test]
-    fn test_type_errors_in_argument_list() {
+    fn type_errors_in_argument_list() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4128,7 +4128,7 @@ mod tests {
 
     // Trying to iterate over an empty array should produce an error
     #[test]
-    fn test_iterate_over_empty_array_error() {
+    fn iterate_over_empty_array_error() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4150,7 +4150,7 @@ mod tests {
 
     // Empty array literals can infer their type from component arguments
     #[test]
-    fn test_empty_array_infers_type_from_component_argument() {
+    fn empty_array_infers_type_from_component_argument() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4198,7 +4198,7 @@ mod tests {
 
     // Trying to render a non-string should produce an error
     #[test]
-    fn test_render_non_string_error() {
+    fn render_non_string_error() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4218,7 +4218,7 @@ mod tests {
 
     // Test that non-entrypoint components with the same name are allowed
     #[test]
-    fn test_same_name_non_entrypoint_allowed() {
+    fn same_name_non_entrypoint_allowed() {
         check(
             indoc! {r#"
                 -- module1.hop --
@@ -4237,7 +4237,7 @@ mod tests {
 
     // Test that using an undefined type name in a parameter produces an error
     #[test]
-    fn test_undefined_type_in_parameter() {
+    fn undefined_type_in_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4256,7 +4256,7 @@ mod tests {
 
     // Test that using a declared record type in a parameter is allowed (no UndefinedType error)
     #[test]
-    fn test_declared_record_type_in_parameter() {
+    fn declared_record_type_in_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4278,7 +4278,7 @@ mod tests {
 
     // Test that using an undefined type name inside an array type produces an error
     #[test]
-    fn test_undefined_type_in_array_parameter() {
+    fn undefined_type_in_array_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4297,7 +4297,7 @@ mod tests {
 
     // Test that using a declared record type inside an array type is allowed (no UndefinedType error)
     #[test]
-    fn test_declared_record_type_in_array_parameter() {
+    fn declared_record_type_in_array_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4319,7 +4319,7 @@ mod tests {
 
     // Test that a record can reference another declared record
     #[test]
-    fn test_record_referencing_another_record() {
+    fn record_referencing_another_record() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4342,7 +4342,7 @@ mod tests {
 
     // Test that a record referencing an undefined record produces an error
     #[test]
-    fn test_record_referencing_undefined_record() {
+    fn record_referencing_undefined_record() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4361,7 +4361,7 @@ mod tests {
 
     // Test that a record cannot reference itself
     #[test]
-    fn test_record_self_referential_disallowed() {
+    fn record_self_referential_disallowed() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4385,7 +4385,7 @@ mod tests {
 
     // Test that a record cannot reference another record that is declared after it
     #[test]
-    fn test_record_forward_reference_disallowed() {
+    fn record_forward_reference_disallowed() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4411,7 +4411,7 @@ mod tests {
 
     // Test that accessing a field on a record type works
     #[test]
-    fn test_record_field_access() {
+    fn record_field_access() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4438,7 +4438,7 @@ mod tests {
 
     // Test that accessing a non-existent field on a record produces an error
     #[test]
-    fn test_record_field_access_undefined_field() {
+    fn record_field_access_undefined_field() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4459,7 +4459,7 @@ mod tests {
 
     // Test that accessing nested record fields works
     #[test]
-    fn test_record_nested_field_access() {
+    fn record_nested_field_access() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4489,7 +4489,7 @@ mod tests {
     // If module Foo declares A and module Bar imports A from Foo,
     // then module Baz should not be able to import A from Bar.
     #[test]
-    fn test_cannot_reexport_imports() {
+    fn cannot_reexport_imports() {
         check(
             indoc! {r#"
                 -- foo.hop --
@@ -4521,7 +4521,7 @@ mod tests {
     // - Bar imports A and declares record B with a field of type A
     // - Baz imports Bar and User, and passes a User to Bar component via record instantiation
     #[test]
-    fn test_cross_module_record_usage() {
+    fn cross_module_record_usage() {
         check(
             indoc! {r#"
                 -- foo.hop --

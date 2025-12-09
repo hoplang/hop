@@ -75,7 +75,7 @@ mod tests {
     }
 
     #[test]
-    fn test_inject_doctype_when_missing() {
+    fn inject_doctype_when_missing() {
         let entrypoint = build_inlined_auto("MainComp", vec![], |t| {
             t.text("                    "); // Leading whitespace
             t.html("html", vec![], |t| {
@@ -117,7 +117,7 @@ mod tests {
     }
 
     #[test]
-    fn test_no_injection_when_doctype_present() {
+    fn no_injection_when_doctype_present() {
         let entrypoint = build_inlined_auto("MainComp", vec![], |t| {
             t.text("                    "); // Leading whitespace
             t.doctype("<!DOCTYPE html>");
@@ -164,7 +164,7 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_entrypoint() {
+    fn empty_entrypoint() {
         let entrypoint = build_inlined_auto("EmptyComp", vec![], |t| {
             t.text("\n                "); // Only whitespace
         });
@@ -182,7 +182,7 @@ mod tests {
     }
 
     #[test]
-    fn test_entrypoint_with_text_only() {
+    fn entrypoint_with_text_only() {
         let entrypoint = build_inlined_auto("TextComp", vec![], |t| {
             t.text("\n                    Just some text content\n                ");
         });
@@ -200,7 +200,7 @@ mod tests {
     }
 
     #[test]
-    fn test_doctype_with_leading_whitespace() {
+    fn doctype_with_leading_whitespace() {
         let entrypoint = build_inlined_auto("MainComp", vec![], |t| {
             t.text("\n\n                    "); // Extra leading whitespace
             t.doctype("<!DOCTYPE html>");
@@ -235,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn test_inject_preserves_leading_whitespace() {
+    fn inject_preserves_leading_whitespace() {
         let entrypoint = build_inlined_auto("MainComp", vec![], |t| {
             t.text("\n\n                    "); // Extra leading whitespace
             t.html("html", vec![], |t| {

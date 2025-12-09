@@ -330,7 +330,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn test_simple_html() {
+    fn simple_html() {
         let test_case = TestCase::new(
             build_ir_auto("Test", vec![], |t| {
                 t.write("<h1>Hello, World!</h1>");
@@ -343,7 +343,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn test_with_let_binding() {
+    fn with_let_binding() {
         let test_case = TestCase::new(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("name", t.str("Alice"), |t| {
@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn test_conditional() {
+    fn conditional() {
         let test_case = TestCase::new(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("show", t.bool(true), |t| {
@@ -380,7 +380,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn test_if_else() {
+    fn if_else() {
         let test_case = TestCase::new(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("show", t.bool(true), |t| {
@@ -414,7 +414,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn test_for_loop() {
+    fn for_loop() {
         let test_case = TestCase::new(
             build_ir_auto("Test", vec![], |t| {
                 t.for_loop(
@@ -434,7 +434,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn test_html_escaping() {
+    fn html_escaping() {
         let test_case = TestCase::new(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("text", t.str("<div>Hello & world</div>"), |t| {
@@ -449,7 +449,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn test_let_binding() {
+    fn let_binding() {
         let test_case = TestCase::new(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("message", t.str("Hello from let"), |t| {
@@ -464,7 +464,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn test_string_concatenation() {
+    fn string_concatenation() {
         let test_case = TestCase::new(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("first", t.str("Hello"), |t| {
@@ -481,7 +481,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn test_json_encode() {
+    fn json_encode() {
         let test_case = TestCase::new(
             build_ir_auto("Test", vec![], |t| {
                 t.write_expr(
@@ -497,7 +497,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn test_complex_nested_structure() {
+    fn complex_nested_structure() {
         let test_case = TestCase::new(
             build_ir_auto("Test", vec![], |t| {
                 t.for_loop("item", t.array(vec![t.str("A"), t.str("B")]), |t| {
@@ -516,7 +516,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn test_string_concat_equality() {
+    fn string_concat_equality() {
         let test_case = TestCase::new(
             build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(
@@ -534,7 +534,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn test_less_than_comparison() {
+    fn less_than_comparison() {
         let test_case = TestCase::new(
             build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.less_than(t.int(3), t.int(5)), |t| {
@@ -552,7 +552,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn test_less_than_float_comparison() {
+    fn less_than_float_comparison() {
         let test_case = TestCase::new(
             build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.less_than(t.float(1.5), t.float(2.5)), |t| {
@@ -570,7 +570,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn test_float_equality() {
+    fn float_equality() {
         let test_case = TestCase::new(
             build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.eq(t.float(1.5), t.float(1.5)), |t| {
@@ -588,7 +588,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn test_typecheck_trusted_html() {
+    fn typecheck_trusted_html() {
         // Test that TrustedHTML type is properly emitted and type-checks
         let parameters = vec![
             ("safe_html", Type::TrustedHTML),

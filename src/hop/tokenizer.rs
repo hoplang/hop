@@ -743,12 +743,12 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_empty() {
+    fn tokenize_empty() {
         check("", expect![""]);
     }
 
     #[test]
-    fn test_tokenize_expression_attribute() {
+    fn tokenize_expression_attribute() {
         check(
             r#"<div class={user.theme}>Hello</div>"#,
             expect![[r#"
@@ -768,7 +768,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_expression_attribute_comma_separated() {
+    fn tokenize_expression_attribute_comma_separated() {
         check(
             r#"<div class={user.theme, user.classes}>Hello</div>"#,
             expect![[r#"
@@ -788,7 +788,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_mixed_attributes() {
+    fn tokenize_mixed_attributes() {
         check(
             r#"<a href={user.url} target="_blank">Link</a>"#,
             expect![[r#"
@@ -808,7 +808,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_input_with_attributes() {
+    fn tokenize_input_with_attributes() {
         check(
             r#"<input type="" value="" disabled="">"#,
             expect![[r#"
@@ -820,7 +820,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_raw_text_tricky() {
+    fn tokenize_raw_text_tricky() {
         check(
             r#"<script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>"#,
             expect![[r#"
@@ -852,7 +852,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_attributes_without_spaces() {
+    fn tokenize_attributes_without_spaces() {
         check(
             r#"<h1 foo="bar"x="y">"#,
             expect![[r#"
@@ -864,7 +864,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_text_over_multiple_lines() {
+    fn tokenize_text_over_multiple_lines() {
         check(
             "this\ntext\nspans\nmultiple lines",
             expect![[r#"
@@ -882,7 +882,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_script_with_src() {
+    fn tokenize_script_with_src() {
         check(
             r#"<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>"#,
             expect![[r#"
@@ -898,7 +898,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_component_with_src() {
+    fn tokenize_component_with_src() {
         check(
             indoc! {r#"
                 <NotFoundError entrypoint {path: String, available_routes: Array[String]}>
@@ -1089,7 +1089,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_invalid_char_in_middle_of_tag() {
+    fn tokenize_invalid_char_in_middle_of_tag() {
         check(
             "<div!>",
             expect![[r#"
@@ -1105,7 +1105,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_self_closing_with_attributes() {
+    fn tokenize_self_closing_with_attributes() {
         check(
             "<h1 foo bar/>",
             expect![[r#"
@@ -1117,7 +1117,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_with_expr_before_attributes() {
+    fn tokenize_with_expr_before_attributes() {
         check(
             "<h1 {foo: {k: String}} foo bar/>",
             expect![[r#"
@@ -1129,7 +1129,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_self_closing() {
+    fn tokenize_self_closing() {
         check(
             "<h1 foo/>",
             expect![[r#"
@@ -1141,7 +1141,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_comment_with_text() {
+    fn tokenize_comment_with_text() {
         check(
             indoc! {"
                 <p><!-- -->
@@ -1171,7 +1171,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_comment_tricky() {
+    fn tokenize_comment_tricky() {
         check(
             indoc! {"
                 <!-- ---><!-- ----><!----><!-----><!-- ---->
@@ -1204,7 +1204,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_textarea_with_content() {
+    fn tokenize_textarea_with_content() {
         check(
             indoc! {"
                 <textarea>
@@ -1244,7 +1244,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_title_with_self_closing() {
+    fn tokenize_title_with_self_closing() {
         check(
             "<title><slot-title/></title>",
             expect![[r#"
@@ -1264,7 +1264,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_comment_simple() {
+    fn tokenize_comment_simple() {
         check(
             "<p><!-- --></p>",
             expect![[r#"
@@ -1284,7 +1284,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_comment_standalone() {
+    fn tokenize_comment_standalone() {
         check(
             "<!-- Comment with -- dashes -- inside -->",
             expect![[r#"
@@ -1296,7 +1296,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_multiline_comment() {
+    fn tokenize_multiline_comment() {
         check(
             indoc! {"
                 <p><!--
@@ -1333,7 +1333,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_comment_with_quotes() {
+    fn tokenize_comment_with_quotes() {
         check(
             r#"<!-- This comment has <tags> and "quotes" and 'apostrophes' -->"#,
             expect![[r#"
@@ -1345,7 +1345,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_doctype() {
+    fn tokenize_doctype() {
         check(
             "<!DOCTYPE   html>",
             expect![[r#"
@@ -1357,7 +1357,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_end_tag_with_space() {
+    fn tokenize_end_tag_with_space() {
         check(
             "</div >",
             expect![[r#"
@@ -1369,7 +1369,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_self_closing_simple() {
+    fn tokenize_self_closing_simple() {
         check(
             "<h1/>",
             expect![[r#"
@@ -1381,7 +1381,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_self_closing_with_space() {
+    fn tokenize_self_closing_with_space() {
         check(
             "<h1 />",
             expect![[r#"
@@ -1393,7 +1393,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_style_with_content() {
+    fn tokenize_style_with_content() {
         check(
             indoc! {"
                 <style>
@@ -1425,7 +1425,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_multiple_headings() {
+    fn tokenize_multiple_headings() {
         check(
             indoc! {"
                 <h1></h1>
@@ -1511,7 +1511,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_multiline_attributes() {
+    fn tokenize_multiline_attributes() {
         check(
             indoc! {r#"
                 <div
@@ -1546,7 +1546,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_script_with_content() {
+    fn tokenize_script_with_content() {
         check(
             indoc! {r#"
                 <script>
@@ -1578,7 +1578,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_script_with_content_and_white_space_in_closing_tag() {
+    fn tokenize_script_with_content_and_white_space_in_closing_tag() {
         check(
             indoc! {r#"
                 <script>
@@ -1662,7 +1662,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_hop_x_raw_simple() {
+    fn tokenize_hop_x_raw_simple() {
         check(
             "<hop-x-raw>foo bar</hop-x-raw>",
             expect![[r#"
@@ -1682,7 +1682,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_hop_x_raw_with_html() {
+    fn tokenize_hop_x_raw_with_html() {
         check(
             indoc! {"
                 <hop-x-raw>
@@ -1711,7 +1711,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_adjacent_elements() {
+    fn tokenize_adjacent_elements() {
         check(
             "<p></p><p></p>",
             expect![[r#"
@@ -1735,7 +1735,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_component_with_expression() {
+    fn tokenize_component_with_expression() {
         check(
             indoc! {r#"
                 <Main {foo}>
@@ -1784,7 +1784,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_full_html_document() {
+    fn tokenize_full_html_document() {
         check(
             indoc! {r#"
                 <!DOCTYPE html>
@@ -1896,7 +1896,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_svg_with_many_attributes() {
+    fn tokenize_svg_with_many_attributes() {
         check(
             indoc! {r#"
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1974,7 +1974,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_nested_svg() {
+    fn tokenize_nested_svg() {
         check(
             indoc! {r#"
                 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" version="1.1" viewBox="0 0 128 128" class="size-12">
@@ -2062,7 +2062,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_form_with_input() {
+    fn tokenize_form_with_input() {
         check(
             indoc! {r#"
                 <Main>
@@ -2136,7 +2136,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_if_with_expression() {
+    fn tokenize_if_with_expression() {
         check(
             "<if {foo}>",
             expect![[r#"
@@ -2148,7 +2148,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_div_with_class_and_expression() {
+    fn tokenize_div_with_class_and_expression() {
         check(
             "<div class=\"test\" {bar}>",
             expect![[r#"
@@ -2160,7 +2160,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_if_with_equality_expression() {
+    fn tokenize_if_with_equality_expression() {
         check(
             "<if {user.name == 'John'}>",
             expect![[r#"
@@ -2172,7 +2172,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_component_with_field_access() {
+    fn tokenize_component_with_field_access() {
         check(
             "<component {obj.prop.subprop}>",
             expect![[r#"
@@ -2184,7 +2184,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_button_with_attribute_and_expression() {
+    fn tokenize_button_with_attribute_and_expression() {
         check(
             "<button disabled {enabled == 'yes'}>",
             expect![[r#"
@@ -2196,7 +2196,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_input_with_variable_name() {
+    fn tokenize_input_with_variable_name() {
         check(
             "<input {variable_name_123}>",
             expect![[r#"
@@ -2208,7 +2208,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_div_with_spaced_expression() {
+    fn tokenize_div_with_spaced_expression() {
         check(
             "<div class=\"test\" {  user.name  }>",
             expect![[r#"
@@ -2220,7 +2220,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_span_with_string_expression() {
+    fn tokenize_span_with_string_expression() {
         check(
             "<span {'hello world'}>",
             expect![[r#"
@@ -2232,7 +2232,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_form_with_parenthesized_expression() {
+    fn tokenize_form_with_parenthesized_expression() {
         check(
             "<form {(user.role == 'admin')}>",
             expect![[r#"
@@ -2244,7 +2244,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_section_with_chained_equality() {
+    fn tokenize_section_with_chained_equality() {
         check(
             "<section {a == b == c}>",
             expect![[r#"
@@ -2256,7 +2256,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_for_with_in_expression() {
+    fn tokenize_for_with_in_expression() {
         check(
             "<for {user in users}>",
             expect![[r#"
@@ -2268,7 +2268,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_for_with_field_access() {
+    fn tokenize_for_with_field_access() {
         check(
             "<for {item in user.items}>",
             expect![[r#"
@@ -2280,7 +2280,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_div_with_in_expression() {
+    fn tokenize_div_with_in_expression() {
         check(
             "<div {foo in bars}>",
             expect![[r#"
@@ -2292,7 +2292,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_text_with_single_expression() {
+    fn tokenize_text_with_single_expression() {
         check(
             "<h1>Hello {name}!</h1>",
             expect![[r#"
@@ -2320,7 +2320,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_text_with_unrecognized_expressions() {
+    fn tokenize_text_with_unrecognized_expressions() {
         check(
             "{ ~ } {{ ~ }} {{{{   }}}{}{{}}}",
             expect![[r#"
@@ -2348,7 +2348,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_text_with_multiple_expressions() {
+    fn tokenize_text_with_multiple_expressions() {
         check(
             "<p>User {user.name} has {user.count} items</p>",
             expect![[r#"
@@ -2384,7 +2384,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_text_with_expression_at_start() {
+    fn tokenize_text_with_expression_at_start() {
         check(
             "<span>{greeting} world!</span>",
             expect![[r#"
@@ -2408,7 +2408,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_text_with_expression_at_end() {
+    fn tokenize_text_with_expression_at_end() {
         check(
             "<div>Price: {price}</div>",
             expect![[r#"
@@ -2432,7 +2432,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_text_with_expression_with_braces() {
+    fn tokenize_text_with_expression_with_braces() {
         check(
             "<div>Price: {{k: v}}</div>",
             expect![[r#"
@@ -2456,7 +2456,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_text_with_only_expression() {
+    fn tokenize_text_with_only_expression() {
         check(
             "<h2>{title}</h2>",
             expect![[r#"
@@ -2476,7 +2476,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_complex_expression_in_text() {
+    fn tokenize_complex_expression_in_text() {
         check(
             "<p>Status: {user.profile.status == 'active'}</p>",
             expect![[r#"
@@ -2500,7 +2500,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_expression_with_field_access() {
+    fn tokenize_expression_with_field_access() {
         check(
             "<span>Item: {item.title}</span>",
             expect![[r#"
@@ -2524,7 +2524,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_mixed_tag_and_text_expressions() {
+    fn tokenize_mixed_tag_and_text_expressions() {
         check(
             "<div {className}>Content: {content}</div>",
             expect![[r#"
@@ -2548,7 +2548,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_duplicate_attribute_error() {
+    fn tokenize_duplicate_attribute_error() {
         check(
             r#"<div class="foo" class="bar"></div>"#,
             expect![[r#"
@@ -2568,7 +2568,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_duplicate_attribute_different_quotes() {
+    fn tokenize_duplicate_attribute_different_quotes() {
         check(
             r#"<input type="text" type='number'/>"#,
             expect![[r#"
@@ -2584,7 +2584,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_duplicate_attribute_no_value() {
+    fn tokenize_duplicate_attribute_no_value() {
         check(
             r#"<input required required />"#,
             expect![[r#"
@@ -2600,7 +2600,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_empty_expression() {
+    fn tokenize_empty_expression() {
         check(
             r#"{}"#,
             expect![[r#"
@@ -2612,7 +2612,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_unterminated_expression() {
+    fn tokenize_unterminated_expression() {
         check(
             r#"{"#,
             expect![[r#"
@@ -2704,7 +2704,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_unterminated_comments() {
+    fn tokenize_unterminated_comments() {
         check(
             r#"<!--"#,
             expect![[r#"
@@ -2724,7 +2724,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_unterminated_opening_tags() {
+    fn tokenize_unterminated_opening_tags() {
         check(
             r#"<div <div>"#,
             expect![[r#"
@@ -2812,7 +2812,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_unterminated_closing_tags() {
+    fn tokenize_unterminated_closing_tags() {
         check(
             r#"</div </div>"#,
             expect![[r#"
@@ -2912,7 +2912,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_text_starting_with_r() {
+    fn tokenize_text_starting_with_r() {
         check(
             r#"<p>running fast</p>"#,
             expect![[r#"

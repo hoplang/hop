@@ -73,7 +73,7 @@ mod tests {
     }
 
     #[test]
-    fn test_removes_always_true_if() {
+    fn removes_always_true_if() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.bool(true), |t| {
@@ -97,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    fn test_removes_always_false_if() {
+    fn removes_always_false_if() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.bool(false), |t| {
@@ -123,7 +123,7 @@ mod tests {
     }
 
     #[test]
-    fn test_preserves_dynamic_conditions() {
+    fn preserves_dynamic_conditions() {
         check(
             build_ir_auto("Test", vec![("show", Type::Bool)], |t| {
                 t.if_stmt(t.var("show"), |t| {
@@ -162,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_if_elimination() {
+    fn nested_if_elimination() {
         check(
             build_ir_auto("Test", vec![("condition", Type::Bool)], |t| {
                 t.if_stmt(t.var("condition"), |t| {

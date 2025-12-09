@@ -227,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_import() {
+    fn extract_import() {
         check_declarations(
             r#"import UserList from "@/user_list""#,
             expect!["Import UserList from \"@/user_list\""],
@@ -235,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_record() {
+    fn extract_record() {
         check_declarations(
             "record User {name: String}",
             expect!["Record User {name: String}"],
@@ -243,7 +243,7 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_multiple_declarations() {
+    fn extract_multiple_declarations() {
         check_declarations(
             r#"import Header from "@/header"
 record User {name: String}
@@ -257,7 +257,7 @@ import Footer from "@/footer"
     }
 
     #[test]
-    fn test_text_starting_with_import_not_declaration() {
+    fn text_starting_with_import_not_declaration() {
         // "important" starts with "import" but is not followed by a space,
         // so it should not be recognized as a declaration
         let mut errors = ErrorCollector::new();
@@ -267,7 +267,7 @@ import Footer from "@/footer"
     }
 
     #[test]
-    fn test_text_starting_with_record_not_declaration() {
+    fn text_starting_with_record_not_declaration() {
         // "recording" starts with "record" but is not followed by a space,
         // so it should not be recognized as a declaration
         let mut errors = ErrorCollector::new();
@@ -277,7 +277,7 @@ import Footer from "@/footer"
     }
 
     #[test]
-    fn test_multibyte_characters_before_declaration() {
+    fn multibyte_characters_before_declaration() {
         check_declarations(
             r#"• bullet point
 record User {name: String}"#,

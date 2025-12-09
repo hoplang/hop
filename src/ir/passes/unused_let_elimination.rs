@@ -111,7 +111,7 @@ mod tests {
     }
 
     #[test]
-    fn test_eliminate_unused_let() {
+    fn eliminate_unused_let() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 // Unused let should be eliminated
@@ -136,7 +136,7 @@ mod tests {
     }
 
     #[test]
-    fn test_preserve_used_let() {
+    fn preserve_used_let() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 // Used let should be preserved
@@ -163,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_unused_lets() {
+    fn nested_unused_lets() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("outer", t.str("outer_value"), |t| {
@@ -191,7 +191,7 @@ mod tests {
     }
 
     #[test]
-    fn test_used_in_nested_structure() {
+    fn used_in_nested_structure() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("cond", t.bool(true), |t| {
@@ -223,7 +223,7 @@ mod tests {
     }
 
     #[test]
-    fn test_eliminate_in_if_body() {
+    fn eliminate_in_if_body() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.bool(true), |t| {
@@ -253,7 +253,7 @@ mod tests {
     }
 
     #[test]
-    fn test_eliminate_in_for_body() {
+    fn eliminate_in_for_body() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 let items = t.array(vec![t.str("a"), t.str("b")]);
@@ -284,7 +284,7 @@ mod tests {
     }
 
     #[test]
-    fn test_used_in_binary_op() {
+    fn used_in_binary_op() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("x", t.bool(true), |t| {
@@ -322,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    fn test_multiple_unused_lets_in_sequence() {
+    fn multiple_unused_lets_in_sequence() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("a", t.str("a_value"), |t| {
@@ -356,7 +356,7 @@ mod tests {
     }
 
     #[test]
-    fn test_variable_used_in_array() {
+    fn variable_used_in_array() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 let items = t.array(vec![t.str("a"), t.str("b")]);
@@ -389,7 +389,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sibling_lets_same_name_first_used() {
+    fn sibling_lets_same_name_first_used() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("x", t.str("first x"), |t| {
@@ -422,7 +422,7 @@ mod tests {
     }
 
     #[test]
-    fn test_quadruple_nested_unused_lets() {
+    fn quadruple_nested_unused_lets() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("level1", t.str("value1"), |t| {
