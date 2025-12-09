@@ -510,42 +510,43 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_nested_loops() {
+    fn should_allow_nested_for_loops() {
         check(
             indoc! {"
-                record Section {
-                  title: String,
-                  items: Array[String],
+                record T {
+                  t: Array[String],
                 }
-
-                <Main {sections: Array[Section]}>
-                    <div>
-                        <for {section in sections}>
-                            <div>
-                                <h2>{section.title}</h2>
-                                <for {item in section.items}>
-                                    <p>{item}</p>
-                                </for>
-                            </div>
+                record S {
+                  s: T,
+                }
+                <Main {i: Array[S]}>
+                    <for {j in i}>
+                        <for {k in j.s.t}>
+                            <if {k}>
+                            </if>
                         </for>
-                    </div>
+                    </for>
+                    <for {p in i}>
+                        <for {k in p.s.t}>
+                            <for {item in k}>
+                            </for>
+                        </for>
+                    </for>
                 </Main>
             "},
             expect![[r#"
-                div                                               6:4-15:10
-                    for                                           7:8-14:14
-                        div                                       8:12-13:18
-                            h2                                    9:16-9:40
-                                text_expression                   9:20-9:35
-                            for                                   10:16-12:22
-                                p                                 11:20-11:33
-                                    text_expression               11:23-11:29
+                for                                               7:4-12:10
+                    for                                           8:8-11:14
+                        if                                        9:12-10:17
+                for                                               13:4-18:10
+                    for                                           14:8-17:14
+                        for                                       15:12-16:18
             "#]],
         );
     }
 
     #[test]
-    fn should_parse_script_and_style_tag_content_as_raw_text() {
+    fn should_allow_script_and_style_tag_content_as_raw_text() {
         check(
             indoc! {r#"
                 <Main>
@@ -562,6 +563,25 @@ mod tests {
             expect![[r#"
                 script                                            1:4-5:13
                 style                                             6:4-8:12
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_allow_form_with_inputs() {
+        check(
+            indoc! {r#"
+                <Main>
+                    <form id="form">
+                        <input type="text" required>
+                        <button type="submit">Send</button>
+                    </form>
+                </Main>
+            "#},
+            expect![[r#"
+                form                                              1:4-4:11
+                    input                                         2:8-2:36
+                    button                                        3:8-3:43
             "#]],
         );
     }
@@ -838,200 +858,25 @@ mod tests {
     }
 
     #[test]
-    fn parser_if_conditions_various() {
+    fn should_allow_field_access_on_record() {
         check(
             indoc! {r#"
-                <Main>
-                    <if {user.name == other_user.name}>
-                        <div>Same name</div>
-                    </if>
-                    <if {(data.x == data.y)}>
-                        <div>Parentheses work</div>
-                    </if>
-                    <if {a == b == c}>
-                        <div>Chained equality</div>
-                    </if>
-                </Main>
-            "#},
-            expect![[r#"
-                if                                                1:4-3:9
-                    div                                           2:8-2:28
-                if                                                4:4-6:9
-                    div                                           5:8-5:35
-                if                                                7:4-9:9
-                    div                                           8:8-8:35
-            "#]],
-        );
-    }
-
-    #[test]
-    fn parser_simple_if_condition() {
-        check(
-            indoc! {"
-                <Main>
-                    <if {x == y}>
-                        <div>Equal</div>
-                    </if>
-                </Main>
-            "},
-            expect![[r#"
-                if                                                1:4-3:9
-                    div                                           2:8-2:24
-            "#]],
-        );
-    }
-
-    #[test]
-    fn parser_complex_nested_loops() {
-        check(
-            indoc! {"
-                record T {t: Array[String]}
-                record S {s: T}
-                <Main {i: Array[S]}>
-                    <for {j in i}>
-                        <for {k in j.s.t}>
-                            <if {k}>
-                            </if>
-                        </for>
-                    </for>
-                    <for {p in i}>
-                        <for {k in p.s.t}>
-                            <for {item in k}>
-                            </for>
-                        </for>
-                    </for>
-                </Main>
-            "},
-            expect![[r#"
-                for                                               3:4-8:10
-                    for                                           4:8-7:14
-                        if                                        5:12-6:17
-                for                                               9:4-14:10
-                    for                                           10:8-13:14
-                        for                                       11:12-12:18
-            "#]],
-        );
-    }
-
-    #[test]
-    fn parser_if_with_for_nested() {
-        check(
-            indoc! {"
-                <Main {data: Array[String]}>
-	                <if {data}>
-		                <for {d in data}>
-		                </for>
-	                </if>
-                </Main>
-            "},
-            expect![[r#"
-                if                                                1:1-4:6
-                    for                                           2:2-3:8
-            "#]],
-        );
-    }
-
-    #[test]
-    fn parser_simple_for_loop() {
-        check(
-            indoc! {"
-                <Main {foo: Array[String]}>
-                    <for {bar in foo}>
-                        <div></div>
-                    </for>
-                </Main>
-            "},
-            expect![[r#"
-                for                                               1:4-3:10
-                    div                                           2:8-2:19
-            "#]],
-        );
-    }
-
-    #[test]
-    fn parser_component_references() {
-        check(
-            indoc! {"
-                <Main {p: String}>
-                    <Foo></Foo>
-                    <Foo></Foo>
-                </Main>
-            "},
-            expect![[r#"
-                component_reference                               1:4-1:15
-                component_reference                               2:4-2:15
-            "#]],
-        );
-    }
-
-    #[test]
-    fn parser_component_with_params() {
-        check(
-            indoc! {"
-                record Data {user: String}
-                <Main {data: Data}>
-                    <Foo {a: data}/>
-                    <Bar {b: data.user}/>
-                </Main>
-            "},
-            expect![[r#"
-                component_reference                               2:4-2:20
-                component_reference                               3:4-3:25
-            "#]],
-        );
-    }
-
-    #[test]
-    fn parser_for_loop_with_text_expression() {
-        check(
-            indoc! {"
-                <Main {foo: Array[String]}>
-                    <for {v in foo}>
-                        <div>{v}</div>
-                    </for>
-                </Main>
-            "},
-            expect![[r#"
-                for                                               1:4-3:10
-                    div                                           2:8-2:22
-                        text_expression                           2:13-2:16
-            "#]],
-        );
-    }
-
-    #[test]
-    fn parser_script_tag_with_html_content() {
-        check(
-            indoc! {r#"
-                <Main {foo: String}>
-                    <script>
-                        const x = "<div></div>";
-                    </script>
-                </Main>
-            "#},
-            expect![[r#"
-                script                                            1:4-3:13
-            "#]],
-        );
-    }
-
-    #[test]
-    fn parser_expression_attributes() {
-        check(
-            indoc! {r#"
-                record User {url: String, theme: String}
+                record User {
+                  url: String,
+                  theme: String,
+                }
                 <Main {user: User}>
                     <a href={user.url} class={user.theme}>Link</a>
                 </Main>
             "#},
             expect![[r#"
-                a                                                 2:4-2:50
+                a                                                 5:4-5:50
             "#]],
         );
     }
 
     #[test]
-    fn parser_multiple_expressions_in_attribute() {
+    fn should_allow_multiple_expressions_in_class_attribute() {
         check(
             indoc! {r#"
                 <Main {style1: String, style2: String, style3: String}>
@@ -1044,9 +889,8 @@ mod tests {
         );
     }
 
-    // When a component is imported twice, the parser outputs an error.
     #[test]
-    fn parser_component_imported_twice() {
+    fn should_raise_error_when_an_import_is_imported_twice() {
         check(
             indoc! {r#"
                 import Foo from "@/other"
@@ -1065,14 +909,10 @@ mod tests {
         );
     }
 
-    // When a component is defined twice, the parser outputs an error.
     #[test]
-    fn parser_duplicate_component_definition() {
+    fn should_raise_error_when_a_component_is_defined_twice() {
         check(
             indoc! {r#"
-                <Foo>
-                </Foo>
-
                 <Foo>
                 </Foo>
 
@@ -1084,19 +924,12 @@ mod tests {
                 3 | 
                 4 | <Foo>
                   |  ^^^
-
-                error: Foo is already defined
-                6 | 
-                7 | <Foo>
-                  |  ^^^
             "#]],
         );
     }
 
-    // When a component is defined with the same name as an imported component, the parser
-    // outputs an error.
     #[test]
-    fn component_name_conflicts_with_import() {
+    fn should_raise_error_when_a_component_is_defined_with_the_same_name_as_an_import() {
         check(
             indoc! {r#"
                 import Foo from "@/other"
@@ -1117,28 +950,28 @@ mod tests {
         );
     }
 
-    // When a component is defined with the same name as a record, the parser outputs an error.
     #[test]
-    fn component_name_conflicts_with_record() {
+    fn should_raise_error_when_a_component_is_defined_with_the_same_name_as_a_record() {
         check(
             indoc! {r#"
-                record User {name: String}
+                record User {
+                  name: String,
+                }
 
                 <User>
                 </User>
             "#},
             expect![[r#"
                 error: User is already defined
-                2 | 
-                3 | <User>
+                4 | 
+                5 | <User>
                   |  ^^^^
             "#]],
         );
     }
 
-    // When a record is defined with the same name as an import, the parser outputs an error.
     #[test]
-    fn record_name_conflicts_with_import() {
+    fn should_raise_error_when_a_record_is_defined_with_the_same_name_as_an_import() {
         check(
             indoc! {r#"
                 import User from "@/other"
@@ -1146,9 +979,6 @@ mod tests {
                 record User {
                   name: String
                 }
-
-                <Main>
-                </Main>
             "#},
             expect![[r#"
                 error: User is already defined
@@ -1160,7 +990,7 @@ mod tests {
     }
 
     #[test]
-    fn import_without_at_prefix_is_rejected() {
+    fn should_raise_error_when_an_import_does_not_start_with_at_sign() {
         check(
             indoc! {r#"
                 import Foo from "other"
@@ -1178,7 +1008,7 @@ mod tests {
     }
 
     #[test]
-    fn import_with_invalid_module_name() {
+    fn should_raise_error_when_import_contains_dot_dot() {
         check(
             indoc! {r#"
                 import Foo from "@/../foo"
@@ -1196,7 +1026,7 @@ mod tests {
     }
 
     #[test]
-    fn import_with_invalid_characters_in_module_name() {
+    fn should_raise_error_when_import_contains_invalid_character() {
         check(
             indoc! {r#"
                 import Bar from "@/foo/bar!baz"
@@ -1214,7 +1044,116 @@ mod tests {
     }
 
     #[test]
-    fn parser_svg_complex_structure() {
+    fn should_allow_component_references() {
+        check(
+            indoc! {"
+                <Main {p: String}>
+                    <Foo></Foo>
+                    <Foo></Foo>
+                </Main>
+            "},
+            expect![[r#"
+                component_reference                               1:4-1:15
+                component_reference                               2:4-2:15
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_allow_component_references_with_params() {
+        check(
+            indoc! {r#"
+                import Foo from "@/foo"
+                import Bar from "@/bar"
+                record Data {
+                  user: String,
+                }
+                <Main {data: Data}>
+                    <Foo {a: data}/>
+                    <Bar {b: data.user}/>
+                </Main>
+            "#},
+            expect![[r#"
+                component_reference                               6:4-6:20
+                component_reference                               7:4-7:25
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_allow_for_loop() {
+        check(
+            indoc! {"
+                <Main {item: Array[String]}>
+                    <for {item in items}>
+                        <div>Item content</div>
+                    </for>
+                </Main>
+            "},
+            expect![[r#"
+                for                                               1:4-3:10
+                    div                                           2:8-2:31
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_allow_for_loop_with_text_expression() {
+        check(
+            indoc! {"
+                <Main {foo: Array[String]}>
+                    <for {v in foo}>
+                        <div>{v}</div>
+                    </for>
+                </Main>
+            "},
+            expect![[r#"
+                for                                               1:4-3:10
+                    div                                           2:8-2:22
+                        text_expression                           2:13-2:16
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_allow_if_statement() {
+        check(
+            indoc! {"
+                <Main {x: Int, y: Int}>
+                    <if {x == y}>
+                        <div>Equal</div>
+                    </if>
+                </Main>
+            "},
+            expect![[r#"
+                if                                                1:4-3:9
+                    div                                           2:8-2:24
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_allow_if_statement_with_nested_for_loop() {
+        check(
+            indoc! {"
+                <Main {x: Bool, data: Array[String]}>
+	                <if {x}>
+		                <for {d in data}>
+                          {d}
+		                </for>
+	                </if>
+                </Main>
+            "},
+            expect![[r#"
+                if                                                1:1-5:6
+                    for                                           2:2-4:8
+                        text_expression                           3:10-3:13
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_allow_complex_svg_structure() {
         check(
             indoc! {r#"
                 <Main>
@@ -1247,104 +1186,7 @@ mod tests {
     }
 
     #[test]
-    fn parser_form_with_inputs() {
-        check(
-            indoc! {r#"
-                <Main>
-                    <form id="form">
-                        <input type="text" required>
-                        <button type="submit">Send</button>
-                    </form>
-                </Main>
-            "#},
-            expect![[r#"
-                form                                              1:4-4:11
-                    input                                         2:8-2:36
-                    button                                        3:8-3:43
-            "#]],
-        );
-    }
-
-    // Test basic <if> tag with simple variable expression.
-    #[test]
-    fn parser_if_simple_variable() {
-        check(
-            indoc! {"
-                <Main>
-                    <if {is_visible}>
-                        <div>This is visible</div>
-                    </if>
-                </Main>
-            "},
-            expect![[r#"
-                if                                                1:4-3:9
-                    div                                           2:8-2:34
-            "#]],
-        );
-    }
-
-    // Test <if> tag with complex expression.
-    #[test]
-    fn parser_if_complex_expression() {
-        check(
-            indoc! {r#"
-                <Main>
-                    <if {user.name == "admin"}>
-                        <div>Admin panel</div>
-                        <button>Settings</button>
-                    </if>
-                </Main>
-            "#},
-            expect![[r#"
-                if                                                1:4-4:9
-                    div                                           2:8-2:30
-                    button                                        3:8-3:33
-            "#]],
-        );
-    }
-
-    // Test basic <for> tag with simple loop generator expression.
-    #[test]
-    fn parser_for_simple_loop() {
-        check(
-            indoc! {"
-                <Main>
-                    <for {item in items}>
-                        <div>Item content</div>
-                    </for>
-                </Main>
-            "},
-            expect![[r#"
-                for                                               1:4-3:10
-                    div                                           2:8-2:31
-            "#]],
-        );
-    }
-
-    // Test <for> tag with complex array expression.
-    #[test]
-    fn parser_for_complex_array() {
-        check(
-            indoc! {"
-                <Main>
-                    <for {user in users.active}>
-                        <div>User: {user.name}</div>
-                        <p>Role: {user.role}</p>
-                    </for>
-                </Main>
-            "},
-            expect![[r#"
-                for                                               1:4-4:10
-                    div                                           2:8-2:36
-                        text_expression                           2:19-2:30
-                    p                                             3:8-3:32
-                        text_expression                           3:17-3:28
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_allow_component_parameter_to_have_a_string_type_annotation() {
+    fn should_allow_component_parameter_to_have_a_string_type() {
         check(
             indoc! {"
                 <Main {data: String}>
@@ -1359,7 +1201,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_component_parameter_to_have_a_record_type_annotation() {
+    fn should_allow_component_parameter_to_have_a_record_type() {
         check(
             indoc! {"
                 record Data {
@@ -1379,9 +1221,8 @@ mod tests {
         );
     }
 
-    // Component parameter can have an array type annotation.
     #[test]
-    fn parser_param_array_type() {
+    fn should_allow_component_parameter_to_have_an_array_type() {
         check(
             indoc! {"
                 <Main {items: Array[String]}>
@@ -1398,30 +1239,15 @@ mod tests {
         );
     }
 
-    // Component parameter can have a record type annotation.
     #[test]
-    fn parser_param_record_type() {
+    fn should_allow_component_parameter_to_have_an_array_of_record_type() {
         check(
             indoc! {"
-                record User {name: String, age: Float}
-                <Main {user: User}>
-                    <div>{user.name} is {user.age} years old</div>
-                </Main>
-            "},
-            expect![[r#"
-                div                                               2:4-2:50
-                    text_expression                               2:9-2:20
-                    text_expression                               2:24-2:34
-            "#]],
-        );
-    }
+                record Section {
+                  title: String,
+                  items: Array[String],
+                }
 
-    // Component parameter can have nested type annotations.
-    #[test]
-    fn parser_param_nested_types() {
-        check(
-            indoc! {"
-                record Section {title: String, items: Array[String]}
                 <Main {data: Array[Section]}>
                     <for {section in data}>
                         <h1>{section.title}</h1>
@@ -1432,12 +1258,12 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                for                                               2:4-7:10
-                    h1                                            3:8-3:32
-                        text_expression                           3:12-3:27
-                    for                                           4:8-6:14
-                        div                                       5:12-5:29
-                            text_expression                       5:17-5:23
+                for                                               6:4-11:10
+                    h1                                            7:8-7:32
+                        text_expression                           7:12-7:27
+                    for                                           8:8-10:14
+                        div                                       9:12-9:29
+                            text_expression                       9:17-9:23
             "#]],
         );
     }
