@@ -402,7 +402,7 @@ impl Parser {
         Ok(RecordDeclaration { name, fields })
     }
 
-    fn parse_type(&mut self) -> Result<SyntacticType, ParseError> {
+    pub fn parse_type(&mut self) -> Result<SyntacticType, ParseError> {
         match self.iter.next().transpose()? {
             Some((Token::TypeString, range)) => Ok(SyntacticType::String { range }),
             Some((Token::TypeInt, range)) => Ok(SyntacticType::Int { range }),

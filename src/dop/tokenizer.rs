@@ -201,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_unexpected_character() {
+    fn should_raise_error_for_unexpected_character() {
         check(
             "~",
             expect![[r#"
@@ -213,51 +213,39 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_eq_does_not_eat_identifier() {
+    fn should_skip_whitespace_between_tokens() {
         check(
-            "=foo",
+            "  foo   bar  ",
             expect![[r#"
-                error: Expected '==' but got '='
-                =foo
-                ^
-
                 token: foo
-                =foo
-                 ^^^
+                  foo   bar  
+                  ^^^
+
+                token: bar
+                  foo   bar  
+                        ^^^
             "#]],
         );
     }
 
     #[test]
-    fn tokenize_unexpected_characters() {
+    fn should_tokenize_multiline_input() {
         check(
-            "~ ~ ~@ #",
+            "foo\nbar",
             expect![[r#"
-                error: Unexpected character: '~'
-                ~ ~ ~@ #
-                ^
+                token: foo
+                foo
+                ^^^
 
-                error: Unexpected character: '~'
-                ~ ~ ~@ #
-                  ^
-
-                error: Unexpected character: '~'
-                ~ ~ ~@ #
-                    ^
-
-                error: Unexpected character: '@'
-                ~ ~ ~@ #
-                     ^
-
-                error: Unexpected character: '#'
-                ~ ~ ~@ #
-                       ^
+                token: bar
+                bar
+                ^^^
             "#]],
         );
     }
 
     #[test]
-    fn tokenize_valid_numbers() {
+    fn should_tokenize_valid_float_numbers() {
         check(
             "1.0 0.0 0.0000 1000000 0.0000 0.1010",
             expect![[r#"
@@ -289,63 +277,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_integers() {
-        check(
-            "42 0 123 999",
-            expect![[r#"
-                token: 42
-                42 0 123 999
-                ^^
-
-                token: 0
-                42 0 123 999
-                   ^
-
-                token: 123
-                42 0 123 999
-                     ^^^
-
-                token: 999
-                42 0 123 999
-                         ^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn tokenize_mixed_integers_and_floats() {
-        check(
-            "42 3.14 0 0.0 123 99.99",
-            expect![[r#"
-                token: 42
-                42 3.14 0 0.0 123 99.99
-                ^^
-
-                token: 3.14
-                42 3.14 0 0.0 123 99.99
-                   ^^^^
-
-                token: 0
-                42 3.14 0 0.0 123 99.99
-                        ^
-
-                token: 0
-                42 3.14 0 0.0 123 99.99
-                          ^^^
-
-                token: 123
-                42 3.14 0 0.0 123 99.99
-                              ^^^
-
-                token: 99.99
-                42 3.14 0 0.0 123 99.99
-                                  ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn tokenize_invalid_numbers() {
+    fn should_raise_errors_for_invalid_number_formats() {
         check(
             "1. 1000. 1. 000 0. 0123 01010",
             expect![[r#"
@@ -381,7 +313,107 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_simple_punctuation() {
+    fn should_not_consume_identifier_after_single_equals() {
+        check(
+            "=foo",
+            expect![[r#"
+                error: Expected '==' but got '='
+                =foo
+                ^
+
+                token: foo
+                =foo
+                 ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_raise_errors_for_multiple_unexpected_characters() {
+        check(
+            "~ ~ ~@ #",
+            expect![[r#"
+                error: Unexpected character: '~'
+                ~ ~ ~@ #
+                ^
+
+                error: Unexpected character: '~'
+                ~ ~ ~@ #
+                  ^
+
+                error: Unexpected character: '~'
+                ~ ~ ~@ #
+                    ^
+
+                error: Unexpected character: '@'
+                ~ ~ ~@ #
+                     ^
+
+                error: Unexpected character: '#'
+                ~ ~ ~@ #
+                       ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_tokenize_integer_literals() {
+        check(
+            "42 0 123 999",
+            expect![[r#"
+                token: 42
+                42 0 123 999
+                ^^
+
+                token: 0
+                42 0 123 999
+                   ^
+
+                token: 123
+                42 0 123 999
+                     ^^^
+
+                token: 999
+                42 0 123 999
+                         ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_tokenize_mixed_integers_and_floats() {
+        check(
+            "42 3.14 0 0.0 123 99.99",
+            expect![[r#"
+                token: 42
+                42 3.14 0 0.0 123 99.99
+                ^^
+
+                token: 3.14
+                42 3.14 0 0.0 123 99.99
+                   ^^^^
+
+                token: 0
+                42 3.14 0 0.0 123 99.99
+                        ^
+
+                token: 0
+                42 3.14 0 0.0 123 99.99
+                          ^^^
+
+                token: 123
+                42 3.14 0 0.0 123 99.99
+                              ^^^
+
+                token: 99.99
+                42 3.14 0 0.0 123 99.99
+                                  ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_tokenize_simple_punctuation() {
         check(
             "( ) . ! == < >",
             expect![[r#"
@@ -417,7 +449,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_not_equals() {
+    fn should_tokenize_not_equals_operator() {
         check(
             "!=",
             expect![[r#"
@@ -429,7 +461,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_not_equals_in_expression() {
+    fn should_tokenize_not_equals_in_expression() {
         check(
             "x != y",
             expect![[r#"
@@ -449,7 +481,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_less_than_or_equal() {
+    fn should_tokenize_less_than_or_equal_operator() {
         check(
             "<=",
             expect![[r#"
@@ -461,7 +493,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_less_than_or_equal_in_expression() {
+    fn should_tokenize_less_than_or_equal_in_expression() {
         check(
             "x <= y",
             expect![[r#"
@@ -481,7 +513,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_greater_than_or_equal() {
+    fn should_tokenize_greater_than_or_equal_operator() {
         check(
             ">=",
             expect![[r#"
@@ -493,7 +525,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_greater_than_or_equal_in_expression() {
+    fn should_tokenize_greater_than_or_equal_in_expression() {
         check(
             "x >= y",
             expect![[r#"
@@ -513,7 +545,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_identifiers_keywords() {
+    fn should_tokenize_identifiers_and_keywords() {
         check(
             "foo in true false _test var123",
             expect![[r#"
@@ -545,7 +577,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_type_keywords() {
+    fn should_tokenize_type_keywords() {
         check(
             "String Int Float Bool TrustedHTML Array",
             expect![[r#"
@@ -577,7 +609,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_type_names() {
+    fn should_tokenize_custom_type_names() {
         check(
             "User Person MyType CustomRecord",
             expect![[r#"
@@ -601,7 +633,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_identifiers_vs_type_names() {
+    fn should_distinguish_identifiers_from_type_names() {
         check(
             "foo Foo bar Bar _test Test",
             expect![[r#"
@@ -633,7 +665,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_string_literals() {
+    fn should_tokenize_string_literals() {
         check(
             r#""hello" "world with spaces" """#,
             expect![[r#"
@@ -653,23 +685,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_multiline() {
-        check(
-            "foo\nbar",
-            expect![[r#"
-                token: foo
-                foo
-                ^^^
-
-                token: bar
-                bar
-                ^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn tokenize_field_access() {
+    fn should_tokenize_field_access_expression() {
         check(
             "user.name",
             expect![[r#"
@@ -689,23 +705,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_whitespace_handling() {
-        check(
-            "  foo   bar  ",
-            expect![[r#"
-                token: foo
-                  foo   bar  
-                  ^^^
-
-                token: bar
-                  foo   bar  
-                        ^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn tokenize_complex_expression() {
+    fn should_tokenize_complex_expression() {
         check(
             r#"user.name == "admin""#,
             expect![[r#"
@@ -733,7 +733,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_parenthesized_expression() {
+    fn should_tokenize_parenthesized_expression() {
         check(
             "!(foo == true)",
             expect![[r#"
@@ -765,7 +765,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_array_brackets() {
+    fn should_tokenize_array_with_brackets() {
         check(
             "[1, 2, 3]",
             expect![[r#"
@@ -801,7 +801,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_number_array() {
+    fn should_tokenize_array_of_floats() {
         check(
             "[1.0, 12.0, 343.0]",
             expect![[r#"
@@ -837,7 +837,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_empty_array() {
+    fn should_tokenize_empty_array() {
         check(
             "[]",
             expect![[r#"

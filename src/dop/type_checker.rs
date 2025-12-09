@@ -733,21 +733,16 @@ mod tests {
         }
     }
 
-    fn check(env_str: &str, expr_str: &str, expected: Expect) {
+    fn check(env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
         let mut env = Environment::new();
         let mut records: Environment<Type> = Environment::new();
 
-        if !env_str.is_empty() {
-            let mut parser = Parser::from(env_str);
-            let params = parser
-                .parse_parameters()
-                .expect("Failed to parse environment");
-            for param in params {
-                // In tests without records, only primitive types are used
-                let typ = resolve_type(&param.var_type, &mut records)
-                    .expect("Test parameter type should be valid");
-                let _ = env.push(param.var_name.to_string(), typ);
-            }
+        for (var_name, type_str) in env_vars {
+            let mut parser = Parser::from(*type_str);
+            let syntactic_type = parser.parse_type().expect("Failed to parse type");
+            let typ = resolve_type(&syntactic_type, &mut records)
+                .expect("Test parameter type should be valid");
+            let _ = env.push(var_name.to_string(), typ);
         }
 
         let mut parser = Parser::from(expr_str);
@@ -767,718 +762,12 @@ mod tests {
         expected.assert_eq(&actual);
     }
 
-    #[test]
-    fn equality_incompatible_string_number() {
-        check(
-            "name: String, count: Float",
-            "name == count",
-            expect![[r#"
-                error: Can not compare String to Float
-                name == count
-                ^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn equality_incompatible_boolean_string() {
-        check(
-            "enabled: Bool, name: String",
-            "enabled == name",
-            expect![[r#"
-                error: Can not compare Bool to String
-                enabled == name
-                ^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn undefined_variable() {
-        check(
-            "",
-            "undefined_var",
-            expect![[r#"
-                error: Undefined variable: undefined_var
-                undefined_var
-                ^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn field_access_on_undefined_variable() {
-        check(
-            "",
-            "notdefined.foo.bar",
-            expect![[r#"
-                error: Undefined variable: notdefined
-                notdefined.foo.bar
-                ^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn field_access_on_non_record() {
-        check(
-            "count: Float",
-            "count.value",
-            expect![[r#"
-                error: Float can not be used as a record
-                count.value
-                ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn negation_string_error() {
-        check(
-            "name: String",
-            "!name",
-            expect![[r#"
-                error: Negation operator can only be applied to Bool values
-                !name
-                 ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn negation_number_error() {
-        check(
-            "count: Float",
-            "!count",
-            expect![[r#"
-                error: Negation operator can only be applied to Bool values
-                !count
-                 ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn nested_array_field_error() {
-        check_with_records(
-            "config: Config",
-            &[
-                "record Profile {name: String, active: Bool}",
-                "record UserInfo {profile: Profile}",
-                "record Config {users: Array[UserInfo]}",
-            ],
-            "config.users.profile.name",
-            expect![[r#"
-                error: Array[test::UserInfo] can not be used as a record
-                config.users.profile.name
-                ^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn array_field_access_error() {
-        check_with_records(
-            "users: Array[User]",
-            &["record User {name: String}"],
-            "users.name",
-            expect![[r#"
-                error: Array[test::User] can not be used as a record
-                users.name
-                ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn unknown_field() {
-        check_with_records(
-            "data: Data",
-            &["record Data {field: String}"],
-            "data.unknown",
-            expect![[r#"
-                error: Field 'unknown' not found in record 'Data'
-                data.unknown
-                ^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn basic_variable_lookup() {
-        check("name: String", "name", expect!["String"]);
-    }
-
-    #[test]
-    fn string_literal() {
-        check("", r#""hello world""#, expect!["String"]);
-    }
-
-    #[test]
-    fn boolean_literal_true() {
-        check("", "true", expect!["Bool"]);
-    }
-
-    #[test]
-    fn boolean_literal_false() {
-        check("", "false", expect!["Bool"]);
-    }
-
-    #[test]
-    fn int_literal() {
-        check("", "42", expect!["Int"]);
-    }
-
-    #[test]
-    fn number_literal_float() {
-        check("", "3.14", expect!["Float"]);
-    }
-
-    #[test]
-    fn field_access() {
-        check_with_records(
-            "user: User",
-            &["record User {name: String}"],
-            "user.name",
-            expect!["String"],
-        );
-    }
-
-    #[test]
-    fn nested_field_access() {
-        check_with_records(
-            "app: App",
-            &[
-                "record Profile {name: String}",
-                "record User {profile: Profile}",
-                "record App {user: User}",
-            ],
-            "app.user.profile.name",
-            expect!["String"],
-        );
-    }
-
-    #[test]
-    fn equality_string() {
-        check("name: String", r#"name == "alice""#, expect!["Bool"]);
-    }
-
-    #[test]
-    fn equality_number() {
-        check(
-            "count: Float",
-            "count == 42",
-            expect![[r#"
-                error: Can not compare Float to Int
-                count == 42
-                ^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn equality_boolean() {
-        check("enabled: Bool", "enabled == true", expect!["Bool"]);
-    }
-
-    #[test]
-    fn equality_same_properties() {
-        check_with_records(
-            "user: User, admin: Admin",
-            &["record User {name: String}", "record Admin {name: String}"],
-            "user.name == admin.name",
-            expect!["Bool"],
-        );
-    }
-
-    #[test]
-    fn complex_equality() {
-        check("a: Bool, b: Bool", "a == b == true", expect!["Bool"]);
-    }
-
-    #[test]
-    fn negation_variable() {
-        check("enabled: Bool", "!enabled", expect!["Bool"]);
-    }
-
-    #[test]
-    fn negation_true() {
-        check("", "!true", expect!["Bool"]);
-    }
-
-    #[test]
-    fn negation_false() {
-        check("", "!false", expect!["Bool"]);
-    }
-
-    #[test]
-    fn greater_than_int() {
-        check("x: Int, y: Int", "x > y", expect!["Bool"]);
-    }
-
-    #[test]
-    fn greater_than_float() {
-        check("x: Float, y: Float", "x > y", expect!["Bool"]);
-    }
-
-    #[test]
-    fn greater_than_mixed_error() {
-        check(
-            "x: Int, y: Float",
-            "x > y",
-            expect![[r#"
-                error: Can not compare Int to Float
-                x > y
-                ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn less_than_or_equal_int() {
-        check("x: Int, y: Int", "x <= y", expect!["Bool"]);
-    }
-
-    #[test]
-    fn less_than_or_equal_float() {
-        check("x: Float, y: Float", "x <= y", expect!["Bool"]);
-    }
-
-    #[test]
-    fn less_than_or_equal_mixed_error() {
-        check(
-            "x: Int, y: Float",
-            "x <= y",
-            expect![[r#"
-                error: Can not compare Int to Float
-                x <= y
-                ^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn greater_than_or_equal_int() {
-        check("x: Int, y: Int", "x >= y", expect!["Bool"]);
-    }
-
-    #[test]
-    fn greater_than_or_equal_float() {
-        check("x: Float, y: Float", "x >= y", expect!["Bool"]);
-    }
-
-    #[test]
-    fn greater_than_or_equal_mixed_error() {
-        check(
-            "x: Int, y: Float",
-            "x >= y",
-            expect![[r#"
-                error: Can not compare Int to Float
-                x >= y
-                ^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn complex_negation_equality() {
-        check_with_records(
-            "user: User",
-            &["record User {active: Bool}"],
-            "!user.active == false",
-            expect!["Bool"],
-        );
-    }
-
-    #[test]
-    fn parenthesized_negation() {
-        check_with_records(
-            "status: Status, config: Config",
-            &[
-                "record Status {enabled: Bool}",
-                "record Config {active: Bool}",
-            ],
-            "!(status.enabled == config.active)",
-            expect!["Bool"],
-        );
-    }
-
-    #[test]
-    fn record_array_field() {
-        check_with_records(
-            "data: Data",
-            &["record Data {items: Array[String]}"],
-            "data.items",
-            expect!["Array[String]"],
-        );
-    }
-
-    #[test]
-    fn deep_field_access() {
-        check_with_records(
-            "system: System",
-            &[
-                "record Connection {host: String}",
-                "record Database {connection: Connection}",
-                "record Config {database: Database}",
-                "record System {config: Config}",
-            ],
-            "system.config.database.connection.host",
-            expect!["String"],
-        );
-    }
-
-    #[test]
-    fn multiple_field_access() {
-        check_with_records(
-            "obj: Obj",
-            &["record Obj {name: String, title: String}"],
-            "obj.name == obj.title",
-            expect!["Bool"],
-        );
-    }
-
-    #[test]
-    fn array_different_types() {
-        check(
-            "",
-            "[1, true]",
-            expect![[r#"
-                error: Array elements must all have the same type, found Int and Bool
-                [1, true]
-                    ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn array_trailing_comma_numbers() {
-        check("", "[\n\t1,\n\t2,\n\t3,\n]", expect!["Array[Int]"]);
-    }
-
-    #[test]
-    fn array_trailing_comma_single() {
-        check(
-            "",
-            indoc! {r#"
-            [
-            	"hello",
-            ]
-        "#},
-            expect!["Array[String]"],
-        );
-    }
-
-    #[test]
-    fn string_concatenation() {
-        check("", r#""hello" + "world""#, expect!["String"]);
-    }
-
-    #[test]
-    fn string_concatenation_multiple() {
-        check("", r#""hello" + " " + "world""#, expect!["String"]);
-    }
-
-    #[test]
-    fn string_concatenation_with_variables() {
-        check(
-            "greeting: String, name: String",
-            r#"greeting + " " + name"#,
-            expect!["String"],
-        );
-    }
-
-    #[test]
-    fn string_concatenation_error_left_number() {
-        check(
-            "",
-            r#"42 + "hello""#,
-            expect![[r#"
-                error: Cannot add values of incompatible types: Int + String
-                42 + "hello"
-                ^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn string_concatenation_error_right_boolean() {
-        check(
-            "",
-            r#""hello" + true"#,
-            expect![[r#"
-                error: Cannot add values of incompatible types: String + Bool
-                "hello" + true
-                ^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn string_concatenation_error_both_numbers() {
-        check("", r#"42 + 58"#, expect!["Int"]);
-    }
-
-    #[test]
-    fn string_concatenation_with_field_access() {
-        check_with_records(
-            "user: User",
-            &["record User {first_name: String, last_name: String}"],
-            r#"user.first_name + " " + user.last_name"#,
-            expect!["String"],
-        );
-    }
-
-    #[test]
-    fn string_concatenation_result_comparison() {
-        check("", r#""a" + "b" == "ab""#, expect!["Bool"]);
-    }
-
-    #[test]
-    fn logical_and_boolean_variables() {
-        check("a: Bool, b: Bool", "a && b", expect!["Bool"]);
-    }
-
-    #[test]
-    fn logical_and_boolean_literals() {
-        check("", "true && false", expect!["Bool"]);
-    }
-
-    #[test]
-    fn logical_and_field_access() {
-        check_with_records(
-            "user: User",
-            &["record User {enabled: Bool, active: Bool}"],
-            "user.enabled && user.active",
-            expect!["Bool"],
-        );
-    }
-
-    #[test]
-    fn logical_and_with_comparison() {
-        check(
-            "x: Int, y: Int, enabled: Bool",
-            "x > y && enabled",
-            expect!["Bool"],
-        );
-    }
-
-    #[test]
-    fn logical_and_error_left_string() {
-        check(
-            "name: String, enabled: Bool",
-            "name && enabled",
-            expect![[r#"
-                error: Logical AND operator can only be applied to Bool values
-                name && enabled
-                ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn logical_and_error_right_int() {
-        check(
-            "enabled: Bool, count: Int",
-            "enabled && count",
-            expect![[r#"
-                error: Logical AND operator can only be applied to Bool values
-                enabled && count
-                           ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn logical_and_error_both_strings() {
-        check(
-            "a: String, b: String",
-            "a && b",
-            expect![[r#"
-                error: Logical AND operator can only be applied to Bool values
-                a && b
-                ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn logical_and_precedence() {
-        check("a: Bool, b: Bool, c: Bool", "a && b == c", expect!["Bool"]);
-    }
-
-    #[test]
-    fn logical_or_boolean_variables() {
-        check("a: Bool, b: Bool", "a || b", expect!["Bool"]);
-    }
-
-    #[test]
-    fn logical_or_boolean_literals() {
-        check("", "true || false", expect!["Bool"]);
-    }
-
-    #[test]
-    fn logical_or_field_access() {
-        check_with_records(
-            "user: User",
-            &["record User {enabled: Bool, active: Bool}"],
-            "user.enabled || user.active",
-            expect!["Bool"],
-        );
-    }
-
-    #[test]
-    fn logical_or_with_comparison() {
-        check(
-            "x: Int, y: Int, enabled: Bool",
-            "x > y || enabled",
-            expect!["Bool"],
-        );
-    }
-
-    #[test]
-    fn logical_or_error_left_string() {
-        check(
-            "name: String, enabled: Bool",
-            "name || enabled",
-            expect![[r#"
-                error: Logical OR operator can only be applied to Bool values
-                name || enabled
-                ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn logical_or_error_right_int() {
-        check(
-            "enabled: Bool, count: Int",
-            "enabled || count",
-            expect![[r#"
-                error: Logical OR operator can only be applied to Bool values
-                enabled || count
-                           ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn logical_or_error_both_strings() {
-        check(
-            "a: String, b: String",
-            "a || b",
-            expect![[r#"
-                error: Logical OR operator can only be applied to Bool values
-                a || b
-                ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn logical_or_precedence() {
-        check("a: Bool, b: Bool, c: Bool", "a || b == c", expect!["Bool"]);
-    }
-
-    #[test]
-    fn mixed_logical_operators() {
-        check("a: Bool, b: Bool, c: Bool", "a && b || c", expect!["Bool"]);
-    }
-
-    #[test]
-    fn logical_operator_precedence_complex() {
-        check(
-            "a: Bool, b: Bool, c: Bool, d: Bool",
-            "a || b && c || d",
-            expect!["Bool"],
-        );
-    }
-
-    #[test]
-    fn int_addition() {
-        check("x: Int, y: Int", "x + y", expect!["Int"]);
-    }
-
-    #[test]
-    fn float_addition() {
-        check("x: Float, y: Float", "x + y", expect!["Float"]);
-    }
-
-    #[test]
-    fn string_addition() {
-        check("s1: String, s2: String", "s1 + s2", expect!["String"]);
-    }
-
-    #[test]
-    fn int_literal_addition() {
-        check("", "42 + 17", expect!["Int"]);
-    }
-
-    #[test]
-    fn float_literal_addition() {
-        check("", "3.14 + 2.71", expect!["Float"]);
-    }
-
-    #[test]
-    fn string_literal_concatenation() {
-        check("", r#""hello" + " world""#, expect!["String"]);
-    }
-
-    #[test]
-    fn addition_error_int_plus_float() {
-        check(
-            "x: Int, y: Float",
-            "x + y",
-            expect![[r#"
-                error: Cannot add values of incompatible types: Int + Float
-                x + y
-                ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn addition_error_string_plus_int() {
-        check(
-            "name: String, count: Int",
-            "name + count",
-            expect![[r#"
-                error: Cannot add values of incompatible types: String + Int
-                name + count
-                ^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn addition_error_boolean_plus_int() {
-        check(
-            "flag: Bool, count: Int",
-            "flag + count",
-            expect![[r#"
-                error: Cannot add values of incompatible types: Bool + Int
-                flag + count
-                ^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn addition_with_field_access() {
-        check_with_records(
-            "user: User",
-            &["record User {x: Int, y: Int}"],
-            "user.x + user.y",
-            expect!["Int"],
-        );
-    }
-
-    #[test]
-    fn mixed_addition_and_comparison() {
-        check("a: Int, b: Int, c: Int", "a + b > c", expect!["Bool"]);
-    }
-
-    fn check_with_records(env_str: &str, records_str: &[&str], expr_str: &str, expected: Expect) {
+    fn check_with_records(
+        records_str: &[&str],
+        env_vars: &[(&str, &str)],
+        expr_str: &str,
+        expected: Expect,
+    ) {
         let mut env = Environment::new();
         let mut records: Environment<Type> = Environment::new();
         let test_module = ModuleName::new("test".to_string()).unwrap();
@@ -1506,16 +795,12 @@ mod tests {
             let _ = records.push(name.clone(), record_type);
         }
 
-        if !env_str.is_empty() {
-            let mut parser = Parser::from(env_str);
-            let params = parser
-                .parse_parameters()
-                .expect("Failed to parse environment");
-            for param in params {
-                let typ = resolve_type(&param.var_type, &mut records)
-                    .expect("Test parameter type should be valid");
-                let _ = env.push(param.var_name.to_string(), typ);
-            }
+        for (var_name, type_str) in env_vars {
+            let mut parser = Parser::from(*type_str);
+            let syntactic_type = parser.parse_type().expect("Failed to parse type");
+            let typ = resolve_type(&syntactic_type, &mut records)
+                .expect("Test parameter type should be valid");
+            let _ = env.push(var_name.to_string(), typ);
         }
 
         let mut parser = Parser::from(expr_str);
@@ -1536,29 +821,764 @@ mod tests {
     }
 
     #[test]
-    fn record_instantiation_simple() {
+    fn should_reject_equality_between_string_and_number() {
+        check(
+            &[("name", "String"), ("count", "Float")],
+            "name == count",
+            expect![[r#"
+                error: Can not compare String to Float
+                name == count
+                ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_equality_between_boolean_and_string() {
+        check(
+            &[("enabled", "Bool"), ("name", "String")],
+            "enabled == name",
+            expect![[r#"
+                error: Can not compare Bool to String
+                enabled == name
+                ^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_undefined_variable() {
+        check(
+            &[],
+            "undefined_var",
+            expect![[r#"
+                error: Undefined variable: undefined_var
+                undefined_var
+                ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_field_access_on_undefined_variable() {
+        check(
+            &[],
+            "notdefined.foo.bar",
+            expect![[r#"
+                error: Undefined variable: notdefined
+                notdefined.foo.bar
+                ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_field_access_on_non_record() {
+        check(
+            &[("count", "Float")],
+            "count.value",
+            expect![[r#"
+                error: Float can not be used as a record
+                count.value
+                ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_negation_of_string() {
+        check(
+            &[("name", "String")],
+            "!name",
+            expect![[r#"
+                error: Negation operator can only be applied to Bool values
+                !name
+                 ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_negation_of_number() {
+        check(
+            &[("count", "Float")],
+            "!count",
+            expect![[r#"
+                error: Negation operator can only be applied to Bool values
+                !count
+                 ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_field_access_on_nested_array() {
         check_with_records(
-            "",
+            &[
+                "record Profile {name: String, active: Bool}",
+                "record UserInfo {profile: Profile}",
+                "record Config {users: Array[UserInfo]}",
+            ],
+            &[("config", "Config")],
+            "config.users.profile.name",
+            expect![[r#"
+                error: Array[test::UserInfo] can not be used as a record
+                config.users.profile.name
+                ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_field_access_on_array() {
+        check_with_records(
+            &["record User {name: String}"],
+            &[("users", "Array[User]")],
+            "users.name",
+            expect![[r#"
+                error: Array[test::User] can not be used as a record
+                users.name
+                ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_unknown_field_access() {
+        check_with_records(
+            &["record Data {field: String}"],
+            &[("data", "Data")],
+            "data.unknown",
+            expect![[r#"
+                error: Field 'unknown' not found in record 'Data'
+                data.unknown
+                ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_resolve_basic_variable_lookup() {
+        check(&[("name", "String")], "name", expect!["String"]);
+    }
+
+    #[test]
+    fn should_type_string_literal() {
+        check(&[], r#""hello world""#, expect!["String"]);
+    }
+
+    #[test]
+    fn should_type_boolean_literal_true() {
+        check(&[], "true", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_type_boolean_literal_false() {
+        check(&[], "false", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_type_int_literal() {
+        check(&[], "42", expect!["Int"]);
+    }
+
+    #[test]
+    fn should_type_float_literal() {
+        check(&[], "3.14", expect!["Float"]);
+    }
+
+    #[test]
+    fn should_type_field_access() {
+        check_with_records(
+            &["record User {name: String}"],
+            &[("user", "User")],
+            "user.name",
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_type_nested_field_access() {
+        check_with_records(
+            &[
+                "record Profile {name: String}",
+                "record User {profile: Profile}",
+                "record App {user: User}",
+            ],
+            &[("app", "App")],
+            "app.user.profile.name",
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_type_string_equality() {
+        check(&[("name", "String")], r#"name == "alice""#, expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_reject_equality_between_float_and_int() {
+        check(
+            &[("count", "Float")],
+            "count == 42",
+            expect![[r#"
+                error: Can not compare Float to Int
+                count == 42
+                ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_type_boolean_equality() {
+        check(&[("enabled", "Bool")], "enabled == true", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_type_equality_of_same_field_types() {
+        check_with_records(
+            &["record User {name: String}", "record Admin {name: String}"],
+            &[("user", "User"), ("admin", "Admin")],
+            "user.name == admin.name",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_type_chained_equality() {
+        check(
+            &[("a", "Bool"), ("b", "Bool")],
+            "a == b == true",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_type_negation_of_variable() {
+        check(&[("enabled", "Bool")], "!enabled", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_type_negation_of_true() {
+        check(&[], "!true", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_type_negation_of_false() {
+        check(&[], "!false", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_type_greater_than_with_ints() {
+        check(&[("x", "Int"), ("y", "Int")], "x > y", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_type_greater_than_with_floats() {
+        check(&[("x", "Float"), ("y", "Float")], "x > y", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_reject_greater_than_with_mixed_types() {
+        check(
+            &[("x", "Int"), ("y", "Float")],
+            "x > y",
+            expect![[r#"
+                error: Can not compare Int to Float
+                x > y
+                ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_type_less_than_or_equal_with_ints() {
+        check(&[("x", "Int"), ("y", "Int")], "x <= y", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_type_less_than_or_equal_with_floats() {
+        check(&[("x", "Float"), ("y", "Float")], "x <= y", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_reject_less_than_or_equal_with_mixed_types() {
+        check(
+            &[("x", "Int"), ("y", "Float")],
+            "x <= y",
+            expect![[r#"
+                error: Can not compare Int to Float
+                x <= y
+                ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_type_greater_than_or_equal_with_ints() {
+        check(&[("x", "Int"), ("y", "Int")], "x >= y", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_type_greater_than_or_equal_with_floats() {
+        check(&[("x", "Float"), ("y", "Float")], "x >= y", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_reject_greater_than_or_equal_with_mixed_types() {
+        check(
+            &[("x", "Int"), ("y", "Float")],
+            "x >= y",
+            expect![[r#"
+                error: Can not compare Int to Float
+                x >= y
+                ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_type_negation_with_equality() {
+        check_with_records(
+            &["record User {active: Bool}"],
+            &[("user", "User")],
+            "!user.active == false",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_type_parenthesized_negation() {
+        check_with_records(
+            &[
+                "record Status {enabled: Bool}",
+                "record Config {active: Bool}",
+            ],
+            &[("status", "Status"), ("config", "Config")],
+            "!(status.enabled == config.active)",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_type_record_with_array_field() {
+        check_with_records(
+            &["record Data {items: Array[String]}"],
+            &[("data", "Data")],
+            "data.items",
+            expect!["Array[String]"],
+        );
+    }
+
+    #[test]
+    fn should_type_deep_field_access() {
+        check_with_records(
+            &[
+                "record Connection {host: String}",
+                "record Database {connection: Connection}",
+                "record Config {database: Database}",
+                "record System {config: Config}",
+            ],
+            &[("system", "System")],
+            "system.config.database.connection.host",
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_type_multiple_field_accesses() {
+        check_with_records(
+            &["record Obj {name: String, title: String}"],
+            &[("obj", "Obj")],
+            "obj.name == obj.title",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_reject_array_with_different_element_types() {
+        check(
+            &[],
+            "[1, true]",
+            expect![[r#"
+                error: Array elements must all have the same type, found Int and Bool
+                [1, true]
+                    ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_type_array_with_trailing_comma() {
+        check(&[], "[\n\t1,\n\t2,\n\t3,\n]", expect!["Array[Int]"]);
+    }
+
+    #[test]
+    fn should_type_single_element_array_with_trailing_comma() {
+        check(
+            &[],
+            indoc! {r#"
+            [
+            	"hello",
+            ]
+        "#},
+            expect!["Array[String]"],
+        );
+    }
+
+    #[test]
+    fn should_type_string_concatenation() {
+        check(&[], r#""hello" + "world""#, expect!["String"]);
+    }
+
+    #[test]
+    fn should_type_multiple_string_concatenation() {
+        check(&[], r#""hello" + " " + "world""#, expect!["String"]);
+    }
+
+    #[test]
+    fn should_type_string_concatenation_with_variables() {
+        check(
+            &[("greeting", "String"), ("name", "String")],
+            r#"greeting + " " + name"#,
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_reject_concatenation_with_left_number() {
+        check(
+            &[],
+            r#"42 + "hello""#,
+            expect![[r#"
+                error: Cannot add values of incompatible types: Int + String
+                42 + "hello"
+                ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_concatenation_with_right_boolean() {
+        check(
+            &[],
+            r#""hello" + true"#,
+            expect![[r#"
+                error: Cannot add values of incompatible types: String + Bool
+                "hello" + true
+                ^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_type_int_addition() {
+        check(&[], r#"42 + 58"#, expect!["Int"]);
+    }
+
+    #[test]
+    fn should_type_string_concatenation_with_field_access() {
+        check_with_records(
+            &["record User {first_name: String, last_name: String}"],
+            &[("user", "User")],
+            r#"user.first_name + " " + user.last_name"#,
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_type_concatenation_result_comparison() {
+        check(&[], r#""a" + "b" == "ab""#, expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_type_logical_and_with_boolean_variables() {
+        check(&[("a", "Bool"), ("b", "Bool")], "a && b", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_type_logical_and_with_boolean_literals() {
+        check(&[], "true && false", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_type_logical_and_with_field_access() {
+        check_with_records(
+            &["record User {enabled: Bool, active: Bool}"],
+            &[("user", "User")],
+            "user.enabled && user.active",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_type_logical_and_with_comparison() {
+        check(
+            &[("x", "Int"), ("y", "Int"), ("enabled", "Bool")],
+            "x > y && enabled",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_reject_logical_and_with_left_string() {
+        check(
+            &[("name", "String"), ("enabled", "Bool")],
+            "name && enabled",
+            expect![[r#"
+                error: Logical AND operator can only be applied to Bool values
+                name && enabled
+                ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_logical_and_with_right_int() {
+        check(
+            &[("enabled", "Bool"), ("count", "Int")],
+            "enabled && count",
+            expect![[r#"
+                error: Logical AND operator can only be applied to Bool values
+                enabled && count
+                           ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_logical_and_with_both_strings() {
+        check(
+            &[("a", "String"), ("b", "String")],
+            "a && b",
+            expect![[r#"
+                error: Logical AND operator can only be applied to Bool values
+                a && b
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_handle_logical_and_precedence() {
+        check(
+            &[("a", "Bool"), ("b", "Bool"), ("c", "Bool")],
+            "a && b == c",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_type_logical_or_with_boolean_variables() {
+        check(&[("a", "Bool"), ("b", "Bool")], "a || b", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_type_logical_or_with_boolean_literals() {
+        check(&[], "true || false", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_type_logical_or_with_field_access() {
+        check_with_records(
+            &["record User {enabled: Bool, active: Bool}"],
+            &[("user", "User")],
+            "user.enabled || user.active",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_type_logical_or_with_comparison() {
+        check(
+            &[("x", "Int"), ("y", "Int"), ("enabled", "Bool")],
+            "x > y || enabled",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_reject_logical_or_with_left_string() {
+        check(
+            &[("name", "String"), ("enabled", "Bool")],
+            "name || enabled",
+            expect![[r#"
+                error: Logical OR operator can only be applied to Bool values
+                name || enabled
+                ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_logical_or_with_right_int() {
+        check(
+            &[("enabled", "Bool"), ("count", "Int")],
+            "enabled || count",
+            expect![[r#"
+                error: Logical OR operator can only be applied to Bool values
+                enabled || count
+                           ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_logical_or_with_both_strings() {
+        check(
+            &[("a", "String"), ("b", "String")],
+            "a || b",
+            expect![[r#"
+                error: Logical OR operator can only be applied to Bool values
+                a || b
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_handle_logical_or_precedence() {
+        check(
+            &[("a", "Bool"), ("b", "Bool"), ("c", "Bool")],
+            "a || b == c",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_type_mixed_logical_operators() {
+        check(
+            &[("a", "Bool"), ("b", "Bool"), ("c", "Bool")],
+            "a && b || c",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_handle_complex_logical_operator_precedence() {
+        check(
+            &[("a", "Bool"), ("b", "Bool"), ("c", "Bool"), ("d", "Bool")],
+            "a || b && c || d",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_type_int_addition_with_variables() {
+        check(&[("x", "Int"), ("y", "Int")], "x + y", expect!["Int"]);
+    }
+
+    #[test]
+    fn should_type_float_addition_with_variables() {
+        check(&[("x", "Float"), ("y", "Float")], "x + y", expect!["Float"]);
+    }
+
+    #[test]
+    fn should_type_string_addition_with_variables() {
+        check(
+            &[("s1", "String"), ("s2", "String")],
+            "s1 + s2",
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_type_int_literal_addition() {
+        check(&[], "42 + 17", expect!["Int"]);
+    }
+
+    #[test]
+    fn should_type_float_literal_addition() {
+        check(&[], "3.14 + 2.71", expect!["Float"]);
+    }
+
+    #[test]
+    fn should_type_string_literal_concatenation() {
+        check(&[], r#""hello" + " world""#, expect!["String"]);
+    }
+
+    #[test]
+    fn should_reject_addition_of_int_and_float() {
+        check(
+            &[("x", "Int"), ("y", "Float")],
+            "x + y",
+            expect![[r#"
+                error: Cannot add values of incompatible types: Int + Float
+                x + y
+                ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_addition_of_string_and_int() {
+        check(
+            &[("name", "String"), ("count", "Int")],
+            "name + count",
+            expect![[r#"
+                error: Cannot add values of incompatible types: String + Int
+                name + count
+                ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_addition_of_boolean_and_int() {
+        check(
+            &[("flag", "Bool"), ("count", "Int")],
+            "flag + count",
+            expect![[r#"
+                error: Cannot add values of incompatible types: Bool + Int
+                flag + count
+                ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_type_addition_with_field_access() {
+        check_with_records(
+            &["record User {x: Int, y: Int}"],
+            &[("user", "User")],
+            "user.x + user.y",
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_type_mixed_addition_and_comparison() {
+        check(
+            &[("a", "Int"), ("b", "Int"), ("c", "Int")],
+            "a + b > c",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_type_simple_record_instantiation() {
+        check_with_records(
             &["record User {name: String, age: Int}"],
+            &[],
             r#"User(name: "John", age: 30)"#,
             expect!["test::User"],
         );
     }
 
     #[test]
-    fn record_instantiation_with_variables() {
+    fn should_type_record_instantiation_with_variables() {
         check_with_records(
-            "user_name: String, user_age: Int",
             &["record User {name: String, age: Int}"],
+            &[("user_name", "String"), ("user_age", "Int")],
             "User(name: user_name, age: user_age)",
             expect!["test::User"],
         );
     }
 
     #[test]
-    fn record_instantiation_undefined_record() {
+    fn should_reject_instantiation_of_undefined_record() {
         check_with_records(
-            "",
+            &[],
             &[],
             r#"User(name: "John")"#,
             expect![[r#"
@@ -1570,10 +1590,10 @@ mod tests {
     }
 
     #[test]
-    fn record_instantiation_missing_field() {
+    fn should_reject_record_instantiation_with_missing_field() {
         check_with_records(
-            "",
             &["record User {name: String, age: Int}"],
+            &[],
             r#"User(name: "John")"#,
             expect![[r#"
                 error: Missing field 'age' in instantiation of record 'User'
@@ -1584,10 +1604,10 @@ mod tests {
     }
 
     #[test]
-    fn record_instantiation_unknown_field() {
+    fn should_reject_record_instantiation_with_unknown_field() {
         check_with_records(
-            "",
             &["record User {name: String}"],
+            &[],
             r#"User(name: "John", email: "john@example.com")"#,
             expect![[r#"
                 error: Unknown field 'email' in instantiation of record 'User'
@@ -1598,10 +1618,10 @@ mod tests {
     }
 
     #[test]
-    fn record_instantiation_type_mismatch() {
+    fn should_reject_record_instantiation_with_type_mismatch() {
         check_with_records(
-            "",
             &["record User {name: String, age: Int}"],
+            &[],
             r#"User(name: "John", age: "thirty")"#,
             expect![[r#"
                 error: Field 'age' expects type Int, but got String
@@ -1612,13 +1632,13 @@ mod tests {
     }
 
     #[test]
-    fn record_instantiation_nested() {
+    fn should_type_nested_record_instantiation() {
         check_with_records(
-            "",
             &[
                 "record Address {city: String}",
                 "record User {name: String, address: Address}",
             ],
+            &[],
             r#"User(name: "John", address: Address(city: "NYC"))"#,
             expect!["test::User"],
         );
