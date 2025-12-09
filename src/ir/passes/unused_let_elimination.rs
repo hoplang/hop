@@ -111,7 +111,7 @@ mod tests {
     }
 
     #[test]
-    fn should_eliminate_unused_let() {
+    fn should_eliminate_unused_let_in_outermost_scope() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("unused", t.str("value"), |t| {
@@ -129,34 +129,6 @@ mod tests {
                 -- after --
                 Test() {
                   write("Hello")
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_eliminate_nested_unused_let_statements() {
-        check(
-            build_ir_auto("Test", vec![], |t| {
-                t.let_stmt("outer", t.str("outer_value"), |t| {
-                    t.let_stmt("inner", t.str("inner_value"), |t| {
-                        t.write("No variables used");
-                    });
-                });
-            }),
-            expect![[r#"
-                -- before --
-                Test() {
-                  let outer = "outer_value" in {
-                    let inner = "inner_value" in {
-                      write("No variables used")
-                    }
-                  }
-                }
-
-                -- after --
-                Test() {
-                  write("No variables used")
                 }
             "#]],
         );
@@ -420,7 +392,35 @@ mod tests {
     }
 
     #[test]
-    fn should_eliminate_deeply_nested_let_statements() {
+    fn should_eliminate_nested_unused_let_statements() {
+        check(
+            build_ir_auto("Test", vec![], |t| {
+                t.let_stmt("outer", t.str("outer_value"), |t| {
+                    t.let_stmt("inner", t.str("inner_value"), |t| {
+                        t.write("No variables used");
+                    });
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let outer = "outer_value" in {
+                    let inner = "inner_value" in {
+                      write("No variables used")
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  write("No variables used")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_eliminate_deeply_nested_unused_let_statements() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("level1", t.str("value1"), |t| {
