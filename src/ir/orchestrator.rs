@@ -5,7 +5,7 @@ use crate::ir::Compiler;
 use crate::ir::ast::IrEntrypoint;
 use crate::ir::inliner::Inliner;
 use crate::ir::passes::{
-    AlphaRenamingPass, ConstantPropagationPass, DeadCodeEliminationPass, Pass,
+    AlphaRenamingPass, ConstantPropagationPass, UnusedIfEliminationPass, Pass,
     UnusedLetEliminationPass, WriteExprSimplificationPass,
 };
 use crate::ir::transforms::{DoctypeInjector, HtmlStructureInjector, TailwindInjector};
@@ -29,7 +29,7 @@ pub fn orchestrate(
         .map(AlphaRenamingPass::run)
         .map(ConstantPropagationPass::run)
         .map(UnusedLetEliminationPass::run)
-        .map(DeadCodeEliminationPass::run)
+        .map(UnusedIfEliminationPass::run)
         .map(WriteExprSimplificationPass::run)
         .collect())
 }

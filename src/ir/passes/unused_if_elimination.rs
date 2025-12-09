@@ -4,10 +4,10 @@ use crate::ir::{
     ast::{IrEntrypoint, IrStatement},
 };
 
-/// A pass that eliminates dead code, particularly unreachable If branches
-pub struct DeadCodeEliminationPass;
+/// A pass that eliminates unused if branches with constant conditions
+pub struct UnusedIfEliminationPass;
 
-impl DeadCodeEliminationPass {
+impl UnusedIfEliminationPass {
     fn transform_statements(statements: Vec<IrStatement>) -> Vec<IrStatement> {
         statements
             .into_iter()
@@ -33,7 +33,7 @@ impl DeadCodeEliminationPass {
     }
 }
 
-impl Pass for DeadCodeEliminationPass {
+impl Pass for UnusedIfEliminationPass {
     fn run(mut entrypoint: IrEntrypoint) -> IrEntrypoint {
         // First, recursively process all nested bodies using visit_mut
         for stmt in &mut entrypoint.body {
@@ -66,7 +66,7 @@ mod tests {
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
         let before = entrypoint.to_string();
-        let result = DeadCodeEliminationPass::run(entrypoint);
+        let result = UnusedIfEliminationPass::run(entrypoint);
         let after = result.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
