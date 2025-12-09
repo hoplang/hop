@@ -170,7 +170,10 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
         }
         TargetLanguage::Go => {
             timer.start_phase("transpiling to go");
-            let package = resolved.go_package.clone().unwrap_or_else(|| "main".to_string());
+            let package = resolved
+                .go_package
+                .clone()
+                .unwrap_or_else(|| "main".to_string());
             let transpiler = GoTranspiler::new(package);
             transpiler.transpile_module(&ir_entrypoints, &records)
         }

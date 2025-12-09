@@ -73,7 +73,9 @@ pub struct ResolvedConfig {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    #[error("Missing required field 'compile.target'. Expected one of: \"ts\", \"js\", \"go\", \"python\"")]
+    #[error(
+        "Missing required field 'compile.target'. Expected one of: \"ts\", \"js\", \"go\", \"python\""
+    )]
     MissingTarget,
     #[error("Missing required field 'compile.output_path'")]
     MissingOutputPath,
@@ -152,10 +154,7 @@ mod tests {
         "#};
         let result = HopConfig::from_toml_str(toml_str);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("compile.target"));
+        assert!(result.unwrap_err().to_string().contains("compile.target"));
     }
 
     #[test]
@@ -166,10 +165,12 @@ mod tests {
         "#};
         let result = HopConfig::from_toml_str(toml_str);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("compile.output_path"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("compile.output_path")
+        );
     }
 
     #[test]
@@ -193,10 +194,7 @@ mod tests {
         let config = HopConfig::from_toml_str(toml_str).unwrap();
         assert_eq!(config.css.mode, Some("tailwind4".to_string()));
         assert_eq!(config.compile.target, Some(TargetLanguage::Typescript));
-        assert_eq!(
-            config.compile.output_path,
-            Some("app.ts".to_string())
-        );
+        assert_eq!(config.compile.output_path, Some("app.ts".to_string()));
         assert_eq!(config.compile.pages, vec!["main/App"]);
     }
 
@@ -230,10 +228,7 @@ mod tests {
         let resolved = config.get_resolved_config();
         assert_eq!(resolved.target, TargetLanguage::Typescript);
         assert_eq!(resolved.output_path, "app.ts");
-        assert_eq!(
-            resolved.backend_commands,
-            vec!["npm install", "npm start"]
-        );
+        assert_eq!(resolved.backend_commands, vec!["npm install", "npm start"]);
     }
 
     #[test]
