@@ -111,10 +111,9 @@ mod tests {
     }
 
     #[test]
-    fn eliminate_unused_let() {
+    fn should_eliminate_unused_let() {
         check(
             build_ir_auto("Test", vec![], |t| {
-                // Unused let should be eliminated
                 t.let_stmt("unused", t.str("value"), |t| {
                     t.write("Hello");
                 });
@@ -136,34 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn preserve_used_let() {
-        check(
-            build_ir_auto("Test", vec![], |t| {
-                // Used let should be preserved
-                t.let_stmt("message", t.str("Hello"), |t| {
-                    t.write_expr(t.var("message"), false);
-                });
-            }),
-            expect![[r#"
-                -- before --
-                Test() {
-                  let message = "Hello" in {
-                    write_expr(message)
-                  }
-                }
-
-                -- after --
-                Test() {
-                  let message = "Hello" in {
-                    write_expr(message)
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn nested_unused_lets() {
+    fn should_eliminate_nested_unused_let_statements() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("outer", t.str("outer_value"), |t| {
@@ -191,7 +163,33 @@ mod tests {
     }
 
     #[test]
-    fn used_in_nested_structure() {
+    fn should_preserve_let_statement_when_variable_is_used_in_text_expression() {
+        check(
+            build_ir_auto("Test", vec![], |t| {
+                t.let_stmt("message", t.str("Hello"), |t| {
+                    t.write_expr(t.var("message"), false);
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let message = "Hello" in {
+                    write_expr(message)
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let message = "Hello" in {
+                    write_expr(message)
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_preserve_let_statement_when_variable_is_used_in_if_statement() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("cond", t.bool(true), |t| {
@@ -223,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn eliminate_in_if_body() {
+    fn should_eliminate_let_statement_inside_if_body() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.if_stmt(t.bool(true), |t| {
@@ -253,7 +251,7 @@ mod tests {
     }
 
     #[test]
-    fn eliminate_in_for_body() {
+    fn should_eliminate_let_statement_inside_for_loop_body() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 let items = t.array(vec![t.str("a"), t.str("b")]);
@@ -284,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn used_in_binary_op() {
+    fn should_preserve_let_statement_when_variable_is_used_in_binary_op() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("x", t.bool(true), |t| {
@@ -322,7 +320,7 @@ mod tests {
     }
 
     #[test]
-    fn multiple_unused_lets_in_sequence() {
+    fn should_eliminate_let_statements_declared_in_sequence() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("a", t.str("a_value"), |t| {
@@ -356,7 +354,7 @@ mod tests {
     }
 
     #[test]
-    fn variable_used_in_array() {
+    fn should_preserve_let_statement_when_variable_is_used_inside_array() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 let items = t.array(vec![t.str("a"), t.str("b")]);
@@ -389,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn sibling_lets_same_name_first_used() {
+    fn should_eliminate_let_statement_when_sibling_statement_uses_same_variable() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("x", t.str("first x"), |t| {
@@ -422,7 +420,7 @@ mod tests {
     }
 
     #[test]
-    fn quadruple_nested_unused_lets() {
+    fn should_eliminate_deeply_nested_let_statements() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.let_stmt("level1", t.str("value1"), |t| {
