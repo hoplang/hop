@@ -239,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn should_parse_an_import() {
+    fn should_accept_import_with_simple_path() {
         check(
             indoc! {r#"
                 import UserList from "@/user_list"
@@ -254,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn should_parse_an_import_with_a_path() {
+    fn should_accept_import_with_nested_path() {
         check(
             indoc! {r#"
                 import Header from "@/components/header"
@@ -269,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_an_error_when_missing_at_prefix() {
+    fn should_reject_import_when_path_is_missing_at_prefix() {
         check(
             indoc! {r#"
                 import Header from "./components/header"
@@ -281,7 +281,7 @@ mod tests {
     }
 
     #[test]
-    fn should_parse_a_record() {
+    fn should_accept_record_with_multiple_fields() {
         check(
             indoc! {"
                 record User {name: String, age: Int}
@@ -298,7 +298,7 @@ mod tests {
     }
 
     #[test]
-    fn should_parse_a_record_with_a_nested_field_type() {
+    fn should_accept_record_with_nested_array_field_type() {
         check(
             indoc! {"
                 record UserList {users: Array[User]}
@@ -314,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    fn should_ignore_html_tags() {
+    fn should_return_none_when_input_is_html() {
         check(
             indoc! {"
                 <div>hello</div>
@@ -324,7 +324,7 @@ mod tests {
     }
 
     #[test]
-    fn should_handle_leading_empty_lines() {
+    fn should_accept_import_with_leading_empty_lines() {
         check(
             indoc! {r#"
 

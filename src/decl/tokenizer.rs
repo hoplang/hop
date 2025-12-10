@@ -192,7 +192,7 @@ mod tests {
     }
 
     #[test]
-    fn import_statement() {
+    fn should_accept_import_statement() {
         check(
             r#"import UserList from "@/user_list""#,
             expect![[r#"
@@ -216,7 +216,7 @@ mod tests {
     }
 
     #[test]
-    fn record_statement() {
+    fn should_accept_record_statement() {
         check(
             "record User {name: String, age: Int}",
             expect![[r#"
@@ -268,7 +268,7 @@ mod tests {
     }
 
     #[test]
-    fn record_with_array() {
+    fn should_accept_record_with_array_field() {
         check(
             "record UserList {users: Array[User]}",
             expect![[r#"
@@ -316,7 +316,7 @@ mod tests {
     }
 
     #[test]
-    fn multiline_record() {
+    fn should_accept_multiline_record() {
         check(
             indoc! {"
                 record User {
@@ -377,7 +377,7 @@ mod tests {
     }
 
     #[test]
-    fn unexpected_character() {
+    fn should_reject_when_containing_unexpected_character() {
         check(
             "record User @",
             expect![[r#"
@@ -397,7 +397,7 @@ mod tests {
     }
 
     #[test]
-    fn multiple_declarations() {
+    fn should_accept_multiple_import_declarations() {
         check(
             indoc! {r#"
                 import Foo from "@/foo"
@@ -440,7 +440,7 @@ mod tests {
     }
 
     #[test]
-    fn import_then_record() {
+    fn should_accept_import_followed_by_record() {
         check(
             indoc! {r#"
                 import Foo from "@/foo"
@@ -495,7 +495,7 @@ mod tests {
     }
 
     #[test]
-    fn whitespace_variations() {
+    fn should_accept_varying_whitespace_between_tokens() {
         check(
             "record  User  {  name :  String  }",
             expect![[r#"
@@ -531,7 +531,7 @@ mod tests {
     }
 
     #[test]
-    fn nested_arrays() {
+    fn should_accept_record_with_nested_array_types() {
         check(
             "record Data {matrix: Array[Array[Int]]}",
             expect![[r#"
@@ -591,7 +591,7 @@ mod tests {
     }
 
     #[test]
-    fn identifiers_with_underscores() {
+    fn should_accept_identifiers_containing_underscores() {
         check(
             "record my_record {field_name: String}",
             expect![[r#"
