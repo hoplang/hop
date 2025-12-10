@@ -4,7 +4,7 @@ pub mod evaluator;
 pub mod passes;
 #[cfg(test)]
 pub mod test_utils;
-pub mod transforms;
+pub mod transform;
 pub mod transpile;
 
 pub use ast::{IrEntrypoint, IrExpr};

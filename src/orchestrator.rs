@@ -7,7 +7,7 @@ use crate::ir::passes::{
     AlphaRenamingPass, ConstantPropagationPass, UnusedIfEliminationPass, Pass,
     UnusedLetEliminationPass, WriteExprSimplificationPass,
 };
-use crate::ir::transforms::{DoctypeInjector, HtmlStructureInjector, TailwindInjector};
+use crate::ir::transform::{DoctypeInjector, HtmlStructureInjector, TailwindInjector};
 use anyhow::Result;
 use std::collections::HashMap;
 
