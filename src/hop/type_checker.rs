@@ -54,13 +54,11 @@ impl ModuleTypeInformation {
         }
     }
 
-    /// Check if the component accepts children (has a `children: TrustedHTML` parameter)
+    /// Check if the component accepts children (has a `children` parameter)
     fn component_accepts_children(&self, component_name: &str) -> bool {
-        self.components.get(component_name).is_some_and(|c| {
-            c.parameter_types
-                .iter()
-                .any(|(name, typ)| name == "children" && *typ == Type::TrustedHTML)
-        })
+        self.components
+            .get(component_name)
+            .is_some_and(|c| c.parameter_types.iter().any(|(name, _)| name == "children"))
     }
 
     fn component_is_declared(&self, component_name: &str) -> bool {
@@ -171,6 +169,7 @@ fn typecheck_module(
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> TypedAst {
+    // Initialize module state
     state.modules.insert(
         module.name.clone(),
         ModuleTypeInformation {
@@ -272,7 +271,6 @@ fn typecheck_module(
 
     let mut env = Environment::new();
 
-    // Build typed component definitions
     let mut typed_component_definitions = Vec::new();
 
     for component_def in module.get_component_definitions() {
