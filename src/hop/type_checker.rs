@@ -827,12 +827,12 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_empty_file() {
+    fn should_accept_empty_file() {
         check("-- main.hop --", expect![[r#""#]]);
     }
 
     #[test]
-    fn should_allow_component_definition_without_parameters() {
+    fn should_accept_component_definition_without_parameters() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -844,7 +844,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_an_undefined_component_is_referenced() {
+    fn should_reject_when_an_undefined_component_is_referenced() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -867,7 +867,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_a_component_references_itself() {
+    fn should_reject_when_a_component_references_itself() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -886,7 +886,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_an_import_references_a_module_that_does_not_exist() {
+    fn should_reject_when_an_import_references_a_module_that_does_not_exist() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -905,7 +905,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_an_import_references_a_component_that_does_not_exist() {
+    fn should_reject_when_an_import_references_a_component_that_does_not_exist() {
         check(
             indoc! {r#"
                 -- other.hop --
@@ -927,7 +927,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_a_component_to_be_imported_without_being_used() {
+    fn should_accept_a_component_to_be_imported_without_being_used() {
         check(
             indoc! {r#"
                 -- other.hop --
@@ -971,7 +971,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_components_in_different_modules_to_have_same_name() {
+    fn should_accept_components_in_different_modules_to_have_same_name() {
         check(
             indoc! {r#"
                 -- other.hop --
@@ -987,7 +987,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_children_are_passed_to_component_that_does_not_accept_them() {
+    fn should_reject_when_children_are_passed_to_component_that_does_not_accept_them() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1012,8 +1012,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_children_are_passed_to_an_imported_component_that_does_not_accept_them()
-     {
+    fn should_reject_when_children_are_passed_to_an_imported_component_that_does_not_accept_them() {
         check(
             indoc! {r#"
                 -- other.hop --
@@ -1040,7 +1039,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_a_variable_shadows_a_parameter() {
+    fn should_reject_when_a_variable_shadows_a_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1064,7 +1063,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_a_variable_shadows_another_variable() {
+    fn should_reject_when_a_variable_shadows_another_variable() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1092,7 +1091,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_an_undefined_variable_is_referenced() {
+    fn should_reject_when_an_undefined_variable_is_referenced() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1120,7 +1119,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_a_loop_variable_is_unused() {
+    fn should_reject_when_a_loop_variable_is_unused() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1178,7 +1177,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_a_component_parameter_is_unused() {
+    fn should_reject_when_a_component_parameter_is_unused() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1213,7 +1212,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_component_arguments_to_be_passed_in_any_order() {
+    fn should_accept_component_arguments_to_be_passed_in_any_order() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1265,7 +1264,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_a_component_is_missing_an_argument() {
+    fn should_reject_when_a_component_is_missing_an_argument() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1289,7 +1288,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_a_component_is_passed_an_extra_argument() {
+    fn should_reject_when_a_component_is_passed_an_extra_argument() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1311,7 +1310,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_no_arguments_are_passed_to_component() {
+    fn should_reject_when_no_arguments_are_passed_to_component() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1335,7 +1334,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_arguments_are_passed_to_component_that_does_not_accept_them() {
+    fn should_reject_when_arguments_are_passed_to_component_that_does_not_accept_them() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1357,7 +1356,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_iterating_over_a_boolean() {
+    fn should_reject_when_iterating_over_a_boolean() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1388,7 +1387,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_component_with_string_parameter() {
+    fn should_accept_component_with_string_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1412,7 +1411,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_component_with_bool_parameter() {
+    fn should_accept_component_with_bool_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1438,7 +1437,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_component_with_float_parameter() {
+    fn should_accept_component_with_float_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1464,7 +1463,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_component_with_record_parameter() {
+    fn should_accept_component_with_record_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1520,7 +1519,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_component_with_array_parameter() {
+    fn should_accept_component_with_array_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1558,7 +1557,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_deeply_nested_field_accesses() {
+    fn should_accept_deeply_nested_field_accesses() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1612,7 +1611,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_strings_to_be_used_in_equals_expression() {
+    fn should_accept_strings_to_be_used_in_equals_expression() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1650,7 +1649,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_multiple_loops_to_use_same_variable_name() {
+    fn should_accept_multiple_loops_to_use_same_variable_name() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1717,7 +1716,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_iteration_over_array() {
+    fn should_accept_iteration_over_array() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1756,7 +1755,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_iteration_over_nested_array() {
+    fn should_accept_iteration_over_nested_array() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1810,7 +1809,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_components_to_call_each_other_in_a_chain() {
+    fn should_accept_components_to_call_each_other_in_a_chain() {
         check(
             indoc! {r#"
                 -- bar.hop --
@@ -1925,7 +1924,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_different_types_with_same_name_are_used_in_place_of_eachother() {
+    fn should_reject_when_different_types_with_same_name_are_used_in_place_of_eachother() {
         check(
             indoc! {r#"
                 -- foo.hop --
@@ -1967,8 +1966,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_identical_types_in_different_modules_are_used_in_place_of_eachother()
-    {
+    fn should_reject_when_identical_types_in_different_modules_are_used_in_place_of_eachother() {
         check(
             indoc! {r#"
                 -- foo.hop --
@@ -2012,7 +2010,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_expressions_to_be_used_as_attributes() {
+    fn should_accept_expressions_to_be_used_as_attributes() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2044,7 +2042,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_children_to_be_passed_to_component() {
+    fn should_accept_children_to_be_passed_to_component() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2076,7 +2074,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_field_access_is_performed_on_array() {
+    fn should_reject_when_field_access_is_performed_on_array() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2100,7 +2098,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_if_statement() {
+    fn should_accept_if_statement() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2128,7 +2126,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_records_are_used_in_equals_expression() {
+    fn should_reject_when_records_are_used_in_equals_expression() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2152,7 +2150,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_an_int_is_passed_to_component_that_accepts_string() {
+    fn should_reject_when_an_int_is_passed_to_component_that_accepts_string() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2174,7 +2172,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_a_string_is_passed_to_component_that_accepts_bool() {
+    fn should_reject_when_a_string_is_passed_to_component_that_accepts_bool() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2198,7 +2196,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_an_error_when_non_bool_is_used_as_if_condition() {
+    fn should_reject_when_non_bool_is_used_as_if_condition() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2219,7 +2217,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_an_error_when_a_type_error_occurs_in_an_argument_list() {
+    fn should_reject_when_a_type_error_occurs_in_an_argument_list() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2247,7 +2245,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_an_error_when_iterating_over_empty_array() {
+    fn should_reject_when_iterating_over_empty_array() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2315,7 +2313,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_using_bool_in_text_expression() {
+    fn should_reject_when_using_bool_in_text_expression() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2334,7 +2332,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_an_undefined_type_is_used_in_parameter_type() {
+    fn should_reject_when_an_undefined_type_is_used_in_parameter_type() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2352,7 +2350,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_an_undefined_type_is_used_in_nested_parameter_type() {
+    fn should_reject_when_an_undefined_type_is_used_in_nested_parameter_type() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2370,7 +2368,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_a_record_references_itself() {
+    fn should_reject_when_a_record_references_itself() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2393,7 +2391,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_referencing_a_record_defined_below() {
+    fn should_reject_when_referencing_a_record_defined_below() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2419,7 +2417,7 @@ mod tests {
 
     // Test that accessing a field on a record type works
     #[test]
-    fn should_allow_accessing_a_record_field() {
+    fn should_accept_accessing_a_record_field() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2445,7 +2443,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_a_nonexistent_field_is_accessed_on_record() {
+    fn should_reject_when_a_nonexistent_field_is_accessed_on_record() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2465,7 +2463,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_access_of_nested_record_field() {
+    fn should_accept_access_of_nested_record_field() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2520,7 +2518,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_import_and_use_of_records_declared_in_other_modules() {
+    fn should_accept_import_and_use_of_records_declared_in_other_modules() {
         check(
             indoc! {r#"
                 -- foo.hop --

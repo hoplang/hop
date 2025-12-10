@@ -936,32 +936,32 @@ mod tests {
     }
 
     #[test]
-    fn should_type_string_literal() {
+    fn should_accept_string_literal() {
         check(&[], &[], r#""hello world""#, expect!["String"]);
     }
 
     #[test]
-    fn should_type_boolean_literal_true() {
+    fn should_accept_boolean_literal_true() {
         check(&[], &[], "true", expect!["Bool"]);
     }
 
     #[test]
-    fn should_type_boolean_literal_false() {
+    fn should_accept_boolean_literal_false() {
         check(&[], &[], "false", expect!["Bool"]);
     }
 
     #[test]
-    fn should_type_int_literal() {
+    fn should_accept_int_literal() {
         check(&[], &[], "42", expect!["Int"]);
     }
 
     #[test]
-    fn should_type_float_literal() {
+    fn should_accept_float_literal() {
         check(&[], &[], "3.14", expect!["Float"]);
     }
 
     #[test]
-    fn should_type_field_access() {
+    fn should_accept_field_access() {
         check(
             &["record User {name: String}"],
             &[("user", "User")],
@@ -971,7 +971,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_nested_field_access() {
+    fn should_accept_nested_field_access() {
         check(
             &[
                 "record Profile {name: String}",
@@ -985,7 +985,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_string_equality() {
+    fn should_accept_string_equality() {
         check(
             &[],
             &[("name", "String")],
@@ -1009,7 +1009,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_boolean_equality() {
+    fn should_accept_boolean_equality() {
         check(
             &[],
             &[("enabled", "Bool")],
@@ -1019,7 +1019,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_equality_of_same_field_types() {
+    fn should_accept_equality_of_same_field_types() {
         check(
             &["record User {name: String}", "record Admin {name: String}"],
             &[("user", "User"), ("admin", "Admin")],
@@ -1029,7 +1029,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_chained_equality() {
+    fn should_accept_chained_equality() {
         check(
             &[],
             &[("a", "Bool"), ("b", "Bool")],
@@ -1039,27 +1039,27 @@ mod tests {
     }
 
     #[test]
-    fn should_type_negation_of_variable() {
+    fn should_accept_negation_of_variable() {
         check(&[], &[("enabled", "Bool")], "!enabled", expect!["Bool"]);
     }
 
     #[test]
-    fn should_type_negation_of_true() {
+    fn should_accept_negation_of_true() {
         check(&[], &[], "!true", expect!["Bool"]);
     }
 
     #[test]
-    fn should_type_negation_of_false() {
+    fn should_accept_negation_of_false() {
         check(&[], &[], "!false", expect!["Bool"]);
     }
 
     #[test]
-    fn should_type_greater_than_with_ints() {
+    fn should_accept_greater_than_with_ints() {
         check(&[], &[("x", "Int"), ("y", "Int")], "x > y", expect!["Bool"]);
     }
 
     #[test]
-    fn should_type_greater_than_with_floats() {
+    fn should_accept_greater_than_with_floats() {
         check(
             &[],
             &[("x", "Float"), ("y", "Float")],
@@ -1083,7 +1083,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_less_than_or_equal_with_ints() {
+    fn should_accept_less_than_or_equal_with_ints() {
         check(
             &[],
             &[("x", "Int"), ("y", "Int")],
@@ -1093,7 +1093,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_less_than_or_equal_with_floats() {
+    fn should_accept_less_than_or_equal_with_floats() {
         check(
             &[],
             &[("x", "Float"), ("y", "Float")],
@@ -1117,7 +1117,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_greater_than_or_equal_with_ints() {
+    fn should_accept_greater_than_or_equal_with_ints() {
         check(
             &[],
             &[("x", "Int"), ("y", "Int")],
@@ -1127,7 +1127,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_greater_than_or_equal_with_floats() {
+    fn should_accept_greater_than_or_equal_with_floats() {
         check(
             &[],
             &[("x", "Float"), ("y", "Float")],
@@ -1151,7 +1151,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_negation_with_equality() {
+    fn should_accept_negation_with_equality() {
         check(
             &["record User {active: Bool}"],
             &[("user", "User")],
@@ -1161,7 +1161,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_parenthesized_negation() {
+    fn should_accept_parenthesized_negation() {
         check(
             &[
                 "record Status {enabled: Bool}",
@@ -1174,7 +1174,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_record_with_array_field() {
+    fn should_accept_record_with_array_field() {
         check(
             &["record Data {items: Array[String]}"],
             &[("data", "Data")],
@@ -1184,7 +1184,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_deep_field_access() {
+    fn should_accept_deep_field_access() {
         check(
             &[
                 "record Connection {host: String}",
@@ -1199,7 +1199,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_multiple_field_accesses() {
+    fn should_accept_multiple_field_accesses() {
         check(
             &["record Obj {name: String, title: String}"],
             &[("obj", "Obj")],
@@ -1223,12 +1223,12 @@ mod tests {
     }
 
     #[test]
-    fn should_type_array_with_trailing_comma() {
+    fn should_accept_array_with_trailing_comma() {
         check(&[], &[], "[\n\t1,\n\t2,\n\t3,\n]", expect!["Array[Int]"]);
     }
 
     #[test]
-    fn should_type_single_element_array_with_trailing_comma() {
+    fn should_accept_single_element_array_with_trailing_comma() {
         check(
             &[],
             &[],
@@ -1242,17 +1242,17 @@ mod tests {
     }
 
     #[test]
-    fn should_type_string_concatenation() {
+    fn should_accept_string_concatenation() {
         check(&[], &[], r#""hello" + "world""#, expect!["String"]);
     }
 
     #[test]
-    fn should_type_multiple_string_concatenation() {
+    fn should_accept_multiple_string_concatenation() {
         check(&[], &[], r#""hello" + " " + "world""#, expect!["String"]);
     }
 
     #[test]
-    fn should_type_string_concatenation_with_variables() {
+    fn should_accept_string_concatenation_with_variables() {
         check(
             &[],
             &[("greeting", "String"), ("name", "String")],
@@ -1290,12 +1290,12 @@ mod tests {
     }
 
     #[test]
-    fn should_type_int_addition() {
+    fn should_accept_int_addition() {
         check(&[], &[], r#"42 + 58"#, expect!["Int"]);
     }
 
     #[test]
-    fn should_type_string_concatenation_with_field_access() {
+    fn should_accept_string_concatenation_with_field_access() {
         check(
             &["record User {first_name: String, last_name: String}"],
             &[("user", "User")],
@@ -1305,12 +1305,12 @@ mod tests {
     }
 
     #[test]
-    fn should_type_concatenation_result_comparison() {
+    fn should_accept_concatenation_result_comparison() {
         check(&[], &[], r#""a" + "b" == "ab""#, expect!["Bool"]);
     }
 
     #[test]
-    fn should_type_logical_and_with_boolean_variables() {
+    fn should_accept_logical_and_with_boolean_variables() {
         check(
             &[],
             &[("a", "Bool"), ("b", "Bool")],
@@ -1320,12 +1320,12 @@ mod tests {
     }
 
     #[test]
-    fn should_type_logical_and_with_boolean_literals() {
+    fn should_accept_logical_and_with_boolean_literals() {
         check(&[], &[], "true && false", expect!["Bool"]);
     }
 
     #[test]
-    fn should_type_logical_and_with_field_access() {
+    fn should_accept_logical_and_with_field_access() {
         check(
             &["record User {enabled: Bool, active: Bool}"],
             &[("user", "User")],
@@ -1335,7 +1335,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_logical_and_with_comparison() {
+    fn should_accept_logical_and_with_comparison() {
         check(
             &[],
             &[("x", "Int"), ("y", "Int"), ("enabled", "Bool")],
@@ -1397,7 +1397,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_logical_or_with_boolean_variables() {
+    fn should_accept_logical_or_with_boolean_variables() {
         check(
             &[],
             &[("a", "Bool"), ("b", "Bool")],
@@ -1407,12 +1407,12 @@ mod tests {
     }
 
     #[test]
-    fn should_type_logical_or_with_boolean_literals() {
+    fn should_accept_logical_or_with_boolean_literals() {
         check(&[], &[], "true || false", expect!["Bool"]);
     }
 
     #[test]
-    fn should_type_logical_or_with_field_access() {
+    fn should_accept_logical_or_with_field_access() {
         check(
             &["record User {enabled: Bool, active: Bool}"],
             &[("user", "User")],
@@ -1422,7 +1422,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_logical_or_with_comparison() {
+    fn should_accept_logical_or_with_comparison() {
         check(
             &[],
             &[("x", "Int"), ("y", "Int"), ("enabled", "Bool")],
@@ -1484,7 +1484,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_mixed_logical_operators() {
+    fn should_accept_mixed_logical_operators() {
         check(
             &[],
             &[("a", "Bool"), ("b", "Bool"), ("c", "Bool")],
@@ -1504,12 +1504,12 @@ mod tests {
     }
 
     #[test]
-    fn should_type_int_addition_with_variables() {
+    fn should_accept_int_addition_with_variables() {
         check(&[], &[("x", "Int"), ("y", "Int")], "x + y", expect!["Int"]);
     }
 
     #[test]
-    fn should_type_float_addition_with_variables() {
+    fn should_accept_float_addition_with_variables() {
         check(
             &[],
             &[("x", "Float"), ("y", "Float")],
@@ -1519,7 +1519,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_string_addition_with_variables() {
+    fn should_accept_string_addition_with_variables() {
         check(
             &[],
             &[("s1", "String"), ("s2", "String")],
@@ -1529,17 +1529,17 @@ mod tests {
     }
 
     #[test]
-    fn should_type_int_literal_addition() {
+    fn should_accept_int_literal_addition() {
         check(&[], &[], "42 + 17", expect!["Int"]);
     }
 
     #[test]
-    fn should_type_float_literal_addition() {
+    fn should_accept_float_literal_addition() {
         check(&[], &[], "3.14 + 2.71", expect!["Float"]);
     }
 
     #[test]
-    fn should_type_string_literal_concatenation() {
+    fn should_accept_string_literal_concatenation() {
         check(&[], &[], r#""hello" + " world""#, expect!["String"]);
     }
 
@@ -1586,7 +1586,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_addition_with_field_access() {
+    fn should_accept_addition_with_field_access() {
         check(
             &["record User {x: Int, y: Int}"],
             &[("user", "User")],
@@ -1596,7 +1596,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_mixed_addition_and_comparison() {
+    fn should_accept_mixed_addition_and_comparison() {
         check(
             &[],
             &[("a", "Int"), ("b", "Int"), ("c", "Int")],
@@ -1606,7 +1606,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_simple_record_instantiation() {
+    fn should_accept_simple_record_instantiation() {
         check(
             &["record User {name: String, age: Int}"],
             &[],
@@ -1616,7 +1616,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_record_instantiation_with_variables() {
+    fn should_accept_record_instantiation_with_variables() {
         check(
             &["record User {name: String, age: Int}"],
             &[("user_name", "String"), ("user_age", "Int")],
@@ -1682,7 +1682,7 @@ mod tests {
     }
 
     #[test]
-    fn should_type_nested_record_instantiation() {
+    fn should_accept_nested_record_instantiation() {
         check(
             &[
                 "record Address {city: String}",

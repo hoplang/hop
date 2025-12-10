@@ -505,12 +505,12 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_empty_file() {
+    fn should_accept_empty_file() {
         check("", expect![[""]]);
     }
 
     #[test]
-    fn should_allow_nested_for_loops() {
+    fn should_accept_nested_for_loops() {
         check(
             indoc! {"
                 record T {
@@ -546,7 +546,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_script_and_style_tag_content_as_raw_text() {
+    fn should_accept_script_and_style_tag_content_as_raw_text() {
         check(
             indoc! {r#"
                 <Main>
@@ -568,7 +568,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_form_with_inputs() {
+    fn should_accept_form_with_inputs() {
         check(
             indoc! {r#"
                 <Main>
@@ -587,7 +587,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_tags_are_not_closed() {
+    fn should_reject_when_tags_are_not_closed() {
         check(
             indoc! {"
                 <Main>
@@ -619,7 +619,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_void_tag_is_closed_with_closing_tag() {
+    fn should_reject_when_void_tag_is_closed_with_closing_tag() {
         check(
             indoc! {"
                 <Main>
@@ -648,7 +648,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_void_tags_to_be_self_closing() {
+    fn should_accept_void_tags_to_be_self_closing() {
         check(
             indoc! {r#"
                 import Bar from "@/bar"
@@ -668,7 +668,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_doctype_tags_inside_components() {
+    fn should_accept_doctype_tags_inside_components() {
         check(
             indoc! {"
                 <Main {foo: String}>
@@ -690,7 +690,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_closing_tag_does_not_have_matching_opening_tag() {
+    fn should_reject_when_closing_tag_does_not_have_matching_opening_tag() {
         check(
             indoc! {"
                 <Main>
@@ -719,7 +719,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_component_name_contains_dash() {
+    fn should_reject_when_component_name_contains_dash() {
         check(
             indoc! {"
                 <Foo-bar>
@@ -734,7 +734,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_expression_is_missing_in_if_tag() {
+    fn should_reject_when_expression_is_missing_in_if_tag() {
         check(
             indoc! {"
                 <Main>
@@ -753,7 +753,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_expression_is_missing_in_for_tag() {
+    fn should_reject_when_expression_is_missing_in_for_tag() {
         check(
             indoc! {"
                 <Main>
@@ -772,7 +772,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_component_parameter_name_starts_with_uppercase_letter() {
+    fn should_reject_when_component_parameter_name_starts_with_uppercase_letter() {
         check(
             indoc! {"
                 <Main {Data: String}>
@@ -788,7 +788,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_for_tag_has_invalid_expression() {
+    fn should_reject_when_for_tag_has_invalid_expression() {
         check(
             indoc! {"
                 <Main>
@@ -807,7 +807,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_if_tag_has_invalid_expression() {
+    fn should_reject_when_if_tag_has_invalid_expression() {
         check(
             indoc! {"
                 <Main>
@@ -826,7 +826,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_component_parameter_has_invalid_type_name() {
+    fn should_reject_when_component_parameter_has_invalid_type_name() {
         check(
             indoc! {"
                 <Main {data: invalid}>
@@ -842,7 +842,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_component_parameter_has_parse_error_in_type_name() {
+    fn should_reject_when_component_parameter_has_parse_error_in_type_name() {
         check(
             indoc! {"
                 <Main {data: Array[}>
@@ -858,7 +858,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_field_access_on_record() {
+    fn should_accept_field_access_on_record() {
         check(
             indoc! {r#"
                 record User {
@@ -876,7 +876,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_multiple_expressions_in_class_attribute() {
+    fn should_accept_multiple_expressions_in_class_attribute() {
         check(
             indoc! {r#"
                 <Main {style1: String, style2: String, style3: String}>
@@ -890,7 +890,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_an_import_is_imported_twice() {
+    fn should_reject_when_an_import_is_imported_twice() {
         check(
             indoc! {r#"
                 import Foo from "@/other"
@@ -910,7 +910,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_a_component_is_defined_twice() {
+    fn should_reject_when_a_component_is_defined_twice() {
         check(
             indoc! {r#"
                 <Foo>
@@ -929,7 +929,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_a_component_is_defined_with_the_same_name_as_an_import() {
+    fn should_reject_when_a_component_is_defined_with_the_same_name_as_an_import() {
         check(
             indoc! {r#"
                 import Foo from "@/other"
@@ -951,7 +951,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_a_component_is_defined_with_the_same_name_as_a_record() {
+    fn should_reject_when_a_component_is_defined_with_the_same_name_as_a_record() {
         check(
             indoc! {r#"
                 record User {
@@ -971,7 +971,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_a_record_is_defined_with_the_same_name_as_an_import() {
+    fn should_reject_when_a_record_is_defined_with_the_same_name_as_an_import() {
         check(
             indoc! {r#"
                 import User from "@/other"
@@ -990,7 +990,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_an_import_does_not_start_with_at_sign() {
+    fn should_reject_when_an_import_does_not_start_with_at_sign() {
         check(
             indoc! {r#"
                 import Foo from "other"
@@ -1008,7 +1008,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_import_contains_dot_dot() {
+    fn should_reject_when_import_contains_dot_dot() {
         check(
             indoc! {r#"
                 import Foo from "@/../foo"
@@ -1026,7 +1026,7 @@ mod tests {
     }
 
     #[test]
-    fn should_raise_error_when_import_contains_invalid_character() {
+    fn should_reject_when_import_contains_invalid_character() {
         check(
             indoc! {r#"
                 import Bar from "@/foo/bar!baz"
@@ -1044,7 +1044,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_component_references() {
+    fn should_accept_component_references() {
         check(
             indoc! {"
                 <Main {p: String}>
@@ -1060,7 +1060,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_component_references_with_params() {
+    fn should_accept_component_references_with_params() {
         check(
             indoc! {r#"
                 import Foo from "@/foo"
@@ -1081,7 +1081,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_for_loop() {
+    fn should_accept_for_loop() {
         check(
             indoc! {"
                 <Main {item: Array[String]}>
@@ -1098,7 +1098,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_for_loop_with_text_expression() {
+    fn should_accept_for_loop_with_text_expression() {
         check(
             indoc! {"
                 <Main {foo: Array[String]}>
@@ -1116,7 +1116,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_if_statement() {
+    fn should_accept_if_statement() {
         check(
             indoc! {"
                 <Main {x: Int, y: Int}>
@@ -1133,7 +1133,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_if_statement_with_nested_for_loop() {
+    fn should_accept_if_statement_with_nested_for_loop() {
         check(
             indoc! {"
                 <Main {x: Bool, data: Array[String]}>
@@ -1153,7 +1153,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_complex_svg_structure() {
+    fn should_accept_complex_svg_structure() {
         check(
             indoc! {r#"
                 <Main>
@@ -1186,7 +1186,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_component_parameter_to_have_a_string_type() {
+    fn should_accept_component_parameter_with_string_type() {
         check(
             indoc! {"
                 <Main {data: String}>
@@ -1201,7 +1201,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_component_parameter_to_have_a_record_type() {
+    fn should_accept_component_parameter_with_record_type() {
         check(
             indoc! {"
                 record Data {
@@ -1222,7 +1222,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_component_parameter_to_have_an_array_type() {
+    fn should_accept_component_parameter_with_array_type() {
         check(
             indoc! {"
                 <Main {items: Array[String]}>
@@ -1240,7 +1240,7 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_component_parameter_to_have_an_array_of_record_type() {
+    fn should_accept_component_parameter_with_array_of_record_type() {
         check(
             indoc! {"
                 record Section {
