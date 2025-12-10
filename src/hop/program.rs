@@ -6,7 +6,7 @@ use crate::hop::parser::parse;
 use crate::hop::toposorter::TopoSorter;
 use crate::hop::type_error::TypeError;
 use crate::ir;
-use crate::ir::orchestrator::orchestrate;
+use crate::orchestrator::orchestrate;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 

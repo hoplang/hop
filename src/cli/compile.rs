@@ -4,10 +4,8 @@ use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::component_name::ComponentName;
 use crate::hop::module_name::ModuleName;
 use crate::hop::program::Program;
-use crate::ir::{
-    GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, RecordInfo, Transpiler,
-    orchestrator::orchestrate,
-};
+use crate::ir::{GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, RecordInfo, Transpiler};
+use crate::orchestrator::orchestrate;
 use crate::tui::timing;
 use anyhow::Result;
 use std::path::{Path, PathBuf};

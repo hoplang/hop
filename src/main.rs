@@ -7,6 +7,7 @@ mod error_collector;
 mod filesystem;
 mod hop;
 mod ir;
+mod orchestrator;
 mod test_utils;
 mod tui;
 
