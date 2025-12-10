@@ -1,5 +1,3 @@
-//! Parser for declaration syntax (import and record declarations).
-
 use std::iter::Peekable;
 
 use crate::document::document_cursor::DocumentRange;

@@ -1,5 +1,3 @@
-//! Tokenizer for declaration syntax (import and record declarations).
-
 use itertools::Itertools as _;
 use std::iter::Peekable;
 
