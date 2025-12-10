@@ -3,8 +3,8 @@ use crate::hop::component_name::ComponentName;
 use crate::hop::module_name::ModuleName;
 use crate::hop::inliner::Inliner;
 use crate::ir::{Compiler, IrEntrypoint};
-use crate::ir::passes::{
-    AlphaRenamingPass, ConstantPropagationPass, UnusedIfEliminationPass, Pass,
+use crate::ir::optimize::{
+    AlphaRenamingPass, ConstantPropagationPass, Pass, UnusedIfEliminationPass,
     UnusedLetEliminationPass, WriteExprSimplificationPass,
 };
 use crate::ir::transform::{DoctypeInjector, HtmlStructureInjector, TailwindInjector};

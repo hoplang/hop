@@ -1,7 +1,7 @@
 mod ast;
 mod compiler;
 pub mod evaluator;
-pub mod passes;
+pub mod optimize;
 #[cfg(test)]
 pub mod test_utils;
 pub mod transform;
