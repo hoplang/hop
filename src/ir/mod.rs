@@ -1,7 +1,6 @@
 mod ast;
 mod compiler;
 pub mod evaluator;
-pub mod inliner;
 pub mod passes;
 #[cfg(test)]
 pub mod test_utils;

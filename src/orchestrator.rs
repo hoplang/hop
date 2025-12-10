@@ -1,8 +1,8 @@
 use crate::hop::ast::TypedAst;
 use crate::hop::component_name::ComponentName;
 use crate::hop::module_name::ModuleName;
+use crate::hop::inliner::Inliner;
 use crate::ir::{Compiler, IrEntrypoint};
-use crate::ir::inliner::Inliner;
 use crate::ir::passes::{
     AlphaRenamingPass, ConstantPropagationPass, UnusedIfEliminationPass, Pass,
     UnusedLetEliminationPass, WriteExprSimplificationPass,
