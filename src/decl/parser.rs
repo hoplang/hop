@@ -239,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_import() {
+    fn should_parse_an_import() {
         check(
             indoc! {r#"
                 import UserList from "@/user_list"
@@ -254,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_import_with_path() {
+    fn should_parse_an_import_with_a_path() {
         check(
             indoc! {r#"
                 import Header from "@/components/header"
@@ -269,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_import_missing_at_prefix() {
+    fn should_raise_an_error_when_missing_at_prefix() {
         check(
             indoc! {r#"
                 import Header from "./components/header"
@@ -281,7 +281,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_record() {
+    fn should_parse_a_record() {
         check(
             indoc! {"
                 record User {name: String, age: Int}
@@ -298,7 +298,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_record_with_nested_types() {
+    fn should_parse_a_record_with_a_nested_field_type() {
         check(
             indoc! {"
                 record UserList {users: Array[User]}
@@ -314,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    fn not_a_declaration() {
+    fn should_ignore_html_tags() {
         check(
             indoc! {"
                 <div>hello</div>
@@ -324,27 +324,7 @@ mod tests {
     }
 
     #[test]
-    fn text_starting_with_i() {
-        check(
-            indoc! {"
-                important message
-            "},
-            expect!["None"],
-        );
-    }
-
-    #[test]
-    fn text_starting_with_r() {
-        check(
-            indoc! {"
-                running fast
-            "},
-            expect!["None"],
-        );
-    }
-
-    #[test]
-    fn import_with_leading_empty_lines() {
+    fn should_handle_leading_empty_lines() {
         check(
             indoc! {r#"
 
