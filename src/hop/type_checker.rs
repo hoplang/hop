@@ -1,6 +1,6 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::parser::RecordField;
-use crate::dop::{self, Argument, Parameter, Type, resolve_type};
+use crate::dop::{self, Argument, Parameter, RecordDeclaration, Type, resolve_type};
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::Ast;
 use crate::hop::ast::{Attribute, ComponentDefinition};
@@ -41,7 +41,7 @@ pub struct ComponentTypeInformation {
 #[derive(Debug, Clone, Default)]
 pub struct ModuleTypeInformation {
     components: HashMap<String, ComponentTypeInformation>,
-    typed_records: HashMap<String, dop::RecordDeclaration<Type>>,
+    records: HashMap<String, RecordDeclaration<Type>>,
 }
 
 impl ModuleTypeInformation {
@@ -77,15 +77,15 @@ impl ModuleTypeInformation {
     }
 
     fn record_is_declared(&self, record_name: &str) -> bool {
-        self.typed_records.contains_key(record_name)
+        self.records.contains_key(record_name)
     }
 
     fn get_typed_record(&self, record_name: &str) -> Option<&dop::RecordDeclaration<Type>> {
-        self.typed_records.get(record_name)
+        self.records.get(record_name)
     }
 
     fn set_typed_record(&mut self, record_name: &str, record: dop::RecordDeclaration<Type>) {
-        self.typed_records.insert(record_name.to_string(), record);
+        self.records.insert(record_name.to_string(), record);
     }
 }
 
@@ -171,6 +171,14 @@ fn typecheck_module(
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> TypedAst {
+    state.modules.insert(
+        module.name.clone(),
+        ModuleTypeInformation {
+            components: HashMap::new(),
+            records: HashMap::new(),
+        },
+    );
+
     // Build records environment - start with imported records
     let mut records_env: Environment<Type> = Environment::new();
 
@@ -791,29 +799,29 @@ mod tests {
                 panic!("Got invalid file name")
             }
             let source_code = file.content.trim();
-            let mut parse_errors = crate::error_collector::ErrorCollector::new();
+            let mut parse_errors = ErrorCollector::new();
             let module_name =
                 ModuleName::new(file.name.trim_end_matches(".hop").to_string()).unwrap();
-            let module = parse(module_name, source_code.to_string(), &mut parse_errors);
+            let ast = parse(module_name, source_code.to_string(), &mut parse_errors);
 
             if !parse_errors.is_empty() {
                 panic!("Got parse errors: {:#?}", parse_errors);
             }
 
-            typechecker.typecheck(&[&module]);
+            typechecker.typecheck(&[&ast]);
 
-            let type_errors = typechecker.type_errors.get(&module.name);
-            let type_annotations = typechecker.type_annotations.get(&module.name);
+            let type_errors = typechecker.type_errors.get(&ast.name);
+            let type_annotations = typechecker.type_annotations.get(&ast.name);
 
             if type_errors.is_some_and(|err| !err.is_empty()) {
                 error_output.push(error_annotator.annotate(
                     Some(&file.name),
-                    typechecker.type_errors.get(&module.name).unwrap(),
+                    typechecker.type_errors.get(&ast.name).unwrap(),
                 ));
             } else if type_annotations.is_some_and(|ann| !ann.is_empty()) {
                 let formatted_errors = type_annotator.annotate(
                     Some(&file.name),
-                    typechecker.type_annotations.get(&module.name).unwrap(),
+                    typechecker.type_annotations.get(&ast.name).unwrap(),
                 );
                 type_output.push(formatted_errors);
             }
@@ -911,6 +919,26 @@ mod tests {
                 -- other.hop --
                 <Bar>
                 </Bar>
+                -- main.hop --
+                import Foo from "@/other"
+
+                <Main>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Module @/other does not declare a component named Foo
+                  --> main.hop (line 1, col 8)
+                1 | import Foo from "@/other"
+                  |        ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_when_an_import_references_a_component_from_an_empty_module() {
+        check(
+            indoc! {r#"
+                -- other.hop --
                 -- main.hop --
                 import Foo from "@/other"
 
