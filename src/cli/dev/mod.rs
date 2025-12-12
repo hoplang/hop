@@ -224,7 +224,7 @@ async fn create_file_watcher(
         }
     });
 
-    // Create a separate watcher for the CSS output file
+    // Create a separate watcher for the CSS output file created by Tailwind
     use notify::Watcher;
     let css_output_path = state.tailwind_css_output_path.as_ref().clone();
     let state_for_css_watcher = state.clone();

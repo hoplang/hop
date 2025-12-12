@@ -409,36 +409,6 @@ impl Program {
         args: HashMap<String, serde_json::Value>,
         generated_tailwind_css: Option<&str>,
     ) -> Result<String> {
-        // Check for parse errors in all modules
-        for (mod_name, errors) in &self.parse_errors {
-            if !errors.is_empty() {
-                anyhow::bail!(
-                    "Module '{}' has syntax errors:\n{}",
-                    mod_name,
-                    errors
-                        .iter()
-                        .map(|e| format!("  - {}", e))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                );
-            }
-        }
-
-        // Check for type errors in all modules
-        for (mod_name, errors) in &self.type_checker.type_errors {
-            if !errors.is_empty() {
-                anyhow::bail!(
-                    "Module '{}' has type errors:\n{}",
-                    mod_name,
-                    errors
-                        .iter()
-                        .map(|e| format!("  - {}", e))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                );
-            }
-        }
-
         // Validate that the module exists
         let module = self.get_typed_modules().get(module_name).ok_or_else(|| {
             anyhow::anyhow!(
