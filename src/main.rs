@@ -148,19 +148,19 @@ async fn main() -> anyhow::Result<()> {
 
                 // The logic for the dev server works like this:
                 //
-                // (1) We read the array of `backend_commands` from the users config.
+                // (1) We read the array of `server_commands` from the users config.
                 //
                 // (2) We compile the users project. This creates a file containing code that
                 //     checks the HOP_DEV_MODE environment variable at runtime to decide whether
                 //     to render dev mode stubs (with bootstrap script for hot-reloading) or
                 //     production HTML.
                 //
-                // (3) We execute all the commands of the `backend_commands` block except
+                // (3) We execute all the commands of the `server_commands` block except
                 //     the last one synchronously (these are the commands that should compile the
                 //     software and get it ready for execution, e.g. typechecking, linting, compilation
                 //     etc).
                 //
-                // (4) We execute the last command of the `backend_commands` command in a
+                // (4) We execute the last command of the `server_commands` command in a
                 //     separate thread with HOP_DEV_MODE=enabled set.
                 //     This command is expected to start the users backend server which will
                 //     render dev mode stubs due to the environment variable.
@@ -170,8 +170,8 @@ async fn main() -> anyhow::Result<()> {
                 //
                 // (6) We block until a subprocess exits or we receive Ctrl-C.
 
-                // Step (1) - Read `backend_commands`
-                let commands = &resolved.backend_commands;
+                // Step (1) - Read `server_commands`
+                let commands = &resolved.server_commands;
 
                 // Step (2) - Compile project (generates both dev and prod code)
                 cli::compile::execute(root).await?;
@@ -179,7 +179,7 @@ async fn main() -> anyhow::Result<()> {
                 // Store the last command
                 let last_command = commands
                     .last()
-                    .ok_or_else(|| anyhow::anyhow!("No commands found in backend_commands"))?;
+                    .ok_or_else(|| anyhow::anyhow!("No commands found in server_commands"))?;
 
                 // Step (3) - Compile the users backend server
                 for command in &commands[..commands.len() - 1] {
