@@ -4,7 +4,9 @@ use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::component_name::ComponentName;
 use crate::hop::module_name::ModuleName;
 use crate::hop::program::Program;
-use crate::ir::{GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, RecordInfo, Transpiler};
+use crate::ir::{
+    GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, RecordInfo, Transpiler,
+};
 use crate::orchestrator::orchestrate;
 use crate::tui::timing;
 use anyhow::Result;
@@ -36,6 +38,8 @@ async fn compile_tailwind(input_path: &Path) -> Result<String> {
     Ok(css)
 }
 
+// Tailwind needs a file that contains at least the string `@import "tailwindcss";`
+// to properly execute. This function creates such a file.
 async fn create_default_tailwind_input() -> Result<PathBuf> {
     let cache_dir = PathBuf::from("/tmp/.hop-cache");
     tokio::fs::create_dir_all(&cache_dir).await?;
