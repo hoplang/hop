@@ -144,9 +144,25 @@ impl Compiler {
 
         body.push(IrStatement::Write {
             id: self.next_node_id(),
-            content:
-                "}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>"
-                    .to_string(),
+            content: "}</script>\n<script src=\"http://localhost:".to_string(),
+        });
+
+        // Insert the port from HOP_DEV_PORT environment variable
+        body.push(IrStatement::WriteExpr {
+            id: self.next_node_id(),
+            expr: Expr::EnvLookup {
+                key: Box::new(Expr::StringLiteral {
+                    value: "HOP_DEV_PORT".to_string(),
+                    annotation: self.next_expr_id(),
+                }),
+                annotation: self.next_expr_id(),
+            },
+            escape: false,
+        });
+
+        body.push(IrStatement::Write {
+            id: self.next_node_id(),
+            content: "/development_mode.js\"></script>".to_string(),
         });
 
         body
@@ -565,7 +581,9 @@ mod tests {
                     write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
                     write("{")
                     write("}")
-                    write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
+                    write("}</script>\n<script src=\"http://localhost:")
+                    write_expr(EnvLookup("HOP_DEV_PORT"))
+                    write("/development_mode.js\"></script>")
                   } else {
                     write("Hello World")
                   }
@@ -597,7 +615,9 @@ mod tests {
                     write("\"name\":")
                     write_expr(JsonEncode(name))
                     write("}")
-                    write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
+                    write("}</script>\n<script src=\"http://localhost:")
+                    write_expr(EnvLookup("HOP_DEV_PORT"))
+                    write("/development_mode.js\"></script>")
                   } else {
                     write("Hello ")
                     write_escaped(name)
@@ -630,7 +650,9 @@ mod tests {
                     write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
                     write("{")
                     write("}")
-                    write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
+                    write("}</script>\n<script src=\"http://localhost:")
+                    write_expr(EnvLookup("HOP_DEV_PORT"))
+                    write("/development_mode.js\"></script>")
                   } else {
                     write("<div")
                     write(">")
@@ -671,7 +693,9 @@ mod tests {
                     write("\"show\":")
                     write_expr(JsonEncode(show))
                     write("}")
-                    write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
+                    write("}</script>\n<script src=\"http://localhost:")
+                    write_expr(EnvLookup("HOP_DEV_PORT"))
+                    write("/development_mode.js\"></script>")
                   } else {
                     if show {
                       write("<div")
@@ -722,7 +746,9 @@ mod tests {
                     write("\"items\":")
                     write_expr(JsonEncode(items))
                     write("}")
-                    write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
+                    write("}</script>\n<script src=\"http://localhost:")
+                    write_expr(EnvLookup("HOP_DEV_PORT"))
+                    write("/development_mode.js\"></script>")
                   } else {
                     write("<ul")
                     write(">")
@@ -765,7 +791,9 @@ mod tests {
                     write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
                     write("{")
                     write("}")
-                    write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
+                    write("}</script>\n<script src=\"http://localhost:")
+                    write_expr(EnvLookup("HOP_DEV_PORT"))
+                    write("/development_mode.js\"></script>")
                   } else {
                     write("<div")
                     write(" class=\"base\"")
@@ -810,7 +838,9 @@ mod tests {
                     write("\"cls\":")
                     write_expr(JsonEncode(cls))
                     write("}")
-                    write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
+                    write("}</script>\n<script src=\"http://localhost:")
+                    write_expr(EnvLookup("HOP_DEV_PORT"))
+                    write("/development_mode.js\"></script>")
                   } else {
                     write("<div")
                     write(" class=\"base\"")
@@ -879,7 +909,9 @@ mod tests {
                     write("\"state_class\":")
                     write_expr(JsonEncode(state_class))
                     write("}")
-                    write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
+                    write("}</script>\n<script src=\"http://localhost:")
+                    write_expr(EnvLookup("HOP_DEV_PORT"))
+                    write("/development_mode.js\"></script>")
                   } else {
                     write("<div")
                     write(" class=\"")
@@ -936,7 +968,9 @@ mod tests {
                     write("\"count\":")
                     write_expr(JsonEncode(count))
                     write("}")
-                    write("}</script>\n<script src=\"http://localhost:33861/development_mode.js\"></script>")
+                    write("}</script>\n<script src=\"http://localhost:")
+                    write_expr(EnvLookup("HOP_DEV_PORT"))
+                    write("/development_mode.js\"></script>")
                   } else {
                     write("<div")
                     write(">")

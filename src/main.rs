@@ -219,11 +219,13 @@ async fn main() -> anyhow::Result<()> {
                     tokio::process::Command::new("cmd")
                         .args(["/C", last_command])
                         .env("HOP_DEV_MODE", "enabled")
+                        .env("HOP_DEV_PORT", port.to_string())
                         .spawn()
                 } else {
                     tokio::process::Command::new("sh")
                         .args(["-c", last_command])
                         .env("HOP_DEV_MODE", "enabled")
+                        .env("HOP_DEV_PORT", port.to_string())
                         .spawn()
                 }?;
 

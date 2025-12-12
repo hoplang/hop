@@ -4,7 +4,17 @@
 // It also handles hot module reloading by listening to SSE events
 
 const LOCAL_STORAGE_PREFIX = "hop-html-cache";
-const DEV_SERVER_URL = "http://localhost:33861";
+const DEV_SERVER_URL = (() => {
+	// Extract the port from the script's own URL
+	const scripts = document.getElementsByTagName('script');
+	for (const script of scripts) {
+		if (script.src && script.src.includes('/development_mode.js')) {
+			const url = new URL(script.src);
+			return `${url.protocol}//${url.host}`;
+		}
+	}
+	throw new Error('Could not determine dev server URL from script tag');
+})();
 const EVENT_SOURCE_URL = `${DEV_SERVER_URL}/event_source`;
 const RENDER_URL = `${DEV_SERVER_URL}/render`;
 const DEBOUNCE_DELAY_MS = 15;
