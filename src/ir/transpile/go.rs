@@ -81,8 +81,8 @@ impl Transpiler for GoTranspiler {
             Self::scan_for_imports(&mut imports, entrypoint);
         }
 
-        // We always need strings.Builder for output
-        imports.insert("strings".to_string());
+        // We always need io for writing output
+        imports.insert("io".to_string());
 
         // Check if we need TrustedHTML type
         let needs_trusted_html = self.scan_for_trusted_html(entrypoints);
@@ -261,13 +261,13 @@ impl Transpiler for GoTranspiler {
         let mut result = BoxDoc::text("func ").append(BoxDoc::as_string(func_name.clone()));
 
         if entrypoint.parameters.is_empty() {
-            result = result.append(BoxDoc::text("() string {"));
+            result = result.append(BoxDoc::text("(w io.Writer) {"));
         } else {
             let struct_name = format!("{}Params", func_name);
             result = result
-                .append(BoxDoc::text("(params "))
+                .append(BoxDoc::text("(w io.Writer, params "))
                 .append(BoxDoc::as_string(struct_name))
-                .append(BoxDoc::text(") string {"));
+                .append(BoxDoc::text(") {"));
         }
 
         // Function body
@@ -284,9 +284,7 @@ impl Transpiler for GoTranspiler {
             )
         }
 
-        body.push(BoxDoc::text("var output strings.Builder"));
         body.push(self.transpile_statements(&entrypoint.body));
-        body.push(BoxDoc::text("return output.String()"));
 
         result
             .append(
@@ -303,21 +301,21 @@ impl Transpiler for GoTranspiler {
 
 impl StatementTranspiler for GoTranspiler {
     fn transpile_write<'a>(&self, content: &'a str) -> BoxDoc<'a> {
-        BoxDoc::text("output.WriteString(\"")
+        BoxDoc::text("io.WriteString(w, \"")
             .append(BoxDoc::text(self.escape_string(content)))
             .append(BoxDoc::text("\")"))
     }
 
     fn transpile_write_expr<'a>(&self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a> {
         if escape {
-            BoxDoc::text("output.WriteString(html.EscapeString(")
+            BoxDoc::text("io.WriteString(w, html.EscapeString(")
                 .append(self.transpile_expr(expr))
                 .append(BoxDoc::text("))"))
         } else {
             // Check if the expression is TrustedHTML - needs conversion to string
             let needs_conversion = matches!(expr.as_type(), Type::TrustedHTML);
 
-            let mut doc = BoxDoc::text("output.WriteString(");
+            let mut doc = BoxDoc::text("io.WriteString(w, ");
             if needs_conversion {
                 doc = doc.append(BoxDoc::text("string("));
             }
@@ -786,13 +784,11 @@ mod tests {
                 package components
 
                 import (
-                	"strings"
+                	"io"
                 )
 
-                func TestMainComp() string {
-                	var output strings.Builder
-                	output.WriteString("<div>Hello World</div>\n")
-                	return output.String()
+                func TestMainComp(w io.Writer) {
+                	io.WriteString(w, "<div>Hello World</div>\n")
                 }
             "#]],
         );
@@ -829,7 +825,7 @@ mod tests {
 
                 import (
                 	"html"
-                	"strings"
+                	"io"
                 )
 
                 type TestGreetingCompParams struct {
@@ -837,16 +833,14 @@ mod tests {
                 	Message string `json:"message"`
                 }
 
-                func TestGreetingComp(params TestGreetingCompParams) string {
+                func TestGreetingComp(w io.Writer, params TestGreetingCompParams) {
                 	name := params.Name
                 	message := params.Message
-                	var output strings.Builder
-                	output.WriteString("<h1>Hello ")
-                	output.WriteString(html.EscapeString(name))
-                	output.WriteString(", ")
-                	output.WriteString(html.EscapeString(message))
-                	output.WriteString("</h1>\n")
-                	return output.String()
+                	io.WriteString(w, "<h1>Hello ")
+                	io.WriteString(w, html.EscapeString(name))
+                	io.WriteString(w, ", ")
+                	io.WriteString(w, html.EscapeString(message))
+                	io.WriteString(w, "</h1>\n")
                 }
             "#]],
         );
@@ -872,7 +866,7 @@ mod tests {
 
                 import (
                 	"encoding/json"
-                	"strings"
+                	"io"
                 )
 
                 func mustJSONMarshal(v any) string {
@@ -880,10 +874,8 @@ mod tests {
                 	return string(data)
                 }
 
-                func TestMainComp() string {
-                	var output strings.Builder
-                	output.WriteString(mustJSONMarshal([]string{}))
-                	return output.String()
+                func TestMainComp(w io.Writer) {
+                	io.WriteString(w, mustJSONMarshal([]string{}))
                 }
             "#]],
         );
@@ -915,20 +907,18 @@ mod tests {
                 package components
 
                 import (
-                	"strings"
+                	"io"
                 )
 
                 type TestMainCompParams struct {
                 	Show bool `json:"show"`
                 }
 
-                func TestMainComp(params TestMainCompParams) string {
+                func TestMainComp(w io.Writer, params TestMainCompParams) {
                 	show := params.Show
-                	var output strings.Builder
                 	if show {
-                		output.WriteString("<div>Visible</div>\n")
+                		io.WriteString(w, "<div>Visible</div>\n")
                 	}
-                	return output.String()
                 }
             "#]],
         );
@@ -965,22 +955,20 @@ mod tests {
 
                 import (
                 	"html"
-                	"strings"
+                	"io"
                 )
 
                 type TestMainCompParams struct {
                 	Items []string `json:"items"`
                 }
 
-                func TestMainComp(params TestMainCompParams) string {
+                func TestMainComp(w io.Writer, params TestMainCompParams) {
                 	items := params.Items
-                	var output strings.Builder
                 	for _, item := range items {
-                		output.WriteString("<li>")
-                		output.WriteString(html.EscapeString(item))
-                		output.WriteString("</li>\n")
+                		io.WriteString(w, "<li>")
+                		io.WriteString(w, html.EscapeString(item))
+                		io.WriteString(w, "</li>\n")
                 	}
-                	return output.String()
                 }
             "#]],
         );
@@ -1021,19 +1009,17 @@ mod tests {
 
                 import (
                 	"html"
-                	"strings"
+                	"io"
                 )
 
-                func TestArrayLiteralLoop() string {
-                	var output strings.Builder
-                	output.WriteString("<ul>\n")
+                func TestArrayLiteralLoop(w io.Writer) {
+                	io.WriteString(w, "<ul>\n")
                 	for _, color := range []string{"red", "green", "blue"} {
-                		output.WriteString("<li>")
-                		output.WriteString(html.EscapeString(color))
-                		output.WriteString("</li>\n")
+                		io.WriteString(w, "<li>")
+                		io.WriteString(w, html.EscapeString(color))
+                		io.WriteString(w, "</li>\n")
                 	}
-                	output.WriteString("</ul>\n")
-                	return output.String()
+                	io.WriteString(w, "</ul>\n")
                 }
             "#]],
         );
@@ -1071,7 +1057,7 @@ mod tests {
                 package components
 
                 import (
-                	"strings"
+                	"io"
                 )
 
                 type TestAuthCheckParams struct {
@@ -1079,17 +1065,15 @@ mod tests {
                 	ExpectedRole string `json:"expected_role"`
                 }
 
-                func TestAuthCheck(params TestAuthCheckParams) string {
+                func TestAuthCheck(w io.Writer, params TestAuthCheckParams) {
                 	user_role := params.UserRole
                 	expected_role := params.ExpectedRole
-                	var output strings.Builder
                 	if (user_role == expected_role) {
-                		output.WriteString("<div>Access granted</div>\n")
+                		io.WriteString(w, "<div>Access granted</div>\n")
                 	}
                 	if (user_role == "admin") {
-                		output.WriteString("<div>Admin panel available</div>\n")
+                		io.WriteString(w, "<div>Admin panel available</div>\n")
                 	}
-                	return output.String()
                 }
             "#]],
         );
@@ -1129,7 +1113,7 @@ mod tests {
 
                 import (
                 	"html"
-                	"strings"
+                	"io"
                 )
 
                 type TrustedHTML string
@@ -1139,16 +1123,14 @@ mod tests {
                 	UserInput string `json:"user_input"`
                 }
 
-                func RenderHtml(params RenderHtmlParams) string {
+                func RenderHtml(w io.Writer, params RenderHtmlParams) {
                 	safe_content := params.SafeContent
                 	user_input := params.UserInput
-                	var output strings.Builder
-                	output.WriteString("<div>")
-                	output.WriteString(string(safe_content))
-                	output.WriteString("</div><div>")
-                	output.WriteString(html.EscapeString(user_input))
-                	output.WriteString("</div>")
-                	return output.String()
+                	io.WriteString(w, "<div>")
+                	io.WriteString(w, string(safe_content))
+                	io.WriteString(w, "</div><div>")
+                	io.WriteString(w, html.EscapeString(user_input))
+                	io.WriteString(w, "</div>")
                 }
             "#]],
         );
@@ -1176,16 +1158,14 @@ mod tests {
                 package components
 
                 import (
+                	"io"
                 	"os"
-                	"strings"
                 )
 
-                func TestEnv() string {
-                	var output strings.Builder
-                	output.WriteString("<div>API URL: ")
-                	output.WriteString(os.Getenv("API_URL"))
-                	output.WriteString("</div>\n")
-                	return output.String()
+                func TestEnv(w io.Writer) {
+                	io.WriteString(w, "<div>API URL: ")
+                	io.WriteString(w, os.Getenv("API_URL"))
+                	io.WriteString(w, "</div>\n")
                 }
             "#]],
         );
@@ -1258,7 +1238,7 @@ mod tests {
 
             import (
             	"html"
-            	"strings"
+            	"io"
             )
 
             type User struct {
@@ -1276,13 +1256,11 @@ mod tests {
             	User User `json:"user"`
             }
 
-            func UserProfile(params UserProfileParams) string {
+            func UserProfile(w io.Writer, params UserProfileParams) {
             	user := params.User
-            	var output strings.Builder
-            	output.WriteString("<div>")
-            	output.WriteString(html.EscapeString(user.Name))
-            	output.WriteString("</div>")
-            	return output.String()
+            	io.WriteString(w, "<div>")
+            	io.WriteString(w, html.EscapeString(user.Name))
+            	io.WriteString(w, "</div>")
             }
         "#]]
         .assert_eq(&output);
@@ -1322,7 +1300,7 @@ mod tests {
 
             import (
             	"html"
-            	"strings"
+            	"io"
             )
 
             type User struct {
@@ -1330,15 +1308,13 @@ mod tests {
             	Age int `json:"age"`
             }
 
-            func CreateUser() string {
-            	var output strings.Builder
-            	output.WriteString("<div>")
-            	output.WriteString(html.EscapeString(User{
+            func CreateUser(w io.Writer) {
+            	io.WriteString(w, "<div>")
+            	io.WriteString(w, html.EscapeString(User{
             		Name: "John",
             		Age: 30,
             	}.Name))
-            	output.WriteString("</div>")
-            	return output.String()
+            	io.WriteString(w, "</div>")
             }
         "#]]
         .assert_eq(&output);

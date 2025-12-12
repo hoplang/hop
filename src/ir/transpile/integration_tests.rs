@@ -106,12 +106,14 @@ fn execute_go(code: &str) -> Result<String, String> {
 
 import (
     "fmt"
+    "strings"
     "testmod/components"
 )
 
 func main() {
-    result := components.Test()
-    fmt.Print(result)
+    var buf strings.Builder
+    components.Test(&buf)
+    fmt.Print(buf.String())
 }
 "#;
 

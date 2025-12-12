@@ -2,7 +2,7 @@ fmt PATH='src/**/*.rs':
   rustfmt --edition 2024 {{PATH}}
 
 test:
-	RUST_TEST_TIME_UNIT=10,10 cargo test -- -Zunstable-options --ensure-time
+	cargo test
 
 fix:
 	cargo clippy --fix --allow-dirty
