@@ -187,8 +187,7 @@ impl Parser {
         let full_range = record_range.to(last_range);
 
         // Use the dop parser to fully parse the record declaration
-        let record_text = full_range.as_str();
-        let declaration = DopParser::from(record_text)
+        let declaration = DopParser::from(full_range.clone())
             .parse_record()
             .map_err(|e| ParseError::new(e.to_string(), full_range.clone()))?;
 

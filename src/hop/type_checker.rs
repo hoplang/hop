@@ -2594,4 +2594,32 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn should_reject_undefined_type_in_record_with_hop_submodule_imports() {
+        check(
+            indoc! {r#"
+                -- hop/button.hop --
+                <Button>
+                </Button>
+                -- hop/input.hop --
+                <Input>
+                </Input>
+                -- main.hop --
+                import Button from "@/hop/button"
+                import Input from "@/hop/input"
+
+                record Page {
+                  id: Str
+                }
+            "#},
+            expect![[r#"
+                error: Type 'Str' is not defined
+                  --> main.hop (line 5, col 7)
+                4 | record Page {
+                5 |   id: Str
+                  |       ^^^
+            "#]],
+        );
+    }
 }
