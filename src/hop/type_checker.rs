@@ -678,7 +678,7 @@ fn typecheck_node(
                 {
                     errors.push(TypeError::ExpectedStringExpression {
                         found: expr_type.clone(),
-                        range: range.clone(),
+                        range: expression.range().clone(),
                     });
                 }
                 Some(Node::TextExpression {
@@ -2349,10 +2349,10 @@ mod tests {
             "#},
             expect![[r#"
                 error: Expected string for text expression, got Bool
-                  --> main.hop (line 2, col 5)
+                  --> main.hop (line 2, col 6)
                 1 | <Main>
                 2 |     {false}
-                  |     ^^^^^^^
+                  |      ^^^^^
             "#]],
         );
     }
