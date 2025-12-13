@@ -676,7 +676,7 @@ fn typecheck_node(
                 let expr_type = typed_expr.as_type();
                 if !expr_type.is_subtype(&Type::String) && !expr_type.is_subtype(&Type::TrustedHTML)
                 {
-                    errors.push(TypeError::ExpectedStringExpression {
+                    errors.push(TypeError::ExpectedStringForTextExpression {
                         found: expr_type.clone(),
                         range: expression.range().clone(),
                     });

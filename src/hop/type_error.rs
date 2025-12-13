@@ -82,7 +82,7 @@ pub enum TypeError {
     CannotIterateOver { typ: String, range: DocumentRange },
 
     #[error("Expected string for text expression, got {found}")]
-    ExpectedStringExpression { found: Type, range: DocumentRange },
+    ExpectedStringForTextExpression { found: Type, range: DocumentRange },
 
     #[error("{err}")]
     DopError { err: dop::type_error::TypeError },
@@ -150,7 +150,7 @@ impl Ranged for TypeError {
             }
             | TypeError::ExpectedStringAttribute { range, .. }
             | TypeError::CannotIterateOver { range, .. }
-            | TypeError::ExpectedStringExpression { range, .. } => range,
+            | TypeError::ExpectedStringForTextExpression { range, .. } => range,
             TypeError::DopError { err } => err.range(),
         }
     }
