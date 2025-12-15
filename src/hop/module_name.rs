@@ -129,50 +129,102 @@ mod tests {
     use super::*;
 
     #[test]
-    fn valid_module_names() {
+    fn should_accept_simple_module_name() {
         assert!(ModuleName::new("utils").is_ok());
+    }
+
+    #[test]
+    fn should_accept_module_name_with_path() {
         assert!(ModuleName::new("components/button").is_ok());
         assert!(ModuleName::new("hop/ui").is_ok());
+    }
+
+    #[test]
+    fn should_accept_module_name_with_hyphen() {
         assert!(ModuleName::new("my-component").is_ok());
+    }
+
+    #[test]
+    fn should_accept_module_name_with_underscore() {
         assert!(ModuleName::new("my_component").is_ok());
+    }
+
+    #[test]
+    fn should_accept_deeply_nested_module_name() {
         assert!(ModuleName::new("a/b/c/d").is_ok());
     }
 
     #[test]
-    fn invalid_module_names() {
+    fn should_reject_empty_module_name() {
         assert_eq!(ModuleName::new(""), Err(InvalidModuleNameError::Empty));
+    }
+
+    #[test]
+    fn should_reject_module_name_starting_with_slash() {
         assert_eq!(
             ModuleName::new("/utils"),
             Err(InvalidModuleNameError::StartsWithSlash)
         );
+    }
+
+    #[test]
+    fn should_reject_module_name_ending_with_slash() {
         assert_eq!(
             ModuleName::new("utils/"),
             Err(InvalidModuleNameError::EndsWithSlash)
         );
+    }
+
+    #[test]
+    fn should_reject_module_name_with_double_slash() {
         assert_eq!(
             ModuleName::new("utils//components"),
             Err(InvalidModuleNameError::ContainsDoubleSlash)
         );
+    }
+
+    #[test]
+    fn should_reject_module_name_with_parent_directory() {
         assert_eq!(
             ModuleName::new("../parent"),
             Err(InvalidModuleNameError::ContainsParentDirectory)
         );
+    }
+
+    #[test]
+    fn should_reject_module_name_with_current_directory() {
         assert_eq!(
             ModuleName::new("./current"),
             Err(InvalidModuleNameError::ContainsCurrentDirectory)
         );
+    }
+
+    #[test]
+    fn should_reject_module_name_with_at_symbol() {
         assert_eq!(
             ModuleName::new("@/utils"),
             Err(InvalidModuleNameError::ContainsAtSymbol)
         );
+    }
+
+    #[test]
+    fn should_reject_module_name_with_current_directory_in_path() {
         assert_eq!(
             ModuleName::new("utils/./current"),
             Err(InvalidModuleNameError::ContainsCurrentDirectory)
         );
+    }
+
+    #[test]
+    fn should_reject_module_name_with_space() {
         assert_eq!(
             ModuleName::new("my component"),
             Err(InvalidModuleNameError::InvalidCharacter(' '))
         );
+    }
+
+    #[test]
+    fn should_reject_module_name_with_exclamation_mark() {
         assert_eq!(
             ModuleName::new("my!component"),
             Err(InvalidModuleNameError::InvalidCharacter('!'))
