@@ -495,7 +495,7 @@ mod tests {
     }
 
     #[test]
-    fn simple_write() {
+    fn should_evaluate_simple_write() {
         check(
             build_ir_auto("Test", vec![], |t| {
                 t.write("<div>Hello World</div>");
@@ -514,7 +514,7 @@ mod tests {
     }
 
     #[test]
-    fn escape_html() {
+    fn should_escape_html_in_expressions() {
         check(
             build_ir_auto("Test", vec![("content", Type::String)], |t| {
                 t.write_expr_escaped(t.var("content"));
@@ -533,7 +533,7 @@ mod tests {
     }
 
     #[test]
-    fn if_true() {
+    fn should_render_if_body_when_condition_is_true() {
         check(
             build_ir_auto("Test", vec![("show", Type::Bool)], |t| {
                 t.if_stmt(t.var("show"), |t| {
@@ -556,7 +556,7 @@ mod tests {
     }
 
     #[test]
-    fn if_false() {
+    fn should_skip_if_body_when_condition_is_false() {
         check(
             build_ir_auto("Test", vec![("show", Type::Bool)], |t| {
                 t.if_stmt(t.var("show"), |t| {
@@ -579,7 +579,7 @@ mod tests {
     }
 
     #[test]
-    fn for_loop() {
+    fn should_iterate_over_array_in_for_loop() {
         check(
             build_ir_auto(
                 "Test",
