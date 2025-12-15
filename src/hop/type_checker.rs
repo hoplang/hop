@@ -1336,7 +1336,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_no_arguments_are_passed_to_component() {
+    fn should_reject_when_no_arguments_are_passed_to_component_that_requires_them() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1413,7 +1413,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_with_string_parameter() {
+    fn should_accept_component_definition_with_string_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1437,7 +1437,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_with_bool_parameter() {
+    fn should_accept_component_definition_with_bool_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1463,7 +1463,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_with_float_parameter() {
+    fn should_accept_component_definition_with_float_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1489,7 +1489,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_with_record_parameter() {
+    fn should_accept_component_definition_with_record_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1545,7 +1545,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_with_array_parameter() {
+    fn should_accept_component_definition_with_array_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1578,60 +1578,6 @@ mod tests {
                 2 |     <for {item in items}>
                 3 |         <div>{item}</div>
                   |               ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_deeply_nested_field_accesses() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                record Theme {dark: Bool}
-                record UI {theme: Theme}
-                record Users {enabled: Bool}
-                record Endpoints {users: Users}
-                record API {endpoints: Endpoints}
-                record Connection {ssl: Bool}
-                record Database {connection: Connection}
-                record App {ui: UI, api: API, database: Database}
-                record Params {app: App}
-                <Main {params: Params}>
-                	<if {params.app.ui.theme.dark}>
-                      ok!
-                	</if>
-                	<if {params.app.api.endpoints.users.enabled}>
-                      ok!
-                	</if>
-                	<if {params.app.database.connection.ssl}>
-                      ok!
-                	</if>
-                </Main>
-            "#},
-            expect![[r#"
-                params: main::Params
-                  --> main.hop (line 10, col 8)
-                 9 | record Params {app: App}
-                10 | <Main {params: Params}>
-                   |        ^^^^^^
-
-                params: main::Params
-                  --> main.hop (line 11, col 7)
-                10 | <Main {params: Params}>
-                11 |     <if {params.app.ui.theme.dark}>
-                   |          ^^^^^^
-
-                params: main::Params
-                  --> main.hop (line 14, col 7)
-                13 |     </if>
-                14 |     <if {params.app.api.endpoints.users.enabled}>
-                   |          ^^^^^^
-
-                params: main::Params
-                  --> main.hop (line 17, col 7)
-                16 |     </if>
-                17 |     <if {params.app.database.connection.ssl}>
-                   |          ^^^^^^
             "#]],
         );
     }
@@ -2441,7 +2387,6 @@ mod tests {
         );
     }
 
-    // Test that accessing a field on a record type works
     #[test]
     fn should_accept_accessing_a_record_field() {
         check(
@@ -2469,27 +2414,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_a_nonexistent_field_is_accessed_on_record() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                record User {name: String}
-                <Main {user: User}>
-                    <div>{user.email}</div>
-                </Main>
-            "#},
-            expect![[r#"
-                error: Field 'email' not found in record 'User'
-                  --> main.hop (line 3, col 11)
-                2 | <Main {user: User}>
-                3 |     <div>{user.email}</div>
-                  |           ^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_access_of_nested_record_field() {
+    fn should_accept_accessing_a_nested_record_field() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2511,6 +2436,80 @@ mod tests {
                 3 | <Main {user: User}>
                 4 |     <div>{user.address.city}</div>
                   |           ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_accessing_a_deeply_nested_record_field() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record Theme {dark: Bool}
+                record UI {theme: Theme}
+                record Users {enabled: Bool}
+                record Endpoints {users: Users}
+                record API {endpoints: Endpoints}
+                record Connection {ssl: Bool}
+                record Database {connection: Connection}
+                record App {ui: UI, api: API, database: Database}
+                record Params {app: App}
+                <Main {params: Params}>
+                	<if {params.app.ui.theme.dark}>
+                      ok!
+                	</if>
+                	<if {params.app.api.endpoints.users.enabled}>
+                      ok!
+                	</if>
+                	<if {params.app.database.connection.ssl}>
+                      ok!
+                	</if>
+                </Main>
+            "#},
+            expect![[r#"
+                params: main::Params
+                  --> main.hop (line 10, col 8)
+                 9 | record Params {app: App}
+                10 | <Main {params: Params}>
+                   |        ^^^^^^
+
+                params: main::Params
+                  --> main.hop (line 11, col 7)
+                10 | <Main {params: Params}>
+                11 |     <if {params.app.ui.theme.dark}>
+                   |          ^^^^^^
+
+                params: main::Params
+                  --> main.hop (line 14, col 7)
+                13 |     </if>
+                14 |     <if {params.app.api.endpoints.users.enabled}>
+                   |          ^^^^^^
+
+                params: main::Params
+                  --> main.hop (line 17, col 7)
+                16 |     </if>
+                17 |     <if {params.app.database.connection.ssl}>
+                   |          ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_when_a_nonexistent_field_is_accessed_on_record() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record User {name: String}
+                <Main {user: User}>
+                    <div>{user.email}</div>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Field 'email' not found in record 'User'
+                  --> main.hop (line 3, col 11)
+                2 | <Main {user: User}>
+                3 |     <div>{user.email}</div>
+                  |           ^^^^^^^^^^
             "#]],
         );
     }
@@ -2596,7 +2595,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_undefined_type_in_record_with_hop_submodule_imports() {
+    fn should_reject_when_type_in_record_declaration_is_not_defined() {
         check(
             indoc! {r#"
                 -- hop/button.hop --
