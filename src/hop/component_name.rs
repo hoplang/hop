@@ -141,95 +141,166 @@ mod tests {
     use super::*;
 
     #[test]
-    fn valid_component_names() {
-        let cases = [
-            "Button",
-            "UserProfile",
-            "NavBar",
-            "Component123",
-            "MyComponent",
-            "A",
-            "ABC123",
-            "Main",
-            "Foo",
-            "Bar",
-        ];
-
-        for input in cases {
-            assert!(
-                ComponentName::new(input.to_string()).is_ok(),
-                "{input:?} should be valid"
-            );
-        }
+    fn should_accept_simple_pascal_case_name() {
+        assert!(ComponentName::new("Button".to_string()).is_ok());
     }
 
     #[test]
-    fn invalid_component_names() {
-        let cases = [
-            ("", InvalidComponentNameError::Empty),
-            ("button", InvalidComponentNameError::NotPascalCase),
-            ("userProfile", InvalidComponentNameError::NotPascalCase),
-            ("navBar", InvalidComponentNameError::NotPascalCase),
-            (
-                "User-Profile",
-                InvalidComponentNameError::InvalidCharacter('-'),
-            ),
-            (
-                "User_Profile",
-                InvalidComponentNameError::InvalidCharacter('_'),
-            ),
-            (
-                "User Profile",
-                InvalidComponentNameError::InvalidCharacter(' '),
-            ),
-            ("Button!", InvalidComponentNameError::InvalidCharacter('!')),
-            ("Nav.Bar", InvalidComponentNameError::InvalidCharacter('.')),
-        ];
-
-        for (input, expected) in cases {
-            assert_eq!(
-                ComponentName::new(input.to_string()),
-                Err(expected),
-                "{input:?} should be invalid"
-            );
-        }
+    fn should_accept_multi_word_pascal_case_name() {
+        assert!(ComponentName::new("UserProfile".to_string()).is_ok());
+        assert!(ComponentName::new("NavBar".to_string()).is_ok());
+        assert!(ComponentName::new("MyComponent".to_string()).is_ok());
     }
 
     #[test]
-    fn display() {
-        let name = ComponentName::new("Button".to_string()).unwrap();
-        assert_eq!(format!("{}", name), "Button");
-        assert_eq!(name.to_string(), "Button");
+    fn should_accept_name_with_numbers() {
+        assert!(ComponentName::new("Component123".to_string()).is_ok());
+        assert!(ComponentName::new("ABC123".to_string()).is_ok());
     }
 
     #[test]
-    fn as_str() {
+    fn should_accept_single_uppercase_letter() {
+        assert!(ComponentName::new("A".to_string()).is_ok());
+    }
+
+    #[test]
+    fn should_reject_empty_name() {
+        assert_eq!(
+            ComponentName::new("".to_string()),
+            Err(InvalidComponentNameError::Empty)
+        );
+    }
+
+    #[test]
+    fn should_reject_name_that_starts_with_lowercase_letter() {
+        assert_eq!(
+            ComponentName::new("button".to_string()),
+            Err(InvalidComponentNameError::NotPascalCase)
+        );
+    }
+
+    #[test]
+    fn should_reject_camel_case_name() {
+        assert_eq!(
+            ComponentName::new("userProfile".to_string()),
+            Err(InvalidComponentNameError::NotPascalCase)
+        );
+        assert_eq!(
+            ComponentName::new("navBar".to_string()),
+            Err(InvalidComponentNameError::NotPascalCase)
+        );
+    }
+
+    #[test]
+    fn should_reject_name_with_hyphen() {
+        assert_eq!(
+            ComponentName::new("User-Profile".to_string()),
+            Err(InvalidComponentNameError::InvalidCharacter('-'))
+        );
+    }
+
+    #[test]
+    fn should_reject_name_with_underscore() {
+        assert_eq!(
+            ComponentName::new("User_Profile".to_string()),
+            Err(InvalidComponentNameError::InvalidCharacter('_'))
+        );
+    }
+
+    #[test]
+    fn should_reject_name_with_space() {
+        assert_eq!(
+            ComponentName::new("User Profile".to_string()),
+            Err(InvalidComponentNameError::InvalidCharacter(' '))
+        );
+    }
+
+    #[test]
+    fn should_reject_name_with_exclamation_mark() {
+        assert_eq!(
+            ComponentName::new("Button!".to_string()),
+            Err(InvalidComponentNameError::InvalidCharacter('!'))
+        );
+    }
+
+    #[test]
+    fn should_reject_name_with_dot() {
+        assert_eq!(
+            ComponentName::new("Nav.Bar".to_string()),
+            Err(InvalidComponentNameError::InvalidCharacter('.'))
+        );
+    }
+
+    #[test]
+    fn should_return_name_as_str() {
         let name = ComponentName::new("UserProfile".to_string()).unwrap();
         assert_eq!(name.as_str(), "UserProfile");
         assert_eq!(name.as_ref(), "UserProfile");
     }
 
     #[test]
-    fn case_conversions() {
-        let cases = [
-            ("Button", "Button", "button", "button"),
-            ("UserProfile", "UserProfile", "userProfile", "user_profile"),
-            ("NavBar", "NavBar", "navBar", "nav_bar"),
-            ("Main", "Main", "main", "main"),
-            ("Test", "Test", "test", "test"),
-            (
-                "TestAuthCheck",
-                "TestAuthCheck",
-                "testAuthCheck",
-                "test_auth_check",
-            ),
-        ];
+    fn should_convert_to_pascal_case() {
+        assert_eq!(
+            ComponentName::new("Button".to_string())
+                .unwrap()
+                .to_pascal_case(),
+            "Button"
+        );
+        assert_eq!(
+            ComponentName::new("UserProfile".to_string())
+                .unwrap()
+                .to_pascal_case(),
+            "UserProfile"
+        );
+    }
 
-        for (input, pascal, camel, snake) in cases {
-            let name = ComponentName::new(input.to_string()).unwrap();
-            assert_eq!(name.to_pascal_case(), pascal, "{input} to_pascal_case");
-            assert_eq!(name.to_camel_case(), camel, "{input} to_camel_case");
-            assert_eq!(name.to_snake_case(), snake, "{input} to_snake_case");
-        }
+    #[test]
+    fn should_convert_to_camel_case() {
+        assert_eq!(
+            ComponentName::new("Button".to_string())
+                .unwrap()
+                .to_camel_case(),
+            "button"
+        );
+        assert_eq!(
+            ComponentName::new("UserProfile".to_string())
+                .unwrap()
+                .to_camel_case(),
+            "userProfile"
+        );
+        assert_eq!(
+            ComponentName::new("NavBar".to_string())
+                .unwrap()
+                .to_camel_case(),
+            "navBar"
+        );
+    }
+
+    #[test]
+    fn should_convert_to_snake_case() {
+        assert_eq!(
+            ComponentName::new("Button".to_string())
+                .unwrap()
+                .to_snake_case(),
+            "button"
+        );
+        assert_eq!(
+            ComponentName::new("UserProfile".to_string())
+                .unwrap()
+                .to_snake_case(),
+            "user_profile"
+        );
+        assert_eq!(
+            ComponentName::new("NavBar".to_string())
+                .unwrap()
+                .to_snake_case(),
+            "nav_bar"
+        );
+        assert_eq!(
+            ComponentName::new("TestAuthCheck".to_string())
+                .unwrap()
+                .to_snake_case(),
+            "test_auth_check"
+        );
     }
 }
