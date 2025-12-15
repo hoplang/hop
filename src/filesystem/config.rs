@@ -152,7 +152,7 @@ mod tests {
     use indoc::indoc;
 
     #[test]
-    fn parse_config_missing_target_error() {
+    fn should_reject_config_missing_target() {
         let toml_str = indoc! {r#"
             [css]
             mode = "tailwind4"
@@ -166,7 +166,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_config_missing_output_path_error() {
+    fn should_reject_config_missing_output_path() {
         let toml_str = indoc! {r#"
             [compile]
             target = "ts"
@@ -182,14 +182,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_empty_config_error() {
+    fn should_reject_empty_config() {
         let toml_str = "";
         let result = HopConfig::from_toml_str(toml_str);
         assert!(result.is_err());
     }
 
     #[test]
-    fn parse_config_with_typescript_target() {
+    fn should_accept_config_with_typescript_target() {
         let toml_str = indoc! {r#"
             [css]
             mode = "tailwind4"
@@ -207,7 +207,7 @@ mod tests {
     }
 
     #[test]
-    fn get_resolved_config() {
+    fn should_accept_and_resolve_config_with_validated_fields() {
         let toml_str = indoc! {r#"
             [compile]
             target = "ts"
@@ -224,7 +224,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_config_with_server_commands() {
+    fn should_accept_config_with_server_commands() {
         let toml_str = indoc! {r#"
             [compile]
             target = "ts"
@@ -242,7 +242,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_config_without_server_commands() {
+    fn should_accept_config_without_server_commands() {
         let toml_str = indoc! {r#"
             [compile]
             target = "js"
@@ -255,7 +255,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_config_with_tailwind() {
+    fn should_accept_config_with_tailwind() {
         let toml_str = indoc! {r#"
             [css.tailwind]
             input = "styles/input.css"
@@ -271,7 +271,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_config_with_unknown_field_error() {
+    fn should_reject_config_with_unknown_field() {
         let toml_str = indoc! {r#"
             [compile]
             target = "ts"
@@ -285,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_config_with_go_target() {
+    fn should_accept_config_with_go_target() {
         let toml_str = indoc! {r#"
             [compile]
             target = "go"
@@ -302,7 +302,7 @@ mod tests {
     }
 
     #[test]
-    fn go_package_derived_from_root_path() {
+    fn should_derive_go_package_as_main_for_root_path() {
         let toml_str = indoc! {r#"
             [compile]
             target = "go"
@@ -317,7 +317,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_config_with_invalid_target_error() {
+    fn should_reject_config_with_invalid_target() {
         let toml_str = indoc! {r#"
             [compile]
             target = "invalid"
@@ -328,7 +328,7 @@ mod tests {
     }
 
     #[test]
-    fn all_target_values() {
+    fn should_accept_all_valid_target_values() {
         // Test "ts"
         let toml_str = indoc! {r#"
             [compile]
@@ -367,7 +367,7 @@ mod tests {
     }
 
     #[test]
-    fn full_target_names_rejected() {
+    fn should_reject_full_target_names() {
         // "typescript" should be rejected (only "ts" is valid)
         let toml_str = indoc! {r#"
             [compile]
@@ -388,7 +388,7 @@ mod tests {
     }
 
     #[test]
-    fn derive_go_package_from_output_path() {
+    fn should_derive_go_package_from_output_path() {
         assert_eq!(derive_go_package("frontend/frontend.go"), "frontend");
         assert_eq!(derive_go_package("main.go"), "main");
         assert_eq!(derive_go_package("src/components/views.go"), "components");
