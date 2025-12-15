@@ -262,7 +262,7 @@ mod tests {
                 Import {
                   name: Header,
                   path: "@/components/header",
-                  module_name: components/header,
+                  module_name: components::header,
                 }"#]],
         );
     }

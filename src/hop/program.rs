@@ -631,7 +631,7 @@ mod tests {
 
         let file = archive
             .iter()
-            .find(|f| f.name.replace(".hop", "") == module.to_string())
+            .find(|f| f.name.replace(".hop", "") == module.to_path())
             .expect("Could not find file in archive");
 
         let output = DocumentAnnotator::new()
@@ -697,7 +697,7 @@ mod tests {
             "#},
             expect![[r#"
                 Definition
-                  --> hop/components (line 1, col 2)
+                  --> hop::components (line 1, col 2)
                 1 | <HelloWorld>
                   |  ^^^^^^^^^^
             "#]],
@@ -724,7 +724,7 @@ mod tests {
             "#},
             expect![[r#"
                 Definition
-                  --> hop/components (line 1, col 2)
+                  --> hop::components (line 1, col 2)
                 1 | <HelloWorld>
                   |  ^^^^^^^^^^
             "#]],
@@ -750,7 +750,7 @@ mod tests {
             "#},
             expect![[r#"
                 Definition
-                  --> hop/components (line 1, col 2)
+                  --> hop::components (line 1, col 2)
                 1 | <HelloWorld>
                   |  ^^^^^^^^^^
             "#]],

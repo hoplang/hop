@@ -798,8 +798,7 @@ mod tests {
             }
             let source_code = file.content.trim();
             let mut parse_errors = ErrorCollector::new();
-            let module_name =
-                ModuleName::new(file.name.trim_end_matches(".hop")).unwrap();
+            let module_name = ModuleName::new(file.name.trim_end_matches(".hop")).unwrap();
             let ast = parse(module_name, source_code.to_string(), &mut parse_errors);
 
             if !parse_errors.is_empty() {
@@ -1838,7 +1837,7 @@ mod tests {
     fn should_accept_components_to_call_each_other_in_a_chain() {
         check(
             indoc! {r#"
-                -- bar.hop --
+                -- a/bar.hop --
                 record Config {
                   enabled: Bool,
                   title: String,
@@ -1851,8 +1850,8 @@ mod tests {
                 </WidgetComp>
 
                 -- foo.hop --
-                import WidgetComp from "@/bar"
-                import Config from "@/bar"
+                import WidgetComp from "@/a/bar"
+                import Config from "@/a/bar"
 
                 record Data {
                   items: Array[Config],
@@ -1880,20 +1879,20 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                config: bar::Config
-                  --> bar.hop (line 6, col 14)
+                config: a::bar::Config
+                  --> a/bar.hop (line 6, col 14)
                  5 | 
                  6 | <WidgetComp {config: Config}>
                    |              ^^^^^^
 
-                config: bar::Config
-                  --> bar.hop (line 8, col 11)
+                config: a::bar::Config
+                  --> a/bar.hop (line 8, col 11)
                  7 |   <if {config.enabled}>
                  8 |     <div>{config.title}</div>
                    |           ^^^^^^
 
-                config: bar::Config
-                  --> bar.hop (line 7, col 8)
+                config: a::bar::Config
+                  --> a/bar.hop (line 7, col 8)
                  6 | <WidgetComp {config: Config}>
                  7 |   <if {config.enabled}>
                    |        ^^^^^^
@@ -1910,19 +1909,19 @@ mod tests {
                  9 |   <for {item in data.items}>
                    |                 ^^^^
 
-                item: bar::Config
+                item: a::bar::Config
                   --> foo.hop (line 9, col 9)
                  8 | <PanelComp {data: Data}>
                  9 |   <for {item in data.items}>
                    |         ^^^^
 
-                item: bar::Config
+                item: a::bar::Config
                   --> foo.hop (line 10, col 26)
                  9 |   <for {item in data.items}>
                 10 |     <WidgetComp {config: item}/>
                    |                          ^^^^
 
-                config: bar::Config
+                config: a::bar::Config
                   --> foo.hop (line 10, col 26)
                  9 |   <for {item in data.items}>
                 10 |     <WidgetComp {config: item}/>

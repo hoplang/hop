@@ -112,7 +112,7 @@ impl ProjectRoot {
     /// (e.g., "src/components/header" -> "src/components/header.hop")
     pub fn module_name_to_path(&self, module_name: &ModuleName) -> PathBuf {
         let module_path = module_name
-            .to_string()
+            .to_path()
             .replace('/', std::path::MAIN_SEPARATOR_STR);
         self.directory.join(format!("{}.hop", module_path))
     }
@@ -274,11 +274,11 @@ mod tests {
         // Test converting file paths to module names
         let button_path = temp_dir.join("src/components/button.hop");
         let module_name = root.path_to_module_name(&button_path).unwrap();
-        assert_eq!(module_name.to_string(), "src/components/button");
+        assert_eq!(module_name.to_path(), "src/components/button");
 
         let main_path = temp_dir.join("main.hop");
         let main_module = root.path_to_module_name(&main_path).unwrap();
-        assert_eq!(main_module.to_string(), "main");
+        assert_eq!(main_module.to_path(), "main");
 
         // Clean up
         std::fs::remove_dir_all(&temp_dir).unwrap();
@@ -385,11 +385,11 @@ mod tests {
         // Files with underscores should work fine
         let helper_test_path = temp_dir.join("src/utils/helper_test.hop");
         let helper_test_module = root.path_to_module_name(&helper_test_path).unwrap();
-        assert_eq!(helper_test_module.to_string(), "src/utils/helper_test");
+        assert_eq!(helper_test_module.to_path(), "src/utils/helper_test");
 
         let button_min_path = temp_dir.join("src/components/button_min.hop");
         let button_min_module = root.path_to_module_name(&button_min_path).unwrap();
-        assert_eq!(button_min_module.to_string(), "src/components/button_min");
+        assert_eq!(button_min_module.to_path(), "src/components/button_min");
 
         // load_all_hop_modules should skip files that produce invalid module names
         let result = root.load_all_hop_modules();

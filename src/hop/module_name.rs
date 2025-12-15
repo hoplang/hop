@@ -107,15 +107,20 @@ impl ModuleName {
         Ok(components)
     }
 
-    /// Get the module name as a joined string with '/' separator
+    /// Get the module name as a joined string with '::' separator
     pub fn to_string(&self) -> String {
+        self.0.join("::")
+    }
+
+    /// Get the module name as a path string with '/' separator
+    pub fn to_path(&self) -> String {
         self.0.join("/")
     }
 }
 
 impl fmt::Display for ModuleName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0.join("/"))
+        write!(f, "{}", self.0.join("::"))
     }
 }
 
