@@ -104,7 +104,7 @@ impl ProjectRoot {
             .to_string_lossy()
             .replace(std::path::MAIN_SEPARATOR, "/");
 
-        ModuleName::new(module_str)
+        ModuleName::new(&module_str)
             .map_err(|e| anyhow::anyhow!("Invalid module name for path {:?}: {}", file_path, e))
     }
 
@@ -274,11 +274,11 @@ mod tests {
         // Test converting file paths to module names
         let button_path = temp_dir.join("src/components/button.hop");
         let module_name = root.path_to_module_name(&button_path).unwrap();
-        assert_eq!(module_name.as_str(), "src/components/button");
+        assert_eq!(module_name.to_string(), "src/components/button");
 
         let main_path = temp_dir.join("main.hop");
         let main_module = root.path_to_module_name(&main_path).unwrap();
-        assert_eq!(main_module.as_str(), "main");
+        assert_eq!(main_module.to_string(), "main");
 
         // Clean up
         std::fs::remove_dir_all(&temp_dir).unwrap();
@@ -296,7 +296,7 @@ mod tests {
         let root = ProjectRoot::from(&temp_dir).unwrap();
 
         // Test converting module names back to paths
-        let module = ModuleName::new("src/components/button".to_string()).unwrap();
+        let module = ModuleName::new("src/components/button").unwrap();
         let path = root.module_name_to_path(&module);
         assert_eq!(
             path.strip_prefix(&temp_dir)
@@ -336,17 +336,17 @@ mod tests {
         assert_eq!(modules.len(), 3);
 
         // Check that specific modules are loaded with correct content
-        assert!(modules.contains_key(&ModuleName::new("src/main".to_string()).unwrap()));
+        assert!(modules.contains_key(&ModuleName::new("src/main").unwrap()));
         assert!(
-            modules.contains_key(&ModuleName::new("src/components/button".to_string()).unwrap())
+            modules.contains_key(&ModuleName::new("src/components/button").unwrap())
         );
         assert!(
-            modules.contains_key(&ModuleName::new("src/components/header".to_string()).unwrap())
+            modules.contains_key(&ModuleName::new("src/components/header").unwrap())
         );
 
         // Verify content of one module
         let button_content = modules
-            .get(&ModuleName::new("src/components/button".to_string()).unwrap())
+            .get(&ModuleName::new("src/components/button").unwrap())
             .unwrap();
         assert!(button_content.contains("<button-comp>Click me!</button-comp>"));
 
@@ -385,11 +385,11 @@ mod tests {
         // Files with underscores should work fine
         let helper_test_path = temp_dir.join("src/utils/helper_test.hop");
         let helper_test_module = root.path_to_module_name(&helper_test_path).unwrap();
-        assert_eq!(helper_test_module.as_str(), "src/utils/helper_test");
+        assert_eq!(helper_test_module.to_string(), "src/utils/helper_test");
 
         let button_min_path = temp_dir.join("src/components/button_min.hop");
         let button_min_module = root.path_to_module_name(&button_min_path).unwrap();
-        assert_eq!(button_min_module.as_str(), "src/components/button_min");
+        assert_eq!(button_min_module.to_string(), "src/components/button_min");
 
         // load_all_hop_modules should skip files that produce invalid module names
         let result = root.load_all_hop_modules();
@@ -432,10 +432,10 @@ mod tests {
         assert_eq!(modules.len(), 1);
 
         // Check which modules were loaded
-        assert!(modules.contains_key(&ModuleName::new("src/main".to_string()).unwrap()));
+        assert!(modules.contains_key(&ModuleName::new("src/main").unwrap()));
 
         // Should NOT contain modules from skipped directories
-        let module_names: Vec<String> = modules.keys().map(|m| m.as_str().to_string()).collect();
+        let module_names: Vec<String> = modules.keys().map(|m| m.to_string()).collect();
         assert!(!module_names.iter().any(|m| m.contains("node_modules")));
         assert!(!module_names.iter().any(|m| m.contains(".git")));
         assert!(!module_names.iter().any(|m| m.contains("target")));

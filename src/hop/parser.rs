@@ -480,7 +480,7 @@ mod tests {
     fn check(input: &str, expected: Expect) {
         let mut errors = ErrorCollector::new();
         let module = parse(
-            ModuleName::new("test".to_string()).unwrap(),
+            ModuleName::new("test").unwrap(),
             input.to_string(),
             &mut errors,
         );

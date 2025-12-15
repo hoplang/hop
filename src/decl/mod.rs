@@ -67,7 +67,7 @@ impl Declaration {
                         .append(BoxDoc::text(","))
                         .append(BoxDoc::line())
                         .append(BoxDoc::text("module_name: "))
-                        .append(BoxDoc::text(module_name.as_str()))
+                        .append(BoxDoc::text(module_name.to_string()))
                         .append(BoxDoc::text(","))
                         .nest(2),
                 )

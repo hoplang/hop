@@ -269,7 +269,7 @@ impl IrTestBuilder {
             }
         }
 
-        let test_module = ModuleName::new("test".to_string()).unwrap();
+        let test_module = ModuleName::new("test").unwrap();
         let record_fields = self
             .records
             .get(record_name)

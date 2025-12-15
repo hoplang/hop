@@ -99,7 +99,7 @@ impl Parser {
                 return Err(ParseError::MissingAtPrefixInImportPath { range: path });
             }
         };
-        let module_name = ModuleName::new(module_name_input.to_string()).map_err(|e| {
+        let module_name = ModuleName::new(module_name_input).map_err(|e| {
             ParseError::InvalidModuleName {
                 error: e,
                 range: path.clone(),

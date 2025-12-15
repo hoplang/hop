@@ -38,7 +38,7 @@ pub enum InvalidModuleNameError {
 ///
 /// Examples: "components/button", "utils", "hop/ui"
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ModuleName(String);
+pub struct ModuleName(Vec<String>);
 
 impl ModuleName {
     /// Create a new ModuleName from a string, validating it
@@ -50,13 +50,13 @@ impl ModuleName {
     /// - Must not contain '//', '..' or '.'
     /// - Must not contain '@'
     /// - Must only contain alphanumeric characters, '-', '_', and '/'
-    pub fn new(name: String) -> Result<Self, InvalidModuleNameError> {
-        Self::validate(&name)?;
-        Ok(ModuleName(name))
+    pub fn new(name: &str) -> Result<Self, InvalidModuleNameError> {
+        let components = Self::validate(name)?;
+        Ok(ModuleName(components))
     }
 
-    /// Validate a module name string
-    fn validate(name: &str) -> Result<(), InvalidModuleNameError> {
+    /// Validate a module name string and return the components
+    fn validate(name: &str) -> Result<Vec<String>, InvalidModuleNameError> {
         // Must not be empty
         if name.is_empty() {
             return Err(InvalidModuleNameError::Empty);
@@ -83,6 +83,8 @@ impl ModuleName {
             return Err(InvalidModuleNameError::ContainsAtSymbol);
         }
 
+        let mut components = Vec::new();
+
         // Check for path components that are just '.'
         for component in name.split('/') {
             if component.is_empty() {
@@ -98,20 +100,22 @@ impl ModuleName {
                     return Err(InvalidModuleNameError::InvalidCharacter(c));
                 }
             }
+
+            components.push(component.to_string());
         }
 
-        Ok(())
+        Ok(components)
     }
 
-    /// Get the module name as a string slice
-    pub fn as_str(&self) -> &str {
-        &self.0
+    /// Get the module name as a joined string with '/' separator
+    pub fn to_string(&self) -> String {
+        self.0.join("/")
     }
 }
 
 impl fmt::Display for ModuleName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.0.join("/"))
     }
 }
 
@@ -121,54 +125,51 @@ mod tests {
 
     #[test]
     fn valid_module_names() {
-        assert!(ModuleName::new("utils".to_string()).is_ok());
-        assert!(ModuleName::new("components/button".to_string()).is_ok());
-        assert!(ModuleName::new("hop/ui".to_string()).is_ok());
-        assert!(ModuleName::new("my-component".to_string()).is_ok());
-        assert!(ModuleName::new("my_component".to_string()).is_ok());
-        assert!(ModuleName::new("a/b/c/d".to_string()).is_ok());
+        assert!(ModuleName::new("utils").is_ok());
+        assert!(ModuleName::new("components/button").is_ok());
+        assert!(ModuleName::new("hop/ui").is_ok());
+        assert!(ModuleName::new("my-component").is_ok());
+        assert!(ModuleName::new("my_component").is_ok());
+        assert!(ModuleName::new("a/b/c/d").is_ok());
     }
 
     #[test]
     fn invalid_module_names() {
+        assert_eq!(ModuleName::new(""), Err(InvalidModuleNameError::Empty));
         assert_eq!(
-            ModuleName::new("".to_string()),
-            Err(InvalidModuleNameError::Empty)
-        );
-        assert_eq!(
-            ModuleName::new("/utils".to_string()),
+            ModuleName::new("/utils"),
             Err(InvalidModuleNameError::StartsWithSlash)
         );
         assert_eq!(
-            ModuleName::new("utils/".to_string()),
+            ModuleName::new("utils/"),
             Err(InvalidModuleNameError::EndsWithSlash)
         );
         assert_eq!(
-            ModuleName::new("utils//components".to_string()),
+            ModuleName::new("utils//components"),
             Err(InvalidModuleNameError::ContainsDoubleSlash)
         );
         assert_eq!(
-            ModuleName::new("../parent".to_string()),
+            ModuleName::new("../parent"),
             Err(InvalidModuleNameError::ContainsParentDirectory)
         );
         assert_eq!(
-            ModuleName::new("./current".to_string()),
+            ModuleName::new("./current"),
             Err(InvalidModuleNameError::ContainsCurrentDirectory)
         );
         assert_eq!(
-            ModuleName::new("@/utils".to_string()),
+            ModuleName::new("@/utils"),
             Err(InvalidModuleNameError::ContainsAtSymbol)
         );
         assert_eq!(
-            ModuleName::new("utils/./current".to_string()),
+            ModuleName::new("utils/./current"),
             Err(InvalidModuleNameError::ContainsCurrentDirectory)
         );
         assert_eq!(
-            ModuleName::new("my component".to_string()),
+            ModuleName::new("my component"),
             Err(InvalidModuleNameError::InvalidCharacter(' '))
         );
         assert_eq!(
-            ModuleName::new("my!component".to_string()),
+            ModuleName::new("my!component"),
             Err(InvalidModuleNameError::InvalidCharacter('!'))
         );
     }

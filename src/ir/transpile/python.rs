@@ -1098,7 +1098,7 @@ mod tests {
             vec![(
                 "user",
                 Type::Record {
-                    module: ModuleName::new("test".to_string()).unwrap(),
+                    module: ModuleName::new("test").unwrap(),
                     name: "User".to_string(),
                     fields: vec![
                         (FieldName::new("name").unwrap(), Type::String),

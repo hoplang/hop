@@ -50,7 +50,7 @@ impl InlinedTestBuilder {
 
     fn build(&self, tag_name: &str, children: Vec<InlinedNode>) -> InlinedEntrypoint {
         InlinedEntrypoint {
-            module_name: ModuleName::new("test".to_string()).unwrap(),
+            module_name: ModuleName::new("test").unwrap(),
             tag_name: StringSpan::new(tag_name.to_string()),
             params: self.params.clone(),
             children,

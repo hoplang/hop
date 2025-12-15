@@ -61,7 +61,7 @@ async fn handle_render(
     let css_content = css.as_deref();
 
     // Parse module name
-    let module_name = match ModuleName::new(body.module.clone()) {
+    let module_name = match ModuleName::new(&body.module) {
         Ok(name) => name,
         Err(e) => {
             return Response::builder()
@@ -166,7 +166,7 @@ mod tests {
         let archive = Archive::from(input);
         let mut modules = HashMap::new();
         for file in archive.iter() {
-            let module_name = ModuleName::new(file.name.replace(".hop", "")).unwrap();
+            let module_name = ModuleName::new(&file.name.replace(".hop", "")).unwrap();
             modules.insert(module_name, file.content.clone());
         }
         let program = Program::new(modules);

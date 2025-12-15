@@ -128,7 +128,7 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
                 )
             })?;
             Ok((
-                ModuleName::new(module.to_string())?,
+                ModuleName::new(module)?,
                 ComponentName::new(component.to_string())?,
             ))
         })

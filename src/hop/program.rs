@@ -416,7 +416,7 @@ impl Program {
                 module_name,
                 self.get_typed_modules()
                     .keys()
-                    .map(|m| m.as_str())
+                    .map(|m| m.to_string())
                     .collect::<Vec<_>>()
                     .join(", ")
             )
@@ -483,7 +483,7 @@ mod tests {
         let archive = Archive::from(input);
         let mut map = HashMap::new();
         for file in archive.iter() {
-            let module_name = ModuleName::new(file.name.replace(".hop", "")).unwrap();
+            let module_name = ModuleName::new(&file.name.replace(".hop", "")).unwrap();
             map.insert(module_name, file.content.clone());
         }
         Program::new(map)
@@ -492,7 +492,7 @@ mod tests {
     fn program_from_archive(archive: &Archive) -> Program {
         let mut map = HashMap::new();
         for file in archive.iter() {
-            let module_name = ModuleName::new(file.name.replace(".hop", "")).unwrap();
+            let module_name = ModuleName::new(&file.name.replace(".hop", "")).unwrap();
             map.insert(module_name, file.content.clone());
         }
         Program::new(map)
@@ -508,7 +508,7 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = ModuleName::new(marker.filename.replace(".hop", "")).unwrap();
+        let module = ModuleName::new(&marker.filename.replace(".hop", "")).unwrap();
 
         let locs = program_from_archive(&archive)
             .get_rename_locations(&module, marker.position)
@@ -518,7 +518,7 @@ mod tests {
         let annotator = DocumentAnnotator::new().with_location();
 
         for file in archive.iter() {
-            let module_name = ModuleName::new(file.name.replace(".hop", "")).unwrap();
+            let module_name = ModuleName::new(&file.name.replace(".hop", "")).unwrap();
 
             let mut annotations: Vec<SimpleAnnotation> = locs
                 .iter()
@@ -550,7 +550,7 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = ModuleName::new(marker.filename.replace(".hop", "")).unwrap();
+        let module = ModuleName::new(&marker.filename.replace(".hop", "")).unwrap();
 
         let program = program_from_archive(&archive);
 
@@ -559,7 +559,7 @@ mod tests {
             .expect("Expected definition location to be defined");
 
         let output = DocumentAnnotator::new().with_location().annotate(
-            Some(loc.module.as_str()),
+            Some(&loc.module.to_string()),
             [SimpleAnnotation {
                 message: "Definition".to_string(),
                 range: loc.range,
@@ -573,7 +573,7 @@ mod tests {
         let program = program_from_txtar(input);
 
         let diagnostics =
-            program.get_error_diagnostics(ModuleName::new(module.to_string()).unwrap());
+            program.get_error_diagnostics(ModuleName::new(module).unwrap());
 
         if diagnostics.is_empty() {
             panic!("Expected diagnostics to be non-empty");
@@ -602,10 +602,10 @@ mod tests {
             .collect();
 
         // Sort by module name for consistent output
-        modules_with_errors.sort_by_key(|(module_name, _)| module_name.as_str());
+        modules_with_errors.sort_by_key(|(module_name, _)| module_name.to_string());
 
         for (module_name, errors) in modules_with_errors {
-            let annotated = annotator.annotate(Some(module_name.as_str()), errors);
+            let annotated = annotator.annotate(Some(&module_name.to_string()), errors);
 
             output.push(annotated);
         }
@@ -623,7 +623,7 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = ModuleName::new(marker.filename.replace(".hop", "")).unwrap();
+        let module = ModuleName::new(&marker.filename.replace(".hop", "")).unwrap();
 
         let symbol = program_from_archive(&archive)
             .get_renameable_symbol(&module, marker.position)
@@ -631,7 +631,7 @@ mod tests {
 
         let file = archive
             .iter()
-            .find(|f| f.name.replace(".hop", "") == module.as_str())
+            .find(|f| f.name.replace(".hop", "") == module.to_string())
             .expect("Could not find file in archive");
 
         let output = DocumentAnnotator::new()
@@ -652,7 +652,7 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = ModuleName::new(marker.filename.replace(".hop", "")).unwrap();
+        let module = ModuleName::new(&marker.filename.replace(".hop", "")).unwrap();
 
         let hover_info = program_from_archive(&archive)
             .get_hover_info(&module, marker.position)
@@ -660,7 +660,7 @@ mod tests {
 
         let file = archive
             .iter()
-            .find(|f| ModuleName::new(f.name.replace(".hop", "")).unwrap() == module)
+            .find(|f| ModuleName::new(&f.name.replace(".hop", "")).unwrap() == module)
             .expect("Could not find file in archive");
 
         let output = DocumentAnnotator::new().with_location().annotate(
@@ -1283,7 +1283,7 @@ mod tests {
         );
         // Resolve cycle
         program.update_module(
-            ModuleName::new("a".to_string()).unwrap(),
+            ModuleName::new("a").unwrap(),
             indoc! {r#"
                 <AComp>
                 </AComp>
@@ -1347,7 +1347,7 @@ mod tests {
         );
         // Resolve cycle
         program.update_module(
-            ModuleName::new("c".to_string()).unwrap(),
+            ModuleName::new("c").unwrap(),
             indoc! {r#"
                 <CComp>
                 </CComp>
@@ -1358,7 +1358,7 @@ mod tests {
         check_type_errors(&program, expect![""]);
         // Introduce new cycle a → b → a
         program.update_module(
-            ModuleName::new("b".to_string()).unwrap(),
+            ModuleName::new("b").unwrap(),
             indoc! {r#"
                 import AComp from "@/a"
                 <BComp>
@@ -1383,7 +1383,7 @@ mod tests {
         );
         // Resolve cycle
         program.update_module(
-            ModuleName::new("b".to_string()).unwrap(),
+            ModuleName::new("b").unwrap(),
             indoc! {r#"
                 <BComp>
                 </BComp>
@@ -1415,7 +1415,7 @@ mod tests {
         let mut args = HashMap::new();
         args.insert("name".to_string(), serde_json::json!("Alice"));
 
-        let main_module = ModuleName::new("main".to_string()).unwrap();
+        let main_module = ModuleName::new("main").unwrap();
         let hello_world = ComponentName::new("HelloWorld".to_string()).unwrap();
         let result = program
             .evaluate_ir_entrypoint(&main_module, &hello_world, args, None)

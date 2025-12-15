@@ -164,7 +164,7 @@ impl Inliner {
                             "Missing required parameter '{}' for component '{}' in module '{}'.",
                             param_name,
                             component.tag_name.as_str(),
-                            module_name.as_str()
+                            module_name
                         )
                     });
 
@@ -301,7 +301,7 @@ mod tests {
         // Parse all sources first
         let mut untyped_asts = HashMap::new();
         for (module_name_str, source) in sources {
-            let module_name = ModuleName::new(module_name_str.to_string()).unwrap();
+            let module_name = ModuleName::new(module_name_str).unwrap();
             let ast = parse(module_name.clone(), source.to_string(), &mut errors);
             untyped_asts.insert(module_name, ast);
         }
@@ -318,7 +318,7 @@ mod tests {
             assert!(
                 typechecker.type_errors.get(module_name).unwrap().is_empty(),
                 "Type errors in {}: {:?}",
-                module_name.as_str(),
+                module_name,
                 typechecker.type_errors.get(module_name).unwrap()
             );
         }
@@ -332,7 +332,7 @@ mod tests {
             .iter()
             .map(|(m, c)| {
                 (
-                    ModuleName::new(m.to_string()).unwrap(),
+                    ModuleName::new(m).unwrap(),
                     ComponentName::new(c.to_string()).unwrap(),
                 )
             })

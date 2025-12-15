@@ -149,8 +149,8 @@ impl TypeChecker {
                 for import_node in module.get_imports() {
                     let imported_module = import_node.imported_module();
                     type_errors.push(TypeError::import_cycle(
-                        module.name.as_str(),
-                        imported_module.as_str(),
+                        &module.name.to_string(),
+                        &imported_module.to_string(),
                         &modules
                             .iter()
                             .map(|m| m.name.to_string())
@@ -187,7 +187,7 @@ fn typecheck_module(
         let imported_name = import.imported_component();
         let Some(module_state) = state.modules.get(imported_module) else {
             errors.push(TypeError::ModuleNotFound {
-                module: imported_module.as_str().to_string(),
+                module: imported_module.to_string(),
                 range: import.from.clone(),
             });
             continue;
@@ -799,7 +799,7 @@ mod tests {
             let source_code = file.content.trim();
             let mut parse_errors = ErrorCollector::new();
             let module_name =
-                ModuleName::new(file.name.trim_end_matches(".hop").to_string()).unwrap();
+                ModuleName::new(file.name.trim_end_matches(".hop")).unwrap();
             let ast = parse(module_name, source_code.to_string(), &mut parse_errors);
 
             if !parse_errors.is_empty() {

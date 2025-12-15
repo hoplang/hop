@@ -736,7 +736,7 @@ mod tests {
     fn check(records_str: &[&str], env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
         let mut env = Environment::new();
         let mut records: Environment<Type> = Environment::new();
-        let test_module = ModuleName::new("test".to_string()).unwrap();
+        let test_module = ModuleName::new("test").unwrap();
 
         // First pass: parse untyped records
         let mut untyped_records: Vec<(String, RecordDeclaration)> = Vec::new();
