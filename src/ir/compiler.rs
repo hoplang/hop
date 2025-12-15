@@ -563,7 +563,7 @@ mod tests {
     }
 
     #[test]
-    fn simple_text() {
+    fn should_compile_simple_text() {
         check(
             build_inlined_auto("MainComp", vec![], |t| {
                 t.text("Hello World");
@@ -593,7 +593,7 @@ mod tests {
     }
 
     #[test]
-    fn text_expression() {
+    fn should_compile_text_expression() {
         check(
             build_inlined_auto("MainComp", vec![("name", Type::String)], |t| {
                 t.text("Hello ");
@@ -628,7 +628,7 @@ mod tests {
     }
 
     #[test]
-    fn html_element() {
+    fn should_compile_html_element() {
         check(
             build_inlined_auto("MainComp", vec![], |t| {
                 t.div(vec![], |t| {
@@ -665,7 +665,7 @@ mod tests {
     }
 
     #[test]
-    fn if_node() {
+    fn should_compile_if_node() {
         check(
             build_inlined_auto("MainComp", vec![("show", Type::Bool)], |t| {
                 t.if_node(t.var_expr("show"), |t| {
@@ -710,7 +710,7 @@ mod tests {
     }
 
     #[test]
-    fn for_node() {
+    fn should_compile_for_node() {
         check(
             build_inlined_auto(
                 "MainComp",
@@ -766,7 +766,7 @@ mod tests {
     }
 
     #[test]
-    fn attributes_static() {
+    fn should_compile_static_attributes() {
         check(
             build_inlined_auto("MainComp", vec![], |t| {
                 t.div(
@@ -808,7 +808,7 @@ mod tests {
     }
 
     #[test]
-    fn attributes_dynamic() {
+    fn should_compile_dynamic_attributes() {
         check(
             build_inlined_auto("MainComp", vec![("cls", Type::String)], |t| {
                 t.div(
@@ -857,7 +857,7 @@ mod tests {
     }
 
     #[test]
-    fn attributes_multiple_expressions() {
+    fn should_compile_attributes_with_multiple_expressions() {
         check(
             build_inlined_auto(
                 "MainComp",
@@ -931,7 +931,7 @@ mod tests {
     }
 
     #[test]
-    fn development_mode() {
+    fn should_generate_development_mode_bootstrap() {
         check(
             build_inlined_auto(
                 "TestComp",
