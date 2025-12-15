@@ -11,8 +11,6 @@ pub enum Token {
     Import,
     /// "record" keyword
     Record,
-    /// "from" keyword
-    From,
     /// An identifier (component name, record name, field name)
     Identifier(DocumentRange),
     /// A quoted string literal (the path in import statements)
@@ -23,6 +21,8 @@ pub enum Token {
     RightBrace,
     /// :
     Colon,
+    /// ::
+    ColonColon,
     /// ,
     Comma,
     /// [
@@ -37,12 +37,12 @@ impl PartialEq for Token {
             (self, other),
             (Token::Import, Token::Import)
                 | (Token::Record, Token::Record)
-                | (Token::From, Token::From)
                 | (Token::Identifier(_), Token::Identifier(_))
                 | (Token::String(_), Token::String(_))
                 | (Token::LeftBrace, Token::LeftBrace)
                 | (Token::RightBrace, Token::RightBrace)
                 | (Token::Colon, Token::Colon)
+                | (Token::ColonColon, Token::ColonColon)
                 | (Token::Comma, Token::Comma)
                 | (Token::LeftBracket, Token::LeftBracket)
                 | (Token::RightBracket, Token::RightBracket)
@@ -55,12 +55,12 @@ impl std::fmt::Display for Token {
         match self {
             Token::Import => write!(f, "import"),
             Token::Record => write!(f, "record"),
-            Token::From => write!(f, "from"),
             Token::Identifier(range) => write!(f, "{}", range.as_str()),
             Token::String(range) => write!(f, "\"{}\"", range.as_str()),
             Token::LeftBrace => write!(f, "{{"),
             Token::RightBrace => write!(f, "}}"),
             Token::Colon => write!(f, ":"),
+            Token::ColonColon => write!(f, "::"),
             Token::Comma => write!(f, ","),
             Token::LeftBracket => write!(f, "["),
             Token::RightBracket => write!(f, "]"),
@@ -94,7 +94,15 @@ impl Iterator for Tokenizer {
             match start.ch() {
                 '{' => Ok((Token::LeftBrace, start)),
                 '}' => Ok((Token::RightBrace, start)),
-                ':' => Ok((Token::Colon, start)),
+                ':' => {
+                    // Check for ::
+                    if self.iter.peek().is_some_and(|s| s.ch() == ':') {
+                        let end = self.iter.next().unwrap();
+                        Ok((Token::ColonColon, start.to(end)))
+                    } else {
+                        Ok((Token::Colon, start))
+                    }
+                }
                 ',' => Ok((Token::Comma, start)),
                 '[' => Ok((Token::LeftBracket, start)),
                 ']' => Ok((Token::RightBracket, start)),
@@ -146,7 +154,6 @@ impl Tokenizer {
         let token = match identifier.as_str() {
             "import" => Token::Import,
             "record" => Token::Record,
-            "from" => Token::From,
             _ => Token::Identifier(identifier.clone()),
         };
 
@@ -194,23 +201,23 @@ mod tests {
     #[test]
     fn should_accept_import_statement() {
         check(
-            r#"import UserList from "@/user_list""#,
+            r#"import user_list::UserList"#,
             expect![[r#"
                 token: import
-                import UserList from "@/user_list"
+                import user_list::UserList
                 ^^^^^^
 
+                token: user_list
+                import user_list::UserList
+                       ^^^^^^^^^
+
+                token: ::
+                import user_list::UserList
+                                ^^
+
                 token: UserList
-                import UserList from "@/user_list"
-                       ^^^^^^^^
-
-                token: from
-                import UserList from "@/user_list"
-                                ^^^^
-
-                token: "@/user_list"
-                import UserList from "@/user_list"
-                                     ^^^^^^^^^^^^^
+                import user_list::UserList
+                                  ^^^^^^^^
             "#]],
         );
     }
@@ -400,41 +407,41 @@ mod tests {
     fn should_accept_multiple_import_declarations() {
         check(
             indoc! {r#"
-                import Foo from "@/foo"
-                import Bar from "@/bar"
+                import foo::Foo
+                import bar::Bar
             "#},
             expect![[r#"
                 token: import
-                import Foo from "@/foo"
+                import foo::Foo
                 ^^^^^^
+
+                token: foo
+                import foo::Foo
+                       ^^^
+
+                token: ::
+                import foo::Foo
+                          ^^
 
                 token: Foo
-                import Foo from "@/foo"
-                       ^^^
-
-                token: from
-                import Foo from "@/foo"
-                           ^^^^
-
-                token: "@/foo"
-                import Foo from "@/foo"
-                                ^^^^^^^
+                import foo::Foo
+                            ^^^
 
                 token: import
-                import Bar from "@/bar"
+                import bar::Bar
                 ^^^^^^
 
-                token: Bar
-                import Bar from "@/bar"
+                token: bar
+                import bar::Bar
                        ^^^
 
-                token: from
-                import Bar from "@/bar"
-                           ^^^^
+                token: ::
+                import bar::Bar
+                          ^^
 
-                token: "@/bar"
-                import Bar from "@/bar"
-                                ^^^^^^^
+                token: Bar
+                import bar::Bar
+                            ^^^
             "#]],
         );
     }
@@ -443,25 +450,25 @@ mod tests {
     fn should_accept_import_followed_by_record() {
         check(
             indoc! {r#"
-                import Foo from "@/foo"
+                import foo::Foo
                 record Bar {name: String}
             "#},
             expect![[r#"
                 token: import
-                import Foo from "@/foo"
+                import foo::Foo
                 ^^^^^^
 
-                token: Foo
-                import Foo from "@/foo"
+                token: foo
+                import foo::Foo
                        ^^^
 
-                token: from
-                import Foo from "@/foo"
-                           ^^^^
+                token: ::
+                import foo::Foo
+                          ^^
 
-                token: "@/foo"
-                import Foo from "@/foo"
-                                ^^^^^^^
+                token: Foo
+                import foo::Foo
+                            ^^^
 
                 token: record
                 record Bar {name: String}

@@ -2,6 +2,7 @@ use std::iter::Peekable;
 
 use crate::document::document_cursor::DocumentRange;
 use crate::dop::Parser as DopParser;
+use crate::hop::component_name::ComponentName;
 use crate::hop::module_name::ModuleName;
 use crate::hop::parse_error::ParseError;
 
@@ -46,6 +47,8 @@ impl Parser {
 
     /// Try to parse an import declaration.
     ///
+    /// Syntax: `import module::path::ComponentName`
+    ///
     /// Returns `Ok(Some(Declaration::Import))` if successful,
     /// `Ok(None)` if the input doesn't start with "import",
     /// or `Err` if parsing fails after recognizing an import.
@@ -58,59 +61,86 @@ impl Parser {
         // Consume "import"
         let (_, import_range) = self.next_token()?;
 
-        // Expect identifier (component name)
-        let (token, name_range) = self.next_token()?;
-        let name = match token {
+        // Parse the module path: identifier (:: identifier)*
+        // The last identifier is the component name
+        let mut path_segments: Vec<DocumentRange> = Vec::new();
+
+        // Expect at least one identifier
+        let (token, first_range) = self.next_token()?;
+        let first_segment = match token {
             Token::Identifier(range) => range,
             _ => {
                 return Err(ParseError::new(
-                    format!("Expected component name after 'import', got {}", token),
-                    name_range,
+                    format!("Expected module path after 'import', got {}", token),
+                    first_range,
                 ));
             }
         };
+        path_segments.push(first_segment);
+        let mut last_range = first_range;
 
-        // Expect "from"
-        let (token, from_range) = self.next_token()?;
-        if token != Token::From {
+        // Continue parsing :: identifier sequences
+        while self.peek_token() == Some(Token::ColonColon) {
+            // Consume ::
+            self.next_token()?;
+
+            // Expect identifier
+            let (token, ident_range) = self.next_token()?;
+            let segment = match token {
+                Token::Identifier(range) => range,
+                _ => {
+                    return Err(ParseError::new(
+                        format!("Expected identifier after '::', got {}", token),
+                        ident_range,
+                    ));
+                }
+            };
+            last_range = ident_range;
+            path_segments.push(segment);
+        }
+
+        // Need at least two segments: module_name::ComponentName
+        if path_segments.len() < 2 {
             return Err(ParseError::new(
-                format!("Expected 'from' after component name, got {}", token),
-                from_range,
+                "Import path must have at least two segments: module::Component".to_string(),
+                last_range,
             ));
         }
 
-        // Expect string (path)
-        let (token, path_token_range) = self.next_token()?;
-        let path = match token {
-            Token::String(range) => range,
-            _ => {
-                return Err(ParseError::new(
-                    format!("Expected quoted path after 'from', got {}", token),
-                    path_token_range,
-                ));
-            }
-        };
+        // Last segment is the component name, rest is the module path
+        let name_range = path_segments.pop().unwrap();
 
-        // Parse the module name from the path
-        // Strip the @/ prefix for internal module resolution
-        let module_name_input = match path.as_str().strip_prefix("@/") {
-            Some(n) => n,
-            None => {
-                return Err(ParseError::MissingAtPrefixInImportPath { range: path });
-            }
-        };
-        let module_name = ModuleName::new(module_name_input).map_err(|e| {
-            ParseError::InvalidModuleName {
+        // Parse the component name
+        let name = ComponentName::new(name_range.as_str().to_string()).map_err(|e| {
+            ParseError::InvalidComponentName {
                 error: e,
-                range: path.clone(),
+                range: name_range.clone(),
             }
         })?;
 
+        // Build the module name from the remaining segments
+        let module_path_str = path_segments
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("/");
+
+        let module_name = ModuleName::new(&module_path_str).map_err(|e| {
+            ParseError::InvalidModuleName {
+                error: e,
+                range: path_segments.first().unwrap().clone().to(path_segments.last().unwrap().clone()),
+            }
+        })?;
+
+        // Build the full path range for error reporting
+        let path_range = path_segments.first().unwrap().clone().to(name_range.clone());
+
         Ok(Some(Declaration::Import {
             name,
-            path,
+            name_range: name_range.clone(),
+            path: path_range,
             module_name,
-            range: import_range.to(path_token_range),
+            range: import_range.to(last_range),
         }))
     }
 
@@ -241,12 +271,11 @@ mod tests {
     fn should_accept_import_with_simple_path() {
         check(
             indoc! {r#"
-                import UserList from "@/user_list"
+                import user_list::UserList
             "#},
             expect![[r#"
                 Import {
                   name: UserList,
-                  path: "@/user_list",
                   module_name: user_list,
                 }"#]],
         );
@@ -256,26 +285,35 @@ mod tests {
     fn should_accept_import_with_nested_path() {
         check(
             indoc! {r#"
-                import Header from "@/components/header"
+                import components::header::Header
             "#},
             expect![[r#"
                 Import {
                   name: Header,
-                  path: "@/components/header",
                   module_name: components::header,
                 }"#]],
         );
     }
 
     #[test]
-    fn should_reject_import_when_path_is_missing_at_prefix() {
+    fn should_reject_import_when_path_has_only_one_segment() {
         check(
             indoc! {r#"
-                import Header from "./components/header"
+                import Header
             "#},
             expect![
-                "Error: Import paths must start with '@/' where '@' indicates the root directory"
+                "Error: Import path must have at least two segments: module::Component"
             ],
+        );
+    }
+
+    #[test]
+    fn should_reject_import_when_component_name_is_not_pascal_case() {
+        check(
+            indoc! {r#"
+                import foo::bar
+            "#},
+            expect!["Error: Component name must start with an uppercase letter"],
         );
     }
 
@@ -328,12 +366,11 @@ mod tests {
             indoc! {r#"
 
 
-                import UserList from "@/user_list"
+                import user_list::UserList
             "#},
             expect![[r#"
                 Import {
                   name: UserList,
-                  path: "@/user_list",
                   module_name: user_list,
                 }"#]],
         );

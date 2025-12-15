@@ -155,7 +155,7 @@ impl TypeChecker {
                             .iter()
                             .map(|m| m.name.to_string())
                             .collect::<Vec<_>>(),
-                        import_node.from.clone(),
+                        import_node.path.clone(),
                     ));
                 }
             }
@@ -188,7 +188,7 @@ fn typecheck_module(
         let Some(module_state) = state.modules.get(imported_module) else {
             errors.push(TypeError::ModuleNotFound {
                 module: imported_module.to_string(),
-                range: import.from.clone(),
+                range: import.path.clone(),
             });
             continue;
         };
@@ -199,8 +199,9 @@ fn typecheck_module(
 
         if !is_component && !is_record {
             errors.push(TypeError::UndeclaredComponent {
-                module_name: import.from.clone(),
-                component_name: imported_name.clone(),
+                module: imported_module.to_string(),
+                component: imported_name.to_string(),
+                range: import.component_range().clone(),
             });
         }
 
@@ -895,16 +896,16 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                import Foo from "@/other"
+                import other::Foo
 
                 <Main>
                 </Main>
             "#},
             expect![[r#"
                 error: Module other was not found
-                  --> main.hop (line 1, col 18)
-                1 | import Foo from "@/other"
-                  |                  ^^^^^^^
+                  --> main.hop (line 1, col 8)
+                1 | import other::Foo
+                  |        ^^^^^^^^^^
             "#]],
         );
     }
@@ -917,16 +918,16 @@ mod tests {
                 <Bar>
                 </Bar>
                 -- main.hop --
-                import Foo from "@/other"
+                import other::Foo
 
                 <Main>
                 </Main>
             "#},
             expect![[r#"
-                error: Module @/other does not declare a component named Foo
-                  --> main.hop (line 1, col 8)
-                1 | import Foo from "@/other"
-                  |        ^^^
+                error: Module other does not declare a component named Foo
+                  --> main.hop (line 1, col 15)
+                1 | import other::Foo
+                  |               ^^^
             "#]],
         );
     }
@@ -937,16 +938,16 @@ mod tests {
             indoc! {r#"
                 -- other.hop --
                 -- main.hop --
-                import Foo from "@/other"
+                import other::Foo
 
                 <Main>
                 </Main>
             "#},
             expect![[r#"
-                error: Module @/other does not declare a component named Foo
-                  --> main.hop (line 1, col 8)
-                1 | import Foo from "@/other"
-                  |        ^^^
+                error: Module other does not declare a component named Foo
+                  --> main.hop (line 1, col 15)
+                1 | import other::Foo
+                  |               ^^^
             "#]],
         );
     }
@@ -960,7 +961,7 @@ mod tests {
                 </Foo>
 
                 -- main.hop --
-                import Foo from "@/other"
+                import other::Foo
 
                 <Main>
                 </Main>
@@ -1045,7 +1046,7 @@ mod tests {
                     <strong>No children parameter here</strong>
                 </Foo>
                 -- main.hop --
-                import Foo from "@/other"
+                import other::Foo
 
                 <Bar>
                     <Foo>
@@ -1850,8 +1851,8 @@ mod tests {
                 </WidgetComp>
 
                 -- foo.hop --
-                import WidgetComp from "@/a/bar"
-                import Config from "@/a/bar"
+                import a::bar::WidgetComp
+                import a::bar::Config
 
                 record Data {
                   items: Array[Config],
@@ -1864,8 +1865,8 @@ mod tests {
                 </PanelComp>
 
                 -- main.hop --
-                import PanelComp from "@/foo"
-                import Data from "@/foo"
+                import foo::PanelComp
+                import foo::Data
 
                 record Dashboard {
                   items: Array[Data],
@@ -1971,9 +1972,9 @@ mod tests {
                 </BarComp>
 
                 -- main.hop --
-                import FooComp from "@/foo"
-                import BarComp from "@/bar"
-                import User from "@/foo"
+                import foo::FooComp
+                import bar::BarComp
+                import foo::User
 
                 <Main {user: User}>
                     <FooComp {user: user}/>
@@ -2015,9 +2016,9 @@ mod tests {
                 </BarComp>
 
                 -- main.hop --
-                import FooComp from "@/foo"
-                import BarComp from "@/bar"
-                import User from "@/foo"
+                import foo::FooComp
+                import bar::BarComp
+                import foo::User
 
                 <Main {user: User}>
                     <FooComp {user: user}/>
@@ -2524,20 +2525,20 @@ mod tests {
                 </Foo>
 
                 -- bar.hop --
-                import User from "@/foo"
+                import foo::User
                 <Bar>
                 </Bar>
 
                 -- baz.hop --
-                import User from "@/bar"
+                import bar::User
                 <Baz>
                 </Baz>
             "#},
             expect![[r#"
-                error: Module @/bar does not declare a component named User
-                  --> baz.hop (line 1, col 8)
-                1 | import User from "@/bar"
-                  |        ^^^^
+                error: Module bar does not declare a component named User
+                  --> baz.hop (line 1, col 13)
+                1 | import bar::User
+                  |             ^^^^
             "#]],
         );
     }
@@ -2554,7 +2555,7 @@ mod tests {
                 <Foo>
                 </Foo>
                 -- bar.hop --
-                import Address from "@/foo"
+                import foo::Address
 
                 record User {
                   name: String,
@@ -2565,9 +2566,9 @@ mod tests {
                     <div>{user.address.city}</div>
                 </Bar>
                 -- baz.hop --
-                import Bar from "@/bar"
-                import User from "@/bar"
-                import Address from "@/foo"
+                import bar::Bar
+                import bar::User
+                import foo::Address
                 <Baz>
                     <Bar {user: User(name: "Alice", address: Address(city: "NYC"))} />
                 </Baz>
@@ -2605,8 +2606,8 @@ mod tests {
                 <Input>
                 </Input>
                 -- main.hop --
-                import Button from "@/hop/button"
-                import Input from "@/hop/input"
+                import hop::button::Button
+                import hop::input::Input
 
                 record Page {
                   id: Str

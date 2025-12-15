@@ -251,7 +251,7 @@ mod tests {
             </Button>
 
             -- page.hop --
-            import Button from "@/components"
+            import components::Button
 
             <Page>
               <div><Button {label: "Click me"} /></div>

@@ -42,9 +42,6 @@ pub enum ParseError {
         range: DocumentRange,
     },
 
-    #[error("Import paths must start with '@/' where '@' indicates the root directory")]
-    MissingAtPrefixInImportPath { range: DocumentRange },
-
     #[error("{error}")]
     InvalidModuleName {
         error: crate::hop::module_name::InvalidModuleNameError,
@@ -93,7 +90,6 @@ impl Ranged for ParseError {
             | ParseError::InvalidComponentName { range, .. }
             | ParseError::TypeNameIsAlreadyDefined { range, .. }
             | ParseError::DuplicateAttribute { range, .. }
-            | ParseError::MissingAtPrefixInImportPath { range }
             | ParseError::InvalidModuleName { range, .. }
             | ParseError::UnrecognizedAttribute { range, .. }
             | ParseError::GenericError { range, .. } => range,

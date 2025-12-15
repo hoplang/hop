@@ -7,10 +7,11 @@ pub enum TypeError {
     #[error("Component {tag_name} is not defined")]
     UndefinedComponent { tag_name: DocumentRange },
 
-    #[error("Module {module_name} does not declare a component named {component_name}")]
+    #[error("Module {module} does not declare a component named {component}")]
     UndeclaredComponent {
-        module_name: DocumentRange,
-        component_name: DocumentRange,
+        module: String,
+        component: String,
+        range: DocumentRange,
     },
 
     #[error("Module {module} was not found")]
@@ -129,10 +130,7 @@ impl Ranged for TypeError {
     fn range(&self) -> &DocumentRange {
         match self {
             TypeError::UndefinedComponent { tag_name: range }
-            | TypeError::UndeclaredComponent {
-                component_name: range,
-                ..
-            }
+            | TypeError::UndeclaredComponent { range, .. }
             | TypeError::UnusedVariable { var_name: range }
             | TypeError::ModuleNotFound { range, .. }
             | TypeError::VariableIsAlreadyDefined { range, .. }

@@ -17,6 +17,7 @@ use crate::document::document_cursor::DocumentCursor;
 use crate::document::document_cursor::DocumentRange;
 use crate::dop::RecordDeclaration;
 use crate::error_collector::ErrorCollector;
+use crate::hop::component_name::ComponentName;
 use crate::hop::module_name::ModuleName;
 use crate::hop::parse_error::ParseError;
 use pretty::BoxDoc;
@@ -24,13 +25,15 @@ use pretty::BoxDoc;
 /// A declaration: either an import or a record definition.
 #[derive(Clone)]
 pub enum Declaration {
-    /// An import declaration: `import Name from "path"`
+    /// An import declaration: `import module::path::Name`
     Import {
         /// The name of the imported component.
-        name: DocumentRange,
-        /// The path to import from (the raw string, e.g. "@/foo.hop").
+        name: ComponentName,
+        /// The range of the component name in the source (for error reporting).
+        name_range: DocumentRange,
+        /// The full path range (module::path::Name) for error reporting.
         path: DocumentRange,
-        /// The parsed module name (e.g. "foo.hop").
+        /// The parsed module name.
         module_name: ModuleName,
         /// The full range of the declaration.
         range: DocumentRange,
@@ -49,21 +52,14 @@ impl Declaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
             Declaration::Import {
-                name,
-                path,
-                module_name,
-                ..
+                name, module_name, ..
             } => BoxDoc::text("Import")
                 .append(BoxDoc::space())
                 .append(BoxDoc::text("{"))
                 .append(
                     BoxDoc::line()
                         .append(BoxDoc::text("name: "))
-                        .append(BoxDoc::text(name.as_str()))
-                        .append(BoxDoc::text(","))
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::text("path: "))
-                        .append(BoxDoc::text(format!("\"{}\"", path.as_str())))
+                        .append(BoxDoc::text(name.to_string()))
                         .append(BoxDoc::text(","))
                         .append(BoxDoc::line())
                         .append(BoxDoc::text("module_name: "))
@@ -205,8 +201,10 @@ mod tests {
         let formatted: Vec<String> = declarations
             .iter()
             .map(|decl| match decl {
-                Declaration::Import { name, path, .. } => {
-                    format!("Import {} from \"{}\"", name.as_str(), path.as_str())
+                Declaration::Import {
+                    name, module_name, ..
+                } => {
+                    format!("Import {}::{}", module_name, name.as_str())
                 }
                 Declaration::Record { declaration, .. } => {
                     let fields: Vec<String> = declaration
@@ -229,8 +227,8 @@ mod tests {
     #[test]
     fn should_extract_import_declaration() {
         check_declarations(
-            r#"import UserList from "@/user_list""#,
-            expect!["Import UserList from \"@/user_list\""],
+            r#"import user_list::UserList"#,
+            expect!["Import user_list::UserList"],
         );
     }
 
@@ -245,14 +243,14 @@ mod tests {
     #[test]
     fn should_extract_multiple_mixed_declarations() {
         check_declarations(
-            r#"import Header from "@/header"
+            r#"import header::Header
 record User {name: String}
-import Footer from "@/footer"
+import footer::Footer
 "#,
             expect![[r#"
-                Import Header from "@/header"
+                Import header::Header
                 Record User {name: String}
-                Import Footer from "@/footer""#]],
+                Import footer::Footer"#]],
         );
     }
 

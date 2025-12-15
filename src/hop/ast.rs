@@ -124,8 +124,11 @@ impl<T, A> Ast<T, A> {
 
 #[derive(Debug, Clone)]
 pub struct Import {
-    pub component: DocumentRange,
-    pub from: DocumentRange,
+    pub component: ComponentName,
+    /// The range of the component name in the source (for error reporting)
+    pub component_range: DocumentRange,
+    /// The full path range for error reporting (covers module::Component)
+    pub path: DocumentRange,
     pub module_name: ModuleName,
 }
 
@@ -133,8 +136,11 @@ impl Import {
     pub fn imported_module(&self) -> &ModuleName {
         &self.module_name
     }
-    pub fn imported_component(&self) -> &DocumentRange {
+    pub fn imported_component(&self) -> &ComponentName {
         &self.component
+    }
+    pub fn component_range(&self) -> &DocumentRange {
+        &self.component_range
     }
     pub fn imports_component(&self, component_name: &str) -> bool {
         self.component.as_str() == component_name

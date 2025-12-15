@@ -110,20 +110,22 @@ pub fn parse(
         match decl {
             Declaration::Import {
                 name,
+                name_range,
                 path,
                 module_name,
                 ..
             } => {
                 let import = Import {
                     component: name,
-                    from: path,
+                    component_range: name_range.clone(),
+                    path,
                     module_name,
                 };
                 let name_str = import.component.as_str();
                 if imported_components.contains_key(name_str) {
                     errors.push(ParseError::TypeNameIsAlreadyDefined {
-                        name: import.component.to_string_span(),
-                        range: import.component.clone(),
+                        name: name_range.to_string_span(),
+                        range: name_range,
                     });
                 } else {
                     imported_components.insert(name_str.to_string(), import.module_name.clone());
@@ -651,7 +653,7 @@ mod tests {
     fn should_accept_void_tags_to_be_self_closing() {
         check(
             indoc! {r#"
-                import Bar from "@/bar"
+                import bar::Bar
                 <Main>
                     <hr/>
                     <br/>
@@ -893,8 +895,8 @@ mod tests {
     fn should_reject_when_an_import_is_imported_twice() {
         check(
             indoc! {r#"
-                import Foo from "@/other"
-                import Foo from "@/other"
+                import other::Foo
+                import other::Foo
 
                 <Main>
                 	<Foo></Foo>
@@ -902,9 +904,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Foo is already defined
-                1 | import Foo from "@/other"
-                2 | import Foo from "@/other"
-                  |        ^^^
+                1 | import other::Foo
+                2 | import other::Foo
+                  |               ^^^
             "#]],
         );
     }
@@ -932,7 +934,7 @@ mod tests {
     fn should_reject_when_a_component_is_defined_with_the_same_name_as_an_import() {
         check(
             indoc! {r#"
-                import Foo from "@/other"
+                import other::Foo
 
                 <Foo>
                 </Foo>
@@ -974,7 +976,7 @@ mod tests {
     fn should_reject_when_a_record_is_defined_with_the_same_name_as_an_import() {
         check(
             indoc! {r#"
-                import User from "@/other"
+                import other::User
 
                 record User {
                   name: String
@@ -990,55 +992,19 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_when_an_import_does_not_start_with_at_sign() {
+    fn should_reject_when_import_has_only_one_segment() {
         check(
             indoc! {r#"
-                import Foo from "other"
+                import Foo
 
                 <Main>
                 	<Foo/>
                 </Main>
             "#},
             expect![[r#"
-                error: Import paths must start with '@/' where '@' indicates the root directory
-                1 | import Foo from "other"
-                  |                  ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_when_import_contains_dot_dot() {
-        check(
-            indoc! {r#"
-                import Foo from "@/../foo"
-
-                <Main>
-                	<Foo/>
-                </Main>
-            "#},
-            expect![[r#"
-                error: Module name cannot contain '..'
-                1 | import Foo from "@/../foo"
-                  |                  ^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_when_import_contains_invalid_character() {
-        check(
-            indoc! {r#"
-                import Bar from "@/foo/bar!baz"
-
-                <Main>
-                	<Bar/>
-                </Main>
-            "#},
-            expect![[r#"
-                error: Module name contains invalid character: '!'
-                1 | import Bar from "@/foo/bar!baz"
-                  |                  ^^^^^^^^^^^^^
+                error: Import path must have at least two segments: module::Component
+                1 | import Foo
+                  |        ^^^
             "#]],
         );
     }
@@ -1063,8 +1029,8 @@ mod tests {
     fn should_accept_component_references_with_params() {
         check(
             indoc! {r#"
-                import Foo from "@/foo"
-                import Bar from "@/bar"
+                import foo::Foo
+                import bar::Bar
                 record Data {
                   user: String,
                 }
