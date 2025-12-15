@@ -137,7 +137,7 @@ impl Program {
         for import in ast.get_imports() {
             if import.path.contains_position(position) {
                 let target_module = &import.module_name;
-                let imported_name = import.component.as_str();
+                let imported_name = import.type_name.as_str();
 
                 let target_ast = self.modules.get(target_module)?;
 
@@ -321,12 +321,12 @@ impl Program {
                 ast.get_imports()
                     .iter()
                     .filter(|n| {
-                        n.imports_component(component_name.as_str())
+                        n.imports_type(component_name.as_str())
                             && n.imports_from(definition_module)
                     })
                     .map(|n| RenameLocation {
                         module: module_name.clone(),
-                        range: n.component_range().clone(),
+                        range: n.type_name_range().clone(),
                     }),
             );
 

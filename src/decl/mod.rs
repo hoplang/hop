@@ -17,7 +17,7 @@ use crate::document::document_cursor::DocumentCursor;
 use crate::document::document_cursor::DocumentRange;
 use crate::dop::RecordDeclaration;
 use crate::error_collector::ErrorCollector;
-use crate::hop::component_name::ComponentName;
+use crate::dop::type_name::TypeName;
 use crate::hop::module_name::ModuleName;
 use crate::hop::parse_error::ParseError;
 use pretty::BoxDoc;
@@ -27,9 +27,9 @@ use pretty::BoxDoc;
 pub enum Declaration {
     /// An import declaration: `import module::path::Name`
     Import {
-        /// The name of the imported component.
-        name: ComponentName,
-        /// The range of the component name in the source (for error reporting).
+        /// The name of the imported type.
+        name: TypeName,
+        /// The range of the type name in the source (for error reporting).
         name_range: DocumentRange,
         /// The full path range (module::path::Name) for error reporting.
         path: DocumentRange,

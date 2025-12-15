@@ -116,12 +116,12 @@ pub fn parse(
                 ..
             } => {
                 let import = Import {
-                    component: name,
-                    component_range: name_range.clone(),
+                    type_name: name,
+                    type_name_range: name_range.clone(),
                     path,
                     module_name,
                 };
-                let name_str = import.component.as_str();
+                let name_str = import.type_name.as_str();
                 if imported_components.contains_key(name_str) {
                     errors.push(ParseError::TypeNameIsAlreadyDefined {
                         name: name_range.to_string_span(),

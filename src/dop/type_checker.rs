@@ -3,6 +3,8 @@ use super::syntactic_expr::{BinaryOp, SyntacticExpr};
 use super::syntactic_type::SyntacticType;
 use super::r#type::NumericType;
 use super::type_error::TypeError;
+#[cfg(test)]
+use super::type_name::TypeName;
 use crate::document::document_cursor::Ranged as _;
 use crate::dop::Expr;
 use crate::hop::environment::Environment;
@@ -751,7 +753,7 @@ mod tests {
             let typed_record = resolve_record(record, &mut records);
             let record_type = Type::Record {
                 module: test_module.clone(),
-                name: name.clone(),
+                name: TypeName::new(name).unwrap(),
                 fields: typed_record
                     .fields
                     .iter()

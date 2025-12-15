@@ -1,5 +1,6 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::parser::RecordField;
+use crate::dop::type_name::TypeName;
 use crate::dop::{self, Argument, Parameter, RecordDeclaration, Type, resolve_type};
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::Ast;
@@ -184,7 +185,7 @@ fn typecheck_module(
     // Validate imports and collect imported records
     for import in module.get_imports() {
         let imported_module = import.imported_module();
-        let imported_name = import.imported_component();
+        let imported_name = import.imported_type_name();
         let Some(module_state) = state.modules.get(imported_module) else {
             errors.push(TypeError::ModuleNotFound {
                 module: imported_module.to_string(),
@@ -201,7 +202,7 @@ fn typecheck_module(
             errors.push(TypeError::UndeclaredComponent {
                 module: imported_module.to_string(),
                 component: imported_name.to_string(),
-                range: import.component_range().clone(),
+                range: import.type_name_range().clone(),
             });
         }
 
@@ -210,7 +211,7 @@ fn typecheck_module(
             if let Some(record) = module_state.get_typed_record(imported_name.as_str()) {
                 let record_type = Type::Record {
                     module: imported_module.clone(),
-                    name: imported_name.as_str().to_string(),
+                    name: TypeName::new(imported_name.as_str()).unwrap(),
                     fields: record
                         .fields
                         .iter()
@@ -260,7 +261,7 @@ fn typecheck_module(
             // Add this record to records_env so subsequent records can reference it
             let record_type = Type::Record {
                 module: module.name.clone(),
-                name: record_name.to_string(),
+                name: TypeName::new(record_name).unwrap(),
                 fields: typed_fields
                     .iter()
                     .map(|f| (f.name.clone(), f.field_type.clone()))

@@ -1,6 +1,7 @@
 use crate::dop::Expr;
 use crate::dop::field_name::FieldName;
 use crate::dop::r#type::{ComparableType, EquatableType};
+use crate::dop::type_name::TypeName;
 use crate::dop::{Type, VarName};
 use crate::hop::component_name::ComponentName;
 use crate::hop::module_name::ModuleName;
@@ -282,7 +283,7 @@ impl IrTestBuilder {
                 .collect(),
             kind: Type::Record {
                 module: test_module,
-                name: record_name.to_string(),
+                name: TypeName::new(record_name).unwrap(),
                 fields: record_fields
                     .iter()
                     .map(|(k, v)| (FieldName::new(k).unwrap(), v.clone()))

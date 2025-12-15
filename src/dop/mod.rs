@@ -9,6 +9,7 @@ pub mod tokenizer;
 pub mod r#type;
 pub mod type_checker;
 pub mod type_error;
+pub mod type_name;
 pub mod var_name;
 
 pub use expr::{Expr, SimpleExpr};

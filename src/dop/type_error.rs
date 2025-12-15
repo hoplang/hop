@@ -1,4 +1,5 @@
 use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::dop::type_name::TypeName;
 use crate::dop::Type;
 use thiserror::Error;
 
@@ -10,7 +11,7 @@ pub enum TypeError {
     #[error("Field '{field}' not found in record '{record_name}'")]
     FieldNotFoundInRecord {
         field: String,
-        record_name: String,
+        record_name: TypeName,
         range: DocumentRange,
     },
 

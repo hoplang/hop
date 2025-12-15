@@ -6,6 +6,7 @@ use crate::dop::SimpleExpr;
 use crate::dop::SyntacticExpr;
 use crate::dop::SyntacticType;
 use crate::dop::Type;
+use crate::dop::type_name::TypeName;
 use crate::hop::component_name::ComponentName;
 use crate::hop::module_name::ModuleName;
 
@@ -124,10 +125,10 @@ impl<T, A> Ast<T, A> {
 
 #[derive(Debug, Clone)]
 pub struct Import {
-    pub component: ComponentName,
-    /// The range of the component name in the source (for error reporting)
-    pub component_range: DocumentRange,
-    /// The full path range for error reporting (covers module::Component)
+    pub type_name: TypeName,
+    /// The range of the type name in the source (for error reporting)
+    pub type_name_range: DocumentRange,
+    /// The full path range for error reporting (covers module::TypeName)
     pub path: DocumentRange,
     pub module_name: ModuleName,
 }
@@ -136,14 +137,14 @@ impl Import {
     pub fn imported_module(&self) -> &ModuleName {
         &self.module_name
     }
-    pub fn imported_component(&self) -> &ComponentName {
-        &self.component
+    pub fn imported_type_name(&self) -> &TypeName {
+        &self.type_name
     }
-    pub fn component_range(&self) -> &DocumentRange {
-        &self.component_range
+    pub fn type_name_range(&self) -> &DocumentRange {
+        &self.type_name_range
     }
-    pub fn imports_component(&self, component_name: &str) -> bool {
-        self.component.as_str() == component_name
+    pub fn imports_type(&self, type_name: &str) -> bool {
+        self.type_name.as_str() == type_name
     }
     pub fn imports_from(&self, module_name: &ModuleName) -> bool {
         &self.module_name == module_name

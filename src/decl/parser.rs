@@ -2,7 +2,7 @@ use std::iter::Peekable;
 
 use crate::document::document_cursor::DocumentRange;
 use crate::dop::Parser as DopParser;
-use crate::hop::component_name::ComponentName;
+use crate::dop::type_name::TypeName;
 use crate::hop::module_name::ModuleName;
 use crate::hop::parse_error::ParseError;
 
@@ -107,12 +107,12 @@ impl Parser {
             ));
         }
 
-        // Last segment is the component name, rest is the module path
+        // Last segment is the type name, rest is the module path
         let name_range = path_segments.pop().unwrap();
 
-        // Parse the component name
-        let name = ComponentName::new(name_range.as_str().to_string()).map_err(|e| {
-            ParseError::InvalidComponentName {
+        // Parse the type name
+        let name = TypeName::new(name_range.as_str()).map_err(|e| {
+            ParseError::InvalidTypeName {
                 error: e,
                 range: name_range.clone(),
             }
@@ -308,12 +308,12 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_import_when_component_name_is_not_pascal_case() {
+    fn should_reject_import_when_type_name_is_not_pascal_case() {
         check(
             indoc! {r#"
                 import foo::bar
             "#},
-            expect!["Error: Component name must start with an uppercase letter"],
+            expect!["Error: Type name must start with an uppercase letter"],
         );
     }
 

@@ -94,7 +94,7 @@ pub trait TypeTranspiler {
             Type::Int => self.transpile_int_type(),
             Type::TrustedHTML => self.transpile_trusted_html_type(),
             Type::Array(elem) => self.transpile_array_type(elem),
-            Type::Record { name, .. } => self.transpile_named_type(name),
+            Type::Record { name, .. } => self.transpile_named_type(name.as_str()),
         }
     }
 }

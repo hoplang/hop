@@ -30,6 +30,12 @@ pub enum ParseError {
         range: DocumentRange,
     },
 
+    #[error("{error}")]
+    InvalidTypeName {
+        error: crate::dop::type_name::InvalidTypeNameError,
+        range: DocumentRange,
+    },
+
     #[error("{name} is already defined")]
     TypeNameIsAlreadyDefined {
         name: StringSpan,
@@ -88,6 +94,7 @@ impl Ranged for ParseError {
             | ParseError::UnclosedTag { range, .. }
             | ParseError::ClosedVoidTag { range, .. }
             | ParseError::InvalidComponentName { range, .. }
+            | ParseError::InvalidTypeName { range, .. }
             | ParseError::TypeNameIsAlreadyDefined { range, .. }
             | ParseError::DuplicateAttribute { range, .. }
             | ParseError::InvalidModuleName { range, .. }

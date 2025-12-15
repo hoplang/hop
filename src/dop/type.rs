@@ -3,6 +3,7 @@ use core::fmt;
 use pretty::BoxDoc;
 
 use crate::dop::field_name::FieldName;
+use crate::dop::type_name::TypeName;
 use crate::hop::module_name::ModuleName;
 
 /// An EquatableType is a type where its values can be compared
@@ -41,7 +42,7 @@ pub enum Type {
     Array(Box<Type>),
     Record {
         module: ModuleName,
-        name: String,
+        name: TypeName,
         fields: Vec<(FieldName, Type)>,
     },
 }

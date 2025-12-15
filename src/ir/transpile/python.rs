@@ -3,6 +3,8 @@ use pretty::BoxDoc;
 use super::{ExpressionTranspiler, RecordInfo, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::dop::field_name::FieldName;
 use crate::dop::r#type::Type;
+#[cfg(test)]
+use crate::dop::type_name::TypeName;
 use crate::hop::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 
@@ -23,7 +25,7 @@ impl PythonTranspiler {
             Type::Array(elem) => BoxDoc::text("list[")
                 .append(Self::get_python_type(elem))
                 .append(BoxDoc::text("]")),
-            Type::Record { name, .. } => BoxDoc::text(name.clone()),
+            Type::Record { name, .. } => BoxDoc::text(name.as_str()),
         }
     }
 
@@ -1099,7 +1101,7 @@ mod tests {
                 "user",
                 Type::Record {
                     module: ModuleName::new("test").unwrap(),
-                    name: "User".to_string(),
+                    name: TypeName::new("User").unwrap(),
                     fields: vec![
                         (FieldName::new("name").unwrap(), Type::String),
                         (FieldName::new("age").unwrap(), Type::Int),
