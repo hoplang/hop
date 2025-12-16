@@ -136,83 +136,84 @@ pub fn parse(
 
     // Process token trees
     for mut tree in trees {
-        // Parse declarations from top-level text nodes
-        if let Token::Text { range } = &tree.token {
-            for decl in parse_declarations_from_source(range.clone(), errors) {
-                match decl {
-                    Declaration::Import {
-                        name,
-                        name_range,
-                        path,
-                        module_name,
-                        ..
-                    } => {
-                        let import = Import {
-                            type_name: name,
-                            type_name_range: name_range.clone(),
+        match &tree.token {
+            Token::Text { range } => {
+                for decl in parse_declarations_from_source(range.clone(), errors) {
+                    match decl {
+                        Declaration::Import {
+                            name,
+                            name_range,
                             path,
                             module_name,
-                        };
-                        let name_str = import.type_name.as_str();
-                        if imported_components.contains_key(name_str) {
-                            errors.push(ParseError::TypeNameIsAlreadyDefined {
-                                name: name_range.to_string_span(),
-                                range: name_range,
-                            });
-                        } else {
-                            imported_components
-                                .insert(name_str.to_string(), import.module_name.clone());
+                            ..
+                        } => {
+                            let import = Import {
+                                type_name: name,
+                                type_name_range: name_range.clone(),
+                                path,
+                                module_name,
+                            };
+                            let name_str = import.type_name.as_str();
+                            if imported_components.contains_key(name_str) {
+                                errors.push(ParseError::TypeNameIsAlreadyDefined {
+                                    name: name_range.to_string_span(),
+                                    range: name_range,
+                                });
+                            } else {
+                                imported_components
+                                    .insert(name_str.to_string(), import.module_name.clone());
+                            }
+                            imports.push(import);
                         }
-                        imports.push(import);
-                    }
-                    Declaration::Record { declaration, range } => {
-                        let record = Record { declaration, range };
-                        let name = record.name();
-                        if defined_records.contains(name)
-                            || defined_components.contains(name)
-                            || imported_components.contains_key(name)
-                        {
-                            errors.push(ParseError::TypeNameIsAlreadyDefined {
-                                name: record.declaration.name.to_string_span(),
-                                range: record.declaration.name.clone(),
-                            });
-                        } else {
-                            defined_records.insert(name.to_string());
+                        Declaration::Record { declaration, range } => {
+                            let record = Record { declaration, range };
+                            let name = record.name();
+                            if defined_records.contains(name)
+                                || defined_components.contains(name)
+                                || imported_components.contains_key(name)
+                            {
+                                errors.push(ParseError::TypeNameIsAlreadyDefined {
+                                    name: record.declaration.name.to_string_span(),
+                                    range: record.declaration.name.clone(),
+                                });
+                            } else {
+                                defined_records.insert(name.to_string());
+                            }
+                            records.push(record);
                         }
-                        records.push(record);
                     }
                 }
             }
-            continue;
-        }
+            _ => {
+                let children: Vec<UntypedNode> = std::mem::take(&mut tree.children)
+                    .into_iter()
+                    .flat_map(|child| {
+                        construct_nodes(
+                            child,
+                            errors,
+                            &module_name,
+                            &defined_components,
+                            &imported_components,
+                        )
+                    })
+                    .collect();
 
-        let children: Vec<UntypedNode> = std::mem::take(&mut tree.children)
-            .into_iter()
-            .flat_map(|child| {
-                construct_nodes(
-                    child,
-                    errors,
-                    &module_name,
-                    &defined_components,
-                    &imported_components,
-                )
-            })
-            .collect();
-
-        if let Some(component) = parse_component_definition(tree, children, errors) {
-            let name = component.tag_name.as_str();
-            if defined_components.contains(name)
-                || imported_components.contains_key(name)
-                || defined_records.contains(name)
-            {
-                errors.push(ParseError::TypeNameIsAlreadyDefined {
-                    name: component.tag_name.to_string_span(),
-                    range: component.tag_name.clone(),
-                });
-            } else {
-                defined_components.insert(name.to_string());
+                if let Some(component) = parse_component_definition(tree, children, errors) {
+                    let name = component.tag_name.as_str();
+                    if defined_components.contains(name)
+                        || imported_components.contains_key(name)
+                        || defined_records.contains(name)
+                    {
+                        errors.push(ParseError::TypeNameIsAlreadyDefined {
+                            name: component.tag_name.to_string_span(),
+                            range: component.tag_name.clone(),
+                        });
+                    } else {
+                        defined_components.insert(name.to_string());
+                    }
+                    components.push(component);
+                }
             }
-            components.push(component);
         }
     }
 
