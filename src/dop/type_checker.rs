@@ -1,4 +1,6 @@
 use super::Type;
+#[cfg(test)]
+use super::declaration::Declaration;
 use super::syntactic_expr::{BinaryOp, SyntacticExpr};
 use super::syntactic_type::SyntacticType;
 use super::r#type::NumericType;
@@ -710,7 +712,8 @@ pub fn typecheck_expr(
 mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
-    use crate::dop::{Parser, RecordDeclaration};
+    use crate::dop::{Parser, RecordDeclaration, RecordDeclarationField};
+    use crate::error_collector::ErrorCollector;
     use crate::hop::module_name::ModuleName;
     use expect_test::{Expect, expect};
     use indoc::indoc;
@@ -725,7 +728,7 @@ mod tests {
             fields: record
                 .fields
                 .iter()
-                .map(|f| super::super::parser::RecordField {
+                .map(|f| RecordDeclarationField {
                     name: f.name.clone(),
                     name_range: f.name_range.clone(),
                     field_type: resolve_type(&f.field_type, records)
@@ -735,17 +738,23 @@ mod tests {
         }
     }
 
-    fn check(records_str: &[&str], env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
+    fn check(records_str: &str, env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
         let mut env = Environment::new();
         let mut records: Environment<Type> = Environment::new();
         let test_module = ModuleName::new("test").unwrap();
 
         // First pass: parse untyped records
         let mut untyped_records: Vec<(String, RecordDeclaration)> = Vec::new();
-        for record_str in records_str {
-            let mut parser = Parser::from(*record_str);
-            let record = parser.parse_record().expect("Failed to parse record");
-            untyped_records.push((record.name.to_string(), record));
+        let mut parser = Parser::from(records_str);
+        let mut errors = ErrorCollector::new();
+        for declaration in parser.parse_declarations(&mut errors) {
+            let Declaration::Record { declaration, .. } = declaration else {
+                panic!("Expected record declaration");
+            };
+            untyped_records.push((declaration.name.to_string(), declaration));
+        }
+        if !errors.is_empty() {
+            panic!("Failed to parse declarations: {:?}", errors);
         }
 
         // Second pass: resolve record field types and add to environment
@@ -791,7 +800,7 @@ mod tests {
     #[test]
     fn should_reject_equality_between_string_and_number() {
         check(
-            &[],
+            "",
             &[("name", "String"), ("count", "Float")],
             "name == count",
             expect![[r#"
@@ -805,7 +814,7 @@ mod tests {
     #[test]
     fn should_reject_equality_between_boolean_and_string() {
         check(
-            &[],
+            "",
             &[("enabled", "Bool"), ("name", "String")],
             "enabled == name",
             expect![[r#"
@@ -819,7 +828,7 @@ mod tests {
     #[test]
     fn should_reject_undefined_variable() {
         check(
-            &[],
+            "",
             &[],
             "undefined_var",
             expect![[r#"
@@ -833,7 +842,7 @@ mod tests {
     #[test]
     fn should_reject_field_access_on_undefined_variable() {
         check(
-            &[],
+            "",
             &[],
             "notdefined.foo.bar",
             expect![[r#"
@@ -847,7 +856,7 @@ mod tests {
     #[test]
     fn should_reject_field_access_on_non_record() {
         check(
-            &[],
+            "",
             &[("count", "Float")],
             "count.value",
             expect![[r#"
@@ -861,7 +870,7 @@ mod tests {
     #[test]
     fn should_reject_negation_of_string() {
         check(
-            &[],
+            "",
             &[("name", "String")],
             "!name",
             expect![[r#"
@@ -875,7 +884,7 @@ mod tests {
     #[test]
     fn should_reject_negation_of_number() {
         check(
-            &[],
+            "",
             &[("count", "Float")],
             "!count",
             expect![[r#"
@@ -889,11 +898,11 @@ mod tests {
     #[test]
     fn should_reject_field_access_on_nested_array() {
         check(
-            &[
-                "record Profile {name: String, active: Bool}",
-                "record UserInfo {profile: Profile}",
-                "record Config {users: Array[UserInfo]}",
-            ],
+            indoc! {"
+                record Profile {name: String, active: Bool}
+                record UserInfo {profile: Profile}
+                record Config {users: Array[UserInfo]}
+            "},
             &[("config", "Config")],
             "config.users.profile.name",
             expect![[r#"
@@ -907,7 +916,7 @@ mod tests {
     #[test]
     fn should_reject_field_access_on_array() {
         check(
-            &["record User {name: String}"],
+            "record User {name: String}",
             &[("users", "Array[User]")],
             "users.name",
             expect![[r#"
@@ -921,7 +930,7 @@ mod tests {
     #[test]
     fn should_reject_unknown_field_access() {
         check(
-            &["record Data {field: String}"],
+            "record Data {field: String}",
             &[("data", "Data")],
             "data.unknown",
             expect![[r#"
@@ -934,38 +943,38 @@ mod tests {
 
     #[test]
     fn should_resolve_basic_variable_lookup() {
-        check(&[], &[("name", "String")], "name", expect!["String"]);
+        check("", &[("name", "String")], "name", expect!["String"]);
     }
 
     #[test]
     fn should_accept_string_literal() {
-        check(&[], &[], r#""hello world""#, expect!["String"]);
+        check("", &[], r#""hello world""#, expect!["String"]);
     }
 
     #[test]
     fn should_accept_boolean_literal_true() {
-        check(&[], &[], "true", expect!["Bool"]);
+        check("", &[], "true", expect!["Bool"]);
     }
 
     #[test]
     fn should_accept_boolean_literal_false() {
-        check(&[], &[], "false", expect!["Bool"]);
+        check("", &[], "false", expect!["Bool"]);
     }
 
     #[test]
     fn should_accept_int_literal() {
-        check(&[], &[], "42", expect!["Int"]);
+        check("", &[], "42", expect!["Int"]);
     }
 
     #[test]
     fn should_accept_float_literal() {
-        check(&[], &[], "3.14", expect!["Float"]);
+        check("", &[], "3.14", expect!["Float"]);
     }
 
     #[test]
     fn should_accept_field_access() {
         check(
-            &["record User {name: String}"],
+            "record User {name: String}",
             &[("user", "User")],
             "user.name",
             expect!["String"],
@@ -975,11 +984,11 @@ mod tests {
     #[test]
     fn should_accept_nested_field_access() {
         check(
-            &[
-                "record Profile {name: String}",
-                "record User {profile: Profile}",
-                "record App {user: User}",
-            ],
+            indoc! {"
+                record Profile {name: String}
+                record User {profile: Profile}
+                record App {user: User}
+            "},
             &[("app", "App")],
             "app.user.profile.name",
             expect!["String"],
@@ -989,7 +998,7 @@ mod tests {
     #[test]
     fn should_accept_string_equality() {
         check(
-            &[],
+            "",
             &[("name", "String")],
             r#"name == "alice""#,
             expect!["Bool"],
@@ -999,7 +1008,7 @@ mod tests {
     #[test]
     fn should_reject_equality_between_float_and_int() {
         check(
-            &[],
+            "",
             &[("count", "Float")],
             "count == 42",
             expect![[r#"
@@ -1013,7 +1022,7 @@ mod tests {
     #[test]
     fn should_accept_boolean_equality() {
         check(
-            &[],
+            "",
             &[("enabled", "Bool")],
             "enabled == true",
             expect!["Bool"],
@@ -1023,7 +1032,10 @@ mod tests {
     #[test]
     fn should_accept_equality_of_same_field_types() {
         check(
-            &["record User {name: String}", "record Admin {name: String}"],
+            indoc! {"
+                record User {name: String}
+                record Admin {name: String}
+            "},
             &[("user", "User"), ("admin", "Admin")],
             "user.name == admin.name",
             expect!["Bool"],
@@ -1033,7 +1045,7 @@ mod tests {
     #[test]
     fn should_accept_chained_equality() {
         check(
-            &[],
+            "",
             &[("a", "Bool"), ("b", "Bool")],
             "a == b == true",
             expect!["Bool"],
@@ -1042,28 +1054,28 @@ mod tests {
 
     #[test]
     fn should_accept_negation_of_variable() {
-        check(&[], &[("enabled", "Bool")], "!enabled", expect!["Bool"]);
+        check("", &[("enabled", "Bool")], "!enabled", expect!["Bool"]);
     }
 
     #[test]
     fn should_accept_negation_of_true() {
-        check(&[], &[], "!true", expect!["Bool"]);
+        check("", &[], "!true", expect!["Bool"]);
     }
 
     #[test]
     fn should_accept_negation_of_false() {
-        check(&[], &[], "!false", expect!["Bool"]);
+        check("", &[], "!false", expect!["Bool"]);
     }
 
     #[test]
     fn should_accept_greater_than_with_ints() {
-        check(&[], &[("x", "Int"), ("y", "Int")], "x > y", expect!["Bool"]);
+        check("", &[("x", "Int"), ("y", "Int")], "x > y", expect!["Bool"]);
     }
 
     #[test]
     fn should_accept_greater_than_with_floats() {
         check(
-            &[],
+            "",
             &[("x", "Float"), ("y", "Float")],
             "x > y",
             expect!["Bool"],
@@ -1073,7 +1085,7 @@ mod tests {
     #[test]
     fn should_reject_greater_than_with_mixed_types() {
         check(
-            &[],
+            "",
             &[("x", "Int"), ("y", "Float")],
             "x > y",
             expect![[r#"
@@ -1086,18 +1098,13 @@ mod tests {
 
     #[test]
     fn should_accept_less_than_or_equal_with_ints() {
-        check(
-            &[],
-            &[("x", "Int"), ("y", "Int")],
-            "x <= y",
-            expect!["Bool"],
-        );
+        check("", &[("x", "Int"), ("y", "Int")], "x <= y", expect!["Bool"]);
     }
 
     #[test]
     fn should_accept_less_than_or_equal_with_floats() {
         check(
-            &[],
+            "",
             &[("x", "Float"), ("y", "Float")],
             "x <= y",
             expect!["Bool"],
@@ -1107,7 +1114,7 @@ mod tests {
     #[test]
     fn should_reject_less_than_or_equal_with_mixed_types() {
         check(
-            &[],
+            "",
             &[("x", "Int"), ("y", "Float")],
             "x <= y",
             expect![[r#"
@@ -1120,18 +1127,13 @@ mod tests {
 
     #[test]
     fn should_accept_greater_than_or_equal_with_ints() {
-        check(
-            &[],
-            &[("x", "Int"), ("y", "Int")],
-            "x >= y",
-            expect!["Bool"],
-        );
+        check("", &[("x", "Int"), ("y", "Int")], "x >= y", expect!["Bool"]);
     }
 
     #[test]
     fn should_accept_greater_than_or_equal_with_floats() {
         check(
-            &[],
+            "",
             &[("x", "Float"), ("y", "Float")],
             "x >= y",
             expect!["Bool"],
@@ -1141,7 +1143,7 @@ mod tests {
     #[test]
     fn should_reject_greater_than_or_equal_with_mixed_types() {
         check(
-            &[],
+            "",
             &[("x", "Int"), ("y", "Float")],
             "x >= y",
             expect![[r#"
@@ -1155,7 +1157,7 @@ mod tests {
     #[test]
     fn should_accept_negation_with_equality() {
         check(
-            &["record User {active: Bool}"],
+            "record User {active: Bool}",
             &[("user", "User")],
             "!user.active == false",
             expect!["Bool"],
@@ -1165,10 +1167,10 @@ mod tests {
     #[test]
     fn should_accept_parenthesized_negation() {
         check(
-            &[
-                "record Status {enabled: Bool}",
-                "record Config {active: Bool}",
-            ],
+            indoc! {"
+                record Status {enabled: Bool}
+                record Config {active: Bool}
+            "},
             &[("status", "Status"), ("config", "Config")],
             "!(status.enabled == config.active)",
             expect!["Bool"],
@@ -1178,7 +1180,7 @@ mod tests {
     #[test]
     fn should_accept_record_with_array_field() {
         check(
-            &["record Data {items: Array[String]}"],
+            "record Data {items: Array[String]}",
             &[("data", "Data")],
             "data.items",
             expect!["Array[String]"],
@@ -1188,12 +1190,12 @@ mod tests {
     #[test]
     fn should_accept_deep_field_access() {
         check(
-            &[
-                "record Connection {host: String}",
-                "record Database {connection: Connection}",
-                "record Config {database: Database}",
-                "record System {config: Config}",
-            ],
+            indoc! {"
+                record Connection {host: String}
+                record Database {connection: Connection}
+                record Config {database: Database}
+                record System {config: Config}
+            "},
             &[("system", "System")],
             "system.config.database.connection.host",
             expect!["String"],
@@ -1203,7 +1205,7 @@ mod tests {
     #[test]
     fn should_accept_multiple_field_accesses() {
         check(
-            &["record Obj {name: String, title: String}"],
+            "record Obj {name: String, title: String}",
             &[("obj", "Obj")],
             "obj.name == obj.title",
             expect!["Bool"],
@@ -1213,7 +1215,7 @@ mod tests {
     #[test]
     fn should_reject_array_with_different_element_types() {
         check(
-            &[],
+            "",
             &[],
             "[1, true]",
             expect![[r#"
@@ -1226,13 +1228,13 @@ mod tests {
 
     #[test]
     fn should_accept_array_with_trailing_comma() {
-        check(&[], &[], "[\n\t1,\n\t2,\n\t3,\n]", expect!["Array[Int]"]);
+        check("", &[], "[\n\t1,\n\t2,\n\t3,\n]", expect!["Array[Int]"]);
     }
 
     #[test]
     fn should_accept_single_element_array_with_trailing_comma() {
         check(
-            &[],
+            "",
             &[],
             indoc! {r#"
             [
@@ -1245,18 +1247,18 @@ mod tests {
 
     #[test]
     fn should_accept_string_concatenation() {
-        check(&[], &[], r#""hello" + "world""#, expect!["String"]);
+        check("", &[], r#""hello" + "world""#, expect!["String"]);
     }
 
     #[test]
     fn should_accept_multiple_string_concatenation() {
-        check(&[], &[], r#""hello" + " " + "world""#, expect!["String"]);
+        check("", &[], r#""hello" + " " + "world""#, expect!["String"]);
     }
 
     #[test]
     fn should_accept_string_concatenation_with_variables() {
         check(
-            &[],
+            "",
             &[("greeting", "String"), ("name", "String")],
             r#"greeting + " " + name"#,
             expect!["String"],
@@ -1266,7 +1268,7 @@ mod tests {
     #[test]
     fn should_reject_concatenation_with_left_number() {
         check(
-            &[],
+            "",
             &[],
             r#"42 + "hello""#,
             expect![[r#"
@@ -1280,7 +1282,7 @@ mod tests {
     #[test]
     fn should_reject_concatenation_with_right_boolean() {
         check(
-            &[],
+            "",
             &[],
             r#""hello" + true"#,
             expect![[r#"
@@ -1293,13 +1295,13 @@ mod tests {
 
     #[test]
     fn should_accept_int_addition() {
-        check(&[], &[], r#"42 + 58"#, expect!["Int"]);
+        check("", &[], r#"42 + 58"#, expect!["Int"]);
     }
 
     #[test]
     fn should_accept_string_concatenation_with_field_access() {
         check(
-            &["record User {first_name: String, last_name: String}"],
+            "record User {first_name: String, last_name: String}",
             &[("user", "User")],
             r#"user.first_name + " " + user.last_name"#,
             expect!["String"],
@@ -1308,13 +1310,13 @@ mod tests {
 
     #[test]
     fn should_accept_concatenation_result_comparison() {
-        check(&[], &[], r#""a" + "b" == "ab""#, expect!["Bool"]);
+        check("", &[], r#""a" + "b" == "ab""#, expect!["Bool"]);
     }
 
     #[test]
     fn should_accept_logical_and_with_boolean_variables() {
         check(
-            &[],
+            "",
             &[("a", "Bool"), ("b", "Bool")],
             "a && b",
             expect!["Bool"],
@@ -1323,13 +1325,13 @@ mod tests {
 
     #[test]
     fn should_accept_logical_and_with_boolean_literals() {
-        check(&[], &[], "true && false", expect!["Bool"]);
+        check("", &[], "true && false", expect!["Bool"]);
     }
 
     #[test]
     fn should_accept_logical_and_with_field_access() {
         check(
-            &["record User {enabled: Bool, active: Bool}"],
+            "record User {enabled: Bool, active: Bool}",
             &[("user", "User")],
             "user.enabled && user.active",
             expect!["Bool"],
@@ -1339,7 +1341,7 @@ mod tests {
     #[test]
     fn should_accept_logical_and_with_comparison() {
         check(
-            &[],
+            "",
             &[("x", "Int"), ("y", "Int"), ("enabled", "Bool")],
             "x > y && enabled",
             expect!["Bool"],
@@ -1349,7 +1351,7 @@ mod tests {
     #[test]
     fn should_reject_logical_and_with_left_string() {
         check(
-            &[],
+            "",
             &[("name", "String"), ("enabled", "Bool")],
             "name && enabled",
             expect![[r#"
@@ -1363,7 +1365,7 @@ mod tests {
     #[test]
     fn should_reject_logical_and_with_right_int() {
         check(
-            &[],
+            "",
             &[("enabled", "Bool"), ("count", "Int")],
             "enabled && count",
             expect![[r#"
@@ -1377,7 +1379,7 @@ mod tests {
     #[test]
     fn should_reject_logical_and_with_both_strings() {
         check(
-            &[],
+            "",
             &[("a", "String"), ("b", "String")],
             "a && b",
             expect![[r#"
@@ -1391,7 +1393,7 @@ mod tests {
     #[test]
     fn should_handle_logical_and_precedence() {
         check(
-            &[],
+            "",
             &[("a", "Bool"), ("b", "Bool"), ("c", "Bool")],
             "a && b == c",
             expect!["Bool"],
@@ -1401,7 +1403,7 @@ mod tests {
     #[test]
     fn should_accept_logical_or_with_boolean_variables() {
         check(
-            &[],
+            "",
             &[("a", "Bool"), ("b", "Bool")],
             "a || b",
             expect!["Bool"],
@@ -1410,13 +1412,13 @@ mod tests {
 
     #[test]
     fn should_accept_logical_or_with_boolean_literals() {
-        check(&[], &[], "true || false", expect!["Bool"]);
+        check("", &[], "true || false", expect!["Bool"]);
     }
 
     #[test]
     fn should_accept_logical_or_with_field_access() {
         check(
-            &["record User {enabled: Bool, active: Bool}"],
+            "record User {enabled: Bool, active: Bool}",
             &[("user", "User")],
             "user.enabled || user.active",
             expect!["Bool"],
@@ -1426,7 +1428,7 @@ mod tests {
     #[test]
     fn should_accept_logical_or_with_comparison() {
         check(
-            &[],
+            "",
             &[("x", "Int"), ("y", "Int"), ("enabled", "Bool")],
             "x > y || enabled",
             expect!["Bool"],
@@ -1436,7 +1438,7 @@ mod tests {
     #[test]
     fn should_reject_logical_or_with_left_string() {
         check(
-            &[],
+            "",
             &[("name", "String"), ("enabled", "Bool")],
             "name || enabled",
             expect![[r#"
@@ -1450,7 +1452,7 @@ mod tests {
     #[test]
     fn should_reject_logical_or_with_right_int() {
         check(
-            &[],
+            "",
             &[("enabled", "Bool"), ("count", "Int")],
             "enabled || count",
             expect![[r#"
@@ -1464,7 +1466,7 @@ mod tests {
     #[test]
     fn should_reject_logical_or_with_both_strings() {
         check(
-            &[],
+            "",
             &[("a", "String"), ("b", "String")],
             "a || b",
             expect![[r#"
@@ -1478,7 +1480,7 @@ mod tests {
     #[test]
     fn should_handle_logical_or_precedence() {
         check(
-            &[],
+            "",
             &[("a", "Bool"), ("b", "Bool"), ("c", "Bool")],
             "a || b == c",
             expect!["Bool"],
@@ -1488,7 +1490,7 @@ mod tests {
     #[test]
     fn should_accept_mixed_logical_operators() {
         check(
-            &[],
+            "",
             &[("a", "Bool"), ("b", "Bool"), ("c", "Bool")],
             "a && b || c",
             expect!["Bool"],
@@ -1498,7 +1500,7 @@ mod tests {
     #[test]
     fn should_handle_complex_logical_operator_precedence() {
         check(
-            &[],
+            "",
             &[("a", "Bool"), ("b", "Bool"), ("c", "Bool"), ("d", "Bool")],
             "a || b && c || d",
             expect!["Bool"],
@@ -1507,13 +1509,13 @@ mod tests {
 
     #[test]
     fn should_accept_int_addition_with_variables() {
-        check(&[], &[("x", "Int"), ("y", "Int")], "x + y", expect!["Int"]);
+        check("", &[("x", "Int"), ("y", "Int")], "x + y", expect!["Int"]);
     }
 
     #[test]
     fn should_accept_float_addition_with_variables() {
         check(
-            &[],
+            "",
             &[("x", "Float"), ("y", "Float")],
             "x + y",
             expect!["Float"],
@@ -1523,7 +1525,7 @@ mod tests {
     #[test]
     fn should_accept_string_addition_with_variables() {
         check(
-            &[],
+            "",
             &[("s1", "String"), ("s2", "String")],
             "s1 + s2",
             expect!["String"],
@@ -1532,23 +1534,23 @@ mod tests {
 
     #[test]
     fn should_accept_int_literal_addition() {
-        check(&[], &[], "42 + 17", expect!["Int"]);
+        check("", &[], "42 + 17", expect!["Int"]);
     }
 
     #[test]
     fn should_accept_float_literal_addition() {
-        check(&[], &[], "3.14 + 2.71", expect!["Float"]);
+        check("", &[], "3.14 + 2.71", expect!["Float"]);
     }
 
     #[test]
     fn should_accept_string_literal_concatenation() {
-        check(&[], &[], r#""hello" + " world""#, expect!["String"]);
+        check("", &[], r#""hello" + " world""#, expect!["String"]);
     }
 
     #[test]
     fn should_reject_addition_of_int_and_float() {
         check(
-            &[],
+            "",
             &[("x", "Int"), ("y", "Float")],
             "x + y",
             expect![[r#"
@@ -1562,7 +1564,7 @@ mod tests {
     #[test]
     fn should_reject_addition_of_string_and_int() {
         check(
-            &[],
+            "",
             &[("name", "String"), ("count", "Int")],
             "name + count",
             expect![[r#"
@@ -1576,7 +1578,7 @@ mod tests {
     #[test]
     fn should_reject_addition_of_boolean_and_int() {
         check(
-            &[],
+            "",
             &[("flag", "Bool"), ("count", "Int")],
             "flag + count",
             expect![[r#"
@@ -1590,7 +1592,7 @@ mod tests {
     #[test]
     fn should_accept_addition_with_field_access() {
         check(
-            &["record User {x: Int, y: Int}"],
+            "record User {x: Int, y: Int}",
             &[("user", "User")],
             "user.x + user.y",
             expect!["Int"],
@@ -1600,7 +1602,7 @@ mod tests {
     #[test]
     fn should_accept_mixed_addition_and_comparison() {
         check(
-            &[],
+            "",
             &[("a", "Int"), ("b", "Int"), ("c", "Int")],
             "a + b > c",
             expect!["Bool"],
@@ -1610,7 +1612,7 @@ mod tests {
     #[test]
     fn should_accept_simple_record_instantiation() {
         check(
-            &["record User {name: String, age: Int}"],
+            "record User {name: String, age: Int}",
             &[],
             r#"User(name: "John", age: 30)"#,
             expect!["test::User"],
@@ -1620,7 +1622,7 @@ mod tests {
     #[test]
     fn should_accept_record_instantiation_with_variables() {
         check(
-            &["record User {name: String, age: Int}"],
+            "record User {name: String, age: Int}",
             &[("user_name", "String"), ("user_age", "Int")],
             "User(name: user_name, age: user_age)",
             expect!["test::User"],
@@ -1630,7 +1632,7 @@ mod tests {
     #[test]
     fn should_reject_instantiation_of_undefined_record() {
         check(
-            &[],
+            "",
             &[],
             r#"User(name: "John")"#,
             expect![[r#"
@@ -1644,7 +1646,7 @@ mod tests {
     #[test]
     fn should_reject_record_instantiation_with_missing_field() {
         check(
-            &["record User {name: String, age: Int}"],
+            "record User {name: String, age: Int}",
             &[],
             r#"User(name: "John")"#,
             expect![[r#"
@@ -1658,7 +1660,7 @@ mod tests {
     #[test]
     fn should_reject_record_instantiation_with_unknown_field() {
         check(
-            &["record User {name: String}"],
+            "record User {name: String}",
             &[],
             r#"User(name: "John", email: "john@example.com")"#,
             expect![[r#"
@@ -1672,7 +1674,7 @@ mod tests {
     #[test]
     fn should_reject_record_instantiation_with_type_mismatch() {
         check(
-            &["record User {name: String, age: Int}"],
+            "record User {name: String, age: Int}",
             &[],
             r#"User(name: "John", age: "thirty")"#,
             expect![[r#"
@@ -1686,10 +1688,10 @@ mod tests {
     #[test]
     fn should_accept_nested_record_instantiation() {
         check(
-            &[
-                "record Address {city: String}",
-                "record User {name: String, address: Address}",
-            ],
+            indoc! {"
+                record Address {city: String}
+                record User {name: String, address: Address}
+            "},
             &[],
             r#"User(name: "John", address: Address(city: "NYC"))"#,
             expect!["test::User"],

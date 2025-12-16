@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
 
-use crate::decl::{Declaration, parse_declarations_from_source};
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, StringSpan};
 use crate::dop;
+use crate::dop::Declaration;
 use crate::dop::Parser;
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::{Ast, ComponentDefinition, Import, Record};
@@ -138,7 +138,8 @@ pub fn parse(
     for mut tree in trees {
         match &tree.token {
             Token::Text { range } => {
-                for decl in parse_declarations_from_source(range.clone(), errors) {
+                let mut decl_errors = ErrorCollector::new();
+                for decl in Parser::from(range.clone()).parse_declarations(&mut decl_errors) {
                     match decl {
                         Declaration::Import {
                             name,
@@ -182,6 +183,10 @@ pub fn parse(
                             records.push(record);
                         }
                     }
+                }
+                // Convert dop parse errors to hop parse errors
+                for err in decl_errors.to_vec() {
+                    errors.push(err.into());
                 }
             }
             _ => {
@@ -1499,7 +1504,7 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                error: Unexpected end of input
+                error: Unexpected end of expression
                 1 | record
                   | ^^^^^^
                 2 | <Main>

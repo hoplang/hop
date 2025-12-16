@@ -1,20 +1,49 @@
-//! Declaration extraction module.
-//!
-//! This module provides functionality to extract import and record declarations
-//! from top-level text nodes in hop source files.
-
-pub mod parser;
-pub mod tokenizer;
-
-pub use parser::parse_declarations_from_source;
-
-use std::fmt;
+use std::fmt::{self, Display};
 
 use crate::document::document_cursor::{DocumentRange, Ranged};
-use crate::dop::RecordDeclaration;
-use crate::dop::type_name::TypeName;
 use crate::hop::module_name::ModuleName;
 use pretty::BoxDoc;
+
+use super::field_name::FieldName;
+use super::syntactic_type::SyntacticType;
+use super::type_name::TypeName;
+
+/// A RecordDeclarationField represents a field in a record declaration.
+/// E.g. record Foo {bar: String, baz: Int}
+///                  ^^^^^^^^^^^
+#[derive(Debug, Clone)]
+pub struct RecordDeclarationField<T = SyntacticType> {
+    pub name: FieldName,
+    pub name_range: DocumentRange,
+    pub field_type: T,
+}
+
+impl Display for RecordDeclarationField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.name, self.field_type)
+    }
+}
+
+/// A RecordDeclaration represents a full record type declaration.
+/// E.g. record User {name: String, age: Int}
+#[derive(Debug, Clone)]
+pub struct RecordDeclaration<A = SyntacticType> {
+    pub name: DocumentRange,
+    pub fields: Vec<RecordDeclarationField<A>>,
+}
+
+impl Display for RecordDeclaration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "record {} {{", self.name)?;
+        for (i, field) in self.fields.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", field)?;
+        }
+        write!(f, "}}")
+    }
+}
 
 /// A declaration: either an import or a record definition.
 #[derive(Clone)]
@@ -64,14 +93,22 @@ impl Declaration {
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("}")),
             Declaration::Record { declaration, .. } => {
-                let fields_doc = BoxDoc::intersperse(
-                    declaration.fields.iter().map(|f| {
-                        BoxDoc::text(f.name.to_string())
-                            .append(BoxDoc::text(": "))
-                            .append(BoxDoc::text(f.field_type.to_string()))
-                    }),
-                    BoxDoc::text(",").append(BoxDoc::line()),
-                );
+                let fields_doc = if declaration.fields.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            declaration.fields.iter().map(|f| {
+                                BoxDoc::text(f.name.to_string())
+                                    .append(BoxDoc::text(": "))
+                                    .append(BoxDoc::text(f.field_type.to_string()))
+                            }),
+                            BoxDoc::text(",").append(BoxDoc::line()),
+                        ))
+                        .append(BoxDoc::text(","))
+                        .nest(2)
+                        .append(BoxDoc::line())
+                };
 
                 BoxDoc::text("Record")
                     .append(BoxDoc::space())
@@ -83,13 +120,7 @@ impl Declaration {
                             .append(BoxDoc::text(","))
                             .append(BoxDoc::line())
                             .append(BoxDoc::text("fields: {"))
-                            .append(
-                                BoxDoc::line()
-                                    .append(fields_doc)
-                                    .append(BoxDoc::text(","))
-                                    .nest(2),
-                            )
-                            .append(BoxDoc::line())
+                            .append(fields_doc)
                             .append(BoxDoc::text("},"))
                             .nest(2),
                     )

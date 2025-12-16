@@ -1,8 +1,10 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::hop::module_name::InvalidModuleNameError;
 use thiserror::Error;
 
 use super::field_name::InvalidFieldNameError;
 use super::token::Token;
+use super::type_name::InvalidTypeNameError;
 use super::var_name::InvalidVarNameError;
 
 #[derive(Error, Debug, Clone)]
@@ -81,6 +83,30 @@ pub enum ParseError {
 
     #[error("Invalid number format")]
     InvalidNumberFormat { range: DocumentRange },
+
+    #[error("{error}")]
+    InvalidTypeName {
+        error: InvalidTypeNameError,
+        range: DocumentRange,
+    },
+
+    #[error("{error}")]
+    InvalidModuleName {
+        error: InvalidModuleNameError,
+        range: DocumentRange,
+    },
+
+    #[error("Expected identifier after '::'")]
+    ExpectedIdentifierAfterColonColon { range: DocumentRange },
+
+    #[error("Expected module path after 'import'")]
+    ExpectedModulePath { range: DocumentRange },
+
+    #[error("Import path must have at least two segments: module::Component")]
+    ImportPathTooShort { range: DocumentRange },
+
+    #[error("Expected declaration (import or record)")]
+    ExpectedDeclaration { range: DocumentRange },
 }
 
 impl Ranged for ParseError {
@@ -103,7 +129,13 @@ impl Ranged for ParseError {
             | ParseError::UnexpectedEndOfFieldAccess { range, .. }
             | ParseError::DuplicateParameter { range, .. }
             | ParseError::DuplicateField { range, .. }
-            | ParseError::ExpectedIdentifierAfterDot { range } => range,
+            | ParseError::ExpectedIdentifierAfterDot { range }
+            | ParseError::InvalidTypeName { range, .. }
+            | ParseError::InvalidModuleName { range, .. }
+            | ParseError::ExpectedIdentifierAfterColonColon { range }
+            | ParseError::ExpectedModulePath { range }
+            | ParseError::ImportPathTooShort { range }
+            | ParseError::ExpectedDeclaration { range } => range,
         }
     }
 }

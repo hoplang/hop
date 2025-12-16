@@ -1,7 +1,8 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::parser::RecordField;
 use crate::dop::type_name::TypeName;
-use crate::dop::{self, Argument, Parameter, RecordDeclaration, Type, resolve_type};
+use crate::dop::{
+    self, Argument, Parameter, RecordDeclaration, RecordDeclarationField, Type, resolve_type,
+};
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::Ast;
 use crate::hop::ast::{Attribute, ComponentDefinition};
@@ -233,7 +234,7 @@ fn typecheck_module(
         for field in &record.declaration.fields {
             match resolve_type(&field.field_type, &mut records_env) {
                 Ok(resolved_type) => {
-                    typed_fields.push(RecordField {
+                    typed_fields.push(RecordDeclarationField {
                         name: field.name.clone(),
                         name_range: field.name_range.clone(),
                         field_type: resolved_type,

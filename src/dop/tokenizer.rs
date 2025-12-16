@@ -54,7 +54,10 @@ impl Iterator for Tokenizer {
                 ']' => Ok((Token::RightBracket, start)),
                 '{' => Ok((Token::LeftBrace, start)),
                 '}' => Ok((Token::RightBrace, start)),
-                ':' => Ok((Token::Colon, start)),
+                ':' => match self.iter.next_if(|s| s.ch() == ':') {
+                    Some(end) => Ok((Token::ColonColon, start.to(end))),
+                    None => Ok((Token::Colon, start)),
+                },
                 ',' => Ok((Token::Comma, start)),
                 '+' => Ok((Token::Plus, start)),
                 '-' => Ok((Token::Minus, start)),
@@ -109,6 +112,7 @@ impl Iterator for Tokenizer {
                     ));
                     let t = match identifier.as_str() {
                         "in" => Token::In,
+                        "import" => Token::Import,
                         "true" => Token::BooleanLiteral(true),
                         "false" => Token::BooleanLiteral(false),
                         "record" => Token::Record,
@@ -836,6 +840,454 @@ mod tests {
                 token: ]
                 []
                  ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_import_statement() {
+        check(
+            r#"import user_list::UserList"#,
+            expect![[r#"
+                token: import
+                import user_list::UserList
+                ^^^^^^
+
+                token: user_list
+                import user_list::UserList
+                       ^^^^^^^^^
+
+                token: ::
+                import user_list::UserList
+                                ^^
+
+                token: UserList
+                import user_list::UserList
+                                  ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_record_statement() {
+        check(
+            "record User {name: String, age: Int}",
+            expect![[r#"
+                token: record
+                record User {name: String, age: Int}
+                ^^^^^^
+
+                token: User
+                record User {name: String, age: Int}
+                       ^^^^
+
+                token: {
+                record User {name: String, age: Int}
+                            ^
+
+                token: name
+                record User {name: String, age: Int}
+                             ^^^^
+
+                token: :
+                record User {name: String, age: Int}
+                                 ^
+
+                token: String
+                record User {name: String, age: Int}
+                                   ^^^^^^
+
+                token: ,
+                record User {name: String, age: Int}
+                                         ^
+
+                token: age
+                record User {name: String, age: Int}
+                                           ^^^
+
+                token: :
+                record User {name: String, age: Int}
+                                              ^
+
+                token: Int
+                record User {name: String, age: Int}
+                                                ^^^
+
+                token: }
+                record User {name: String, age: Int}
+                                                   ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_record_with_array_field() {
+        check(
+            "record UserList {users: Array[User]}",
+            expect![[r#"
+                token: record
+                record UserList {users: Array[User]}
+                ^^^^^^
+
+                token: UserList
+                record UserList {users: Array[User]}
+                       ^^^^^^^^
+
+                token: {
+                record UserList {users: Array[User]}
+                                ^
+
+                token: users
+                record UserList {users: Array[User]}
+                                 ^^^^^
+
+                token: :
+                record UserList {users: Array[User]}
+                                      ^
+
+                token: Array
+                record UserList {users: Array[User]}
+                                        ^^^^^
+
+                token: [
+                record UserList {users: Array[User]}
+                                             ^
+
+                token: User
+                record UserList {users: Array[User]}
+                                              ^^^^
+
+                token: ]
+                record UserList {users: Array[User]}
+                                                  ^
+
+                token: }
+                record UserList {users: Array[User]}
+                                                   ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_multiline_record() {
+        check(
+            "record User {\n    name: String,\n    age: Int,\n}",
+            expect![[r#"
+                token: record
+                record User {
+                ^^^^^^
+
+                token: User
+                record User {
+                       ^^^^
+
+                token: {
+                record User {
+                            ^
+
+                token: name
+                    name: String,
+                    ^^^^
+
+                token: :
+                    name: String,
+                        ^
+
+                token: String
+                    name: String,
+                          ^^^^^^
+
+                token: ,
+                    name: String,
+                                ^
+
+                token: age
+                    age: Int,
+                    ^^^
+
+                token: :
+                    age: Int,
+                       ^
+
+                token: Int
+                    age: Int,
+                         ^^^
+
+                token: ,
+                    age: Int,
+                            ^
+
+                token: }
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_multiple_import_declarations() {
+        check(
+            "import foo::Foo\nimport bar::Bar",
+            expect![[r#"
+                token: import
+                import foo::Foo
+                ^^^^^^
+
+                token: foo
+                import foo::Foo
+                       ^^^
+
+                token: ::
+                import foo::Foo
+                          ^^
+
+                token: Foo
+                import foo::Foo
+                            ^^^
+
+                token: import
+                import bar::Bar
+                ^^^^^^
+
+                token: bar
+                import bar::Bar
+                       ^^^
+
+                token: ::
+                import bar::Bar
+                          ^^
+
+                token: Bar
+                import bar::Bar
+                            ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_import_followed_by_record() {
+        check(
+            "import foo::Foo\nrecord Bar {name: String}",
+            expect![[r#"
+                token: import
+                import foo::Foo
+                ^^^^^^
+
+                token: foo
+                import foo::Foo
+                       ^^^
+
+                token: ::
+                import foo::Foo
+                          ^^
+
+                token: Foo
+                import foo::Foo
+                            ^^^
+
+                token: record
+                record Bar {name: String}
+                ^^^^^^
+
+                token: Bar
+                record Bar {name: String}
+                       ^^^
+
+                token: {
+                record Bar {name: String}
+                           ^
+
+                token: name
+                record Bar {name: String}
+                            ^^^^
+
+                token: :
+                record Bar {name: String}
+                                ^
+
+                token: String
+                record Bar {name: String}
+                                  ^^^^^^
+
+                token: }
+                record Bar {name: String}
+                                        ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_varying_whitespace_between_tokens() {
+        check(
+            "record  User  {  name :  String  }",
+            expect![[r#"
+                token: record
+                record  User  {  name :  String  }
+                ^^^^^^
+
+                token: User
+                record  User  {  name :  String  }
+                        ^^^^
+
+                token: {
+                record  User  {  name :  String  }
+                              ^
+
+                token: name
+                record  User  {  name :  String  }
+                                 ^^^^
+
+                token: :
+                record  User  {  name :  String  }
+                                      ^
+
+                token: String
+                record  User  {  name :  String  }
+                                         ^^^^^^
+
+                token: }
+                record  User  {  name :  String  }
+                                                 ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_record_with_nested_array_types() {
+        check(
+            "record Data {matrix: Array[Array[Int]]}",
+            expect![[r#"
+                token: record
+                record Data {matrix: Array[Array[Int]]}
+                ^^^^^^
+
+                token: Data
+                record Data {matrix: Array[Array[Int]]}
+                       ^^^^
+
+                token: {
+                record Data {matrix: Array[Array[Int]]}
+                            ^
+
+                token: matrix
+                record Data {matrix: Array[Array[Int]]}
+                             ^^^^^^
+
+                token: :
+                record Data {matrix: Array[Array[Int]]}
+                                   ^
+
+                token: Array
+                record Data {matrix: Array[Array[Int]]}
+                                     ^^^^^
+
+                token: [
+                record Data {matrix: Array[Array[Int]]}
+                                          ^
+
+                token: Array
+                record Data {matrix: Array[Array[Int]]}
+                                           ^^^^^
+
+                token: [
+                record Data {matrix: Array[Array[Int]]}
+                                                ^
+
+                token: Int
+                record Data {matrix: Array[Array[Int]]}
+                                                 ^^^
+
+                token: ]
+                record Data {matrix: Array[Array[Int]]}
+                                                    ^
+
+                token: ]
+                record Data {matrix: Array[Array[Int]]}
+                                                     ^
+
+                token: }
+                record Data {matrix: Array[Array[Int]]}
+                                                      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_identifiers_containing_underscores() {
+        check(
+            "record my_record {field_name: String}",
+            expect![[r#"
+                token: record
+                record my_record {field_name: String}
+                ^^^^^^
+
+                token: my_record
+                record my_record {field_name: String}
+                       ^^^^^^^^^
+
+                token: {
+                record my_record {field_name: String}
+                                 ^
+
+                token: field_name
+                record my_record {field_name: String}
+                                  ^^^^^^^^^^
+
+                token: :
+                record my_record {field_name: String}
+                                            ^
+
+                token: String
+                record my_record {field_name: String}
+                                              ^^^^^^
+
+                token: }
+                record my_record {field_name: String}
+                                                    ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_colon_colon_operator() {
+        check(
+            "foo::bar::Baz",
+            expect![[r#"
+                token: foo
+                foo::bar::Baz
+                ^^^
+
+                token: ::
+                foo::bar::Baz
+                   ^^
+
+                token: bar
+                foo::bar::Baz
+                     ^^^
+
+                token: ::
+                foo::bar::Baz
+                        ^^
+
+                token: Baz
+                foo::bar::Baz
+                          ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_import_keyword() {
+        check(
+            "import foo",
+            expect![[r#"
+                token: import
+                import foo
+                ^^^^^^
+
+                token: foo
+                import foo
+                       ^^^
             "#]],
         );
     }

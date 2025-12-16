@@ -10,8 +10,12 @@ use crate::dop::syntactic_type::SyntacticType;
 use crate::dop::token::Token;
 use crate::dop::tokenizer::Tokenizer;
 use crate::dop::var_name::VarName;
+use crate::error_collector::ErrorCollector;
+use crate::hop::module_name::ModuleName;
 
+use super::declaration::{Declaration, RecordDeclaration, RecordDeclarationField};
 use super::expr::SimpleExpr;
+use super::type_name::TypeName;
 
 /// A Parameter represents a parsed parameter with type annotation.
 /// E.g. <my-comp {x: string, y: string}>
@@ -26,43 +30,6 @@ pub struct Parameter<T = SyntacticType> {
 impl Display for Parameter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.var_name, self.var_type)
-    }
-}
-
-/// A RecordField represents a field in a record declaration.
-/// E.g. record Foo {bar: String, baz: Int}
-///                  ^^^^^^^^^^^
-#[derive(Debug, Clone)]
-pub struct RecordField<T = SyntacticType> {
-    pub name: FieldName,
-    pub name_range: DocumentRange,
-    pub field_type: T,
-}
-
-impl Display for RecordField {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.name, self.field_type)
-    }
-}
-
-/// A RecordDeclaration represents a full record type declaration.
-/// E.g. record User {name: String, age: Int}
-#[derive(Debug, Clone)]
-pub struct RecordDeclaration<A = SyntacticType> {
-    pub name: DocumentRange,
-    pub fields: Vec<RecordField<A>>,
-}
-
-impl Display for RecordDeclaration {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "record {} {{", self.name)?;
-        for (i, field) in self.fields.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{}", field)?;
-        }
-        write!(f, "}}")
     }
 }
 
@@ -347,59 +314,6 @@ impl Parser {
         )?;
         self.expect_eof()?;
         Ok(args)
-    }
-
-    // record_field = Identifier ":" type
-    fn parse_record_field(&mut self) -> Result<RecordField, ParseError> {
-        let (name, name_range) = self.expect_field_name()?;
-        self.expect_token(&Token::Colon)?;
-        let field_type = self.parse_type()?;
-        Ok(RecordField {
-            name,
-            name_range,
-            field_type,
-        })
-    }
-
-    // record = "record" Identifier "{" (record_field ("," record_field)* ","?)? "}" Eof
-    pub fn parse_record(&mut self) -> Result<RecordDeclaration, ParseError> {
-        // Expect "record" keyword
-        self.expect_token(&Token::Record)?;
-
-        // Expect record name (a type name)
-        let name = match self.iter.next().transpose()? {
-            Some((Token::TypeName(name), _)) => name,
-            Some((actual, range)) => {
-                return Err(ParseError::ExpectedTypeNameButGot { actual, range });
-            }
-            None => {
-                return Err(ParseError::UnexpectedEof {
-                    range: self.range.clone(),
-                });
-            }
-        };
-
-        // Expect opening brace
-        let left_brace = self.expect_token(&Token::LeftBrace)?;
-
-        // Parse fields
-        let mut fields = Vec::new();
-        let mut seen_names = HashSet::new();
-        self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
-            let field = this.parse_record_field()?;
-            if !seen_names.insert(field.name.as_str().to_string()) {
-                return Err(ParseError::DuplicateField {
-                    name: field.name_range.to_string_span(),
-                    range: field.name_range.clone(),
-                });
-            }
-            fields.push(field);
-            Ok(())
-        })?;
-
-        self.expect_eof()?;
-
-        Ok(RecordDeclaration { name, fields })
     }
 
     pub fn parse_type(&mut self) -> Result<SyntacticType, ParseError> {
@@ -702,6 +616,179 @@ impl Parser {
             annotation: name_range.to(right_paren),
         })
     }
+
+    /// Parse an import declaration.
+    ///
+    /// Syntax: `import module::path::ComponentName`
+    fn parse_import_declaration(&mut self) -> Result<Declaration, ParseError> {
+        let import_range = self.expect_token(&Token::Import)?;
+
+        let mut path_segments: Vec<DocumentRange> = Vec::new();
+
+        let first_segment = match self.iter.next().transpose()? {
+            Some((Token::Identifier(range), _)) | Some((Token::TypeName(range), _)) => range,
+            Some((_, range)) => {
+                return Err(ParseError::ExpectedModulePath { range });
+            }
+            None => {
+                return Err(ParseError::ExpectedModulePath {
+                    range: self.range.clone(),
+                });
+            }
+        };
+        let mut last_range = first_segment.clone();
+        path_segments.push(first_segment);
+
+        while self.advance_if(Token::ColonColon).is_some() {
+            let segment = match self.iter.next().transpose()? {
+                Some((Token::Identifier(range), _)) | Some((Token::TypeName(range), _)) => range,
+                Some((_, range)) => {
+                    return Err(ParseError::ExpectedIdentifierAfterColonColon { range });
+                }
+                None => {
+                    return Err(ParseError::ExpectedIdentifierAfterColonColon {
+                        range: self.range.clone(),
+                    });
+                }
+            };
+            last_range = segment.clone();
+            path_segments.push(segment);
+        }
+
+        if path_segments.len() < 2 {
+            return Err(ParseError::ImportPathTooShort { range: last_range });
+        }
+
+        let name_range = path_segments.pop().unwrap();
+
+        let name = TypeName::new(name_range.as_str()).map_err(|e| ParseError::InvalidTypeName {
+            error: e,
+            range: name_range.clone(),
+        })?;
+
+        let module_path_str = path_segments
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("/");
+
+        let module_name =
+            ModuleName::new(&module_path_str).map_err(|e| ParseError::InvalidModuleName {
+                error: e,
+                range: path_segments
+                    .first()
+                    .unwrap()
+                    .clone()
+                    .to(path_segments.last().unwrap().clone()),
+            })?;
+
+        let path_range = path_segments
+            .first()
+            .unwrap()
+            .clone()
+            .to(name_range.clone());
+
+        Ok(Declaration::Import {
+            name,
+            name_range: name_range.clone(),
+            path: path_range,
+            module_name,
+            range: import_range.to(last_range),
+        })
+    }
+
+    /// Parse a record declaration.
+    ///
+    /// Syntax: `record Name {field: Type, ...}`
+    fn parse_record_declaration(&mut self) -> Result<Declaration, ParseError> {
+        let start_range = self.expect_token(&Token::Record)?;
+
+        let name = match self.iter.next().transpose()? {
+            Some((Token::TypeName(name), _)) => name,
+            Some((actual, range)) => {
+                return Err(ParseError::ExpectedTypeNameButGot { actual, range });
+            }
+            None => {
+                return Err(ParseError::UnexpectedEof {
+                    range: self.range.clone(),
+                });
+            }
+        };
+
+        let left_brace = self.expect_token(&Token::LeftBrace)?;
+
+        let mut fields = Vec::new();
+        let mut seen_names = HashSet::new();
+        let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
+            let (name, name_range) = this.expect_field_name()?;
+            this.expect_token(&Token::Colon)?;
+            let field_type = this.parse_type()?;
+            let field = RecordDeclarationField {
+                name,
+                name_range,
+                field_type,
+            };
+            if !seen_names.insert(field.name.as_str().to_string()) {
+                return Err(ParseError::DuplicateField {
+                    name: field.name_range.to_string_span(),
+                    range: field.name_range.clone(),
+                });
+            }
+            fields.push(field);
+            Ok(())
+        })?;
+
+        let declaration = RecordDeclaration { name, fields };
+        let full_range = start_range.to(right_brace);
+
+        Ok(Declaration::Record {
+            declaration,
+            range: full_range,
+        })
+    }
+
+    /// Parse all declarations from the source.
+    ///
+    /// This parses import and record declarations from a top-level
+    /// text node. The text should only contain declarations and whitespace.
+    pub fn parse_declarations(
+        &mut self,
+        errors: &mut ErrorCollector<ParseError>,
+    ) -> Vec<Declaration> {
+        let mut declarations = Vec::new();
+
+        loop {
+            match self.iter.peek() {
+                Some(Ok((Token::Import, _))) => match self.parse_import_declaration() {
+                    Ok(decl) => declarations.push(decl),
+                    Err(err) => {
+                        errors.push(err);
+                        break;
+                    }
+                },
+                Some(Ok((Token::Record, _))) => match self.parse_record_declaration() {
+                    Ok(decl) => declarations.push(decl),
+                    Err(err) => {
+                        errors.push(err);
+                        break;
+                    }
+                },
+                Some(Ok((_, range))) => {
+                    errors.push(ParseError::ExpectedDeclaration {
+                        range: range.clone(),
+                    });
+                    break;
+                }
+                Some(Err(err)) => {
+                    errors.push(err.clone());
+                    break;
+                }
+                None => break,
+            }
+        }
+
+        declarations
+    }
 }
 
 #[cfg(test)]
@@ -774,111 +861,27 @@ mod tests {
         expected.assert_eq(&actual);
     }
 
-    fn check_parse_record(input: &str, expected: Expect) {
-        let mut parser = Parser::from(input);
+    fn check_parse_declarations(input: &str, expected: Expect) {
+        use crate::document::document_cursor::DocumentCursor;
+        use crate::error_collector::ErrorCollector;
 
-        let actual = match parser.parse_record() {
-            Ok(result) => format!("{}\n", result),
-            Err(err) => annotate_error(err),
+        let mut errors = ErrorCollector::<ParseError>::new();
+        let range = DocumentCursor::new(input.to_string()).range();
+        let declarations = Parser::from(range).parse_declarations(&mut errors);
+
+        let actual = if !errors.is_empty() {
+            DocumentAnnotator::new()
+                .with_label("error")
+                .annotate(None, errors.to_vec())
+        } else {
+            declarations
+                .iter()
+                .map(|decl| format!("{:?}", decl))
+                .collect::<Vec<_>>()
+                .join("\n")
         };
 
         expected.assert_eq(&actual);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////
-    /// RECORD DECLARATIONS                                                 ///
-    ///////////////////////////////////////////////////////////////////////////
-
-    #[test]
-    fn should_accept_record_declaration_with_no_fields() {
-        check_parse_record(
-            "record Empty {}",
-            expect![[r#"
-                record Empty {}
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_record_declaration_with_single_field() {
-        check_parse_record(
-            "record Foo {bar: String}",
-            expect![[r#"
-                record Foo {bar: String}
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_record_declaration_with_multiple_fields() {
-        check_parse_record(
-            "record User {name: String, age: Int, active: Bool}",
-            expect![[r#"
-                record User {name: String, age: Int, active: Bool}
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_record_declaration_with_multiple_fields_and_trailing_comma() {
-        check_parse_record(
-            indoc! {r#"
-                record User {
-                    name: String,
-                    email: String,
-                    age: Int,
-                }
-            "#},
-            expect![[r#"
-                record User {name: String, email: String, age: Int}
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_record_with_array_type_field() {
-        check_parse_record(
-            "record Container {items: Array[String], count: Int}",
-            expect![[r#"
-                record Container {items: Array[String], count: Int}
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_record_declaration_when_field_name_is_duplicated() {
-        check_parse_record(
-            "record Foo {bar: String, bar: Int}",
-            expect![[r#"
-                error: Duplicate field 'bar'
-                record Foo {bar: String, bar: Int}
-                                         ^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_record_declaration_when_closing_brace_is_missing() {
-        check_parse_record(
-            "record Foo {bar: String",
-            expect![[r#"
-                error: Unmatched '{'
-                record Foo {bar: String
-                           ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_record_declaration_when_type_name_is_missing() {
-        check_parse_record(
-            "record {bar: String}",
-            expect![[r#"
-                error: Expected type name but got {
-                record {bar: String}
-                       ^
-            "#]],
-        );
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -1983,6 +1986,275 @@ mod tests {
             "x + y + z",
             expect![[r#"
                 ((x + y) + z)
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// DECLARATIONS                                                        ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_import_with_simple_path() {
+        check_parse_declarations(
+            indoc! {r#"
+                import user_list::UserList
+            "#},
+            expect![[r#"
+                Import {
+                  name: UserList,
+                  module_name: user_list,
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_import_with_nested_path() {
+        check_parse_declarations(
+            indoc! {r#"
+                import components::header::Header
+            "#},
+            expect![[r#"
+                Import {
+                  name: Header,
+                  module_name: components::header,
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_import_when_path_has_only_one_segment() {
+        check_parse_declarations(
+            indoc! {r#"
+                import Header
+            "#},
+            expect![[r#"
+                error: Import path must have at least two segments: module::Component
+                1 | import Header
+                  |        ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_import_when_type_name_is_not_pascal_case() {
+        check_parse_declarations(
+            indoc! {r#"
+                import foo::bar
+            "#},
+            expect![[r#"
+                error: Type name must start with an uppercase letter
+                1 | import foo::bar
+                  |             ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_declaration_record_with_multiple_fields() {
+        check_parse_declarations(
+            indoc! {"
+                record User {name: String, age: Int}
+            "},
+            expect![[r#"
+                Record {
+                  name: User,
+                  fields: {
+                    name: String,
+                    age: Int,
+                  },
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_declaration_record_with_nested_array_field_type() {
+        check_parse_declarations(
+            indoc! {"
+                record UserList {users: Array[User]}
+            "},
+            expect![[r#"
+                Record {
+                  name: UserList,
+                  fields: {
+                    users: Array[User],
+                  },
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_html_input_as_declaration() {
+        check_parse_declarations(
+            indoc! {"
+                <div>hello</div>
+            "},
+            expect![[r#"
+                error: Expected declaration (import or record)
+                1 | <div>hello</div>
+                  | ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_import_with_leading_empty_lines() {
+        check_parse_declarations(
+            indoc! {r#"
+
+
+                import user_list::UserList
+            "#},
+            expect![[r#"
+                Import {
+                  name: UserList,
+                  module_name: user_list,
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_multiple_mixed_declarations() {
+        check_parse_declarations(
+            indoc! {r#"
+                import header::Header
+                record User {name: String}
+                import footer::Footer
+            "#},
+            expect![[r#"
+                Import {
+                  name: Header,
+                  module_name: header,
+                }
+                Record {
+                  name: User,
+                  fields: {
+                    name: String,
+                  },
+                }
+                Import {
+                  name: Footer,
+                  module_name: footer,
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_text_starting_with_import_keyword() {
+        check_parse_declarations(
+            "important information",
+            expect![[r#"
+                error: Expected declaration (import or record)
+                1 | important information
+                  | ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_text_starting_with_record_keyword() {
+        check_parse_declarations(
+            "recording started",
+            expect![[r#"
+                error: Expected declaration (import or record)
+                1 | recording started
+                  | ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_unexpected_content_before_declaration() {
+        check_parse_declarations(
+            "• bullet point\nrecord User {name: String}",
+            expect![[r#"
+                error: Unexpected character: '•'
+                1 | • bullet point
+                  | ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_declaration_record_field_without_type() {
+        check_parse_declarations(
+            indoc! {"
+                record X {
+                    foo
+                }
+            "},
+            expect![[r#"
+                error: Expected token ':' but got '}'
+                3 | }
+                  | ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_declaration_record_with_no_fields() {
+        check_parse_declarations(
+            "record Empty {}",
+            expect![[r#"
+                Record {
+                  name: Empty,
+                  fields: {},
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_declaration_record_with_trailing_comma() {
+        check_parse_declarations(
+            indoc! {"
+                record User {
+                    name: String,
+                    age: Int,
+                }
+            "},
+            expect![[r#"
+                Record {
+                  name: User,
+                  fields: {
+                    name: String,
+                    age: Int,
+                  },
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_declaration_record_with_duplicate_field() {
+        check_parse_declarations(
+            "record Foo {bar: String, bar: Int}",
+            expect![[r#"
+                error: Duplicate field 'bar'
+                1 | record Foo {bar: String, bar: Int}
+                  |                          ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_declaration_record_with_missing_closing_brace() {
+        check_parse_declarations(
+            "record Foo {bar: String",
+            expect![[r#"
+                error: Unmatched '{'
+                1 | record Foo {bar: String
+                  |            ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_declaration_record_with_missing_type_name() {
+        check_parse_declarations(
+            "record {bar: String}",
+            expect![[r#"
+                error: Expected type name but got {
+                1 | record {bar: String}
+                  |        ^
             "#]],
         );
     }
