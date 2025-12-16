@@ -57,22 +57,6 @@ impl TypeName {
     pub fn as_str(&self) -> &str {
         &self.value
     }
-
-    /// Convert the type name to snake_case
-    pub fn to_snake_case(&self) -> String {
-        let mut result = String::new();
-        for (i, c) in self.value.chars().enumerate() {
-            if c.is_ascii_uppercase() {
-                if i > 0 {
-                    result.push('_');
-                }
-                result.push(c.to_ascii_lowercase());
-            } else {
-                result.push(c);
-            }
-        }
-        result
-    }
 }
 
 impl Display for TypeName {
@@ -189,31 +173,5 @@ mod tests {
     #[test]
     fn should_reject_empty_type_name() {
         assert_eq!(TypeName::new(""), Err(InvalidTypeNameError::Empty));
-    }
-
-    #[test]
-    fn should_convert_simple_name_to_snake_case() {
-        assert_eq!(TypeName::new("User").unwrap().to_snake_case(), "user");
-    }
-
-    #[test]
-    fn should_convert_pascal_case_to_snake_case() {
-        assert_eq!(
-            TypeName::new("UserProfile").unwrap().to_snake_case(),
-            "user_profile"
-        );
-    }
-
-    #[test]
-    fn should_convert_single_letter_to_snake_case() {
-        assert_eq!(TypeName::new("X").unwrap().to_snake_case(), "x");
-    }
-
-    #[test]
-    fn should_convert_consecutive_uppercase_to_snake_case() {
-        assert_eq!(
-            TypeName::new("HTTPServer").unwrap().to_snake_case(),
-            "h_t_t_p_server"
-        );
     }
 }
