@@ -709,7 +709,7 @@ impl Iterator for Tokenizer {
 }
 
 fn is_tag_name_with_raw_content(name: &str) -> bool {
-    matches!(name, "script" | "style" | "hop-x-raw")
+    matches!(name, "script" | "style")
 }
 
 #[cfg(test)]
@@ -743,12 +743,12 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_empty() {
+    fn should_accept_empty_input() {
         check("", expect![""]);
     }
 
     #[test]
-    fn tokenize_expression_attribute() {
+    fn should_accept_expression_attribute() {
         check(
             r#"<div class={user.theme}>Hello</div>"#,
             expect![[r#"
@@ -768,7 +768,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_expression_attribute_comma_separated() {
+    fn should_accept_expression_attribute_with_comma_separated_values() {
         check(
             r#"<div class={user.theme, user.classes}>Hello</div>"#,
             expect![[r#"
@@ -788,7 +788,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_mixed_attributes() {
+    fn should_accept_mixed_attributes() {
         check(
             r#"<a href={user.url} target="_blank">Link</a>"#,
             expect![[r#"
@@ -808,7 +808,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_input_with_attributes() {
+    fn should_accept_input_with_attributes() {
         check(
             r#"<input type="" value="" disabled="">"#,
             expect![[r#"
@@ -820,7 +820,69 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_raw_text_tricky() {
+    fn should_accept_attributes_without_spaces() {
+        check(
+            r#"<h1 foo="bar"x="y">"#,
+            expect![[r#"
+                OpeningTag <h1 foo="bar" x="y">
+                1 | <h1 foo="bar"x="y">
+                  | ^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_text_over_multiple_lines() {
+        check(
+            "this\ntext\nspans\nmultiple lines",
+            expect![[r#"
+                Text [30 byte, "this\ntext\nspans\nmultiple lines"]
+                1 | this
+                  | ^^^^
+                2 | text
+                  | ^^^^
+                3 | spans
+                  | ^^^^^
+                4 | multiple lines
+                  | ^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_invalid_char_in_middle_of_tag() {
+        check(
+            "<div!>",
+            expect![[r#"
+                Unterminated opening tag
+                1 | <div!>
+                  |  ^^^
+
+                Text [2 byte, "!>"]
+                1 | <div!>
+                  |     ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_script_with_src() {
+        check(
+            r#"<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>"#,
+            expect![[r#"
+                OpeningTag <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4">
+                1 | <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                ClosingTag </script>
+                1 | <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+                  |                                                                   ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_raw_text_with_tricky_content() {
         check(
             r#"<script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>"#,
             expect![[r#"
@@ -852,260 +914,19 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_attributes_without_spaces() {
+    fn should_accept_self_closing_tag() {
         check(
-            r#"<h1 foo="bar"x="y">"#,
+            "<h1 />",
             expect![[r#"
-                OpeningTag <h1 foo="bar" x="y">
-                1 | <h1 foo="bar"x="y">
-                  | ^^^^^^^^^^^^^^^^^^^
+                OpeningTag <h1/>
+                1 | <h1 />
+                  | ^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn tokenize_text_over_multiple_lines() {
-        check(
-            "this\ntext\nspans\nmultiple lines",
-            expect![[r#"
-                Text [30 byte, "this\ntext\nspans\nmultiple lines"]
-                1 | this
-                  | ^^^^
-                2 | text
-                  | ^^^^
-                3 | spans
-                  | ^^^^^
-                4 | multiple lines
-                  | ^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn tokenize_script_with_src() {
-        check(
-            r#"<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>"#,
-            expect![[r#"
-                OpeningTag <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4">
-                1 | <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                ClosingTag </script>
-                1 | <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-                  |                                                                   ^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn tokenize_component_with_src() {
-        check(
-            indoc! {r#"
-                <NotFoundError entrypoint {path: String, available_routes: Array[String]}>
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <title>404 Not Found</title>
-                        <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-                        <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
-                        <style>
-                          body { font-family: "JetBrains Mono"; }
-                        </style>
-                    </head>
-                    <body>
-                        <PageContainer>
-                            <ErrorNotFoundError {requested_path: path, available_routes: available_routes} />
-                        </PageContainer>
-                    </body>
-                    </html>
-                </NotFoundError>
-            "#},
-            expect![[r#"
-                OpeningTag <NotFoundError entrypoint expr="path: String, available_routes: Array[String]">
-                 1 | <NotFoundError entrypoint {path: String, available_routes: Array[String]}>
-                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Text [5 byte, "\n    "]
-                 1 | <NotFoundError entrypoint {path: String, available_routes: Array[String]}>
-                 2 |     <!DOCTYPE html>
-                   | ^^^^
-
-                Doctype
-                 2 |     <!DOCTYPE html>
-                   |     ^^^^^^^^^^^^^^^
-
-                Text [5 byte, "\n    "]
-                 2 |     <!DOCTYPE html>
-                 3 |     <html>
-                   | ^^^^
-
-                OpeningTag <html>
-                 3 |     <html>
-                   |     ^^^^^^
-
-                Text [5 byte, "\n    "]
-                 3 |     <html>
-                 4 |     <head>
-                   | ^^^^
-
-                OpeningTag <head>
-                 4 |     <head>
-                   |     ^^^^^^
-
-                Text [9 byte, "\n        "]
-                 4 |     <head>
-                 5 |         <title>404 Not Found</title>
-                   | ^^^^^^^^
-
-                OpeningTag <title>
-                 5 |         <title>404 Not Found</title>
-                   |         ^^^^^^^
-
-                Text [13 byte, "404 Not Found"]
-                 5 |         <title>404 Not Found</title>
-                   |                ^^^^^^^^^^^^^
-
-                ClosingTag </title>
-                 5 |         <title>404 Not Found</title>
-                   |                             ^^^^^^^^
-
-                Text [9 byte, "\n        "]
-                 5 |         <title>404 Not Found</title>
-                 6 |         <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-                   | ^^^^^^^^
-
-                OpeningTag <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4">
-                 6 |         <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-                   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                ClosingTag </script>
-                 6 |         <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-                   |                                                                           ^^^^^^^^^
-
-                Text [9 byte, "\n        "]
-                 6 |         <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-                 7 |         <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
-                   | ^^^^^^^^
-
-                OpeningTag <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
-                 7 |         <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
-                   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Text [9 byte, "\n        "]
-                 7 |         <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
-                 8 |         <style>
-                   | ^^^^^^^^
-
-                OpeningTag <style>
-                 8 |         <style>
-                   |         ^^^^^^^
-
-                Text [59 byte, "\n          body { font-family: \"JetBrains Mono\"; }\n        "]
-                 8 |         <style>
-                 9 |           body { font-family: "JetBrains Mono"; }
-                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                10 |         </style>
-                   | ^^^^^^^^
-
-                ClosingTag </style>
-                10 |         </style>
-                   |         ^^^^^^^^
-
-                Text [5 byte, "\n    "]
-                10 |         </style>
-                11 |     </head>
-                   | ^^^^
-
-                ClosingTag </head>
-                11 |     </head>
-                   |     ^^^^^^^
-
-                Text [5 byte, "\n    "]
-                11 |     </head>
-                12 |     <body>
-                   | ^^^^
-
-                OpeningTag <body>
-                12 |     <body>
-                   |     ^^^^^^
-
-                Text [9 byte, "\n        "]
-                12 |     <body>
-                13 |         <PageContainer>
-                   | ^^^^^^^^
-
-                OpeningTag <PageContainer>
-                13 |         <PageContainer>
-                   |         ^^^^^^^^^^^^^^^
-
-                Text [13 byte, "\n            "]
-                13 |         <PageContainer>
-                14 |             <ErrorNotFoundError {requested_path: path, available_routes: available_routes} />
-                   | ^^^^^^^^^^^^
-
-                OpeningTag <ErrorNotFoundError expr="requested_path: path, available_routes: available_routes"/>
-                14 |             <ErrorNotFoundError {requested_path: path, available_routes: available_routes} />
-                   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Text [9 byte, "\n        "]
-                14 |             <ErrorNotFoundError {requested_path: path, available_routes: available_routes} />
-                15 |         </PageContainer>
-                   | ^^^^^^^^
-
-                ClosingTag </PageContainer>
-                15 |         </PageContainer>
-                   |         ^^^^^^^^^^^^^^^^
-
-                Text [5 byte, "\n    "]
-                15 |         </PageContainer>
-                16 |     </body>
-                   | ^^^^
-
-                ClosingTag </body>
-                16 |     </body>
-                   |     ^^^^^^^
-
-                Text [5 byte, "\n    "]
-                16 |     </body>
-                17 |     </html>
-                   | ^^^^
-
-                ClosingTag </html>
-                17 |     </html>
-                   |     ^^^^^^^
-
-                Text [1 byte, "\n"]
-                17 |     </html>
-                18 | </NotFoundError>
-
-                ClosingTag </NotFoundError>
-                18 | </NotFoundError>
-                   | ^^^^^^^^^^^^^^^^
-
-                Text [1 byte, "\n"]
-                18 | </NotFoundError>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn tokenize_invalid_char_in_middle_of_tag() {
-        check(
-            "<div!>",
-            expect![[r#"
-                Unterminated opening tag
-                1 | <div!>
-                  |  ^^^
-
-                Text [2 byte, "!>"]
-                1 | <div!>
-                  |     ^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn tokenize_self_closing_with_attributes() {
+    fn should_accept_self_closing_tag_with_attributes() {
         check(
             "<h1 foo bar/>",
             expect![[r#"
@@ -1117,31 +938,39 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_with_expr_before_attributes() {
+    fn should_accept_expr_before_attributes() {
         check(
-            "<h1 {foo: {k: String}} foo bar/>",
+            "<h1 {foo: String} foo bar/>",
             expect![[r#"
-                OpeningTag <h1 foo bar expr="foo: {k: String}"/>
-                1 | <h1 {foo: {k: String}} foo bar/>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                OpeningTag <h1 foo bar expr="foo: String"/>
+                1 | <h1 {foo: String} foo bar/>
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn tokenize_self_closing() {
+    fn should_accept_simple_comment() {
         check(
-            "<h1 foo/>",
+            "<p><!-- --></p>",
             expect![[r#"
-                OpeningTag <h1 foo/>
-                1 | <h1 foo/>
-                  | ^^^^^^^^^
+                OpeningTag <p>
+                1 | <p><!-- --></p>
+                  | ^^^
+
+                Comment
+                1 | <p><!-- --></p>
+                  |    ^^^^^^^^
+
+                ClosingTag </p>
+                1 | <p><!-- --></p>
+                  |            ^^^^
             "#]],
         );
     }
 
     #[test]
-    fn tokenize_comment_with_text() {
+    fn should_accept_succeeded_by_text() {
         check(
             indoc! {"
                 <p><!-- -->
@@ -1171,7 +1000,68 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_comment_tricky() {
+    fn should_accept_comment_with_dashes_inside() {
+        check(
+            "<!-- Comment with -- dashes -- inside -->",
+            expect![[r#"
+                Comment
+                1 | <!-- Comment with -- dashes -- inside -->
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_multiline_comment() {
+        check(
+            indoc! {"
+                <p><!--
+                A comment
+                that stretches
+                over several
+                lines --></p>
+            "},
+            expect![[r#"
+                OpeningTag <p>
+                1 | <p><!--
+                  | ^^^
+
+                Comment
+                1 | <p><!--
+                  |    ^^^^
+                2 | A comment
+                  | ^^^^^^^^^
+                3 | that stretches
+                  | ^^^^^^^^^^^^^^
+                4 | over several
+                  | ^^^^^^^^^^^^
+                5 | lines --></p>
+                  | ^^^^^^^^^
+
+                ClosingTag </p>
+                5 | lines --></p>
+                  |          ^^^^
+
+                Text [1 byte, "\n"]
+                5 | lines --></p>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_comment_with_quotes() {
+        check(
+            r#"<!-- This comment has <tags> and "quotes" and 'apostrophes' -->"#,
+            expect![[r#"
+                Comment
+                1 | <!-- This comment has <tags> and "quotes" and 'apostrophes' -->
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_tricky_comments() {
         check(
             indoc! {"
                 <!-- ---><!-- ----><!----><!-----><!-- ---->
@@ -1204,7 +1094,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_textarea_with_content() {
+    fn should_accept_textarea_with_content() {
         check(
             indoc! {"
                 <textarea>
@@ -1244,108 +1134,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_title_with_self_closing() {
-        check(
-            "<title><slot-title/></title>",
-            expect![[r#"
-                OpeningTag <title>
-                1 | <title><slot-title/></title>
-                  | ^^^^^^^
-
-                OpeningTag <slot-title/>
-                1 | <title><slot-title/></title>
-                  |        ^^^^^^^^^^^^^
-
-                ClosingTag </title>
-                1 | <title><slot-title/></title>
-                  |                     ^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn tokenize_comment_simple() {
-        check(
-            "<p><!-- --></p>",
-            expect![[r#"
-                OpeningTag <p>
-                1 | <p><!-- --></p>
-                  | ^^^
-
-                Comment
-                1 | <p><!-- --></p>
-                  |    ^^^^^^^^
-
-                ClosingTag </p>
-                1 | <p><!-- --></p>
-                  |            ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn tokenize_comment_standalone() {
-        check(
-            "<!-- Comment with -- dashes -- inside -->",
-            expect![[r#"
-                Comment
-                1 | <!-- Comment with -- dashes -- inside -->
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn tokenize_multiline_comment() {
-        check(
-            indoc! {"
-                <p><!--
-                A comment
-                that stretches
-                over several
-                lines --></p>
-            "},
-            expect![[r#"
-                OpeningTag <p>
-                1 | <p><!--
-                  | ^^^
-
-                Comment
-                1 | <p><!--
-                  |    ^^^^
-                2 | A comment
-                  | ^^^^^^^^^
-                3 | that stretches
-                  | ^^^^^^^^^^^^^^
-                4 | over several
-                  | ^^^^^^^^^^^^
-                5 | lines --></p>
-                  | ^^^^^^^^^
-
-                ClosingTag </p>
-                5 | lines --></p>
-                  |          ^^^^
-
-                Text [1 byte, "\n"]
-                5 | lines --></p>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn tokenize_comment_with_quotes() {
-        check(
-            r#"<!-- This comment has <tags> and "quotes" and 'apostrophes' -->"#,
-            expect![[r#"
-                Comment
-                1 | <!-- This comment has <tags> and "quotes" and 'apostrophes' -->
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn tokenize_doctype() {
+    fn should_accept_doctype() {
         check(
             "<!DOCTYPE   html>",
             expect![[r#"
@@ -1357,7 +1146,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_end_tag_with_space() {
+    fn should_accept_end_tag_with_space() {
         check(
             "</div >",
             expect![[r#"
@@ -1369,7 +1158,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_self_closing_simple() {
+    fn should_accept_simple_self_closing_tag() {
         check(
             "<h1/>",
             expect![[r#"
@@ -1381,7 +1170,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_self_closing_with_space() {
+    fn should_accept_self_closing_tag_with_space() {
         check(
             "<h1 />",
             expect![[r#"
@@ -1393,7 +1182,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_style_with_content() {
+    fn should_accept_style_with_content() {
         check(
             indoc! {"
                 <style>
@@ -1425,7 +1214,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_multiple_headings() {
+    fn should_accept_heading_tags() {
         check(
             indoc! {"
                 <h1></h1>
@@ -1511,7 +1300,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_multiline_attributes() {
+    fn should_accept_attributes_on_multiple_lines() {
         check(
             indoc! {r#"
                 <div
@@ -1546,7 +1335,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_script_with_content() {
+    fn should_accept_script_with_content() {
         check(
             indoc! {r#"
                 <script>
@@ -1578,7 +1367,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_script_with_content_and_white_space_in_closing_tag() {
+    fn should_accept_script_with_whitespace_in_closing_tag() {
         check(
             indoc! {r#"
                 <script>
@@ -1662,56 +1451,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_hop_x_raw_simple() {
-        check(
-            "<hop-x-raw>foo bar</hop-x-raw>",
-            expect![[r#"
-                OpeningTag <hop-x-raw>
-                1 | <hop-x-raw>foo bar</hop-x-raw>
-                  | ^^^^^^^^^^^
-
-                Text [7 byte, "foo bar"]
-                1 | <hop-x-raw>foo bar</hop-x-raw>
-                  |            ^^^^^^^
-
-                ClosingTag </hop-x-raw>
-                1 | <hop-x-raw>foo bar</hop-x-raw>
-                  |                   ^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn tokenize_hop_x_raw_with_html() {
-        check(
-            indoc! {"
-                <hop-x-raw>
-                  <div>some html</div>
-                </hop-x-raw>
-            "},
-            expect![[r#"
-                OpeningTag <hop-x-raw>
-                1 | <hop-x-raw>
-                  | ^^^^^^^^^^^
-
-                Text [24 byte, "\n  <div>some html</div>\n"]
-                1 | <hop-x-raw>
-                2 |   <div>some html</div>
-                  | ^^^^^^^^^^^^^^^^^^^^^^
-                3 | </hop-x-raw>
-
-                ClosingTag </hop-x-raw>
-                3 | </hop-x-raw>
-                  | ^^^^^^^^^^^^
-
-                Text [1 byte, "\n"]
-                3 | </hop-x-raw>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn tokenize_adjacent_elements() {
+    fn should_accept_adjacent_elements() {
         check(
             "<p></p><p></p>",
             expect![[r#"
@@ -1735,7 +1475,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_component_with_expression() {
+    fn should_accept_component_with_script_tag() {
         check(
             indoc! {r#"
                 <Main {foo}>
@@ -1784,7 +1524,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_full_html_document() {
+    fn should_accept_full_html_document() {
         check(
             indoc! {r#"
                 <!DOCTYPE html>
@@ -1896,7 +1636,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_svg_with_many_attributes() {
+    fn should_accept_svg_with_many_attributes() {
         check(
             indoc! {r#"
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1974,7 +1714,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_nested_svg() {
+    fn should_accept_nested_svg() {
         check(
             indoc! {r#"
                 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" version="1.1" viewBox="0 0 128 128" class="size-12">
@@ -2062,7 +1802,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_form_with_input() {
+    fn should_accept_form_with_input() {
         check(
             indoc! {r#"
                 <Main>
@@ -2136,7 +1876,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_if_with_expression() {
+    fn should_accept_if_with_expression() {
         check(
             "<if {foo}>",
             expect![[r#"
@@ -2148,7 +1888,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_div_with_class_and_expression() {
+    fn should_accept_div_with_class_and_expression() {
         check(
             "<div class=\"test\" {bar}>",
             expect![[r#"
@@ -2160,7 +1900,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_if_with_equality_expression() {
+    fn should_accept_if_with_equality_expression() {
         check(
             "<if {user.name == 'John'}>",
             expect![[r#"
@@ -2172,7 +1912,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_component_with_field_access() {
+    fn should_accept_component_with_field_access() {
         check(
             "<component {obj.prop.subprop}>",
             expect![[r#"
@@ -2184,7 +1924,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_button_with_attribute_and_expression() {
+    fn should_accept_button_with_attribute_and_expression() {
         check(
             "<button disabled {enabled == 'yes'}>",
             expect![[r#"
@@ -2196,7 +1936,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_input_with_variable_name() {
+    fn should_accept_input_with_variable_name() {
         check(
             "<input {variable_name_123}>",
             expect![[r#"
@@ -2208,7 +1948,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_div_with_spaced_expression() {
+    fn should_accept_div_with_spaced_expression() {
         check(
             "<div class=\"test\" {  user.name  }>",
             expect![[r#"
@@ -2220,7 +1960,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_span_with_string_expression() {
+    fn should_accept_span_with_string_expression() {
         check(
             "<span {'hello world'}>",
             expect![[r#"
@@ -2232,7 +1972,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_form_with_parenthesized_expression() {
+    fn should_accept_form_with_parenthesized_expression() {
         check(
             "<form {(user.role == 'admin')}>",
             expect![[r#"
@@ -2244,7 +1984,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_section_with_chained_equality() {
+    fn should_accept_section_with_chained_equality() {
         check(
             "<section {a == b == c}>",
             expect![[r#"
@@ -2256,7 +1996,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_for_with_in_expression() {
+    fn should_accept_for_with_in_expression() {
         check(
             "<for {user in users}>",
             expect![[r#"
@@ -2268,7 +2008,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_for_with_field_access() {
+    fn should_accept_for_with_field_access() {
         check(
             "<for {item in user.items}>",
             expect![[r#"
@@ -2280,7 +2020,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_div_with_in_expression() {
+    fn should_accept_div_with_in_expression() {
         check(
             "<div {foo in bars}>",
             expect![[r#"
@@ -2292,7 +2032,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_text_with_single_expression() {
+    fn should_accept_text_with_single_expression() {
         check(
             "<h1>Hello {name}!</h1>",
             expect![[r#"
@@ -2320,7 +2060,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_text_with_unrecognized_expressions() {
+    fn should_accept_text_with_unrecognized_expressions() {
         check(
             "{ ~ } {{ ~ }} {{{{   }}}{}{{}}}",
             expect![[r#"
@@ -2348,7 +2088,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_text_with_multiple_expressions() {
+    fn should_accept_text_with_multiple_expressions() {
         check(
             "<p>User {user.name} has {user.count} items</p>",
             expect![[r#"
@@ -2384,7 +2124,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_text_with_expression_at_start() {
+    fn should_accept_text_with_expression_at_start() {
         check(
             "<span>{greeting} world!</span>",
             expect![[r#"
@@ -2408,7 +2148,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_text_with_expression_at_end() {
+    fn should_accept_text_with_expression_at_end() {
         check(
             "<div>Price: {price}</div>",
             expect![[r#"
@@ -2432,7 +2172,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_text_with_expression_with_braces() {
+    fn should_accept_text_with_expression_containing_braces() {
         check(
             "<div>Price: {{k: v}}</div>",
             expect![[r#"
@@ -2456,7 +2196,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_text_with_only_expression() {
+    fn should_accept_text_with_only_expression() {
         check(
             "<h2>{title}</h2>",
             expect![[r#"
@@ -2476,7 +2216,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_complex_expression_in_text() {
+    fn should_accept_complex_expression_in_text() {
         check(
             "<p>Status: {user.profile.status == 'active'}</p>",
             expect![[r#"
@@ -2500,7 +2240,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_expression_with_field_access() {
+    fn should_accept_expression_with_field_access() {
         check(
             "<span>Item: {item.title}</span>",
             expect![[r#"
@@ -2524,7 +2264,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_mixed_tag_and_text_expressions() {
+    fn should_accept_mixed_tag_and_text_expressions() {
         check(
             "<div {className}>Content: {content}</div>",
             expect![[r#"
@@ -2548,7 +2288,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_duplicate_attribute_error() {
+    fn should_reject_duplicate_attribute() {
         check(
             r#"<div class="foo" class="bar"></div>"#,
             expect![[r#"
@@ -2568,7 +2308,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_duplicate_attribute_different_quotes() {
+    fn should_reject_duplicate_attribute_with_different_quotes() {
         check(
             r#"<input type="text" type='number'/>"#,
             expect![[r#"
@@ -2584,7 +2324,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_duplicate_attribute_no_value() {
+    fn should_reject_duplicate_attribute_without_value() {
         check(
             r#"<input required required />"#,
             expect![[r#"
@@ -2600,7 +2340,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_empty_expression() {
+    fn should_reject_empty_expression() {
         check(
             r#"{}"#,
             expect![[r#"
@@ -2612,7 +2352,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_unterminated_expression() {
+    fn should_reject_unterminated_expression() {
         check(
             r#"{"#,
             expect![[r#"
@@ -2704,7 +2444,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_unterminated_comments() {
+    fn should_reject_unterminated_comments() {
         check(
             r#"<!--"#,
             expect![[r#"
@@ -2724,7 +2464,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_unterminated_opening_tags() {
+    fn should_reject_unterminated_opening_tags() {
         check(
             r#"<div <div>"#,
             expect![[r#"
@@ -2812,7 +2552,7 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_unterminated_closing_tags() {
+    fn should_reject_unterminated_closing_tags() {
         check(
             r#"</div </div>"#,
             expect![[r#"
@@ -2907,26 +2647,6 @@ mod tests {
                 Unterminated opening tag
                 1 | <div foo="bar
                   |  ^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn tokenize_text_starting_with_r() {
-        check(
-            r#"<p>running fast</p>"#,
-            expect![[r#"
-                OpeningTag <p>
-                1 | <p>running fast</p>
-                  | ^^^
-
-                Text [12 byte, "running fast"]
-                1 | <p>running fast</p>
-                  |    ^^^^^^^^^^^^
-
-                ClosingTag </p>
-                1 | <p>running fast</p>
-                  |                ^^^^
             "#]],
         );
     }
