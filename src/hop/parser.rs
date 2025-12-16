@@ -120,12 +120,9 @@ pub fn parse(
     source: String,
     errors: &mut ErrorCollector<ParseError>,
 ) -> UntypedAst {
-    // First, parse declarations from source (before tokenization, since the
-    // tokenizer breaks at `{` which would split record declarations)
     let source_range = DocumentCursor::new(source).range();
-    let declarations = parse_declarations_from_source(source_range.clone(), errors);
 
-    // Then build the token tree
+    // Build the token tree
     let tokenizer = Tokenizer::from_range(source_range);
     let trees = build_tree(tokenizer, errors);
 
@@ -137,56 +134,55 @@ pub fn parse(
     let mut imported_components = HashMap::new();
     let mut defined_records = HashSet::new();
 
-    // Process declarations
-    for decl in declarations {
-        match decl {
-            Declaration::Import {
-                name,
-                name_range,
-                path,
-                module_name,
-                ..
-            } => {
-                let import = Import {
-                    type_name: name,
-                    type_name_range: name_range.clone(),
-                    path,
-                    module_name,
-                };
-                let name_str = import.type_name.as_str();
-                if imported_components.contains_key(name_str) {
-                    errors.push(ParseError::TypeNameIsAlreadyDefined {
-                        name: name_range.to_string_span(),
-                        range: name_range,
-                    });
-                } else {
-                    imported_components.insert(name_str.to_string(), import.module_name.clone());
-                }
-                imports.push(import);
-            }
-            Declaration::Record { declaration, range } => {
-                let record = Record { declaration, range };
-                let name = record.name();
-                if defined_records.contains(name)
-                    || defined_components.contains(name)
-                    || imported_components.contains_key(name)
-                {
-                    errors.push(ParseError::TypeNameIsAlreadyDefined {
-                        name: record.declaration.name.to_string_span(),
-                        range: record.declaration.name.clone(),
-                    });
-                } else {
-                    defined_records.insert(name.to_string());
-                }
-                records.push(record);
-            }
-        }
-    }
-
-    // Process token trees (HTML content)
+    // Process token trees
     for mut tree in trees {
-        // Skip text nodes at the top level (they contain declarations or whitespace)
-        if matches!(tree.token, Token::Text { .. }) {
+        // Parse declarations from top-level text nodes
+        if let Token::Text { range } = &tree.token {
+            for decl in parse_declarations_from_source(range.clone(), errors) {
+                match decl {
+                    Declaration::Import {
+                        name,
+                        name_range,
+                        path,
+                        module_name,
+                        ..
+                    } => {
+                        let import = Import {
+                            type_name: name,
+                            type_name_range: name_range.clone(),
+                            path,
+                            module_name,
+                        };
+                        let name_str = import.type_name.as_str();
+                        if imported_components.contains_key(name_str) {
+                            errors.push(ParseError::TypeNameIsAlreadyDefined {
+                                name: name_range.to_string_span(),
+                                range: name_range,
+                            });
+                        } else {
+                            imported_components
+                                .insert(name_str.to_string(), import.module_name.clone());
+                        }
+                        imports.push(import);
+                    }
+                    Declaration::Record { declaration, range } => {
+                        let record = Record { declaration, range };
+                        let name = record.name();
+                        if defined_records.contains(name)
+                            || defined_components.contains(name)
+                            || imported_components.contains_key(name)
+                        {
+                            errors.push(ParseError::TypeNameIsAlreadyDefined {
+                                name: record.declaration.name.to_string_span(),
+                                range: record.declaration.name.clone(),
+                            });
+                        } else {
+                            defined_records.insert(name.to_string());
+                        }
+                        records.push(record);
+                    }
+                }
+            }
             continue;
         }
 

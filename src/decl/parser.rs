@@ -238,16 +238,22 @@ impl Parser {
         }))
     }
 
-    /// Try to parse any declaration.
+    /// Try to parse the next declaration, skipping any non-declaration content.
     ///
     /// Returns `Ok(Some(declaration))` if successful,
-    /// `Ok(None)` if the input doesn't look like a declaration,
+    /// `Ok(None)` if there are no more declarations,
     /// or `Err` if parsing fails.
     pub fn parse(&mut self) -> Result<Option<Declaration>, ParseError> {
-        match self.peek_token() {
-            Some(Token::Import) => self.parse_import(),
-            Some(Token::Record) => self.parse_record(),
-            _ => Ok(None),
+        loop {
+            match self.iter.peek() {
+                Some(Ok((Token::Import, _))) => return self.parse_import(),
+                Some(Ok((Token::Record, _))) => return self.parse_record(),
+                Some(_) => {
+                    // Skip unknown tokens and tokenizer errors
+                    self.iter.next();
+                }
+                None => return Ok(None),
+            }
         }
     }
 }

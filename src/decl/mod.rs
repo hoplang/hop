@@ -1,11 +1,7 @@
 //! Declaration extraction module.
 //!
 //! This module provides functionality to extract import and record declarations
-//! from raw source text before hop tokenization.
-//!
-//! Declarations must be extracted before hop tokenization because the hop
-//! tokenizer breaks text at `{` and `<` boundaries, which would split record
-//! declarations like `record Foo {bar: String}` into multiple tokens.
+//! from top-level text nodes in hop source files.
 
 pub mod parser;
 pub mod tokenizer;
@@ -118,69 +114,29 @@ impl fmt::Debug for Declaration {
     }
 }
 
-/// Parse all declarations from a source range.
+/// Parse all declarations from a text range.
 ///
-/// This function scans source text for import and record declarations.
-/// It must be called BEFORE hop tokenization because the tokenizer breaks
-/// at `{` characters, which would split record declarations like
-/// `record Foo {bar: String}` into multiple tokens.
-///
-/// Returns a vector of parsed declarations.
+/// This function parses import and record declarations from a top-level
+/// text node. The text should only contain declarations and whitespace.
 pub fn parse_declarations_from_source(
     text_range: DocumentRange,
     errors: &mut ErrorCollector<ParseError>,
 ) -> Vec<Declaration> {
-    let source = text_range.as_str();
     let mut declarations = Vec::new();
+    let mut decl_parser = parser::Parser::from(text_range);
 
-    // Scan through the source looking for declarations using char indices
-    let mut char_indices = source.char_indices().peekable();
-
-    while let Some((byte_pos, ch)) = char_indices.next() {
-        // Skip whitespace
-        if ch.is_whitespace() {
-            continue;
-        }
-
-        // Check if we're at an import or record declaration
-        let remaining_text = &source[byte_pos..];
-
-        if remaining_text.starts_with("import ") || remaining_text.starts_with("record ") {
-            // Create a subrange starting at the current position
-            let mut sub_cursor = text_range.clone().cursor();
-            // Skip `byte_pos` characters (not bytes) to get to the current position
-            let chars_to_skip = source[..byte_pos].chars().count();
-            for _ in 0..chars_to_skip {
-                if sub_cursor.next().is_none() {
-                    break;
-                }
+    loop {
+        match decl_parser.parse() {
+            Ok(Some(decl)) => {
+                declarations.push(decl);
             }
-            let sub_range = sub_cursor.range();
-            let mut decl_parser = parser::Parser::from(sub_range);
-
-            match decl_parser.parse() {
-                Ok(Some(decl)) => {
-                    let decl_len = match &decl {
-                        Declaration::Import { range, .. } => range.as_str().len(),
-                        Declaration::Record { range, .. } => range.as_str().len(),
-                    };
-                    declarations.push(decl);
-                    // Skip past the declaration by advancing char_indices
-                    let target_byte_pos = byte_pos + decl_len;
-                    while char_indices
-                        .peek()
-                        .is_some_and(|(pos, _)| *pos < target_byte_pos)
-                    {
-                        char_indices.next();
-                    }
-                    continue;
-                }
-                Ok(None) => {
-                    // Not a declaration, skip this character
-                }
-                Err(err) => {
-                    errors.push(err);
-                }
+            Ok(None) => {
+                // No more declarations
+                break;
+            }
+            Err(err) => {
+                errors.push(err);
+                break;
             }
         }
     }
