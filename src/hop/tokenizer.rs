@@ -36,10 +36,6 @@ pub enum Token {
     Comment {
         range: DocumentRange,
     },
-    TextExpression {
-        expression: DocumentRange,
-        range: DocumentRange,
-    },
     OpeningTag {
         tag_name: DocumentRange,
         attributes: BTreeMap<StringSpan, Attribute>,
@@ -61,7 +57,6 @@ impl Ranged for Token {
         match self {
             Token::Doctype { range }
             | Token::Comment { range }
-            | Token::TextExpression { range, .. }
             | Token::OpeningTag { range, .. }
             | Token::ClosingTag { range, .. }
             | Token::Text { range } => range,
@@ -125,9 +120,6 @@ impl Display for Token {
             }
             Token::Comment { .. } => {
                 write!(f, "Comment")
-            }
-            Token::TextExpression { expression, .. } => {
-                write!(f, "Expression {:#?}", expression.to_string())
             }
         }
     }
@@ -621,33 +613,21 @@ impl Tokenizer {
         }
     }
 
-    /// Parse a text expression.
-    ///
-    /// E.g.
-    /// hello {name}!
-    ///       ^^^^^^
-    /// Expects that the iterator points to the initial '{'.
-    ///
-    fn parse_text_expression(&mut self) -> Option<Token> {
-        self.parse_expression()
-            .map(|(expression, range)| Token::TextExpression { expression, range })
-    }
-
     /// Parse a text token.
     ///
     /// E.g. <div>hello</div>
     ///           ^^^^^
     /// Expects that the iterator points to the initial char.
     ///
+    /// Note: Text tokens may contain `{...}` expressions. The parser is
+    /// responsible for splitting these into separate Text and TextExpression
+    /// nodes.
     fn parse_text(&mut self) -> Option<Token> {
         let Some(initial) = self.iter.next() else {
             panic!("Expected an initial char in parse_text but got None");
         };
         Some(Token::Text {
-            range: initial.extend(
-                self.iter
-                    .peeking_take_while(|s| s.ch() != '{' && s.ch() != '<'),
-            ),
+            range: initial.extend(self.iter.peeking_take_while(|s| s.ch() != '<')),
         })
     }
 
@@ -687,7 +667,6 @@ impl Tokenizer {
 
         match self.iter.peek().map(|s| s.ch()) {
             Some('<') => self.parse_tag(),
-            Some('{') => self.parse_text_expression(),
             Some(_) => self.parse_text(),
             None => None,
         }
@@ -2040,17 +2019,9 @@ mod tests {
                 1 | <h1>Hello {name}!</h1>
                   | ^^^^
 
-                Text [6 byte, "Hello "]
+                Text [13 byte, "Hello {name}!"]
                 1 | <h1>Hello {name}!</h1>
-                  |     ^^^^^^
-
-                Expression "name"
-                1 | <h1>Hello {name}!</h1>
-                  |           ^^^^^^
-
-                Text [1 byte, "!"]
-                1 | <h1>Hello {name}!</h1>
-                  |                 ^
+                  |     ^^^^^^^^^^^^^
 
                 ClosingTag </h1>
                 1 | <h1>Hello {name}!</h1>
@@ -2064,25 +2035,9 @@ mod tests {
         check(
             "{ ~ } {{ ~ }} {{{{   }}}{}{{}}}",
             expect![[r#"
-                Expression " ~ "
+                Text [31 byte, "{ ~ } {{ ~ }} {{{{   }}}{}{{}}}"]
                 1 | { ~ } {{ ~ }} {{{{   }}}{}{{}}}
-                  | ^^^^^
-
-                Text [1 byte, " "]
-                1 | { ~ } {{ ~ }} {{{{   }}}{}{{}}}
-                  |      ^
-
-                Expression "{ ~ }"
-                1 | { ~ } {{ ~ }} {{{{   }}}{}{{}}}
-                  |       ^^^^^^^
-
-                Text [1 byte, " "]
-                1 | { ~ } {{ ~ }} {{{{   }}}{}{{}}}
-                  |              ^
-
-                Expression "{{{   }}}{}{{}}"
-                1 | { ~ } {{ ~ }} {{{{   }}}{}{{}}}
-                  |               ^^^^^^^^^^^^^^^^^
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -2096,25 +2051,9 @@ mod tests {
                 1 | <p>User {user.name} has {user.count} items</p>
                   | ^^^
 
-                Text [5 byte, "User "]
+                Text [39 byte, "User {user.name} has {user.count} items"]
                 1 | <p>User {user.name} has {user.count} items</p>
-                  |    ^^^^^
-
-                Expression "user.name"
-                1 | <p>User {user.name} has {user.count} items</p>
-                  |         ^^^^^^^^^^^
-
-                Text [5 byte, " has "]
-                1 | <p>User {user.name} has {user.count} items</p>
-                  |                    ^^^^^
-
-                Expression "user.count"
-                1 | <p>User {user.name} has {user.count} items</p>
-                  |                         ^^^^^^^^^^^^
-
-                Text [6 byte, " items"]
-                1 | <p>User {user.name} has {user.count} items</p>
-                  |                                     ^^^^^^
+                  |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 ClosingTag </p>
                 1 | <p>User {user.name} has {user.count} items</p>
@@ -2132,13 +2071,9 @@ mod tests {
                 1 | <span>{greeting} world!</span>
                   | ^^^^^^
 
-                Expression "greeting"
+                Text [17 byte, "{greeting} world!"]
                 1 | <span>{greeting} world!</span>
-                  |       ^^^^^^^^^^
-
-                Text [7 byte, " world!"]
-                1 | <span>{greeting} world!</span>
-                  |                 ^^^^^^^
+                  |       ^^^^^^^^^^^^^^^^^
 
                 ClosingTag </span>
                 1 | <span>{greeting} world!</span>
@@ -2156,13 +2091,9 @@ mod tests {
                 1 | <div>Price: {price}</div>
                   | ^^^^^
 
-                Text [7 byte, "Price: "]
+                Text [14 byte, "Price: {price}"]
                 1 | <div>Price: {price}</div>
-                  |      ^^^^^^^
-
-                Expression "price"
-                1 | <div>Price: {price}</div>
-                  |             ^^^^^^^
+                  |      ^^^^^^^^^^^^^^
 
                 ClosingTag </div>
                 1 | <div>Price: {price}</div>
@@ -2180,13 +2111,9 @@ mod tests {
                 1 | <div>Price: {{k: v}}</div>
                   | ^^^^^
 
-                Text [7 byte, "Price: "]
+                Text [15 byte, "Price: {{k: v}}"]
                 1 | <div>Price: {{k: v}}</div>
-                  |      ^^^^^^^
-
-                Expression "{k: v}"
-                1 | <div>Price: {{k: v}}</div>
-                  |             ^^^^^^^^
+                  |      ^^^^^^^^^^^^^^^
 
                 ClosingTag </div>
                 1 | <div>Price: {{k: v}}</div>
@@ -2204,7 +2131,7 @@ mod tests {
                 1 | <h2>{title}</h2>
                   | ^^^^
 
-                Expression "title"
+                Text [7 byte, "{title}"]
                 1 | <h2>{title}</h2>
                   |     ^^^^^^^
 
@@ -2224,13 +2151,9 @@ mod tests {
                 1 | <p>Status: {user.profile.status == 'active'}</p>
                   | ^^^
 
-                Text [8 byte, "Status: "]
+                Text [41 byte, "Status: {user.profile.status == 'active'}"]
                 1 | <p>Status: {user.profile.status == 'active'}</p>
-                  |    ^^^^^^^^
-
-                Expression "user.profile.status == 'active'"
-                1 | <p>Status: {user.profile.status == 'active'}</p>
-                  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                  |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 ClosingTag </p>
                 1 | <p>Status: {user.profile.status == 'active'}</p>
@@ -2248,13 +2171,9 @@ mod tests {
                 1 | <span>Item: {item.title}</span>
                   | ^^^^^^
 
-                Text [6 byte, "Item: "]
+                Text [18 byte, "Item: {item.title}"]
                 1 | <span>Item: {item.title}</span>
-                  |       ^^^^^^
-
-                Expression "item.title"
-                1 | <span>Item: {item.title}</span>
-                  |             ^^^^^^^^^^^^
+                  |       ^^^^^^^^^^^^^^^^^^
 
                 ClosingTag </span>
                 1 | <span>Item: {item.title}</span>
@@ -2272,13 +2191,9 @@ mod tests {
                 1 | <div {className}>Content: {content}</div>
                   | ^^^^^^^^^^^^^^^^^
 
-                Text [9 byte, "Content: "]
+                Text [18 byte, "Content: {content}"]
                 1 | <div {className}>Content: {content}</div>
-                  |                  ^^^^^^^^^
-
-                Expression "content"
-                1 | <div {className}>Content: {content}</div>
-                  |                           ^^^^^^^^^
+                  |                  ^^^^^^^^^^^^^^^^^^
 
                 ClosingTag </div>
                 1 | <div {className}>Content: {content}</div>
@@ -2344,7 +2259,7 @@ mod tests {
         check(
             r#"{}"#,
             expect![[r#"
-                Empty expression
+                Text [2 byte, "{}"]
                 1 | {}
                   | ^^
             "#]],
@@ -2356,53 +2271,33 @@ mod tests {
         check(
             r#"{"#,
             expect![[r#"
-            Unmatched {
-            1 | {
-              | ^
-        "#]],
+                Text [1 byte, "{"]
+                1 | {
+                  | ^
+            "#]],
         );
         check(
             r#"hello {"#,
             expect![[r#"
-            Text [6 byte, "hello "]
-            1 | hello {
-              | ^^^^^^
-
-            Unmatched {
-            1 | hello {
-              |       ^
-        "#]],
+                Text [7 byte, "hello {"]
+                1 | hello {
+                  | ^^^^^^^
+            "#]],
         );
         check(
             r#"hello {foo"#,
             expect![[r#"
-                Text [6 byte, "hello "]
+                Text [10 byte, "hello {foo"]
                 1 | hello {foo
-                  | ^^^^^^
-
-                Unmatched {
-                1 | hello {foo
-                  |       ^
-
-                Text [3 byte, "foo"]
-                1 | hello {foo
-                  |        ^^^
+                  | ^^^^^^^^^^
             "#]],
         );
         check(
             r#"hello {{{foo}}"#,
             expect![[r#"
-                Text [6 byte, "hello "]
+                Text [14 byte, "hello {{{foo}}"]
                 1 | hello {{{foo}}
-                  | ^^^^^^
-
-                Unmatched {
-                1 | hello {{{foo}}
-                  |       ^
-
-                Expression "{foo}"
-                1 | hello {{{foo}}
-                  |        ^^^^^^^
+                  | ^^^^^^^^^^^^^^
             "#]],
         );
         check(
@@ -2420,25 +2315,9 @@ mod tests {
         check(
             r#"{{{}}{{{}}}{{{}}}{}"#,
             expect![[r#"
-                Unmatched {
+                Text [19 byte, "{{{}}{{{}}}{{{}}}{}"]
                 1 | {{{}}{{{}}}{{{}}}{}
-                  | ^
-
-                Expression "{}"
-                1 | {{{}}{{{}}}{{{}}}{}
-                  |  ^^^^
-
-                Expression "{{}}"
-                1 | {{{}}{{{}}}{{{}}}{}
-                  |      ^^^^^^
-
-                Expression "{{}}"
-                1 | {{{}}{{{}}}{{{}}}{}
-                  |            ^^^^^^
-
-                Empty expression
-                1 | {{{}}{{{}}}{{{}}}{}
-                  |                  ^^
+                  | ^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }

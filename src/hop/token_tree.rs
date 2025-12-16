@@ -105,10 +105,7 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut ErrorCollector<ParseError>)
         };
 
         match token {
-            Token::Comment { .. }
-            | Token::Doctype { .. }
-            | Token::Text { .. }
-            | Token::TextExpression { .. } => {
+            Token::Comment { .. } | Token::Doctype { .. } | Token::Text { .. } => {
                 if let Some(parent) = stack.last_mut() {
                     parent.tree.append_node(token);
                 } else {

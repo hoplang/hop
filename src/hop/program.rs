@@ -321,8 +321,7 @@ impl Program {
                 ast.get_imports()
                     .iter()
                     .filter(|n| {
-                        n.imports_type(component_name.as_str())
-                            && n.imports_from(definition_module)
+                        n.imports_type(component_name.as_str()) && n.imports_from(definition_module)
                     })
                     .map(|n| RenameLocation {
                         module: module_name.clone(),
@@ -572,8 +571,7 @@ mod tests {
     fn check_error_diagnostics(input: &str, module: &str, expected: Expect) {
         let program = program_from_txtar(input);
 
-        let diagnostics =
-            program.get_error_diagnostics(ModuleName::new(module).unwrap());
+        let diagnostics = program.get_error_diagnostics(ModuleName::new(module).unwrap());
 
         if diagnostics.is_empty() {
             panic!("Expected diagnostics to be non-empty");

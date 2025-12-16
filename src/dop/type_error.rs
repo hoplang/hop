@@ -1,6 +1,6 @@
 use crate::document::document_cursor::{DocumentRange, Ranged};
-use crate::dop::type_name::TypeName;
 use crate::dop::Type;
+use crate::dop::type_name::TypeName;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]

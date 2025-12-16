@@ -111,11 +111,9 @@ impl Parser {
         let name_range = path_segments.pop().unwrap();
 
         // Parse the type name
-        let name = TypeName::new(name_range.as_str()).map_err(|e| {
-            ParseError::InvalidTypeName {
-                error: e,
-                range: name_range.clone(),
-            }
+        let name = TypeName::new(name_range.as_str()).map_err(|e| ParseError::InvalidTypeName {
+            error: e,
+            range: name_range.clone(),
         })?;
 
         // Build the module name from the remaining segments
@@ -125,15 +123,22 @@ impl Parser {
             .collect::<Vec<_>>()
             .join("/");
 
-        let module_name = ModuleName::new(&module_path_str).map_err(|e| {
-            ParseError::InvalidModuleName {
+        let module_name =
+            ModuleName::new(&module_path_str).map_err(|e| ParseError::InvalidModuleName {
                 error: e,
-                range: path_segments.first().unwrap().clone().to(path_segments.last().unwrap().clone()),
-            }
-        })?;
+                range: path_segments
+                    .first()
+                    .unwrap()
+                    .clone()
+                    .to(path_segments.last().unwrap().clone()),
+            })?;
 
         // Build the full path range for error reporting
-        let path_range = path_segments.first().unwrap().clone().to(name_range.clone());
+        let path_range = path_segments
+            .first()
+            .unwrap()
+            .clone()
+            .to(name_range.clone());
 
         Ok(Some(Declaration::Import {
             name,
@@ -301,9 +306,7 @@ mod tests {
             indoc! {r#"
                 import Header
             "#},
-            expect![
-                "Error: Import path must have at least two segments: module::Component"
-            ],
+            expect!["Error: Import path must have at least two segments: module::Component"],
         );
     }
 

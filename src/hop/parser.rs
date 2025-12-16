@@ -1,12 +1,15 @@
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::iter::Peekable;
+
 use crate::decl::{Declaration, parse_declarations_from_source};
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, StringSpan};
+use crate::dop;
 use crate::dop::Parser;
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::{Ast, ComponentDefinition, Import, Record};
 use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{Token, Tokenizer};
-use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::ast::{self, UntypedAst, UntypedComponentDefinition};
 use super::component_name::ComponentName;
@@ -80,6 +83,35 @@ impl AttributeValidator {
             .values()
             .filter(|attr| !self.handled_attributes.contains(attr.name.as_str()))
             .map(AttributeValidator::parse)
+    }
+}
+
+/// Find the end of an expression using the dop tokenizer.
+///
+/// Expects the current char iterator be on the first character
+/// of a dop expression.
+///
+/// E.g. {x + 2}
+///       ^
+///
+/// Returns None if we reached EOF before finding the closing '}'.
+fn find_expression_end(iter: Peekable<DocumentCursor>) -> Option<DocumentRange> {
+    let mut dop_tokenizer = dop::Tokenizer::from(iter);
+    let mut open_braces = 1;
+    loop {
+        let token = dop_tokenizer.next()?;
+        match token {
+            Ok((dop::Token::LeftBrace, _)) => {
+                open_braces += 1;
+            }
+            Ok((dop::Token::RightBrace, range)) => {
+                open_braces -= 1;
+                if open_braces == 0 {
+                    return Some(range);
+                }
+            }
+            _ => {}
+        }
     }
 }
 
@@ -160,8 +192,8 @@ pub fn parse(
 
         let children: Vec<UntypedNode> = std::mem::take(&mut tree.children)
             .into_iter()
-            .filter_map(|child| {
-                construct_node(
+            .flat_map(|child| {
+                construct_nodes(
                     child,
                     errors,
                     &module_name,
@@ -248,62 +280,124 @@ fn parse_component_definition(
     })
 }
 
-fn construct_node(
+/// Check if a tag name is one that should have raw text content (no expression parsing).
+fn is_raw_text_element(tag_name: &str) -> bool {
+    matches!(tag_name, "script" | "style")
+}
+
+fn construct_nodes(
     tree: TokenTree,
     errors: &mut ErrorCollector<ParseError>,
     module_name: &ModuleName,
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, ModuleName>,
-) -> Option<UntypedNode> {
-    let children: Vec<_> = tree
-        .children
-        .into_iter()
-        .filter_map(|child| {
-            construct_node(
-                child,
-                errors,
-                module_name,
-                defined_components,
-                imported_components,
-            )
-        })
-        .collect();
-
+) -> Vec<UntypedNode> {
     match tree.token {
         Token::Comment { .. } => {
             // Skip comments
-            None
+            vec![]
         }
         Token::ClosingTag { .. } => {
             // ClosingTags are not present in the token tree
             unreachable!()
         }
         Token::Doctype { range } => {
-            //
-            Some(Node::Doctype {
+            vec![Node::Doctype {
                 value: range.to_string_span(),
                 range,
-            })
+            }]
         }
         Token::Text { range, .. } => {
-            //
-            Some(Node::Text {
-                value: range.to_string_span(),
-                range,
-            })
-        }
-        Token::TextExpression {
-            expression: expr, ..
-        } => {
-            let expression = errors.ok_or_add(
-                Parser::from(expr.clone())
-                    .parse_expr()
-                    .map_err(|err| err.into()),
-            )?;
-            Some(Node::TextExpression {
-                expression,
-                range: tree.range.clone(),
-            })
+            // Parse text content, splitting into Text and TextExpression nodes
+            let mut nodes = Vec::new();
+            let mut iter = range.cursor().peekable();
+            let mut text_start: Option<DocumentRange> = None;
+
+            while iter.peek().is_some() {
+                let ch = iter.peek().unwrap();
+                if ch.ch() == '{' {
+                    // Flush accumulated text
+                    if let Some(text_range) = text_start.take() {
+                        nodes.push(Node::Text {
+                            value: text_range.to_string_span(),
+                            range: text_range,
+                        });
+                    }
+
+                    // Parse expression
+                    let left_brace = iter.next().unwrap();
+
+                    // Check for empty expression
+                    if iter.peek().map(|s| s.ch()) == Some('}') {
+                        let right_brace = iter.next().unwrap();
+                        errors.push(ParseError::new(
+                            "Empty expression".to_string(),
+                            left_brace.to(right_brace),
+                        ));
+                        continue;
+                    }
+
+                    // Find the end of the expression
+                    if let Some(right_brace) = find_expression_end(iter.clone()) {
+                        // Collect the expression content (everything between braces)
+                        let mut expr_range: Option<DocumentRange> = None;
+                        while iter.peek().map(|s| s.start()) != Some(right_brace.start()) {
+                            let ch_range = iter.next().unwrap();
+                            expr_range = Some(
+                                expr_range
+                                    .map(|r| r.to(ch_range.clone()))
+                                    .unwrap_or(ch_range),
+                            );
+                        }
+                        // Consume the closing brace
+                        iter.next();
+
+                        if let Some(expr_range) = expr_range {
+                            // Parse the expression
+                            match Parser::from(expr_range.clone()).parse_expr() {
+                                Ok(expression) => {
+                                    nodes.push(Node::TextExpression {
+                                        expression,
+                                        range: left_brace.to(right_brace),
+                                    });
+                                }
+                                Err(err) => {
+                                    errors.push(err.into());
+                                }
+                            }
+                        }
+                    } else {
+                        // Unmatched brace - report error, treat as text
+                        errors.push(ParseError::UnmatchedCharacter {
+                            ch: '{',
+                            range: left_brace.clone(),
+                        });
+                        text_start = Some(
+                            text_start
+                                .map(|r| r.to(left_brace.clone()))
+                                .unwrap_or(left_brace),
+                        );
+                    }
+                } else {
+                    // Accumulate text
+                    let ch_range = iter.next().unwrap();
+                    text_start = Some(
+                        text_start
+                            .map(|r| r.to(ch_range.clone()))
+                            .unwrap_or(ch_range),
+                    );
+                }
+            }
+
+            // Flush remaining text
+            if let Some(text_range) = text_start {
+                nodes.push(Node::Text {
+                    value: text_range.to_string_span(),
+                    range: text_range,
+                });
+            }
+
+            nodes
         }
         Token::OpeningTag {
             tag_name,
@@ -313,7 +407,34 @@ fn construct_node(
             ..
         } => {
             let validator = AttributeValidator::new(attributes, tag_name.clone());
-            //
+
+            // Process children - raw text elements (script/style) don't parse expressions
+            let children: Vec<_> = if is_raw_text_element(tag_name.as_str()) {
+                tree.children
+                    .into_iter()
+                    .filter_map(|child| match child.token {
+                        Token::Text { range, .. } => Some(Node::Text {
+                            value: range.to_string_span(),
+                            range,
+                        }),
+                        _ => unreachable!(),
+                    })
+                    .collect()
+            } else {
+                tree.children
+                    .into_iter()
+                    .flat_map(|child| {
+                        construct_nodes(
+                            child,
+                            errors,
+                            module_name,
+                            defined_components,
+                            imported_components,
+                        )
+                    })
+                    .collect()
+            };
+
             match tag_name.as_str() {
                 // <if {...}>
                 "if" => {
@@ -324,15 +445,16 @@ fn construct_node(
                             opening_tag_range.clone(),
                         )
                     });
-                    let condition =
-                        errors.ok_or_add(expr.and_then(|e| {
-                            Parser::from(e).parse_expr().map_err(|err| err.into())
-                        }))?;
-                    Some(Node::If {
+                    let Some(condition) = errors.ok_or_add(
+                        expr.and_then(|e| Parser::from(e).parse_expr().map_err(|err| err.into())),
+                    ) else {
+                        return vec![];
+                    };
+                    vec![Node::If {
                         condition,
                         range: tree.range.clone(),
                         children,
-                    })
+                    }]
                 }
 
                 // <for {...}>
@@ -353,18 +475,18 @@ fn construct_node(
                     let Some((var_name, var_name_range, array_expr)) =
                         errors.ok_or_add(parse_result)
                     else {
-                        return Some(Node::Placeholder {
+                        return vec![Node::Placeholder {
                             range: tree.range.clone(),
                             children,
-                        });
+                        }];
                     };
-                    Some(Node::For {
+                    vec![Node::For {
                         var_name,
                         var_name_range,
                         array_expr,
                         range: tree.range.clone(),
                         children,
-                    })
+                    }]
                 }
 
                 // <ComponentReference> - PascalCase indicates a component
@@ -376,7 +498,7 @@ fn construct_node(
                                 error,
                                 range: tag_name.clone(),
                             });
-                            return None;
+                            return vec![];
                         }
                     };
 
@@ -401,7 +523,7 @@ fn construct_node(
                         errors.push(error);
                     }
 
-                    Some(Node::ComponentReference {
+                    vec![Node::ComponentReference {
                         component_name,
                         component_name_opening_range: tag_name,
                         component_name_closing_range: tree.closing_tag_name,
@@ -409,7 +531,7 @@ fn construct_node(
                         args,
                         range: tree.range,
                         children,
-                    })
+                    }]
                 }
 
                 _ => {
@@ -420,13 +542,13 @@ fn construct_node(
                         .map(|attr| (attr.name.to_string_span(), attr))
                         .collect();
 
-                    Some(Node::Html {
+                    vec![Node::Html {
                         tag_name,
                         closing_tag_name: tree.closing_tag_name,
                         attributes,
                         range: tree.range,
                         children,
-                    })
+                    }]
                 }
             }
         }
@@ -1230,6 +1352,145 @@ mod tests {
                     for                                           8:8-10:14
                         div                                       9:12-9:29
                             text_expression                       9:17-9:23
+            "#]],
+        );
+    }
+
+    // Tests for text expression parsing (moved from tokenizer to parser)
+
+    #[test]
+    fn should_parse_text_with_single_expression() {
+        check(
+            "<Main><h1>Hello {name}!</h1></Main>",
+            expect![[r#"
+                h1                                                0:6-0:28
+                    text_expression                               0:16-0:22
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_text_with_multiple_expressions() {
+        check(
+            "<Main><p>User {user.name} has {user.count} items</p></Main>",
+            expect![[r#"
+                p                                                 0:6-0:52
+                    text_expression                               0:14-0:25
+                    text_expression                               0:30-0:42
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_text_with_expression_at_start() {
+        check(
+            "<Main><span>{greeting} world!</span></Main>",
+            expect![[r#"
+                span                                              0:6-0:36
+                    text_expression                               0:12-0:22
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_text_with_expression_at_end() {
+        check(
+            "<Main><div>Price: {price}</div></Main>",
+            expect![[r#"
+                div                                               0:6-0:31
+                    text_expression                               0:18-0:25
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_text_with_only_expression() {
+        check(
+            "<Main><h2>{title}</h2></Main>",
+            expect![[r#"
+                h2                                                0:6-0:22
+                    text_expression                               0:10-0:17
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_not_parse_expressions_in_script_tags() {
+        check(
+            indoc! {r#"
+                <Main>
+                    <script>
+                        const x = "{not_an_expression}";
+                        const obj = {key: "value"};
+                    </script>
+                </Main>
+            "#},
+            expect![[r#"
+                script                                            1:4-4:13
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_not_parse_expressions_in_style_tags() {
+        check(
+            indoc! {r#"
+                <Main>
+                    <style>
+                        body { color: red; }
+                        .class { font-size: 12px; }
+                    </style>
+                </Main>
+            "#},
+            expect![[r#"
+                style                                             1:4-4:12
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_empty_expression_in_text() {
+        check(
+            "<Main><div>Empty: {}</div></Main>",
+            expect![[r#"
+                error: Empty expression
+                1 | <Main><div>Empty: {}</div></Main>
+                  |                   ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_unterminated_expression_in_text() {
+        check(
+            "<Main><div>Broken: {name</div></Main>",
+            expect![[r#"
+                error: Unmatched {
+                1 | <Main><div>Broken: {name</div></Main>
+                  |                    ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_complex_expression_in_text() {
+        check(
+            r#"<Main><p>Status: {user.profile.status == "active"}</p></Main>"#,
+            expect![[r#"
+                p                                                 0:6-0:54
+                    text_expression                               0:17-0:50
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_adjacent_expressions_in_text() {
+        check(
+            "<Main><span>{first}{second}</span></Main>",
+            expect![[r#"
+                span                                              0:6-0:34
+                    text_expression                               0:12-0:19
+                    text_expression                               0:19-0:27
             "#]],
         );
     }

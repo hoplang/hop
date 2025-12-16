@@ -205,11 +205,7 @@ mod tests {
 
         let (source, position) = extract_position(input).expect("Position marker not found");
         let mut errors = ErrorCollector::new();
-        let ast = parse(
-            ModuleName::new("test").unwrap(),
-            source,
-            &mut errors,
-        );
+        let ast = parse(ModuleName::new("test").unwrap(), source, &mut errors);
 
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
 

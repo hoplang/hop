@@ -337,12 +337,8 @@ mod tests {
 
         // Check that specific modules are loaded with correct content
         assert!(modules.contains_key(&ModuleName::new("src/main").unwrap()));
-        assert!(
-            modules.contains_key(&ModuleName::new("src/components/button").unwrap())
-        );
-        assert!(
-            modules.contains_key(&ModuleName::new("src/components/header").unwrap())
-        );
+        assert!(modules.contains_key(&ModuleName::new("src/components/button").unwrap()));
+        assert!(modules.contains_key(&ModuleName::new("src/components/header").unwrap()));
 
         // Verify content of one module
         let button_content = modules
