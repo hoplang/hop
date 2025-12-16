@@ -786,11 +786,21 @@ mod tests {
     }
 
     ///////////////////////////////////////////////////////////////////////////
-    /// RECORDS                                                             ///
+    /// RECORD DECLARATIONS                                                 ///
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_record_with_single_field() {
+    fn should_accept_record_declaration_with_no_fields() {
+        check_parse_record(
+            "record Empty {}",
+            expect![[r#"
+                record Empty {}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_record_declaration_with_single_field() {
         check_parse_record(
             "record Foo {bar: String}",
             expect![[r#"
@@ -800,7 +810,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_with_multiple_fields() {
+    fn should_accept_record_declaration_with_multiple_fields() {
         check_parse_record(
             "record User {name: String, age: Int, active: Bool}",
             expect![[r#"
@@ -810,7 +820,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_with_multiline_fields_and_trailing_comma() {
+    fn should_accept_record_declaration_with_multiple_fields_and_trailing_comma() {
         check_parse_record(
             indoc! {r#"
                 record User {
@@ -826,16 +836,6 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_with_no_fields() {
-        check_parse_record(
-            "record Empty {}",
-            expect![[r#"
-                record Empty {}
-            "#]],
-        );
-    }
-
-    #[test]
     fn should_accept_record_with_array_type_field() {
         check_parse_record(
             "record Container {items: Array[String], count: Int}",
@@ -846,7 +846,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_when_field_name_is_duplicated() {
+    fn should_reject_record_declaration_when_field_name_is_duplicated() {
         check_parse_record(
             "record Foo {bar: String, bar: Int}",
             expect![[r#"
@@ -858,7 +858,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_when_closing_brace_is_missing() {
+    fn should_reject_record_declaration_when_closing_brace_is_missing() {
         check_parse_record(
             "record Foo {bar: String",
             expect![[r#"
@@ -870,7 +870,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_when_name_is_missing() {
+    fn should_reject_record_declaration_when_type_name_is_missing() {
         check_parse_record(
             "record {bar: String}",
             expect![[r#"
