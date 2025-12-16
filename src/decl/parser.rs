@@ -3,14 +3,44 @@ use std::iter::Peekable;
 use crate::document::document_cursor::DocumentRange;
 use crate::dop::Parser as DopParser;
 use crate::dop::type_name::TypeName;
+use crate::error_collector::ErrorCollector;
 use crate::hop::module_name::ModuleName;
 use crate::hop::parse_error::ParseError;
 
 use super::Declaration;
 use super::tokenizer::{Token, Tokenizer};
 
+/// Parse all declarations from a text range.
+///
+/// This function parses import and record declarations from a top-level
+/// text node. The text should only contain declarations and whitespace.
+pub fn parse_declarations_from_source(
+    text_range: DocumentRange,
+    errors: &mut ErrorCollector<ParseError>,
+) -> Vec<Declaration> {
+    let mut declarations = Vec::new();
+    let mut decl_parser = Parser::from(text_range);
+
+    loop {
+        match decl_parser.next() {
+            Ok(Some(decl)) => {
+                declarations.push(decl);
+            }
+            Ok(None) => {
+                break;
+            }
+            Err(err) => {
+                errors.push(err);
+                break;
+            }
+        }
+    }
+
+    declarations
+}
+
 /// Parser for declaration syntax.
-pub struct Parser {
+struct Parser {
     iter: Peekable<Tokenizer>,
     range: DocumentRange,
 }
@@ -52,7 +82,7 @@ impl Parser {
     /// Returns `Ok(Some(Declaration::Import))` if successful,
     /// `Ok(None)` if the input doesn't start with "import",
     /// or `Err` if parsing fails after recognizing an import.
-    pub fn parse_import(&mut self) -> Result<Option<Declaration>, ParseError> {
+    fn parse_import(&mut self) -> Result<Option<Declaration>, ParseError> {
         // Check if this looks like an import
         if self.peek_token() != Some(Token::Import) {
             return Ok(None);
@@ -154,7 +184,7 @@ impl Parser {
     /// Returns `Ok(Some(Declaration::Record))` if successful,
     /// `Ok(None)` if the input doesn't start with "record",
     /// or `Err` if parsing fails after recognizing a record.
-    pub fn parse_record(&mut self) -> Result<Option<Declaration>, ParseError> {
+    fn parse_record(&mut self) -> Result<Option<Declaration>, ParseError> {
         // Check if this looks like a record
         if self.peek_token() != Some(Token::Record) {
             return Ok(None);
@@ -224,7 +254,7 @@ impl Parser {
         // Use the dop parser to fully parse the record declaration
         let declaration = DopParser::from(full_range.clone())
             .parse_record()
-            .map_err(|e| ParseError::new(e.to_string(), full_range.clone()))?;
+            .map_err(ParseError::from)?;
 
         // Update the name to use the range from the decl tokenizer (to preserve source info)
         let declaration = crate::dop::RecordDeclaration {
@@ -238,22 +268,21 @@ impl Parser {
         }))
     }
 
-    /// Try to parse the next declaration, skipping any non-declaration content.
+    /// Try to parse the next declaration.
     ///
     /// Returns `Ok(Some(declaration))` if successful,
     /// `Ok(None)` if there are no more declarations,
-    /// or `Err` if parsing fails.
-    pub fn parse(&mut self) -> Result<Option<Declaration>, ParseError> {
-        loop {
-            match self.iter.peek() {
-                Some(Ok((Token::Import, _))) => return self.parse_import(),
-                Some(Ok((Token::Record, _))) => return self.parse_record(),
-                Some(_) => {
-                    // Skip unknown tokens and tokenizer errors
-                    self.iter.next();
-                }
-                None => return Ok(None),
-            }
+    /// or `Err` if parsing fails or encounters unexpected content.
+    fn next(&mut self) -> Result<Option<Declaration>, ParseError> {
+        match self.iter.peek() {
+            Some(Ok((Token::Import, _))) => self.parse_import(),
+            Some(Ok((Token::Record, _))) => self.parse_record(),
+            Some(Ok((_, range))) => Err(ParseError::new(
+                "Expected declaration (import or record)".to_string(),
+                range.clone(),
+            )),
+            Some(Err(err)) => Err(err.clone()),
+            None => Ok(None),
         }
     }
 }
@@ -261,21 +290,30 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document::DocumentAnnotator;
     use crate::document::document_cursor::DocumentCursor;
+    use crate::error_collector::ErrorCollector;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
     fn check(input: &str, expected: Expect) {
+        let mut errors = ErrorCollector::new();
         let range = DocumentCursor::new(input.to_string()).range();
-        let mut parser = Parser::from(range);
+        let declarations = parse_declarations_from_source(range, &mut errors);
 
-        let result = match parser.parse() {
-            Ok(Some(decl)) => format!("{:?}", decl),
-            Ok(None) => "None".to_string(),
-            Err(e) => format!("Error: {}", e),
+        let actual = if !errors.is_empty() {
+            DocumentAnnotator::new()
+                .with_label("error")
+                .annotate(None, errors.to_vec())
+        } else {
+            declarations
+                .iter()
+                .map(|decl| format!("{:?}", decl))
+                .collect::<Vec<_>>()
+                .join("\n")
         };
 
-        expected.assert_eq(&result);
+        expected.assert_eq(&actual);
     }
 
     #[test]
@@ -312,7 +350,11 @@ mod tests {
             indoc! {r#"
                 import Header
             "#},
-            expect!["Error: Import path must have at least two segments: module::Component"],
+            expect![[r#"
+                error: Import path must have at least two segments: module::Component
+                1 | import Header
+                  |        ^^^^^^
+            "#]],
         );
     }
 
@@ -322,7 +364,11 @@ mod tests {
             indoc! {r#"
                 import foo::bar
             "#},
-            expect!["Error: Type name must start with an uppercase letter"],
+            expect![[r#"
+                error: Type name must start with an uppercase letter
+                1 | import foo::bar
+                  |             ^^^
+            "#]],
         );
     }
 
@@ -360,12 +406,16 @@ mod tests {
     }
 
     #[test]
-    fn should_return_none_when_input_is_html() {
+    fn should_reject_html_input() {
         check(
             indoc! {"
                 <div>hello</div>
             "},
-            expect!["None"],
+            expect![[r#"
+                error: Unexpected character: '<'
+                1 | <div>hello</div>
+                  | ^
+            "#]],
         );
     }
 
@@ -382,6 +432,88 @@ mod tests {
                   name: UserList,
                   module_name: user_list,
                 }"#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_multiple_mixed_declarations() {
+        check(
+            indoc! {r#"
+                import header::Header
+                record User {name: String}
+                import footer::Footer
+            "#},
+            expect![[r#"
+                Import {
+                  name: Header,
+                  module_name: header,
+                }
+                Record {
+                  name: User,
+                  fields: {
+                    name: String,
+                  },
+                }
+                Import {
+                  name: Footer,
+                  module_name: footer,
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_text_starting_with_import_keyword() {
+        // "important" starts with "import" but is not followed by a space,
+        // so it should not be recognized as a declaration
+        check(
+            "important information",
+            expect![[r#"
+                error: Expected declaration (import or record)
+                1 | important information
+                  | ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_text_starting_with_record_keyword() {
+        // "recording" starts with "record" but is not followed by a space,
+        // so it should not be recognized as a declaration
+        check(
+            "recording started",
+            expect![[r#"
+                error: Expected declaration (import or record)
+                1 | recording started
+                  | ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_unexpected_content_before_declaration() {
+        check(
+            "• bullet point\nrecord User {name: String}",
+            expect![[r#"
+                error: Unexpected character: '•'
+                1 | • bullet point
+                  | ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_record_field_without_type() {
+        check(
+            indoc! {"
+                record X {
+                    foo
+                }
+            "},
+            expect![[r#"
+                error: Expected token ':' but got '}'
+                3 | }
+                  | ^
+            "#]],
         );
     }
 }

@@ -6,16 +6,14 @@
 pub mod parser;
 pub mod tokenizer;
 
+pub use parser::parse_declarations_from_source;
+
 use std::fmt;
 
-#[cfg(test)]
-use crate::document::document_cursor::DocumentCursor;
-use crate::document::document_cursor::DocumentRange;
+use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::RecordDeclaration;
 use crate::dop::type_name::TypeName;
-use crate::error_collector::ErrorCollector;
 use crate::hop::module_name::ModuleName;
-use crate::hop::parse_error::ParseError;
 use pretty::BoxDoc;
 
 /// A declaration: either an import or a record definition.
@@ -114,128 +112,10 @@ impl fmt::Debug for Declaration {
     }
 }
 
-/// Parse all declarations from a text range.
-///
-/// This function parses import and record declarations from a top-level
-/// text node. The text should only contain declarations and whitespace.
-pub fn parse_declarations_from_source(
-    text_range: DocumentRange,
-    errors: &mut ErrorCollector<ParseError>,
-) -> Vec<Declaration> {
-    let mut declarations = Vec::new();
-    let mut decl_parser = parser::Parser::from(text_range);
-
-    loop {
-        match decl_parser.parse() {
-            Ok(Some(decl)) => {
-                declarations.push(decl);
-            }
-            Ok(None) => {
-                // No more declarations
-                break;
-            }
-            Err(err) => {
-                errors.push(err);
-                break;
-            }
+impl Ranged for Declaration {
+    fn range(&self) -> &DocumentRange {
+        match self {
+            Declaration::Import { range, .. } | Declaration::Record { range, .. } => range,
         }
-    }
-
-    declarations
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use expect_test::{Expect, expect};
-
-    fn check_declarations(input: &str, expected: Expect) {
-        let mut errors = ErrorCollector::new();
-        let range = DocumentCursor::new(input.to_string()).range();
-        let declarations = parse_declarations_from_source(range, &mut errors);
-
-        let formatted: Vec<String> = declarations
-            .iter()
-            .map(|decl| match decl {
-                Declaration::Import {
-                    name, module_name, ..
-                } => {
-                    format!("Import {}::{}", module_name, name.as_str())
-                }
-                Declaration::Record { declaration, .. } => {
-                    let fields: Vec<String> = declaration
-                        .fields
-                        .iter()
-                        .map(|f| format!("{}: {}", f.name, f.field_type))
-                        .collect();
-                    format!(
-                        "Record {} {{{}}}",
-                        declaration.name.as_str(),
-                        fields.join(", ")
-                    )
-                }
-            })
-            .collect();
-
-        expected.assert_eq(&formatted.join("\n"));
-    }
-
-    #[test]
-    fn should_extract_import_declaration() {
-        check_declarations(
-            r#"import user_list::UserList"#,
-            expect!["Import user_list::UserList"],
-        );
-    }
-
-    #[test]
-    fn should_extract_record_declaration() {
-        check_declarations(
-            "record User {name: String}",
-            expect!["Record User {name: String}"],
-        );
-    }
-
-    #[test]
-    fn should_extract_multiple_mixed_declarations() {
-        check_declarations(
-            r#"import header::Header
-record User {name: String}
-import footer::Footer
-"#,
-            expect![[r#"
-                Import header::Header
-                Record User {name: String}
-                Import footer::Footer"#]],
-        );
-    }
-
-    #[test]
-    fn should_not_extract_text_starting_with_import_keyword() {
-        // "important" starts with "import" but is not followed by a space,
-        // so it should not be recognized as a declaration
-        let mut errors = ErrorCollector::new();
-        let range = DocumentCursor::new("important information".to_string()).range();
-        let declarations = parse_declarations_from_source(range, &mut errors);
-        assert!(declarations.is_empty());
-    }
-
-    #[test]
-    fn should_not_extract_text_starting_with_record_keyword() {
-        // "recording" starts with "record" but is not followed by a space,
-        // so it should not be recognized as a declaration
-        let mut errors = ErrorCollector::new();
-        let range = DocumentCursor::new("recording started".to_string()).range();
-        let declarations = parse_declarations_from_source(range, &mut errors);
-        assert!(declarations.is_empty());
-    }
-
-    #[test]
-    fn should_extract_declaration_after_multibyte_characters() {
-        check_declarations(
-            r#"• bullet point
-record User {name: String}"#,
-            expect!["Record User {name: String}"],
-        );
     }
 }

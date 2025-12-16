@@ -1352,8 +1352,6 @@ mod tests {
         );
     }
 
-    // Tests for text expression parsing (moved from tokenizer to parser)
-
     #[test]
     fn should_parse_text_with_single_expression() {
         check(
@@ -1487,6 +1485,39 @@ mod tests {
                 span                                              0:6-0:34
                     text_expression                               0:12-0:19
                     text_expression                               0:19-0:27
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_incomplete_record_declaration() {
+        check(
+            indoc! {"
+                record
+                <Main>
+                </Main>
+            "},
+            expect![[r#"
+                error: Unexpected end of input
+                1 | record
+                  | ^^^^^^
+                2 | <Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_unknown_text_before_component() {
+        check(
+            indoc! {"
+                foo
+                <Main>
+                </Main>
+            "},
+            expect![[r#"
+                error: Expected declaration (import or record)
+                1 | foo
+                  | ^^^
             "#]],
         );
     }

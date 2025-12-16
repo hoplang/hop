@@ -11,7 +11,7 @@ pub enum Token {
     Import,
     /// "record" keyword
     Record,
-    /// An identifier (component name, record name, field name)
+    /// An identifier (type name, record name, field name)
     Identifier(DocumentRange),
     /// A quoted string literal (the path in import statements)
     String(DocumentRange),
