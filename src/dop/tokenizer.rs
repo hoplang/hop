@@ -60,7 +60,10 @@ impl Iterator for Tokenizer {
                 },
                 ',' => Ok((Token::Comma, start)),
                 '+' => Ok((Token::Plus, start)),
-                '-' => Ok((Token::Minus, start)),
+                '-' => match self.iter.next_if(|s| s.ch() == '>') {
+                    Some(end) => Ok((Token::Arrow, start.to(end))),
+                    None => Ok((Token::Minus, start)),
+                },
                 '*' => Ok((Token::Asterisk, start)),
                 '&' => match self.iter.next_if(|s| s.ch() == '&') {
                     Some(end) => Ok((Token::LogicalAnd, start.to(end))),
@@ -88,9 +91,16 @@ impl Iterator for Tokenizer {
                     Some(end) => Ok((Token::GreaterThanOrEqual, start.to(end))),
                     None => Ok((Token::GreaterThan, start)),
                 },
-                '=' => match self.iter.next_if(|s| s.ch() == '=') {
-                    Some(end) => Ok((Token::Eq, start.to(end))),
-                    None => Err(ParseError::ExpectedDoubleEqButGotSingleEq { range: start }),
+                '=' => match self.iter.peek().map(|s| s.ch()) {
+                    Some('=') => {
+                        let end = self.iter.next().unwrap();
+                        Ok((Token::Eq, start.to(end)))
+                    }
+                    Some('>') => {
+                        let end = self.iter.next().unwrap();
+                        Ok((Token::FatArrow, start.to(end)))
+                    }
+                    _ => Err(ParseError::ExpectedDoubleEqButGotSingleEq { range: start }),
                 },
                 '"' => {
                     let mut end_range = start.clone();
@@ -1326,4 +1336,81 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn should_accept_arrow_operator() {
+        check(
+            "->",
+            expect![[r#"
+                token: ->
+                ->
+                ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_fat_arrow_operator() {
+        check(
+            "=>",
+            expect![[r#"
+                token: =>
+                =>
+                ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_fat_arrow_in_expression() {
+        check(
+            "x => y",
+            expect![[r#"
+                token: x
+                x => y
+                ^
+
+                token: =>
+                x => y
+                  ^^
+
+                token: y
+                x => y
+                     ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_distinguish_minus_from_arrow() {
+        check(
+            "x - y x -> y",
+            expect![[r#"
+                token: x
+                x - y x -> y
+                ^
+
+                token: -
+                x - y x -> y
+                  ^
+
+                token: y
+                x - y x -> y
+                    ^
+
+                token: x
+                x - y x -> y
+                      ^
+
+                token: ->
+                x - y x -> y
+                        ^^
+
+                token: y
+                x - y x -> y
+                           ^
+            "#]],
+        );
+    }
+
 }

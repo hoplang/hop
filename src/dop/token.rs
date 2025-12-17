@@ -31,6 +31,8 @@ pub enum Token {
     Colon,
     ColonColon,
     Comma,
+    Arrow,
+    FatArrow,
     // Keywords
     True,
     False,
@@ -91,6 +93,8 @@ impl fmt::Display for Token {
             Token::Colon => write!(f, ":"),
             Token::ColonColon => write!(f, "::"),
             Token::Comma => write!(f, ","),
+            Token::Arrow => write!(f, "->"),
+            Token::FatArrow => write!(f, "=>"),
             Token::In => write!(f, "in"),
             Token::True => write!(f, "true"),
             Token::False => write!(f, "false"),
