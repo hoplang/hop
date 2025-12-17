@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt};
 
-use crate::dop::{VarName, expr::Expr, r#type::Type};
+use crate::dop::{VarName, expr::Expr, field_name::FieldName, r#type::Type};
 use crate::hop::component_name::ComponentName;
 use pretty::BoxDoc;
 
@@ -15,6 +15,20 @@ pub type ExprId = u32;
 
 /// Unique identifier for each statement in the IR
 pub type StatementId = u32;
+
+/// Information about a record declaration for transpilation.
+#[derive(Debug, Clone)]
+pub struct RecordInfo {
+    pub name: String,
+    pub fields: Vec<(FieldName, Type)>,
+}
+
+/// An IR module containing entrypoints and type declarations.
+#[derive(Debug, Clone)]
+pub struct IrModule {
+    pub entrypoints: Vec<IrEntrypoint>,
+    pub records: Vec<RecordInfo>,
+}
 
 #[derive(Debug, Clone)]
 pub struct IrEntrypoint {

@@ -13,14 +13,7 @@ pub use python::PythonTranspiler;
 use crate::dop::field_name::FieldName;
 use crate::dop::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::hop::component_name::ComponentName;
-use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
-
-/// Information about a record declaration for transpilation.
-#[derive(Debug, Clone)]
-pub struct RecordInfo {
-    pub name: String,
-    pub fields: Vec<(FieldName, Type)>,
-}
+use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement, RecordInfo};
 
 pub trait Transpiler {
     fn transpile_entrypoint<'a>(
@@ -28,7 +21,7 @@ pub trait Transpiler {
         name: &'a ComponentName,
         entrypoint: &'a IrEntrypoint,
     ) -> BoxDoc<'a>;
-    fn transpile_module(&self, entrypoints: &[IrEntrypoint], records: &[RecordInfo]) -> String;
+    fn transpile_module(&self, module: &IrModule) -> String;
 }
 
 pub trait StatementTranspiler {

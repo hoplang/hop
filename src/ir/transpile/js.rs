@@ -1,12 +1,12 @@
 use pretty::BoxDoc;
 
-use super::{ExpressionTranspiler, RecordInfo, StatementTranspiler, Transpiler, TypeTranspiler};
+use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::dop::field_name::FieldName;
 use crate::dop::r#type::Type;
 #[cfg(test)]
 use crate::dop::type_name::TypeName;
 use crate::hop::component_name::ComponentName;
-use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
+use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement, RecordInfo};
 
 #[derive(Debug, Clone, Copy)]
 pub enum LanguageMode {
@@ -90,7 +90,10 @@ impl JsTranspiler {
 }
 
 impl Transpiler for JsTranspiler {
-    fn transpile_module(&self, entrypoints: &[IrEntrypoint], records: &[RecordInfo]) -> String {
+    fn transpile_module(&self, module: &IrModule) -> String {
+        let entrypoints = &module.entrypoints;
+        let records = &module.records;
+
         let mut needs_escape_html = false;
         for entrypoint in entrypoints {
             if self.scan_for_escape_html(entrypoint) {
@@ -744,8 +747,12 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn transpile_with_pretty(entrypoints: &[IrEntrypoint], mode: LanguageMode) -> String {
+        let module = IrModule {
+            entrypoints: entrypoints.to_vec(),
+            records: vec![],
+        };
         let transpiler = JsTranspiler::new(mode);
-        transpiler.transpile_module(entrypoints, &[])
+        transpiler.transpile_module(&module)
     }
 
     fn check(entrypoints: &[IrEntrypoint], expected: Expect) {
@@ -1334,11 +1341,16 @@ mod tests {
             },
         ];
 
+        let module = IrModule {
+            entrypoints,
+            records,
+        };
+
         let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
-        let ts_output = ts_transpiler.transpile_module(&entrypoints, &records);
+        let ts_output = ts_transpiler.transpile_module(&module);
 
         let js_transpiler = JsTranspiler::new(LanguageMode::JavaScript);
-        let js_output = js_transpiler.transpile_module(&entrypoints, &records);
+        let js_output = js_transpiler.transpile_module(&module);
 
         let output = format!("-- ts --\n{}\n-- js --\n{}", ts_output, js_output);
 
@@ -1423,11 +1435,16 @@ mod tests {
             ],
         }];
 
+        let module = IrModule {
+            entrypoints,
+            records,
+        };
+
         let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
-        let ts_output = ts_transpiler.transpile_module(&entrypoints, &records);
+        let ts_output = ts_transpiler.transpile_module(&module);
 
         let js_transpiler = JsTranspiler::new(LanguageMode::JavaScript);
-        let js_output = js_transpiler.transpile_module(&entrypoints, &records);
+        let js_output = js_transpiler.transpile_module(&module);
 
         let output = format!("-- ts --\n{}\n-- js --\n{}", ts_output, js_output);
 

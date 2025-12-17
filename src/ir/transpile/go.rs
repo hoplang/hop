@@ -1,12 +1,12 @@
 use pretty::BoxDoc;
 
-use super::{ExpressionTranspiler, RecordInfo, StatementTranspiler, Transpiler, TypeTranspiler};
+use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::dop::field_name::FieldName;
 use crate::dop::r#type::Type;
 #[cfg(test)]
 use crate::dop::type_name::TypeName;
 use crate::hop::component_name::ComponentName;
-use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
+use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement, RecordInfo};
 use std::collections::BTreeSet;
 
 pub struct GoTranspiler {
@@ -75,7 +75,10 @@ impl GoTranspiler {
 }
 
 impl Transpiler for GoTranspiler {
-    fn transpile_module(&self, entrypoints: &[IrEntrypoint], records: &[RecordInfo]) -> String {
+    fn transpile_module(&self, module: &IrModule) -> String {
+        let entrypoints = &module.entrypoints;
+        let records = &module.records;
+
         let mut imports = BTreeSet::new();
 
         // First pass: scan to determine what imports we need
@@ -763,8 +766,12 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn transpile_with_pretty(entrypoints: &[IrEntrypoint]) -> String {
+        let module = IrModule {
+            entrypoints: entrypoints.to_vec(),
+            records: vec![],
+        };
         let transpiler = GoTranspiler::new("components".to_string());
-        transpiler.transpile_module(entrypoints, &[])
+        transpiler.transpile_module(&module)
     }
 
     fn check(entrypoints: &[IrEntrypoint], expected: Expect) {
@@ -1248,8 +1255,13 @@ mod tests {
             },
         ];
 
+        let module = IrModule {
+            entrypoints,
+            records,
+        };
+
         let transpiler = GoTranspiler::new("components".to_string());
-        let output = transpiler.transpile_module(&entrypoints, &records);
+        let output = transpiler.transpile_module(&module);
 
         expect![[r#"
             package components
@@ -1310,8 +1322,13 @@ mod tests {
             ],
         }];
 
+        let module = IrModule {
+            entrypoints,
+            records,
+        };
+
         let transpiler = GoTranspiler::new("components".to_string());
-        let output = transpiler.transpile_module(&entrypoints, &records);
+        let output = transpiler.transpile_module(&module);
 
         expect![[r#"
             package components

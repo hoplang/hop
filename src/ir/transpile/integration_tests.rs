@@ -1,6 +1,6 @@
 use super::{GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler};
 use crate::dop::r#type::Type;
-use crate::ir::ast::IrEntrypoint;
+use crate::ir::ast::{IrEntrypoint, IrModule};
 use crate::ir::test_utils::build_ir_auto;
 use std::fs;
 use std::process::Command;
@@ -150,19 +150,22 @@ go 1.24
 }
 
 fn run_integration_test(test_case: TestCase) -> Result<(), String> {
-    let entrypoints = vec![test_case.entrypoint];
+    let module = IrModule {
+        entrypoints: vec![test_case.entrypoint],
+        records: vec![],
+    };
 
     let js_transpiler = JsTranspiler::new(LanguageMode::JavaScript);
-    let js_code = js_transpiler.transpile_module(&entrypoints, &[]);
+    let js_code = js_transpiler.transpile_module(&module);
 
     let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
-    let ts_code = ts_transpiler.transpile_module(&entrypoints, &[]);
+    let ts_code = ts_transpiler.transpile_module(&module);
 
     let go_transpiler = GoTranspiler::new("components".to_string());
-    let go_code = go_transpiler.transpile_module(&entrypoints, &[]);
+    let go_code = go_transpiler.transpile_module(&module);
 
     let python_transpiler = PythonTranspiler::new();
-    let python_code = python_transpiler.transpile_module(&entrypoints, &[]);
+    let python_code = python_transpiler.transpile_module(&module);
 
     let js_output = execute_javascript(&js_code, false)
         .map_err(|e| format!("JavaScript execution failed: {}", e))?;
@@ -307,20 +310,25 @@ fn typecheck_go(code: &str) -> Result<(), String> {
 }
 
 fn run_type_check_test(test_case: TypeCheckTestCase) -> Result<(), String> {
+    let module = IrModule {
+        entrypoints: test_case.entrypoints,
+        records: vec![],
+    };
+
     let js_transpiler = JsTranspiler::new(LanguageMode::JavaScript);
-    let js_code = js_transpiler.transpile_module(&test_case.entrypoints, &[]);
+    let js_code = js_transpiler.transpile_module(&module);
     typecheck_javascript(&js_code, false)?;
 
     let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
-    let ts_code = ts_transpiler.transpile_module(&test_case.entrypoints, &[]);
+    let ts_code = ts_transpiler.transpile_module(&module);
     typecheck_javascript(&ts_code, true)?;
 
     let go_transpiler = GoTranspiler::new("components".to_string());
-    let go_code = go_transpiler.transpile_module(&test_case.entrypoints, &[]);
+    let go_code = go_transpiler.transpile_module(&module);
     typecheck_go(&go_code)?;
 
     let python_transpiler = PythonTranspiler::new();
-    let python_code = python_transpiler.transpile_module(&test_case.entrypoints, &[]);
+    let python_code = python_transpiler.transpile_module(&module);
     typecheck_python(&python_code)?;
 
     Ok(())

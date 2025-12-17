@@ -1,12 +1,12 @@
 use pretty::BoxDoc;
 
-use super::{ExpressionTranspiler, RecordInfo, StatementTranspiler, Transpiler, TypeTranspiler};
+use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::dop::field_name::FieldName;
 use crate::dop::r#type::Type;
 #[cfg(test)]
 use crate::dop::type_name::TypeName;
 use crate::hop::component_name::ComponentName;
-use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
+use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement, RecordInfo};
 
 pub struct PythonTranspiler {}
 
@@ -92,7 +92,10 @@ impl PythonTranspiler {
 }
 
 impl Transpiler for PythonTranspiler {
-    fn transpile_module(&self, entrypoints: &[IrEntrypoint], records: &[RecordInfo]) -> String {
+    fn transpile_module(&self, module: &IrModule) -> String {
+        let entrypoints = &module.entrypoints;
+        let records = &module.records;
+
         let mut needs_html_escape = false;
         let mut needs_json = false;
         let mut needs_dataclasses = false;
@@ -736,8 +739,12 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn transpile_with_pretty(entrypoints: &[IrEntrypoint]) -> String {
+        let module = IrModule {
+            entrypoints: entrypoints.to_vec(),
+            records: vec![],
+        };
         let transpiler = PythonTranspiler::new();
-        transpiler.transpile_module(entrypoints, &[])
+        transpiler.transpile_module(&module)
     }
 
     fn check(entrypoints: &[IrEntrypoint], expected: Expect) {
@@ -1152,8 +1159,13 @@ mod tests {
             },
         ];
 
+        let module = IrModule {
+            entrypoints,
+            records,
+        };
+
         let transpiler = PythonTranspiler::new();
-        let output = transpiler.transpile_module(&entrypoints, &records);
+        let output = transpiler.transpile_module(&module);
 
         expect![[r#"
             from dataclasses import dataclass
@@ -1211,8 +1223,13 @@ mod tests {
             ],
         }];
 
+        let module = IrModule {
+            entrypoints,
+            records,
+        };
+
         let transpiler = PythonTranspiler::new();
-        let output = transpiler.transpile_module(&entrypoints, &records);
+        let output = transpiler.transpile_module(&module);
 
         expect![[r#"
             from dataclasses import dataclass

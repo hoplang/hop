@@ -4,9 +4,7 @@ use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::component_name::ComponentName;
 use crate::hop::module_name::ModuleName;
 use crate::hop::program::Program;
-use crate::ir::{
-    GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, RecordInfo, Transpiler,
-};
+use crate::ir::{GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler};
 use crate::orchestrator::orchestrate;
 use crate::tui::timing;
 use anyhow::Result;
@@ -135,40 +133,23 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
         .collect::<Result<Vec<_>>>()?;
 
     // Use orchestrate to handle inlining, compilation, and optimization
-    let ir_entrypoints = orchestrate(
+    let ir_module = orchestrate(
         program.get_typed_modules().clone(),
         tailwind_css.as_deref(),
         &pages,
     )?;
-
-    // Collect record declarations from all modules
-    let mut records: Vec<RecordInfo> = program
-        .get_typed_modules()
-        .values()
-        .flat_map(|module| module.get_records())
-        .map(|record| RecordInfo {
-            name: record.name().to_string(),
-            fields: record
-                .declaration
-                .fields
-                .iter()
-                .map(|f| (f.name.clone(), f.field_type.clone()))
-                .collect(),
-        })
-        .collect();
-    records.sort_by(|a, b| a.name.cmp(&b.name));
 
     // Generate code based on target language
     let generated_code = match resolved.target {
         TargetLanguage::Javascript => {
             timer.start_phase("transpiling to js");
             let transpiler = JsTranspiler::new(LanguageMode::JavaScript);
-            transpiler.transpile_module(&ir_entrypoints, &records)
+            transpiler.transpile_module(&ir_module)
         }
         TargetLanguage::Typescript => {
             timer.start_phase("transpiling to ts");
             let transpiler = JsTranspiler::new(LanguageMode::TypeScript);
-            transpiler.transpile_module(&ir_entrypoints, &records)
+            transpiler.transpile_module(&ir_module)
         }
         TargetLanguage::Go => {
             timer.start_phase("transpiling to go");
@@ -177,12 +158,12 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
                 .clone()
                 .unwrap_or_else(|| "main".to_string());
             let transpiler = GoTranspiler::new(package);
-            transpiler.transpile_module(&ir_entrypoints, &records)
+            transpiler.transpile_module(&ir_module)
         }
         TargetLanguage::Python => {
             timer.start_phase("transpiling to python");
             let transpiler = PythonTranspiler::new();
-            transpiler.transpile_module(&ir_entrypoints, &records)
+            transpiler.transpile_module(&ir_module)
         }
     };
 
@@ -190,7 +171,8 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
 
     let output_path = project_root.write_output(&generated_code).await?;
 
-    let entry_points: Vec<String> = ir_entrypoints
+    let entry_points: Vec<String> = ir_module
+        .entrypoints
         .iter()
         .map(|entrypoint| entrypoint.name.as_str().to_string())
         .collect();

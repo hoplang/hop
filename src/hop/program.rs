@@ -444,14 +444,14 @@ impl Program {
 
         // Use orchestrate to handle inlining and compilation
         let pages = vec![(module_name.clone(), component_name.clone())];
-        let ir_entrypoints = orchestrate(
+        let ir_module = orchestrate(
             self.get_typed_modules().clone(),
             generated_tailwind_css,
             &pages,
         )?;
 
         // Get the entrypoint (should be the only one)
-        let entrypoint = ir_entrypoints.first().ok_or_else(|| {
+        let entrypoint = ir_module.entrypoints.first().ok_or_else(|| {
             anyhow::anyhow!(
                 "Entrypoint '{}/{}' not found after compilation",
                 module_name,
