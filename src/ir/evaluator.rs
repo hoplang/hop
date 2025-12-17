@@ -508,7 +508,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
 mod tests {
     use super::*;
     use crate::dop::Type;
-    use crate::ir::test_utils::build_ir_auto;
+    use crate::ir::test_utils::{build_ir_auto, build_ir_with_enums};
     use expect_test::{Expect, expect};
     use serde_json::json;
 
@@ -636,6 +636,104 @@ mod tests {
                 <li>Banana</li>
                 <li>Cherry</li>
 
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_enum_instantiation_in_condition() {
+        check(
+            build_ir_with_enums(
+                "Test",
+                vec![],
+                vec![("Color", vec!["Red", "Green", "Blue"])],
+                |t| {
+                    let color = t.enum_variant("Color", "Red");
+                    let red = t.enum_variant("Color", "Red");
+                    t.if_stmt(t.eq(color, red), |t| {
+                        t.write("is red");
+                    });
+                },
+            ),
+            vec![],
+            expect![[r#"
+                -- before --
+                Test() {
+                  if (Color::Red == Color::Red) {
+                    write("is red")
+                  }
+                }
+
+                -- after --
+                is red
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_enum_equality_true() {
+        check(
+            build_ir_with_enums(
+                "Test",
+                vec![],
+                vec![("Status", vec!["Active", "Inactive", "Pending"])],
+                |t| {
+                    let active1 = t.enum_variant("Status", "Active");
+                    let active2 = t.enum_variant("Status", "Active");
+                    t.if_stmt(t.eq(active1, active2), |t| {
+                        t.write("equal");
+                    });
+                },
+            ),
+            vec![],
+            expect![[r#"
+                -- before --
+                Test() {
+                  if (Status::Active == Status::Active) {
+                    write("equal")
+                  }
+                }
+
+                -- after --
+                equal
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_evaluate_enum_equality_false() {
+        check(
+            build_ir_with_enums(
+                "Test",
+                vec![],
+                vec![("Status", vec!["Active", "Inactive", "Pending"])],
+                |t| {
+                    let active = t.enum_variant("Status", "Active");
+                    let inactive = t.enum_variant("Status", "Inactive");
+                    t.if_else_stmt(
+                        t.eq(active, inactive),
+                        |t| {
+                            t.write("equal");
+                        },
+                        |t| {
+                            t.write("not equal");
+                        },
+                    );
+                },
+            ),
+            vec![],
+            expect![[r#"
+                -- before --
+                Test() {
+                  if (Status::Active == Status::Inactive) {
+                    write("equal")
+                  } else {
+                    write("not equal")
+                  }
+                }
+
+                -- after --
+                not equal
             "#]],
         );
     }

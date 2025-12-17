@@ -43,12 +43,32 @@ where
     builder.build(name)
 }
 
+pub fn build_ir_with_enums<F>(
+    name: &str,
+    params: Vec<(&str, Type)>,
+    enums: Vec<(&str, Vec<&str>)>,
+    body_fn: F,
+) -> IrEntrypoint
+where
+    F: FnOnce(&mut IrAutoBuilder),
+{
+    let params_owned: Vec<(String, Type)> = params
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+    let inner_builder = IrTestBuilder::with_enums(params_owned, enums);
+    let mut builder = IrAutoBuilder::new(inner_builder);
+    body_fn(&mut builder);
+    builder.build(name)
+}
+
 pub struct IrTestBuilder {
     next_expr_id: RefCell<ExprId>,
     next_node_id: RefCell<StatementId>,
     var_stack: RefCell<Vec<(String, Type)>>,
     params: Vec<(VarName, Type)>,
     records: BTreeMap<String, BTreeMap<String, Type>>,
+    enums: BTreeMap<String, Vec<String>>,
 }
 
 impl IrTestBuilder {
@@ -64,6 +84,7 @@ impl IrTestBuilder {
                 .map(|(s, t)| (VarName::try_from(s).unwrap(), t))
                 .collect(),
             records: BTreeMap::new(),
+            enums: BTreeMap::new(),
         }
     }
 
@@ -90,6 +111,33 @@ impl IrTestBuilder {
                 .map(|(s, t)| (VarName::try_from(s).unwrap(), t))
                 .collect(),
             records: records_map,
+            enums: BTreeMap::new(),
+        }
+    }
+
+    fn with_enums(params: Vec<(String, Type)>, enums: Vec<(&str, Vec<&str>)>) -> Self {
+        let initial_vars = params.clone();
+
+        let enums_map: BTreeMap<String, Vec<String>> = enums
+            .into_iter()
+            .map(|(name, variants)| {
+                (
+                    name.to_string(),
+                    variants.into_iter().map(|v| v.to_string()).collect(),
+                )
+            })
+            .collect();
+
+        Self {
+            next_expr_id: RefCell::new(1),
+            next_node_id: RefCell::new(1),
+            var_stack: RefCell::new(initial_vars),
+            params: params
+                .into_iter()
+                .map(|(s, t)| (VarName::try_from(s).unwrap(), t))
+                .collect(),
+            records: BTreeMap::new(),
+            enums: enums_map,
         }
     }
 
@@ -172,35 +220,32 @@ impl IrTestBuilder {
     }
 
     pub fn eq(&self, left: IrExpr, right: IrExpr) -> IrExpr {
-        match (left.as_type(), right.as_type()) {
-            (Type::Bool, Type::Bool) => Expr::Equals {
-                left: Box::new(left),
-                right: Box::new(right),
-                operand_types: EquatableType::Bool,
-                annotation: self.next_expr_id(),
-            },
-            (Type::String, Type::String) => Expr::Equals {
-                left: Box::new(left),
-                right: Box::new(right),
-                operand_types: EquatableType::String,
-                annotation: self.next_expr_id(),
-            },
-            (Type::Int, Type::Int) => Expr::Equals {
-                left: Box::new(left),
-                right: Box::new(right),
-                operand_types: EquatableType::Int,
-                annotation: self.next_expr_id(),
-            },
-            (Type::Float, Type::Float) => Expr::Equals {
-                left: Box::new(left),
-                right: Box::new(right),
-                operand_types: EquatableType::Float,
-                annotation: self.next_expr_id(),
+        let operand_types = match (left.as_type(), right.as_type()) {
+            (Type::Bool, Type::Bool) => EquatableType::Bool,
+            (Type::String, Type::String) => EquatableType::String,
+            (Type::Int, Type::Int) => EquatableType::Int,
+            (Type::Float, Type::Float) => EquatableType::Float,
+            (
+                Type::Enum { module, name, .. },
+                Type::Enum {
+                    module: module2,
+                    name: name2,
+                    ..
+                },
+            ) if module == module2 && name == name2 => EquatableType::Enum {
+                module: module.clone(),
+                name: name.clone(),
             },
             _ => panic!(
                 "Unsupported type for equality comparison: {:?}",
                 left.as_type()
             ),
+        };
+        Expr::Equals {
+            left: Box::new(left),
+            right: Box::new(right),
+            operand_types,
+            annotation: self.next_expr_id(),
         }
     }
 
@@ -288,6 +333,33 @@ impl IrTestBuilder {
                     .iter()
                     .map(|(k, v)| (FieldName::new(k).unwrap(), v.clone()))
                     .collect(),
+            },
+            annotation: self.next_expr_id(),
+        }
+    }
+
+    pub fn enum_variant(&self, enum_name: &str, variant_name: &str) -> IrExpr {
+        // Verify the enum exists and the variant is valid
+        let variants = self
+            .enums
+            .get(enum_name)
+            .unwrap_or_else(|| panic!("Enum '{}' not found in test builder", enum_name));
+
+        if !variants.iter().any(|v| v == variant_name) {
+            panic!(
+                "Variant '{}' not found in enum '{}'. Available variants: {:?}",
+                variant_name, enum_name, variants
+            );
+        }
+
+        let test_module = ModuleName::new("test").unwrap();
+        Expr::EnumInstantiation {
+            enum_name: enum_name.to_string(),
+            variant_name: variant_name.to_string(),
+            kind: Type::Enum {
+                module: test_module,
+                name: TypeName::new(enum_name).unwrap(),
+                variants: variants.iter().map(|v| TypeName::new(v).unwrap()).collect(),
             },
             annotation: self.next_expr_id(),
         }
@@ -466,6 +538,7 @@ impl IrAutoBuilder {
                 var_stack: self.inner.var_stack.clone(),
                 params: self.inner.params.clone(),
                 records: self.inner.records.clone(),
+                enums: self.inner.enums.clone(),
             },
             statements: Vec::new(),
         }
@@ -611,6 +684,10 @@ impl IrAutoBuilder {
 
     pub fn record(&self, record_name: &str, fields: Vec<(&str, IrExpr)>) -> IrExpr {
         self.inner.record(record_name, fields)
+    }
+
+    pub fn enum_variant(&self, enum_name: &str, variant_name: &str) -> IrExpr {
+        self.inner.enum_variant(enum_name, variant_name)
     }
 
     pub fn field_access(&self, object: IrExpr, field: &str) -> IrExpr {
