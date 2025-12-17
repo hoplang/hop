@@ -167,12 +167,11 @@ impl Parser {
     fn expect_type_name(&mut self) -> Result<(TypeName, DocumentRange), ParseError> {
         match self.iter.next().transpose()? {
             Some((Token::TypeName(name), range)) => {
-                let type_name = TypeName::new(name.as_str()).map_err(|error| {
-                    ParseError::InvalidTypeName {
+                let type_name =
+                    TypeName::new(name.as_str()).map_err(|error| ParseError::InvalidTypeName {
                         error,
                         range: range.clone(),
-                    }
-                })?;
+                    })?;
                 Ok((type_name, range))
             }
             Some((actual, range)) => Err(ParseError::ExpectedTypeNameButGot { actual, range }),
@@ -2071,7 +2070,10 @@ mod tests {
     fn should_accept_declaration_record_with_multiple_fields() {
         check_parse_declarations(
             indoc! {"
-                record User {name: String, age: Int}
+                record User {
+                    name: String,
+                    age: Int,
+                }
             "},
             expect![[r#"
                 Record {
@@ -2088,7 +2090,9 @@ mod tests {
     fn should_accept_declaration_record_with_nested_array_field_type() {
         check_parse_declarations(
             indoc! {"
-                record UserList {users: Array[User]}
+                record UserList {
+                    users: Array[User],
+                }
             "},
             expect![[r#"
                 Record {
@@ -2135,7 +2139,9 @@ mod tests {
         check_parse_declarations(
             indoc! {r#"
                 import header::Header
-                record User {name: String}
+                record User {
+                    name: String,
+                }
                 import footer::Footer
             "#},
             expect![[r#"
