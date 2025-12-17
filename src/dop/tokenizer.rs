@@ -111,12 +111,13 @@ impl Iterator for Tokenizer {
                         |s| matches!(s.ch(), 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'),
                     ));
                     let t = match identifier.as_str() {
+                        // Keywords
                         "in" => Token::In,
                         "import" => Token::Import,
-                        "true" => Token::BooleanLiteral(true),
-                        "false" => Token::BooleanLiteral(false),
+                        "true" => Token::True,
+                        "false" => Token::False,
                         "record" => Token::Record,
-                        // Type keywords
+                        // Types
                         "String" => Token::TypeString,
                         "Int" => Token::TypeInt,
                         "Float" => Token::TypeFloat,

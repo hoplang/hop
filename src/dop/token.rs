@@ -7,7 +7,6 @@ pub enum Token {
     Identifier(DocumentRange),
     TypeName(DocumentRange),
     StringLiteral(String),
-    BooleanLiteral(bool),
     IntLiteral(i64),
     FloatLiteral(f64),
     Eq,
@@ -32,6 +31,9 @@ pub enum Token {
     Colon,
     ColonColon,
     Comma,
+    // Keywords
+    True,
+    False,
     In,
     Import,
     Record,
@@ -50,7 +52,6 @@ impl PartialEq for Token {
             (Token::Identifier(a), Token::Identifier(b)) => a.as_str() == b.as_str(),
             (Token::TypeName(a), Token::TypeName(b)) => a.as_str() == b.as_str(),
             (Token::StringLiteral(a), Token::StringLiteral(b)) => a == b,
-            (Token::BooleanLiteral(a), Token::BooleanLiteral(b)) => a == b,
             (Token::IntLiteral(a), Token::IntLiteral(b)) => a == b,
             (Token::FloatLiteral(a), Token::FloatLiteral(b)) => a == b,
             (Token::Eq, Token::Eq) => true,
@@ -66,6 +67,8 @@ impl PartialEq for Token {
             (Token::Asterisk, Token::Asterisk) => true,
             (Token::Not, Token::Not) => true,
             (Token::Dot, Token::Dot) => true,
+            (Token::True, Token::True) => true,
+            (Token::False, Token::False) => true,
             (Token::LeftParen, Token::LeftParen) => true,
             (Token::RightParen, Token::RightParen) => true,
             (Token::LeftBracket, Token::LeftBracket) => true,
@@ -96,7 +99,7 @@ impl Token {
             Token::LeftBracket => Token::RightBracket,
             Token::LeftParen => Token::RightParen,
             _ => {
-                panic!("matching_closing_token called on {}", self)
+                panic!("opposite_token called on {}", self)
             }
         }
     }
@@ -108,7 +111,6 @@ impl fmt::Display for Token {
             Token::Identifier(name) => write!(f, "{}", name),
             Token::TypeName(name) => write!(f, "{}", name),
             Token::StringLiteral(s) => write!(f, "\"{}\"", s),
-            Token::BooleanLiteral(b) => write!(f, "{}", b),
             Token::IntLiteral(i) => write!(f, "{}", i),
             Token::FloatLiteral(float_val) => write!(f, "{}", float_val),
             Token::Eq => write!(f, "=="),
@@ -134,6 +136,8 @@ impl fmt::Display for Token {
             Token::ColonColon => write!(f, "::"),
             Token::Comma => write!(f, ","),
             Token::In => write!(f, "in"),
+            Token::True => write!(f, "true"),
+            Token::False => write!(f, "false"),
             Token::Import => write!(f, "import"),
             Token::Record => write!(f, "record"),
             Token::TypeString => write!(f, "String"),

@@ -569,8 +569,12 @@ impl Parser {
                 value,
                 annotation: range,
             }),
-            Some((Token::BooleanLiteral(value), range)) => Ok(SyntacticExpr::BooleanLiteral {
-                value,
+            Some((Token::True, range)) => Ok(SyntacticExpr::BooleanLiteral {
+                value: true,
+                annotation: range,
+            }),
+            Some((Token::False, range)) => Ok(SyntacticExpr::BooleanLiteral {
+                value: false,
                 annotation: range,
             }),
             Some((Token::IntLiteral(value), range)) => Ok(SyntacticExpr::IntLiteral {
