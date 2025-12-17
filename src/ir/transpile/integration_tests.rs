@@ -153,6 +153,7 @@ fn run_integration_test(test_case: TestCase) -> Result<(), String> {
     let module = IrModule {
         entrypoints: vec![test_case.entrypoint],
         records: vec![],
+        enums: vec![],
     };
 
     let js_transpiler = JsTranspiler::new(LanguageMode::JavaScript);
@@ -313,6 +314,7 @@ fn run_type_check_test(test_case: TypeCheckTestCase) -> Result<(), String> {
     let module = IrModule {
         entrypoints: test_case.entrypoints,
         records: vec![],
+        enums: vec![],
     };
 
     let js_transpiler = JsTranspiler::new(LanguageMode::JavaScript);

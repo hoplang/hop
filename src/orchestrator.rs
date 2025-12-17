@@ -7,7 +7,7 @@ use crate::ir::optimize::{
     UnusedLetEliminationPass, WriteExprSimplificationPass,
 };
 use crate::ir::transform::{DoctypeInjector, HtmlStructureInjector, TailwindInjector};
-use crate::ir::{Compiler, IrModule, IrRecord};
+use crate::ir::{Compiler, IrEnum, IrModule, IrRecord};
 use anyhow::Result;
 use std::collections::HashMap;
 
@@ -32,6 +32,22 @@ pub fn orchestrate(
         .collect();
     records.sort_by(|a, b| a.name.cmp(&b.name));
 
+    // Collect enum declarations from all modules
+    let mut enums: Vec<IrEnum> = typed_asts
+        .values()
+        .flat_map(|module| module.get_enums())
+        .map(|enum_decl| IrEnum {
+            name: enum_decl.name().to_string(),
+            variants: enum_decl
+                .declaration
+                .variants
+                .iter()
+                .map(|v| v.name.as_str().to_string())
+                .collect(),
+        })
+        .collect();
+    enums.sort_by(|a, b| a.name.cmp(&b.name));
+
     let entrypoints = Inliner::inline_entrypoints(typed_asts, pages)?
         .into_iter()
         // transform ASTs
@@ -51,5 +67,6 @@ pub fn orchestrate(
     Ok(IrModule {
         entrypoints,
         records,
+        enums,
     })
 }

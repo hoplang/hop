@@ -157,6 +157,11 @@ pub trait ExpressionTranspiler {
         record_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
     ) -> BoxDoc<'a>;
+    fn transpile_enum_instantiation<'a>(
+        &self,
+        enum_name: &'a str,
+        variant_name: &'a str,
+    ) -> BoxDoc<'a>;
     fn transpile_expr<'a>(&self, expr: &'a IrExpr) -> BoxDoc<'a> {
         match expr {
             IrExpr::Var { value, .. } => self.transpile_var(value.as_str()),
@@ -275,9 +280,11 @@ pub trait ExpressionTranspiler {
                 NumericType::Int => self.transpile_int_multiply(left, right),
                 NumericType::Float => self.transpile_float_multiply(left, right),
             },
-            IrExpr::EnumInstantiation { .. } => {
-                panic!("EnumInstantiation transpilation not yet implemented")
-            }
+            IrExpr::EnumInstantiation {
+                enum_name,
+                variant_name,
+                ..
+            } => self.transpile_enum_instantiation(enum_name, variant_name)
         }
     }
 }

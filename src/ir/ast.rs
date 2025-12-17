@@ -23,11 +23,19 @@ pub struct IrRecord {
     pub fields: Vec<(FieldName, Type)>,
 }
 
+/// Information about an enum declaration for transpilation.
+#[derive(Debug, Clone)]
+pub struct IrEnum {
+    pub name: String,
+    pub variants: Vec<String>,
+}
+
 /// An IR module containing entrypoints and type declarations.
 #[derive(Debug, Clone)]
 pub struct IrModule {
     pub entrypoints: Vec<IrEntrypoint>,
     pub records: Vec<IrRecord>,
+    pub enums: Vec<IrEnum>,
 }
 
 #[derive(Debug, Clone)]

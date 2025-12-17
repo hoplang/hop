@@ -151,6 +151,48 @@ impl Transpiler for GoTranspiler {
                 .append(BoxDoc::line());
         }
 
+        // Generate enum type definitions
+        for enum_def in &module.enums {
+            // Generate: type EnumName int
+            result = result
+                .append(BoxDoc::text("type "))
+                .append(BoxDoc::text(enum_def.name.as_str()))
+                .append(BoxDoc::text(" int"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line());
+
+            // Generate const block with iota
+            // const (
+            //     EnumNameVariant1 EnumName = iota
+            //     EnumNameVariant2
+            //     ...
+            // )
+            result = result.append(BoxDoc::text("const (")).append(
+                BoxDoc::line()
+                    .append(BoxDoc::intersperse(
+                        enum_def.variants.iter().enumerate().map(|(i, variant)| {
+                            let const_name =
+                                BoxDoc::text(enum_def.name.as_str()).append(BoxDoc::text(variant));
+                            if i == 0 {
+                                const_name
+                                    .append(BoxDoc::text(" "))
+                                    .append(BoxDoc::text(enum_def.name.as_str()))
+                                    .append(BoxDoc::text(" = iota"))
+                            } else {
+                                const_name
+                            }
+                        }),
+                        BoxDoc::line(),
+                    ))
+                    .nest(1),
+            );
+            result = result
+                .append(BoxDoc::line())
+                .append(BoxDoc::text(")"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line());
+        }
+
         // Generate record type structs
         for record in records {
             let fields: Vec<_> = record
@@ -470,6 +512,15 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text("}"))
     }
 
+    fn transpile_enum_instantiation<'a>(
+        &self,
+        enum_name: &'a str,
+        variant_name: &'a str,
+    ) -> BoxDoc<'a> {
+        // In Go, enum variants are int constants with the pattern EnumNameVariantName
+        BoxDoc::text(enum_name).append(BoxDoc::text(variant_name))
+    }
+
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
@@ -772,6 +823,7 @@ mod tests {
         let module = IrModule {
             entrypoints: entrypoints.to_vec(),
             records: vec![],
+            enums: vec![],
         };
         let transpiler = GoTranspiler::new("components".to_string());
         transpiler.transpile_module(&module)
@@ -1261,6 +1313,7 @@ mod tests {
         let module = IrModule {
             entrypoints,
             records,
+            enums: vec![],
         };
 
         let transpiler = GoTranspiler::new("components".to_string());
@@ -1328,6 +1381,7 @@ mod tests {
         let module = IrModule {
             entrypoints,
             records,
+            enums: vec![],
         };
 
         let transpiler = GoTranspiler::new("components".to_string());
@@ -1353,6 +1407,208 @@ mod tests {
             		Age: 30,
             	}.Name))
             	io.WriteString(w, "</div>")
+            }
+        "#]]
+        .assert_eq(&output);
+    }
+
+    #[test]
+    fn enum_instantiation_in_condition() {
+        use crate::ir::test_utils::build_ir_with_enums;
+
+        let enums_def = vec![("Color", vec!["Red", "Green", "Blue"])];
+
+        let color_type = Type::Enum {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Color").unwrap(),
+            variants: vec![
+                TypeName::new("Red").unwrap(),
+                TypeName::new("Green").unwrap(),
+                TypeName::new("Blue").unwrap(),
+            ],
+        };
+
+        let entrypoints = vec![build_ir_with_enums(
+            "ColorDisplay",
+            vec![("color", color_type)],
+            enums_def,
+            |t| {
+                t.if_stmt(t.eq(t.var("color"), t.enum_variant("Color", "Red")), |t| {
+                    t.write("<div>It's red!</div>");
+                });
+            },
+        )];
+
+        check(
+            &entrypoints,
+            expect![[r#"
+                -- before --
+                ColorDisplay(color: test::Color) {
+                  if (color == Color::Red) {
+                    write("<div>It's red!</div>")
+                  }
+                }
+
+                -- after --
+                package components
+
+                import (
+                	"io"
+                )
+
+                type ColorDisplayParams struct {
+                	Color Color `json:"color"`
+                }
+
+                func ColorDisplay(w io.Writer, params ColorDisplayParams) {
+                	color := params.Color
+                	if (color == ColorRed) {
+                		io.WriteString(w, "<div>It's red!</div>")
+                	}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_equality_comparison() {
+        use crate::ir::test_utils::build_ir_with_enums;
+
+        let enums_def = vec![("Status", vec!["Active", "Inactive", "Pending"])];
+
+        let status_type = Type::Enum {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Status").unwrap(),
+            variants: vec![
+                TypeName::new("Active").unwrap(),
+                TypeName::new("Inactive").unwrap(),
+                TypeName::new("Pending").unwrap(),
+            ],
+        };
+
+        let entrypoints = vec![build_ir_with_enums(
+            "StatusCheck",
+            vec![("status", status_type)],
+            enums_def,
+            |t| {
+                t.if_stmt(
+                    t.eq(t.var("status"), t.enum_variant("Status", "Active")),
+                    |t| {
+                        t.write("<span class=\"active\">Active</span>");
+                    },
+                );
+                t.if_stmt(
+                    t.eq(t.var("status"), t.enum_variant("Status", "Pending")),
+                    |t| {
+                        t.write("<span class=\"pending\">Pending</span>");
+                    },
+                );
+            },
+        )];
+
+        check(
+            &entrypoints,
+            expect![[r#"
+                -- before --
+                StatusCheck(status: test::Status) {
+                  if (status == Status::Active) {
+                    write("<span class=\"active\">Active</span>")
+                  }
+                  if (status == Status::Pending) {
+                    write("<span class=\"pending\">Pending</span>")
+                  }
+                }
+
+                -- after --
+                package components
+
+                import (
+                	"io"
+                )
+
+                type StatusCheckParams struct {
+                	Status Status `json:"status"`
+                }
+
+                func StatusCheck(w io.Writer, params StatusCheckParams) {
+                	status := params.Status
+                	if (status == StatusActive) {
+                		io.WriteString(w, "<span class=\"active\">Active</span>")
+                	}
+                	if (status == StatusPending) {
+                		io.WriteString(w, "<span class=\"pending\">Pending</span>")
+                	}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_type_declarations() {
+        use crate::ir::ast::IrEnum;
+        use crate::ir::test_utils::build_ir_with_enums;
+
+        let enums_def = vec![("Color", vec!["Red", "Green", "Blue"])];
+
+        let color_type = Type::Enum {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Color").unwrap(),
+            variants: vec![
+                TypeName::new("Red").unwrap(),
+                TypeName::new("Green").unwrap(),
+                TypeName::new("Blue").unwrap(),
+            ],
+        };
+
+        let entrypoints = vec![build_ir_with_enums(
+            "ColorDisplay",
+            vec![("color", color_type)],
+            enums_def,
+            |t| {
+                t.if_stmt(t.eq(t.var("color"), t.enum_variant("Color", "Red")), |t| {
+                    t.write("<div>Red!</div>");
+                });
+            },
+        )];
+
+        let enums = vec![IrEnum {
+            name: "Color".to_string(),
+            variants: vec!["Red".to_string(), "Green".to_string(), "Blue".to_string()],
+        }];
+
+        let module = IrModule {
+            entrypoints,
+            records: vec![],
+            enums,
+        };
+
+        let transpiler = GoTranspiler::new("components".to_string());
+        let output = transpiler.transpile_module(&module);
+
+        expect![[r#"
+            package components
+
+            import (
+            	"io"
+            )
+
+            type Color int
+
+            const (
+            	ColorRed Color = iota
+            	ColorGreen
+            	ColorBlue
+            )
+
+            type ColorDisplayParams struct {
+            	Color Color `json:"color"`
+            }
+
+            func ColorDisplay(w io.Writer, params ColorDisplayParams) {
+            	color := params.Color
+            	if (color == ColorRed) {
+            		io.WriteString(w, "<div>Red!</div>")
+            	}
             }
         "#]]
         .assert_eq(&output);

@@ -7,6 +7,6 @@ pub mod test_utils;
 pub mod transform;
 pub mod transpile;
 
-pub use ast::{IrExpr, IrModule, IrRecord};
+pub use ast::{IrEnum, IrExpr, IrModule, IrRecord};
 pub use compiler::Compiler;
 pub use transpile::{GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler};

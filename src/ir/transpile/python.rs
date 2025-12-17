@@ -441,6 +441,14 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(BoxDoc::text(")"))
     }
 
+    fn transpile_enum_instantiation<'a>(
+        &self,
+        _enum_name: &'a str,
+        _variant_name: &'a str,
+    ) -> BoxDoc<'a> {
+        panic!("Enum instantiation transpilation for Python not yet implemented")
+    }
+
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
@@ -745,6 +753,7 @@ mod tests {
         let module = IrModule {
             entrypoints: entrypoints.to_vec(),
             records: vec![],
+            enums: vec![],
         };
         let transpiler = PythonTranspiler::new();
         transpiler.transpile_module(&module)
@@ -1165,6 +1174,7 @@ mod tests {
         let module = IrModule {
             entrypoints,
             records,
+            enums: vec![],
         };
 
         let transpiler = PythonTranspiler::new();
@@ -1229,6 +1239,7 @@ mod tests {
         let module = IrModule {
             entrypoints,
             records,
+            enums: vec![],
         };
 
         let transpiler = PythonTranspiler::new();

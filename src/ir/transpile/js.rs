@@ -426,6 +426,14 @@ impl ExpressionTranspiler for JsTranspiler {
             .append(BoxDoc::text("}"))
     }
 
+    fn transpile_enum_instantiation<'a>(
+        &self,
+        _enum_name: &'a str,
+        _variant_name: &'a str,
+    ) -> BoxDoc<'a> {
+        panic!("Enum instantiation transpilation for JavaScript/TypeScript not yet implemented")
+    }
+
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
@@ -753,6 +761,7 @@ mod tests {
         let module = IrModule {
             entrypoints: entrypoints.to_vec(),
             records: vec![],
+            enums: vec![],
         };
         let transpiler = JsTranspiler::new(mode);
         transpiler.transpile_module(&module)
@@ -1347,6 +1356,7 @@ mod tests {
         let module = IrModule {
             entrypoints,
             records,
+            enums: vec![],
         };
 
         let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
@@ -1441,6 +1451,7 @@ mod tests {
         let module = IrModule {
             entrypoints,
             records,
+            enums: vec![],
         };
 
         let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
