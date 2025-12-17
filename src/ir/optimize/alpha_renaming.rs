@@ -253,11 +253,12 @@ impl AlphaRenamingPass {
                 operand_types,
                 annotation,
             },
-            // Literals don't contain variables
+            // Literals and enum variants don't contain variables
             Expr::StringLiteral { .. } => expr,
             Expr::BooleanLiteral { .. } => expr,
             Expr::FloatLiteral { .. } => expr,
             Expr::IntLiteral { .. } => expr,
+            Expr::EnumInstantiation { .. } => expr,
             Expr::BooleanLogicalAnd {
                 left,
                 right,

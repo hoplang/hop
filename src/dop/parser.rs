@@ -13,7 +13,9 @@ use crate::dop::var_name::VarName;
 use crate::error_collector::ErrorCollector;
 use crate::hop::module_name::ModuleName;
 
-use super::declaration::{Declaration, EnumDeclaration, EnumVariant, RecordDeclaration, RecordDeclarationField};
+use super::declaration::{
+    Declaration, EnumDeclaration, EnumVariant, RecordDeclaration, RecordDeclarationField,
+};
 use super::expr::SimpleExpr;
 use super::type_name::TypeName;
 
@@ -583,7 +585,17 @@ impl Parser {
                 self.parse_field_access(name, name_range)
             }
             Some((Token::TypeName(name), name_range)) => {
-                self.parse_record_instantiation(name, name_range)
+                let is_enum_variant = self
+                    .iter
+                    .peek()
+                    .and_then(|r| r.as_ref().ok())
+                    .map(|(t, _)| t)
+                    == Some(&Token::ColonColon);
+                if is_enum_variant {
+                    self.parse_enum_instantiation(name, name_range)
+                } else {
+                    self.parse_record_instantiation(name, name_range)
+                }
             }
             Some((Token::StringLiteral(value), range)) => Ok(SyntacticExpr::StringLiteral {
                 value,
@@ -638,6 +650,23 @@ impl Parser {
             record_name: name.as_str().to_string(),
             fields,
             annotation: name_range.to(right_paren),
+        })
+    }
+
+    /// Parse an enum instantiation expression.
+    ///
+    /// Syntax: `EnumName::VariantName`
+    fn parse_enum_instantiation(
+        &mut self,
+        enum_name: StringSpan,
+        enum_name_range: DocumentRange,
+    ) -> Result<SyntacticExpr, ParseError> {
+        self.expect_token(&Token::ColonColon)?;
+        let (variant_name, variant_range) = self.expect_type_name()?;
+        Ok(SyntacticExpr::EnumInstantiation {
+            enum_name: enum_name.as_str().to_string(),
+            variant_name: variant_name.as_str().to_string(),
+            annotation: enum_name_range.to(variant_range),
         })
     }
 
@@ -2418,6 +2447,64 @@ mod tests {
                 error: Expected type name but got red
                 1 | enum Color {red}
                   |             ^^^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// ENUM INSTANTIATION                                                  ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_enum_instantiation() {
+        check_parse_expr(
+            "Color::Red",
+            expect![[r#"
+                Color::Red
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_instantiation_in_equality() {
+        check_parse_expr(
+            "Color::Red == Color::Green",
+            expect![[r#"
+                (Color::Red == Color::Green)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_instantiation_in_record_field() {
+        check_parse_expr(
+            r#"User(name: "Alice", status: Status::Active)"#,
+            expect![[r#"
+                User(name: "Alice", status: Status::Active)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_enum_instantiation_with_lowercase_variant() {
+        check_parse_expr(
+            "Color::red",
+            expect![[r#"
+                error: Expected type name but got red
+                Color::red
+                       ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_enum_instantiation_missing_variant() {
+        check_parse_expr(
+            "Color::",
+            expect![[r#"
+                error: Unexpected end of expression
+                Color::
+                ^^^^^^^
             "#]],
         );
     }

@@ -705,6 +705,47 @@ pub fn typecheck_expr(
                 annotation: (),
             })
         }
+        SyntacticExpr::EnumInstantiation {
+            enum_name,
+            variant_name,
+            annotation: range,
+        } => {
+            // Look up the enum type in the type environment
+            let enum_type = type_env
+                .lookup(enum_name.as_str())
+                .ok_or_else(|| TypeError::UndefinedEnum {
+                    enum_name: enum_name.clone(),
+                    range: range.clone(),
+                })?
+                .clone();
+
+            // Verify it's actually an enum type and the variant exists
+            match &enum_type {
+                Type::Enum { variants, .. } => {
+                    let variant_exists = variants.iter().any(|v| v.as_str() == variant_name);
+                    if !variant_exists {
+                        return Err(TypeError::UndefinedEnumVariant {
+                            enum_name: enum_name.clone(),
+                            variant_name: variant_name.clone(),
+                            range: range.clone(),
+                        });
+                    }
+                }
+                _ => {
+                    return Err(TypeError::UndefinedEnum {
+                        enum_name: enum_name.clone(),
+                        range: range.clone(),
+                    });
+                }
+            }
+
+            Ok(Expr::EnumInstantiation {
+                enum_name: enum_name.clone(),
+                variant_name: variant_name.clone(),
+                kind: enum_type,
+                annotation: (),
+            })
+        }
     }
 }
 
@@ -1937,6 +1978,134 @@ mod tests {
             &[("user", "User"), ("admin", "Admin")],
             "user.status == admin.status",
             expect!["Bool"],
+        );
+    }
+
+    // Enum variant instantiation tests
+
+    #[test]
+    fn should_accept_enum_variant_instantiation() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[],
+            "Color::Red",
+            expect!["test::Color"],
+        );
+    }
+
+    #[test]
+    fn should_reject_undefined_enum_variant() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[],
+            "Color::Yellow",
+            expect![[r#"
+                error: Variant 'Yellow' is not defined in enum 'Color'
+                Color::Yellow
+                ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_undefined_enum() {
+        check(
+            "",
+            &[],
+            "Unknown::Red",
+            expect![[r#"
+                error: Enum type 'Unknown' is not defined
+                Unknown::Red
+                ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_variant_in_equality() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("color", "Color")],
+            "Color::Red == color",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_variant_in_record_field_assignment() {
+        check(
+            indoc! {"
+                enum Status {
+                    Active,
+                    Inactive,
+                }
+                record User {
+                    name: String,
+                    status: Status,
+                }
+            "},
+            &[],
+            r#"User(name: "Alice", status: Status::Active)"#,
+            expect!["test::User"],
+        );
+    }
+
+    #[test]
+    fn should_accept_two_enum_variants_in_equality() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[],
+            "Color::Red == Color::Green",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_reject_equality_between_different_enums_with_same_variants() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+                enum Shade {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[],
+            "Color::Red == Shade::Red",
+            expect![[r#"
+                error: Can not compare test::Color to test::Shade
+                Color::Red == Shade::Red
+                ^^^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
         );
     }
 }

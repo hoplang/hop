@@ -101,6 +101,19 @@ pub enum TypeError {
         found: String,
         range: DocumentRange,
     },
+
+    #[error("Enum type '{enum_name}' is not defined")]
+    UndefinedEnum {
+        enum_name: String,
+        range: DocumentRange,
+    },
+
+    #[error("Variant '{variant_name}' is not defined in enum '{enum_name}'")]
+    UndefinedEnumVariant {
+        enum_name: String,
+        variant_name: String,
+        range: DocumentRange,
+    },
 }
 
 impl Ranged for TypeError {
@@ -123,7 +136,9 @@ impl Ranged for TypeError {
             | TypeError::UndefinedRecord { range, .. }
             | TypeError::RecordInstantiationMissingRecordField { range, .. }
             | TypeError::RecordInstantiationUnknownRecordField { range, .. }
-            | TypeError::RecordInstantiationFieldTypeMismatch { range, .. } => range,
+            | TypeError::RecordInstantiationFieldTypeMismatch { range, .. }
+            | TypeError::UndefinedEnum { range, .. }
+            | TypeError::UndefinedEnumVariant { range, .. } => range,
         }
     }
 }

@@ -497,6 +497,10 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 }
             }
         }
+        IrExpr::EnumInstantiation { variant_name, .. } => {
+            // Enum variants evaluate to their string name
+            Ok(Value::String(variant_name.clone()))
+        }
     }
 }
 

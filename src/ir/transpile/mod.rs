@@ -275,6 +275,9 @@ pub trait ExpressionTranspiler {
                 NumericType::Int => self.transpile_int_multiply(left, right),
                 NumericType::Float => self.transpile_float_multiply(left, right),
             },
+            IrExpr::EnumInstantiation { .. } => {
+                panic!("EnumInstantiation transpilation not yet implemented")
+            }
         }
     }
 }

@@ -386,7 +386,8 @@ impl IrExpr {
             | Expr::StringLiteral { .. }
             | Expr::BooleanLiteral { .. }
             | Expr::FloatLiteral { .. }
-            | Expr::IntLiteral { .. } => {}
+            | Expr::IntLiteral { .. }
+            | Expr::EnumInstantiation { .. } => {}
         }
     }
 

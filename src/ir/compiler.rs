@@ -544,6 +544,17 @@ impl Compiler {
                 operand_types,
                 annotation: expr_id,
             },
+            Expr::EnumInstantiation {
+                enum_name,
+                variant_name,
+                kind,
+                ..
+            } => Expr::EnumInstantiation {
+                enum_name,
+                variant_name,
+                kind,
+                annotation: expr_id,
+            },
         }
     }
 }

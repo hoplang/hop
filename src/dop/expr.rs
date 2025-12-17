@@ -55,6 +55,14 @@ pub enum Expr<A> {
         annotation: A,
     },
 
+    /// An enum instantiation expression, e.g. Color::Red
+    EnumInstantiation {
+        enum_name: String,
+        variant_name: String,
+        kind: Type,
+        annotation: A,
+    },
+
     /// JSON encode expression for converting values to JSON strings
     JsonEncode { value: Box<Self>, annotation: A },
 
@@ -169,7 +177,8 @@ impl<A> Expr<A> {
             Expr::Var { kind, .. }
             | Expr::FieldAccess { kind, .. }
             | Expr::ArrayLiteral { kind, .. }
-            | Expr::RecordInstantiation { kind, .. } => kind,
+            | Expr::RecordInstantiation { kind, .. }
+            | Expr::EnumInstantiation { kind, .. } => kind,
 
             Expr::FloatLiteral { .. } => &FLOAT_TYPE,
             Expr::IntLiteral { .. } => &INT_TYPE,
@@ -209,6 +218,7 @@ impl<A> Expr<A> {
             | Expr::IntLiteral { annotation, .. }
             | Expr::ArrayLiteral { annotation, .. }
             | Expr::RecordInstantiation { annotation, .. }
+            | Expr::EnumInstantiation { annotation, .. }
             | Expr::JsonEncode { annotation, .. }
             | Expr::EnvLookup { annotation, .. }
             | Expr::StringConcat { annotation, .. }
@@ -374,6 +384,13 @@ impl<A> Expr<A> {
                 .append(BoxDoc::text(" || "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
+            Expr::EnumInstantiation {
+                enum_name,
+                variant_name,
+                ..
+            } => BoxDoc::text(enum_name.as_str())
+                .append(BoxDoc::text("::"))
+                .append(BoxDoc::text(variant_name.as_str())),
         }
     }
 }

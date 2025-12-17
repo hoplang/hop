@@ -72,6 +72,13 @@ pub enum SyntacticExpr {
         annotation: DocumentRange,
     },
 
+    /// An enum instantiation expression, e.g. Color::Red
+    EnumInstantiation {
+        enum_name: String,
+        variant_name: String,
+        annotation: DocumentRange,
+    },
+
     BinaryOp {
         left: Box<Self>,
         operator: BinaryOp,
@@ -97,6 +104,7 @@ impl SyntacticExpr {
             | SyntacticExpr::FloatLiteral { annotation, .. }
             | SyntacticExpr::ArrayLiteral { annotation, .. }
             | SyntacticExpr::RecordInstantiation { annotation, .. }
+            | SyntacticExpr::EnumInstantiation { annotation, .. }
             | SyntacticExpr::BinaryOp { annotation, .. }
             | SyntacticExpr::Negation { annotation, .. } => annotation,
         }
@@ -180,6 +188,13 @@ impl SyntacticExpr {
                 .append(BoxDoc::text("!"))
                 .append(operand.to_doc())
                 .append(BoxDoc::text(")")),
+            SyntacticExpr::EnumInstantiation {
+                enum_name,
+                variant_name,
+                ..
+            } => BoxDoc::text(enum_name.as_str())
+                .append(BoxDoc::text("::"))
+                .append(BoxDoc::text(variant_name.as_str())),
         }
     }
 }
