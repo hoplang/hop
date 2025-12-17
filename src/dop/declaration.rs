@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 
-use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::hop::module_name::ModuleName;
 use pretty::BoxDoc;
 
@@ -28,7 +28,7 @@ impl Display for RecordDeclarationField {
 /// E.g. record User {name: String, age: Int}
 #[derive(Debug, Clone)]
 pub struct RecordDeclaration<A = SyntacticType> {
-    pub name: StringSpan,
+    pub name: TypeName,
     pub name_range: DocumentRange,
     pub fields: Vec<RecordDeclarationField<A>>,
 }

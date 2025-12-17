@@ -164,6 +164,24 @@ impl Parser {
         }
     }
 
+    fn expect_type_name(&mut self) -> Result<(TypeName, DocumentRange), ParseError> {
+        match self.iter.next().transpose()? {
+            Some((Token::TypeName(name), range)) => {
+                let type_name = TypeName::new(name.as_str()).map_err(|error| {
+                    ParseError::InvalidTypeName {
+                        error,
+                        range: range.clone(),
+                    }
+                })?;
+                Ok((type_name, range))
+            }
+            Some((actual, range)) => Err(ParseError::ExpectedTypeNameButGot { actual, range }),
+            None => Err(ParseError::UnexpectedEof {
+                range: self.range.clone(),
+            }),
+        }
+    }
+
     fn expect_eof(&mut self) -> Result<(), ParseError> {
         match self.iter.next().transpose()? {
             None => Ok(()),
@@ -643,7 +661,6 @@ impl Parser {
                 });
             }
         };
-        let mut last_range = first_segment.clone();
         path_segments.push(first_segment);
 
         while self.advance_if(Token::ColonColon).is_some() {
@@ -658,12 +675,13 @@ impl Parser {
                     });
                 }
             };
-            last_range = segment.clone();
             path_segments.push(segment);
         }
 
         if path_segments.len() < 2 {
-            return Err(ParseError::ImportPathTooShort { range: last_range });
+            return Err(ParseError::ImportPathTooShort {
+                range: path_segments[0].clone(),
+            });
         }
 
         let name_range = path_segments.pop().unwrap();
@@ -700,7 +718,7 @@ impl Parser {
             name_range: name_range.clone(),
             path: path_range,
             module_name,
-            range: import_range.to(last_range),
+            range: import_range.to(name_range),
         })
     }
 
@@ -709,19 +727,7 @@ impl Parser {
     /// Syntax: `record Name {field: Type, ...}`
     fn parse_record_declaration(&mut self) -> Result<Declaration, ParseError> {
         let start_range = self.expect_token(&Token::Record)?;
-
-        let (name, name_range) = match self.iter.next().transpose()? {
-            Some((Token::TypeName(name), name_range)) => (name, name_range),
-            Some((actual, range)) => {
-                return Err(ParseError::ExpectedTypeNameButGot { actual, range });
-            }
-            None => {
-                return Err(ParseError::UnexpectedEof {
-                    range: self.range.clone(),
-                });
-            }
-        };
-
+        let (name, name_range) = self.expect_type_name()?;
         let left_brace = self.expect_token(&Token::LeftBrace)?;
 
         let mut fields = Vec::new();
