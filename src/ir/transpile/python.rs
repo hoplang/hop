@@ -26,6 +26,7 @@ impl PythonTranspiler {
                 .append(Self::get_python_type(elem))
                 .append(BoxDoc::text("]")),
             Type::Record { name, .. } => BoxDoc::text(name.as_str()),
+            Type::Enum { name, .. } => BoxDoc::text(name.as_str()),
         }
     }
 
@@ -469,6 +470,14 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(BoxDoc::text(")"))
     }
 
+    fn transpile_enum_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("(")
+            .append(self.transpile_expr(left))
+            .append(BoxDoc::text(" == "))
+            .append(self.transpile_expr(right))
+            .append(BoxDoc::text(")"))
+    }
+
     fn transpile_string_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
@@ -494,6 +503,14 @@ impl ExpressionTranspiler for PythonTranspiler {
     }
 
     fn transpile_float_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("(")
+            .append(self.transpile_expr(left))
+            .append(BoxDoc::text(" != "))
+            .append(self.transpile_expr(right))
+            .append(BoxDoc::text(")"))
+    }
+
+    fn transpile_enum_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" != "))

@@ -499,6 +499,14 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
+    fn transpile_enum_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("(")
+            .append(self.transpile_expr(left))
+            .append(BoxDoc::text(" == "))
+            .append(self.transpile_expr(right))
+            .append(BoxDoc::text(")"))
+    }
+
     fn transpile_string_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
@@ -524,6 +532,14 @@ impl ExpressionTranspiler for GoTranspiler {
     }
 
     fn transpile_float_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("(")
+            .append(self.transpile_expr(left))
+            .append(BoxDoc::text(" != "))
+            .append(self.transpile_expr(right))
+            .append(BoxDoc::text(")"))
+    }
+
+    fn transpile_enum_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("(")
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" != "))

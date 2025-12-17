@@ -273,6 +273,22 @@ fn typecheck_module(
         }
     }
 
+    // Register enum types in the type environment
+    for enum_decl in module.get_enums() {
+        let enum_name = enum_decl.name();
+        let enum_type = Type::Enum {
+            module: module.name.clone(),
+            name: TypeName::new(enum_name).unwrap(),
+            variants: enum_decl
+                .declaration
+                .variants
+                .iter()
+                .map(|v| v.name.clone())
+                .collect(),
+        };
+        let _ = records_env.push(enum_name.to_string(), enum_type);
+    }
+
     let mut env = Environment::new();
 
     let mut typed_component_definitions = Vec::new();
@@ -2622,6 +2638,46 @@ mod tests {
                 4 | record Page {
                 5 |   id: Str
                   |       ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_component_definition_with_enum_parameter() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Color {Red, Green, Blue}
+
+                <Main {a: Color, b: Color}>
+                    <if {a == b}>
+                    </if>
+                </Main>
+            "#},
+            expect![[r#"
+                a: main::Color
+                  --> main.hop (line 3, col 8)
+                2 | 
+                3 | <Main {a: Color, b: Color}>
+                  |        ^
+
+                b: main::Color
+                  --> main.hop (line 3, col 18)
+                2 | 
+                3 | <Main {a: Color, b: Color}>
+                  |                  ^
+
+                a: main::Color
+                  --> main.hop (line 4, col 10)
+                3 | <Main {a: Color, b: Color}>
+                4 |     <if {a == b}>
+                  |          ^
+
+                b: main::Color
+                  --> main.hop (line 4, col 15)
+                3 | <Main {a: Color, b: Color}>
+                4 |     <if {a == b}>
+                  |               ^
             "#]],
         );
     }

@@ -14,6 +14,10 @@ pub enum EquatableType {
     Bool,
     Int,
     Float,
+    Enum {
+        module: ModuleName,
+        name: TypeName,
+    },
 }
 
 /// A ComparableType is a type where its values can be ordered
@@ -45,6 +49,11 @@ pub enum Type {
         name: TypeName,
         fields: Vec<(FieldName, Type)>,
     },
+    Enum {
+        module: ModuleName,
+        name: TypeName,
+        variants: Vec<TypeName>,
+    },
 }
 
 impl Type {
@@ -54,6 +63,10 @@ impl Type {
             Type::String => Some(EquatableType::String),
             Type::Int => Some(EquatableType::Int),
             Type::Float => Some(EquatableType::Float),
+            Type::Enum { module, name, .. } => Some(EquatableType::Enum {
+                module: module.clone(),
+                name: name.clone(),
+            }),
             Type::TrustedHTML | Type::Array(_) | Type::Record { .. } => None,
         }
     }
@@ -66,7 +79,8 @@ impl Type {
             | Type::String
             | Type::TrustedHTML
             | Type::Array(_)
-            | Type::Record { .. } => None,
+            | Type::Record { .. }
+            | Type::Enum { .. } => None,
         }
     }
 
@@ -91,6 +105,20 @@ impl Type {
                     ..
                 },
                 Type::Record {
+                    module: super_module,
+                    name: super_name,
+                    ..
+                },
+            ) => sub_module == super_module && sub_name == super_name,
+
+            // Enum types must have the same module and name
+            (
+                Type::Enum {
+                    module: sub_module,
+                    name: sub_name,
+                    ..
+                },
+                Type::Enum {
                     module: super_module,
                     name: super_name,
                     ..
@@ -122,6 +150,7 @@ impl<'a> Type {
                 .append(elem_type.to_doc())
                 .append(BoxDoc::text("]")),
             Type::Record { module, name, .. } => BoxDoc::text(format!("{}::{}", module, name)),
+            Type::Enum { module, name, .. } => BoxDoc::text(format!("{}::{}", module, name)),
         }
     }
 }

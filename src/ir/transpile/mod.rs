@@ -95,6 +95,7 @@ pub trait TypeTranspiler {
             Type::TrustedHTML => self.transpile_trusted_html_type(),
             Type::Array(elem) => self.transpile_array_type(elem),
             Type::Record { name, .. } => self.transpile_named_type(name.as_str()),
+            Type::Enum { name, .. } => self.transpile_named_type(name.as_str()),
         }
     }
 }
@@ -116,10 +117,12 @@ pub trait ExpressionTranspiler {
     fn transpile_bool_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_enum_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_string_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_bool_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_enum_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_greater_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
@@ -198,6 +201,7 @@ pub trait ExpressionTranspiler {
                 EquatableType::String => self.transpile_string_equals(left, right),
                 EquatableType::Int => self.transpile_int_equals(left, right),
                 EquatableType::Float => self.transpile_float_equals(left, right),
+                EquatableType::Enum { .. } => self.transpile_enum_equals(left, right),
             },
             IrExpr::NotEquals {
                 left,
@@ -209,6 +213,7 @@ pub trait ExpressionTranspiler {
                 EquatableType::String => self.transpile_string_not_equals(left, right),
                 EquatableType::Int => self.transpile_int_not_equals(left, right),
                 EquatableType::Float => self.transpile_float_not_equals(left, right),
+                EquatableType::Enum { .. } => self.transpile_enum_not_equals(left, right),
             },
             IrExpr::LessThan {
                 left,
