@@ -127,9 +127,9 @@ impl Iterator for Tokenizer {
                         _ => {
                             let first_char = identifier.as_str().chars().next().unwrap();
                             if first_char.is_ascii_uppercase() {
-                                Token::TypeName(identifier.clone())
+                                Token::TypeName(identifier.to_string_span())
                             } else {
-                                Token::Identifier(identifier.clone())
+                                Token::Identifier(identifier.to_string_span())
                             }
                         }
                     };

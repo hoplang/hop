@@ -725,6 +725,7 @@ mod tests {
     ) -> RecordDeclaration<Type> {
         RecordDeclaration {
             name: record.name.clone(),
+            name_range: record.name_range.clone(),
             fields: record
                 .fields
                 .iter()

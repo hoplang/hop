@@ -1,11 +1,11 @@
 use std::fmt;
 
-use crate::document::document_cursor::DocumentRange;
+use crate::document::document_cursor::StringSpan;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Token {
-    Identifier(DocumentRange),
-    TypeName(DocumentRange),
+    Identifier(StringSpan),
+    TypeName(StringSpan),
     StringLiteral(String),
     IntLiteral(i64),
     FloatLiteral(f64),
@@ -44,52 +44,6 @@ pub enum Token {
     TypeBoolean,
     TypeTrustedHTML,
     TypeArray,
-}
-
-impl PartialEq for Token {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Token::Identifier(a), Token::Identifier(b)) => a.as_str() == b.as_str(),
-            (Token::TypeName(a), Token::TypeName(b)) => a.as_str() == b.as_str(),
-            (Token::StringLiteral(a), Token::StringLiteral(b)) => a == b,
-            (Token::IntLiteral(a), Token::IntLiteral(b)) => a == b,
-            (Token::FloatLiteral(a), Token::FloatLiteral(b)) => a == b,
-            (Token::Eq, Token::Eq) => true,
-            (Token::NotEq, Token::NotEq) => true,
-            (Token::LessThan, Token::LessThan) => true,
-            (Token::GreaterThan, Token::GreaterThan) => true,
-            (Token::LessThanOrEqual, Token::LessThanOrEqual) => true,
-            (Token::GreaterThanOrEqual, Token::GreaterThanOrEqual) => true,
-            (Token::LogicalAnd, Token::LogicalAnd) => true,
-            (Token::LogicalOr, Token::LogicalOr) => true,
-            (Token::Plus, Token::Plus) => true,
-            (Token::Minus, Token::Minus) => true,
-            (Token::Asterisk, Token::Asterisk) => true,
-            (Token::Not, Token::Not) => true,
-            (Token::Dot, Token::Dot) => true,
-            (Token::True, Token::True) => true,
-            (Token::False, Token::False) => true,
-            (Token::LeftParen, Token::LeftParen) => true,
-            (Token::RightParen, Token::RightParen) => true,
-            (Token::LeftBracket, Token::LeftBracket) => true,
-            (Token::RightBracket, Token::RightBracket) => true,
-            (Token::LeftBrace, Token::LeftBrace) => true,
-            (Token::RightBrace, Token::RightBrace) => true,
-            (Token::Colon, Token::Colon) => true,
-            (Token::ColonColon, Token::ColonColon) => true,
-            (Token::Comma, Token::Comma) => true,
-            (Token::In, Token::In) => true,
-            (Token::Import, Token::Import) => true,
-            (Token::Record, Token::Record) => true,
-            (Token::TypeString, Token::TypeString) => true,
-            (Token::TypeInt, Token::TypeInt) => true,
-            (Token::TypeFloat, Token::TypeFloat) => true,
-            (Token::TypeBoolean, Token::TypeBoolean) => true,
-            (Token::TypeTrustedHTML, Token::TypeTrustedHTML) => true,
-            (Token::TypeArray, Token::TypeArray) => true,
-            _ => false,
-        }
-    }
 }
 
 impl Token {

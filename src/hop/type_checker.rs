@@ -251,6 +251,7 @@ fn typecheck_module(
         if !has_errors {
             let typed_decl = dop::RecordDeclaration {
                 name: record.declaration.name.clone(),
+                name_range: record.declaration.name_range.clone(),
                 fields: typed_fields.clone(),
             };
             // Store typed record in state so other modules can import it

@@ -174,8 +174,8 @@ pub fn parse(
                                 || imported_components.contains_key(name)
                             {
                                 errors.push(ParseError::TypeNameIsAlreadyDefined {
-                                    name: record.declaration.name.to_string_span(),
-                                    range: record.declaration.name.clone(),
+                                    name: record.declaration.name.clone(),
+                                    range: record.declaration.name_range.clone(),
                                 });
                             } else {
                                 defined_records.insert(name.to_string());

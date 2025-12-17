@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::fmt::{self, Display};
 use std::iter::Peekable;
 
-use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _};
+use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _, StringSpan};
 use crate::dop::field_name::FieldName;
 use crate::dop::parse_error::ParseError;
 use crate::dop::syntactic_expr::{BinaryOp, SyntacticExpr};
@@ -128,9 +128,9 @@ impl Parser {
             Some((Token::Identifier(name), range)) => {
                 let var_name = VarName::new(name.as_str()).map_err(|error| {
                     ParseError::InvalidVariableName {
-                        name: name.to_string_span(),
+                        name,
                         error,
-                        range: name.clone(),
+                        range: range.clone(),
                     }
                 })?;
                 Ok((var_name, range))
@@ -147,9 +147,9 @@ impl Parser {
             Some((Token::Identifier(name), range)) => {
                 let prop_name = FieldName::new(name.as_str()).map_err(|error| {
                     ParseError::InvalidFieldName {
-                        name: name.to_string_span(),
+                        name,
                         error,
-                        range: name.clone(),
+                        range: range.clone(),
                     }
                 })?;
                 Ok((prop_name, range))
@@ -515,31 +515,32 @@ impl Parser {
 
     fn parse_field_access(
         &mut self,
-        identifier: DocumentRange,
+        identifier: StringSpan,
+        range: DocumentRange,
     ) -> Result<SyntacticExpr, ParseError> {
         let var_name =
             VarName::new(identifier.as_str()).map_err(|error| ParseError::InvalidVariableName {
-                name: identifier.to_string_span(),
+                name: identifier,
                 error,
-                range: identifier.clone(),
+                range: range.clone(),
             })?;
         let mut expr = SyntacticExpr::Var {
-            annotation: identifier.clone(),
+            annotation: range.clone(),
             value: var_name,
         };
 
         while let Some(dot) = self.advance_if(Token::Dot) {
             match self.iter.next().transpose()? {
-                Some((Token::Identifier(field_ident), _)) => {
+                Some((Token::Identifier(field_ident), range)) => {
                     // Validate field name
                     let field_name = FieldName::new(field_ident.as_str()).map_err(|error| {
                         ParseError::InvalidFieldName {
-                            name: field_ident.to_string_span(),
+                            name: field_ident,
                             error,
-                            range: field_ident.clone(),
+                            range: range.clone(),
                         }
                     })?;
-                    let range = expr.range().clone().to(field_ident.clone());
+                    let range = expr.range().clone().to(range.clone());
                     expr = SyntacticExpr::FieldAccess {
                         record: Box::new(expr),
                         field: field_name,
@@ -561,7 +562,9 @@ impl Parser {
 
     fn parse_primary(&mut self) -> Result<SyntacticExpr, ParseError> {
         match self.iter.next().transpose()? {
-            Some((Token::Identifier(name), _)) => self.parse_field_access(name),
+            Some((Token::Identifier(name), name_range)) => {
+                self.parse_field_access(name, name_range)
+            }
             Some((Token::TypeName(name), name_range)) => {
                 self.parse_record_instantiation(name, name_range)
             }
@@ -603,7 +606,7 @@ impl Parser {
 
     fn parse_record_instantiation(
         &mut self,
-        name: DocumentRange,
+        name: StringSpan,
         name_range: DocumentRange,
     ) -> Result<SyntacticExpr, ParseError> {
         let left_paren = self.expect_token(&Token::LeftParen)?;
@@ -630,7 +633,7 @@ impl Parser {
         let mut path_segments: Vec<DocumentRange> = Vec::new();
 
         let first_segment = match self.iter.next().transpose()? {
-            Some((Token::Identifier(range), _)) | Some((Token::TypeName(range), _)) => range,
+            Some((Token::Identifier(_), range)) | Some((Token::TypeName(_), range)) => range,
             Some((_, range)) => {
                 return Err(ParseError::ExpectedModulePath { range });
             }
@@ -645,7 +648,7 @@ impl Parser {
 
         while self.advance_if(Token::ColonColon).is_some() {
             let segment = match self.iter.next().transpose()? {
-                Some((Token::Identifier(range), _)) | Some((Token::TypeName(range), _)) => range,
+                Some((Token::Identifier(_), range)) | Some((Token::TypeName(_), range)) => range,
                 Some((_, range)) => {
                     return Err(ParseError::ExpectedIdentifierAfterColonColon { range });
                 }
@@ -707,8 +710,8 @@ impl Parser {
     fn parse_record_declaration(&mut self) -> Result<Declaration, ParseError> {
         let start_range = self.expect_token(&Token::Record)?;
 
-        let name = match self.iter.next().transpose()? {
-            Some((Token::TypeName(name), _)) => name,
+        let (name, name_range) = match self.iter.next().transpose()? {
+            Some((Token::TypeName(name), name_range)) => (name, name_range),
             Some((actual, range)) => {
                 return Err(ParseError::ExpectedTypeNameButGot { actual, range });
             }
@@ -742,7 +745,11 @@ impl Parser {
             Ok(())
         })?;
 
-        let declaration = RecordDeclaration { name, fields };
+        let declaration = RecordDeclaration {
+            name,
+            name_range,
+            fields,
+        };
         let full_range = start_range.to(right_brace);
 
         Ok(Declaration::Record {
