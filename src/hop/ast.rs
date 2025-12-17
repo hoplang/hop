@@ -1,7 +1,7 @@
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged};
-use crate::dop::Parameter;
 use crate::dop::EnumDeclaration;
+use crate::dop::Parameter;
 use crate::dop::RecordDeclaration;
 use crate::dop::SimpleExpr;
 use crate::dop::SyntacticExpr;
@@ -83,11 +83,6 @@ impl<T, A> Ast<T, A> {
     /// Returns a reference to all record declarations in the AST.
     pub fn get_records(&self) -> &[Record<A>] {
         &self.records
-    }
-
-    /// Finds an enum declaration by name.
-    pub fn get_enum(&self, name: &str) -> Option<&Enum> {
-        self.enums.iter().find(|&e| e.name() == name)
     }
 
     /// Returns a reference to all enum declarations in the AST.
