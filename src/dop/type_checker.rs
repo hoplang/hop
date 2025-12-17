@@ -712,7 +712,7 @@ pub fn typecheck_expr(
 mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
-    use crate::dop::{Parser, RecordDeclaration, RecordDeclarationField};
+    use crate::dop::{EnumDeclaration, Parser, RecordDeclaration, RecordDeclarationField};
     use crate::error_collector::ErrorCollector;
     use crate::hop::module_name::ModuleName;
     use expect_test::{Expect, expect};
@@ -739,28 +739,46 @@ mod tests {
         }
     }
 
-    fn check(records_str: &str, env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
+    fn check(declarations_str: &str, env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
         let mut env = Environment::new();
-        let mut records: Environment<Type> = Environment::new();
+        let mut type_env: Environment<Type> = Environment::new();
         let test_module = ModuleName::new("test").unwrap();
 
-        // First pass: parse untyped records
+        // First pass: parse declarations (records and enums)
         let mut untyped_records: Vec<(String, RecordDeclaration)> = Vec::new();
-        let mut parser = Parser::from(records_str);
+        let mut enum_declarations: Vec<(String, EnumDeclaration)> = Vec::new();
+        let mut parser = Parser::from(declarations_str);
         let mut errors = ErrorCollector::new();
         for declaration in parser.parse_declarations(&mut errors) {
-            let Declaration::Record { declaration, .. } = declaration else {
-                panic!("Expected record declaration");
-            };
-            untyped_records.push((declaration.name.to_string(), declaration));
+            match declaration {
+                Declaration::Record { declaration, .. } => {
+                    untyped_records.push((declaration.name.to_string(), declaration));
+                }
+                Declaration::Enum { declaration, .. } => {
+                    enum_declarations.push((declaration.name.to_string(), declaration));
+                }
+                Declaration::Import { .. } => {
+                    panic!("Import declarations not supported in tests");
+                }
+            }
         }
         if !errors.is_empty() {
             panic!("Failed to parse declarations: {:?}", errors);
         }
 
+        // Add enum types to the type environment
+        for (name, enum_decl) in &enum_declarations {
+            let enum_type = Type::Enum {
+                module: test_module.clone(),
+                name: TypeName::new(name).unwrap(),
+                variants: enum_decl.variants.iter().map(|v| v.name.clone()).collect(),
+            };
+            let _ = type_env.push(name.to_string(), enum_type);
+        }
+
         // Second pass: resolve record field types and add to environment
         for (name, record) in &untyped_records {
-            let typed_record = resolve_record(record, &mut records);
+            let typed_record = resolve_record(record, &mut type_env);
             let record_type = Type::Record {
                 module: test_module.clone(),
                 name: TypeName::new(name).unwrap(),
@@ -770,13 +788,13 @@ mod tests {
                     .map(|f| (f.name.clone(), f.field_type.clone()))
                     .collect(),
             };
-            let _ = records.push(name.clone(), record_type);
+            let _ = type_env.push(name.clone(), record_type);
         }
 
         for (var_name, type_str) in env_vars {
             let mut parser = Parser::from(*type_str);
             let syntactic_type = parser.parse_type().expect("Failed to parse type");
-            let typ = resolve_type(&syntactic_type, &mut records)
+            let typ = resolve_type(&syntactic_type, &mut type_env)
                 .expect("Test parameter type should be valid");
             let _ = env.push(var_name.to_string(), typ);
         }
@@ -786,7 +804,7 @@ mod tests {
 
         let mut annotations = Vec::new();
 
-        let actual = match typecheck_expr(&expr, &mut env, &mut records, &mut annotations, None) {
+        let actual = match typecheck_expr(&expr, &mut env, &mut type_env, &mut annotations, None) {
             Ok(typed_expr) => typed_expr.as_type().to_string(),
             Err(e) => DocumentAnnotator::new()
                 .with_label("error")
@@ -1696,6 +1714,229 @@ mod tests {
             &[],
             r#"User(name: "John", address: Address(city: "NYC"))"#,
             expect!["test::User"],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_equality() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("a", "Color"), ("b", "Color")],
+            "a == b",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_inequality() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("a", "Color"), ("b", "Color")],
+            "a != b",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_reject_equality_between_different_enum_types() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+                enum Size {
+                    Small,
+                    Medium,
+                    Large,
+                }
+            "},
+            &[("color", "Color"), ("size", "Size")],
+            "color == size",
+            expect![[r#"
+                error: Can not compare test::Color to test::Size
+                color == size
+                ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_inequality_between_different_enum_types() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+                enum Size {
+                    Small,
+                    Medium,
+                    Large,
+                }
+            "},
+            &[("color", "Color"), ("size", "Size")],
+            "color != size",
+            expect![[r#"
+                error: Can not compare test::Color to test::Size
+                color != size
+                ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_equality_between_enum_and_string() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("color", "Color"), ("name", "String")],
+            "color == name",
+            expect![[r#"
+                error: Can not compare test::Color to String
+                color == name
+                ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_equality_between_enum_and_int() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("color", "Color"), ("count", "Int")],
+            "color == count",
+            expect![[r#"
+                error: Can not compare test::Color to Int
+                color == count
+                ^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_equality_between_enum_and_bool() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("color", "Color"), ("flag", "Bool")],
+            "color == flag",
+            expect![[r#"
+                error: Can not compare test::Color to Bool
+                color == flag
+                ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_less_than_comparison_on_enums() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("a", "Color"), ("b", "Color")],
+            "a < b",
+            expect![[r#"
+                error: Type test::Color is not comparable
+                a < b
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_greater_than_comparison_on_enums() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("a", "Color"), ("b", "Color")],
+            "a > b",
+            expect![[r#"
+                error: Type test::Color is not comparable
+                a > b
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_in_record_field() {
+        check(
+            indoc! {"
+                enum Status {
+                    Active,
+                    Inactive,
+                    Pending,
+                }
+                record User {
+                    name: String,
+                    status: Status,
+                }
+            "},
+            &[("user", "User"), ("status", "Status")],
+            "user.status == status",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_equality_with_field_access() {
+        check(
+            indoc! {"
+                enum Status {
+                    Active,
+                    Inactive,
+                }
+                record User {
+                    status: Status,
+                }
+                record Admin {
+                    status: Status,
+                }
+            "},
+            &[("user", "User"), ("admin", "Admin")],
+            "user.status == admin.status",
+            expect!["Bool"],
         );
     }
 }
