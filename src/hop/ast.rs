@@ -1,6 +1,7 @@
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::Parameter;
+use crate::dop::EnumDeclaration;
 use crate::dop::RecordDeclaration;
 use crate::dop::SimpleExpr;
 use crate::dop::SyntacticExpr;
@@ -37,6 +38,7 @@ pub struct Ast<T, A = ()> {
     pub name: ModuleName,
     imports: Vec<Import>,
     records: Vec<Record<A>>,
+    enums: Vec<Enum>,
     component_definitions: Vec<ComponentDefinition<T, A>>,
 }
 
@@ -46,12 +48,14 @@ impl<T, A> Ast<T, A> {
         component_definitions: Vec<ComponentDefinition<T, A>>,
         imports: Vec<Import>,
         records: Vec<Record<A>>,
+        enums: Vec<Enum>,
     ) -> Self {
         Self {
             name,
             component_definitions,
             imports,
             records,
+            enums,
         }
     }
 
@@ -79,6 +83,16 @@ impl<T, A> Ast<T, A> {
     /// Returns a reference to all record declarations in the AST.
     pub fn get_records(&self) -> &[Record<A>] {
         &self.records
+    }
+
+    /// Finds an enum declaration by name.
+    pub fn get_enum(&self, name: &str) -> Option<&Enum> {
+        self.enums.iter().find(|&e| e.name() == name)
+    }
+
+    /// Returns a reference to all enum declarations in the AST.
+    pub fn get_enums(&self) -> &[Enum] {
+        &self.enums
     }
 
     /// Returns an iterator over all nodes in the AST, iterating depth-first.
@@ -164,6 +178,18 @@ impl<A> Record<A> {
 }
 
 pub type TypedRecord = Record<Type>;
+
+#[derive(Debug, Clone)]
+pub struct Enum {
+    pub declaration: EnumDeclaration,
+    pub range: DocumentRange,
+}
+
+impl Enum {
+    pub fn name(&self) -> &str {
+        self.declaration.name.as_str()
+    }
+}
 
 pub type UntypedComponentDefinition = ComponentDefinition<SyntacticExpr, SyntacticType>;
 pub type TypedComponentDefinition = ComponentDefinition<SimpleExpr, Type>;

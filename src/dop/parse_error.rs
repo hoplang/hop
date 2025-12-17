@@ -78,6 +78,12 @@ pub enum ParseError {
         range: DocumentRange,
     },
 
+    #[error("Duplicate variant '{name}'")]
+    DuplicateVariant {
+        name: StringSpan,
+        range: DocumentRange,
+    },
+
     #[error("Expected type name but got {actual}")]
     ExpectedTypeNameButGot { actual: Token, range: DocumentRange },
 
@@ -105,7 +111,7 @@ pub enum ParseError {
     #[error("Import path must have at least two segments: module::Component")]
     ImportPathTooShort { range: DocumentRange },
 
-    #[error("Expected declaration (import or record)")]
+    #[error("Expected declaration (import, record, or enum)")]
     ExpectedDeclaration { range: DocumentRange },
 }
 
@@ -129,6 +135,7 @@ impl Ranged for ParseError {
             | ParseError::UnexpectedEndOfFieldAccess { range, .. }
             | ParseError::DuplicateParameter { range, .. }
             | ParseError::DuplicateField { range, .. }
+            | ParseError::DuplicateVariant { range, .. }
             | ParseError::ExpectedIdentifierAfterDot { range }
             | ParseError::InvalidTypeName { range, .. }
             | ParseError::InvalidModuleName { range, .. }

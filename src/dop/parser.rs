@@ -13,7 +13,7 @@ use crate::dop::var_name::VarName;
 use crate::error_collector::ErrorCollector;
 use crate::hop::module_name::ModuleName;
 
-use super::declaration::{Declaration, RecordDeclaration, RecordDeclarationField};
+use super::declaration::{Declaration, EnumDeclaration, EnumVariant, RecordDeclaration, RecordDeclarationField};
 use super::expr::SimpleExpr;
 use super::type_name::TypeName;
 
@@ -763,6 +763,45 @@ impl Parser {
         })
     }
 
+    /// Parse an enum declaration.
+    ///
+    /// Syntax: `enum Name {Variant1, Variant2, ...}`
+    fn parse_enum_declaration(&mut self) -> Result<Declaration, ParseError> {
+        let start_range = self.expect_token(&Token::Enum)?;
+        let (name, name_range) = self.expect_type_name()?;
+        let left_brace = self.expect_token(&Token::LeftBrace)?;
+
+        let mut variants = Vec::new();
+        let mut seen_names = HashSet::new();
+        let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
+            let (variant_name, variant_range) = this.expect_type_name()?;
+            let variant = EnumVariant {
+                name: variant_name,
+                name_range: variant_range,
+            };
+            if !seen_names.insert(variant.name.as_str().to_string()) {
+                return Err(ParseError::DuplicateVariant {
+                    name: variant.name_range.to_string_span(),
+                    range: variant.name_range.clone(),
+                });
+            }
+            variants.push(variant);
+            Ok(())
+        })?;
+
+        let declaration = EnumDeclaration {
+            name,
+            name_range,
+            variants,
+        };
+        let full_range = start_range.to(right_brace);
+
+        Ok(Declaration::Enum {
+            declaration,
+            range: full_range,
+        })
+    }
+
     /// Parse all declarations from the source.
     ///
     /// This parses import and record declarations from a top-level
@@ -783,6 +822,13 @@ impl Parser {
                     }
                 },
                 Some(Ok((Token::Record, _))) => match self.parse_record_declaration() {
+                    Ok(decl) => declarations.push(decl),
+                    Err(err) => {
+                        errors.push(err);
+                        break;
+                    }
+                },
+                Some(Ok((Token::Enum, _))) => match self.parse_enum_declaration() {
                     Ok(decl) => declarations.push(decl),
                     Err(err) => {
                         errors.push(err);
@@ -2111,7 +2157,7 @@ mod tests {
                 <div>hello</div>
             "},
             expect![[r#"
-                error: Expected declaration (import or record)
+                error: Expected declaration (import, record, or enum)
                 1 | <div>hello</div>
                   | ^
             "#]],
@@ -2167,7 +2213,7 @@ mod tests {
         check_parse_declarations(
             "important information",
             expect![[r#"
-                error: Expected declaration (import or record)
+                error: Expected declaration (import, record, or enum)
                 1 | important information
                   | ^^^^^^^^^
             "#]],
@@ -2179,7 +2225,7 @@ mod tests {
         check_parse_declarations(
             "recording started",
             expect![[r#"
-                error: Expected declaration (import or record)
+                error: Expected declaration (import, record, or enum)
                 1 | recording started
                   | ^^^^^^^^^
             "#]],
@@ -2278,6 +2324,100 @@ mod tests {
                 error: Expected type name but got {
                 1 | record {bar: String}
                   |        ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_with_single_variant() {
+        check_parse_declarations(
+            "enum Color {Red}",
+            expect![[r#"
+                Enum {
+                  name: Color,
+                  variants: {
+                    Red,
+                  },
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_with_multiple_variants() {
+        check_parse_declarations(
+            "enum Color {Red, Green, Blue}",
+            expect![[r#"
+                Enum {
+                  name: Color,
+                  variants: {
+                    Red,
+                    Green,
+                    Blue,
+                  },
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_with_trailing_comma() {
+        check_parse_declarations(
+            "enum Color {Red, Green, Blue,}",
+            expect![[r#"
+                Enum {
+                  name: Color,
+                  variants: {
+                    Red,
+                    Green,
+                    Blue,
+                  },
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_empty_enum() {
+        check_parse_declarations(
+            "enum Empty {}",
+            expect![[r#"
+                Enum {
+                  name: Empty,
+                  variants: {},
+                }"#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_enum_with_duplicate_variant() {
+        check_parse_declarations(
+            "enum Color {Red, Red}",
+            expect![[r#"
+                error: Duplicate variant 'Red'
+                1 | enum Color {Red, Red}
+                  |                  ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_enum_with_missing_closing_brace() {
+        check_parse_declarations(
+            "enum Color {Red",
+            expect![[r#"
+                error: Unmatched '{'
+                1 | enum Color {Red
+                  |            ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_enum_with_lowercase_variant() {
+        check_parse_declarations(
+            "enum Color {red}",
+            expect![[r#"
+                error: Expected type name but got red
+                1 | enum Color {red}
+                  |             ^^^
             "#]],
         );
     }

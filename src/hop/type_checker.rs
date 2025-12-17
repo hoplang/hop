@@ -375,6 +375,7 @@ fn typecheck_module(
         typed_component_definitions,
         module.get_imports().to_vec(),
         typed_records,
+        module.get_enums().to_vec(),
     )
 }
 

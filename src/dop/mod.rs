@@ -13,7 +13,7 @@ pub mod type_error;
 pub mod type_name;
 pub mod var_name;
 
-pub use declaration::{Declaration, RecordDeclaration, RecordDeclarationField};
+pub use declaration::{Declaration, EnumDeclaration, RecordDeclaration, RecordDeclarationField};
 pub use expr::{Expr, SimpleExpr};
 pub use parser::{Argument, Parameter, Parser};
 pub use syntactic_expr::SyntacticExpr;

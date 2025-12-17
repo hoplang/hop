@@ -6,7 +6,7 @@ use crate::dop;
 use crate::dop::Declaration;
 use crate::dop::Parser;
 use crate::error_collector::ErrorCollector;
-use crate::hop::ast::{Ast, ComponentDefinition, Import, Record};
+use crate::hop::ast::{Ast, ComponentDefinition, Enum, Import, Record};
 use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{Token, Tokenizer};
@@ -129,10 +129,12 @@ pub fn parse(
     let mut components = Vec::new();
     let mut imports = Vec::new();
     let mut records = Vec::new();
+    let mut enums = Vec::new();
 
     let mut defined_components = HashSet::new();
     let mut imported_components = HashMap::new();
     let mut defined_records = HashSet::new();
+    let mut defined_enums = HashSet::new();
 
     // Process token trees
     for mut tree in trees {
@@ -170,6 +172,7 @@ pub fn parse(
                             let record = Record { declaration, range };
                             let name = record.name();
                             if defined_records.contains(name)
+                                || defined_enums.contains(name)
                                 || defined_components.contains(name)
                                 || imported_components.contains_key(name)
                             {
@@ -181,6 +184,23 @@ pub fn parse(
                                 defined_records.insert(name.to_string());
                             }
                             records.push(record);
+                        }
+                        Declaration::Enum { declaration, range } => {
+                            let enum_decl = Enum { declaration, range };
+                            let name = enum_decl.name();
+                            if defined_enums.contains(name)
+                                || defined_records.contains(name)
+                                || defined_components.contains(name)
+                                || imported_components.contains_key(name)
+                            {
+                                errors.push(ParseError::TypeNameIsAlreadyDefined {
+                                    name: enum_decl.declaration.name_range.to_string_span(),
+                                    range: enum_decl.declaration.name_range.clone(),
+                                });
+                            } else {
+                                defined_enums.insert(name.to_string());
+                            }
+                            enums.push(enum_decl);
                         }
                     }
                 }
@@ -208,6 +228,7 @@ pub fn parse(
                     if defined_components.contains(name)
                         || imported_components.contains_key(name)
                         || defined_records.contains(name)
+                        || defined_enums.contains(name)
                     {
                         errors.push(ParseError::TypeNameIsAlreadyDefined {
                             name: component.tag_name.to_string_span(),
@@ -222,7 +243,7 @@ pub fn parse(
         }
     }
 
-    Ast::new(module_name, components, imports, records)
+    Ast::new(module_name, components, imports, records, enums)
 }
 
 /// Try to parse a token tree as a component definition.
@@ -1521,9 +1542,82 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                error: Expected declaration (import or record)
+                error: Expected declaration (import, record, or enum)
                 1 | foo
                   | ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_when_enum_is_defined_with_the_same_name_as_a_record() {
+        check(
+            indoc! {"
+                record Color {
+                    name: String,
+                }
+
+                enum Color {Red, Green, Blue}
+            "},
+            expect![[r#"
+                error: Color is already defined
+                4 | 
+                5 | enum Color {Red, Green, Blue}
+                  |      ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_when_record_is_defined_with_the_same_name_as_an_enum() {
+        check(
+            indoc! {"
+                enum Color {Red, Green, Blue}
+
+                record Color {
+                    name: String,
+                }
+            "},
+            expect![[r#"
+                error: Color is already defined
+                2 | 
+                3 | record Color {
+                  |        ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_when_component_is_defined_with_the_same_name_as_an_enum() {
+        check(
+            indoc! {"
+                enum Color {Red, Green, Blue}
+
+                <Color>
+                </Color>
+            "},
+            expect![[r#"
+                error: Color is already defined
+                2 | 
+                3 | <Color>
+                  |  ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_when_enum_is_defined_with_the_same_name_as_an_import() {
+        check(
+            indoc! {"
+                import other::Color
+
+                enum Color {Red, Green, Blue}
+            "},
+            expect![[r#"
+                error: Color is already defined
+                2 | 
+                3 | enum Color {Red, Green, Blue}
+                  |      ^^^^^
             "#]],
         );
     }
