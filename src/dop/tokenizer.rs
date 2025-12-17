@@ -117,6 +117,8 @@ impl Iterator for Tokenizer {
                         "true" => Token::True,
                         "false" => Token::False,
                         "record" => Token::Record,
+                        "match" => Token::Match,
+                        "enum" => Token::Enum,
                         // Types
                         "String" => Token::TypeString,
                         "Int" => Token::TypeInt,
@@ -1245,6 +1247,38 @@ mod tests {
                 token: }
                 record my_record {field_name: String}
                                                     ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_keyword() {
+        check(
+            "match foo",
+            expect![[r#"
+                token: match
+                match foo
+                ^^^^^
+
+                token: foo
+                match foo
+                      ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_keyword() {
+        check(
+            "enum Color",
+            expect![[r#"
+                token: enum
+                enum Color
+                ^^^^
+
+                token: Color
+                enum Color
+                     ^^^^^
             "#]],
         );
     }

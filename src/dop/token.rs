@@ -37,6 +37,8 @@ pub enum Token {
     In,
     Import,
     Record,
+    Match,
+    Enum,
     // Type tokens
     TypeString,
     TypeInt,
@@ -94,6 +96,8 @@ impl fmt::Display for Token {
             Token::False => write!(f, "false"),
             Token::Import => write!(f, "import"),
             Token::Record => write!(f, "record"),
+            Token::Match => write!(f, "match"),
+            Token::Enum => write!(f, "enum"),
             Token::TypeString => write!(f, "String"),
             Token::TypeInt => write!(f, "Int"),
             Token::TypeFloat => write!(f, "Float"),
