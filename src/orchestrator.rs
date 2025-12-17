@@ -7,7 +7,7 @@ use crate::ir::optimize::{
     UnusedLetEliminationPass, WriteExprSimplificationPass,
 };
 use crate::ir::transform::{DoctypeInjector, HtmlStructureInjector, TailwindInjector};
-use crate::ir::{Compiler, IrModule, RecordInfo};
+use crate::ir::{Compiler, IrModule, IrRecord};
 use anyhow::Result;
 use std::collections::HashMap;
 
@@ -17,10 +17,10 @@ pub fn orchestrate(
     pages: &[(ModuleName, ComponentName)],
 ) -> Result<IrModule> {
     // Collect record declarations from all modules
-    let mut records: Vec<RecordInfo> = typed_asts
+    let mut records: Vec<IrRecord> = typed_asts
         .values()
         .flat_map(|module| module.get_records())
-        .map(|record| RecordInfo {
+        .map(|record| IrRecord {
             name: record.name().to_string(),
             fields: record
                 .declaration

@@ -18,7 +18,7 @@ pub type StatementId = u32;
 
 /// Information about a record declaration for transpilation.
 #[derive(Debug, Clone)]
-pub struct RecordInfo {
+pub struct IrRecord {
     pub name: String,
     pub fields: Vec<(FieldName, Type)>,
 }
@@ -27,7 +27,7 @@ pub struct RecordInfo {
 #[derive(Debug, Clone)]
 pub struct IrModule {
     pub entrypoints: Vec<IrEntrypoint>,
-    pub records: Vec<RecordInfo>,
+    pub records: Vec<IrRecord>,
 }
 
 #[derive(Debug, Clone)]

@@ -13,7 +13,7 @@ pub use python::PythonTranspiler;
 use crate::dop::field_name::FieldName;
 use crate::dop::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::hop::component_name::ComponentName;
-use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement, RecordInfo};
+use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
 
 pub trait Transpiler {
     fn transpile_entrypoint<'a>(

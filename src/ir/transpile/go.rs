@@ -6,7 +6,7 @@ use crate::dop::r#type::Type;
 #[cfg(test)]
 use crate::dop::type_name::TypeName;
 use crate::hop::component_name::ComponentName;
-use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement, RecordInfo};
+use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
 use std::collections::BTreeSet;
 
 pub struct GoTranspiler {
@@ -762,7 +762,10 @@ impl TypeTranspiler for GoTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{hop::module_name::ModuleName, ir::test_utils::build_ir_auto};
+    use crate::{
+        hop::module_name::ModuleName,
+        ir::{IrRecord, test_utils::build_ir_auto},
+    };
     use expect_test::{Expect, expect};
 
     fn transpile_with_pretty(entrypoints: &[IrEntrypoint]) -> String {
@@ -1238,7 +1241,7 @@ mod tests {
         )];
 
         let records = vec![
-            RecordInfo {
+            IrRecord {
                 name: "User".to_string(),
                 fields: vec![
                     (FieldName::new("name").unwrap(), Type::String),
@@ -1246,7 +1249,7 @@ mod tests {
                     (FieldName::new("active").unwrap(), Type::Bool),
                 ],
             },
-            RecordInfo {
+            IrRecord {
                 name: "Address".to_string(),
                 fields: vec![
                     (FieldName::new("street").unwrap(), Type::String),
@@ -1314,7 +1317,7 @@ mod tests {
             },
         )];
 
-        let records = vec![RecordInfo {
+        let records = vec![IrRecord {
             name: "User".to_string(),
             fields: vec![
                 (FieldName::new("name").unwrap(), Type::String),
