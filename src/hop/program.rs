@@ -15,6 +15,7 @@ use super::symbols::component_name::ComponentName;
 use super::symbols::module_name::ModuleName;
 use super::semantics::typed_ast::TypedAst;
 use super::syntax::ast::Ast;
+use super::syntax::find_node::find_node_at_position;
 use super::syntax::node::Node;
 
 /// HoverInfo is a message that should be displayed when the user hovers
@@ -174,7 +175,7 @@ impl Program {
             }
         }
 
-        let node = ast.find_node_at_position(position)?;
+        let node = find_node_at_position(ast, position)?;
 
         let is_on_tag_name = node.tag_names().any(|r| r.contains_position(position));
 
@@ -226,7 +227,7 @@ impl Program {
             }
         }
 
-        let node = ast.find_node_at_position(position)?;
+        let node = find_node_at_position(ast, position)?;
 
         let is_on_tag_name = node.tag_names().any(|r| r.contains_position(position));
 
@@ -277,7 +278,7 @@ impl Program {
             }
         }
 
-        let node = ast.find_node_at_position(position)?;
+        let node = find_node_at_position(ast, position)?;
 
         node.tag_names()
             .find(|r| r.contains_position(position))
