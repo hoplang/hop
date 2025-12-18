@@ -70,16 +70,13 @@ impl Inliner {
                         children: Self::inline_nodes(&component.children, None, &asts),
                         params: component
                             .params
-                            .clone()
-                            .map(|p| {
-                                p.into_iter()
-                                    .map(|(var_name, var_type)| InlinedParameter {
-                                        var_name,
-                                        var_type,
-                                    })
-                                    .collect()
+                            .iter()
+                            .cloned()
+                            .map(|(var_name, var_type)| InlinedParameter {
+                                var_name,
+                                var_type,
                             })
-                            .unwrap_or_default(),
+                            .collect(),
                     });
                 }
             }
@@ -113,15 +110,9 @@ impl Inliner {
 
     /// Check if a component has a children: TrustedHTML parameter
     fn component_accepts_children(component: &TypedComponentDeclaration) -> bool {
-        component
-            .params
-            .as_ref()
-            .map(|params| {
-                params.iter().any(|(var_name, var_type)| {
-                    var_name.as_str() == "children" && *var_type == Type::TrustedHTML
-                })
-            })
-            .unwrap_or(false)
+        component.params.iter().any(|(var_name, var_type)| {
+            var_name.as_str() == "children" && *var_type == Type::TrustedHTML
+        })
     }
 
     /// Inline a component reference
@@ -144,37 +135,35 @@ impl Inliner {
 
         // Build parameter bindings (excluding children - handled via slot mechanism)
         let mut body = inlined_children;
-        if let Some(params) = &component.params {
-            // Process parameters in reverse order to create proper nesting
-            // Skip the children parameter - it's handled via slot_content
-            for (var_name, _var_type) in params.iter().rev() {
-                if var_name.as_str() == "children" {
-                    continue;
-                }
-
-                let param_name = var_name.clone();
-
-                // Find corresponding argument value
-                let value = args
-                    .iter()
-                    .find(|(name, _)| name.as_str() == param_name.as_str())
-                    .map(|(_, expr)| expr.clone())
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "Missing required parameter '{}' for component '{}' in module '{}'.",
-                            param_name,
-                            component.component_name.as_str(),
-                            module_name
-                        )
-                    });
-
-                // Wrap the body in a Let node
-                body = vec![InlinedNode::Let {
-                    var: param_name,
-                    value,
-                    children: body,
-                }];
+        // Process parameters in reverse order to create proper nesting
+        // Skip the children parameter - it's handled via slot_content
+        for (var_name, _var_type) in component.params.iter().rev() {
+            if var_name.as_str() == "children" {
+                continue;
             }
+
+            let param_name = var_name.clone();
+
+            // Find corresponding argument value
+            let value = args
+                .iter()
+                .find(|(name, _)| name.as_str() == param_name.as_str())
+                .map(|(_, expr)| expr.clone())
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Missing required parameter '{}' for component '{}' in module '{}'.",
+                        param_name,
+                        component.component_name.as_str(),
+                        module_name
+                    )
+                });
+
+            // Wrap the body in a Let node
+            body = vec![InlinedNode::Let {
+                var: param_name,
+                value,
+                children: body,
+            }];
         }
 
         // Return the inlined children without a wrapper
@@ -216,8 +205,7 @@ impl Inliner {
                     .expect("Component declaration should exist");
 
                 // Inline the component
-                let args_vec = args.as_ref().map(|v| v.as_slice()).unwrap_or(&[]);
-                Self::inline_component_reference(module, component, args_vec, children, asts)
+                Self::inline_component_reference(module, component, args, children, asts)
             }
 
             TypedNode::Html {

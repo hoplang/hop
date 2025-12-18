@@ -394,14 +394,9 @@ fn typecheck_module(
             },
         );
 
-        let typed_params_option = if params.is_some() {
-            Some(typed_params)
-        } else {
-            None
-        };
         typed_component_declarations.push(TypedComponentDeclaration {
             component_name: component_name.clone(),
-            params: typed_params_option,
+            params: typed_params,
             children: typed_children,
         });
     }
@@ -576,18 +571,18 @@ fn typecheck_node(
                 });
 
             let typed_args = match (params_without_children.as_deref(), args) {
-                (None | Some([]), None) => None,
+                (None | Some([]), None) => Vec::new(),
                 (None | Some([]), Some((_, args_range))) => {
                     errors.push(TypeError::UnexpectedArguments {
                         range: args_range.clone(),
                     });
-                    None
+                    Vec::new()
                 }
                 (Some(params), None) if !params.is_empty() => {
                     errors.push(TypeError::missing_arguments(params, tag_name.clone()));
-                    None
+                    Vec::new()
                 }
-                (Some(_), None) => None, // params is empty, no args needed
+                (Some(_), None) => Vec::new(), // params is empty, no args needed
                 (Some(params), Some((args, args_range))) => {
                     let mut typed_arguments = Vec::new();
                     for (param_name, _) in params {
@@ -663,7 +658,7 @@ fn typecheck_node(
                         });
                     }
 
-                    Some(typed_arguments)
+                    typed_arguments
                 }
             };
 

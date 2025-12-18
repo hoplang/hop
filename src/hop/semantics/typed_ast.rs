@@ -26,7 +26,7 @@ impl TypedEnumDeclaration {
 pub struct TypedComponentDeclaration {
     pub component_name: ComponentName,
     pub children: Vec<TypedNode>,
-    pub params: Option<Vec<(VarName, Type)>>,
+    pub params: Vec<(VarName, Type)>,
 }
 
 #[derive(Debug, Clone)]
