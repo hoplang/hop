@@ -10,8 +10,8 @@ use crate::hop::symbols::module_name::ModuleName;
 
 use super::parse_error::ParseError;
 use super::parse_tree::{
-    BinaryOp, Declaration, EnumDeclaration, EnumVariant, MatchArm, ParseTree, ParsedType,
-    RecordDeclaration, RecordDeclarationField,
+    BinaryOp, Declaration, MatchArm, ParseTree, ParsedType, RecordDeclaration,
+    RecordDeclarationField,
 };
 use super::token::Token;
 use super::tokenizer::Tokenizer;
@@ -799,29 +799,22 @@ impl Parser {
         let mut seen_names = HashSet::new();
         let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
             let (variant_name, variant_range) = this.expect_type_name()?;
-            let variant = EnumVariant {
-                name: variant_name,
-                name_range: variant_range,
-            };
-            if !seen_names.insert(variant.name.as_str().to_string()) {
+            if !seen_names.insert(variant_name.as_str().to_string()) {
                 return Err(ParseError::DuplicateVariant {
-                    name: variant.name_range.to_string_span(),
-                    range: variant.name_range.clone(),
+                    name: variant_range.to_string_span(),
+                    range: variant_range.clone(),
                 });
             }
-            variants.push(variant);
+            variants.push((variant_name, variant_range));
             Ok(())
         })?;
 
-        let declaration = EnumDeclaration {
-            name,
-            name_range,
-            variants,
-        };
         let full_range = start_range.to(right_brace);
 
         Ok(Declaration::Enum {
-            declaration,
+            name,
+            name_range,
+            variants,
             range: full_range,
         })
     }

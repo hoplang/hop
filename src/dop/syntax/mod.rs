@@ -6,7 +6,7 @@ pub mod tokenizer;
 
 pub use parse_error::ParseError;
 pub use parse_tree::{
-    Declaration, EnumDeclaration, ParseTree, ParsedType, RecordDeclaration, RecordDeclarationField,
+    Declaration, ParseTree, ParsedType, RecordDeclaration, RecordDeclarationField,
 };
 pub use parser::Parser;
 pub use token::Token;

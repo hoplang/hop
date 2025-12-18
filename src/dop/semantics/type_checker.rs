@@ -854,13 +854,15 @@ mod tests {
         let mut errors = ErrorCollector::new();
         for declaration in parser.parse_declarations(&mut errors) {
             match declaration {
-                Declaration::Enum { declaration, .. } => {
+                Declaration::Enum {
+                    name, variants, ..
+                } => {
                     let enum_type = Type::Enum {
                         module: test_module.clone(),
-                        name: TypeName::new(declaration.name.as_str()).unwrap(),
-                        variants: declaration.variants.iter().map(|v| v.name.clone()).collect(),
+                        name: TypeName::new(name.as_str()).unwrap(),
+                        variants: variants.iter().map(|(name, _)| name.clone()).collect(),
                     };
-                    let _ = type_env.push(declaration.name.to_string(), enum_type);
+                    let _ = type_env.push(name.to_string(), enum_type);
                 }
                 Declaration::Record { declaration, .. } => {
                     let fields: Vec<_> = declaration

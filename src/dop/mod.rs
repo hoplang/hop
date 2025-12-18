@@ -5,6 +5,6 @@ pub mod syntax;
 pub use semantics::{Expr, Type, resolve_type, typecheck_expr};
 pub use symbols::VarName;
 pub use syntax::{
-    Declaration, EnumDeclaration, ParseError, ParseTree, ParsedType, Parser, RecordDeclaration,
+    Declaration, ParseError, ParseTree, ParsedType, Parser, RecordDeclaration,
     RecordDeclarationField, Token, Tokenizer,
 };

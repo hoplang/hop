@@ -341,36 +341,6 @@ impl Display for BinaryOp {
     }
 }
 
-/// An EnumVariant represents a variant in an enum declaration.
-/// E.g. enum Color {Red, Green, Blue}
-///                  ^^^
-#[derive(Debug, Clone)]
-pub struct EnumVariant {
-    pub name: TypeName,
-    pub name_range: DocumentRange,
-}
-
-/// An EnumDeclaration represents a full enum type declaration.
-/// E.g. enum Color {Red, Green, Blue}
-#[derive(Debug, Clone)]
-pub struct EnumDeclaration {
-    pub name: TypeName,
-    pub name_range: DocumentRange,
-    pub variants: Vec<EnumVariant>,
-}
-
-impl Display for EnumDeclaration {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "enum {} {{", self.name)?;
-        for (i, variant) in self.variants.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{}", variant.name)?;
-        }
-        write!(f, "}}")
-    }
-}
 
 /// A RecordDeclarationField represents a field in a record declaration.
 /// E.g. record Foo {bar: String, baz: Int}
@@ -435,8 +405,12 @@ pub enum Declaration {
     },
     /// An enum declaration: `enum Name {Variant1, Variant2, ...}`
     Enum {
-        /// The fully parsed enum declaration.
-        declaration: EnumDeclaration,
+        /// The name of the enum type.
+        name: TypeName,
+        /// The range of the enum name in the source.
+        name_range: DocumentRange,
+        /// The variants of the enum (name, range).
+        variants: Vec<(TypeName, DocumentRange)>,
         /// The full range of the declaration.
         range: DocumentRange,
     },
@@ -499,16 +473,15 @@ impl Declaration {
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("}"))
             }
-            Declaration::Enum { declaration, .. } => {
-                let variants_doc = if declaration.variants.is_empty() {
+            Declaration::Enum { name, variants, .. } => {
+                let variants_doc = if variants.is_empty() {
                     BoxDoc::nil()
                 } else {
                     BoxDoc::line()
                         .append(BoxDoc::intersperse(
-                            declaration
-                                .variants
+                            variants
                                 .iter()
-                                .map(|v| BoxDoc::text(v.name.to_string())),
+                                .map(|(name, _)| BoxDoc::text(name.to_string())),
                             BoxDoc::text(",").append(BoxDoc::line()),
                         ))
                         .append(BoxDoc::text(","))
@@ -522,7 +495,7 @@ impl Declaration {
                     .append(
                         BoxDoc::line()
                             .append(BoxDoc::text("name: "))
-                            .append(BoxDoc::text(declaration.name.as_str()))
+                            .append(BoxDoc::text(name.as_str()))
                             .append(BoxDoc::text(","))
                             .append(BoxDoc::line())
                             .append(BoxDoc::text("variants: {"))

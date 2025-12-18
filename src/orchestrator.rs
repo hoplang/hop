@@ -39,7 +39,6 @@ pub fn orchestrate(
         .map(|enum_decl| IrEnum {
             name: enum_decl.name().to_string(),
             variants: enum_decl
-                .declaration
                 .variants
                 .iter()
                 .map(|v| v.name.as_str().to_string())

@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
 
 use super::ast::{
-    self, Ast, ComponentDefinition, Enum, Import, Record, UntypedAst, UntypedComponentDefinition,
+    self, Ast, ComponentDefinition, Enum, EnumVariant, Import, Record, UntypedAst,
+    UntypedComponentDefinition,
 };
 use super::node::Argument;
 use super::node::{Node, UntypedNode};
@@ -186,8 +187,24 @@ pub fn parse(
                             }
                             records.push(record);
                         }
-                        Declaration::Enum { declaration, range } => {
-                            let enum_decl = Enum { declaration, range };
+                        Declaration::Enum {
+                            name,
+                            name_range,
+                            variants,
+                            range,
+                        } => {
+                            let enum_decl = Enum {
+                                name: name.clone(),
+                                name_range: name_range.clone(),
+                                variants: variants
+                                    .iter()
+                                    .map(|(name, range)| EnumVariant {
+                                        name: name.clone(),
+                                        name_range: range.clone(),
+                                    })
+                                    .collect(),
+                                range,
+                            };
                             let name = enum_decl.name();
                             if defined_enums.contains(name)
                                 || defined_records.contains(name)
@@ -195,8 +212,8 @@ pub fn parse(
                                 || imported_components.contains_key(name)
                             {
                                 errors.push(ParseError::TypeNameIsAlreadyDefined {
-                                    name: enum_decl.declaration.name_range.to_string_span(),
-                                    range: enum_decl.declaration.name_range.clone(),
+                                    name: enum_decl.name_range.to_string_span(),
+                                    range: enum_decl.name_range.clone(),
                                 });
                             } else {
                                 defined_enums.insert(name.to_string());

@@ -2,16 +2,16 @@ use std::fmt::{self, Display};
 
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged};
-use crate::dop::EnumDeclaration;
-use crate::dop::RecordDeclaration;
 use crate::dop::Expr;
 use crate::dop::ParseTree;
 use crate::dop::ParsedType;
+use crate::dop::RecordDeclaration;
 use crate::dop::Type;
 use crate::dop::VarName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
+
 use super::node::Node;
 
 /// A Parameter represents a parsed parameter with type annotation.
@@ -192,14 +192,22 @@ impl<A> Record<A> {
 pub type TypedRecord = Record<Type>;
 
 #[derive(Debug, Clone)]
+pub struct EnumVariant {
+    pub name: TypeName,
+    pub name_range: DocumentRange,
+}
+
+#[derive(Debug, Clone)]
 pub struct Enum {
-    pub declaration: EnumDeclaration,
+    pub name: TypeName,
+    pub name_range: DocumentRange,
+    pub variants: Vec<EnumVariant>,
     pub range: DocumentRange,
 }
 
 impl Enum {
     pub fn name(&self) -> &str {
-        self.declaration.name.as_str()
+        self.name.as_str()
     }
 }
 

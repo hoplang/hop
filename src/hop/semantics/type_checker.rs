@@ -231,12 +231,7 @@ fn typecheck_module(
         let enum_type = Type::Enum {
             module: module.name.clone(),
             name: TypeName::new(enum_name).unwrap(),
-            variants: enum_decl
-                .declaration
-                .variants
-                .iter()
-                .map(|v| v.name.clone())
-                .collect(),
+            variants: enum_decl.variants.iter().map(|v| v.name.clone()).collect(),
         };
         let _ = records_env.push(enum_name.to_string(), enum_type);
     }
