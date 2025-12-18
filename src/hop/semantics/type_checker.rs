@@ -1,5 +1,6 @@
 use super::type_error::TypeError;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{self, Type, VarName, resolve_type};
 use crate::environment::Environment;
@@ -40,19 +41,23 @@ impl Display for TypeAnnotation {
 
 #[derive(Debug, Clone)]
 struct ComponentTypeInformation {
-    // Track the resolved parameter types for the component (name, type).
-    parameter_types: Vec<(String, Type)>,
+    parameters: Vec<(String, Type)>,
+}
+
+#[derive(Debug, Clone)]
+struct RecordTypeInformation {
+    fields: Vec<(FieldName, Type)>,
 }
 
 #[derive(Debug, Clone, Default)]
 struct ModuleTypeInformation {
     components: HashMap<String, ComponentTypeInformation>,
-    records: HashMap<String, TypedRecordDeclaration>,
+    records: HashMap<String, RecordTypeInformation>,
 }
 
 impl ModuleTypeInformation {
     fn get_parameter_types(&self, component_name: &str) -> Option<&[(String, Type)]> {
-        let params = &self.components.get(component_name)?.parameter_types;
+        let params = &self.components.get(component_name)?.parameters;
         if params.is_empty() {
             None
         } else {
@@ -64,7 +69,7 @@ impl ModuleTypeInformation {
     fn component_accepts_children(&self, component_name: &str) -> bool {
         self.components
             .get(component_name)
-            .is_some_and(|c| c.parameter_types.iter().any(|(name, _)| name == "children"))
+            .is_some_and(|c| c.parameters.iter().any(|(name, _)| name == "children"))
     }
 
     fn component_is_declared(&self, component_name: &str) -> bool {
@@ -84,11 +89,11 @@ impl ModuleTypeInformation {
         self.records.contains_key(record_name)
     }
 
-    fn get_typed_record(&self, record_name: &str) -> Option<&TypedRecordDeclaration> {
+    fn get_typed_record(&self, record_name: &str) -> Option<&RecordTypeInformation> {
         self.records.get(record_name)
     }
 
-    fn set_typed_record(&mut self, record_name: &str, record: TypedRecordDeclaration) {
+    fn set_typed_record(&mut self, record_name: &str, record: RecordTypeInformation) {
         self.records.insert(record_name.to_string(), record);
     }
 }
@@ -99,7 +104,7 @@ struct State {
 }
 
 impl State {
-    fn set_type_info(
+    fn set_component_type_info(
         &mut self,
         module_name: &ModuleName,
         component_name: &str,
@@ -111,16 +116,16 @@ impl State {
             .set_component_type_info(component_name, type_info);
     }
 
-    fn set_typed_record(
+    fn set_record_type_info(
         &mut self,
         module_name: &ModuleName,
         record_name: &str,
-        record: TypedRecordDeclaration,
+        type_info: RecordTypeInformation,
     ) {
         self.modules
             .entry(module_name.clone())
             .or_default()
-            .set_typed_record(record_name, record);
+            .set_typed_record(record_name, type_info);
     }
 }
 
@@ -152,7 +157,7 @@ impl TypeChecker {
 
             if modules.len() > 1 {
                 type_errors.clear();
-                for import_node in module.get_imports() {
+                for import_node in module.get_import_declarations() {
                     let imported_module = import_node.imported_module();
                     type_errors.push(TypeError::import_cycle(
                         &module.name.to_string(),
@@ -184,11 +189,12 @@ fn typecheck_module(
         },
     );
 
-    // Build records environment - start with imported records
-    let mut records_env: Environment<Type> = Environment::new();
+    // Build type environment, i.e. the environment
+    // of declared type names.
+    let mut type_env: Environment<Type> = Environment::new();
 
     // Validate imports and collect imported records
-    for import in module.get_imports() {
+    for import in module.get_import_declarations() {
         let imported_module = import.imported_module();
         let imported_name = import.imported_type_name();
         let Some(module_state) = state.modules.get(imported_module) else {
@@ -214,28 +220,27 @@ fn typecheck_module(
         // If it's a record, add it to our available records
         if is_record {
             if let Some(record) = module_state.get_typed_record(imported_name.as_str()) {
-                let record_type = Type::Record {
-                    module: imported_module.clone(),
-                    name: TypeName::new(imported_name.as_str()).unwrap(),
-                    fields: record.fields.clone(),
-                };
-                let _ = records_env.push(imported_name.as_str().to_string(), record_type);
+                let _ = type_env.push(
+                    imported_name.as_str().to_string(),
+                    Type::Record {
+                        module: imported_module.clone(),
+                        name: TypeName::new(imported_name.as_str()).unwrap(),
+                        fields: record.fields.clone(),
+                    },
+                );
             }
         }
     }
 
-    // Register enum types in the type environment first,
-    // so records can reference enums in their field types.
-    // Also build typed enum structures.
     let mut typed_enums: Vec<TypedEnumDeclaration> = Vec::new();
-    for enum_decl in module.get_enums() {
+    for enum_decl in module.get_enum_declarations() {
         let enum_name = enum_decl.name();
         let enum_type = Type::Enum {
             module: module.name.clone(),
             name: TypeName::new(enum_name).unwrap(),
             variants: enum_decl.variants.iter().map(|v| v.name.clone()).collect(),
         };
-        let _ = records_env.push(enum_name.to_string(), enum_type);
+        let _ = type_env.push(enum_name.to_string(), enum_type);
 
         typed_enums.push(TypedEnumDeclaration {
             name: enum_decl.name.clone(),
@@ -245,13 +250,13 @@ fn typecheck_module(
 
     // Validate record field types and build typed records
     let mut typed_records: Vec<TypedRecordDeclaration> = Vec::new();
-    for record in module.get_records() {
+    for record in module.get_record_declarations() {
         let record_name = record.name();
         let mut typed_fields = Vec::new();
         let mut has_errors = false;
 
         for field in &record.fields {
-            match resolve_type(&field.field_type, &mut records_env) {
+            match resolve_type(&field.field_type, &mut type_env) {
                 Ok(resolved_type) => {
                     typed_fields.push((field.name.clone(), resolved_type));
                 }
@@ -269,15 +274,22 @@ fn typecheck_module(
                 fields: typed_fields.clone(),
             };
             // Store typed record in state so other modules can import it
-            state.set_typed_record(&module.name, record.name(), typed_record.clone());
+            state.set_record_type_info(
+                &module.name,
+                record.name(),
+                RecordTypeInformation {
+                    fields: typed_fields.clone(),
+                },
+            );
             typed_records.push(typed_record);
-            // Add this record to records_env so subsequent records can reference it
-            let record_type = Type::Record {
-                module: module.name.clone(),
-                name: TypeName::new(record_name).unwrap(),
-                fields: typed_fields,
-            };
-            let _ = records_env.push(record_name.to_string(), record_type);
+            let _ = type_env.push(
+                record_name.to_string(),
+                Type::Record {
+                    module: module.name.clone(),
+                    name: TypeName::new(record_name).unwrap(),
+                    fields: typed_fields,
+                },
+            );
         }
     }
 
@@ -304,7 +316,7 @@ fn typecheck_module(
         let mut typed_params: Vec<(VarName, Type)> = Vec::new();
         if let Some((params, _)) = params {
             for param in params {
-                match resolve_type(&param.var_type, &mut records_env) {
+                match resolve_type(&param.var_type, &mut type_env) {
                     Ok(param_type) => {
                         annotations.push(TypeAnnotation {
                             range: param.var_name_range.clone(),
@@ -327,14 +339,7 @@ fn typecheck_module(
         let typed_children: Vec<_> = children
             .iter()
             .filter_map(|child| {
-                typecheck_node(
-                    child,
-                    state,
-                    &mut env,
-                    annotations,
-                    errors,
-                    &mut records_env,
-                )
+                typecheck_node(child, state, &mut env, annotations, errors, &mut type_env)
             })
             .collect();
 
@@ -349,11 +354,11 @@ fn typecheck_module(
         }
 
         // Store type information in state
-        state.set_type_info(
+        state.set_component_type_info(
             &module.name,
             name.as_str(),
             ComponentTypeInformation {
-                parameter_types: resolved_param_types,
+                parameters: resolved_param_types,
             },
         );
 
@@ -370,7 +375,6 @@ fn typecheck_module(
         });
     }
 
-    // Build and return the typed AST
     TypedAst::new(typed_component_declarations, typed_records, typed_enums)
 }
 
@@ -380,7 +384,7 @@ fn typecheck_node(
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
-    records: &mut Environment<Type>,
+    type_env: &mut Environment<Type>,
 ) -> Option<TypedNode> {
     match node {
         ParsedNode::If {
@@ -390,11 +394,14 @@ fn typecheck_node(
         } => {
             let typed_children = children
                 .iter()
-                .filter_map(|child| typecheck_node(child, state, env, annotations, errors, records))
+                .filter_map(|child| {
+                    typecheck_node(child, state, env, annotations, errors, type_env)
+                })
                 .collect();
 
             let typed_condition = errors.ok_or_add(
-                dop::typecheck_expr(condition, env, records, annotations, None).map_err(Into::into),
+                dop::typecheck_expr(condition, env, type_env, annotations, None)
+                    .map_err(Into::into),
             )?;
 
             let condition_type = typed_condition.as_type();
@@ -419,7 +426,7 @@ fn typecheck_node(
             range: _,
         } => {
             let typed_array = errors.ok_or_add(
-                dop::typecheck_expr(array_expr, env, records, annotations, None)
+                dop::typecheck_expr(array_expr, env, type_env, annotations, None)
                     .map_err(Into::into),
             )?;
             let array_type = typed_array.as_type();
@@ -455,7 +462,9 @@ fn typecheck_node(
 
             let typed_children = children
                 .iter()
-                .filter_map(|child| typecheck_node(child, state, env, annotations, errors, records))
+                .filter_map(|child| {
+                    typecheck_node(child, state, env, annotations, errors, type_env)
+                })
                 .collect();
 
             if pushed {
@@ -486,7 +495,9 @@ fn typecheck_node(
             // Transform children
             let typed_children = children
                 .iter()
-                .filter_map(|child| typecheck_node(child, state, env, annotations, errors, records))
+                .filter_map(|child| {
+                    typecheck_node(child, state, env, annotations, errors, type_env)
+                })
                 .collect();
 
             let module_info = match definition_module
@@ -589,7 +600,7 @@ fn typecheck_node(
                         let typed_expr = match dop::typecheck_expr(
                             &arg.var_expr,
                             env,
-                            records,
+                            type_env,
                             annotations,
                             Some(param_type),
                         ) {
@@ -645,11 +656,13 @@ fn typecheck_node(
             range: _,
         } => {
             let typed_attributes =
-                typecheck_attributes(attributes, env, annotations, errors, records);
+                typecheck_attributes(attributes, env, annotations, errors, type_env);
 
             let typed_children = children
                 .iter()
-                .filter_map(|child| typecheck_node(child, state, env, annotations, errors, records))
+                .filter_map(|child| {
+                    typecheck_node(child, state, env, annotations, errors, type_env)
+                })
                 .collect();
 
             Some(TypedNode::Html {
@@ -664,7 +677,7 @@ fn typecheck_node(
             range: _,
         } => {
             if let Some(typed_expr) = errors.ok_or_add(
-                dop::typecheck_expr(expression, env, records, annotations, None)
+                dop::typecheck_expr(expression, env, type_env, annotations, None)
                     .map_err(Into::into),
             ) {
                 let expr_type = typed_expr.as_type();

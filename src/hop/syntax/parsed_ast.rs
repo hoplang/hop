@@ -74,7 +74,7 @@ impl ParsedAst {
     }
 
     /// Finds a record declaration by name.
-    pub fn get_record(&self, name: &str) -> Option<&ParsedRecordDeclaration> {
+    pub fn get_record_declaration(&self, name: &str) -> Option<&ParsedRecordDeclaration> {
         self.record_declarations.iter().find(|&r| r.name() == name)
     }
 
@@ -83,18 +83,18 @@ impl ParsedAst {
         &self.component_declarations
     }
 
-    /// Returns a reference to all import nodes in the AST.
-    pub fn get_imports(&self) -> &[ParsedImportDeclaration] {
+    /// Returns a reference to all import declarations in the AST.
+    pub fn get_import_declarations(&self) -> &[ParsedImportDeclaration] {
         &self.import_declarations
     }
 
     /// Returns a reference to all record declarations in the AST.
-    pub fn get_records(&self) -> &[ParsedRecordDeclaration] {
+    pub fn get_record_declarations(&self) -> &[ParsedRecordDeclaration] {
         &self.record_declarations
     }
 
     /// Returns a reference to all enum declarations in the AST.
-    pub fn get_enums(&self) -> &[ParsedEnumDeclaration] {
+    pub fn get_enum_declarations(&self) -> &[ParsedEnumDeclaration] {
         &self.enum_declarations
     }
 

@@ -79,7 +79,7 @@ impl Program {
 
         // Get all modules that this module depends on
         let module_dependencies = module
-            .get_imports()
+            .get_import_declarations()
             .iter()
             .map(|import_node| import_node.imported_module().clone())
             .collect::<HashSet<ModuleName>>();
@@ -136,7 +136,7 @@ impl Program {
         let ast = self.modules.get(module_name)?;
 
         // First check if we're on an import node's path (module::path::Component)
-        for import in ast.get_imports() {
+        for import in ast.get_import_declarations() {
             if import.path.contains_position(position) {
                 let target_module = &import.module_name;
                 let imported_name = import.type_name.as_str();
@@ -152,7 +152,7 @@ impl Program {
                 }
 
                 // Check if it's a record declaration
-                if let Some(record) = target_ast.get_record(imported_name) {
+                if let Some(record) = target_ast.get_record_declaration(imported_name) {
                     return Some(DefinitionLocation {
                         module: target_module.clone(),
                         range: record.name_range.clone(),
@@ -321,7 +321,7 @@ impl Program {
         for (module_name, ast) in &self.modules {
             // Find all import statements that import this component
             locations.extend(
-                ast.get_imports()
+                ast.get_import_declarations()
                     .iter()
                     .filter(|n| {
                         n.imports_type(component_name.as_str()) && n.imports_from(definition_module)
