@@ -44,23 +44,21 @@ pub struct Attribute<T = ParseTree> {
     pub range: DocumentRange,
 }
 
-pub type UntypedAst = Ast<ParseTree, ParsedType>;
-
 #[derive(Debug, Clone)]
-pub struct Ast<T, A = ()> {
+pub struct Ast {
     pub name: ModuleName,
     imports: Vec<Import>,
-    records: Vec<Record<A>>,
+    records: Vec<Record>,
     enums: Vec<Enum>,
-    component_definitions: Vec<ComponentDefinition<T, A>>,
+    component_definitions: Vec<UntypedComponentDefinition>,
 }
 
-impl<T, A> Ast<T, A> {
+impl Ast {
     pub fn new(
         name: ModuleName,
-        component_definitions: Vec<ComponentDefinition<T, A>>,
+        component_definitions: Vec<UntypedComponentDefinition>,
         imports: Vec<Import>,
-        records: Vec<Record<A>>,
+        records: Vec<Record>,
         enums: Vec<Enum>,
     ) -> Self {
         Self {
@@ -72,19 +70,19 @@ impl<T, A> Ast<T, A> {
         }
     }
 
-    pub fn get_component_definition(&self, name: &str) -> Option<&ComponentDefinition<T, A>> {
+    pub fn get_component_definition(&self, name: &str) -> Option<&UntypedComponentDefinition> {
         self.component_definitions
             .iter()
             .find(|&n| n.tag_name.as_str() == name)
     }
 
     /// Finds a record declaration by name.
-    pub fn get_record(&self, name: &str) -> Option<&Record<A>> {
+    pub fn get_record(&self, name: &str) -> Option<&Record> {
         self.records.iter().find(|&r| r.name() == name)
     }
 
     /// Returns a reference to all component definition nodes in the AST.
-    pub fn get_component_definitions(&self) -> &[ComponentDefinition<T, A>] {
+    pub fn get_component_definitions(&self) -> &[UntypedComponentDefinition] {
         &self.component_definitions
     }
 
@@ -94,7 +92,7 @@ impl<T, A> Ast<T, A> {
     }
 
     /// Returns a reference to all record declarations in the AST.
-    pub fn get_records(&self) -> &[Record<A>] {
+    pub fn get_records(&self) -> &[Record] {
         &self.records
     }
 
@@ -104,7 +102,7 @@ impl<T, A> Ast<T, A> {
     }
 
     /// Returns an iterator over all nodes in the AST, iterating depth-first.
-    pub fn iter_all_nodes(&self) -> impl Iterator<Item = &Node<T>> {
+    pub fn iter_all_nodes(&self) -> impl Iterator<Item = &Node<ParseTree>> {
         self.component_definitions
             .iter()
             .flat_map(|n| &n.children)
@@ -129,7 +127,7 @@ impl<T, A> Ast<T, A> {
     ///     ^^^^^^^^^^^^^^^^^
     /// </div>
     ///
-    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&Node<T>> {
+    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&Node<ParseTree>> {
         for n in &self.component_definitions {
             if n.range.contains_position(position) {
                 for child in &n.children {
@@ -198,7 +196,6 @@ impl<A> Record<A> {
 #[derive(Debug, Clone)]
 pub struct EnumVariant {
     pub name: TypeName,
-    pub name_range: DocumentRange,
 }
 
 #[derive(Debug, Clone)]
@@ -206,7 +203,6 @@ pub struct Enum {
     pub name: TypeName,
     pub name_range: DocumentRange,
     pub variants: Vec<EnumVariant>,
-    pub range: DocumentRange,
 }
 
 impl Enum {

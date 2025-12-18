@@ -4,7 +4,6 @@ use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{self, Type, resolve_type};
 use crate::environment::Environment;
 use crate::error_collector::ErrorCollector;
-use crate::hop::syntax::ast::Ast;
 use crate::hop::syntax::ast::Parameter;
 use crate::hop::syntax::ast::{Attribute, ComponentDefinition};
 use crate::hop::syntax::node::Argument;
@@ -13,7 +12,7 @@ use std::fmt::{self, Display};
 
 use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::semantics::typed_ast::{TypedAst, TypedAttribute, TypedRecord};
-use crate::hop::syntax::ast::{AttributeValue, RecordField, UntypedAst};
+use crate::hop::syntax::ast::{Ast, AttributeValue, RecordField};
 use crate::hop::syntax::node::{Node, TypedNode, UntypedNode};
 
 #[derive(Debug, Clone)]
@@ -132,7 +131,7 @@ pub struct TypeChecker {
 impl TypeChecker {
     // TODO: Return a bool here indicating whether the state for these modules
     // were changed
-    pub fn typecheck(&mut self, modules: &[&UntypedAst]) {
+    pub fn typecheck(&mut self, modules: &[&Ast]) {
         for module in modules {
             let type_errors = self.type_errors.entry(module.name.clone()).or_default();
             let type_annotations = self
@@ -167,7 +166,7 @@ impl TypeChecker {
 }
 
 fn typecheck_module(
-    module: &UntypedAst,
+    module: &Ast,
     state: &mut State,
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
@@ -381,10 +380,8 @@ fn typecheck_module(
     }
 
     // Build and return the typed AST
-    Ast::new(
-        module.name.clone(),
+    TypedAst::new(
         typed_component_definitions,
-        module.get_imports().to_vec(),
         typed_records,
         module.get_enums().to_vec(),
     )

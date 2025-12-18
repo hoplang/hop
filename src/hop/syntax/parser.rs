@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
 
 use super::ast::{
-    self, Ast, ComponentDefinition, Enum, EnumVariant, Import, Record, RecordField, UntypedAst,
+    self, Ast, ComponentDefinition, Enum, EnumVariant, Import, Record, RecordField,
     UntypedComponentDefinition,
 };
 use super::node::Argument;
@@ -121,7 +121,7 @@ pub fn parse(
     module_name: ModuleName,
     source: String,
     errors: &mut ErrorCollector<ParseError>,
-) -> UntypedAst {
+) -> Ast {
     let source_range = DocumentCursor::new(source).range();
 
     // Build the token tree
@@ -208,19 +208,15 @@ pub fn parse(
                             name,
                             name_range,
                             variants,
-                            range,
+                            range: _,
                         } => {
                             let enum_decl = Enum {
                                 name: name.clone(),
                                 name_range: name_range.clone(),
                                 variants: variants
                                     .iter()
-                                    .map(|(name, range)| EnumVariant {
-                                        name: name.clone(),
-                                        name_range: range.clone(),
-                                    })
+                                    .map(|(name, _range)| EnumVariant { name: name.clone() })
                                     .collect(),
-                                range,
                             };
                             let name = enum_decl.name();
                             if defined_enums.contains(name)
