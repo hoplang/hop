@@ -21,7 +21,7 @@ use super::node::Node;
 ///     ^^^^^^^^^^^^^^^^^
 /// </div>
 ///
-pub fn find_node_at_position<'a>(ast: &'a Ast, position: DocumentPosition) -> Option<&'a Node> {
+pub fn find_node_at_position(ast: &Ast, position: DocumentPosition) -> Option<&Node> {
     for n in ast.get_component_definitions() {
         if n.range.contains_position(position) {
             for child in &n.children {
@@ -75,7 +75,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_text_content() {
+    fn should_find_text_content() {
         check_find_node_at_position(
             indoc! {"
                 <Main>
@@ -92,7 +92,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_tag_name() {
+    fn should_find_html_element_when_on_tag_name() {
         check_find_node_at_position(
             indoc! {"
                 <Main>
@@ -109,7 +109,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_component_reference() {
+    fn should_find_component_reference() {
         check_find_node_at_position(
             indoc! {"
                 <Main>
@@ -126,7 +126,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_if_tag() {
+    fn should_find_if_node() {
         check_find_node_at_position(
             indoc! {"
                 <Main>
@@ -149,7 +149,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_nested_content() {
+    fn should_find_nested_text_content() {
         check_find_node_at_position(
             indoc! {"
                 <Main>
@@ -168,7 +168,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_outside_content() {
+    fn should_return_none_when_position_is_outside_content() {
         check_find_node_at_position(
             indoc! {"
                 <Main>
@@ -181,7 +181,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_doctype() {
+    fn should_find_doctype() {
         check_find_node_at_position(
             indoc! {"
                 <Main>
@@ -199,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_deeply_nested() {
+    fn should_find_expression_in_deeply_nested_structure() {
         check_find_node_at_position(
             indoc! {"
                 <Main>
@@ -222,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_void_tag() {
+    fn should_find_void_element() {
         check_find_node_at_position(
             indoc! {"
                 <Main>
@@ -239,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_multiple_nodes_same_line() {
+    fn should_find_first_element_on_line_with_multiple_nodes() {
         check_find_node_at_position(
             indoc! {"
                 <Main>
@@ -256,7 +256,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_multiple_nodes_same_line_second_element() {
+    fn should_find_second_element_on_line_with_multiple_nodes() {
         check_find_node_at_position(
             indoc! {"
                 <Main>
@@ -273,7 +273,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_multiple_nodes_same_line_text_between() {
+    fn should_find_text_between_elements_on_same_line() {
         check_find_node_at_position(
             indoc! {"
                 <Main>
@@ -290,7 +290,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_very_deep_nesting() {
+    fn should_find_expression_in_very_deep_nesting() {
         check_find_node_at_position(
             indoc! {"
                 <Main>
@@ -323,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_deep_nesting_parent_element() {
+    fn should_find_parent_element_in_deep_nesting() {
         check_find_node_at_position(
             indoc! {"
                 <Main>
@@ -356,7 +356,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_inline_elements_with_expressions() {
+    fn should_find_inline_element_with_expression() {
         check_find_node_at_position(
             indoc! {"
                 <Main>
@@ -373,7 +373,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_component_with_inline_content() {
+    fn should_find_text_inside_component_with_inline_content() {
         check_find_node_at_position(
             indoc! {"
                 <Main>
@@ -390,7 +390,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_nested_control_structures() {
+    fn should_find_element_in_nested_control_structures() {
         check_find_node_at_position(
             indoc! {"
                 <Main>
@@ -415,7 +415,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_self_closing_with_attributes() {
+    fn should_find_self_closing_element_with_attributes() {
         check_find_node_at_position(
             indoc! {r#"
                 <Main>
@@ -435,7 +435,7 @@ mod tests {
     }
 
     #[test]
-    fn find_node_at_position_between_closing_and_opening_tags() {
+    fn should_find_element_between_closing_and_opening_tags() {
         check_find_node_at_position(
             indoc! {"
                 <Main>
