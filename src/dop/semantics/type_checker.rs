@@ -838,52 +838,46 @@ mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
     use crate::dop::symbols::type_name::TypeName;
-    use crate::dop::{
-        Declaration, EnumDeclaration, Parser, RecordDeclaration, RecordDeclarationField,
-    };
+    use crate::dop::{Declaration, Parser};
     use crate::error_collector::ErrorCollector;
     use crate::hop::symbols::module_name::ModuleName;
     use expect_test::{Expect, expect};
     use indoc::indoc;
-
-    /// Helper to resolve a RecordDeclaration<()> to RecordDeclaration<Type>
-    fn resolve_record(
-        record: &RecordDeclaration,
-        records: &mut Environment<Type>,
-    ) -> RecordDeclaration<Type> {
-        RecordDeclaration {
-            name: record.name.clone(),
-            name_range: record.name_range.clone(),
-            fields: record
-                .fields
-                .iter()
-                .map(|f| RecordDeclarationField {
-                    name: f.name.clone(),
-                    name_range: f.name_range.clone(),
-                    field_type: resolve_type(&f.field_type, records)
-                        .expect("Test record field type should be valid"),
-                })
-                .collect(),
-        }
-    }
 
     fn check(declarations_str: &str, env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
         let mut env = Environment::new();
         let mut type_env: Environment<Type> = Environment::new();
         let test_module = ModuleName::new("test").unwrap();
 
-        // First pass: parse declarations (records and enums)
-        let mut untyped_records: Vec<(String, RecordDeclaration)> = Vec::new();
-        let mut enum_declarations: Vec<(String, EnumDeclaration)> = Vec::new();
+        // Parse and process declarations
         let mut parser = Parser::from(declarations_str);
         let mut errors = ErrorCollector::new();
         for declaration in parser.parse_declarations(&mut errors) {
             match declaration {
-                Declaration::Record { declaration, .. } => {
-                    untyped_records.push((declaration.name.to_string(), declaration));
-                }
                 Declaration::Enum { declaration, .. } => {
-                    enum_declarations.push((declaration.name.to_string(), declaration));
+                    let enum_type = Type::Enum {
+                        module: test_module.clone(),
+                        name: TypeName::new(declaration.name.as_str()).unwrap(),
+                        variants: declaration.variants.iter().map(|v| v.name.clone()).collect(),
+                    };
+                    let _ = type_env.push(declaration.name.to_string(), enum_type);
+                }
+                Declaration::Record { declaration, .. } => {
+                    let fields: Vec<_> = declaration
+                        .fields
+                        .iter()
+                        .map(|f| {
+                            let field_type = resolve_type(&f.field_type, &mut type_env)
+                                .expect("Test record field type should be valid");
+                            (f.name.clone(), field_type)
+                        })
+                        .collect();
+                    let record_type = Type::Record {
+                        module: test_module.clone(),
+                        name: TypeName::new(declaration.name.as_str()).unwrap(),
+                        fields,
+                    };
+                    let _ = type_env.push(declaration.name.to_string(), record_type);
                 }
                 Declaration::Import { .. } => {
                     panic!("Import declarations not supported in tests");
@@ -892,31 +886,6 @@ mod tests {
         }
         if !errors.is_empty() {
             panic!("Failed to parse declarations: {:?}", errors);
-        }
-
-        // Add enum types to the type environment
-        for (name, enum_decl) in &enum_declarations {
-            let enum_type = Type::Enum {
-                module: test_module.clone(),
-                name: TypeName::new(name).unwrap(),
-                variants: enum_decl.variants.iter().map(|v| v.name.clone()).collect(),
-            };
-            let _ = type_env.push(name.to_string(), enum_type);
-        }
-
-        // Second pass: resolve record field types and add to environment
-        for (name, record) in &untyped_records {
-            let typed_record = resolve_record(record, &mut type_env);
-            let record_type = Type::Record {
-                module: test_module.clone(),
-                name: TypeName::new(name).unwrap(),
-                fields: typed_record
-                    .fields
-                    .iter()
-                    .map(|f| (f.name.clone(), f.field_type.clone()))
-                    .collect(),
-            };
-            let _ = type_env.push(name.clone(), record_type);
         }
 
         for (var_name, type_str) in env_vars {
