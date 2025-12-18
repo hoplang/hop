@@ -5,7 +5,7 @@ use super::r#type::{NumericType, Type};
 use super::type_error::TypeError;
 use crate::document::document_cursor::Ranged as _;
 #[cfg(test)]
-use crate::dop::declaration::Declaration;
+use crate::dop::syntax::parse_tree::Declaration;
 use crate::dop::syntax::parse_tree::{BinaryOp, ParseTree, ParsedType};
 #[cfg(test)]
 use crate::dop::symbols::type_name::TypeName;

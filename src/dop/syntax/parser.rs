@@ -2,9 +2,6 @@ use std::collections::HashSet;
 use std::iter::Peekable;
 
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _, StringSpan};
-use crate::dop::declaration::{
-    Declaration, EnumDeclaration, EnumVariant, RecordDeclaration, RecordDeclarationField,
-};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
@@ -12,7 +9,10 @@ use crate::error_collector::ErrorCollector;
 use crate::hop::module_name::ModuleName;
 
 use super::parse_error::ParseError;
-use super::parse_tree::{Argument, BinaryOp, MatchArm, Parameter, ParseTree, ParsedType};
+use super::parse_tree::{
+    Argument, BinaryOp, Declaration, EnumDeclaration, EnumVariant, MatchArm, Parameter, ParseTree,
+    ParsedType, RecordDeclaration, RecordDeclarationField,
+};
 use super::token::Token;
 use super::tokenizer::Tokenizer;
 
