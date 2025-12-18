@@ -1,9 +1,9 @@
-use crate::common::is_void_element;
-use crate::document::document_cursor::{DocumentRange, Ranged as _};
-use crate::error_collector::ErrorCollector;
 use super::parse_error::ParseError;
 use super::tokenizer::Token;
 use super::tokenizer::Tokenizer;
+use crate::common::is_void_element;
+use crate::document::document_cursor::{DocumentRange, Ranged as _};
+use crate::error_collector::ErrorCollector;
 use std::fmt::{self, Display};
 
 /// A TokenTree represents a tree of tokens.

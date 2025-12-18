@@ -65,15 +65,11 @@ impl InlinedTestBuilder {
     }
 
     pub fn num_expr(&self, n: f64) -> Expr {
-        Expr::FloatLiteral {
-            value: n,
-        }
+        Expr::FloatLiteral { value: n }
     }
 
     pub fn bool_expr(&self, b: bool) -> Expr {
-        Expr::BooleanLiteral {
-            value: b,
-        }
+        Expr::BooleanLiteral { value: b }
     }
 
     pub fn var_expr(&self, name: &str) -> Expr {

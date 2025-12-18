@@ -1,7 +1,7 @@
 use crate::document::DocumentAnnotator;
+use crate::hop::program::Program;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
-use crate::hop::program::Program;
 use axum::body::Body;
 use axum::extract::State;
 use axum::http::StatusCode;

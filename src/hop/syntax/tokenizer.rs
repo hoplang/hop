@@ -5,9 +5,9 @@ use std::mem;
 
 use itertools::Itertools as _;
 
+use super::parse_error::ParseError;
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged, StringSpan};
 use crate::dop;
-use super::parse_error::ParseError;
 
 #[derive(Debug, Clone)]
 pub enum AttributeValue {

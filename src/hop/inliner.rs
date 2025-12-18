@@ -1,12 +1,12 @@
 use crate::document::document_cursor::StringSpan;
-use crate::hop::syntax::node::TypedArgument;
 use crate::dop::{Expr, Type};
-use crate::hop::syntax::ast::{AttributeValue, TypedAst, TypedAttribute, TypedComponentDefinition};
-use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode, InlinedParameter,
 };
+use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::syntax::ast::{AttributeValue, TypedAst, TypedAttribute, TypedComponentDefinition};
+use crate::hop::syntax::node::TypedArgument;
 use crate::hop::syntax::node::{Node, TypedNode};
 use anyhow::Result;
 use std::collections::{BTreeMap, HashMap};
@@ -290,9 +290,9 @@ impl Inliner {
 mod tests {
     use super::*;
     use crate::error_collector::ErrorCollector;
+    use crate::hop::semantics::type_checker::TypeChecker;
     use crate::hop::symbols::module_name::ModuleName;
     use crate::hop::syntax::parser::parse;
-    use crate::hop::semantics::type_checker::TypeChecker;
     use expect_test::{Expect, expect};
 
     fn create_typed_asts_from_sources(sources: Vec<(&str, &str)>) -> HashMap<ModuleName, TypedAst> {

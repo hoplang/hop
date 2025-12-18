@@ -10,8 +10,8 @@ pub use js::{JsTranspiler, LanguageMode};
 use pretty::BoxDoc;
 pub use python::PythonTranspiler;
 
-use crate::dop::symbols::field_name::FieldName;
 use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, Type};
+use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
 
@@ -145,11 +145,7 @@ pub trait ExpressionTranspiler {
         record_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
     ) -> BoxDoc<'a>;
-    fn transpile_enum_literal<'a>(
-        &self,
-        enum_name: &'a str,
-        variant_name: &'a str,
-    ) -> BoxDoc<'a>;
+    fn transpile_enum_literal<'a>(&self, enum_name: &'a str, variant_name: &'a str) -> BoxDoc<'a>;
     fn transpile_expr<'a>(&self, expr: &'a IrExpr) -> BoxDoc<'a> {
         match expr {
             IrExpr::Var { value, .. } => self.transpile_var(value.as_str()),

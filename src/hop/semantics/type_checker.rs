@@ -1,18 +1,20 @@
+use super::type_error::TypeError;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{self, Type, resolve_type};
-use crate::hop::syntax::ast::Parameter;
-use crate::hop::syntax::node::Argument;
+use crate::environment::Environment;
 use crate::error_collector::ErrorCollector;
 use crate::hop::syntax::ast::Ast;
+use crate::hop::syntax::ast::Parameter;
 use crate::hop::syntax::ast::{Attribute, ComponentDefinition};
-use crate::environment::Environment;
-use super::type_error::TypeError;
+use crate::hop::syntax::node::Argument;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
-use crate::hop::syntax::ast::{AttributeValue, RecordField, TypedAst, TypedAttribute, TypedRecord, UntypedAst};
 use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::syntax::ast::{
+    AttributeValue, RecordField, TypedAst, TypedAttribute, TypedRecord, UntypedAst,
+};
 use crate::hop::syntax::node::{Node, TypedNode, UntypedNode};
 
 #[derive(Debug, Clone)]
@@ -35,13 +37,13 @@ impl Display for TypeAnnotation {
 }
 
 #[derive(Debug, Clone)]
-pub struct ComponentTypeInformation {
+struct ComponentTypeInformation {
     // Track the resolved parameter types for the component (name, type).
     parameter_types: Vec<(String, Type)>,
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct ModuleTypeInformation {
+struct ModuleTypeInformation {
     components: HashMap<String, ComponentTypeInformation>,
     records: HashMap<String, TypedRecord>,
 }

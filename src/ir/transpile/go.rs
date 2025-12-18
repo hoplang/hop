@@ -1,10 +1,10 @@
 use pretty::BoxDoc;
 
 use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
+use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 #[cfg(test)]
 use crate::dop::symbols::type_name::TypeName;
-use crate::dop::semantics::r#type::Type;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
 use std::collections::BTreeSet;
@@ -512,11 +512,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text("}"))
     }
 
-    fn transpile_enum_literal<'a>(
-        &self,
-        enum_name: &'a str,
-        variant_name: &'a str,
-    ) -> BoxDoc<'a> {
+    fn transpile_enum_literal<'a>(&self, enum_name: &'a str, variant_name: &'a str) -> BoxDoc<'a> {
         // In Go, enum variants are int constants with the pattern EnumNameVariantName
         BoxDoc::text(enum_name).append(BoxDoc::text(variant_name))
     }

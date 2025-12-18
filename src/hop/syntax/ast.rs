@@ -2,12 +2,12 @@ use std::fmt::{self, Display};
 
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged};
-use crate::dop::symbols::field_name::FieldName;
 use crate::dop::Expr;
 use crate::dop::ParseTree;
 use crate::dop::ParsedType;
 use crate::dop::Type;
 use crate::dop::VarName;
+use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;

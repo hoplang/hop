@@ -1,10 +1,10 @@
 use pretty::BoxDoc;
 
 use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
+use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 #[cfg(test)]
 use crate::dop::symbols::type_name::TypeName;
-use crate::dop::semantics::r#type::Type;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
 

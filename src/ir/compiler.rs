@@ -3,10 +3,10 @@ use crate::document::document_cursor::StringSpan;
 use crate::dop::Expr;
 use crate::dop::semantics::r#type::EquatableType;
 use crate::dop::{Type, VarName};
-use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode,
 };
+use crate::hop::symbols::component_name::ComponentName;
 use std::collections::BTreeMap;
 
 use super::ast::{ExprId, IrEntrypoint, IrExpr, IrStatement, StatementId};

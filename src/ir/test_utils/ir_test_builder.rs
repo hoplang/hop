@@ -1,6 +1,6 @@
+use crate::dop::semantics::r#type::{ComparableType, EquatableType};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
-use crate::dop::semantics::r#type::{ComparableType, EquatableType};
 use crate::dop::{Type, VarName};
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;

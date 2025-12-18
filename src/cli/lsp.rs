@@ -1,8 +1,8 @@
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::DocumentRange;
 use crate::filesystem::project_root::ProjectRoot;
-use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
+use crate::hop::symbols::module_name::ModuleName;
 use std::collections::HashMap;
 use tokio::sync::{OnceCell, RwLock};
 use tower_lsp_server::jsonrpc::Result;

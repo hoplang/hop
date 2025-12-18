@@ -1,20 +1,20 @@
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::error_collector::ErrorCollector;
+use crate::hop::semantics::type_error::TypeError;
 use crate::hop::syntax::parse_error::ParseError;
 use crate::hop::syntax::parser::parse;
 use crate::hop::toposorter::TopoSorter;
-use crate::hop::semantics::type_error::TypeError;
 use crate::ir;
 use crate::orchestrator::orchestrate;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
-use super::syntax::ast::{TypedAst, UntypedAst};
+use super::semantics::type_checker::TypeChecker;
 use super::symbols::component_name::ComponentName;
 use super::symbols::module_name::ModuleName;
+use super::syntax::ast::{TypedAst, UntypedAst};
 use super::syntax::node::Node;
-use super::semantics::type_checker::TypeChecker;
 
 /// HoverInfo is a message that should be displayed when the user hovers
 /// a specific range in the source code.

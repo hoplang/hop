@@ -1,9 +1,9 @@
 use crate::document::DocumentAnnotator;
 use crate::filesystem::config::TargetLanguage;
 use crate::filesystem::project_root::ProjectRoot;
+use crate::hop::program::Program;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
-use crate::hop::program::Program;
 use crate::ir::{GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler};
 use crate::orchestrator::orchestrate;
 use crate::tui::timing;
