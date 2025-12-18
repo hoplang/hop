@@ -1,17 +1,19 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
 
+use super::ast::{
+    self, Ast, ComponentDefinition, Enum, Import, Record, UntypedAst, UntypedComponentDefinition,
+};
+use super::node::Argument;
+use super::node::{Node, UntypedNode};
+use super::token_tree::{TokenTree, build_tree};
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, StringSpan};
 use crate::dop;
-use super::node::Argument;
 use crate::dop::Declaration;
 use crate::dop::Parser;
 use crate::error_collector::ErrorCollector;
-use super::ast::{self, Ast, ComponentDefinition, Enum, Import, Record, UntypedAst, UntypedComponentDefinition};
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
-use super::node::{Node, UntypedNode};
-use super::token_tree::{TokenTree, build_tree};
 
 use super::parse_error::ParseError;
 use super::tokenizer::{self, Token, Tokenizer};
@@ -204,7 +206,7 @@ pub fn parse(
                     }
                 }
                 // Convert dop parse errors to hop parse errors
-                for err in decl_errors.to_vec() {
+                for err in decl_errors.iter().cloned() {
                     errors.push(err.into());
                 }
             }
@@ -599,10 +601,10 @@ fn construct_nodes(
 
 #[cfg(test)]
 mod tests {
+    use super::ast::UntypedComponentDefinition;
     use super::*;
     use crate::document::{DocumentAnnotator, document_cursor::Ranged};
     use crate::error_collector::ErrorCollector;
-    use super::ast::UntypedComponentDefinition;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 

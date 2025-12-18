@@ -4,12 +4,8 @@ use super::expr::{EnumPattern, MatchArm};
 use super::r#type::{NumericType, Type};
 use super::type_error::TypeError;
 use crate::document::document_cursor::Ranged as _;
-#[cfg(test)]
-use crate::dop::syntax::parse_tree::Declaration;
-use crate::dop::syntax::parse_tree::{BinaryOp, ParseTree, ParsedType};
-#[cfg(test)]
-use crate::dop::symbols::type_name::TypeName;
 use crate::dop::Expr;
+use crate::dop::syntax::parse_tree::{BinaryOp, ParseTree, ParsedType};
 use crate::hop::environment::Environment;
 use crate::hop::semantics::type_checker::TypeAnnotation;
 
@@ -70,18 +66,12 @@ pub fn typecheck_expr(
                 })
             }
         }
-        ParseTree::BooleanLiteral { value, .. } => Ok(Expr::BooleanLiteral {
-            value: *value,
-        }),
+        ParseTree::BooleanLiteral { value, .. } => Ok(Expr::BooleanLiteral { value: *value }),
         ParseTree::StringLiteral { value, .. } => Ok(Expr::StringLiteral {
             value: value.clone(),
         }),
-        ParseTree::IntLiteral { value, .. } => Ok(Expr::IntLiteral {
-            value: *value,
-        }),
-        ParseTree::FloatLiteral { value, .. } => Ok(Expr::FloatLiteral {
-            value: *value,
-        }),
+        ParseTree::IntLiteral { value, .. } => Ok(Expr::IntLiteral { value: *value }),
+        ParseTree::FloatLiteral { value, .. } => Ok(Expr::FloatLiteral { value: *value }),
         ParseTree::FieldAccess {
             record: base_expr,
             field,
@@ -837,10 +827,7 @@ pub fn typecheck_expr(
             Ok(Expr::Match {
                 subject: Box::new(typed_subject),
                 arms: typed_arms,
-                kind: result_type.unwrap_or_else(|| {
-                    // This should never happen because we check for empty arms above
-                    Type::Bool
-                }),
+                kind: result_type.unwrap(),
             })
         }
     }
@@ -850,7 +837,10 @@ pub fn typecheck_expr(
 mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
-    use crate::dop::{EnumDeclaration, Parser, RecordDeclaration, RecordDeclarationField};
+    use crate::dop::symbols::type_name::TypeName;
+    use crate::dop::{
+        Declaration, EnumDeclaration, Parser, RecordDeclaration, RecordDeclarationField,
+    };
     use crate::error_collector::ErrorCollector;
     use crate::hop::symbols::module_name::ModuleName;
     use expect_test::{Expect, expect};
