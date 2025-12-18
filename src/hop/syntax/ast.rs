@@ -2,10 +2,8 @@ use std::fmt::{self, Display};
 
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged};
-use crate::dop::Expr;
 use crate::dop::ParseTree;
 use crate::dop::ParsedType;
-use crate::dop::Type;
 use crate::dop::VarName;
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
@@ -36,7 +34,6 @@ pub enum AttributeValue<T = ParseTree> {
     String(DocumentRange),
 }
 
-pub type TypedAttribute = Attribute<Expr>;
 
 /// An Attribute is an attribute on a node, it can either
 /// be empty, an expression or a string value.
@@ -48,7 +45,6 @@ pub struct Attribute<T = ParseTree> {
 }
 
 pub type UntypedAst = Ast<ParseTree, ParsedType>;
-pub type TypedAst = Ast<Expr, Type>;
 
 #[derive(Debug, Clone)]
 pub struct Ast<T, A = ()> {
@@ -198,7 +194,6 @@ impl<A> Record<A> {
     }
 }
 
-pub type TypedRecord = Record<Type>;
 
 #[derive(Debug, Clone)]
 pub struct EnumVariant {
@@ -221,7 +216,6 @@ impl Enum {
 }
 
 pub type UntypedComponentDefinition = ComponentDefinition<ParseTree, ParsedType>;
-pub type TypedComponentDefinition = ComponentDefinition<Expr, Type>;
 
 #[derive(Debug, Clone)]
 pub struct ComponentDefinition<E, P = ParsedType> {

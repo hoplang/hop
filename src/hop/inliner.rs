@@ -5,7 +5,8 @@ use crate::hop::inlined_ast::{
 };
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
-use crate::hop::syntax::ast::{AttributeValue, TypedAst, TypedAttribute, TypedComponentDefinition};
+use crate::hop::semantics::typed_ast::{TypedAst, TypedAttribute, TypedComponentDefinition};
+use crate::hop::syntax::ast::AttributeValue;
 use crate::hop::syntax::node::TypedArgument;
 use crate::hop::syntax::node::{Node, TypedNode};
 use anyhow::Result;

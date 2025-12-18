@@ -12,9 +12,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
 use crate::hop::symbols::module_name::ModuleName;
-use crate::hop::syntax::ast::{
-    AttributeValue, RecordField, TypedAst, TypedAttribute, TypedRecord, UntypedAst,
-};
+use crate::hop::semantics::typed_ast::{TypedAst, TypedAttribute, TypedRecord};
+use crate::hop::syntax::ast::{AttributeValue, RecordField, UntypedAst};
 use crate::hop::syntax::node::{Node, TypedNode, UntypedNode};
 
 #[derive(Debug, Clone)]

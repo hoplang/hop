@@ -13,7 +13,8 @@ use std::collections::{HashMap, HashSet};
 use super::semantics::type_checker::TypeChecker;
 use super::symbols::component_name::ComponentName;
 use super::symbols::module_name::ModuleName;
-use super::syntax::ast::{TypedAst, UntypedAst};
+use super::semantics::typed_ast::TypedAst;
+use super::syntax::ast::UntypedAst;
 use super::syntax::node::Node;
 
 /// HoverInfo is a message that should be displayed when the user hovers
