@@ -353,50 +353,50 @@ impl IrExpr {
     {
         f(self);
         match self {
-            Expr::FieldAccess { record: object, .. } => {
+            IrExpr::FieldAccess { record: object, .. } => {
                 object.traverse(f);
             }
-            Expr::ArrayLiteral { elements, .. } => {
+            IrExpr::ArrayLiteral { elements, .. } => {
                 for elem in elements {
                     elem.traverse(f);
                 }
             }
-            Expr::RecordInstantiation { fields, .. } => {
+            IrExpr::RecordInstantiation { fields, .. } => {
                 for (_, value) in fields {
                     value.traverse(f);
                 }
             }
-            Expr::BooleanNegation { operand, .. } => {
+            IrExpr::BooleanNegation { operand, .. } => {
                 operand.traverse(f);
             }
-            Expr::JsonEncode { value, .. } => {
+            IrExpr::JsonEncode { value, .. } => {
                 value.traverse(f);
             }
-            Expr::EnvLookup { key, .. } => {
+            IrExpr::EnvLookup { key, .. } => {
                 key.traverse(f);
             }
-            Expr::Equals { left, right, .. }
-            | Expr::NotEquals { left, right, .. }
-            | Expr::LessThan { left, right, .. }
-            | Expr::GreaterThan { left, right, .. }
-            | Expr::LessThanOrEqual { left, right, .. }
-            | Expr::GreaterThanOrEqual { left, right, .. }
-            | Expr::StringConcat { left, right, .. }
-            | Expr::NumericAdd { left, right, .. }
-            | Expr::NumericSubtract { left, right, .. }
-            | Expr::NumericMultiply { left, right, .. }
-            | Expr::BooleanLogicalAnd { left, right, .. }
-            | Expr::BooleanLogicalOr { left, right, .. } => {
+            IrExpr::Equals { left, right, .. }
+            | IrExpr::NotEquals { left, right, .. }
+            | IrExpr::LessThan { left, right, .. }
+            | IrExpr::GreaterThan { left, right, .. }
+            | IrExpr::LessThanOrEqual { left, right, .. }
+            | IrExpr::GreaterThanOrEqual { left, right, .. }
+            | IrExpr::StringConcat { left, right, .. }
+            | IrExpr::NumericAdd { left, right, .. }
+            | IrExpr::NumericSubtract { left, right, .. }
+            | IrExpr::NumericMultiply { left, right, .. }
+            | IrExpr::BooleanLogicalAnd { left, right, .. }
+            | IrExpr::BooleanLogicalOr { left, right, .. } => {
                 left.traverse(f);
                 right.traverse(f);
             }
-            Expr::Var { .. }
-            | Expr::StringLiteral { .. }
-            | Expr::BooleanLiteral { .. }
-            | Expr::FloatLiteral { .. }
-            | Expr::IntLiteral { .. }
-            | Expr::EnumInstantiation { .. } => {}
-            Expr::Match { .. } => todo!("Match expression traversal not yet implemented"),
+            IrExpr::Var { .. }
+            | IrExpr::StringLiteral { .. }
+            | IrExpr::BooleanLiteral { .. }
+            | IrExpr::FloatLiteral { .. }
+            | IrExpr::IntLiteral { .. }
+            | IrExpr::EnumInstantiation { .. } => {}
+            IrExpr::Match { .. } => todo!("Match expression traversal not yet implemented"),
         }
     }
 
@@ -407,40 +407,40 @@ impl IrExpr {
     {
         f(self);
         match self {
-            Expr::FieldAccess { record: object, .. } => {
+            IrExpr::FieldAccess { record: object, .. } => {
                 object.traverse_mut(f);
             }
-            Expr::ArrayLiteral { elements, .. } => {
+            IrExpr::ArrayLiteral { elements, .. } => {
                 for elem in elements {
                     elem.traverse_mut(f);
                 }
             }
-            Expr::RecordInstantiation { fields, .. } => {
+            IrExpr::RecordInstantiation { fields, .. } => {
                 for (_, value) in fields {
                     value.traverse_mut(f);
                 }
             }
-            Expr::BooleanNegation { operand, .. } => {
+            IrExpr::BooleanNegation { operand, .. } => {
                 operand.traverse_mut(f);
             }
-            Expr::JsonEncode { value, .. } => {
+            IrExpr::JsonEncode { value, .. } => {
                 value.traverse_mut(f);
             }
-            Expr::EnvLookup { key, .. } => {
+            IrExpr::EnvLookup { key, .. } => {
                 key.traverse_mut(f);
             }
-            Expr::StringConcat { left, right, .. }
-            | Expr::NumericAdd { left, right, .. }
-            | Expr::NumericSubtract { left, right, .. }
-            | Expr::NumericMultiply { left, right, .. }
-            | Expr::Equals { left, right, .. }
-            | Expr::NotEquals { left, right, .. }
-            | Expr::LessThan { left, right, .. }
-            | Expr::GreaterThan { left, right, .. }
-            | Expr::LessThanOrEqual { left, right, .. }
-            | Expr::GreaterThanOrEqual { left, right, .. }
-            | Expr::BooleanLogicalAnd { left, right, .. }
-            | Expr::BooleanLogicalOr { left, right, .. } => {
+            IrExpr::StringConcat { left, right, .. }
+            | IrExpr::NumericAdd { left, right, .. }
+            | IrExpr::NumericSubtract { left, right, .. }
+            | IrExpr::NumericMultiply { left, right, .. }
+            | IrExpr::Equals { left, right, .. }
+            | IrExpr::NotEquals { left, right, .. }
+            | IrExpr::LessThan { left, right, .. }
+            | IrExpr::GreaterThan { left, right, .. }
+            | IrExpr::LessThanOrEqual { left, right, .. }
+            | IrExpr::GreaterThanOrEqual { left, right, .. }
+            | IrExpr::BooleanLogicalAnd { left, right, .. }
+            | IrExpr::BooleanLogicalOr { left, right, .. } => {
                 left.traverse_mut(f);
                 right.traverse_mut(f);
             }

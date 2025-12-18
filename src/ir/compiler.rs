@@ -367,7 +367,7 @@ impl Compiler {
         let expr_id = self.next_expr_id();
 
         match expr {
-            SimpleExpr::Var { value, kind, .. } => Expr::Var {
+            SimpleExpr::Var { value, kind, .. } => IrExpr::Var {
                 value,
                 kind,
                 annotation: expr_id,
@@ -377,17 +377,17 @@ impl Compiler {
                 field,
                 kind,
                 ..
-            } => Expr::FieldAccess {
+            } => IrExpr::FieldAccess {
                 record: Box::new(self.compile_expr(*object)),
                 field,
                 kind,
                 annotation: expr_id,
             },
-            SimpleExpr::BooleanNegation { operand, .. } => Expr::BooleanNegation {
+            SimpleExpr::BooleanNegation { operand, .. } => IrExpr::BooleanNegation {
                 operand: Box::new(self.compile_expr(*operand)),
                 annotation: expr_id,
             },
-            SimpleExpr::ArrayLiteral { elements, kind, .. } => Expr::ArrayLiteral {
+            SimpleExpr::ArrayLiteral { elements, kind, .. } => IrExpr::ArrayLiteral {
                 elements: elements.into_iter().map(|e| self.compile_expr(e)).collect(),
                 kind,
                 annotation: expr_id,
@@ -397,7 +397,7 @@ impl Compiler {
                 fields,
                 kind,
                 ..
-            } => Expr::RecordInstantiation {
+            } => IrExpr::RecordInstantiation {
                 record_name,
                 fields: fields
                     .into_iter()
@@ -406,31 +406,31 @@ impl Compiler {
                 kind,
                 annotation: expr_id,
             },
-            SimpleExpr::StringLiteral { value, .. } => Expr::StringLiteral {
+            SimpleExpr::StringLiteral { value, .. } => IrExpr::StringLiteral {
                 value,
                 annotation: expr_id,
             },
-            SimpleExpr::BooleanLiteral { value, .. } => Expr::BooleanLiteral {
+            SimpleExpr::BooleanLiteral { value, .. } => IrExpr::BooleanLiteral {
                 value,
                 annotation: expr_id,
             },
-            SimpleExpr::FloatLiteral { value, .. } => Expr::FloatLiteral {
+            SimpleExpr::FloatLiteral { value, .. } => IrExpr::FloatLiteral {
                 value,
                 annotation: expr_id,
             },
-            SimpleExpr::IntLiteral { value, .. } => Expr::IntLiteral {
+            SimpleExpr::IntLiteral { value, .. } => IrExpr::IntLiteral {
                 value,
                 annotation: expr_id,
             },
-            SimpleExpr::JsonEncode { value, .. } => Expr::JsonEncode {
+            SimpleExpr::JsonEncode { value, .. } => IrExpr::JsonEncode {
                 value: Box::new(self.compile_expr(*value)),
                 annotation: expr_id,
             },
-            SimpleExpr::EnvLookup { key, .. } => Expr::EnvLookup {
+            SimpleExpr::EnvLookup { key, .. } => IrExpr::EnvLookup {
                 key: Box::new(self.compile_expr(*key)),
                 annotation: expr_id,
             },
-            SimpleExpr::StringConcat { left, right, .. } => Expr::StringConcat {
+            SimpleExpr::StringConcat { left, right, .. } => IrExpr::StringConcat {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 annotation: expr_id,
@@ -440,7 +440,7 @@ impl Compiler {
                 right,
                 operand_types,
                 ..
-            } => Expr::Equals {
+            } => IrExpr::Equals {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
@@ -451,7 +451,7 @@ impl Compiler {
                 right,
                 operand_types,
                 ..
-            } => Expr::NotEquals {
+            } => IrExpr::NotEquals {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
@@ -462,7 +462,7 @@ impl Compiler {
                 right,
                 operand_types,
                 ..
-            } => Expr::LessThan {
+            } => IrExpr::LessThan {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
@@ -473,7 +473,7 @@ impl Compiler {
                 right,
                 operand_types,
                 ..
-            } => Expr::GreaterThan {
+            } => IrExpr::GreaterThan {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
@@ -484,7 +484,7 @@ impl Compiler {
                 right,
                 operand_types,
                 ..
-            } => Expr::LessThanOrEqual {
+            } => IrExpr::LessThanOrEqual {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
@@ -495,67 +495,67 @@ impl Compiler {
                 right,
                 operand_types,
                 ..
-            } => Expr::GreaterThanOrEqual {
+            } => IrExpr::GreaterThanOrEqual {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
                 annotation: expr_id,
             },
-            Expr::BooleanLogicalAnd { left, right, .. } => Expr::BooleanLogicalAnd {
+            SimpleExpr::BooleanLogicalAnd { left, right, .. } => IrExpr::BooleanLogicalAnd {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 annotation: expr_id,
             },
-            Expr::BooleanLogicalOr { left, right, .. } => Expr::BooleanLogicalOr {
+            SimpleExpr::BooleanLogicalOr { left, right, .. } => IrExpr::BooleanLogicalOr {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 annotation: expr_id,
             },
-            Expr::NumericAdd {
+            SimpleExpr::NumericAdd {
                 left,
                 right,
                 operand_types,
                 ..
-            } => Expr::NumericAdd {
+            } => IrExpr::NumericAdd {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
                 annotation: expr_id,
             },
-            Expr::NumericSubtract {
+            SimpleExpr::NumericSubtract {
                 left,
                 right,
                 operand_types,
                 ..
-            } => Expr::NumericSubtract {
+            } => IrExpr::NumericSubtract {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
                 annotation: expr_id,
             },
-            Expr::NumericMultiply {
+            SimpleExpr::NumericMultiply {
                 left,
                 right,
                 operand_types,
                 ..
-            } => Expr::NumericMultiply {
+            } => IrExpr::NumericMultiply {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
                 annotation: expr_id,
             },
-            Expr::EnumInstantiation {
+            SimpleExpr::EnumInstantiation {
                 enum_name,
                 variant_name,
                 kind,
                 ..
-            } => Expr::EnumInstantiation {
+            } => IrExpr::EnumInstantiation {
                 enum_name,
                 variant_name,
                 kind,
                 annotation: expr_id,
             },
-            Expr::Match { .. } => todo!("Match expression compilation not yet implemented"),
+            SimpleExpr::Match { .. } => todo!("Match expression compilation not yet implemented"),
         }
     }
 }
