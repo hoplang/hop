@@ -210,7 +210,6 @@ fn typecheck_module(
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> TypedAst {
-    // Initialize module state
     state.modules.insert(
         module.name.clone(),
         ModuleTypeInformation {
@@ -220,11 +219,8 @@ fn typecheck_module(
         },
     );
 
-    // Build type environment, i.e. the environment
-    // of declared type names.
     let mut type_env: Environment<Type> = Environment::new();
 
-    // Validate imports and collect imported records/enums
     for import in module.get_import_declarations() {
         let imported_module = import.imported_module();
         let imported_name = import.imported_type_name();
@@ -236,7 +232,6 @@ fn typecheck_module(
             continue;
         };
 
-        // Check if the import is a component, record, or enum
         let is_component = module_state.component_is_declared(imported_name.as_str());
         let is_record = module_state.record_is_declared(imported_name.as_str());
         let is_enum = module_state.enum_is_declared(imported_name.as_str());
@@ -249,32 +244,26 @@ fn typecheck_module(
             });
         }
 
-        // If it's a record, add it to our available records
-        if is_record {
-            if let Some(record) = module_state.get_typed_record(imported_name.as_str()) {
-                let _ = type_env.push(
-                    imported_name.as_str().to_string(),
-                    Type::Record {
-                        module: imported_module.clone(),
-                        name: TypeName::new(imported_name.as_str()).unwrap(),
-                        fields: record.fields.clone(),
-                    },
-                );
-            }
+        if let Some(record) = module_state.get_typed_record(imported_name.as_str()) {
+            let _ = type_env.push(
+                imported_name.as_str().to_string(),
+                Type::Record {
+                    module: imported_module.clone(),
+                    name: TypeName::new(imported_name.as_str()).unwrap(),
+                    fields: record.fields.clone(),
+                },
+            );
         }
 
-        // If it's an enum, add it to our type environment
-        if is_enum {
-            if let Some(enum_info) = module_state.get_typed_enum(imported_name.as_str()) {
-                let _ = type_env.push(
-                    imported_name.as_str().to_string(),
-                    Type::Enum {
-                        module: imported_module.clone(),
-                        name: TypeName::new(imported_name.as_str()).unwrap(),
-                        variants: enum_info.variants.clone(),
-                    },
-                );
-            }
+        if let Some(enum_info) = module_state.get_typed_enum(imported_name.as_str()) {
+            let _ = type_env.push(
+                imported_name.as_str().to_string(),
+                Type::Enum {
+                    module: imported_module.clone(),
+                    name: TypeName::new(imported_name.as_str()).unwrap(),
+                    variants: enum_info.variants.clone(),
+                },
+            );
         }
     }
 
@@ -289,7 +278,6 @@ fn typecheck_module(
         };
         let _ = type_env.push(enum_name.to_string(), enum_type);
 
-        // Store enum type info in state so other modules can import it
         state.set_enum_type_info(
             &module.name,
             enum_name,
@@ -304,7 +292,6 @@ fn typecheck_module(
         });
     }
 
-    // Validate record field types and build typed records
     let mut typed_records: Vec<TypedRecordDeclaration> = Vec::new();
     for record in module.get_record_declarations() {
         let record_name = record.name();
@@ -323,13 +310,11 @@ fn typecheck_module(
             }
         }
 
-        // Only add record if all fields resolved successfully
         if !has_errors {
             let typed_record = TypedRecordDeclaration {
                 name: record.name.clone(),
                 fields: typed_fields.clone(),
             };
-            // Store typed record in state so other modules can import it
             state.set_record_type_info(
                 &module.name,
                 record.name(),
@@ -363,12 +348,8 @@ fn typecheck_module(
             closing_tag_name: _,
         } = component_def;
 
-        // Push parameters to environment and validate their types
-        // Track which parameters were successfully pushed for later popping
         let mut pushed_params: Vec<&ParsedParameter> = Vec::new();
-        // Collect resolved parameter types for ComponentTypeInformation
         let mut resolved_param_types: Vec<(String, Type)> = Vec::new();
-        // Build typed parameters with resolved type annotations
         let mut typed_params: Vec<(VarName, Type)> = Vec::new();
         if let Some((params, _)) = params {
             for param in params {
@@ -391,7 +372,6 @@ fn typecheck_module(
             }
         }
 
-        // Typecheck children and collect typed versions
         let typed_children: Vec<_> = children
             .iter()
             .filter_map(|child| {
@@ -399,7 +379,6 @@ fn typecheck_module(
             })
             .collect();
 
-        // Pop parameters from environment (only the ones that were pushed)
         for param in pushed_params.iter().rev() {
             let (_, _, accessed) = env.pop();
             if !accessed {
@@ -409,7 +388,6 @@ fn typecheck_module(
             }
         }
 
-        // Store type information in state
         state.set_component_type_info(
             &module.name,
             name.as_str(),
@@ -418,7 +396,6 @@ fn typecheck_module(
             },
         );
 
-        // Build typed ComponentDeclaration with resolved parameter types
         let typed_params_option = if params.is_some() {
             Some(typed_params)
         } else {
@@ -631,7 +608,7 @@ fn typecheck_node(
                     let all_params = module_info.get_parameter_types(component_name.as_str());
 
                     for arg in args {
-                        // Skip children arg - it's handled separately via component children
+                        // Disallow children arg - it's handled separately via component children
                         if arg.var_name.as_str() == "children" {
                             errors.push(TypeError::ChildrenArgNotAllowed {
                                 range: arg.var_name_range.clone(),
@@ -679,7 +656,6 @@ fn typecheck_node(
                             continue;
                         }
 
-                        // Build the typed argument
                         typed_arguments.push(TypedArgument {
                             var_name: arg.var_name.clone(),
                             var_expr: typed_expr,
@@ -782,7 +758,7 @@ fn typecheck_attributes(
                         dop::typecheck_expr(expr, env, records, annotations, None)
                             .map_err(Into::into),
                     ) {
-                        // Check that HTML attributes are strings
+                        // Check that attributes evaluate to strings
                         let expr_type = typed_expr.as_type();
                         if !expr_type.is_subtype(&Type::String) {
                             errors.push(TypeError::ExpectedStringAttribute {
