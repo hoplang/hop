@@ -1,8 +1,8 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::symbols::type_name::TypeName;
-use crate::dop::{
-    self, Argument, Parameter, RecordDeclaration, RecordDeclarationField, Type, resolve_type,
-};
+use crate::dop::{self, RecordDeclaration, RecordDeclarationField, Type, resolve_type};
+use crate::hop::syntax::ast::Parameter;
+use crate::hop::syntax::node::Argument;
 use crate::error_collector::ErrorCollector;
 use crate::hop::syntax::ast::Ast;
 use crate::hop::syntax::ast::{Attribute, ComponentDefinition};

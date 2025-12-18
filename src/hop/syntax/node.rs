@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
+use std::fmt::{self, Display};
 
 use crate::document::{
     DocumentPosition,
     document_cursor::{DocumentRange, Ranged, StringSpan},
 };
-use crate::dop::Argument;
 use crate::dop::Expr;
 use crate::dop::ParseTree;
 use crate::dop::VarName;
@@ -13,6 +13,24 @@ use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 
 use super::ast::Attribute;
+
+pub type TypedArgument = Argument<Expr>;
+
+/// An Argument represents a parsed argument with a name and a value.
+/// E.g. <my-comp {x: [1,2], y: 2}>
+///                ^^^^^^^^
+#[derive(Debug, Clone)]
+pub struct Argument<T = ParseTree> {
+    pub var_name: VarName,
+    pub var_name_range: DocumentRange,
+    pub var_expr: T,
+}
+
+impl<T: Display> Display for Argument<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.var_name, self.var_expr)
+    }
+}
 
 pub type UntypedNode = Node<ParseTree>;
 pub type TypedNode = Node<Expr>;

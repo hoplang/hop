@@ -1,5 +1,5 @@
 use crate::document::document_cursor::StringSpan;
-use crate::dop::syntax::parse_tree::TypedArgument;
+use crate::hop::syntax::node::TypedArgument;
 use crate::dop::{Expr, Type};
 use crate::hop::syntax::ast::{AttributeValue, TypedAst, TypedAttribute, TypedComponentDefinition};
 use crate::hop::symbols::component_name::ComponentName;

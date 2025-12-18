@@ -10,8 +10,8 @@ use crate::hop::symbols::module_name::ModuleName;
 
 use super::parse_error::ParseError;
 use super::parse_tree::{
-    Argument, BinaryOp, Declaration, EnumDeclaration, EnumVariant, MatchArm, Parameter, ParseTree,
-    ParsedType, RecordDeclaration, RecordDeclarationField,
+    BinaryOp, Declaration, EnumDeclaration, EnumVariant, MatchArm, ParseTree, ParsedType,
+    RecordDeclaration, RecordDeclarationField,
 };
 use super::token::Token;
 use super::tokenizer::Tokenizer;
@@ -231,40 +231,35 @@ impl Parser {
     }
 
     // parameter_with_type = Identifier ":" type
-    fn parse_parameter(&mut self) -> Result<Parameter, ParseError> {
+    fn parse_parameter(&mut self) -> Result<((VarName, DocumentRange), ParsedType), ParseError> {
         let (var_name, var_name_range) = self.expect_variable_name()?;
         self.expect_token(&Token::Colon)?;
         let var_type = self.parse_type()?;
-        Ok(Parameter {
-            var_name,
-            var_name_range,
-            var_type,
-        })
+        Ok(((var_name, var_name_range), var_type))
     }
 
     // named_argument = Identifier ":" expr
-    fn parse_argument(&mut self) -> Result<Argument, ParseError> {
+    fn parse_argument(&mut self) -> Result<((VarName, DocumentRange), ParseTree), ParseError> {
         let (var_name, var_name_range) = self.expect_variable_name()?;
         self.expect_token(&Token::Colon)?;
         let expression = self.parse_logical()?;
-        Ok(Argument {
-            var_name,
-            var_name_range,
-            var_expr: expression,
-        })
+        Ok(((var_name, var_name_range), expression))
     }
 
     // parameters = parameter ("," parameter)* Eof
-    pub fn parse_parameters(&mut self) -> Result<Vec<Parameter>, ParseError> {
+    pub fn parse_parameters(
+        &mut self,
+    ) -> Result<Vec<((VarName, DocumentRange), ParsedType)>, ParseError> {
         let mut params = Vec::new();
         let mut seen_names = HashSet::new();
         self.parse_comma_separated(
             |this| {
                 let param = this.parse_parameter()?;
-                if !seen_names.insert(param.var_name.as_str().to_string()) {
+                let (var_name, var_name_range) = &param.0;
+                if !seen_names.insert(var_name.as_str().to_string()) {
                     return Err(ParseError::DuplicateParameter {
-                        name: param.var_name_range.to_string_span(),
-                        range: param.var_name_range.clone(),
+                        name: var_name_range.to_string_span(),
+                        range: var_name_range.clone(),
                     });
                 }
                 params.push(param);
@@ -277,16 +272,19 @@ impl Parser {
     }
 
     // arguments = argument ("," argument)* Eof
-    pub fn parse_arguments(&mut self) -> Result<Vec<Argument>, ParseError> {
+    pub fn parse_arguments(
+        &mut self,
+    ) -> Result<Vec<((VarName, DocumentRange), ParseTree)>, ParseError> {
         let mut args = Vec::new();
         let mut seen_names = HashSet::new();
         self.parse_comma_separated(
             |this| {
                 let arg = this.parse_argument()?;
-                if !seen_names.insert(arg.var_name.as_str().to_string()) {
+                let (var_name, var_name_range) = &arg.0;
+                if !seen_names.insert(var_name.as_str().to_string()) {
                     return Err(ParseError::DuplicateArgument {
-                        name: arg.var_name_range.to_string_span(),
-                        range: arg.var_name_range.clone(),
+                        name: var_name_range.to_string_span(),
+                        range: var_name_range.clone(),
                     });
                 }
                 args.push(arg);
@@ -926,7 +924,12 @@ mod tests {
 
         let actual = match parser.parse_parameters() {
             Ok(result) => {
-                let params: Vec<String> = result.iter().map(|param| param.to_string()).collect();
+                let params: Vec<String> = result
+                    .into_iter()
+                    .map(|((var_name, _var_name_range), var_type)| {
+                        format!("{}: {}", var_name, var_type)
+                    })
+                    .collect();
                 format!("[{}]\n", params.join(", "))
             }
             Err(err) => annotate_error(err),
@@ -940,7 +943,12 @@ mod tests {
 
         let actual = match parser.parse_arguments() {
             Ok(result) => {
-                let args: Vec<String> = result.iter().map(|arg| arg.to_string()).collect();
+                let args: Vec<String> = result
+                    .into_iter()
+                    .map(|((var_name, _var_name_range), var_expr)| {
+                        format!("{}: {}", var_name, var_expr)
+                    })
+                    .collect();
                 format!("[{}]\n", args.join(", "))
             }
             Err(err) => annotate_error(err),

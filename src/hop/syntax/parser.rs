@@ -3,6 +3,7 @@ use std::iter::Peekable;
 
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, StringSpan};
 use crate::dop;
+use super::node::Argument;
 use crate::dop::Declaration;
 use crate::dop::Parser;
 use crate::error_collector::ErrorCollector;
@@ -281,7 +282,17 @@ fn parse_component_definition(
         errors.ok_or_add(
             Parser::from(expr.clone())
                 .parse_parameters()
-                .map(|params| (params, expr.clone()))
+                .map(|parsed_params| {
+                    let params = parsed_params
+                        .into_iter()
+                        .map(|((var_name, var_name_range), var_type)| ast::Parameter {
+                            var_name,
+                            var_name_range,
+                            var_type,
+                        })
+                        .collect();
+                    (params, expr.clone())
+                })
                 .map_err(|err| err.into()),
         )
     });
@@ -527,7 +538,17 @@ fn construct_nodes(
                         errors.ok_or_add(
                             Parser::from(expr.clone())
                                 .parse_arguments()
-                                .map(|named_args| (named_args, expr.clone()))
+                                .map(|parsed_args| {
+                                    let named_args = parsed_args
+                                        .into_iter()
+                                        .map(|((var_name, var_name_range), var_expr)| Argument {
+                                            var_name,
+                                            var_name_range,
+                                            var_expr,
+                                        })
+                                        .collect();
+                                    (named_args, expr.clone())
+                                })
                                 .map_err(|err| err.into()),
                         )
                     });

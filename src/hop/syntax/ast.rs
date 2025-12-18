@@ -1,16 +1,34 @@
+use std::fmt::{self, Display};
+
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::EnumDeclaration;
-use crate::dop::Parameter;
 use crate::dop::RecordDeclaration;
 use crate::dop::Expr;
 use crate::dop::ParseTree;
 use crate::dop::ParsedType;
 use crate::dop::Type;
+use crate::dop::VarName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use super::node::Node;
+
+/// A Parameter represents a parsed parameter with type annotation.
+/// E.g. <my-comp {x: string, y: string}>
+///                ^^^^^^^^^
+#[derive(Debug, Clone)]
+pub struct Parameter<T = ParsedType> {
+    pub var_name: VarName,
+    pub var_name_range: DocumentRange,
+    pub var_type: T,
+}
+
+impl Display for Parameter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.var_name, self.var_type)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum AttributeValue<T = ParseTree> {
