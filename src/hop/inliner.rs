@@ -1,6 +1,6 @@
 use crate::document::document_cursor::StringSpan;
 use crate::dop::parser::TypedArgument;
-use crate::dop::{SimpleExpr, Type};
+use crate::dop::{Expr, Type};
 use crate::hop::ast::{AttributeValue, TypedAst, TypedAttribute, TypedComponentDefinition};
 use crate::hop::component_name::ComponentName;
 use crate::hop::inlined_ast::{
@@ -260,7 +260,7 @@ impl Inliner {
             // Check if this is {children} expression that should be replaced with slot content
             Node::TextExpression { expression, .. } => {
                 // Check if this is a `children` variable of type TrustedHTML
-                if let SimpleExpr::Var { value, kind, .. } = expression {
+                if let Expr::Var { value, kind, .. } = expression {
                     if value.as_str() == "children" && *kind == Type::TrustedHTML {
                         if let Some(content) = slot_content {
                             // Replace {children} with the provided content

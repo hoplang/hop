@@ -14,7 +14,7 @@ pub mod type_name;
 pub mod var_name;
 
 pub use declaration::{Declaration, EnumDeclaration, RecordDeclaration, RecordDeclarationField};
-pub use expr::{Expr, SimpleExpr};
+pub use expr::Expr;
 pub use parser::{Argument, Parameter, Parser};
 pub use syntactic_expr::SyntacticExpr;
 pub use syntactic_type::SyntacticType;

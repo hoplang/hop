@@ -9,15 +9,13 @@ use super::{
     r#type::{ComparableType, EquatableType, NumericType},
 };
 
-pub type SimpleExpr = Expr<()>;
-
 /// A single arm in a match expression, e.g. `Color::Red => "red"`
 #[derive(Debug, Clone, PartialEq)]
-pub struct MatchArm<A> {
+pub struct MatchArm {
     /// The enum variant being matched (e.g., `Color::Red`)
     pub pattern: EnumPattern,
     /// The expression to evaluate if this arm matches
-    pub body: Expr<A>,
+    pub body: Expr,
 }
 
 /// A pattern that matches an enum variant
@@ -28,47 +26,37 @@ pub struct EnumPattern {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expr<A> {
+pub enum Expr {
     /// A variable expression, e.g. foo
-    Var {
-        value: VarName,
-        kind: Type,
-        annotation: A,
-    },
+    Var { value: VarName, kind: Type },
 
     /// A field access expression, e.g. foo.bar
     FieldAccess {
         record: Box<Self>,
         field: FieldName,
         kind: Type,
-        annotation: A,
     },
 
     /// A string literal expression, e.g. "foo bar"
-    StringLiteral { value: String, annotation: A },
+    StringLiteral { value: String },
 
     /// A boolean literal expression, e.g. true
-    BooleanLiteral { value: bool, annotation: A },
+    BooleanLiteral { value: bool },
 
     /// A float literal expression, e.g. 2.5
-    FloatLiteral { value: f64, annotation: A },
+    FloatLiteral { value: f64 },
 
     /// An integer literal expression, e.g. 42
-    IntLiteral { value: i64, annotation: A },
+    IntLiteral { value: i64 },
 
     /// An array literal expression, e.g. [1, 2, 3]
-    ArrayLiteral {
-        elements: Vec<Self>,
-        kind: Type,
-        annotation: A,
-    },
+    ArrayLiteral { elements: Vec<Self>, kind: Type },
 
     /// A record instantiation expression, e.g. User(name: "John", age: 30)
     RecordInstantiation {
         record_name: String,
         fields: Vec<(FieldName, Self)>,
         kind: Type,
-        annotation: A,
     },
 
     /// An enum instantiation expression, e.g. Color::Red
@@ -76,28 +64,19 @@ pub enum Expr<A> {
         enum_name: String,
         variant_name: String,
         kind: Type,
-        annotation: A,
     },
 
     /// A match expression, e.g. match color { Color::Red => "red", Color::Blue => "blue" }
     Match {
         subject: Box<Self>,
-        arms: Vec<MatchArm<A>>,
+        arms: Vec<MatchArm>,
         kind: Type,
-        annotation: A,
     },
-
-    /// JSON encode expression for converting values to JSON strings
-    JsonEncode { value: Box<Self>, annotation: A },
-
-    /// Environment variable lookup expression
-    EnvLookup { key: Box<Self>, annotation: A },
 
     /// String concatenation expression for joining two string expressions
     StringConcat {
         left: Box<Self>,
         right: Box<Self>,
-        annotation: A,
     },
 
     /// Numeric addition expression for adding numeric values
@@ -105,7 +84,6 @@ pub enum Expr<A> {
         left: Box<Self>,
         right: Box<Self>,
         operand_types: NumericType,
-        annotation: A,
     },
 
     /// Numeric subtraction expression for subtracting numeric values
@@ -113,7 +91,6 @@ pub enum Expr<A> {
         left: Box<Self>,
         right: Box<Self>,
         operand_types: NumericType,
-        annotation: A,
     },
 
     /// Numeric multiplication expression for multiplying numeric values
@@ -121,24 +98,21 @@ pub enum Expr<A> {
         left: Box<Self>,
         right: Box<Self>,
         operand_types: NumericType,
-        annotation: A,
     },
 
     /// Boolean negation expression
-    BooleanNegation { operand: Box<Self>, annotation: A },
+    BooleanNegation { operand: Box<Self> },
 
     /// Boolean logical AND expression
     BooleanLogicalAnd {
         left: Box<Self>,
         right: Box<Self>,
-        annotation: A,
     },
 
     /// Boolean logical OR expression
     BooleanLogicalOr {
         left: Box<Self>,
         right: Box<Self>,
-        annotation: A,
     },
 
     /// Equals expression
@@ -146,7 +120,6 @@ pub enum Expr<A> {
         left: Box<Self>,
         right: Box<Self>,
         operand_types: EquatableType,
-        annotation: A,
     },
 
     /// Not equals expression
@@ -154,7 +127,6 @@ pub enum Expr<A> {
         left: Box<Self>,
         right: Box<Self>,
         operand_types: EquatableType,
-        annotation: A,
     },
 
     /// Less than expression
@@ -162,7 +134,6 @@ pub enum Expr<A> {
         left: Box<Self>,
         right: Box<Self>,
         operand_types: ComparableType,
-        annotation: A,
     },
 
     /// Greater than expression
@@ -170,7 +141,6 @@ pub enum Expr<A> {
         left: Box<Self>,
         right: Box<Self>,
         operand_types: ComparableType,
-        annotation: A,
     },
 
     /// Less than or equal expression
@@ -178,7 +148,6 @@ pub enum Expr<A> {
         left: Box<Self>,
         right: Box<Self>,
         operand_types: ComparableType,
-        annotation: A,
     },
 
     /// Greater than or equal expression
@@ -186,11 +155,10 @@ pub enum Expr<A> {
         left: Box<Self>,
         right: Box<Self>,
         operand_types: ComparableType,
-        annotation: A,
     },
 }
 
-impl<A> Expr<A> {
+impl Expr {
     pub fn as_type(&self) -> &Type {
         static STRING_TYPE: Type = Type::String;
         static BOOL_TYPE: Type = Type::Bool;
@@ -208,10 +176,7 @@ impl<A> Expr<A> {
             Expr::FloatLiteral { .. } => &FLOAT_TYPE,
             Expr::IntLiteral { .. } => &INT_TYPE,
 
-            Expr::JsonEncode { .. }
-            | Expr::EnvLookup { .. }
-            | Expr::StringConcat { .. }
-            | Expr::StringLiteral { .. } => &STRING_TYPE,
+            Expr::StringConcat { .. } | Expr::StringLiteral { .. } => &STRING_TYPE,
 
             Expr::NumericAdd { operand_types, .. }
             | Expr::NumericSubtract { operand_types, .. }
@@ -230,36 +195,6 @@ impl<A> Expr<A> {
             | Expr::GreaterThanOrEqual { .. }
             | Expr::BooleanLogicalAnd { .. }
             | Expr::BooleanLogicalOr { .. } => &BOOL_TYPE,
-        }
-    }
-
-    pub fn annotation(&self) -> &A {
-        match self {
-            Expr::Var { annotation, .. }
-            | Expr::FieldAccess { annotation, .. }
-            | Expr::StringLiteral { annotation, .. }
-            | Expr::BooleanLiteral { annotation, .. }
-            | Expr::FloatLiteral { annotation, .. }
-            | Expr::IntLiteral { annotation, .. }
-            | Expr::ArrayLiteral { annotation, .. }
-            | Expr::RecordInstantiation { annotation, .. }
-            | Expr::EnumInstantiation { annotation, .. }
-            | Expr::Match { annotation, .. }
-            | Expr::JsonEncode { annotation, .. }
-            | Expr::EnvLookup { annotation, .. }
-            | Expr::StringConcat { annotation, .. }
-            | Expr::NumericAdd { annotation, .. }
-            | Expr::NumericSubtract { annotation, .. }
-            | Expr::NumericMultiply { annotation, .. }
-            | Expr::BooleanNegation { annotation, .. }
-            | Expr::Equals { annotation, .. }
-            | Expr::NotEquals { annotation, .. }
-            | Expr::LessThan { annotation, .. }
-            | Expr::GreaterThan { annotation, .. }
-            | Expr::LessThanOrEqual { annotation, .. }
-            | Expr::GreaterThanOrEqual { annotation, .. }
-            | Expr::BooleanLogicalAnd { annotation, .. }
-            | Expr::BooleanLogicalOr { annotation, .. } => annotation,
         }
     }
 
@@ -325,14 +260,6 @@ impl<A> Expr<A> {
                         .append(BoxDoc::text(")"))
                 }
             }
-            Expr::JsonEncode { value, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("JsonEncode("))
-                .append(value.to_doc())
-                .append(BoxDoc::text(")")),
-            Expr::EnvLookup { key, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("EnvLookup("))
-                .append(key.to_doc())
-                .append(BoxDoc::text(")")),
             Expr::StringConcat { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
@@ -450,7 +377,7 @@ impl<A> Expr<A> {
     }
 }
 
-impl<A> Display for Expr<A> {
+impl Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(60))
     }

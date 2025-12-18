@@ -1,5 +1,5 @@
 use crate::document::document_cursor::StringSpan;
-use crate::dop::SimpleExpr;
+use crate::dop::Expr;
 use crate::dop::Type;
 use crate::dop::VarName;
 use crate::hop::inlined_ast::{
@@ -58,28 +58,25 @@ impl InlinedTestBuilder {
     }
 
     // Expression builders for creating SimpleTypedExpr
-    pub fn str_expr(&self, s: &str) -> SimpleExpr {
-        SimpleExpr::StringLiteral {
+    pub fn str_expr(&self, s: &str) -> Expr {
+        Expr::StringLiteral {
             value: s.to_string(),
-            annotation: (),
         }
     }
 
-    pub fn num_expr(&self, n: f64) -> SimpleExpr {
-        SimpleExpr::FloatLiteral {
+    pub fn num_expr(&self, n: f64) -> Expr {
+        Expr::FloatLiteral {
             value: n,
-            annotation: (),
         }
     }
 
-    pub fn bool_expr(&self, b: bool) -> SimpleExpr {
-        SimpleExpr::BooleanLiteral {
+    pub fn bool_expr(&self, b: bool) -> Expr {
+        Expr::BooleanLiteral {
             value: b,
-            annotation: (),
         }
     }
 
-    pub fn var_expr(&self, name: &str) -> SimpleExpr {
+    pub fn var_expr(&self, name: &str) -> Expr {
         let typ = self
             .var_stack
             .borrow()
@@ -99,23 +96,21 @@ impl InlinedTestBuilder {
                 )
             });
 
-        SimpleExpr::Var {
+        Expr::Var {
             value: VarName::try_from(name.to_string()).unwrap(),
             kind: typ,
-            annotation: (),
         }
     }
 
-    pub fn array_expr(&self, elements: Vec<SimpleExpr>) -> SimpleExpr {
+    pub fn array_expr(&self, elements: Vec<Expr>) -> Expr {
         let element_type = elements
             .first()
             .map(|first| Box::new(first.as_type().clone()))
             .expect("Cannot create empty array literal in test builder");
 
-        SimpleExpr::ArrayLiteral {
+        Expr::ArrayLiteral {
             elements,
             kind: Type::Array(element_type),
-            annotation: (),
         }
     }
 
@@ -126,12 +121,12 @@ impl InlinedTestBuilder {
         }
     }
 
-    pub fn text_expr(&self, expr: SimpleExpr) -> InlinedNode {
+    pub fn text_expr(&self, expr: Expr) -> InlinedNode {
         assert_eq!(*expr.as_type(), Type::String, "{}", expr);
         InlinedNode::TextExpression { expression: expr }
     }
 
-    pub fn if_node(&self, cond: SimpleExpr, children: Vec<InlinedNode>) -> InlinedNode {
+    pub fn if_node(&self, cond: Expr, children: Vec<InlinedNode>) -> InlinedNode {
         assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
         InlinedNode::If {
             condition: cond,
@@ -139,7 +134,7 @@ impl InlinedTestBuilder {
         }
     }
 
-    pub fn for_node<F>(&self, var: &str, array: SimpleExpr, body_fn: F) -> InlinedNode
+    pub fn for_node<F>(&self, var: &str, array: Expr, body_fn: F) -> InlinedNode
     where
         F: FnOnce(&Self) -> Vec<InlinedNode>,
     {
@@ -163,7 +158,7 @@ impl InlinedTestBuilder {
         }
     }
 
-    pub fn let_node<F>(&self, var: &str, value: SimpleExpr, body_fn: F) -> InlinedNode
+    pub fn let_node<F>(&self, var: &str, value: Expr, body_fn: F) -> InlinedNode
     where
         F: FnOnce(&Self) -> Vec<InlinedNode>,
     {
@@ -244,7 +239,7 @@ impl InlinedTestBuilder {
         }
     }
 
-    pub fn attr_exprs(&self, exprs: Vec<SimpleExpr>) -> InlinedAttribute {
+    pub fn attr_exprs(&self, exprs: Vec<Expr>) -> InlinedAttribute {
         InlinedAttribute {
             name: String::new(), // Will be set when used in html()
             value: Some(InlinedAttributeValue::Expressions(exprs)),
@@ -292,11 +287,11 @@ impl InlinedAutoBuilder {
         self.children.push(self.inner.text(s));
     }
 
-    pub fn text_expr(&mut self, expr: SimpleExpr) {
+    pub fn text_expr(&mut self, expr: Expr) {
         self.children.push(self.inner.text_expr(expr));
     }
 
-    pub fn if_node<F>(&mut self, cond: SimpleExpr, children_fn: F)
+    pub fn if_node<F>(&mut self, cond: Expr, children_fn: F)
     where
         F: FnOnce(&mut Self),
     {
@@ -306,7 +301,7 @@ impl InlinedAutoBuilder {
         self.children.push(self.inner.if_node(cond, children));
     }
 
-    pub fn for_node<F>(&mut self, var: &str, array: SimpleExpr, body_fn: F)
+    pub fn for_node<F>(&mut self, var: &str, array: Expr, body_fn: F)
     where
         F: FnOnce(&mut Self),
     {
@@ -334,7 +329,7 @@ impl InlinedAutoBuilder {
             .push(self.inner.for_node(var, array, |_| children));
     }
 
-    pub fn let_node<F>(&mut self, var: &str, value: SimpleExpr, body_fn: F)
+    pub fn let_node<F>(&mut self, var: &str, value: Expr, body_fn: F)
     where
         F: FnOnce(&mut Self),
     {
@@ -401,23 +396,23 @@ impl InlinedAutoBuilder {
     }
 
     // Expression methods - delegate to inner builder
-    pub fn str_expr(&self, s: &str) -> SimpleExpr {
+    pub fn str_expr(&self, s: &str) -> Expr {
         self.inner.str_expr(s)
     }
 
-    pub fn num_expr(&self, n: f64) -> SimpleExpr {
+    pub fn num_expr(&self, n: f64) -> Expr {
         self.inner.num_expr(n)
     }
 
-    pub fn bool_expr(&self, b: bool) -> SimpleExpr {
+    pub fn bool_expr(&self, b: bool) -> Expr {
         self.inner.bool_expr(b)
     }
 
-    pub fn var_expr(&self, name: &str) -> SimpleExpr {
+    pub fn var_expr(&self, name: &str) -> Expr {
         self.inner.var_expr(name)
     }
 
-    pub fn array_expr(&self, elements: Vec<SimpleExpr>) -> SimpleExpr {
+    pub fn array_expr(&self, elements: Vec<Expr>) -> Expr {
         self.inner.array_expr(elements)
     }
 
@@ -426,7 +421,7 @@ impl InlinedAutoBuilder {
         self.inner.attr_str(value)
     }
 
-    pub fn attr_exprs(&self, exprs: Vec<SimpleExpr>) -> InlinedAttribute {
+    pub fn attr_exprs(&self, exprs: Vec<Expr>) -> InlinedAttribute {
         self.inner.attr_exprs(exprs)
     }
 

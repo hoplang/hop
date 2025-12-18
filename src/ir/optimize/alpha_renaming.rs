@@ -286,7 +286,6 @@ impl AlphaRenamingPass {
                 operand_types,
                 id,
             },
-            IrExpr::Match { .. } => todo!("Match expression alpha renaming not yet implemented"),
         }
     }
 

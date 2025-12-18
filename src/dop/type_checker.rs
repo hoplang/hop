@@ -52,7 +52,7 @@ pub fn typecheck_expr(
     type_env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     expected_type: Option<&Type>,
-) -> Result<Expr<()>, TypeError> {
+) -> Result<Expr, TypeError> {
     match syntactic_expr {
         SyntacticExpr::Var { value: name, .. } => {
             if let Some(var_type) = env.lookup(name.as_str()) {
@@ -64,7 +64,6 @@ pub fn typecheck_expr(
                 Ok(Expr::Var {
                     value: name.clone(),
                     kind: var_type.clone(),
-                    annotation: (),
                 })
             } else {
                 Err(TypeError::UndefinedVariable {
@@ -75,19 +74,15 @@ pub fn typecheck_expr(
         }
         SyntacticExpr::BooleanLiteral { value, .. } => Ok(Expr::BooleanLiteral {
             value: *value,
-            annotation: (),
         }),
         SyntacticExpr::StringLiteral { value, .. } => Ok(Expr::StringLiteral {
             value: value.clone(),
-            annotation: (),
         }),
         SyntacticExpr::IntLiteral { value, .. } => Ok(Expr::IntLiteral {
             value: *value,
-            annotation: (),
         }),
         SyntacticExpr::FloatLiteral { value, .. } => Ok(Expr::FloatLiteral {
             value: *value,
-            annotation: (),
         }),
         SyntacticExpr::FieldAccess {
             record: base_expr,
@@ -111,7 +106,6 @@ pub fn typecheck_expr(
                             kind: field_type.clone(),
                             record: Box::new(typed_base),
                             field: field.clone(),
-                            annotation: (),
                         })
                     } else {
                         Err(TypeError::FieldNotFoundInRecord {
@@ -164,7 +158,6 @@ pub fn typecheck_expr(
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
-                annotation: (),
             })
         }
         SyntacticExpr::BinaryOp {
@@ -204,7 +197,6 @@ pub fn typecheck_expr(
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
-                annotation: (),
             })
         }
         SyntacticExpr::BinaryOp {
@@ -247,7 +239,6 @@ pub fn typecheck_expr(
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
-                annotation: (),
             })
         }
 
@@ -291,7 +282,6 @@ pub fn typecheck_expr(
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
-                annotation: (),
             })
         }
 
@@ -335,7 +325,6 @@ pub fn typecheck_expr(
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
-                annotation: (),
             })
         }
         SyntacticExpr::BinaryOp {
@@ -378,7 +367,6 @@ pub fn typecheck_expr(
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
-                annotation: (),
             })
         }
         SyntacticExpr::BinaryOp {
@@ -408,7 +396,6 @@ pub fn typecheck_expr(
             Ok(Expr::BooleanLogicalAnd {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
-                annotation: (),
             })
         }
         SyntacticExpr::BinaryOp {
@@ -437,7 +424,6 @@ pub fn typecheck_expr(
             Ok(Expr::BooleanLogicalOr {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
-                annotation: (),
             })
         }
         SyntacticExpr::BinaryOp {
@@ -455,19 +441,16 @@ pub fn typecheck_expr(
                 (Type::String, Type::String) => Ok(Expr::StringConcat {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
-                    annotation: (),
                 }),
                 (Type::Int, Type::Int) => Ok(Expr::NumericAdd {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Int,
-                    annotation: (),
                 }),
                 (Type::Float, Type::Float) => Ok(Expr::NumericAdd {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Float,
-                    annotation: (),
                 }),
                 _ => {
                     // Incompatible types for addition
@@ -495,13 +478,11 @@ pub fn typecheck_expr(
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Int,
-                    annotation: (),
                 }),
                 (Type::Float, Type::Float) => Ok(Expr::NumericSubtract {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Float,
-                    annotation: (),
                 }),
                 _ => {
                     // Incompatible types for subtraction
@@ -533,13 +514,11 @@ pub fn typecheck_expr(
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Int,
-                    annotation: (),
                 }),
                 (Type::Float, Type::Float) => Ok(Expr::NumericMultiply {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Float,
-                    annotation: (),
                 }),
                 _ => {
                     // Incompatible types for multiplication
@@ -564,7 +543,6 @@ pub fn typecheck_expr(
 
             Ok(Expr::BooleanNegation {
                 operand: Box::new(typed_operand),
-                annotation: (),
             })
         }
         SyntacticExpr::ArrayLiteral {
@@ -584,7 +562,6 @@ pub fn typecheck_expr(
                 Ok(Expr::ArrayLiteral {
                     elements: vec![],
                     kind: Type::Array(Box::new(elem_type)),
-                    annotation: (),
                 })
             } else {
                 // Determine expected element type from context if available
@@ -619,7 +596,6 @@ pub fn typecheck_expr(
                 Ok(Expr::ArrayLiteral {
                     elements: typed_elements,
                     kind: Type::Array(Box::new(first_type)),
-                    annotation: (),
                 })
             }
         }
@@ -705,7 +681,6 @@ pub fn typecheck_expr(
                 record_name: record_name.clone(),
                 fields: typed_fields,
                 kind: record_type,
-                annotation: (),
             })
         }
         SyntacticExpr::EnumInstantiation {
@@ -746,7 +721,6 @@ pub fn typecheck_expr(
                 enum_name: enum_name.clone(),
                 variant_name: variant_name.clone(),
                 kind: enum_type,
-                annotation: (),
             })
         }
         SyntacticExpr::Match {
@@ -775,7 +749,7 @@ pub fn typecheck_expr(
 
             // Track which variants have been matched
             let mut matched_variants: HashSet<String> = HashSet::new();
-            let mut typed_arms: Vec<MatchArm<()>> = Vec::new();
+            let mut typed_arms: Vec<MatchArm> = Vec::new();
             let mut result_type: Option<Type> = None;
 
             for arm in arms {
@@ -869,7 +843,6 @@ pub fn typecheck_expr(
                     // This should never happen because we check for empty arms above
                     Type::Bool
                 }),
-                annotation: (),
             })
         }
     }

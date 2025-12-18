@@ -16,7 +16,7 @@ use crate::hop::module_name::ModuleName;
 use super::declaration::{
     Declaration, EnumDeclaration, EnumVariant, RecordDeclaration, RecordDeclarationField,
 };
-use super::expr::SimpleExpr;
+use super::expr::Expr;
 use super::type_name::TypeName;
 
 /// A Parameter represents a parsed parameter with type annotation.
@@ -35,7 +35,7 @@ impl Display for Parameter {
     }
 }
 
-pub type TypedArgument = Argument<SimpleExpr>;
+pub type TypedArgument = Argument<Expr>;
 
 /// An Argument represents a parsed argument with a name and a value.
 /// E.g. <my-comp {x: [1,2], y: 2}>

@@ -1,7 +1,7 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::StringSpan;
+use crate::dop::Expr;
 use crate::dop::r#type::EquatableType;
-use crate::dop::SimpleExpr;
 use crate::dop::{Type, VarName};
 use crate::hop::component_name::ComponentName;
 use crate::hop::inlined_ast::{
@@ -196,7 +196,7 @@ impl Compiler {
 
             InlinedNode::TextExpression { expression } => {
                 let compiled_expr = self.compile_expr(expression.clone());
-                let should_escape = compiled_expr.as_type() != &Type::TrustedHTML;
+                let should_escape = expression.as_type() != &Type::TrustedHTML;
                 output.push(IrStatement::WriteExpr {
                     id: self.next_node_id(),
                     expr: compiled_expr,
@@ -348,7 +348,7 @@ impl Compiler {
                         });
                     }
                     let compiled_expr = self.compile_expr(expr.clone());
-                    let should_escape = compiled_expr.as_type() != &Type::TrustedHTML;
+                    let should_escape = expr.as_type() != &Type::TrustedHTML;
                     output.push(IrStatement::WriteExpr {
                         id: self.next_node_id(),
                         expr: compiled_expr,
@@ -363,16 +363,16 @@ impl Compiler {
         }
     }
 
-    fn compile_expr(&mut self, expr: SimpleExpr) -> IrExpr {
+    fn compile_expr(&mut self, expr: Expr) -> IrExpr {
         let expr_id = self.next_expr_id();
 
         match expr {
-            SimpleExpr::Var { value, kind, .. } => IrExpr::Var {
+            Expr::Var { value, kind, .. } => IrExpr::Var {
                 value,
                 kind,
                 id: expr_id,
             },
-            SimpleExpr::FieldAccess {
+            Expr::FieldAccess {
                 record: object,
                 field,
                 kind,
@@ -383,16 +383,16 @@ impl Compiler {
                 kind,
                 id: expr_id,
             },
-            SimpleExpr::BooleanNegation { operand, .. } => IrExpr::BooleanNegation {
+            Expr::BooleanNegation { operand, .. } => IrExpr::BooleanNegation {
                 operand: Box::new(self.compile_expr(*operand)),
                 id: expr_id,
             },
-            SimpleExpr::ArrayLiteral { elements, kind, .. } => IrExpr::ArrayLiteral {
+            Expr::ArrayLiteral { elements, kind, .. } => IrExpr::ArrayLiteral {
                 elements: elements.into_iter().map(|e| self.compile_expr(e)).collect(),
                 kind,
                 id: expr_id,
             },
-            SimpleExpr::RecordInstantiation {
+            Expr::RecordInstantiation {
                 record_name,
                 fields,
                 kind,
@@ -406,36 +406,16 @@ impl Compiler {
                 kind,
                 id: expr_id,
             },
-            SimpleExpr::StringLiteral { value, .. } => IrExpr::StringLiteral {
-                value,
-                id: expr_id,
-            },
-            SimpleExpr::BooleanLiteral { value, .. } => IrExpr::BooleanLiteral {
-                value,
-                id: expr_id,
-            },
-            SimpleExpr::FloatLiteral { value, .. } => IrExpr::FloatLiteral {
-                value,
-                id: expr_id,
-            },
-            SimpleExpr::IntLiteral { value, .. } => IrExpr::IntLiteral {
-                value,
-                id: expr_id,
-            },
-            SimpleExpr::JsonEncode { value, .. } => IrExpr::JsonEncode {
-                value: Box::new(self.compile_expr(*value)),
-                id: expr_id,
-            },
-            SimpleExpr::EnvLookup { key, .. } => IrExpr::EnvLookup {
-                key: Box::new(self.compile_expr(*key)),
-                id: expr_id,
-            },
-            SimpleExpr::StringConcat { left, right, .. } => IrExpr::StringConcat {
+            Expr::StringLiteral { value, .. } => IrExpr::StringLiteral { value, id: expr_id },
+            Expr::BooleanLiteral { value, .. } => IrExpr::BooleanLiteral { value, id: expr_id },
+            Expr::FloatLiteral { value, .. } => IrExpr::FloatLiteral { value, id: expr_id },
+            Expr::IntLiteral { value, .. } => IrExpr::IntLiteral { value, id: expr_id },
+            Expr::StringConcat { left, right, .. } => IrExpr::StringConcat {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 id: expr_id,
             },
-            SimpleExpr::Equals {
+            Expr::Equals {
                 left,
                 right,
                 operand_types,
@@ -446,7 +426,7 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
-            SimpleExpr::NotEquals {
+            Expr::NotEquals {
                 left,
                 right,
                 operand_types,
@@ -457,7 +437,7 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
-            SimpleExpr::LessThan {
+            Expr::LessThan {
                 left,
                 right,
                 operand_types,
@@ -468,7 +448,7 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
-            SimpleExpr::GreaterThan {
+            Expr::GreaterThan {
                 left,
                 right,
                 operand_types,
@@ -479,7 +459,7 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
-            SimpleExpr::LessThanOrEqual {
+            Expr::LessThanOrEqual {
                 left,
                 right,
                 operand_types,
@@ -490,7 +470,7 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
-            SimpleExpr::GreaterThanOrEqual {
+            Expr::GreaterThanOrEqual {
                 left,
                 right,
                 operand_types,
@@ -501,17 +481,17 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
-            SimpleExpr::BooleanLogicalAnd { left, right, .. } => IrExpr::BooleanLogicalAnd {
+            Expr::BooleanLogicalAnd { left, right, .. } => IrExpr::BooleanLogicalAnd {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 id: expr_id,
             },
-            SimpleExpr::BooleanLogicalOr { left, right, .. } => IrExpr::BooleanLogicalOr {
+            Expr::BooleanLogicalOr { left, right, .. } => IrExpr::BooleanLogicalOr {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 id: expr_id,
             },
-            SimpleExpr::NumericAdd {
+            Expr::NumericAdd {
                 left,
                 right,
                 operand_types,
@@ -522,7 +502,7 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
-            SimpleExpr::NumericSubtract {
+            Expr::NumericSubtract {
                 left,
                 right,
                 operand_types,
@@ -533,7 +513,7 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
-            SimpleExpr::NumericMultiply {
+            Expr::NumericMultiply {
                 left,
                 right,
                 operand_types,
@@ -544,7 +524,7 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
-            SimpleExpr::EnumInstantiation {
+            Expr::EnumInstantiation {
                 enum_name,
                 variant_name,
                 kind,
@@ -555,7 +535,7 @@ impl Compiler {
                 kind,
                 id: expr_id,
             },
-            SimpleExpr::Match { .. } => todo!("Match expression compilation not yet implemented"),
+            Expr::Match { .. } => todo!("Match expression compilation not yet implemented"),
         }
     }
 }

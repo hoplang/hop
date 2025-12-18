@@ -285,7 +285,6 @@ pub trait ExpressionTranspiler {
                 variant_name,
                 ..
             } => self.transpile_enum_instantiation(enum_name, variant_name),
-            IrExpr::Match { .. } => todo!("Match expression transpilation not yet implemented"),
         }
     }
 }
