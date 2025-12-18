@@ -4,7 +4,7 @@ use crate::error_collector::ErrorCollector;
 use crate::hop::syntax::parse_error::ParseError;
 use crate::hop::syntax::parser::parse;
 use crate::hop::toposorter::TopoSorter;
-use crate::hop::type_error::TypeError;
+use crate::hop::semantics::type_error::TypeError;
 use crate::ir;
 use crate::orchestrator::orchestrate;
 use anyhow::Result;
@@ -14,7 +14,7 @@ use super::syntax::ast::{TypedAst, UntypedAst};
 use super::symbols::component_name::ComponentName;
 use super::symbols::module_name::ModuleName;
 use super::syntax::node::Node;
-use super::type_checker::TypeChecker;
+use super::semantics::type_checker::TypeChecker;
 
 /// HoverInfo is a message that should be displayed when the user hovers
 /// a specific range in the source code.

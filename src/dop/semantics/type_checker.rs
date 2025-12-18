@@ -11,7 +11,7 @@ use crate::dop::syntax::parse_tree::{BinaryOp, ParseTree, ParsedType};
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::Expr;
 use crate::hop::environment::Environment;
-use crate::hop::type_checker::TypeAnnotation;
+use crate::hop::semantics::type_checker::TypeAnnotation;
 
 /// Resolve a syntactic Type to a semantic Type.
 pub fn resolve_type(

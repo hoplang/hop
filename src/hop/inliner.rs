@@ -292,7 +292,7 @@ mod tests {
     use crate::error_collector::ErrorCollector;
     use crate::hop::symbols::module_name::ModuleName;
     use crate::hop::syntax::parser::parse;
-    use crate::hop::type_checker::TypeChecker;
+    use crate::hop::semantics::type_checker::TypeChecker;
     use expect_test::{Expect, expect};
 
     fn create_typed_asts_from_sources(sources: Vec<(&str, &str)>) -> HashMap<ModuleName, TypedAst> {

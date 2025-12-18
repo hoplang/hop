@@ -7,13 +7,13 @@ use crate::error_collector::ErrorCollector;
 use crate::hop::syntax::ast::Ast;
 use crate::hop::syntax::ast::{Attribute, ComponentDefinition};
 use crate::hop::environment::Environment;
-use crate::hop::type_error::TypeError;
+use super::type_error::TypeError;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
-use super::syntax::ast::{AttributeValue, TypedAst, TypedAttribute, TypedRecord, UntypedAst};
-use super::symbols::module_name::ModuleName;
-use super::syntax::node::{Node, TypedNode, UntypedNode};
+use crate::hop::syntax::ast::{AttributeValue, TypedAst, TypedAttribute, TypedRecord, UntypedAst};
+use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::syntax::node::{Node, TypedNode, UntypedNode};
 
 #[derive(Debug, Clone)]
 pub struct TypeAnnotation {
