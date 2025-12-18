@@ -116,50 +116,39 @@ impl AlphaRenamingPass {
     /// Rename variables in an expression
     fn rename_expr(&mut self, expr: IrExpr) -> IrExpr {
         match expr {
-            IrExpr::Var {
-                value,
-                kind,
-                annotation,
-            } => {
+            IrExpr::Var { value, kind, id } => {
                 let renamed = self.lookup_var(&value);
                 IrExpr::Var {
                     value: renamed,
                     kind,
-                    annotation,
+                    id,
                 }
             }
             IrExpr::FieldAccess {
                 record: object,
                 field,
                 kind,
-                annotation,
+                id,
             } => IrExpr::FieldAccess {
                 record: Box::new(self.rename_expr(*object)),
                 field,
                 kind,
-                annotation,
+                id,
             },
-            IrExpr::BooleanNegation {
-                operand,
-                annotation,
-            } => IrExpr::BooleanNegation {
+            IrExpr::BooleanNegation { operand, id } => IrExpr::BooleanNegation {
                 operand: Box::new(self.rename_expr(*operand)),
-                annotation,
+                id,
             },
-            IrExpr::ArrayLiteral {
-                elements,
-                kind,
-                annotation,
-            } => IrExpr::ArrayLiteral {
+            IrExpr::ArrayLiteral { elements, kind, id } => IrExpr::ArrayLiteral {
                 elements: elements.into_iter().map(|e| self.rename_expr(e)).collect(),
                 kind,
-                annotation,
+                id,
             },
             IrExpr::RecordInstantiation {
                 record_name,
                 fields,
                 kind,
-                annotation,
+                id,
             } => IrExpr::RecordInstantiation {
                 record_name,
                 fields: fields
@@ -167,90 +156,86 @@ impl AlphaRenamingPass {
                     .map(|(k, v)| (k, self.rename_expr(v)))
                     .collect(),
                 kind,
-                annotation,
+                id,
             },
-            IrExpr::JsonEncode { value, annotation } => IrExpr::JsonEncode {
+            IrExpr::JsonEncode { value, id } => IrExpr::JsonEncode {
                 value: Box::new(self.rename_expr(*value)),
-                annotation,
+                id,
             },
-            IrExpr::EnvLookup { key, annotation } => IrExpr::EnvLookup {
+            IrExpr::EnvLookup { key, id } => IrExpr::EnvLookup {
                 key: Box::new(self.rename_expr(*key)),
-                annotation,
+                id,
             },
-            IrExpr::StringConcat {
-                left,
-                right,
-                annotation,
-            } => IrExpr::StringConcat {
+            IrExpr::StringConcat { left, right, id } => IrExpr::StringConcat {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
-                annotation,
+                id,
             },
             IrExpr::Equals {
                 left,
                 right,
                 operand_types,
-                annotation,
+                id,
             } => IrExpr::Equals {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,
-                annotation,
+                id,
             },
             IrExpr::NotEquals {
                 left,
                 right,
                 operand_types,
-                annotation,
+                id,
             } => IrExpr::NotEquals {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,
-                annotation,
+                id,
             },
             IrExpr::LessThan {
                 left,
                 right,
                 operand_types,
-                annotation,
+                id,
             } => IrExpr::LessThan {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,
-                annotation,
+                id,
             },
             IrExpr::GreaterThan {
                 left,
                 right,
                 operand_types,
-                annotation,
+                id,
             } => IrExpr::GreaterThan {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,
-                annotation,
+                id,
             },
             IrExpr::LessThanOrEqual {
                 left,
                 right,
                 operand_types,
-                annotation,
+                id,
             } => IrExpr::LessThanOrEqual {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,
-                annotation,
+                id,
             },
             IrExpr::GreaterThanOrEqual {
                 left,
                 right,
                 operand_types,
-                annotation,
+                id,
             } => IrExpr::GreaterThanOrEqual {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,
-                annotation,
+                id,
             },
             // Literals and enum variants don't contain variables
             IrExpr::StringLiteral { .. } => expr,
@@ -258,56 +243,48 @@ impl AlphaRenamingPass {
             IrExpr::FloatLiteral { .. } => expr,
             IrExpr::IntLiteral { .. } => expr,
             IrExpr::EnumInstantiation { .. } => expr,
-            IrExpr::BooleanLogicalAnd {
-                left,
-                right,
-                annotation,
-            } => IrExpr::BooleanLogicalAnd {
+            IrExpr::BooleanLogicalAnd { left, right, id } => IrExpr::BooleanLogicalAnd {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
-                annotation,
+                id,
             },
-            IrExpr::BooleanLogicalOr {
-                left,
-                right,
-                annotation,
-            } => IrExpr::BooleanLogicalOr {
+            IrExpr::BooleanLogicalOr { left, right, id } => IrExpr::BooleanLogicalOr {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
-                annotation,
+                id,
             },
             IrExpr::NumericAdd {
                 left,
                 right,
                 operand_types,
-                annotation,
+                id,
             } => IrExpr::NumericAdd {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,
-                annotation,
+                id,
             },
             IrExpr::NumericSubtract {
                 left,
                 right,
                 operand_types,
-                annotation,
+                id,
             } => IrExpr::NumericSubtract {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,
-                annotation,
+                id,
             },
             IrExpr::NumericMultiply {
                 left,
                 right,
                 operand_types,
-                annotation,
+                id,
             } => IrExpr::NumericMultiply {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,
-                annotation,
+                id,
             },
             IrExpr::Match { .. } => todo!("Match expression alpha renaming not yet implemented"),
         }
@@ -406,7 +383,7 @@ impl Pass for AlphaRenamingPass {
                     value: IrExpr::Var {
                         value: original.clone(),
                         kind: typ.clone(),
-                        annotation: 0,
+                        id: 0,
                     },
                     body: result_body,
                 }];

@@ -1,6 +1,8 @@
 use std::{collections::HashMap, fmt};
 
-use crate::dop::{VarName, expr::Expr, field_name::FieldName, r#type::Type};
+use crate::dop::field_name::FieldName;
+use crate::dop::r#type::{ComparableType, EquatableType, NumericType, Type};
+use crate::dop::VarName;
 use crate::hop::component_name::ComponentName;
 use pretty::BoxDoc;
 
@@ -88,8 +90,185 @@ pub enum IrStatement {
     },
 }
 
-/// Type alias for IR expressions with ExprId annotations
-pub type IrExpr = Expr<ExprId>;
+/// A single arm in a match expression, e.g. `Color::Red => "red"`
+#[derive(Debug, Clone, PartialEq)]
+pub struct IrMatchArm {
+    /// The enum variant being matched (e.g., `Color::Red`)
+    pub pattern: IrEnumPattern,
+    /// The expression to evaluate if this arm matches
+    pub body: IrExpr,
+}
+
+/// A pattern that matches an enum variant
+#[derive(Debug, Clone, PartialEq)]
+pub struct IrEnumPattern {
+    pub enum_name: String,
+    pub variant_name: String,
+}
+
+/// IR expression type - a concrete expression type for the IR layer.
+#[derive(Debug, Clone, PartialEq)]
+pub enum IrExpr {
+    /// A variable expression, e.g. foo
+    Var {
+        value: VarName,
+        kind: Type,
+        id: ExprId,
+    },
+
+    /// A field access expression, e.g. foo.bar
+    FieldAccess {
+        record: Box<IrExpr>,
+        field: FieldName,
+        kind: Type,
+        id: ExprId,
+    },
+
+    /// A string literal expression, e.g. "foo bar"
+    StringLiteral { value: String, id: ExprId },
+
+    /// A boolean literal expression, e.g. true
+    BooleanLiteral { value: bool, id: ExprId },
+
+    /// A float literal expression, e.g. 2.5
+    FloatLiteral { value: f64, id: ExprId },
+
+    /// An integer literal expression, e.g. 42
+    IntLiteral { value: i64, id: ExprId },
+
+    /// An array literal expression, e.g. [1, 2, 3]
+    ArrayLiteral {
+        elements: Vec<IrExpr>,
+        kind: Type,
+        id: ExprId,
+    },
+
+    /// A record instantiation expression, e.g. User(name: "John", age: 30)
+    RecordInstantiation {
+        record_name: String,
+        fields: Vec<(FieldName, IrExpr)>,
+        kind: Type,
+        id: ExprId,
+    },
+
+    /// An enum instantiation expression, e.g. Color::Red
+    EnumInstantiation {
+        enum_name: String,
+        variant_name: String,
+        kind: Type,
+        id: ExprId,
+    },
+
+    /// A match expression, e.g. match color { Color::Red => "red", Color::Blue => "blue" }
+    Match {
+        subject: Box<IrExpr>,
+        arms: Vec<IrMatchArm>,
+        kind: Type,
+        id: ExprId,
+    },
+
+    /// JSON encode expression for converting values to JSON strings
+    JsonEncode { value: Box<IrExpr>, id: ExprId },
+
+    /// Environment variable lookup expression
+    EnvLookup { key: Box<IrExpr>, id: ExprId },
+
+    /// String concatenation expression for joining two string expressions
+    StringConcat {
+        left: Box<IrExpr>,
+        right: Box<IrExpr>,
+        id: ExprId,
+    },
+
+    /// Numeric addition expression for adding numeric values
+    NumericAdd {
+        left: Box<IrExpr>,
+        right: Box<IrExpr>,
+        operand_types: NumericType,
+        id: ExprId,
+    },
+
+    /// Numeric subtraction expression for subtracting numeric values
+    NumericSubtract {
+        left: Box<IrExpr>,
+        right: Box<IrExpr>,
+        operand_types: NumericType,
+        id: ExprId,
+    },
+
+    /// Numeric multiplication expression for multiplying numeric values
+    NumericMultiply {
+        left: Box<IrExpr>,
+        right: Box<IrExpr>,
+        operand_types: NumericType,
+        id: ExprId,
+    },
+
+    /// Boolean negation expression
+    BooleanNegation { operand: Box<IrExpr>, id: ExprId },
+
+    /// Boolean logical AND expression
+    BooleanLogicalAnd {
+        left: Box<IrExpr>,
+        right: Box<IrExpr>,
+        id: ExprId,
+    },
+
+    /// Boolean logical OR expression
+    BooleanLogicalOr {
+        left: Box<IrExpr>,
+        right: Box<IrExpr>,
+        id: ExprId,
+    },
+
+    /// Equals expression
+    Equals {
+        left: Box<IrExpr>,
+        right: Box<IrExpr>,
+        operand_types: EquatableType,
+        id: ExprId,
+    },
+
+    /// Not equals expression
+    NotEquals {
+        left: Box<IrExpr>,
+        right: Box<IrExpr>,
+        operand_types: EquatableType,
+        id: ExprId,
+    },
+
+    /// Less than expression
+    LessThan {
+        left: Box<IrExpr>,
+        right: Box<IrExpr>,
+        operand_types: ComparableType,
+        id: ExprId,
+    },
+
+    /// Greater than expression
+    GreaterThan {
+        left: Box<IrExpr>,
+        right: Box<IrExpr>,
+        operand_types: ComparableType,
+        id: ExprId,
+    },
+
+    /// Less than or equal expression
+    LessThanOrEqual {
+        left: Box<IrExpr>,
+        right: Box<IrExpr>,
+        operand_types: ComparableType,
+        id: ExprId,
+    },
+
+    /// Greater than or equal expression
+    GreaterThanOrEqual {
+        left: Box<IrExpr>,
+        right: Box<IrExpr>,
+        operand_types: ComparableType,
+        id: ExprId,
+    },
+}
 
 impl IrStatement {
     /// Get the primary expression from this statement, if any
@@ -343,7 +522,259 @@ impl IrStatement {
 impl IrExpr {
     /// Get the id of this expression
     pub fn id(&self) -> ExprId {
-        *self.annotation()
+        match self {
+            IrExpr::Var { id, .. }
+            | IrExpr::FieldAccess { id, .. }
+            | IrExpr::StringLiteral { id, .. }
+            | IrExpr::BooleanLiteral { id, .. }
+            | IrExpr::FloatLiteral { id, .. }
+            | IrExpr::IntLiteral { id, .. }
+            | IrExpr::ArrayLiteral { id, .. }
+            | IrExpr::RecordInstantiation { id, .. }
+            | IrExpr::EnumInstantiation { id, .. }
+            | IrExpr::Match { id, .. }
+            | IrExpr::JsonEncode { id, .. }
+            | IrExpr::EnvLookup { id, .. }
+            | IrExpr::StringConcat { id, .. }
+            | IrExpr::NumericAdd { id, .. }
+            | IrExpr::NumericSubtract { id, .. }
+            | IrExpr::NumericMultiply { id, .. }
+            | IrExpr::BooleanNegation { id, .. }
+            | IrExpr::BooleanLogicalAnd { id, .. }
+            | IrExpr::BooleanLogicalOr { id, .. }
+            | IrExpr::Equals { id, .. }
+            | IrExpr::NotEquals { id, .. }
+            | IrExpr::LessThan { id, .. }
+            | IrExpr::GreaterThan { id, .. }
+            | IrExpr::LessThanOrEqual { id, .. }
+            | IrExpr::GreaterThanOrEqual { id, .. } => *id,
+        }
+    }
+
+    /// Get the type of this expression
+    pub fn as_type(&self) -> &Type {
+        static STRING_TYPE: Type = Type::String;
+        static BOOL_TYPE: Type = Type::Bool;
+        static FLOAT_TYPE: Type = Type::Float;
+        static INT_TYPE: Type = Type::Int;
+
+        match self {
+            IrExpr::Var { kind, .. }
+            | IrExpr::FieldAccess { kind, .. }
+            | IrExpr::ArrayLiteral { kind, .. }
+            | IrExpr::RecordInstantiation { kind, .. }
+            | IrExpr::EnumInstantiation { kind, .. }
+            | IrExpr::Match { kind, .. } => kind,
+
+            IrExpr::FloatLiteral { .. } => &FLOAT_TYPE,
+            IrExpr::IntLiteral { .. } => &INT_TYPE,
+
+            IrExpr::JsonEncode { .. }
+            | IrExpr::EnvLookup { .. }
+            | IrExpr::StringConcat { .. }
+            | IrExpr::StringLiteral { .. } => &STRING_TYPE,
+
+            IrExpr::NumericAdd { operand_types, .. }
+            | IrExpr::NumericSubtract { operand_types, .. }
+            | IrExpr::NumericMultiply { operand_types, .. } => match operand_types {
+                NumericType::Int => &INT_TYPE,
+                NumericType::Float => &FLOAT_TYPE,
+            },
+
+            IrExpr::BooleanLiteral { .. }
+            | IrExpr::BooleanNegation { .. }
+            | IrExpr::Equals { .. }
+            | IrExpr::NotEquals { .. }
+            | IrExpr::LessThan { .. }
+            | IrExpr::GreaterThan { .. }
+            | IrExpr::LessThanOrEqual { .. }
+            | IrExpr::GreaterThanOrEqual { .. }
+            | IrExpr::BooleanLogicalAnd { .. }
+            | IrExpr::BooleanLogicalOr { .. } => &BOOL_TYPE,
+        }
+    }
+
+    /// Pretty-print this expression
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        match self {
+            IrExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
+            IrExpr::FieldAccess { record, field, .. } => record
+                .to_doc()
+                .append(BoxDoc::text("."))
+                .append(BoxDoc::text(field.as_str())),
+            IrExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
+            IrExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            IrExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            IrExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            IrExpr::ArrayLiteral { elements, .. } => {
+                if elements.is_empty() {
+                    BoxDoc::text("[]")
+                } else {
+                    BoxDoc::text("[")
+                        .append(
+                            BoxDoc::line_()
+                                .append(BoxDoc::intersperse(
+                                    elements.iter().map(|e| e.to_doc()),
+                                    BoxDoc::text(",").append(BoxDoc::line()),
+                                ))
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                .append(BoxDoc::line_())
+                                .nest(2)
+                                .group(),
+                        )
+                        .append(BoxDoc::text("]"))
+                }
+            }
+            IrExpr::RecordInstantiation {
+                record_name,
+                fields,
+                ..
+            } => {
+                if fields.is_empty() {
+                    BoxDoc::text(record_name.as_str()).append(BoxDoc::text("()"))
+                } else {
+                    BoxDoc::text(record_name.as_str())
+                        .append(BoxDoc::text("("))
+                        .append(
+                            BoxDoc::line_()
+                                .append(BoxDoc::intersperse(
+                                    fields.iter().map(|(key, value)| {
+                                        BoxDoc::text(key.as_str())
+                                            .append(BoxDoc::text(": "))
+                                            .append(value.to_doc())
+                                    }),
+                                    BoxDoc::text(",").append(BoxDoc::line()),
+                                ))
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                .append(BoxDoc::line_())
+                                .nest(2)
+                                .group(),
+                        )
+                        .append(BoxDoc::text(")"))
+                }
+            }
+            IrExpr::JsonEncode { value, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("JsonEncode("))
+                .append(value.to_doc())
+                .append(BoxDoc::text(")")),
+            IrExpr::EnvLookup { key, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("EnvLookup("))
+                .append(key.to_doc())
+                .append(BoxDoc::text(")")),
+            IrExpr::StringConcat { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(left.to_doc())
+                .append(BoxDoc::text(" + "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
+            IrExpr::NumericAdd { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(left.to_doc())
+                .append(BoxDoc::text(" + "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
+            IrExpr::NumericSubtract { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(left.to_doc())
+                .append(BoxDoc::text(" - "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
+            IrExpr::NumericMultiply { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(left.to_doc())
+                .append(BoxDoc::text(" * "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
+            IrExpr::BooleanNegation { operand, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(BoxDoc::text("!"))
+                .append(operand.to_doc())
+                .append(BoxDoc::text(")")),
+            IrExpr::Equals { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(left.to_doc())
+                .append(BoxDoc::text(" == "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
+            IrExpr::NotEquals { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(left.to_doc())
+                .append(BoxDoc::text(" != "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
+            IrExpr::LessThan { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(left.to_doc())
+                .append(BoxDoc::text(" < "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
+            IrExpr::GreaterThan { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(left.to_doc())
+                .append(BoxDoc::text(" > "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
+            IrExpr::LessThanOrEqual { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(left.to_doc())
+                .append(BoxDoc::text(" <= "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
+            IrExpr::GreaterThanOrEqual { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(left.to_doc())
+                .append(BoxDoc::text(" >= "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
+            IrExpr::BooleanLogicalAnd { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(left.to_doc())
+                .append(BoxDoc::text(" && "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
+            IrExpr::BooleanLogicalOr { left, right, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(left.to_doc())
+                .append(BoxDoc::text(" || "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
+            IrExpr::EnumInstantiation {
+                enum_name,
+                variant_name,
+                ..
+            } => BoxDoc::text(enum_name.as_str())
+                .append(BoxDoc::text("::"))
+                .append(BoxDoc::text(variant_name.as_str())),
+            IrExpr::Match { subject, arms, .. } => {
+                if arms.is_empty() {
+                    BoxDoc::text("match ")
+                        .append(subject.to_doc())
+                        .append(BoxDoc::text(" {}"))
+                } else {
+                    BoxDoc::text("match ")
+                        .append(subject.to_doc())
+                        .append(BoxDoc::text(" {"))
+                        .append(
+                            BoxDoc::line_()
+                                .append(BoxDoc::intersperse(
+                                    arms.iter().map(|arm| {
+                                        BoxDoc::text(arm.pattern.enum_name.as_str())
+                                            .append(BoxDoc::text("::"))
+                                            .append(BoxDoc::text(arm.pattern.variant_name.as_str()))
+                                            .append(BoxDoc::text(" => "))
+                                            .append(arm.body.to_doc())
+                                    }),
+                                    BoxDoc::text(",").append(BoxDoc::line()),
+                                ))
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                .append(BoxDoc::line_())
+                                .nest(2)
+                                .group(),
+                        )
+                        .append(BoxDoc::text("}"))
+                }
+            }
+        }
     }
 
     /// Recursively traverses this expression and all nested expressions
@@ -353,8 +784,8 @@ impl IrExpr {
     {
         f(self);
         match self {
-            IrExpr::FieldAccess { record: object, .. } => {
-                object.traverse(f);
+            IrExpr::FieldAccess { record, .. } => {
+                record.traverse(f);
             }
             IrExpr::ArrayLiteral { elements, .. } => {
                 for elem in elements {
@@ -390,13 +821,18 @@ impl IrExpr {
                 left.traverse(f);
                 right.traverse(f);
             }
+            IrExpr::Match { subject, arms, .. } => {
+                subject.traverse(f);
+                for arm in arms {
+                    arm.body.traverse(f);
+                }
+            }
             IrExpr::Var { .. }
             | IrExpr::StringLiteral { .. }
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
             | IrExpr::IntLiteral { .. }
             | IrExpr::EnumInstantiation { .. } => {}
-            IrExpr::Match { .. } => todo!("Match expression traversal not yet implemented"),
         }
     }
 
@@ -407,8 +843,8 @@ impl IrExpr {
     {
         f(self);
         match self {
-            IrExpr::FieldAccess { record: object, .. } => {
-                object.traverse_mut(f);
+            IrExpr::FieldAccess { record, .. } => {
+                record.traverse_mut(f);
             }
             IrExpr::ArrayLiteral { elements, .. } => {
                 for elem in elements {
@@ -444,7 +880,18 @@ impl IrExpr {
                 left.traverse_mut(f);
                 right.traverse_mut(f);
             }
-            _ => {}
+            IrExpr::Match { subject, arms, .. } => {
+                subject.traverse_mut(f);
+                for arm in arms {
+                    arm.body.traverse_mut(f);
+                }
+            }
+            IrExpr::Var { .. }
+            | IrExpr::StringLiteral { .. }
+            | IrExpr::BooleanLiteral { .. }
+            | IrExpr::FloatLiteral { .. }
+            | IrExpr::IntLiteral { .. }
+            | IrExpr::EnumInstantiation { .. } => {}
         }
     }
 }
@@ -489,6 +936,12 @@ impl<'a> IrEntrypoint {
 }
 
 impl fmt::Display for IrStatement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_doc().pretty(60))
+    }
+}
+
+impl fmt::Display for IrExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(60))
     }

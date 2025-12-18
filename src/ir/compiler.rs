@@ -1,7 +1,7 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::StringSpan;
 use crate::dop::r#type::EquatableType;
-use crate::dop::{Expr, SimpleExpr};
+use crate::dop::SimpleExpr;
 use crate::dop::{Type, VarName};
 use crate::hop::component_name::ComponentName;
 use crate::hop::inlined_ast::{
@@ -46,22 +46,22 @@ impl Compiler {
         let prod_body = compiler.compile_nodes(children, None);
 
         // Create condition: EnvLookup("HOP_DEV_MODE") == "enabled"
-        let env_lookup_expr = Expr::EnvLookup {
-            key: Box::new(Expr::StringLiteral {
+        let env_lookup_expr = IrExpr::EnvLookup {
+            key: Box::new(IrExpr::StringLiteral {
                 value: "HOP_DEV_MODE".to_string(),
-                annotation: compiler.next_expr_id(),
+                id: compiler.next_expr_id(),
             }),
-            annotation: compiler.next_expr_id(),
+            id: compiler.next_expr_id(),
         };
 
-        let condition_expr = Expr::Equals {
+        let condition_expr = IrExpr::Equals {
             left: Box::new(env_lookup_expr),
-            right: Box::new(Expr::StringLiteral {
+            right: Box::new(IrExpr::StringLiteral {
                 value: "enabled".to_string(),
-                annotation: compiler.next_expr_id(),
+                id: compiler.next_expr_id(),
             }),
             operand_types: EquatableType::String,
-            annotation: compiler.next_expr_id(),
+            id: compiler.next_expr_id(),
         };
 
         // Wrap both bodies in an If statement
@@ -125,13 +125,13 @@ impl Compiler {
             // Write the JSON-encoded value
             body.push(IrStatement::WriteExpr {
                 id: self.next_node_id(),
-                expr: Expr::JsonEncode {
-                    value: Box::new(Expr::Var {
+                expr: IrExpr::JsonEncode {
+                    value: Box::new(IrExpr::Var {
                         value: name.clone(),
                         kind: typ.clone(),
-                        annotation: self.next_expr_id(),
+                        id: self.next_expr_id(),
                     }),
-                    annotation: self.next_expr_id(),
+                    id: self.next_expr_id(),
                 },
                 escape: false,
             });
@@ -150,12 +150,12 @@ impl Compiler {
         // Insert the port from HOP_DEV_PORT environment variable
         body.push(IrStatement::WriteExpr {
             id: self.next_node_id(),
-            expr: Expr::EnvLookup {
-                key: Box::new(Expr::StringLiteral {
+            expr: IrExpr::EnvLookup {
+                key: Box::new(IrExpr::StringLiteral {
                     value: "HOP_DEV_PORT".to_string(),
-                    annotation: self.next_expr_id(),
+                    id: self.next_expr_id(),
                 }),
-                annotation: self.next_expr_id(),
+                id: self.next_expr_id(),
             },
             escape: false,
         });
@@ -370,7 +370,7 @@ impl Compiler {
             SimpleExpr::Var { value, kind, .. } => IrExpr::Var {
                 value,
                 kind,
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::FieldAccess {
                 record: object,
@@ -381,16 +381,16 @@ impl Compiler {
                 record: Box::new(self.compile_expr(*object)),
                 field,
                 kind,
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::BooleanNegation { operand, .. } => IrExpr::BooleanNegation {
                 operand: Box::new(self.compile_expr(*operand)),
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::ArrayLiteral { elements, kind, .. } => IrExpr::ArrayLiteral {
                 elements: elements.into_iter().map(|e| self.compile_expr(e)).collect(),
                 kind,
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::RecordInstantiation {
                 record_name,
@@ -404,36 +404,36 @@ impl Compiler {
                     .map(|(k, v)| (k, self.compile_expr(v)))
                     .collect(),
                 kind,
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::StringLiteral { value, .. } => IrExpr::StringLiteral {
                 value,
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::BooleanLiteral { value, .. } => IrExpr::BooleanLiteral {
                 value,
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::FloatLiteral { value, .. } => IrExpr::FloatLiteral {
                 value,
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::IntLiteral { value, .. } => IrExpr::IntLiteral {
                 value,
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::JsonEncode { value, .. } => IrExpr::JsonEncode {
                 value: Box::new(self.compile_expr(*value)),
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::EnvLookup { key, .. } => IrExpr::EnvLookup {
                 key: Box::new(self.compile_expr(*key)),
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::StringConcat { left, right, .. } => IrExpr::StringConcat {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::Equals {
                 left,
@@ -444,7 +444,7 @@ impl Compiler {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::NotEquals {
                 left,
@@ -455,7 +455,7 @@ impl Compiler {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::LessThan {
                 left,
@@ -466,7 +466,7 @@ impl Compiler {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::GreaterThan {
                 left,
@@ -477,7 +477,7 @@ impl Compiler {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::LessThanOrEqual {
                 left,
@@ -488,7 +488,7 @@ impl Compiler {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::GreaterThanOrEqual {
                 left,
@@ -499,17 +499,17 @@ impl Compiler {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::BooleanLogicalAnd { left, right, .. } => IrExpr::BooleanLogicalAnd {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::BooleanLogicalOr { left, right, .. } => IrExpr::BooleanLogicalOr {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::NumericAdd {
                 left,
@@ -520,7 +520,7 @@ impl Compiler {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::NumericSubtract {
                 left,
@@ -531,7 +531,7 @@ impl Compiler {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::NumericMultiply {
                 left,
@@ -542,7 +542,7 @@ impl Compiler {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 operand_types,
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::EnumInstantiation {
                 enum_name,
@@ -553,7 +553,7 @@ impl Compiler {
                 enum_name,
                 variant_name,
                 kind,
-                annotation: expr_id,
+                id: expr_id,
             },
             SimpleExpr::Match { .. } => todo!("Match expression compilation not yet implemented"),
         }
