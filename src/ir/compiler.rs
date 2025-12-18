@@ -555,6 +555,7 @@ impl Compiler {
                 kind,
                 annotation: expr_id,
             },
+            Expr::Match { .. } => todo!("Match expression compilation not yet implemented"),
         }
     }
 }

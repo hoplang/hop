@@ -11,6 +11,22 @@ use super::{
 
 pub type SimpleExpr = Expr<()>;
 
+/// A single arm in a match expression, e.g. `Color::Red => "red"`
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchArm<A> {
+    /// The enum variant being matched (e.g., `Color::Red`)
+    pub pattern: EnumPattern,
+    /// The expression to evaluate if this arm matches
+    pub body: Expr<A>,
+}
+
+/// A pattern that matches an enum variant
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumPattern {
+    pub enum_name: String,
+    pub variant_name: String,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr<A> {
     /// A variable expression, e.g. foo
@@ -59,6 +75,14 @@ pub enum Expr<A> {
     EnumInstantiation {
         enum_name: String,
         variant_name: String,
+        kind: Type,
+        annotation: A,
+    },
+
+    /// A match expression, e.g. match color { Color::Red => "red", Color::Blue => "blue" }
+    Match {
+        subject: Box<Self>,
+        arms: Vec<MatchArm<A>>,
         kind: Type,
         annotation: A,
     },
@@ -178,7 +202,8 @@ impl<A> Expr<A> {
             | Expr::FieldAccess { kind, .. }
             | Expr::ArrayLiteral { kind, .. }
             | Expr::RecordInstantiation { kind, .. }
-            | Expr::EnumInstantiation { kind, .. } => kind,
+            | Expr::EnumInstantiation { kind, .. }
+            | Expr::Match { kind, .. } => kind,
 
             Expr::FloatLiteral { .. } => &FLOAT_TYPE,
             Expr::IntLiteral { .. } => &INT_TYPE,
@@ -219,6 +244,7 @@ impl<A> Expr<A> {
             | Expr::ArrayLiteral { annotation, .. }
             | Expr::RecordInstantiation { annotation, .. }
             | Expr::EnumInstantiation { annotation, .. }
+            | Expr::Match { annotation, .. }
             | Expr::JsonEncode { annotation, .. }
             | Expr::EnvLookup { annotation, .. }
             | Expr::StringConcat { annotation, .. }
@@ -391,6 +417,35 @@ impl<A> Expr<A> {
             } => BoxDoc::text(enum_name.as_str())
                 .append(BoxDoc::text("::"))
                 .append(BoxDoc::text(variant_name.as_str())),
+            Expr::Match { subject, arms, .. } => {
+                if arms.is_empty() {
+                    BoxDoc::text("match ")
+                        .append(subject.to_doc())
+                        .append(BoxDoc::text(" {}"))
+                } else {
+                    BoxDoc::text("match ")
+                        .append(subject.to_doc())
+                        .append(BoxDoc::text(" {"))
+                        .append(
+                            BoxDoc::line_()
+                                .append(BoxDoc::intersperse(
+                                    arms.iter().map(|arm| {
+                                        BoxDoc::text(arm.pattern.enum_name.as_str())
+                                            .append(BoxDoc::text("::"))
+                                            .append(BoxDoc::text(arm.pattern.variant_name.as_str()))
+                                            .append(BoxDoc::text(" => "))
+                                            .append(arm.body.to_doc())
+                                    }),
+                                    BoxDoc::text(",").append(BoxDoc::line()),
+                                ))
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                .append(BoxDoc::line_())
+                                .nest(2)
+                                .group(),
+                        )
+                        .append(BoxDoc::text("}"))
+                }
+            }
         }
     }
 }

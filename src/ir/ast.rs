@@ -396,6 +396,7 @@ impl IrExpr {
             | Expr::FloatLiteral { .. }
             | Expr::IntLiteral { .. }
             | Expr::EnumInstantiation { .. } => {}
+            Expr::Match { .. } => todo!("Match expression traversal not yet implemented"),
         }
     }
 

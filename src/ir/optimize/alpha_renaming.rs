@@ -310,6 +310,7 @@ impl AlphaRenamingPass {
                 operand_types,
                 annotation,
             },
+            Expr::Match { .. } => todo!("Match expression alpha renaming not yet implemented"),
         }
     }
 

@@ -14,10 +14,7 @@ pub enum EquatableType {
     Bool,
     Int,
     Float,
-    Enum {
-        module: ModuleName,
-        name: TypeName,
-    },
+    Enum { module: ModuleName, name: TypeName },
 }
 
 /// A ComparableType is a type where its values can be ordered

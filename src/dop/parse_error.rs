@@ -113,6 +113,9 @@ pub enum ParseError {
 
     #[error("Expected declaration (import, record, or enum)")]
     ExpectedDeclaration { range: DocumentRange },
+
+    #[error("Match expression must have at least one arm")]
+    MatchNoArms { range: DocumentRange },
 }
 
 impl Ranged for ParseError {
@@ -142,7 +145,8 @@ impl Ranged for ParseError {
             | ParseError::ExpectedIdentifierAfterColonColon { range }
             | ParseError::ExpectedModulePath { range }
             | ParseError::ImportPathTooShort { range }
-            | ParseError::ExpectedDeclaration { range } => range,
+            | ParseError::ExpectedDeclaration { range }
+            | ParseError::MatchNoArms { range } => range,
         }
     }
 }

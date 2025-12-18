@@ -501,6 +501,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             // Enum variants evaluate to their string name
             Ok(Value::String(variant_name.clone()))
         }
+        IrExpr::Match { .. } => todo!("Match expression evaluation not yet implemented"),
     }
 }
 

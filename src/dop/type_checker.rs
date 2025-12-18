@@ -1,6 +1,9 @@
+use std::collections::HashSet;
+
 use super::Type;
 #[cfg(test)]
 use super::declaration::Declaration;
+use super::expr::{EnumPattern, MatchArm};
 use super::syntactic_expr::{BinaryOp, SyntacticExpr};
 use super::syntactic_type::SyntacticType;
 use super::r#type::NumericType;
@@ -746,8 +749,128 @@ pub fn typecheck_expr(
                 annotation: (),
             })
         }
-        SyntacticExpr::Match { .. } => {
-            todo!("Match expression type checking not yet implemented")
+        SyntacticExpr::Match {
+            subject,
+            arms,
+            annotation: range,
+        } => {
+            // Type check the subject expression
+            let typed_subject = typecheck_expr(subject, env, type_env, annotations, None)?;
+            let subject_type = typed_subject.as_type().clone();
+
+            // Subject must be an enum type
+            let (_enum_module, enum_name, enum_variants) = match &subject_type {
+                Type::Enum {
+                    module,
+                    name,
+                    variants,
+                } => (module.clone(), name.clone(), variants.clone()),
+                _ => {
+                    return Err(TypeError::MatchSubjectNotEnum {
+                        found: subject_type.to_string(),
+                        range: subject.range().clone(),
+                    });
+                }
+            };
+
+            // Track which variants have been matched
+            let mut matched_variants: HashSet<String> = HashSet::new();
+            let mut typed_arms: Vec<MatchArm<()>> = Vec::new();
+            let mut result_type: Option<Type> = None;
+
+            for arm in arms {
+                // Pattern must be an enum instantiation
+                let (pattern_enum_name, pattern_variant_name, pattern_range) = match &arm.pattern {
+                    SyntacticExpr::EnumInstantiation {
+                        enum_name,
+                        variant_name,
+                        annotation,
+                    } => (enum_name.clone(), variant_name.clone(), annotation.clone()),
+                    _ => {
+                        return Err(TypeError::MatchPatternNotEnumVariant {
+                            range: arm.pattern.range().clone(),
+                        });
+                    }
+                };
+
+                // Pattern enum must match subject enum
+                if pattern_enum_name != enum_name.as_str() {
+                    return Err(TypeError::MatchPatternEnumMismatch {
+                        pattern_enum: pattern_enum_name.clone(),
+                        subject_enum: enum_name.to_string(),
+                        range: pattern_range.clone(),
+                    });
+                }
+
+                // Variant must exist in the enum
+                let variant_exists = enum_variants
+                    .iter()
+                    .any(|v| v.as_str() == pattern_variant_name);
+                if !variant_exists {
+                    return Err(TypeError::UndefinedEnumVariant {
+                        enum_name: pattern_enum_name.clone(),
+                        variant_name: pattern_variant_name.clone(),
+                        range: pattern_range.clone(),
+                    });
+                }
+
+                // Check for duplicate variants
+                if matched_variants.contains(&pattern_variant_name) {
+                    return Err(TypeError::MatchDuplicateVariant {
+                        variant: pattern_variant_name.clone(),
+                        range: pattern_range.clone(),
+                    });
+                }
+                matched_variants.insert(pattern_variant_name.clone());
+
+                // Type check the arm body
+                let typed_body = typecheck_expr(&arm.body, env, type_env, annotations, None)?;
+                let body_type = typed_body.as_type().clone();
+
+                // Check that all arms have the same type
+                match &result_type {
+                    None => {
+                        result_type = Some(body_type);
+                    }
+                    Some(expected) => {
+                        if !body_type.is_subtype(expected) {
+                            return Err(TypeError::MatchArmTypeMismatch {
+                                expected: expected.to_string(),
+                                found: body_type.to_string(),
+                                range: arm.body.range().clone(),
+                            });
+                        }
+                    }
+                }
+
+                typed_arms.push(MatchArm {
+                    pattern: EnumPattern {
+                        enum_name: pattern_enum_name,
+                        variant_name: pattern_variant_name,
+                    },
+                    body: typed_body,
+                });
+            }
+
+            // Check exhaustiveness: all variants must be matched
+            for variant in &enum_variants {
+                if !matched_variants.contains(variant.as_str()) {
+                    return Err(TypeError::MatchMissingVariant {
+                        variant: variant.to_string(),
+                        range: range.clone(),
+                    });
+                }
+            }
+
+            Ok(Expr::Match {
+                subject: Box::new(typed_subject),
+                arms: typed_arms,
+                kind: result_type.unwrap_or_else(|| {
+                    // This should never happen because we check for empty arms above
+                    Type::Bool
+                }),
+                annotation: (),
+            })
         }
     }
 }
@@ -2109,6 +2232,287 @@ mod tests {
                 Color::Red == Shade::Red
                 ^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
+        );
+    }
+
+    // Match expression tests
+
+    #[test]
+    fn should_accept_match_expression_with_all_variants() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    Color::Red => "red",
+                    Color::Green => "green",
+                    Color::Blue => "blue",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_expression_returning_int() {
+        check(
+            indoc! {"
+                enum Size {
+                    Small,
+                    Medium,
+                    Large,
+                }
+            "},
+            &[("size", "Size")],
+            indoc! {"
+                match size {
+                    Size::Small => 1,
+                    Size::Medium => 2,
+                    Size::Large => 3,
+                }
+            "},
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_expression_returning_bool() {
+        check(
+            indoc! {"
+                enum Status {
+                    Active,
+                    Inactive,
+                }
+            "},
+            &[("status", "Status")],
+            indoc! {"
+                match status {
+                    Status::Active => true,
+                    Status::Inactive => false,
+                }
+            "},
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_on_non_enum() {
+        check(
+            "",
+            &[("name", "String")],
+            indoc! {r#"
+                match name {
+                    Color::Red => "red",
+                }
+            "#},
+            expect![[r#"
+                error: Match subject must be an enum type, found String
+                match name {
+                      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_with_mismatched_arm_types() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    Color::Red => "red",
+                    Color::Green => 42,
+                }
+            "#},
+            expect![[r#"
+                error: Match arms must all have the same type, expected String but found Int
+                    Color::Green => 42,
+                                    ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_with_missing_variant() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    Color::Red => "red",
+                    Color::Green => "green",
+                }
+            "#},
+            expect![[r#"
+                error: Match expression is missing arm for variant 'Blue'
+                match color {
+                ^^^^^^^^^^^^^
+                    Color::Red => "red",
+                ^^^^^^^^^^^^^^^^^^^^^^^^
+                    Color::Green => "green",
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_with_duplicate_variant() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    Color::Red => "red",
+                    Color::Red => "also red",
+                    Color::Green => "green",
+                }
+            "#},
+            expect![[r#"
+                error: Duplicate match arm for variant 'Red'
+                    Color::Red => "also red",
+                    ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_with_wrong_enum_in_pattern() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                }
+                enum Size {
+                    Small,
+                    Large,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    Color::Red => "red",
+                    Size::Small => "small",
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern enum 'Size' does not match subject enum 'Color'
+                    Size::Small => "small",
+                    ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_with_undefined_variant_in_pattern() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    Color::Red => "red",
+                    Color::Yellow => "yellow",
+                }
+            "#},
+            expect![[r#"
+                error: Variant 'Yellow' is not defined in enum 'Color'
+                    Color::Yellow => "yellow",
+                    ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_with_field_access_subject() {
+        check(
+            indoc! {"
+                enum Status {
+                    Active,
+                    Inactive,
+                }
+                record User {
+                    status: Status,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user.status {
+                    Status::Active => "active",
+                    Status::Inactive => "inactive",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_with_complex_arm_bodies() {
+        check(
+            indoc! {"
+                enum Status {
+                    Active,
+                    Inactive,
+                }
+                record User {
+                    name: String,
+                    status: Status,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {"
+                match user.status {
+                    Status::Active => user.name,
+                    Status::Inactive => user.name,
+                }
+            "},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_with_single_variant_enum() {
+        check(
+            indoc! {"
+                enum Unit {
+                    Value,
+                }
+            "},
+            &[("unit", "Unit")],
+            indoc! {r#"
+                match unit {
+                    Unit::Value => "value",
+                }
+            "#},
+            expect!["String"],
         );
     }
 }

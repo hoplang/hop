@@ -224,6 +224,23 @@ fn typecheck_module(
         }
     }
 
+    // Register enum types in the type environment first,
+    // so records can reference enums in their field types
+    for enum_decl in module.get_enums() {
+        let enum_name = enum_decl.name();
+        let enum_type = Type::Enum {
+            module: module.name.clone(),
+            name: TypeName::new(enum_name).unwrap(),
+            variants: enum_decl
+                .declaration
+                .variants
+                .iter()
+                .map(|v| v.name.clone())
+                .collect(),
+        };
+        let _ = records_env.push(enum_name.to_string(), enum_type);
+    }
+
     // Validate record field types and build typed records
     let mut typed_records: Vec<TypedRecord> = Vec::new();
     for record in module.get_records() {
@@ -271,22 +288,6 @@ fn typecheck_module(
             };
             let _ = records_env.push(record_name.to_string(), record_type);
         }
-    }
-
-    // Register enum types in the type environment
-    for enum_decl in module.get_enums() {
-        let enum_name = enum_decl.name();
-        let enum_type = Type::Enum {
-            module: module.name.clone(),
-            name: TypeName::new(enum_name).unwrap(),
-            variants: enum_decl
-                .declaration
-                .variants
-                .iter()
-                .map(|v| v.name.clone())
-                .collect(),
-        };
-        let _ = records_env.push(enum_name.to_string(), enum_type);
     }
 
     let mut env = Environment::new();
@@ -2678,6 +2679,272 @@ mod tests {
                 3 | <Main {a: Color, b: Color}>
                 4 |     <if {a == b}>
                   |               ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_expression_in_text_interpolation() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+
+                <Main {color: Color}>
+                    <div>{match color {
+                        Color::Red => "red",
+                        Color::Green => "green",
+                        Color::Blue => "blue",
+                    }}</div>
+                </Main>
+            "#},
+            expect![[r#"
+                color: main::Color
+                  --> main.hop (line 7, col 8)
+                 6 | 
+                 7 | <Main {color: Color}>
+                   |        ^^^^^
+
+                color: main::Color
+                  --> main.hop (line 8, col 17)
+                 7 | <Main {color: Color}>
+                 8 |     <div>{match color {
+                   |                 ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_expression_with_non_enum_subject() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {name: String}>
+                    <div>{match name {Color::Red => "red"}}</div>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Match subject must be an enum type, found String
+                  --> main.hop (line 2, col 17)
+                1 | <Main {name: String}>
+                2 |     <div>{match name {Color::Red => "red"}}</div>
+                  |                 ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_expression_with_mismatched_arm_types() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Color {
+                    Red,
+                    Green,
+                }
+
+                <Main {color: Color}>
+                    <div>{match color {
+                        Color::Red => "red",
+                        Color::Green => 42,
+                    }}</div>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Match arms must all have the same type, expected String but found Int
+                  --> main.hop (line 9, col 25)
+                 8 |         Color::Red => "red",
+                 9 |         Color::Green => 42,
+                   |                         ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_expression_with_missing_variant() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+
+                <Main {color: Color}>
+                    <div>{match color {
+                        Color::Red => "red",
+                        Color::Green => "green",
+                    }}</div>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Match expression is missing arm for variant 'Blue'
+                  --> main.hop (line 8, col 11)
+                 7 | <Main {color: Color}>
+                 8 |     <div>{match color {
+                   |           ^^^^^^^^^^^^^
+                 9 |         Color::Red => "red",
+                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                10 |         Color::Green => "green",
+                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                11 |     }}</div>
+                   | ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_expression_with_wrong_enum_pattern() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Color {
+                    Red,
+                    Green,
+                }
+
+                enum Size {
+                    Small,
+                    Large,
+                }
+
+                <Main {color: Color}>
+                    <div>{match color {
+                        Color::Red => "red",
+                        Size::Small => "small",
+                    }}</div>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Match pattern enum 'Size' does not match subject enum 'Color'
+                  --> main.hop (line 14, col 9)
+                13 |         Color::Red => "red",
+                14 |         Size::Small => "small",
+                   |         ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_expression_with_enum_variant_instantiation() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+
+                <Main {color: Color}>
+                    <if {color == Color::Red}>
+                        <div>{match color {
+                            Color::Red => "red",
+                            Color::Green => "green",
+                            Color::Blue => "blue",
+                        }}</div>
+                    </if>
+                </Main>
+            "#},
+            expect![[r#"
+                color: main::Color
+                  --> main.hop (line 7, col 8)
+                 6 | 
+                 7 | <Main {color: Color}>
+                   |        ^^^^^
+
+                color: main::Color
+                  --> main.hop (line 9, col 21)
+                 8 |     <if {color == Color::Red}>
+                 9 |         <div>{match color {
+                   |                     ^^^^^
+
+                color: main::Color
+                  --> main.hop (line 8, col 10)
+                 7 | <Main {color: Color}>
+                 8 |     <if {color == Color::Red}>
+                   |          ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_as_record_field_type() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Status {
+                    Active,
+                    Inactive,
+                }
+
+                record User {
+                    name: String,
+                    status: Status,
+                }
+
+                <Main {user: User}>
+                    <div>{match user.status {
+                        Status::Active => "active",
+                        Status::Inactive => "inactive",
+                    }}</div>
+                </Main>
+            "#},
+            expect![[r#"
+                user: main::User
+                  --> main.hop (line 11, col 8)
+                10 | 
+                11 | <Main {user: User}>
+                   |        ^^^^
+
+                user: main::User
+                  --> main.hop (line 12, col 17)
+                11 | <Main {user: User}>
+                12 |     <div>{match user.status {
+                   |                 ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_field_in_conditional() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Role {
+                    Admin,
+                    User,
+                    Guest,
+                }
+
+                record Person {
+                    name: String,
+                    role: Role,
+                }
+
+                <Main {person: Person}>
+                    <if {person.role == Role::Admin}>
+                        <div>Welcome, admin!</div>
+                    </if>
+                </Main>
+            "#},
+            expect![[r#"
+                person: main::Person
+                  --> main.hop (line 12, col 8)
+                11 | 
+                12 | <Main {person: Person}>
+                   |        ^^^^^^
+
+                person: main::Person
+                  --> main.hop (line 13, col 10)
+                12 | <Main {person: Person}>
+                13 |     <if {person.role == Role::Admin}>
+                   |          ^^^^^^
             "#]],
         );
     }

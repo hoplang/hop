@@ -114,6 +114,38 @@ pub enum TypeError {
         variant_name: String,
         range: DocumentRange,
     },
+
+    #[error("Match subject must be an enum type, found {found}")]
+    MatchSubjectNotEnum { found: String, range: DocumentRange },
+
+    #[error("Match pattern must be an enum variant")]
+    MatchPatternNotEnumVariant { range: DocumentRange },
+
+    #[error("Match pattern enum '{pattern_enum}' does not match subject enum '{subject_enum}'")]
+    MatchPatternEnumMismatch {
+        pattern_enum: String,
+        subject_enum: String,
+        range: DocumentRange,
+    },
+
+    #[error("Match arms must all have the same type, expected {expected} but found {found}")]
+    MatchArmTypeMismatch {
+        expected: String,
+        found: String,
+        range: DocumentRange,
+    },
+
+    #[error("Match expression is missing arm for variant '{variant}'")]
+    MatchMissingVariant {
+        variant: String,
+        range: DocumentRange,
+    },
+
+    #[error("Duplicate match arm for variant '{variant}'")]
+    MatchDuplicateVariant {
+        variant: String,
+        range: DocumentRange,
+    },
 }
 
 impl Ranged for TypeError {
@@ -138,7 +170,13 @@ impl Ranged for TypeError {
             | TypeError::RecordInstantiationUnknownRecordField { range, .. }
             | TypeError::RecordInstantiationFieldTypeMismatch { range, .. }
             | TypeError::UndefinedEnum { range, .. }
-            | TypeError::UndefinedEnumVariant { range, .. } => range,
+            | TypeError::UndefinedEnumVariant { range, .. }
+            | TypeError::MatchSubjectNotEnum { range, .. }
+            | TypeError::MatchPatternNotEnumVariant { range, .. }
+            | TypeError::MatchPatternEnumMismatch { range, .. }
+            | TypeError::MatchArmTypeMismatch { range, .. }
+            | TypeError::MatchMissingVariant { range, .. }
+            | TypeError::MatchDuplicateVariant { range, .. } => range,
         }
     }
 }
