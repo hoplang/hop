@@ -172,7 +172,7 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
     let output_path = project_root.write_output(&generated_code).await?;
 
     let entry_points: Vec<String> = ir_module
-        .entrypoints
+        .components
         .iter()
         .map(|entrypoint| entrypoint.name.as_str().to_string())
         .collect();

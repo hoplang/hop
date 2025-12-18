@@ -3,7 +3,8 @@ use crate::dop::Type;
 use crate::dop::TypedExpr;
 use crate::dop::VarName;
 use crate::hop::inlined_ast::{
-    InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode, InlinedParameter,
+    InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
+    InlinedParameter,
 };
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
@@ -13,7 +14,7 @@ pub fn build_inlined_auto<F>(
     tag_name: &str,
     params: Vec<(&str, Type)>,
     children_fn: F,
-) -> InlinedEntrypoint
+) -> InlinedComponentDeclaration
 where
     F: FnOnce(&mut InlinedAutoBuilder),
 {
@@ -49,8 +50,12 @@ impl InlinedTestBuilder {
         }
     }
 
-    fn build(&self, component_name: &str, children: Vec<InlinedNode>) -> InlinedEntrypoint {
-        InlinedEntrypoint {
+    fn build(
+        &self,
+        component_name: &str,
+        children: Vec<InlinedNode>,
+    ) -> InlinedComponentDeclaration {
+        InlinedComponentDeclaration {
             module_name: ModuleName::new("test").unwrap(),
             component_name: ComponentName::new(component_name.to_string()).unwrap(),
             params: self.params.clone(),
@@ -275,7 +280,7 @@ impl InlinedAutoBuilder {
         }
     }
 
-    fn build(self, tag_name: &str) -> InlinedEntrypoint {
+    fn build(self, tag_name: &str) -> InlinedComponentDeclaration {
         self.inner.build(tag_name, self.children)
     }
 

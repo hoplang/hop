@@ -6,7 +6,7 @@ use crate::dop::symbols::field_name::FieldName;
 #[cfg(test)]
 use crate::dop::symbols::type_name::TypeName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
+use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrModule, IrStatement};
 
 #[derive(Debug, Clone, Copy)]
 pub enum LanguageMode {
@@ -28,7 +28,7 @@ impl JsTranspiler {
         }
     }
 
-    fn scan_for_escape_html(&self, entrypoint: &IrEntrypoint) -> bool {
+    fn scan_for_escape_html(&self, entrypoint: &IrComponentDeclaration) -> bool {
         let mut needs_escape = false;
         for stmt in &entrypoint.body {
             stmt.traverse(&mut |s| {
@@ -43,7 +43,7 @@ impl JsTranspiler {
         needs_escape
     }
 
-    fn scan_for_trusted_html(&self, entrypoints: &[IrEntrypoint]) -> bool {
+    fn scan_for_trusted_html(&self, entrypoints: &[IrComponentDeclaration]) -> bool {
         for entrypoint in entrypoints {
             for (_, param_type) in &entrypoint.parameters {
                 if Self::type_contains_trusted_html(param_type) {
@@ -91,7 +91,7 @@ impl JsTranspiler {
 
 impl Transpiler for JsTranspiler {
     fn transpile_module(&self, module: &IrModule) -> String {
-        let entrypoints = &module.entrypoints;
+        let entrypoints = &module.components;
         let records = &module.records;
 
         let mut needs_escape_html = false;
@@ -205,7 +205,7 @@ impl Transpiler for JsTranspiler {
     fn transpile_entrypoint<'a>(
         &self,
         name: &'a ComponentName,
-        entrypoint: &'a IrEntrypoint,
+        entrypoint: &'a IrComponentDeclaration,
     ) -> BoxDoc<'a> {
         // Convert PascalCase to camelCase for JavaScript function name
         let camel_case_name = name.to_camel_case();
@@ -709,13 +709,13 @@ mod tests {
     use super::*;
     use crate::{
         hop::symbols::module_name::ModuleName,
-        ir::{IrRecord, test_utils::build_ir_auto},
+        ir::{IrRecordDeclaration, test_utils::build_ir_auto},
     };
     use expect_test::{Expect, expect};
 
-    fn transpile_with_pretty(entrypoints: &[IrEntrypoint], mode: LanguageMode) -> String {
+    fn transpile_with_pretty(entrypoints: &[IrComponentDeclaration], mode: LanguageMode) -> String {
         let module = IrModule {
-            entrypoints: entrypoints.to_vec(),
+            components: entrypoints.to_vec(),
             records: vec![],
             enums: vec![],
         };
@@ -723,7 +723,7 @@ mod tests {
         transpiler.transpile_module(&module)
     }
 
-    fn check(entrypoints: &[IrEntrypoint], expected: Expect) {
+    fn check(entrypoints: &[IrComponentDeclaration], expected: Expect) {
         // Format before (IR)
         let before = entrypoints
             .iter()
@@ -1292,7 +1292,7 @@ mod tests {
         )];
 
         let records = vec![
-            IrRecord {
+            IrRecordDeclaration {
                 name: "User".to_string(),
                 fields: vec![
                     (FieldName::new("name").unwrap(), Type::String),
@@ -1300,7 +1300,7 @@ mod tests {
                     (FieldName::new("active").unwrap(), Type::Bool),
                 ],
             },
-            IrRecord {
+            IrRecordDeclaration {
                 name: "Address".to_string(),
                 fields: vec![
                     (FieldName::new("street").unwrap(), Type::String),
@@ -1310,7 +1310,7 @@ mod tests {
         ];
 
         let module = IrModule {
-            entrypoints,
+            components: entrypoints,
             records,
             enums: vec![],
         };
@@ -1396,7 +1396,7 @@ mod tests {
             },
         )];
 
-        let records = vec![IrRecord {
+        let records = vec![IrRecordDeclaration {
             name: "User".to_string(),
             fields: vec![
                 (FieldName::new("name").unwrap(), Type::String),
@@ -1405,7 +1405,7 @@ mod tests {
         }];
 
         let module = IrModule {
-            entrypoints,
+            components: entrypoints,
             records,
             enums: vec![],
         };

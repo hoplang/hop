@@ -8,11 +8,11 @@ use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use super::ast::{IrEntrypoint, IrStatement};
+use super::ast::{IrComponentDeclaration, IrStatement};
 
 /// Evaluate an IR entrypoint with the given arguments
 pub fn evaluate_entrypoint(
-    entrypoint: &IrEntrypoint,
+    entrypoint: &IrComponentDeclaration,
     args: HashMap<String, Value>,
 ) -> Result<String> {
     let mut env = Environment::new();
@@ -464,7 +464,7 @@ mod tests {
     use expect_test::{Expect, expect};
     use serde_json::json;
 
-    fn check(entrypoint: IrEntrypoint, args: Vec<(&str, Value)>, expected: Expect) {
+    fn check(entrypoint: IrComponentDeclaration, args: Vec<(&str, Value)>, expected: Expect) {
         let before = entrypoint.to_string();
         let args_map: HashMap<String, Value> =
             args.into_iter().map(|(k, v)| (k.to_string(), v)).collect();

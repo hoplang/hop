@@ -7,5 +7,5 @@ pub mod transform;
 pub mod transpile;
 
 pub use syntax::ast;
-pub use syntax::{Compiler, IrEnum, IrExpr, IrModule, IrRecord};
+pub use syntax::{Compiler, IrEnumDeclaration, IrExpr, IrModule, IrRecordDeclaration};
 pub use transpile::{GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler};

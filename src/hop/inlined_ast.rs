@@ -27,7 +27,7 @@ pub struct InlinedAttribute {
 }
 
 #[derive(Debug, Clone)]
-pub struct InlinedEntrypoint {
+pub struct InlinedComponentDeclaration {
     pub module_name: ModuleName,
     pub component_name: ComponentName,
     pub params: Vec<InlinedParameter>,
@@ -102,7 +102,7 @@ impl InlinedAttribute {
     }
 }
 
-impl InlinedEntrypoint {
+impl InlinedComponentDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         BoxDoc::text("<")
             .append(BoxDoc::text(self.component_name.as_str()))
@@ -257,7 +257,7 @@ impl fmt::Display for InlinedAttribute {
     }
 }
 
-impl fmt::Display for InlinedEntrypoint {
+impl fmt::Display for InlinedComponentDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.to_doc().pretty(60))
     }

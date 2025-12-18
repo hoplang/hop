@@ -1,6 +1,6 @@
 use crate::{
     document::document_cursor::StringSpan,
-    hop::inlined_ast::{InlinedEntrypoint, InlinedNode},
+    hop::inlined_ast::{InlinedComponentDeclaration, InlinedNode},
 };
 use std::collections::BTreeMap;
 
@@ -84,7 +84,10 @@ impl TailwindInjector {
             .collect()
     }
 
-    pub fn run(mut entrypoint: InlinedEntrypoint, css_content: Option<&str>) -> InlinedEntrypoint {
+    pub fn run(
+        mut entrypoint: InlinedComponentDeclaration,
+        css_content: Option<&str>,
+    ) -> InlinedComponentDeclaration {
         // Only inject if CSS content is provided
         if let Some(css) = css_content {
             entrypoint.children = Self::inject_css_into_head(entrypoint.children, css);
@@ -100,7 +103,7 @@ mod tests {
     use expect_test::{Expect, expect};
 
     /// Helper to pretty-print entrypoint children for testing
-    fn format_entrypoint_children(entrypoint: &InlinedEntrypoint) -> String {
+    fn format_entrypoint_children(entrypoint: &InlinedComponentDeclaration) -> String {
         entrypoint
             .children
             .iter()
@@ -111,7 +114,7 @@ mod tests {
 
     /// Helper to check Tailwind injection
     fn check_tailwind_injection(
-        entrypoint: InlinedEntrypoint,
+        entrypoint: InlinedComponentDeclaration,
         css: Option<&str>,
         expected: Expect,
     ) {

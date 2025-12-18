@@ -454,7 +454,7 @@ impl Program {
         )?;
 
         // Get the entrypoint (should be the only one)
-        let entrypoint = ir_module.entrypoints.first().ok_or_else(|| {
+        let entrypoint = ir_module.components.first().ok_or_else(|| {
             anyhow::anyhow!(
                 "Entrypoint '{}/{}' not found after compilation",
                 module_name,

@@ -1,10 +1,11 @@
 use crate::document::document_cursor::StringSpan;
+use crate::dop::VarName;
 use crate::dop::{Type, TypedExpr};
 use crate::hop::inlined_ast::{
-    InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode, InlinedParameter,
+    InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
+    InlinedParameter,
 };
 use crate::hop::semantics::typed_ast::{TypedAst, TypedComponentDeclaration};
-use crate::dop::VarName;
 use crate::hop::semantics::typed_node::{TypedAttribute, TypedAttributeValue, TypedNode};
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
@@ -29,7 +30,7 @@ impl Inliner {
     pub fn inline_entrypoints(
         asts: HashMap<ModuleName, TypedAst>,
         pages: &[(ModuleName, ComponentName)],
-    ) -> Result<Vec<InlinedEntrypoint>> {
+    ) -> Result<Vec<InlinedComponentDeclaration>> {
         // Validate that all requested pages exist
         for (module_name, component_name) in pages {
             let component_exists = asts.get(module_name).is_some_and(|ast| {
@@ -64,7 +65,7 @@ impl Inliner {
                     .iter()
                     .any(|(m, c)| m == module_name && c == &component.component_name);
                 if included {
-                    result.push(InlinedEntrypoint {
+                    result.push(InlinedComponentDeclaration {
                         module_name: module_name.clone(),
                         component_name: component.component_name.clone(),
                         children: Self::inline_nodes(&component.children, None, &asts),
@@ -72,10 +73,7 @@ impl Inliner {
                             .params
                             .iter()
                             .cloned()
-                            .map(|(var_name, var_type)| InlinedParameter {
-                                var_name,
-                                var_type,
-                            })
+                            .map(|(var_name, var_type)| InlinedParameter { var_name, var_type })
                             .collect(),
                     });
                 }

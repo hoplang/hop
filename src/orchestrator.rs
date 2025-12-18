@@ -1,13 +1,13 @@
+use crate::hop::inliner::Inliner;
 use crate::hop::semantics::typed_ast::TypedAst;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::hop::inliner::Inliner;
 use crate::hop::symbols::module_name::ModuleName;
 use crate::ir::optimize::{
     AlphaRenamingPass, ConstantPropagationPass, Pass, UnusedIfEliminationPass,
     UnusedLetEliminationPass, WriteExprSimplificationPass,
 };
 use crate::ir::transform::{DoctypeInjector, HtmlStructureInjector, TailwindInjector};
-use crate::ir::{Compiler, IrEnum, IrModule, IrRecord};
+use crate::ir::{Compiler, IrEnumDeclaration, IrModule, IrRecordDeclaration};
 use anyhow::Result;
 use std::collections::HashMap;
 
@@ -17,10 +17,10 @@ pub fn orchestrate(
     pages: &[(ModuleName, ComponentName)],
 ) -> Result<IrModule> {
     // Collect record declarations from all modules
-    let mut records: Vec<IrRecord> = typed_asts
+    let mut records: Vec<IrRecordDeclaration> = typed_asts
         .values()
         .flat_map(|module| module.get_records())
-        .map(|record| IrRecord {
+        .map(|record| IrRecordDeclaration {
             name: record.name.to_string(),
             fields: record.fields.clone(),
         })
@@ -28,10 +28,10 @@ pub fn orchestrate(
     records.sort_by(|a, b| a.name.cmp(&b.name));
 
     // Collect enum declarations from all modules
-    let mut enums: Vec<IrEnum> = typed_asts
+    let mut enums: Vec<IrEnumDeclaration> = typed_asts
         .values()
         .flat_map(|module| module.get_enums())
-        .map(|enum_decl| IrEnum {
+        .map(|enum_decl| IrEnumDeclaration {
             name: enum_decl.name.as_str().to_string(),
             variants: enum_decl.variants.clone(),
         })
@@ -55,7 +55,7 @@ pub fn orchestrate(
         .collect();
 
     Ok(IrModule {
-        entrypoints,
+        components: entrypoints,
         records,
         enums,
     })

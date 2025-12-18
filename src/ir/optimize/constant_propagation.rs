@@ -2,7 +2,7 @@ use super::Pass;
 use crate::ir::{
     IrExpr,
     ast::ExprId,
-    ast::{IrEntrypoint, IrStatement},
+    ast::{IrComponentDeclaration, IrStatement},
 };
 use datafrog::{Iteration, Relation};
 use std::collections::HashMap;
@@ -17,7 +17,7 @@ enum Const {
 pub struct ConstantPropagationPass;
 
 impl Pass for ConstantPropagationPass {
-    fn run(entrypoint: IrEntrypoint) -> IrEntrypoint {
+    fn run(entrypoint: IrComponentDeclaration) -> IrComponentDeclaration {
         let mut iteration = Iteration::new();
 
         let mut initial_constants = Vec::new();
@@ -218,7 +218,7 @@ mod tests {
 
     use super::*;
 
-    fn check(entrypoint: IrEntrypoint, expected: Expect) {
+    fn check(entrypoint: IrComponentDeclaration, expected: Expect) {
         let before = entrypoint.to_string();
         let result = ConstantPropagationPass::run(entrypoint);
         let after = result.to_string();

@@ -4,12 +4,12 @@ use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{Type, VarName};
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
-use crate::ir::ast::IrEntrypoint;
+use crate::ir::ast::IrComponentDeclaration;
 use crate::ir::ast::{ExprId, IrExpr, IrStatement, StatementId};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-pub fn build_ir_auto<F>(name: &str, params: Vec<(&str, Type)>, body_fn: F) -> IrEntrypoint
+pub fn build_ir_auto<F>(name: &str, params: Vec<(&str, Type)>, body_fn: F) -> IrComponentDeclaration
 where
     F: FnOnce(&mut IrAutoBuilder),
 {
@@ -28,7 +28,7 @@ pub fn build_ir_with_records<F>(
     params: Vec<(&str, Type)>,
     records: Vec<(&str, Vec<(&str, Type)>)>,
     body_fn: F,
-) -> IrEntrypoint
+) -> IrComponentDeclaration
 where
     F: FnOnce(&mut IrAutoBuilder),
 {
@@ -47,7 +47,7 @@ pub fn build_ir_with_enums<F>(
     params: Vec<(&str, Type)>,
     enums: Vec<(&str, Vec<&str>)>,
     body_fn: F,
-) -> IrEntrypoint
+) -> IrComponentDeclaration
 where
     F: FnOnce(&mut IrAutoBuilder),
 {
@@ -140,8 +140,8 @@ impl IrTestBuilder {
         }
     }
 
-    fn build(&self, name: &str, body: Vec<IrStatement>) -> IrEntrypoint {
-        IrEntrypoint {
+    fn build(&self, name: &str, body: Vec<IrStatement>) -> IrComponentDeclaration {
+        IrComponentDeclaration {
             name: ComponentName::new(name.to_string())
                 .expect("Test component name should be valid"),
             parameters: self.params.clone(),
@@ -543,7 +543,7 @@ impl IrAutoBuilder {
         }
     }
 
-    fn build(self, name: &str) -> IrEntrypoint {
+    fn build(self, name: &str) -> IrComponentDeclaration {
         self.inner.build(name, self.statements)
     }
 

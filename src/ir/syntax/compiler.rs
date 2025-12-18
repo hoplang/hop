@@ -4,11 +4,11 @@ use crate::dop::TypedExpr;
 use crate::dop::semantics::r#type::EquatableType;
 use crate::dop::{Type, VarName};
 use crate::hop::inlined_ast::{
-    InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode,
+    InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
 };
 use std::collections::BTreeMap;
 
-use super::ast::{ExprId, IrEntrypoint, IrExpr, IrStatement, StatementId};
+use super::ast::{ExprId, IrComponentDeclaration, IrExpr, IrStatement, StatementId};
 
 pub struct Compiler {
     // Expression ID generation
@@ -19,7 +19,7 @@ pub struct Compiler {
 }
 
 impl Compiler {
-    pub fn compile(entrypoint: InlinedEntrypoint) -> IrEntrypoint {
+    pub fn compile(entrypoint: InlinedComponentDeclaration) -> IrComponentDeclaration {
         let mut compiler = Compiler {
             expr_id_counter: 0,
             node_id_counter: 0,
@@ -71,7 +71,7 @@ impl Compiler {
             else_body: Some(prod_body),
         }];
 
-        IrEntrypoint {
+        IrComponentDeclaration {
             name: component_name,
             parameters: param_info,
             body,
@@ -548,7 +548,7 @@ mod tests {
     use crate::ir::test_utils::build_inlined_auto;
     use expect_test::{Expect, expect};
 
-    fn check(entrypoint: InlinedEntrypoint, expected: Expect) {
+    fn check(entrypoint: InlinedComponentDeclaration, expected: Expect) {
         let before = entrypoint.to_string();
         let ir = Compiler::compile(entrypoint);
         let after = ir.to_string();

@@ -11,7 +11,7 @@ pub use unused_if_elimination::UnusedIfEliminationPass;
 pub use unused_let_elimination::UnusedLetEliminationPass;
 pub use write_expr_simplification::WriteExprSimplificationPass;
 
-use super::ast::IrEntrypoint;
+use super::ast::IrComponentDeclaration;
 
 /// Trait for IR optimization passes that operate on individual entrypoints
 ///
@@ -20,5 +20,5 @@ use super::ast::IrEntrypoint;
 /// no need for cross-entrypoint analysis.
 pub trait Pass {
     /// Run the pass on a single IR entrypoint, transforming it into a new entrypoint
-    fn run(entrypoint: IrEntrypoint) -> IrEntrypoint;
+    fn run(entrypoint: IrComponentDeclaration) -> IrComponentDeclaration;
 }

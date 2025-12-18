@@ -1,7 +1,7 @@
 use super::Pass;
 use crate::ir::{
     IrExpr,
-    ast::{IrEntrypoint, IrStatement, StatementId},
+    ast::{IrComponentDeclaration, IrStatement, StatementId},
 };
 use std::collections::HashSet;
 
@@ -11,7 +11,7 @@ pub struct UnusedLetEliminationPass;
 
 impl UnusedLetEliminationPass {
     /// Collect which let statements have unused variables
-    fn collect_unused_lets(entrypoint: &IrEntrypoint) -> HashSet<StatementId> {
+    fn collect_unused_lets(entrypoint: &IrComponentDeclaration) -> HashSet<StatementId> {
         let mut all_lets = HashSet::new();
         let mut used_lets = HashSet::new();
 
@@ -68,7 +68,7 @@ impl UnusedLetEliminationPass {
 }
 
 impl Pass for UnusedLetEliminationPass {
-    fn run(mut entrypoint: IrEntrypoint) -> IrEntrypoint {
+    fn run(mut entrypoint: IrComponentDeclaration) -> IrComponentDeclaration {
         // First collect which let statements have unused variables
         let unused_lets = Self::collect_unused_lets(&entrypoint);
 
@@ -102,7 +102,7 @@ mod tests {
     use crate::ir::test_utils::build_ir_auto;
     use expect_test::{Expect, expect};
 
-    fn check(entrypoint: IrEntrypoint, expected: Expect) {
+    fn check(entrypoint: IrComponentDeclaration, expected: Expect) {
         let before = entrypoint.to_string();
         let result = UnusedLetEliminationPass::run(entrypoint);
         let after = result.to_string();

@@ -1,17 +1,10 @@
-use std::{collections::HashMap, fmt};
-
 use crate::dop::VarName;
 use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::hop::symbols::component_name::ComponentName;
 use pretty::BoxDoc;
-
-// This module contains the types and implementations for ASTs in
-// the IR.
-//
-// The AST structure is:
-// * IrEntrypoint -> IrStatement -> IrExpr
+use std::{collections::HashMap, fmt};
 
 /// Unique identifier for each expression in the IR
 pub type ExprId = u32;
@@ -19,36 +12,33 @@ pub type ExprId = u32;
 /// Unique identifier for each statement in the IR
 pub type StatementId = u32;
 
-/// Information about a record declaration for transpilation.
 #[derive(Debug, Clone)]
-pub struct IrRecord {
-    pub name: String,
-    pub fields: Vec<(FieldName, Type)>,
-}
-
-/// Information about an enum declaration for transpilation.
-#[derive(Debug, Clone)]
-pub struct IrEnum {
-    pub name: String,
-    pub variants: Vec<TypeName>,
-}
-
-/// An IR module containing entrypoints and type declarations.
-#[derive(Debug, Clone)]
-pub struct IrModule {
-    pub entrypoints: Vec<IrEntrypoint>,
-    pub records: Vec<IrRecord>,
-    pub enums: Vec<IrEnum>,
-}
-
-#[derive(Debug, Clone)]
-pub struct IrEntrypoint {
+pub struct IrComponentDeclaration {
     /// Component name (e.g. MyComponent)
     pub name: ComponentName,
     /// Original parameter names with their types (for function signature)
     pub parameters: Vec<(VarName, Type)>,
     /// IR nodes for the entrypoint body
     pub body: Vec<IrStatement>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IrRecordDeclaration {
+    pub name: String,
+    pub fields: Vec<(FieldName, Type)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IrEnumDeclaration {
+    pub name: String,
+    pub variants: Vec<TypeName>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IrModule {
+    pub components: Vec<IrComponentDeclaration>,
+    pub records: Vec<IrRecordDeclaration>,
+    pub enums: Vec<IrEnumDeclaration>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -794,7 +784,7 @@ impl IrExpr {
     }
 }
 
-impl<'a> IrEntrypoint {
+impl<'a> IrComponentDeclaration {
     pub fn to_doc(&'a self) -> BoxDoc<'a> {
         BoxDoc::text(self.name.as_str())
             .append(BoxDoc::text("("))
@@ -845,7 +835,7 @@ impl fmt::Display for IrExpr {
     }
 }
 
-impl fmt::Display for IrEntrypoint {
+impl fmt::Display for IrComponentDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.to_doc().pretty(60))
     }

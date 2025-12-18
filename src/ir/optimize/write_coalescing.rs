@@ -1,4 +1,4 @@
-use crate::ir::ast::{IrEntrypoint, IrStatement, StatementId};
+use crate::ir::ast::{IrComponentDeclaration, IrStatement, StatementId};
 
 use super::Pass;
 
@@ -116,7 +116,7 @@ impl WriteCoalescingPass {
 }
 
 impl Pass for WriteCoalescingPass {
-    fn run(mut entrypoint: IrEntrypoint) -> IrEntrypoint {
+    fn run(mut entrypoint: IrComponentDeclaration) -> IrComponentDeclaration {
         entrypoint.body = Self::transform_statements(entrypoint.body);
         entrypoint
     }
@@ -128,7 +128,7 @@ mod tests {
     use crate::{dop::Type, ir::test_utils::build_ir_auto};
     use expect_test::{Expect, expect};
 
-    fn check(entrypoint: IrEntrypoint, expected: Expect) {
+    fn check(entrypoint: IrComponentDeclaration, expected: Expect) {
         let before = entrypoint.to_string();
         let result = WriteCoalescingPass::run(entrypoint);
         let after = result.to_string();

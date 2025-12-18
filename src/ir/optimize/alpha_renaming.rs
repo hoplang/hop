@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::dop::VarName;
 
-use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
+use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrStatement};
 
 use super::Pass;
 
@@ -331,27 +331,27 @@ impl AlphaRenamingPass {
 }
 
 impl Pass for AlphaRenamingPass {
-    fn run(mut entrypoint: IrEntrypoint) -> IrEntrypoint {
+    fn run(mut comp_decl: IrComponentDeclaration) -> IrComponentDeclaration {
         let mut pass = AlphaRenamingPass::new();
 
         pass.push_scope();
 
         // Create renamed parameter mappings
         let mut renamed_params = Vec::new();
-        for (param_name, _) in &entrypoint.parameters {
+        for (param_name, _) in &comp_decl.parameters {
             let renamed = pass.bind_var(param_name);
             renamed_params.push(renamed);
         }
 
         // Rename the body
-        let body = pass.rename_statements(entrypoint.body);
+        let body = pass.rename_statements(comp_decl.body);
 
         pass.pop_scope();
 
         // Create Let bindings for parameters if they were renamed
         let mut result_body = body;
         for (renamed, (original, typ)) in
-            renamed_params.into_iter().zip(&entrypoint.parameters).rev()
+            renamed_params.into_iter().zip(&comp_decl.parameters).rev()
         {
             if renamed != *original {
                 result_body = vec![IrStatement::Let {
@@ -367,8 +367,8 @@ impl Pass for AlphaRenamingPass {
             }
         }
 
-        entrypoint.body = result_body;
-        entrypoint
+        comp_decl.body = result_body;
+        comp_decl
     }
 }
 
@@ -379,7 +379,7 @@ mod tests {
     use crate::ir::test_utils::build_ir_auto;
     use expect_test::{Expect, expect};
 
-    fn check(input_entrypoint: IrEntrypoint, expected: Expect) {
+    fn check(input_entrypoint: IrComponentDeclaration, expected: Expect) {
         let before = input_entrypoint.to_string();
         let renamed = AlphaRenamingPass::run(input_entrypoint);
         let after = renamed.to_string();

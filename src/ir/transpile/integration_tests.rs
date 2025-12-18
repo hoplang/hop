@@ -1,6 +1,6 @@
 use super::{GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler};
 use crate::dop::semantics::r#type::Type;
-use crate::ir::ast::{IrEntrypoint, IrModule};
+use crate::ir::ast::{IrComponentDeclaration, IrModule};
 use crate::ir::test_utils::build_ir_auto;
 use std::fs;
 use std::process::Command;
@@ -8,12 +8,12 @@ use tempfile::TempDir;
 
 #[derive(Debug)]
 struct TestCase {
-    entrypoint: IrEntrypoint,
+    entrypoint: IrComponentDeclaration,
     expected_output: &'static str,
 }
 
 impl TestCase {
-    fn new(entrypoint: IrEntrypoint, expected_output: &'static str) -> Self {
+    fn new(entrypoint: IrComponentDeclaration, expected_output: &'static str) -> Self {
         Self {
             entrypoint,
             expected_output,
@@ -23,11 +23,11 @@ impl TestCase {
 
 #[derive(Debug)]
 struct TypeCheckTestCase {
-    entrypoints: Vec<IrEntrypoint>,
+    entrypoints: Vec<IrComponentDeclaration>,
 }
 
 impl TypeCheckTestCase {
-    fn new(entrypoints: Vec<IrEntrypoint>) -> Self {
+    fn new(entrypoints: Vec<IrComponentDeclaration>) -> Self {
         Self { entrypoints }
     }
 }
@@ -151,7 +151,7 @@ go 1.24
 
 fn run_integration_test(test_case: TestCase) -> Result<(), String> {
     let module = IrModule {
-        entrypoints: vec![test_case.entrypoint],
+        components: vec![test_case.entrypoint],
         records: vec![],
         enums: vec![],
     };
@@ -312,7 +312,7 @@ fn typecheck_go(code: &str) -> Result<(), String> {
 
 fn run_type_check_test(test_case: TypeCheckTestCase) -> Result<(), String> {
     let module = IrModule {
-        entrypoints: test_case.entrypoints,
+        components: test_case.entrypoints,
         records: vec![],
         enums: vec![],
     };

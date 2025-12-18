@@ -13,13 +13,13 @@ pub use python::PythonTranspiler;
 use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
+use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrModule, IrStatement};
 
 pub trait Transpiler {
     fn transpile_entrypoint<'a>(
         &self,
         name: &'a ComponentName,
-        entrypoint: &'a IrEntrypoint,
+        entrypoint: &'a IrComponentDeclaration,
     ) -> BoxDoc<'a>;
     fn transpile_module(&self, module: &IrModule) -> String;
 }
