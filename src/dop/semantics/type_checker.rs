@@ -6,8 +6,7 @@ use super::type_error::TypeError;
 use crate::document::document_cursor::Ranged as _;
 #[cfg(test)]
 use crate::dop::declaration::Declaration;
-use crate::dop::syntax::syntactic_expr::{BinaryOp, SyntacticExpr};
-use crate::dop::syntax::syntactic_type::SyntacticType;
+use crate::dop::syntax::parse_tree::{BinaryOp, ParseTree, ParsedType};
 #[cfg(test)]
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::Expr;
@@ -16,20 +15,20 @@ use crate::hop::type_checker::TypeAnnotation;
 
 /// Resolve a syntactic Type to a semantic Type.
 pub fn resolve_type(
-    syntactic_type: &SyntacticType,
+    syntactic_type: &ParsedType,
     type_env: &mut Environment<Type>,
 ) -> Result<Type, TypeError> {
     match syntactic_type {
-        SyntacticType::String { .. } => Ok(Type::String),
-        SyntacticType::Bool { .. } => Ok(Type::Bool),
-        SyntacticType::Int { .. } => Ok(Type::Int),
-        SyntacticType::Float { .. } => Ok(Type::Float),
-        SyntacticType::TrustedHTML { .. } => Ok(Type::TrustedHTML),
-        SyntacticType::Array { element, .. } => {
+        ParsedType::String { .. } => Ok(Type::String),
+        ParsedType::Bool { .. } => Ok(Type::Bool),
+        ParsedType::Int { .. } => Ok(Type::Int),
+        ParsedType::Float { .. } => Ok(Type::Float),
+        ParsedType::TrustedHTML { .. } => Ok(Type::TrustedHTML),
+        ParsedType::Array { element, .. } => {
             let elem_type = resolve_type(element, type_env)?;
             Ok(Type::Array(Box::new(elem_type)))
         }
-        SyntacticType::Named { name, range } => {
+        ParsedType::Named { name, range } => {
             let record_type = type_env
                 .lookup(name)
                 .ok_or_else(|| TypeError::UndefinedType {
@@ -46,14 +45,14 @@ pub fn resolve_type(
 /// The optional `expected_type` is used for bidirectional type checking, allowing
 /// empty array literals to infer their element type from context.
 pub fn typecheck_expr(
-    syntactic_expr: &SyntacticExpr,
+    syntactic_expr: &ParseTree,
     env: &mut Environment<Type>,
     type_env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     expected_type: Option<&Type>,
 ) -> Result<Expr, TypeError> {
     match syntactic_expr {
-        SyntacticExpr::Var { value: name, .. } => {
+        ParseTree::Var { value: name, .. } => {
             if let Some(var_type) = env.lookup(name.as_str()) {
                 annotations.push(TypeAnnotation {
                     range: syntactic_expr.range().clone(),
@@ -71,19 +70,19 @@ pub fn typecheck_expr(
                 })
             }
         }
-        SyntacticExpr::BooleanLiteral { value, .. } => Ok(Expr::BooleanLiteral {
+        ParseTree::BooleanLiteral { value, .. } => Ok(Expr::BooleanLiteral {
             value: *value,
         }),
-        SyntacticExpr::StringLiteral { value, .. } => Ok(Expr::StringLiteral {
+        ParseTree::StringLiteral { value, .. } => Ok(Expr::StringLiteral {
             value: value.clone(),
         }),
-        SyntacticExpr::IntLiteral { value, .. } => Ok(Expr::IntLiteral {
+        ParseTree::IntLiteral { value, .. } => Ok(Expr::IntLiteral {
             value: *value,
         }),
-        SyntacticExpr::FloatLiteral { value, .. } => Ok(Expr::FloatLiteral {
+        ParseTree::FloatLiteral { value, .. } => Ok(Expr::FloatLiteral {
             value: *value,
         }),
-        SyntacticExpr::FieldAccess {
+        ParseTree::FieldAccess {
             record: base_expr,
             field,
             annotation: range,
@@ -120,7 +119,7 @@ pub fn typecheck_expr(
                 }),
             }
         }
-        SyntacticExpr::BinaryOp {
+        ParseTree::BinaryOp {
             left,
             operator: BinaryOp::Eq,
             right,
@@ -159,7 +158,7 @@ pub fn typecheck_expr(
                 operand_types: left_comparable,
             })
         }
-        SyntacticExpr::BinaryOp {
+        ParseTree::BinaryOp {
             left,
             operator: BinaryOp::NotEq,
             right,
@@ -198,7 +197,7 @@ pub fn typecheck_expr(
                 operand_types: left_comparable,
             })
         }
-        SyntacticExpr::BinaryOp {
+        ParseTree::BinaryOp {
             left,
             operator: BinaryOp::LessThan,
             right,
@@ -241,7 +240,7 @@ pub fn typecheck_expr(
             })
         }
 
-        SyntacticExpr::BinaryOp {
+        ParseTree::BinaryOp {
             left,
             operator: BinaryOp::GreaterThan,
             right,
@@ -284,7 +283,7 @@ pub fn typecheck_expr(
             })
         }
 
-        SyntacticExpr::BinaryOp {
+        ParseTree::BinaryOp {
             left,
             operator: BinaryOp::LessThanOrEqual,
             right,
@@ -326,7 +325,7 @@ pub fn typecheck_expr(
                 operand_types: left_comparable,
             })
         }
-        SyntacticExpr::BinaryOp {
+        ParseTree::BinaryOp {
             left,
             operator: BinaryOp::GreaterThanOrEqual,
             right,
@@ -368,7 +367,7 @@ pub fn typecheck_expr(
                 operand_types: left_comparable,
             })
         }
-        SyntacticExpr::BinaryOp {
+        ParseTree::BinaryOp {
             left,
             operator: BinaryOp::LogicalAnd,
             right,
@@ -397,7 +396,7 @@ pub fn typecheck_expr(
                 right: Box::new(typed_right),
             })
         }
-        SyntacticExpr::BinaryOp {
+        ParseTree::BinaryOp {
             left,
             operator: BinaryOp::LogicalOr,
             right,
@@ -425,7 +424,7 @@ pub fn typecheck_expr(
                 right: Box::new(typed_right),
             })
         }
-        SyntacticExpr::BinaryOp {
+        ParseTree::BinaryOp {
             left,
             operator: BinaryOp::Plus,
             right,
@@ -461,7 +460,7 @@ pub fn typecheck_expr(
                 }
             }
         }
-        SyntacticExpr::BinaryOp {
+        ParseTree::BinaryOp {
             left,
             operator: BinaryOp::Minus,
             right,
@@ -493,7 +492,7 @@ pub fn typecheck_expr(
                 }
             }
         }
-        SyntacticExpr::BinaryOp {
+        ParseTree::BinaryOp {
             left,
             operator: BinaryOp::Multiply,
             right,
@@ -529,7 +528,7 @@ pub fn typecheck_expr(
                 }
             }
         }
-        SyntacticExpr::Negation { operand, .. } => {
+        ParseTree::Negation { operand, .. } => {
             let typed_operand = typecheck_expr(operand, env, type_env, annotations, None)?;
             let operand_type = typed_operand.as_type();
 
@@ -544,7 +543,7 @@ pub fn typecheck_expr(
                 operand: Box::new(typed_operand),
             })
         }
-        SyntacticExpr::ArrayLiteral {
+        ParseTree::ArrayLiteral {
             elements,
             annotation: range,
         } => {
@@ -598,7 +597,7 @@ pub fn typecheck_expr(
                 })
             }
         }
-        SyntacticExpr::RecordLiteral {
+        ParseTree::RecordLiteral {
             record_name,
             fields,
             annotation: range,
@@ -682,7 +681,7 @@ pub fn typecheck_expr(
                 kind: record_type,
             })
         }
-        SyntacticExpr::EnumLiteral {
+        ParseTree::EnumLiteral {
             enum_name,
             variant_name,
             annotation: range,
@@ -722,7 +721,7 @@ pub fn typecheck_expr(
                 kind: enum_type,
             })
         }
-        SyntacticExpr::Match {
+        ParseTree::Match {
             subject,
             arms,
             annotation: range,
@@ -754,7 +753,7 @@ pub fn typecheck_expr(
             for arm in arms {
                 // Pattern must be an enum literal
                 let (pattern_enum_name, pattern_variant_name, pattern_range) = match &arm.pattern {
-                    SyntacticExpr::EnumLiteral {
+                    ParseTree::EnumLiteral {
                         enum_name,
                         variant_name,
                         annotation,

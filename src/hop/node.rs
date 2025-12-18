@@ -6,12 +6,12 @@ use crate::document::{
 };
 use crate::dop::Argument;
 use crate::dop::Expr;
-use crate::dop::SyntacticExpr;
+use crate::dop::ParseTree;
 use crate::dop::VarName;
 
 use super::{ast::Attribute, component_name::ComponentName, module_name::ModuleName};
 
-pub type UntypedNode = Node<SyntacticExpr>;
+pub type UntypedNode = Node<ParseTree>;
 pub type TypedNode = Node<Expr>;
 
 #[derive(Debug, Clone)]

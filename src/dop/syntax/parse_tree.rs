@@ -5,13 +5,78 @@ use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::var_name::VarName;
 use pretty::BoxDoc;
 
+/// A syntax representation of a type, preserving document ranges.
+#[derive(Debug, Clone)]
+pub enum ParsedType {
+    String {
+        range: DocumentRange,
+    },
+    Bool {
+        range: DocumentRange,
+    },
+    Int {
+        range: DocumentRange,
+    },
+    Float {
+        range: DocumentRange,
+    },
+    TrustedHTML {
+        range: DocumentRange,
+    },
+    Array {
+        element: Box<ParsedType>,
+        range: DocumentRange,
+    },
+    Named {
+        name: String,
+        range: DocumentRange,
+    },
+}
+
+impl Ranged for ParsedType {
+    fn range(&self) -> &DocumentRange {
+        match self {
+            ParsedType::String { range }
+            | ParsedType::Bool { range }
+            | ParsedType::Int { range }
+            | ParsedType::Float { range }
+            | ParsedType::TrustedHTML { range }
+            | ParsedType::Array { range, .. }
+            | ParsedType::Named { range, .. } => range,
+        }
+    }
+}
+
+impl ParsedType {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        match self {
+            ParsedType::String { .. } => BoxDoc::text("String"),
+            ParsedType::Bool { .. } => BoxDoc::text("Bool"),
+            ParsedType::Int { .. } => BoxDoc::text("Int"),
+            ParsedType::Float { .. } => BoxDoc::text("Float"),
+            ParsedType::TrustedHTML { .. } => BoxDoc::text("TrustedHTML"),
+            ParsedType::Array { element, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("Array["))
+                .append(element.to_doc())
+                .append(BoxDoc::text("]")),
+            ParsedType::Named { name, .. } => BoxDoc::text(name.clone()),
+        }
+    }
+}
+
+impl Display for ParsedType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_doc().pretty(60))
+    }
+}
+
 /// A single arm in a match expression, e.g. `Color::Red => "red"`
 #[derive(Debug, Clone)]
 pub struct MatchArm {
     /// The pattern being matched (must be an enum literal, e.g., `Color::Red`)
-    pub pattern: SyntacticExpr,
+    pub pattern: ParseTree,
     /// The expression to evaluate if this arm matches
-    pub body: SyntacticExpr,
+    pub body: ParseTree,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -30,7 +95,7 @@ pub enum BinaryOp {
 }
 
 #[derive(Debug, Clone)]
-pub enum SyntacticExpr {
+pub enum ParseTree {
     /// A variable expression, e.g. foo
     Var {
         value: VarName,
@@ -109,28 +174,28 @@ pub enum SyntacticExpr {
     },
 }
 
-impl SyntacticExpr {
+impl ParseTree {
     pub fn annotation(&self) -> &DocumentRange {
         match self {
-            SyntacticExpr::Var { annotation, .. }
-            | SyntacticExpr::FieldAccess { annotation, .. }
-            | SyntacticExpr::StringLiteral { annotation, .. }
-            | SyntacticExpr::BooleanLiteral { annotation, .. }
-            | SyntacticExpr::IntLiteral { annotation, .. }
-            | SyntacticExpr::FloatLiteral { annotation, .. }
-            | SyntacticExpr::ArrayLiteral { annotation, .. }
-            | SyntacticExpr::RecordLiteral { annotation, .. }
-            | SyntacticExpr::EnumLiteral { annotation, .. }
-            | SyntacticExpr::BinaryOp { annotation, .. }
-            | SyntacticExpr::Negation { annotation, .. }
-            | SyntacticExpr::Match { annotation, .. } => annotation,
+            ParseTree::Var { annotation, .. }
+            | ParseTree::FieldAccess { annotation, .. }
+            | ParseTree::StringLiteral { annotation, .. }
+            | ParseTree::BooleanLiteral { annotation, .. }
+            | ParseTree::IntLiteral { annotation, .. }
+            | ParseTree::FloatLiteral { annotation, .. }
+            | ParseTree::ArrayLiteral { annotation, .. }
+            | ParseTree::RecordLiteral { annotation, .. }
+            | ParseTree::EnumLiteral { annotation, .. }
+            | ParseTree::BinaryOp { annotation, .. }
+            | ParseTree::Negation { annotation, .. }
+            | ParseTree::Match { annotation, .. } => annotation,
         }
     }
 
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            SyntacticExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
-            SyntacticExpr::FieldAccess {
+            ParseTree::Var { value, .. } => BoxDoc::text(value.as_str()),
+            ParseTree::FieldAccess {
                 record: object,
                 field,
                 ..
@@ -138,11 +203,11 @@ impl SyntacticExpr {
                 .to_doc()
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(field.as_str())),
-            SyntacticExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
-            SyntacticExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            SyntacticExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            SyntacticExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            SyntacticExpr::ArrayLiteral { elements, .. } => {
+            ParseTree::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
+            ParseTree::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            ParseTree::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            ParseTree::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            ParseTree::ArrayLiteral { elements, .. } => {
                 if elements.is_empty() {
                     BoxDoc::text("[]")
                 } else {
@@ -161,7 +226,7 @@ impl SyntacticExpr {
                         .append(BoxDoc::text("]"))
                 }
             }
-            SyntacticExpr::RecordLiteral {
+            ParseTree::RecordLiteral {
                 record_name,
                 fields,
                 ..
@@ -189,7 +254,7 @@ impl SyntacticExpr {
                         .append(BoxDoc::text(")"))
                 }
             }
-            SyntacticExpr::BinaryOp {
+            ParseTree::BinaryOp {
                 left,
                 operator,
                 right,
@@ -200,19 +265,19 @@ impl SyntacticExpr {
                 .append(BoxDoc::text(format!(" {} ", operator)))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            SyntacticExpr::Negation { operand, .. } => BoxDoc::nil()
+            ParseTree::Negation { operand, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::text("!"))
                 .append(operand.to_doc())
                 .append(BoxDoc::text(")")),
-            SyntacticExpr::EnumLiteral {
+            ParseTree::EnumLiteral {
                 enum_name,
                 variant_name,
                 ..
             } => BoxDoc::text(enum_name.as_str())
                 .append(BoxDoc::text("::"))
                 .append(BoxDoc::text(variant_name.as_str())),
-            SyntacticExpr::Match { subject, arms, .. } => {
+            ParseTree::Match { subject, arms, .. } => {
                 if arms.is_empty() {
                     BoxDoc::text("match ")
                         .append(subject.to_doc())
@@ -244,13 +309,13 @@ impl SyntacticExpr {
     }
 }
 
-impl Ranged for SyntacticExpr {
+impl Ranged for ParseTree {
     fn range(&self) -> &DocumentRange {
         self.annotation()
     }
 }
 
-impl Display for SyntacticExpr {
+impl Display for ParseTree {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(60))
     }

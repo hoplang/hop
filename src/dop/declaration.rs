@@ -6,7 +6,7 @@ use pretty::BoxDoc;
 
 use super::symbols::field_name::FieldName;
 use super::symbols::type_name::TypeName;
-use super::syntax::syntactic_type::SyntacticType;
+use super::syntax::parse_tree::ParsedType;
 
 /// An EnumVariant represents a variant in an enum declaration.
 /// E.g. enum Color {Red, Green, Blue}
@@ -43,7 +43,7 @@ impl Display for EnumDeclaration {
 /// E.g. record Foo {bar: String, baz: Int}
 ///                  ^^^^^^^^^^^
 #[derive(Debug, Clone)]
-pub struct RecordDeclarationField<T = SyntacticType> {
+pub struct RecordDeclarationField<T = ParsedType> {
     pub name: FieldName,
     pub name_range: DocumentRange,
     pub field_type: T,
@@ -58,7 +58,7 @@ impl Display for RecordDeclarationField {
 /// A RecordDeclaration represents a full record type declaration.
 /// E.g. record User {name: String, age: Int}
 #[derive(Debug, Clone)]
-pub struct RecordDeclaration<A = SyntacticType> {
+pub struct RecordDeclaration<A = ParsedType> {
     pub name: TypeName,
     pub name_range: DocumentRange,
     pub fields: Vec<RecordDeclarationField<A>>,

@@ -4,8 +4,8 @@ use crate::dop::EnumDeclaration;
 use crate::dop::Parameter;
 use crate::dop::RecordDeclaration;
 use crate::dop::Expr;
-use crate::dop::SyntacticExpr;
-use crate::dop::SyntacticType;
+use crate::dop::ParseTree;
+use crate::dop::ParsedType;
 use crate::dop::Type;
 use crate::dop::symbols::type_name::TypeName;
 use crate::hop::component_name::ComponentName;
@@ -14,7 +14,7 @@ use crate::hop::module_name::ModuleName;
 use super::node::Node;
 
 #[derive(Debug, Clone)]
-pub enum AttributeValue<T = SyntacticExpr> {
+pub enum AttributeValue<T = ParseTree> {
     Expressions(Vec<T>),
     String(DocumentRange),
 }
@@ -24,13 +24,13 @@ pub type TypedAttribute = Attribute<Expr>;
 /// An Attribute is an attribute on a node, it can either
 /// be empty, an expression or a string value.
 #[derive(Debug, Clone)]
-pub struct Attribute<T = SyntacticExpr> {
+pub struct Attribute<T = ParseTree> {
     pub name: DocumentRange,
     pub value: Option<AttributeValue<T>>,
     pub range: DocumentRange,
 }
 
-pub type UntypedAst = Ast<SyntacticExpr, SyntacticType>;
+pub type UntypedAst = Ast<ParseTree, ParsedType>;
 pub type TypedAst = Ast<Expr, Type>;
 
 #[derive(Debug, Clone)]
@@ -161,7 +161,7 @@ impl Import {
 }
 
 #[derive(Debug, Clone)]
-pub struct Record<A = SyntacticType> {
+pub struct Record<A = ParsedType> {
     pub declaration: RecordDeclaration<A>,
     pub range: DocumentRange,
 }
@@ -186,11 +186,11 @@ impl Enum {
     }
 }
 
-pub type UntypedComponentDefinition = ComponentDefinition<SyntacticExpr, SyntacticType>;
+pub type UntypedComponentDefinition = ComponentDefinition<ParseTree, ParsedType>;
 pub type TypedComponentDefinition = ComponentDefinition<Expr, Type>;
 
 #[derive(Debug, Clone)]
-pub struct ComponentDefinition<E, P = SyntacticType> {
+pub struct ComponentDefinition<E, P = ParsedType> {
     pub component_name: ComponentName,
     pub tag_name: DocumentRange, // Keep for source location/error reporting
     pub closing_tag_name: Option<DocumentRange>,

@@ -8,8 +8,7 @@ use crate::dop::declaration::{
 };
 use crate::dop::semantics::expr::Expr;
 use crate::dop::symbols::field_name::FieldName;
-use super::syntactic_expr::{BinaryOp, MatchArm, SyntacticExpr};
-use super::syntactic_type::SyntacticType;
+use super::parse_tree::{BinaryOp, MatchArm, ParseTree, ParsedType};
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
 use crate::error_collector::ErrorCollector;
@@ -23,7 +22,7 @@ use super::tokenizer::Tokenizer;
 /// E.g. <my-comp {x: string, y: string}>
 ///                ^^^^^^^^^
 #[derive(Debug, Clone)]
-pub struct Parameter<T = SyntacticType> {
+pub struct Parameter<T = ParsedType> {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
     pub var_type: T,
@@ -41,7 +40,7 @@ pub type TypedArgument = Argument<Expr>;
 /// E.g. <my-comp {x: [1,2], y: 2}>
 ///                ^^^^^^^^
 #[derive(Debug, Clone)]
-pub struct Argument<T = SyntacticExpr> {
+pub struct Argument<T = ParseTree> {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
     pub var_expr: T,
@@ -236,14 +235,14 @@ impl Parser {
     }
 
     // expr = logical Eof
-    pub fn parse_expr(&mut self) -> Result<SyntacticExpr, ParseError> {
+    pub fn parse_expr(&mut self) -> Result<ParseTree, ParseError> {
         let result = self.parse_logical()?;
         self.expect_eof()?;
         Ok(result)
     }
 
     // exprs = logical ("," logical)* ","? Eof
-    pub fn parse_exprs(&mut self) -> Result<Vec<SyntacticExpr>, ParseError> {
+    pub fn parse_exprs(&mut self) -> Result<Vec<ParseTree>, ParseError> {
         let mut exprs = Vec::new();
         self.parse_comma_separated(
             |this| {
@@ -259,7 +258,7 @@ impl Parser {
     // loop_header = Identifier "in" logical Eof
     pub fn parse_loop_header(
         &mut self,
-    ) -> Result<(VarName, DocumentRange, SyntacticExpr), ParseError> {
+    ) -> Result<(VarName, DocumentRange, ParseTree), ParseError> {
         let (var_name, var_name_range) = self.expect_variable_name()?;
         self.expect_token(&Token::In)?;
         let array_expr = self.parse_logical()?;
@@ -335,23 +334,23 @@ impl Parser {
         Ok(args)
     }
 
-    pub fn parse_type(&mut self) -> Result<SyntacticType, ParseError> {
+    pub fn parse_type(&mut self) -> Result<ParsedType, ParseError> {
         match self.iter.next().transpose()? {
-            Some((Token::TypeString, range)) => Ok(SyntacticType::String { range }),
-            Some((Token::TypeInt, range)) => Ok(SyntacticType::Int { range }),
-            Some((Token::TypeFloat, range)) => Ok(SyntacticType::Float { range }),
-            Some((Token::TypeBoolean, range)) => Ok(SyntacticType::Bool { range }),
-            Some((Token::TypeTrustedHTML, range)) => Ok(SyntacticType::TrustedHTML { range }),
+            Some((Token::TypeString, range)) => Ok(ParsedType::String { range }),
+            Some((Token::TypeInt, range)) => Ok(ParsedType::Int { range }),
+            Some((Token::TypeFloat, range)) => Ok(ParsedType::Float { range }),
+            Some((Token::TypeBoolean, range)) => Ok(ParsedType::Bool { range }),
+            Some((Token::TypeTrustedHTML, range)) => Ok(ParsedType::TrustedHTML { range }),
             Some((Token::TypeArray, type_array)) => {
                 let left_bracket = self.expect_token(&Token::LeftBracket)?;
                 let element = self.parse_type()?;
                 let right_bracket = self.expect_opposite(&Token::LeftBracket, &left_bracket)?;
-                Ok(SyntacticType::Array {
+                Ok(ParsedType::Array {
                     element: Box::new(element),
                     range: type_array.to(right_bracket),
                 })
             }
-            Some((Token::TypeName(name), range)) => Ok(SyntacticType::Named {
+            Some((Token::TypeName(name), range)) => Ok(ParsedType::Named {
                 name: name.as_str().to_string(),
                 range,
             }),
@@ -362,11 +361,11 @@ impl Parser {
         }
     }
 
-    fn parse_logical(&mut self) -> Result<SyntacticExpr, ParseError> {
+    fn parse_logical(&mut self) -> Result<ParseTree, ParseError> {
         let mut expr = self.parse_logical_and()?;
         while self.advance_if(Token::LogicalOr).is_some() {
             let right = self.parse_logical_and()?;
-            expr = SyntacticExpr::BinaryOp {
+            expr = ParseTree::BinaryOp {
                 annotation: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
                 operator: BinaryOp::LogicalOr,
@@ -376,11 +375,11 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_logical_and(&mut self) -> Result<SyntacticExpr, ParseError> {
+    fn parse_logical_and(&mut self) -> Result<ParseTree, ParseError> {
         let mut expr = self.parse_equality()?;
         while self.advance_if(Token::LogicalAnd).is_some() {
             let right = self.parse_equality()?;
-            expr = SyntacticExpr::BinaryOp {
+            expr = ParseTree::BinaryOp {
                 annotation: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
                 operator: BinaryOp::LogicalAnd,
@@ -391,12 +390,12 @@ impl Parser {
     }
 
     // equality = relational ( ("==" | "!=") relational )*
-    fn parse_equality(&mut self) -> Result<SyntacticExpr, ParseError> {
+    fn parse_equality(&mut self) -> Result<ParseTree, ParseError> {
         let mut expr = self.parse_relational()?;
         loop {
             if self.advance_if(Token::Eq).is_some() {
                 let right = self.parse_relational()?;
-                expr = SyntacticExpr::BinaryOp {
+                expr = ParseTree::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: BinaryOp::Eq,
@@ -404,7 +403,7 @@ impl Parser {
                 };
             } else if self.advance_if(Token::NotEq).is_some() {
                 let right = self.parse_relational()?;
-                expr = SyntacticExpr::BinaryOp {
+                expr = ParseTree::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: BinaryOp::NotEq,
@@ -418,12 +417,12 @@ impl Parser {
     }
 
     // relational = additive ( ("<" | ">" | "<=" | ">=") additive )*
-    fn parse_relational(&mut self) -> Result<SyntacticExpr, ParseError> {
+    fn parse_relational(&mut self) -> Result<ParseTree, ParseError> {
         let mut expr = self.parse_additive()?;
         loop {
             if self.advance_if(Token::LessThan).is_some() {
                 let right = self.parse_additive()?;
-                expr = SyntacticExpr::BinaryOp {
+                expr = ParseTree::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: BinaryOp::LessThan,
@@ -431,7 +430,7 @@ impl Parser {
                 };
             } else if self.advance_if(Token::GreaterThan).is_some() {
                 let right = self.parse_additive()?;
-                expr = SyntacticExpr::BinaryOp {
+                expr = ParseTree::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: BinaryOp::GreaterThan,
@@ -439,7 +438,7 @@ impl Parser {
                 };
             } else if self.advance_if(Token::LessThanOrEqual).is_some() {
                 let right = self.parse_additive()?;
-                expr = SyntacticExpr::BinaryOp {
+                expr = ParseTree::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: BinaryOp::LessThanOrEqual,
@@ -447,7 +446,7 @@ impl Parser {
                 };
             } else if self.advance_if(Token::GreaterThanOrEqual).is_some() {
                 let right = self.parse_additive()?;
-                expr = SyntacticExpr::BinaryOp {
+                expr = ParseTree::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: BinaryOp::GreaterThanOrEqual,
@@ -461,12 +460,12 @@ impl Parser {
     }
 
     // additive = multiplicative ( ("+" | "-") multiplicative )*
-    fn parse_additive(&mut self) -> Result<SyntacticExpr, ParseError> {
+    fn parse_additive(&mut self) -> Result<ParseTree, ParseError> {
         let mut expr = self.parse_multiplicative()?;
         loop {
             if self.advance_if(Token::Plus).is_some() {
                 let right = self.parse_multiplicative()?;
-                expr = SyntacticExpr::BinaryOp {
+                expr = ParseTree::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: BinaryOp::Plus,
@@ -474,7 +473,7 @@ impl Parser {
                 };
             } else if self.advance_if(Token::Minus).is_some() {
                 let right = self.parse_multiplicative()?;
-                expr = SyntacticExpr::BinaryOp {
+                expr = ParseTree::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: BinaryOp::Minus,
@@ -488,11 +487,11 @@ impl Parser {
     }
 
     // multiplicative = unary ( "*" unary )*
-    fn parse_multiplicative(&mut self) -> Result<SyntacticExpr, ParseError> {
+    fn parse_multiplicative(&mut self) -> Result<ParseTree, ParseError> {
         let mut expr = self.parse_unary()?;
         while self.advance_if(Token::Asterisk).is_some() {
             let right = self.parse_unary()?;
-            expr = SyntacticExpr::BinaryOp {
+            expr = ParseTree::BinaryOp {
                 annotation: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
                 operator: BinaryOp::Multiply,
@@ -503,10 +502,10 @@ impl Parser {
     }
 
     // unary = ( "!" )* primary
-    fn parse_unary(&mut self) -> Result<SyntacticExpr, ParseError> {
+    fn parse_unary(&mut self) -> Result<ParseTree, ParseError> {
         if let Some(operator_range) = self.advance_if(Token::Not) {
             let expr = self.parse_unary()?; // Right associative for multiple !
-            Ok(SyntacticExpr::Negation {
+            Ok(ParseTree::Negation {
                 annotation: operator_range.to(expr.range().clone()),
                 operand: Box::new(expr),
             })
@@ -519,14 +518,14 @@ impl Parser {
     fn parse_array_literal(
         &mut self,
         left_bracket: DocumentRange,
-    ) -> Result<SyntacticExpr, ParseError> {
+    ) -> Result<ParseTree, ParseError> {
         let mut elements = Vec::new();
         let right_bracket =
             self.parse_delimited_list(&Token::LeftBracket, &left_bracket, |this| {
                 elements.push(this.parse_logical()?);
                 Ok(())
             })?;
-        Ok(SyntacticExpr::ArrayLiteral {
+        Ok(ParseTree::ArrayLiteral {
             elements,
             annotation: left_bracket.to(right_bracket),
         })
@@ -536,14 +535,14 @@ impl Parser {
         &mut self,
         identifier: StringSpan,
         range: DocumentRange,
-    ) -> Result<SyntacticExpr, ParseError> {
+    ) -> Result<ParseTree, ParseError> {
         let var_name =
             VarName::new(identifier.as_str()).map_err(|error| ParseError::InvalidVariableName {
                 name: identifier,
                 error,
                 range: range.clone(),
             })?;
-        let mut expr = SyntacticExpr::Var {
+        let mut expr = ParseTree::Var {
             annotation: range.clone(),
             value: var_name,
         };
@@ -560,7 +559,7 @@ impl Parser {
                         }
                     })?;
                     let range = expr.range().clone().to(range.clone());
-                    expr = SyntacticExpr::FieldAccess {
+                    expr = ParseTree::FieldAccess {
                         record: Box::new(expr),
                         field: field_name,
                         annotation: range,
@@ -579,7 +578,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_primary(&mut self) -> Result<SyntacticExpr, ParseError> {
+    fn parse_primary(&mut self) -> Result<ParseTree, ParseError> {
         match self.iter.next().transpose()? {
             Some((Token::Identifier(name), name_range)) => {
                 self.parse_field_access(name, name_range)
@@ -597,23 +596,23 @@ impl Parser {
                     self.parse_record_literal(name, name_range)
                 }
             }
-            Some((Token::StringLiteral(value), range)) => Ok(SyntacticExpr::StringLiteral {
+            Some((Token::StringLiteral(value), range)) => Ok(ParseTree::StringLiteral {
                 value,
                 annotation: range,
             }),
-            Some((Token::True, range)) => Ok(SyntacticExpr::BooleanLiteral {
+            Some((Token::True, range)) => Ok(ParseTree::BooleanLiteral {
                 value: true,
                 annotation: range,
             }),
-            Some((Token::False, range)) => Ok(SyntacticExpr::BooleanLiteral {
+            Some((Token::False, range)) => Ok(ParseTree::BooleanLiteral {
                 value: false,
                 annotation: range,
             }),
-            Some((Token::IntLiteral(value), range)) => Ok(SyntacticExpr::IntLiteral {
+            Some((Token::IntLiteral(value), range)) => Ok(ParseTree::IntLiteral {
                 value,
                 annotation: range,
             }),
-            Some((Token::FloatLiteral(value), range)) => Ok(SyntacticExpr::FloatLiteral {
+            Some((Token::FloatLiteral(value), range)) => Ok(ParseTree::FloatLiteral {
                 value,
                 annotation: range,
             }),
@@ -638,7 +637,7 @@ impl Parser {
         &mut self,
         name: StringSpan,
         name_range: DocumentRange,
-    ) -> Result<SyntacticExpr, ParseError> {
+    ) -> Result<ParseTree, ParseError> {
         let left_paren = self.expect_token(&Token::LeftParen)?;
         let mut fields = Vec::new();
         let right_paren = self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
@@ -647,7 +646,7 @@ impl Parser {
             fields.push((field_name, this.parse_logical()?));
             Ok(())
         })?;
-        Ok(SyntacticExpr::RecordLiteral {
+        Ok(ParseTree::RecordLiteral {
             record_name: name.as_str().to_string(),
             fields,
             annotation: name_range.to(right_paren),
@@ -661,10 +660,10 @@ impl Parser {
         &mut self,
         enum_name: StringSpan,
         enum_name_range: DocumentRange,
-    ) -> Result<SyntacticExpr, ParseError> {
+    ) -> Result<ParseTree, ParseError> {
         self.expect_token(&Token::ColonColon)?;
         let (variant_name, variant_range) = self.expect_type_name()?;
-        Ok(SyntacticExpr::EnumLiteral {
+        Ok(ParseTree::EnumLiteral {
             enum_name: enum_name.as_str().to_string(),
             variant_name: variant_name.as_str().to_string(),
             annotation: enum_name_range.to(variant_range),
@@ -677,7 +676,7 @@ impl Parser {
     fn parse_match_expr(
         &mut self,
         match_range: DocumentRange,
-    ) -> Result<SyntacticExpr, ParseError> {
+    ) -> Result<ParseTree, ParseError> {
         let subject = self.parse_primary()?;
         let left_brace = self.expect_token(&Token::LeftBrace)?;
 
@@ -697,7 +696,7 @@ impl Parser {
             Ok(())
         })?;
 
-        Ok(SyntacticExpr::Match {
+        Ok(ParseTree::Match {
             subject: Box::new(subject),
             arms,
             annotation: match_range.to(right_brace),
