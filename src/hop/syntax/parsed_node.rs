@@ -57,7 +57,7 @@ pub enum ParsedNode {
         component_name: ComponentName,
         component_name_opening_range: DocumentRange,
         component_name_closing_range: Option<DocumentRange>,
-        definition_module: Option<ModuleName>,
+        declaring_module: Option<ModuleName>,
         args: Option<(Vec<ParsedArgument>, DocumentRange)>,
         children: Vec<ParsedNode>,
         range: DocumentRange,

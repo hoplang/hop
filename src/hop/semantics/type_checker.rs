@@ -5,12 +5,12 @@ use crate::dop::{self, Type, VarName, resolve_type};
 use crate::environment::Environment;
 use crate::error_collector::ErrorCollector;
 use crate::hop::syntax::parsed_ast::ParsedParameter;
-use crate::hop::syntax::parsed_ast::{ParsedAttribute, ParsedComponentDefinition};
+use crate::hop::syntax::parsed_ast::{ParsedAttribute, ParsedComponentDeclaration};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
 use crate::hop::semantics::typed_ast::{
-    TypedAst, TypedComponentDefinition, TypedEnum, TypedRecord,
+    TypedAst, TypedComponentDeclaration, TypedEnumDeclaration, TypedRecordDeclaration,
 };
 use crate::hop::semantics::typed_node::{
     TypedArgument, TypedAttribute, TypedAttributeValue, TypedNode,
@@ -47,7 +47,7 @@ struct ComponentTypeInformation {
 #[derive(Debug, Clone, Default)]
 struct ModuleTypeInformation {
     components: HashMap<String, ComponentTypeInformation>,
-    records: HashMap<String, TypedRecord>,
+    records: HashMap<String, TypedRecordDeclaration>,
 }
 
 impl ModuleTypeInformation {
@@ -84,11 +84,11 @@ impl ModuleTypeInformation {
         self.records.contains_key(record_name)
     }
 
-    fn get_typed_record(&self, record_name: &str) -> Option<&TypedRecord> {
+    fn get_typed_record(&self, record_name: &str) -> Option<&TypedRecordDeclaration> {
         self.records.get(record_name)
     }
 
-    fn set_typed_record(&mut self, record_name: &str, record: TypedRecord) {
+    fn set_typed_record(&mut self, record_name: &str, record: TypedRecordDeclaration) {
         self.records.insert(record_name.to_string(), record);
     }
 }
@@ -115,7 +115,7 @@ impl State {
         &mut self,
         module_name: &ModuleName,
         record_name: &str,
-        record: TypedRecord,
+        record: TypedRecordDeclaration,
     ) {
         self.modules
             .entry(module_name.clone())
@@ -227,7 +227,7 @@ fn typecheck_module(
     // Register enum types in the type environment first,
     // so records can reference enums in their field types.
     // Also build typed enum structures.
-    let mut typed_enums: Vec<TypedEnum> = Vec::new();
+    let mut typed_enums: Vec<TypedEnumDeclaration> = Vec::new();
     for enum_decl in module.get_enums() {
         let enum_name = enum_decl.name();
         let enum_type = Type::Enum {
@@ -237,14 +237,14 @@ fn typecheck_module(
         };
         let _ = records_env.push(enum_name.to_string(), enum_type);
 
-        typed_enums.push(TypedEnum {
+        typed_enums.push(TypedEnumDeclaration {
             name: enum_decl.name.clone(),
             variants: enum_decl.variants.iter().map(|v| v.name.clone()).collect(),
         });
     }
 
     // Validate record field types and build typed records
-    let mut typed_records: Vec<TypedRecord> = Vec::new();
+    let mut typed_records: Vec<TypedRecordDeclaration> = Vec::new();
     for record in module.get_records() {
         let record_name = record.name();
         let mut typed_fields = Vec::new();
@@ -264,7 +264,7 @@ fn typecheck_module(
 
         // Only add record if all fields resolved successfully
         if !has_errors {
-            let typed_record = TypedRecord {
+            let typed_record = TypedRecordDeclaration {
                 name: record.name.clone(),
                 fields: typed_fields.clone(),
             };
@@ -283,10 +283,10 @@ fn typecheck_module(
 
     let mut env = Environment::new();
 
-    let mut typed_component_definitions = Vec::new();
+    let mut typed_component_declarations = Vec::new();
 
-    for component_def in module.get_component_definitions() {
-        let ParsedComponentDefinition {
+    for component_def in module.get_component_declarations() {
+        let ParsedComponentDeclaration {
             component_name,
             tag_name: name,
             params,
@@ -357,13 +357,13 @@ fn typecheck_module(
             },
         );
 
-        // Build typed ComponentDefinition with resolved parameter types
+        // Build typed ComponentDeclaration with resolved parameter types
         let typed_params_option = if params.is_some() {
             Some(typed_params)
         } else {
             None
         };
-        typed_component_definitions.push(TypedComponentDefinition {
+        typed_component_declarations.push(TypedComponentDeclaration {
             component_name: component_name.clone(),
             params: typed_params_option,
             children: typed_children,
@@ -371,7 +371,7 @@ fn typecheck_module(
     }
 
     // Build and return the typed AST
-    TypedAst::new(typed_component_definitions, typed_records, typed_enums)
+    TypedAst::new(typed_component_declarations, typed_records, typed_enums)
 }
 
 fn typecheck_node(
@@ -477,7 +477,7 @@ fn typecheck_node(
         ParsedNode::ComponentReference {
             component_name,
             component_name_opening_range: tag_name,
-            definition_module,
+            declaring_module: definition_module,
             component_name_closing_range: _closing_tag_name,
             args,
             children,
@@ -631,7 +631,7 @@ fn typecheck_node(
 
             Some(TypedNode::ComponentReference {
                 component_name: component_name.clone(),
-                definition_module: definition_module.clone(),
+                declaring_module: definition_module.clone(),
                 args: typed_args,
                 children: typed_children,
             })
@@ -819,7 +819,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_definition_without_parameters() {
+    fn should_accept_component_declaration_without_parameters() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1394,7 +1394,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_definition_with_string_parameter() {
+    fn should_accept_component_declaration_with_string_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1418,7 +1418,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_definition_with_bool_parameter() {
+    fn should_accept_component_declaration_with_bool_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1444,7 +1444,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_definition_with_float_parameter() {
+    fn should_accept_component_declaration_with_float_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1470,7 +1470,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_definition_with_record_parameter() {
+    fn should_accept_component_declaration_with_record_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -1526,7 +1526,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_definition_with_array_parameter() {
+    fn should_accept_component_declaration_with_array_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2604,7 +2604,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_component_definition_with_enum_parameter() {
+    fn should_accept_component_declaration_with_enum_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --

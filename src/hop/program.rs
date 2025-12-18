@@ -14,8 +14,8 @@ use super::semantics::type_checker::TypeChecker;
 use super::semantics::typed_ast::TypedAst;
 use super::symbols::component_name::ComponentName;
 use super::symbols::module_name::ModuleName;
-use super::syntax::parsed_ast::ParsedAst;
 use super::syntax::find_node::find_node_at_position;
+use super::syntax::parsed_ast::ParsedAst;
 use super::syntax::parsed_node::ParsedNode;
 
 /// HoverInfo is a message that should be displayed when the user hovers
@@ -143,15 +143,15 @@ impl Program {
 
                 let target_ast = self.modules.get(target_module)?;
 
-                // Check if it's a component definition
-                if let Some(component_def) = target_ast.get_component_definition(imported_name) {
+                // Check if it's a component declaration
+                if let Some(component_def) = target_ast.get_component_declaration(imported_name) {
                     return Some(DefinitionLocation {
                         module: target_module.clone(),
                         range: component_def.tag_name.clone(),
                     });
                 }
 
-                // Check if it's a record definition
+                // Check if it's a record declaration
                 if let Some(record) = target_ast.get_record(imported_name) {
                     return Some(DefinitionLocation {
                         module: target_module.clone(),
@@ -162,7 +162,7 @@ impl Program {
         }
 
         // Check if we're on a component definition's tag name (opening or closing)
-        for component_def in ast.get_component_definitions() {
+        for component_def in ast.get_component_declarations() {
             if component_def
                 .tag_name_ranges()
                 .any(|r| r.contains_position(position))
@@ -186,14 +186,14 @@ impl Program {
         match node {
             ParsedNode::ComponentReference {
                 component_name,
-                definition_module,
+                declaring_module: definition_module,
                 ..
             } => {
                 let module_name = definition_module.as_ref()?;
                 let component_def = self
                     .modules
                     .get(module_name)?
-                    .get_component_definition(component_name.as_str())?;
+                    .get_component_declaration(component_name.as_str())?;
                 Some(DefinitionLocation {
                     module: module_name.clone(),
                     range: component_def.tag_name.clone(),
@@ -216,7 +216,7 @@ impl Program {
         position: DocumentPosition,
     ) -> Option<Vec<RenameLocation>> {
         let ast = self.modules.get(module_name)?;
-        for node in ast.get_component_definitions() {
+        for node in ast.get_component_declarations() {
             if node
                 .tag_name_ranges()
                 .any(|r| r.contains_position(position))
@@ -238,7 +238,7 @@ impl Program {
         match node {
             ParsedNode::ComponentReference {
                 component_name,
-                definition_module: definition_location,
+                declaring_module: definition_location,
                 ..
             } => definition_location.as_ref().map(|target_module| {
                 self.collect_component_rename_locations(component_name, target_module)
@@ -266,7 +266,7 @@ impl Program {
     ) -> Option<RenameableSymbol> {
         let ast = self.modules.get(module_name)?;
 
-        for component_node in ast.get_component_definitions() {
+        for component_node in ast.get_component_declarations() {
             if let Some(range) = component_node
                 .tag_name_ranges()
                 .find(|r| r.contains_position(position))
@@ -300,7 +300,8 @@ impl Program {
         let mut locations = Vec::new();
 
         if let Some(module) = self.modules.get(definition_module) {
-            if let Some(component_node) = module.get_component_definition(component_name.as_str()) {
+            if let Some(component_node) = module.get_component_declaration(component_name.as_str())
+            {
                 // Add the definition's opening tag name
                 locations.push(RenameLocation {
                     module: definition_module.clone(),
@@ -337,7 +338,7 @@ impl Program {
                     .filter(|node| match node {
                         ParsedNode::ComponentReference {
                             component_name: ref_component_name,
-                            definition_module: reference_definition_module,
+                            declaring_module: reference_definition_module,
                             ..
                         } => {
                             reference_definition_module
@@ -425,13 +426,13 @@ impl Program {
 
         // Check if the component exists in this module
         let component_exists = module
-            .get_component_definitions()
+            .get_component_declarations()
             .iter()
             .any(|comp| comp.component_name.as_str() == component_name.as_str());
 
         if !component_exists {
             let available_components: Vec<_> = module
-                .get_component_definitions()
+                .get_component_declarations()
                 .iter()
                 .map(|comp| comp.component_name.as_str())
                 .collect();

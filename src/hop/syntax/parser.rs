@@ -2,8 +2,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
 
 use super::parsed_ast::{
-    self, ParsedAst, ParsedComponentDefinition, ParsedEnum, ParsedEnumVariant, ParsedImport,
-    ParsedRecord, ParsedRecordField,
+    self, ParsedAst, ParsedComponentDeclaration, ParsedEnumDeclaration,
+    ParsedEnumDeclarationVariant, ParsedImportDeclaration, ParsedRecordDeclaration,
+    ParsedRecordDeclarationField,
 };
 use super::parsed_node::{ParsedArgument, ParsedNode};
 use super::token_tree::{TokenTree, build_tree};
@@ -153,7 +154,7 @@ pub fn parse(
                             module_name,
                             ..
                         } => {
-                            let import = ParsedImport {
+                            let import = ParsedImportDeclaration {
                                 type_name: name,
                                 type_name_range: name_range.clone(),
                                 path,
@@ -177,13 +178,13 @@ pub fn parse(
                             fields,
                             range: _,
                         } => {
-                            let record = ParsedRecord {
+                            let record = ParsedRecordDeclaration {
                                 name: name.clone(),
                                 name_range: name_range.clone(),
                                 fields: fields
                                     .iter()
                                     .map(|(field_name, _field_name_range, field_type)| {
-                                        ParsedRecordField {
+                                        ParsedRecordDeclarationField {
                                             name: field_name.clone(),
                                             field_type: field_type.clone(),
                                         }
@@ -211,12 +212,14 @@ pub fn parse(
                             variants,
                             range: _,
                         } => {
-                            let enum_decl = ParsedEnum {
+                            let enum_decl = ParsedEnumDeclaration {
                                 name: name.clone(),
                                 name_range: name_range.clone(),
                                 variants: variants
                                     .iter()
-                                    .map(|(name, _range)| ParsedEnumVariant { name: name.clone() })
+                                    .map(|(name, _range)| ParsedEnumDeclarationVariant {
+                                        name: name.clone(),
+                                    })
                                     .collect(),
                             };
                             let name = enum_decl.name();
@@ -255,7 +258,7 @@ pub fn parse(
                     })
                     .collect();
 
-                if let Some(component) = parse_component_definition(tree, children, errors) {
+                if let Some(component) = parse_component_declaration(tree, children, errors) {
                     let name = component.tag_name.as_str();
                     if defined_components.contains(name)
                         || imported_components.contains_key(name)
@@ -278,15 +281,15 @@ pub fn parse(
     ParsedAst::new(module_name, components, imports, records, enums)
 }
 
-/// Try to parse a token tree as a component definition.
+/// Try to parse a token tree as a component declaration.
 ///
-/// Returns `Some(component)` if the tree is an opening tag (component definition),
+/// Returns `Some(component)` if the tree is an opening tag (component declaration),
 /// or `None` for other token types (text, comments, etc.).
-fn parse_component_definition(
+fn parse_component_declaration(
     tree: TokenTree,
     children: Vec<ParsedNode>,
     errors: &mut ErrorCollector<ParseError>,
-) -> Option<ParsedComponentDefinition> {
+) -> Option<ParsedComponentDeclaration> {
     let Token::OpeningTag {
         tag_name,
         attributes,
@@ -332,12 +335,12 @@ fn parse_component_definition(
         )
     });
 
-    // Disallow any unrecognized attributes on component definitions
+    // Disallow any unrecognized attributes on component declarations
     for error in validator.disallow_unrecognized() {
         errors.push(error);
     }
 
-    Some(ParsedComponentDefinition {
+    Some(ParsedComponentDeclaration {
         component_name,
         tag_name: tag_name.clone(),
         closing_tag_name: tree.closing_tag_name,
@@ -590,8 +593,7 @@ fn construct_nodes(
                         )
                     });
 
-                    let definition_module = if defined_components.contains(component_name.as_str())
-                    {
+                    let declaring_module = if defined_components.contains(component_name.as_str()) {
                         Some(module_name.clone())
                     } else {
                         imported_components.get(component_name.as_str()).cloned()
@@ -606,7 +608,7 @@ fn construct_nodes(
                         component_name,
                         component_name_opening_range: tag_name,
                         component_name_closing_range: tree.closing_tag_name,
-                        definition_module,
+                        declaring_module,
                         args,
                         range: tree.range,
                         children,
@@ -636,7 +638,7 @@ fn construct_nodes(
 
 #[cfg(test)]
 mod tests {
-    use super::parsed_ast::ParsedComponentDefinition;
+    use super::parsed_ast::ParsedComponentDeclaration;
     use super::*;
     use crate::document::{DocumentAnnotator, document_cursor::Ranged};
     use crate::error_collector::ErrorCollector;
@@ -672,7 +674,7 @@ mod tests {
         }
     }
 
-    pub fn format_component_definition(d: &ParsedComponentDefinition) -> String {
+    pub fn format_component_declaration(d: &ParsedComponentDeclaration) -> String {
         let mut lines = Vec::new();
         for child in &d.children {
             write_node(child, 0, &mut lines);
@@ -694,9 +696,9 @@ mod tests {
                 .with_lines_before(1)
                 .annotate(None, errors.to_vec())
         } else {
-            for component in module.get_component_definitions() {
+            for component in module.get_component_declarations() {
                 if component.tag_name.as_str() == "Main" {
-                    return expected.assert_eq(&format_component_definition(component));
+                    return expected.assert_eq(&format_component_declaration(component));
                 }
             }
             String::new()

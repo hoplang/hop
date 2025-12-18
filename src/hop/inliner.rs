@@ -3,7 +3,7 @@ use crate::dop::{Type, TypedExpr};
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode, InlinedParameter,
 };
-use crate::hop::semantics::typed_ast::{TypedAst, TypedComponentDefinition};
+use crate::hop::semantics::typed_ast::{TypedAst, TypedComponentDeclaration};
 use crate::hop::semantics::typed_node::{
     TypedArgument, TypedAttribute, TypedAttributeValue, TypedNode,
 };
@@ -13,7 +13,7 @@ use anyhow::Result;
 use std::collections::{BTreeMap, HashMap};
 
 /// The Inliner transforms ASTs by replacing ComponentReference nodes with their
-/// inlined component definitions, using Let nodes for parameter binding and
+/// inlined component declarations, using Let nodes for parameter binding and
 /// StringConcat for class attribute merging.
 pub struct Inliner;
 
@@ -34,7 +34,7 @@ impl Inliner {
         // Validate that all requested pages exist
         for (module_name, component_name) in pages {
             let component_exists = asts.get(module_name).is_some_and(|ast| {
-                ast.get_component_definitions()
+                ast.get_component_declarations()
                     .iter()
                     .any(|c| &c.component_name == component_name)
             });
@@ -43,7 +43,7 @@ impl Inliner {
                 let available_list: Vec<_> = asts
                     .iter()
                     .flat_map(|(m, ast)| {
-                        ast.get_component_definitions()
+                        ast.get_component_declarations()
                             .iter()
                             .map(move |c| format!("  - {}/{}", m, c.component_name))
                     })
@@ -60,7 +60,7 @@ impl Inliner {
         let mut result = Vec::new();
 
         for (module_name, ast) in &asts {
-            for component in ast.get_component_definitions() {
+            for component in ast.get_component_declarations() {
                 let included = pages
                     .iter()
                     .any(|(m, c)| m == module_name && c == &component.component_name);
@@ -113,16 +113,14 @@ impl Inliner {
     }
 
     /// Check if a component has a children: TrustedHTML parameter
-    fn component_accepts_children(component: &TypedComponentDefinition) -> bool {
+    fn component_accepts_children(component: &TypedComponentDeclaration) -> bool {
         component
             .params
             .as_ref()
             .map(|params| {
-                params
-                    .iter()
-                    .any(|(var_name, var_type)| {
-                        var_name.as_str() == "children" && *var_type == Type::TrustedHTML
-                    })
+                params.iter().any(|(var_name, var_type)| {
+                    var_name.as_str() == "children" && *var_type == Type::TrustedHTML
+                })
             })
             .unwrap_or(false)
     }
@@ -130,7 +128,7 @@ impl Inliner {
     /// Inline a component reference
     fn inline_component_reference(
         module_name: &ModuleName,
-        component: &TypedComponentDefinition,
+        component: &TypedComponentDeclaration,
         args: &[TypedArgument],
         slot_children: &[TypedNode],
         asts: &HashMap<ModuleName, TypedAst>,
@@ -205,18 +203,18 @@ impl Inliner {
         match node {
             TypedNode::ComponentReference {
                 component_name,
-                definition_module,
+                declaring_module,
                 args,
                 children,
             } => {
-                // Get the component definition
-                let module = definition_module
+                // Get the component declaration
+                let module = declaring_module
                     .as_ref()
                     .expect("Component reference should have module");
                 let ast = asts.get(module).expect("Component module should exist");
                 let component = ast
-                    .get_component_definition(component_name.as_str())
-                    .expect("Component definition should exist");
+                    .get_component_declaration(component_name.as_str())
+                    .expect("Component declaration should exist");
 
                 // Inline the component
                 let args_vec = args.as_ref().map(|v| v.as_slice()).unwrap_or(&[]);

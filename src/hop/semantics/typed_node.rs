@@ -35,7 +35,7 @@ pub enum TypedNode {
 
     ComponentReference {
         component_name: ComponentName,
-        definition_module: Option<ModuleName>,
+        declaring_module: Option<ModuleName>,
         args: Option<Vec<TypedArgument>>,
         children: Vec<TypedNode>,
     },

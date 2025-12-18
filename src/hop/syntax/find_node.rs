@@ -22,7 +22,7 @@ use super::parsed_node::ParsedNode;
 /// </div>
 ///
 pub fn find_node_at_position(ast: &ParsedAst, position: DocumentPosition) -> Option<&ParsedNode> {
-    for n in ast.get_component_definitions() {
+    for n in ast.get_component_declarations() {
         if n.range.contains_position(position) {
             for child in &n.children {
                 if let Some(node) = child.find_node_at_position(position) {
