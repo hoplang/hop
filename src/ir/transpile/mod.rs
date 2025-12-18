@@ -10,8 +10,8 @@ pub use js::{JsTranspiler, LanguageMode};
 use pretty::BoxDoc;
 pub use python::PythonTranspiler;
 
-use crate::dop::field_name::FieldName;
-use crate::dop::r#type::{ComparableType, EquatableType, NumericType, Type};
+use crate::dop::symbols::field_name::FieldName;
+use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::hop::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
 

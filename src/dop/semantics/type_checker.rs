@@ -1,16 +1,15 @@
 use std::collections::HashSet;
 
-use super::Type;
-#[cfg(test)]
-use super::declaration::Declaration;
 use super::expr::{EnumPattern, MatchArm};
-use super::syntactic_expr::{BinaryOp, SyntacticExpr};
-use super::syntactic_type::SyntacticType;
-use super::r#type::NumericType;
+use super::r#type::{NumericType, Type};
 use super::type_error::TypeError;
-#[cfg(test)]
-use super::type_name::TypeName;
 use crate::document::document_cursor::Ranged as _;
+#[cfg(test)]
+use crate::dop::declaration::Declaration;
+use crate::dop::syntax::syntactic_expr::{BinaryOp, SyntacticExpr};
+use crate::dop::syntax::syntactic_type::SyntacticType;
+#[cfg(test)]
+use crate::dop::symbols::type_name::TypeName;
 use crate::dop::Expr;
 use crate::hop::environment::Environment;
 use crate::hop::type_checker::TypeAnnotation;

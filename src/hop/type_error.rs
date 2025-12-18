@@ -86,11 +86,11 @@ pub enum TypeError {
     ExpectedStringForTextExpression { found: Type, range: DocumentRange },
 
     #[error("{err}")]
-    DopError { err: dop::type_error::TypeError },
+    DopError { err: dop::semantics::type_error::TypeError },
 }
 
-impl From<dop::type_error::TypeError> for TypeError {
-    fn from(err: dop::type_error::TypeError) -> Self {
+impl From<dop::semantics::type_error::TypeError> for TypeError {
+    fn from(err: dop::semantics::type_error::TypeError) -> Self {
         Self::DopError { err }
     }
 }

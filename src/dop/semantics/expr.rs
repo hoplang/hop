@@ -1,13 +1,17 @@
 use std::fmt::{self, Display};
 
-use crate::dop::field_name::FieldName;
-use crate::dop::var_name::VarName;
+use crate::dop::symbols::field_name::FieldName;
+use crate::dop::symbols::var_name::VarName;
 use pretty::BoxDoc;
 
-use super::{
-    Type,
-    r#type::{ComparableType, EquatableType, NumericType},
-};
+use super::r#type::{ComparableType, EquatableType, NumericType, Type};
+
+/// A pattern that matches an enum variant
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumPattern {
+    pub enum_name: String,
+    pub variant_name: String,
+}
 
 /// A single arm in a match expression, e.g. `Color::Red => "red"`
 #[derive(Debug, Clone, PartialEq)]
@@ -16,13 +20,6 @@ pub struct MatchArm {
     pub pattern: EnumPattern,
     /// The expression to evaluate if this arm matches
     pub body: Expr,
-}
-
-/// A pattern that matches an enum variant
-#[derive(Debug, Clone, PartialEq)]
-pub struct EnumPattern {
-    pub enum_name: String,
-    pub variant_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -74,10 +71,7 @@ pub enum Expr {
     },
 
     /// String concatenation expression for joining two string expressions
-    StringConcat {
-        left: Box<Self>,
-        right: Box<Self>,
-    },
+    StringConcat { left: Box<Self>, right: Box<Self> },
 
     /// Numeric addition expression for adding numeric values
     NumericAdd {
@@ -104,16 +98,10 @@ pub enum Expr {
     BooleanNegation { operand: Box<Self> },
 
     /// Boolean logical AND expression
-    BooleanLogicalAnd {
-        left: Box<Self>,
-        right: Box<Self>,
-    },
+    BooleanLogicalAnd { left: Box<Self>, right: Box<Self> },
 
     /// Boolean logical OR expression
-    BooleanLogicalOr {
-        left: Box<Self>,
-        right: Box<Self>,
-    },
+    BooleanLogicalOr { left: Box<Self>, right: Box<Self> },
 
     /// Equals expression
     Equals {

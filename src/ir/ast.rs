@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt};
 
-use crate::dop::field_name::FieldName;
-use crate::dop::r#type::{ComparableType, EquatableType, NumericType, Type};
+use crate::dop::symbols::field_name::FieldName;
+use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::dop::VarName;
 use crate::hop::component_name::ComponentName;
 use pretty::BoxDoc;

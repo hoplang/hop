@@ -65,8 +65,8 @@ impl ParseError {
     }
 }
 
-impl From<dop::parse_error::ParseError> for ParseError {
-    fn from(err: dop::parse_error::ParseError) -> Self {
+impl From<dop::ParseError> for ParseError {
+    fn from(err: dop::ParseError) -> Self {
         Self::GenericError {
             message: err.to_string(),
             range: err.range().clone(),

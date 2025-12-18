@@ -7,7 +7,7 @@ use crate::dop::Expr;
 use crate::dop::SyntacticExpr;
 use crate::dop::SyntacticType;
 use crate::dop::Type;
-use crate::dop::type_name::TypeName;
+use crate::dop::symbols::type_name::TypeName;
 use crate::hop::component_name::ComponentName;
 use crate::hop::module_name::ModuleName;
 

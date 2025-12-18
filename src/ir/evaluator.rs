@@ -2,7 +2,7 @@ use crate::hop::environment::Environment;
 use crate::ir::IrExpr;
 use crate::{
     common::escape_html,
-    dop::r#type::{ComparableType, EquatableType, NumericType},
+    dop::semantics::r#type::{ComparableType, EquatableType, NumericType},
 };
 use anyhow::{Result, anyhow};
 use serde_json::Value;

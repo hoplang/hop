@@ -4,9 +4,9 @@ use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::hop::module_name::ModuleName;
 use pretty::BoxDoc;
 
-use super::field_name::FieldName;
-use super::syntactic_type::SyntacticType;
-use super::type_name::TypeName;
+use super::symbols::field_name::FieldName;
+use super::symbols::type_name::TypeName;
+use super::syntax::syntactic_type::SyntacticType;
 
 /// An EnumVariant represents a variant in an enum declaration.
 /// E.g. enum Color {Red, Green, Blue}

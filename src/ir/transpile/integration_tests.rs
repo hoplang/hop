@@ -1,5 +1,5 @@
 use super::{GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler};
-use crate::dop::r#type::Type;
+use crate::dop::semantics::r#type::Type;
 use crate::ir::ast::{IrEntrypoint, IrModule};
 use crate::ir::test_utils::build_ir_auto;
 use std::fs;

@@ -1,5 +1,5 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::type_name::TypeName;
+use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{
     self, Argument, Parameter, RecordDeclaration, RecordDeclarationField, Type, resolve_type,
 };

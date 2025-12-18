@@ -3,21 +3,21 @@ use std::fmt::{self, Display};
 use std::iter::Peekable;
 
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _, StringSpan};
-use crate::dop::field_name::FieldName;
-use crate::dop::parse_error::ParseError;
-use crate::dop::syntactic_expr::{BinaryOp, MatchArm, SyntacticExpr};
-use crate::dop::syntactic_type::SyntacticType;
-use crate::dop::token::Token;
-use crate::dop::tokenizer::Tokenizer;
-use crate::dop::var_name::VarName;
+use crate::dop::declaration::{
+    Declaration, EnumDeclaration, EnumVariant, RecordDeclaration, RecordDeclarationField,
+};
+use crate::dop::semantics::expr::Expr;
+use crate::dop::symbols::field_name::FieldName;
+use super::syntactic_expr::{BinaryOp, MatchArm, SyntacticExpr};
+use super::syntactic_type::SyntacticType;
+use crate::dop::symbols::type_name::TypeName;
+use crate::dop::symbols::var_name::VarName;
 use crate::error_collector::ErrorCollector;
 use crate::hop::module_name::ModuleName;
 
-use super::declaration::{
-    Declaration, EnumDeclaration, EnumVariant, RecordDeclaration, RecordDeclarationField,
-};
-use super::expr::Expr;
-use super::type_name::TypeName;
+use super::parse_error::ParseError;
+use super::token::Token;
+use super::tokenizer::Tokenizer;
 
 /// A Parameter represents a parsed parameter with type annotation.
 /// E.g. <my-comp {x: string, y: string}>

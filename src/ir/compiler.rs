@@ -1,7 +1,7 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::StringSpan;
 use crate::dop::Expr;
-use crate::dop::r#type::EquatableType;
+use crate::dop::semantics::r#type::EquatableType;
 use crate::dop::{Type, VarName};
 use crate::hop::component_name::ComponentName;
 use crate::hop::inlined_ast::{
