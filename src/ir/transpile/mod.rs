@@ -284,7 +284,7 @@ pub trait ExpressionTranspiler {
                 enum_name,
                 variant_name,
                 ..
-            } => self.transpile_enum_instantiation(enum_name, variant_name)
+            } => self.transpile_enum_instantiation(enum_name, variant_name),
         }
     }
 }

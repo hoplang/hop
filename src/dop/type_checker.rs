@@ -746,6 +746,9 @@ pub fn typecheck_expr(
                 annotation: (),
             })
         }
+        SyntacticExpr::Match { .. } => {
+            todo!("Match expression type checking not yet implemented")
+        }
     }
 }
 

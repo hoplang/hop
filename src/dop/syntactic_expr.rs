@@ -5,6 +5,15 @@ use crate::dop::field_name::FieldName;
 use crate::dop::var_name::VarName;
 use pretty::BoxDoc;
 
+/// A single arm in a match expression, e.g. `Color::Red => "red"`
+#[derive(Debug, Clone)]
+pub struct MatchArm {
+    /// The pattern being matched (must be an EnumInstantiation, e.g., `Color::Red`)
+    pub pattern: SyntacticExpr,
+    /// The expression to evaluate if this arm matches
+    pub body: SyntacticExpr,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
     Eq,
@@ -91,6 +100,13 @@ pub enum SyntacticExpr {
         operand: Box<Self>,
         annotation: DocumentRange,
     },
+
+    /// A match expression, e.g. `match color {Red => "red", Blue => "blue"}`
+    Match {
+        subject: Box<Self>,
+        arms: Vec<MatchArm>,
+        annotation: DocumentRange,
+    },
 }
 
 impl SyntacticExpr {
@@ -106,7 +122,8 @@ impl SyntacticExpr {
             | SyntacticExpr::RecordInstantiation { annotation, .. }
             | SyntacticExpr::EnumInstantiation { annotation, .. }
             | SyntacticExpr::BinaryOp { annotation, .. }
-            | SyntacticExpr::Negation { annotation, .. } => annotation,
+            | SyntacticExpr::Negation { annotation, .. }
+            | SyntacticExpr::Match { annotation, .. } => annotation,
         }
     }
 
@@ -195,6 +212,34 @@ impl SyntacticExpr {
             } => BoxDoc::text(enum_name.as_str())
                 .append(BoxDoc::text("::"))
                 .append(BoxDoc::text(variant_name.as_str())),
+            SyntacticExpr::Match { subject, arms, .. } => {
+                if arms.is_empty() {
+                    BoxDoc::text("match ")
+                        .append(subject.to_doc())
+                        .append(BoxDoc::text(" {}"))
+                } else {
+                    BoxDoc::text("match ")
+                        .append(subject.to_doc())
+                        .append(BoxDoc::text(" {"))
+                        .append(
+                            BoxDoc::line_()
+                                .append(BoxDoc::intersperse(
+                                    arms.iter().map(|arm| {
+                                        arm.pattern
+                                            .to_doc()
+                                            .append(BoxDoc::text(" => "))
+                                            .append(arm.body.to_doc())
+                                    }),
+                                    BoxDoc::text(",").append(BoxDoc::line()),
+                                ))
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                .append(BoxDoc::line_())
+                                .nest(2)
+                                .group(),
+                        )
+                        .append(BoxDoc::text("}"))
+                }
+            }
         }
     }
 }

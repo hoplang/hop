@@ -1621,4 +1621,56 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn should_accept_match_expression_in_template() {
+        check(
+            indoc! {r#"
+                enum Color {Red, Green, Blue}
+
+                <Main {color: Color}>
+                    {match color {Color::Red => "red", Color::Blue => "blue"}}
+                </Main>
+            "#},
+            expect![[r#"
+                text_expression                                   3:4-3:62
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_expression_in_attribute() {
+        check(
+            indoc! {r#"
+                enum Color {Red, Green, Blue}
+
+                <Main {color: Color}>
+                    <div class={match color {Color::Red => "text-red", Color::Blue => "text-blue"}}></div>
+                </Main>
+            "#},
+            expect![[r#"
+                div                                               3:4-3:90
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_expression_with_multiline_arms() {
+        check(
+            indoc! {r#"
+                enum Status {Active, Inactive, Pending}
+
+                <Main {status: Status}>
+                    {match status {
+                        Status::Active => "active",
+                        Status::Inactive => "inactive",
+                        Status::Pending => "pending",
+                    }}
+                </Main>
+            "#},
+            expect![[r#"
+                text_expression                                   3:4-7:6
+            "#]],
+        );
+    }
 }

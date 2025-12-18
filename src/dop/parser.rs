@@ -5,7 +5,7 @@ use std::iter::Peekable;
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _, StringSpan};
 use crate::dop::field_name::FieldName;
 use crate::dop::parse_error::ParseError;
-use crate::dop::syntactic_expr::{BinaryOp, SyntacticExpr};
+use crate::dop::syntactic_expr::{BinaryOp, MatchArm, SyntacticExpr};
 use crate::dop::syntactic_type::SyntacticType;
 use crate::dop::token::Token;
 use crate::dop::tokenizer::Tokenizer;
@@ -623,6 +623,7 @@ impl Parser {
                 self.expect_opposite(&Token::LeftParen, &left_paren)?;
                 Ok(expr)
             }
+            Some((Token::Match, match_range)) => self.parse_match_expr(match_range),
             Some((token, range)) => Err(ParseError::UnexpectedToken {
                 token,
                 range: range.clone(),
@@ -667,6 +668,32 @@ impl Parser {
             enum_name: enum_name.as_str().to_string(),
             variant_name: variant_name.as_str().to_string(),
             annotation: enum_name_range.to(variant_range),
+        })
+    }
+
+    /// Parse a match expression.
+    ///
+    /// Syntax: `match subject {Pattern1 => expr1, Pattern2 => expr2}`
+    fn parse_match_expr(
+        &mut self,
+        match_range: DocumentRange,
+    ) -> Result<SyntacticExpr, ParseError> {
+        let subject = self.parse_primary()?;
+        let left_brace = self.expect_token(&Token::LeftBrace)?;
+
+        let mut arms = Vec::new();
+        let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
+            let pattern = this.parse_primary()?;
+            this.expect_token(&Token::FatArrow)?;
+            let body = this.parse_logical()?;
+            arms.push(MatchArm { pattern, body });
+            Ok(())
+        })?;
+
+        Ok(SyntacticExpr::Match {
+            subject: Box::new(subject),
+            arms,
+            annotation: match_range.to(right_brace),
         })
     }
 
@@ -2505,6 +2532,89 @@ mod tests {
                 error: Unexpected end of expression
                 Color::
                 ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_expression_with_single_arm() {
+        check_parse_expr(
+            indoc! {r#"
+                match color {Color::Red => "red"}
+            "#},
+            expect![[r#"
+                match color {Color::Red => "red"}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_expression_with_multiple_arms() {
+        check_parse_expr(
+            indoc! {r#"
+                match color {
+                    Color::Red => "red",
+                    Color::Blue => "blue",
+                    Color::Green => "green",
+                }
+            "#},
+            expect![[r#"
+                match color {
+                  Color::Red => "red",
+                  Color::Blue => "blue",
+                  Color::Green => "green",
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_expression_with_trailing_comma() {
+        check_parse_expr(
+            indoc! {r#"
+                match color {
+                    Color::Red => "red",
+                    Color::Blue => "blue",
+                }
+            "#},
+            expect![[r#"
+                match color {Color::Red => "red", Color::Blue => "blue"}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_expression_with_complex_body() {
+        check_parse_expr(
+            indoc! {r#"
+                match status {
+                    Status::Active => user.name,
+                    Status::Inactive => "unknown",
+                }
+            "#},
+            expect![[r#"
+                match status {
+                  Status::Active => user.name,
+                  Status::Inactive => "unknown",
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_nested_match_expression() {
+        check_parse_expr(
+            indoc! {r#"
+                match outer {
+                    Outer::A => match inner {Inner::X => 1, Inner::Y => 2},
+                    Outer::B => 3,
+                }
+            "#},
+            expect![[r#"
+                match outer {
+                  Outer::A => match inner {Inner::X => 1, Inner::Y => 2},
+                  Outer::B => 3,
+                }
             "#]],
         );
     }
