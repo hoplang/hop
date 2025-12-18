@@ -8,7 +8,8 @@ use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::semantics::typed_ast::{TypedAst, TypedAttribute, TypedComponentDefinition};
 use crate::hop::syntax::ast::AttributeValue;
 use crate::hop::syntax::node::TypedArgument;
-use crate::hop::syntax::node::{Node, TypedNode};
+use crate::hop::semantics::typed_node::TypedNode;
+use crate::hop::syntax::node::Node;
 use anyhow::Result;
 use std::collections::{BTreeMap, HashMap};
 

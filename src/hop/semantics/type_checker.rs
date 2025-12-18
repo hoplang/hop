@@ -16,7 +16,8 @@ use crate::hop::semantics::typed_ast::{
     TypedRecordField,
 };
 use crate::hop::syntax::ast::{Ast, AttributeValue};
-use crate::hop::syntax::node::{Node, TypedNode, UntypedNode};
+use crate::hop::semantics::typed_node::TypedNode;
+use crate::hop::syntax::node::{Node, UntypedNode};
 
 #[derive(Debug, Clone)]
 pub struct TypeAnnotation {

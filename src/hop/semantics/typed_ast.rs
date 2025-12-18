@@ -3,7 +3,7 @@ use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{Expr, Type, VarName};
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::syntax::ast::{Attribute, Enum};
-use crate::hop::syntax::node::TypedNode;
+use crate::hop::semantics::typed_node::TypedNode;
 
 pub type TypedAttribute = Attribute<Expr>;
 

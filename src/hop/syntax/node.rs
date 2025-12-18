@@ -33,7 +33,6 @@ impl<T: Display> Display for Argument<T> {
 }
 
 pub type UntypedNode = Node<ParseTree>;
-pub type TypedNode = Node<Expr>;
 
 #[derive(Debug, Clone)]
 pub enum Node<E> {
