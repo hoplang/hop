@@ -57,12 +57,10 @@ impl AttributeValidator {
             Some(val) => Ok(ast::Attribute {
                 name: attr.name.clone(),
                 value: Some(Self::parse_attribute_value(val)?),
-                range: attr.range.clone(),
             }),
             None => Ok(ast::Attribute {
                 name: attr.name.clone(),
                 value: None,
-                range: attr.range.clone(),
             }),
         }
     }

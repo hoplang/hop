@@ -5,8 +5,8 @@ use crate::hop::inlined_ast::{
 };
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
-use crate::hop::semantics::typed_ast::{TypedAst, TypedAttribute, TypedAttributeValue, TypedComponentDefinition};
-use crate::hop::semantics::typed_node::{TypedArgument, TypedNode};
+use crate::hop::semantics::typed_ast::{TypedAst, TypedComponentDefinition};
+use crate::hop::semantics::typed_node::{TypedArgument, TypedAttribute, TypedAttributeValue, TypedNode};
 use anyhow::Result;
 use std::collections::{BTreeMap, HashMap};
 
@@ -90,7 +90,7 @@ impl Inliner {
     /// Convert a TypedAttribute to InlinedAttribute
     fn convert_attribute(attr: &TypedAttribute) -> InlinedAttribute {
         InlinedAttribute {
-            name: attr.name.to_string(),
+            name: attr.name.clone(),
             value: attr.value.as_ref().map(|v| match v {
                 TypedAttributeValue::Expressions(exprs) => {
                     InlinedAttributeValue::Expressions(exprs.clone())
@@ -224,7 +224,7 @@ impl Inliner {
                 attributes,
                 children,
             } => vec![InlinedNode::Html {
-                tag_name: tag_name.to_string_span(),
+                tag_name: tag_name.clone(),
                 attributes: Self::convert_attributes(attributes),
                 children: Self::inline_nodes(children, slot_content, asts),
             }],

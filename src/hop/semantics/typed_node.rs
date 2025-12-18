@@ -1,8 +1,7 @@
 use std::collections::BTreeMap;
 
-use crate::document::document_cursor::{DocumentRange, StringSpan};
+use crate::document::document_cursor::StringSpan;
 use crate::dop::{Expr, VarName};
-use crate::hop::semantics::typed_ast::TypedAttribute;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 
@@ -10,6 +9,18 @@ use crate::hop::symbols::module_name::ModuleName;
 pub struct TypedArgument {
     pub var_name: VarName,
     pub var_expr: Expr,
+}
+
+#[derive(Debug, Clone)]
+pub enum TypedAttributeValue {
+    Expressions(Vec<Expr>),
+    String(StringSpan),
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedAttribute {
+    pub name: String,
+    pub value: Option<TypedAttributeValue>,
 }
 
 #[derive(Debug, Clone)]
@@ -45,7 +56,7 @@ pub enum TypedNode {
     },
 
     Html {
-        tag_name: DocumentRange,
+        tag_name: StringSpan,
         attributes: BTreeMap<StringSpan, TypedAttribute>,
         children: Vec<TypedNode>,
     },

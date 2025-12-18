@@ -29,18 +29,17 @@ impl Display for Parameter {
 }
 
 #[derive(Debug, Clone)]
-pub enum AttributeValue<T = ParseTree> {
-    Expressions(Vec<T>),
+pub enum AttributeValue {
+    Expressions(Vec<ParseTree>),
     String(DocumentRange),
 }
 
 /// An Attribute is an attribute on a node, it can either
 /// be empty, an expression or a string value.
 #[derive(Debug, Clone)]
-pub struct Attribute<T = ParseTree> {
+pub struct Attribute {
     pub name: DocumentRange,
-    pub value: Option<AttributeValue<T>>,
-    pub range: DocumentRange,
+    pub value: Option<AttributeValue>,
 }
 
 #[derive(Debug, Clone)]

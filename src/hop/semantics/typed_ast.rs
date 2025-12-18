@@ -1,12 +1,9 @@
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
-use crate::dop::{Expr, Type, VarName};
+use crate::dop::{Type, VarName};
 use crate::hop::symbols::component_name::ComponentName;
-use crate::hop::syntax::ast::{Attribute, AttributeValue, Enum};
+use crate::hop::syntax::ast::Enum;
 use crate::hop::semantics::typed_node::TypedNode;
-
-pub type TypedAttribute = Attribute<Expr>;
-pub type TypedAttributeValue = AttributeValue<Expr>;
 
 #[derive(Debug, Clone)]
 pub struct TypedRecordField {

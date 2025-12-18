@@ -11,11 +11,11 @@ use std::fmt::{self, Display};
 
 use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::semantics::typed_ast::{
-    TypedAst, TypedAttribute, TypedComponentDefinition, TypedParameter, TypedRecord,
+    TypedAst, TypedComponentDefinition, TypedParameter, TypedRecord,
     TypedRecordField,
 };
 use crate::hop::syntax::ast::{Ast, AttributeValue};
-use crate::hop::semantics::typed_node::{TypedArgument, TypedNode};
+use crate::hop::semantics::typed_node::{TypedArgument, TypedAttribute, TypedAttributeValue, TypedNode};
 use crate::hop::syntax::node::Node;
 
 #[derive(Debug, Clone)]
@@ -662,7 +662,7 @@ fn typecheck_node(
                 .collect();
 
             Some(TypedNode::Html {
-                tag_name: tag_name.clone(),
+                tag_name: tag_name.to_string_span(),
                 attributes: typed_attributes,
                 children: typed_children,
             })
@@ -731,21 +731,20 @@ fn typecheck_attributes(
                     }
                 }
                 if !typed_exprs.is_empty() {
-                    Some(AttributeValue::Expressions(typed_exprs))
+                    Some(TypedAttributeValue::Expressions(typed_exprs))
                 } else {
                     None
                 }
             }
-            Some(AttributeValue::String(s)) => Some(AttributeValue::String(s.clone())),
+            Some(AttributeValue::String(s)) => Some(TypedAttributeValue::String(s.to_string_span())),
             None => None,
         };
 
         typed_attributes.insert(
             key.clone(),
-            Attribute {
-                name: attr.name.clone(),
+            TypedAttribute {
+                name: attr.name.to_string(),
                 value: typed_value,
-                range: attr.range.clone(),
             },
         );
     }
