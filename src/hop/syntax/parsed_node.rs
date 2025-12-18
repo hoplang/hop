@@ -11,7 +11,7 @@ use crate::dop::VarName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 
-use super::ast::Attribute;
+use super::parsed_ast::ParsedAttribute;
 
 /// An ParsedArgument represents a parsed argument with a name and a value.
 /// E.g. <my-comp {x: [1,2], y: 2}>
@@ -93,7 +93,7 @@ pub enum ParsedNode {
     Html {
         tag_name: DocumentRange,
         closing_tag_name: Option<DocumentRange>,
-        attributes: BTreeMap<StringSpan, Attribute>,
+        attributes: BTreeMap<StringSpan, ParsedAttribute>,
         children: Vec<ParsedNode>,
         range: DocumentRange,
     },

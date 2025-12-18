@@ -57,33 +57,6 @@ impl TokenTree {
     }
 }
 
-impl Display for TokenTree {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fn fmt_tree(tree: &TokenTree, f: &mut fmt::Formatter<'_>, indent: usize) -> fmt::Result {
-            let indent_str = "  ".repeat(indent);
-            write!(f, "{}{}", indent_str, tree.token)?;
-
-            if let Some(ref closing_name) = tree.closing_tag_name {
-                write!(f, " [has closing: {}]", closing_name)?;
-            }
-
-            if !tree.children.is_empty() {
-                writeln!(f)?;
-                for (i, child) in tree.children.iter().enumerate() {
-                    fmt_tree(child, f, indent + 1)?;
-                    if i < tree.children.len() - 1 {
-                        writeln!(f)?;
-                    }
-                }
-            }
-
-            Ok(())
-        }
-
-        fmt_tree(self, f, 0)
-    }
-}
-
 /// Build a TokenTree from a tokenizer.
 ///
 /// We do our best here to construct as much of the tree as possible even
@@ -173,6 +146,33 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut ErrorCollector<ParseError>)
     }
 
     top_level_nodes
+}
+
+impl Display for TokenTree {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fn fmt_tree(tree: &TokenTree, f: &mut fmt::Formatter<'_>, indent: usize) -> fmt::Result {
+            let indent_str = "  ".repeat(indent);
+            write!(f, "{}{}", indent_str, tree.token)?;
+
+            if let Some(ref closing_name) = tree.closing_tag_name {
+                write!(f, " [has closing: {}]", closing_name)?;
+            }
+
+            if !tree.children.is_empty() {
+                writeln!(f)?;
+                for (i, child) in tree.children.iter().enumerate() {
+                    fmt_tree(child, f, indent + 1)?;
+                    if i < tree.children.len() - 1 {
+                        writeln!(f)?;
+                    }
+                }
+            }
+
+            Ok(())
+        }
+
+        fmt_tree(self, f, 0)
+    }
 }
 
 #[cfg(test)]

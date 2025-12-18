@@ -1,12 +1,14 @@
 use crate::document::document_cursor::StringSpan;
-use crate::dop::{Expr, Type};
+use crate::dop::{Type, TypedExpr};
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode, InlinedParameter,
 };
+use crate::hop::semantics::typed_ast::{TypedAst, TypedComponentDefinition};
+use crate::hop::semantics::typed_node::{
+    TypedArgument, TypedAttribute, TypedAttributeValue, TypedNode,
+};
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
-use crate::hop::semantics::typed_ast::{TypedAst, TypedComponentDefinition};
-use crate::hop::semantics::typed_node::{TypedArgument, TypedAttribute, TypedAttributeValue, TypedNode};
 use anyhow::Result;
 use std::collections::{BTreeMap, HashMap};
 
@@ -255,7 +257,7 @@ impl Inliner {
             // Check if this is {children} expression that should be replaced with slot content
             TypedNode::TextExpression { expression } => {
                 // Check if this is a `children` variable of type TrustedHTML
-                if let Expr::Var { value, kind, .. } = expression {
+                if let TypedExpr::Var { value, kind, .. } = expression {
                     if value.as_str() == "children" && *kind == Type::TrustedHTML {
                         if let Some(content) = slot_content {
                             // Replace {children} with the provided content

@@ -1,9 +1,9 @@
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{Type, VarName};
-use crate::hop::symbols::component_name::ComponentName;
-use crate::hop::syntax::ast::Enum;
 use crate::hop::semantics::typed_node::TypedNode;
+use crate::hop::symbols::component_name::ComponentName;
+use crate::hop::syntax::parsed_ast::ParsedEnum;
 
 #[derive(Debug, Clone)]
 pub struct TypedRecordField {
@@ -33,7 +33,7 @@ pub struct TypedComponentDefinition {
 #[derive(Debug, Clone)]
 pub struct TypedAst {
     records: Vec<TypedRecord>,
-    enums: Vec<Enum>,
+    enums: Vec<ParsedEnum>,
     component_definitions: Vec<TypedComponentDefinition>,
 }
 
@@ -41,7 +41,7 @@ impl TypedAst {
     pub fn new(
         component_definitions: Vec<TypedComponentDefinition>,
         records: Vec<TypedRecord>,
-        enums: Vec<Enum>,
+        enums: Vec<ParsedEnum>,
     ) -> Self {
         Self {
             component_definitions,
@@ -67,7 +67,7 @@ impl TypedAst {
     }
 
     /// Returns a reference to all enum declarations in the AST.
-    pub fn get_enums(&self) -> &[Enum] {
+    pub fn get_enums(&self) -> &[ParsedEnum] {
         &self.enums
     }
 }

@@ -9,9 +9,7 @@ use crate::error_collector::ErrorCollector;
 use crate::hop::symbols::module_name::ModuleName;
 
 use super::parse_error::ParseError;
-use super::parsed::{
-    ParsedBinaryOp, ParsedDeclaration, ParsedExpr, ParsedMatchArm, ParsedType,
-};
+use super::parsed::{ParsedBinaryOp, ParsedDeclaration, ParsedExpr, ParsedMatchArm, ParsedType};
 use super::token::Token;
 use super::tokenizer::Tokenizer;
 

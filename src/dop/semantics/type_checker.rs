@@ -1,20 +1,20 @@
 use std::collections::HashSet;
 
-use super::expr::{EnumPattern, MatchArm};
 use super::r#type::{NumericType, Type};
 use super::type_error::TypeError;
+use super::typed::{TypedEnumPattern, TypedMatchArm};
 use crate::document::document_cursor::Ranged as _;
-use crate::dop::Expr;
+use crate::dop::TypedExpr;
 use crate::dop::syntax::parsed::{ParsedBinaryOp, ParsedExpr, ParsedType};
 use crate::environment::Environment;
 use crate::hop::semantics::type_checker::TypeAnnotation;
 
-/// Resolve a syntactic Type to a semantic Type.
+/// Resolve a parsed Type to a semantic Type.
 pub fn resolve_type(
-    syntactic_type: &ParsedType,
+    parsed_type: &ParsedType,
     type_env: &mut Environment<Type>,
 ) -> Result<Type, TypeError> {
-    match syntactic_type {
+    match parsed_type {
         ParsedType::String { .. } => Ok(Type::String),
         ParsedType::Bool { .. } => Ok(Type::Bool),
         ParsedType::Int { .. } => Ok(Type::Int),
@@ -36,7 +36,7 @@ pub fn resolve_type(
     }
 }
 
-/// Resolve a syntactic Expr to a semantic Expr.
+/// Resolve a parsed Expr to a typed Expr.
 ///
 /// The optional `expected_type` is used for bidirectional type checking, allowing
 /// empty array literals to infer their element type from context.
@@ -46,7 +46,7 @@ pub fn typecheck_expr(
     type_env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     expected_type: Option<&Type>,
-) -> Result<Expr, TypeError> {
+) -> Result<TypedExpr, TypeError> {
     match parsed_expr {
         ParsedExpr::Var { value: name, .. } => {
             if let Some(var_type) = env.lookup(name.as_str()) {
@@ -55,7 +55,7 @@ pub fn typecheck_expr(
                     typ: var_type.clone(),
                     name: name.to_string(),
                 });
-                Ok(Expr::Var {
+                Ok(TypedExpr::Var {
                     value: name.clone(),
                     kind: var_type.clone(),
                 })
@@ -66,12 +66,12 @@ pub fn typecheck_expr(
                 })
             }
         }
-        ParsedExpr::BooleanLiteral { value, .. } => Ok(Expr::BooleanLiteral { value: *value }),
-        ParsedExpr::StringLiteral { value, .. } => Ok(Expr::StringLiteral {
+        ParsedExpr::BooleanLiteral { value, .. } => Ok(TypedExpr::BooleanLiteral { value: *value }),
+        ParsedExpr::StringLiteral { value, .. } => Ok(TypedExpr::StringLiteral {
             value: value.clone(),
         }),
-        ParsedExpr::IntLiteral { value, .. } => Ok(Expr::IntLiteral { value: *value }),
-        ParsedExpr::FloatLiteral { value, .. } => Ok(Expr::FloatLiteral { value: *value }),
+        ParsedExpr::IntLiteral { value, .. } => Ok(TypedExpr::IntLiteral { value: *value }),
+        ParsedExpr::FloatLiteral { value, .. } => Ok(TypedExpr::FloatLiteral { value: *value }),
         ParsedExpr::FieldAccess {
             record: base_expr,
             field,
@@ -90,7 +90,7 @@ pub fn typecheck_expr(
                     if let Some((_, field_type)) =
                         fields.iter().find(|(f, _)| f.as_str() == field.as_str())
                     {
-                        Ok(Expr::FieldAccess {
+                        Ok(TypedExpr::FieldAccess {
                             kind: field_type.clone(),
                             record: Box::new(typed_base),
                             field: field.clone(),
@@ -142,7 +142,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(Expr::Equals {
+            Ok(TypedExpr::Equals {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -181,7 +181,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(Expr::NotEquals {
+            Ok(TypedExpr::NotEquals {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -223,7 +223,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(Expr::LessThan {
+            Ok(TypedExpr::LessThan {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -266,7 +266,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(Expr::GreaterThan {
+            Ok(TypedExpr::GreaterThan {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -309,7 +309,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(Expr::LessThanOrEqual {
+            Ok(TypedExpr::LessThanOrEqual {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -351,7 +351,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(Expr::GreaterThanOrEqual {
+            Ok(TypedExpr::GreaterThanOrEqual {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
                 operand_types: left_comparable,
@@ -381,7 +381,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(Expr::BooleanLogicalAnd {
+            Ok(TypedExpr::BooleanLogicalAnd {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
             })
@@ -409,7 +409,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(Expr::BooleanLogicalOr {
+            Ok(TypedExpr::BooleanLogicalOr {
                 left: Box::new(typed_left),
                 right: Box::new(typed_right),
             })
@@ -426,16 +426,16 @@ pub fn typecheck_expr(
             let right_type = typed_right.as_type();
 
             match (left_type, right_type) {
-                (Type::String, Type::String) => Ok(Expr::StringConcat {
+                (Type::String, Type::String) => Ok(TypedExpr::StringConcat {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                 }),
-                (Type::Int, Type::Int) => Ok(Expr::NumericAdd {
+                (Type::Int, Type::Int) => Ok(TypedExpr::NumericAdd {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Int,
                 }),
-                (Type::Float, Type::Float) => Ok(Expr::NumericAdd {
+                (Type::Float, Type::Float) => Ok(TypedExpr::NumericAdd {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Float,
@@ -462,12 +462,12 @@ pub fn typecheck_expr(
             let right_type = typed_right.as_type();
 
             match (left_type, right_type) {
-                (Type::Int, Type::Int) => Ok(Expr::NumericSubtract {
+                (Type::Int, Type::Int) => Ok(TypedExpr::NumericSubtract {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Int,
                 }),
-                (Type::Float, Type::Float) => Ok(Expr::NumericSubtract {
+                (Type::Float, Type::Float) => Ok(TypedExpr::NumericSubtract {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Float,
@@ -498,12 +498,12 @@ pub fn typecheck_expr(
             // 2. Float multiplication (Float * Float)
 
             match (left_type, right_type) {
-                (Type::Int, Type::Int) => Ok(Expr::NumericMultiply {
+                (Type::Int, Type::Int) => Ok(TypedExpr::NumericMultiply {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Int,
                 }),
-                (Type::Float, Type::Float) => Ok(Expr::NumericMultiply {
+                (Type::Float, Type::Float) => Ok(TypedExpr::NumericMultiply {
                     left: Box::new(typed_left),
                     right: Box::new(typed_right),
                     operand_types: NumericType::Float,
@@ -529,7 +529,7 @@ pub fn typecheck_expr(
                 });
             }
 
-            Ok(Expr::BooleanNegation {
+            Ok(TypedExpr::BooleanNegation {
                 operand: Box::new(typed_operand),
             })
         }
@@ -547,7 +547,7 @@ pub fn typecheck_expr(
                         });
                     }
                 };
-                Ok(Expr::ArrayLiteral {
+                Ok(TypedExpr::ArrayLiteral {
                     elements: vec![],
                     kind: Type::Array(Box::new(elem_type)),
                 })
@@ -581,7 +581,7 @@ pub fn typecheck_expr(
                     typed_elements.push(typed_element);
                 }
 
-                Ok(Expr::ArrayLiteral {
+                Ok(TypedExpr::ArrayLiteral {
                     elements: typed_elements,
                     kind: Type::Array(Box::new(first_type)),
                 })
@@ -665,7 +665,7 @@ pub fn typecheck_expr(
                 }
             }
 
-            Ok(Expr::RecordLiteral {
+            Ok(TypedExpr::RecordLiteral {
                 record_name: record_name.clone(),
                 fields: typed_fields,
                 kind: record_type,
@@ -705,7 +705,7 @@ pub fn typecheck_expr(
                 }
             }
 
-            Ok(Expr::EnumLiteral {
+            Ok(TypedExpr::EnumLiteral {
                 enum_name: enum_name.clone(),
                 variant_name: variant_name.clone(),
                 kind: enum_type,
@@ -737,7 +737,7 @@ pub fn typecheck_expr(
 
             // Track which variants have been matched
             let mut matched_variants: HashSet<String> = HashSet::new();
-            let mut typed_arms: Vec<MatchArm> = Vec::new();
+            let mut typed_arms: Vec<TypedMatchArm> = Vec::new();
             let mut result_type: Option<Type> = None;
 
             for arm in arms {
@@ -805,8 +805,8 @@ pub fn typecheck_expr(
                     }
                 }
 
-                typed_arms.push(MatchArm {
-                    pattern: EnumPattern {
+                typed_arms.push(TypedMatchArm {
+                    pattern: TypedEnumPattern {
                         enum_name: pattern_enum_name,
                         variant_name: pattern_variant_name,
                     },
@@ -824,7 +824,7 @@ pub fn typecheck_expr(
                 }
             }
 
-            Ok(Expr::Match {
+            Ok(TypedExpr::Match {
                 subject: Box::new(typed_subject),
                 arms: typed_arms,
                 kind: result_type.unwrap(),
@@ -893,8 +893,8 @@ mod tests {
 
         for (var_name, type_str) in env_vars {
             let mut parser = Parser::from(*type_str);
-            let syntactic_type = parser.parse_type().expect("Failed to parse type");
-            let typ = resolve_type(&syntactic_type, &mut type_env)
+            let parsed_type = parser.parse_type().expect("Failed to parse type");
+            let typ = resolve_type(&parsed_type, &mut type_env)
                 .expect("Test parameter type should be valid");
             let _ = env.push(var_name.to_string(), typ);
         }

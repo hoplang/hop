@@ -4,8 +4,8 @@ use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{self, Type, resolve_type};
 use crate::environment::Environment;
 use crate::error_collector::ErrorCollector;
-use crate::hop::syntax::ast::Parameter;
-use crate::hop::syntax::ast::{Attribute, ComponentDefinition};
+use crate::hop::syntax::parsed_ast::ParsedParameter;
+use crate::hop::syntax::parsed_ast::{ParsedAttribute, ParsedComponentDefinition};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
@@ -16,8 +16,8 @@ use crate::hop::semantics::typed_node::{
     TypedArgument, TypedAttribute, TypedAttributeValue, TypedNode,
 };
 use crate::hop::symbols::module_name::ModuleName;
-use crate::hop::syntax::ast::{Ast, AttributeValue};
-use crate::hop::syntax::node::ParsedNode;
+use crate::hop::syntax::parsed_ast::{ParsedAst, ParsedAttributeValue};
+use crate::hop::syntax::parsed_node::ParsedNode;
 
 #[derive(Debug, Clone)]
 pub struct TypeAnnotation {
@@ -135,7 +135,7 @@ pub struct TypeChecker {
 impl TypeChecker {
     // TODO: Return a bool here indicating whether the state for these modules
     // were changed
-    pub fn typecheck(&mut self, modules: &[&Ast]) {
+    pub fn typecheck(&mut self, modules: &[&ParsedAst]) {
         for module in modules {
             let type_errors = self.type_errors.entry(module.name.clone()).or_default();
             let type_annotations = self
@@ -170,7 +170,7 @@ impl TypeChecker {
 }
 
 fn typecheck_module(
-    module: &Ast,
+    module: &ParsedAst,
     state: &mut State,
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
@@ -289,7 +289,7 @@ fn typecheck_module(
     let mut typed_component_definitions = Vec::new();
 
     for component_def in module.get_component_definitions() {
-        let ComponentDefinition {
+        let ParsedComponentDefinition {
             component_name,
             tag_name: name,
             params,
@@ -300,7 +300,7 @@ fn typecheck_module(
 
         // Push parameters to environment and validate their types
         // Track which parameters were successfully pushed for later popping
-        let mut pushed_params: Vec<&Parameter> = Vec::new();
+        let mut pushed_params: Vec<&ParsedParameter> = Vec::new();
         // Collect resolved parameter types for ComponentTypeInformation
         let mut resolved_param_types: Vec<(String, Type)> = Vec::new();
         // Build typed parameters with resolved type annotations
@@ -706,7 +706,7 @@ fn typecheck_node(
 }
 
 fn typecheck_attributes(
-    attributes: &BTreeMap<StringSpan, Attribute>,
+    attributes: &BTreeMap<StringSpan, ParsedAttribute>,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
@@ -716,7 +716,7 @@ fn typecheck_attributes(
 
     for (key, attr) in attributes {
         let typed_value = match &attr.value {
-            Some(AttributeValue::Expressions(exprs)) => {
+            Some(ParsedAttributeValue::Expressions(exprs)) => {
                 let mut typed_exprs = Vec::new();
                 for expr in exprs {
                     if let Some(typed_expr) = errors.ok_or_add(
@@ -740,7 +740,7 @@ fn typecheck_attributes(
                     None
                 }
             }
-            Some(AttributeValue::String(s)) => {
+            Some(ParsedAttributeValue::String(s)) => {
                 Some(TypedAttributeValue::String(s.to_string_span()))
             }
             None => None,

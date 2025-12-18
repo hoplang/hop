@@ -1,19 +1,19 @@
 use std::collections::BTreeMap;
 
 use crate::document::document_cursor::StringSpan;
-use crate::dop::{Expr, VarName};
+use crate::dop::{TypedExpr, VarName};
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 
 #[derive(Debug, Clone)]
 pub struct TypedArgument {
     pub var_name: VarName,
-    pub var_expr: Expr,
+    pub var_expr: TypedExpr,
 }
 
 #[derive(Debug, Clone)]
 pub enum TypedAttributeValue {
-    Expressions(Vec<Expr>),
+    Expressions(Vec<TypedExpr>),
     String(StringSpan),
 }
 
@@ -30,7 +30,7 @@ pub enum TypedNode {
     },
 
     TextExpression {
-        expression: Expr,
+        expression: TypedExpr,
     },
 
     ComponentReference {
@@ -41,13 +41,13 @@ pub enum TypedNode {
     },
 
     If {
-        condition: Expr,
+        condition: TypedExpr,
         children: Vec<TypedNode>,
     },
 
     For {
         var_name: VarName,
-        array_expr: Expr,
+        array_expr: TypedExpr,
         children: Vec<TypedNode>,
     },
 

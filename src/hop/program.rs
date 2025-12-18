@@ -14,9 +14,9 @@ use super::semantics::type_checker::TypeChecker;
 use super::semantics::typed_ast::TypedAst;
 use super::symbols::component_name::ComponentName;
 use super::symbols::module_name::ModuleName;
-use super::syntax::ast::Ast;
+use super::syntax::parsed_ast::ParsedAst;
 use super::syntax::find_node::find_node_at_position;
-use super::syntax::node::ParsedNode;
+use super::syntax::parsed_node::ParsedNode;
 
 /// HoverInfo is a message that should be displayed when the user hovers
 /// a specific range in the source code.
@@ -54,7 +54,7 @@ pub struct RenameableSymbol {
 pub struct Program {
     topo_sorter: TopoSorter<ModuleName>,
     parse_errors: HashMap<ModuleName, ErrorCollector<ParseError>>,
-    modules: HashMap<ModuleName, Ast>,
+    modules: HashMap<ModuleName, ParsedAst>,
     type_checker: TypeChecker,
 }
 

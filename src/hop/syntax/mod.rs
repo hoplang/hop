@@ -1,6 +1,6 @@
-pub mod ast;
+pub mod parsed_ast;
 pub mod find_node;
-pub mod node;
+pub mod parsed_node;
 pub mod parse_error;
 pub mod parser;
 pub mod token_tree;

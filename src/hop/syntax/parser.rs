@@ -1,8 +1,11 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
 
-use super::ast::{self, Ast, ComponentDefinition, Enum, EnumVariant, Import, Record, RecordField};
-use super::node::{ParsedArgument, ParsedNode};
+use super::parsed_ast::{
+    self, ParsedAst, ParsedComponentDefinition, ParsedEnum, ParsedEnumVariant, ParsedImport,
+    ParsedRecord, ParsedRecordField,
+};
+use super::parsed_node::{ParsedArgument, ParsedNode};
 use super::token_tree::{TokenTree, build_tree};
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, StringSpan};
 use crate::dop;
@@ -35,14 +38,14 @@ impl AttributeValidator {
 
     fn parse_attribute_value(
         value: &tokenizer::TokenizedAttributeValue,
-    ) -> Result<ast::AttributeValue, ParseError> {
+    ) -> Result<parsed_ast::ParsedAttributeValue, ParseError> {
         match value {
             tokenizer::TokenizedAttributeValue::String(range) => {
-                Ok(ast::AttributeValue::String(range.clone()))
+                Ok(parsed_ast::ParsedAttributeValue::String(range.clone()))
             }
             tokenizer::TokenizedAttributeValue::Expression(range) => {
                 match Parser::from(range.clone()).parse_exprs() {
-                    Ok(exprs) => Ok(ast::AttributeValue::Expressions(exprs)),
+                    Ok(exprs) => Ok(parsed_ast::ParsedAttributeValue::Expressions(exprs)),
                     Err(err) => Err(err.into()),
                 }
             }
@@ -50,13 +53,15 @@ impl AttributeValidator {
     }
 
     // Parse an attribute or return an error.
-    fn parse(attr: &tokenizer::TokenizedAttribute) -> Result<ast::Attribute, ParseError> {
+    fn parse(
+        attr: &tokenizer::TokenizedAttribute,
+    ) -> Result<parsed_ast::ParsedAttribute, ParseError> {
         match &attr.value {
-            Some(val) => Ok(ast::Attribute {
+            Some(val) => Ok(parsed_ast::ParsedAttribute {
                 name: attr.name.clone(),
                 value: Some(Self::parse_attribute_value(val)?),
             }),
-            None => Ok(ast::Attribute {
+            None => Ok(parsed_ast::ParsedAttribute {
                 name: attr.name.clone(),
                 value: None,
             }),
@@ -74,7 +79,9 @@ impl AttributeValidator {
             })
     }
 
-    fn get_unrecognized(&self) -> impl Iterator<Item = Result<ast::Attribute, ParseError>> {
+    fn get_unrecognized(
+        &self,
+    ) -> impl Iterator<Item = Result<parsed_ast::ParsedAttribute, ParseError>> {
         self.attributes
             .values()
             .filter(|attr| !self.handled_attributes.contains(attr.name.as_str()))
@@ -115,7 +122,7 @@ pub fn parse(
     module_name: ModuleName,
     source: String,
     errors: &mut ErrorCollector<ParseError>,
-) -> Ast {
+) -> ParsedAst {
     let source_range = DocumentCursor::new(source).range();
 
     // Build the token tree
@@ -146,7 +153,7 @@ pub fn parse(
                             module_name,
                             ..
                         } => {
-                            let import = Import {
+                            let import = ParsedImport {
                                 type_name: name,
                                 type_name_range: name_range.clone(),
                                 path,
@@ -170,13 +177,13 @@ pub fn parse(
                             fields,
                             range: _,
                         } => {
-                            let record = Record {
+                            let record = ParsedRecord {
                                 name: name.clone(),
                                 name_range: name_range.clone(),
                                 fields: fields
                                     .iter()
                                     .map(|(field_name, _field_name_range, field_type)| {
-                                        RecordField {
+                                        ParsedRecordField {
                                             name: field_name.clone(),
                                             field_type: field_type.clone(),
                                         }
@@ -204,12 +211,12 @@ pub fn parse(
                             variants,
                             range: _,
                         } => {
-                            let enum_decl = Enum {
+                            let enum_decl = ParsedEnum {
                                 name: name.clone(),
                                 name_range: name_range.clone(),
                                 variants: variants
                                     .iter()
-                                    .map(|(name, _range)| EnumVariant { name: name.clone() })
+                                    .map(|(name, _range)| ParsedEnumVariant { name: name.clone() })
                                     .collect(),
                             };
                             let name = enum_decl.name();
@@ -268,7 +275,7 @@ pub fn parse(
         }
     }
 
-    Ast::new(module_name, components, imports, records, enums)
+    ParsedAst::new(module_name, components, imports, records, enums)
 }
 
 /// Try to parse a token tree as a component definition.
@@ -279,7 +286,7 @@ fn parse_component_definition(
     tree: TokenTree,
     children: Vec<ParsedNode>,
     errors: &mut ErrorCollector<ParseError>,
-) -> Option<ComponentDefinition> {
+) -> Option<ParsedComponentDefinition> {
     let Token::OpeningTag {
         tag_name,
         attributes,
@@ -311,11 +318,13 @@ fn parse_component_definition(
                 .map(|parsed_params| {
                     let params = parsed_params
                         .into_iter()
-                        .map(|((var_name, var_name_range), var_type)| ast::Parameter {
-                            var_name,
-                            var_name_range,
-                            var_type,
-                        })
+                        .map(
+                            |((var_name, var_name_range), var_type)| parsed_ast::ParsedParameter {
+                                var_name,
+                                var_name_range,
+                                var_type,
+                            },
+                        )
                         .collect();
                     (params, expr.clone())
                 })
@@ -328,7 +337,7 @@ fn parse_component_definition(
         errors.push(error);
     }
 
-    Some(ComponentDefinition {
+    Some(ParsedComponentDefinition {
         component_name,
         tag_name: tag_name.clone(),
         closing_tag_name: tree.closing_tag_name,
@@ -627,7 +636,7 @@ fn construct_nodes(
 
 #[cfg(test)]
 mod tests {
-    use super::ast::ComponentDefinition;
+    use super::parsed_ast::ParsedComponentDefinition;
     use super::*;
     use crate::document::{DocumentAnnotator, document_cursor::Ranged};
     use crate::error_collector::ErrorCollector;
@@ -663,7 +672,7 @@ mod tests {
         }
     }
 
-    pub fn format_component_definition(d: &ComponentDefinition) -> String {
+    pub fn format_component_definition(d: &ParsedComponentDefinition) -> String {
         let mut lines = Vec::new();
         for child in &d.children {
             write_node(child, 0, &mut lines);

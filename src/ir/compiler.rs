@@ -1,6 +1,6 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::StringSpan;
-use crate::dop::Expr;
+use crate::dop::TypedExpr;
 use crate::dop::semantics::r#type::EquatableType;
 use crate::dop::{Type, VarName};
 use crate::hop::inlined_ast::{
@@ -361,16 +361,16 @@ impl Compiler {
         }
     }
 
-    fn compile_expr(&mut self, expr: Expr) -> IrExpr {
+    fn compile_expr(&mut self, expr: TypedExpr) -> IrExpr {
         let expr_id = self.next_expr_id();
 
         match expr {
-            Expr::Var { value, kind, .. } => IrExpr::Var {
+            TypedExpr::Var { value, kind, .. } => IrExpr::Var {
                 value,
                 kind,
                 id: expr_id,
             },
-            Expr::FieldAccess {
+            TypedExpr::FieldAccess {
                 record: object,
                 field,
                 kind,
@@ -381,16 +381,16 @@ impl Compiler {
                 kind,
                 id: expr_id,
             },
-            Expr::BooleanNegation { operand, .. } => IrExpr::BooleanNegation {
+            TypedExpr::BooleanNegation { operand, .. } => IrExpr::BooleanNegation {
                 operand: Box::new(self.compile_expr(*operand)),
                 id: expr_id,
             },
-            Expr::ArrayLiteral { elements, kind, .. } => IrExpr::ArrayLiteral {
+            TypedExpr::ArrayLiteral { elements, kind, .. } => IrExpr::ArrayLiteral {
                 elements: elements.into_iter().map(|e| self.compile_expr(e)).collect(),
                 kind,
                 id: expr_id,
             },
-            Expr::RecordLiteral {
+            TypedExpr::RecordLiteral {
                 record_name,
                 fields,
                 kind,
@@ -404,16 +404,18 @@ impl Compiler {
                 kind,
                 id: expr_id,
             },
-            Expr::StringLiteral { value, .. } => IrExpr::StringLiteral { value, id: expr_id },
-            Expr::BooleanLiteral { value, .. } => IrExpr::BooleanLiteral { value, id: expr_id },
-            Expr::FloatLiteral { value, .. } => IrExpr::FloatLiteral { value, id: expr_id },
-            Expr::IntLiteral { value, .. } => IrExpr::IntLiteral { value, id: expr_id },
-            Expr::StringConcat { left, right, .. } => IrExpr::StringConcat {
+            TypedExpr::StringLiteral { value, .. } => IrExpr::StringLiteral { value, id: expr_id },
+            TypedExpr::BooleanLiteral { value, .. } => {
+                IrExpr::BooleanLiteral { value, id: expr_id }
+            }
+            TypedExpr::FloatLiteral { value, .. } => IrExpr::FloatLiteral { value, id: expr_id },
+            TypedExpr::IntLiteral { value, .. } => IrExpr::IntLiteral { value, id: expr_id },
+            TypedExpr::StringConcat { left, right, .. } => IrExpr::StringConcat {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 id: expr_id,
             },
-            Expr::Equals {
+            TypedExpr::Equals {
                 left,
                 right,
                 operand_types,
@@ -424,7 +426,7 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
-            Expr::NotEquals {
+            TypedExpr::NotEquals {
                 left,
                 right,
                 operand_types,
@@ -435,7 +437,7 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
-            Expr::LessThan {
+            TypedExpr::LessThan {
                 left,
                 right,
                 operand_types,
@@ -447,7 +449,7 @@ impl Compiler {
                 id: expr_id,
             },
             // Convert a > b to b < a
-            Expr::GreaterThan {
+            TypedExpr::GreaterThan {
                 left,
                 right,
                 operand_types,
@@ -458,7 +460,7 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
-            Expr::LessThanOrEqual {
+            TypedExpr::LessThanOrEqual {
                 left,
                 right,
                 operand_types,
@@ -470,7 +472,7 @@ impl Compiler {
                 id: expr_id,
             },
             // Convert a >= b to b <= a
-            Expr::GreaterThanOrEqual {
+            TypedExpr::GreaterThanOrEqual {
                 left,
                 right,
                 operand_types,
@@ -481,17 +483,17 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
-            Expr::BooleanLogicalAnd { left, right, .. } => IrExpr::BooleanLogicalAnd {
+            TypedExpr::BooleanLogicalAnd { left, right, .. } => IrExpr::BooleanLogicalAnd {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 id: expr_id,
             },
-            Expr::BooleanLogicalOr { left, right, .. } => IrExpr::BooleanLogicalOr {
+            TypedExpr::BooleanLogicalOr { left, right, .. } => IrExpr::BooleanLogicalOr {
                 left: Box::new(self.compile_expr(*left)),
                 right: Box::new(self.compile_expr(*right)),
                 id: expr_id,
             },
-            Expr::NumericAdd {
+            TypedExpr::NumericAdd {
                 left,
                 right,
                 operand_types,
@@ -502,7 +504,7 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
-            Expr::NumericSubtract {
+            TypedExpr::NumericSubtract {
                 left,
                 right,
                 operand_types,
@@ -513,7 +515,7 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
-            Expr::NumericMultiply {
+            TypedExpr::NumericMultiply {
                 left,
                 right,
                 operand_types,
@@ -524,7 +526,7 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
-            Expr::EnumLiteral {
+            TypedExpr::EnumLiteral {
                 enum_name,
                 variant_name,
                 kind,
@@ -535,7 +537,7 @@ impl Compiler {
                 kind,
                 id: expr_id,
             },
-            Expr::Match { .. } => todo!("Match expression compilation not yet implemented"),
+            TypedExpr::Match { .. } => todo!("Match expression compilation not yet implemented"),
         }
     }
 }

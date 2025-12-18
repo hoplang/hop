@@ -9,54 +9,54 @@ use crate::dop::symbols::type_name::TypeName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 
-use super::node::ParsedNode;
+use super::parsed_node::ParsedNode;
 
 /// A Parameter represents a parsed parameter with type annotation.
 /// E.g. <my-comp {x: string, y: string}>
 ///                ^^^^^^^^^
 #[derive(Debug, Clone)]
-pub struct Parameter {
+pub struct ParsedParameter {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
     pub var_type: ParsedType,
 }
 
-impl Display for Parameter {
+impl Display for ParsedParameter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.var_name, self.var_type)
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum AttributeValue {
+pub enum ParsedAttributeValue {
     Expressions(Vec<ParsedExpr>),
     String(DocumentRange),
 }
 
-/// An Attribute is an attribute on a node, it can either
+/// A ParsedAttribute is an attribute on a node, it can either
 /// be empty, an expression or a string value.
 #[derive(Debug, Clone)]
-pub struct Attribute {
+pub struct ParsedAttribute {
     pub name: DocumentRange,
-    pub value: Option<AttributeValue>,
+    pub value: Option<ParsedAttributeValue>,
 }
 
 #[derive(Debug, Clone)]
-pub struct Ast {
+pub struct ParsedAst {
     pub name: ModuleName,
-    imports: Vec<Import>,
-    records: Vec<Record>,
-    enums: Vec<Enum>,
-    component_definitions: Vec<ComponentDefinition>,
+    imports: Vec<ParsedImport>,
+    records: Vec<ParsedRecord>,
+    enums: Vec<ParsedEnum>,
+    component_definitions: Vec<ParsedComponentDefinition>,
 }
 
-impl Ast {
+impl ParsedAst {
     pub fn new(
         name: ModuleName,
-        component_definitions: Vec<ComponentDefinition>,
-        imports: Vec<Import>,
-        records: Vec<Record>,
-        enums: Vec<Enum>,
+        component_definitions: Vec<ParsedComponentDefinition>,
+        imports: Vec<ParsedImport>,
+        records: Vec<ParsedRecord>,
+        enums: Vec<ParsedEnum>,
     ) -> Self {
         Self {
             name,
@@ -67,34 +67,34 @@ impl Ast {
         }
     }
 
-    pub fn get_component_definition(&self, name: &str) -> Option<&ComponentDefinition> {
+    pub fn get_component_definition(&self, name: &str) -> Option<&ParsedComponentDefinition> {
         self.component_definitions
             .iter()
             .find(|&n| n.tag_name.as_str() == name)
     }
 
     /// Finds a record declaration by name.
-    pub fn get_record(&self, name: &str) -> Option<&Record> {
+    pub fn get_record(&self, name: &str) -> Option<&ParsedRecord> {
         self.records.iter().find(|&r| r.name() == name)
     }
 
     /// Returns a reference to all component definition nodes in the AST.
-    pub fn get_component_definitions(&self) -> &[ComponentDefinition] {
+    pub fn get_component_definitions(&self) -> &[ParsedComponentDefinition] {
         &self.component_definitions
     }
 
     /// Returns a reference to all import nodes in the AST.
-    pub fn get_imports(&self) -> &[Import] {
+    pub fn get_imports(&self) -> &[ParsedImport] {
         &self.imports
     }
 
     /// Returns a reference to all record declarations in the AST.
-    pub fn get_records(&self) -> &[Record] {
+    pub fn get_records(&self) -> &[ParsedRecord] {
         &self.records
     }
 
     /// Returns a reference to all enum declarations in the AST.
-    pub fn get_enums(&self) -> &[Enum] {
+    pub fn get_enums(&self) -> &[ParsedEnum] {
         &self.enums
     }
 
@@ -108,7 +108,7 @@ impl Ast {
 }
 
 #[derive(Debug, Clone)]
-pub struct Import {
+pub struct ParsedImport {
     pub type_name: TypeName,
     /// The range of the type name in the source (for error reporting)
     pub type_name_range: DocumentRange,
@@ -117,7 +117,7 @@ pub struct Import {
     pub module_name: ModuleName,
 }
 
-impl Import {
+impl ParsedImport {
     pub fn imported_module(&self) -> &ModuleName {
         &self.module_name
     }
@@ -136,59 +136,59 @@ impl Import {
 }
 
 #[derive(Debug, Clone)]
-pub struct RecordField {
+pub struct ParsedRecordField {
     pub name: FieldName,
     pub field_type: ParsedType,
 }
 
 #[derive(Debug, Clone)]
-pub struct Record {
+pub struct ParsedRecord {
     pub name: TypeName,
     pub name_range: DocumentRange,
-    pub fields: Vec<RecordField>,
+    pub fields: Vec<ParsedRecordField>,
 }
 
-impl Record {
+impl ParsedRecord {
     pub fn name(&self) -> &str {
         self.name.as_str()
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct EnumVariant {
+pub struct ParsedEnumVariant {
     pub name: TypeName,
 }
 
 #[derive(Debug, Clone)]
-pub struct Enum {
+pub struct ParsedEnum {
     pub name: TypeName,
     pub name_range: DocumentRange,
-    pub variants: Vec<EnumVariant>,
+    pub variants: Vec<ParsedEnumVariant>,
 }
 
-impl Enum {
+impl ParsedEnum {
     pub fn name(&self) -> &str {
         self.name.as_str()
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ComponentDefinition {
+pub struct ParsedComponentDefinition {
     pub component_name: ComponentName,
     pub tag_name: DocumentRange,
     pub closing_tag_name: Option<DocumentRange>,
-    pub params: Option<(Vec<Parameter>, DocumentRange)>,
+    pub params: Option<(Vec<ParsedParameter>, DocumentRange)>,
     pub children: Vec<ParsedNode>,
     pub range: DocumentRange,
 }
 
-impl Ranged for ComponentDefinition {
+impl Ranged for ParsedComponentDefinition {
     fn range(&self) -> &DocumentRange {
         &self.range
     }
 }
 
-impl ComponentDefinition {
+impl ParsedComponentDefinition {
     pub fn tag_name_ranges(&self) -> impl Iterator<Item = &DocumentRange> {
         self.closing_tag_name.iter().chain(Some(&self.tag_name))
     }
