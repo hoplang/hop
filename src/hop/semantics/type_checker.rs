@@ -13,9 +13,7 @@ use std::fmt::{self, Display};
 use crate::hop::semantics::typed_ast::{
     TypedAst, TypedComponentDeclaration, TypedEnumDeclaration, TypedRecordDeclaration,
 };
-use crate::hop::semantics::typed_node::{
-    TypedArgument, TypedAttribute, TypedAttributeValue, TypedNode,
-};
+use crate::hop::semantics::typed_node::{TypedAttribute, TypedAttributeValue, TypedNode};
 use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::syntax::parsed_ast::{ParsedAst, ParsedAttributeValue};
 use crate::hop::syntax::parsed_node::ParsedNode;
@@ -656,10 +654,7 @@ fn typecheck_node(
                             continue;
                         }
 
-                        typed_arguments.push(TypedArgument {
-                            var_name: arg.var_name.clone(),
-                            var_expr: typed_expr,
-                        });
+                        typed_arguments.push((arg.var_name.clone(), typed_expr));
 
                         annotations.push(TypeAnnotation {
                             range: arg.var_expr.range().clone(),

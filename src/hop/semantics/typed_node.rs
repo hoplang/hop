@@ -6,12 +6,6 @@ use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 
 #[derive(Debug, Clone)]
-pub struct TypedArgument {
-    pub var_name: VarName,
-    pub var_expr: TypedExpr,
-}
-
-#[derive(Debug, Clone)]
 pub enum TypedAttributeValue {
     Expressions(Vec<TypedExpr>),
     String(StringSpan),
@@ -36,7 +30,7 @@ pub enum TypedNode {
     ComponentReference {
         component_name: ComponentName,
         declaring_module: Option<ModuleName>,
-        args: Option<Vec<TypedArgument>>,
+        args: Option<Vec<(VarName, TypedExpr)>>,
         children: Vec<TypedNode>,
     },
 

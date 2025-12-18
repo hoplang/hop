@@ -4,9 +4,8 @@ use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode, InlinedParameter,
 };
 use crate::hop::semantics::typed_ast::{TypedAst, TypedComponentDeclaration};
-use crate::hop::semantics::typed_node::{
-    TypedArgument, TypedAttribute, TypedAttributeValue, TypedNode,
-};
+use crate::dop::VarName;
+use crate::hop::semantics::typed_node::{TypedAttribute, TypedAttributeValue, TypedNode};
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use anyhow::Result;
@@ -129,7 +128,7 @@ impl Inliner {
     fn inline_component_reference(
         module_name: &ModuleName,
         component: &TypedComponentDeclaration,
-        args: &[TypedArgument],
+        args: &[(VarName, TypedExpr)],
         slot_children: &[TypedNode],
         asts: &HashMap<ModuleName, TypedAst>,
     ) -> Vec<InlinedNode> {
@@ -158,8 +157,8 @@ impl Inliner {
                 // Find corresponding argument value
                 let value = args
                     .iter()
-                    .find(|a| a.var_name.as_str() == param_name.as_str())
-                    .map(|a| a.var_expr.clone())
+                    .find(|(name, _)| name.as_str() == param_name.as_str())
+                    .map(|(_, expr)| expr.clone())
                     .unwrap_or_else(|| {
                         panic!(
                             "Missing required parameter '{}' for component '{}' in module '{}'.",
