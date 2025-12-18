@@ -1,10 +1,8 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
 
-use super::ast::{
-    self, Ast, ComponentDefinition, Enum, EnumVariant, Import, Record, RecordField,
-};
-use super::node::{Argument, Node};
+use super::ast::{self, Ast, ComponentDefinition, Enum, EnumVariant, Import, Record, RecordField};
+use super::node::{ParsedArgument, ParsedNode};
 use super::token_tree::{TokenTree, build_tree};
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, StringSpan};
 use crate::dop;
@@ -18,14 +16,14 @@ use super::parse_error::ParseError;
 use super::tokenizer::{self, Token, Tokenizer};
 
 struct AttributeValidator {
-    attributes: BTreeMap<StringSpan, tokenizer::Attribute>,
+    attributes: BTreeMap<StringSpan, tokenizer::TokenizedAttribute>,
     tag_name: DocumentRange,
     handled_attributes: HashSet<String>,
 }
 
 impl AttributeValidator {
     fn new(
-        attributes: BTreeMap<StringSpan, tokenizer::Attribute>,
+        attributes: BTreeMap<StringSpan, tokenizer::TokenizedAttribute>,
         tag_name: DocumentRange,
     ) -> Self {
         Self {
@@ -36,13 +34,13 @@ impl AttributeValidator {
     }
 
     fn parse_attribute_value(
-        value: &tokenizer::AttributeValue,
+        value: &tokenizer::TokenizedAttributeValue,
     ) -> Result<ast::AttributeValue, ParseError> {
         match value {
-            tokenizer::AttributeValue::String(range) => {
+            tokenizer::TokenizedAttributeValue::String(range) => {
                 Ok(ast::AttributeValue::String(range.clone()))
             }
-            tokenizer::AttributeValue::Expression(range) => {
+            tokenizer::TokenizedAttributeValue::Expression(range) => {
                 match Parser::from(range.clone()).parse_exprs() {
                     Ok(exprs) => Ok(ast::AttributeValue::Expressions(exprs)),
                     Err(err) => Err(err.into()),
@@ -52,7 +50,7 @@ impl AttributeValidator {
     }
 
     // Parse an attribute or return an error.
-    fn parse(attr: &tokenizer::Attribute) -> Result<ast::Attribute, ParseError> {
+    fn parse(attr: &tokenizer::TokenizedAttribute) -> Result<ast::Attribute, ParseError> {
         match &attr.value {
             Some(val) => Ok(ast::Attribute {
                 name: attr.name.clone(),
@@ -177,9 +175,11 @@ pub fn parse(
                                 name_range: name_range.clone(),
                                 fields: fields
                                     .iter()
-                                    .map(|(field_name, _field_name_range, field_type)| RecordField {
-                                        name: field_name.clone(),
-                                        field_type: field_type.clone(),
+                                    .map(|(field_name, _field_name_range, field_type)| {
+                                        RecordField {
+                                            name: field_name.clone(),
+                                            field_type: field_type.clone(),
+                                        }
                                     })
                                     .collect(),
                             };
@@ -235,7 +235,7 @@ pub fn parse(
                 }
             }
             _ => {
-                let children: Vec<Node> = std::mem::take(&mut tree.children)
+                let children: Vec<ParsedNode> = std::mem::take(&mut tree.children)
                     .into_iter()
                     .flat_map(|child| {
                         construct_nodes(
@@ -277,7 +277,7 @@ pub fn parse(
 /// or `None` for other token types (text, comments, etc.).
 fn parse_component_definition(
     tree: TokenTree,
-    children: Vec<Node>,
+    children: Vec<ParsedNode>,
     errors: &mut ErrorCollector<ParseError>,
 ) -> Option<ComponentDefinition> {
     let Token::OpeningTag {
@@ -349,7 +349,7 @@ fn construct_nodes(
     module_name: &ModuleName,
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, ModuleName>,
-) -> Vec<Node> {
+) -> Vec<ParsedNode> {
     match tree.token {
         Token::Comment { .. } => {
             // Skip comments
@@ -360,7 +360,7 @@ fn construct_nodes(
             unreachable!()
         }
         Token::Doctype { range } => {
-            vec![Node::Doctype {
+            vec![ParsedNode::Doctype {
                 value: range.to_string_span(),
                 range,
             }]
@@ -376,7 +376,7 @@ fn construct_nodes(
                 if ch.ch() == '{' {
                     // Flush accumulated text
                     if let Some(text_range) = text_start.take() {
-                        nodes.push(Node::Text {
+                        nodes.push(ParsedNode::Text {
                             value: text_range.to_string_span(),
                             range: text_range,
                         });
@@ -414,7 +414,7 @@ fn construct_nodes(
                             // Parse the expression
                             match Parser::from(expr_range.clone()).parse_expr() {
                                 Ok(expression) => {
-                                    nodes.push(Node::TextExpression {
+                                    nodes.push(ParsedNode::TextExpression {
                                         expression,
                                         range: left_brace.to(right_brace),
                                     });
@@ -449,7 +449,7 @@ fn construct_nodes(
 
             // Flush remaining text
             if let Some(text_range) = text_start {
-                nodes.push(Node::Text {
+                nodes.push(ParsedNode::Text {
                     value: text_range.to_string_span(),
                     range: text_range,
                 });
@@ -471,7 +471,7 @@ fn construct_nodes(
                 tree.children
                     .into_iter()
                     .filter_map(|child| match child.token {
-                        Token::Text { range, .. } => Some(Node::Text {
+                        Token::Text { range, .. } => Some(ParsedNode::Text {
                             value: range.to_string_span(),
                             range,
                         }),
@@ -508,7 +508,7 @@ fn construct_nodes(
                     ) else {
                         return vec![];
                     };
-                    vec![Node::If {
+                    vec![ParsedNode::If {
                         condition,
                         range: tree.range.clone(),
                         children,
@@ -533,12 +533,12 @@ fn construct_nodes(
                     let Some((var_name, var_name_range, array_expr)) =
                         errors.ok_or_add(parse_result)
                     else {
-                        return vec![Node::Placeholder {
+                        return vec![ParsedNode::Placeholder {
                             range: tree.range.clone(),
                             children,
                         }];
                     };
-                    vec![Node::For {
+                    vec![ParsedNode::For {
                         var_name,
                         var_name_range,
                         array_expr,
@@ -567,10 +567,12 @@ fn construct_nodes(
                                 .map(|parsed_args| {
                                     let named_args = parsed_args
                                         .into_iter()
-                                        .map(|((var_name, var_name_range), var_expr)| Argument {
-                                            var_name,
-                                            var_name_range,
-                                            var_expr,
+                                        .map(|((var_name, var_name_range), var_expr)| {
+                                            ParsedArgument {
+                                                var_name,
+                                                var_name_range,
+                                                var_expr,
+                                            }
                                         })
                                         .collect();
                                     (named_args, expr.clone())
@@ -591,7 +593,7 @@ fn construct_nodes(
                         errors.push(error);
                     }
 
-                    vec![Node::ComponentReference {
+                    vec![ParsedNode::ComponentReference {
                         component_name,
                         component_name_opening_range: tag_name,
                         component_name_closing_range: tree.closing_tag_name,
@@ -610,7 +612,7 @@ fn construct_nodes(
                         .map(|attr| (attr.name.to_string_span(), attr))
                         .collect();
 
-                    vec![Node::Html {
+                    vec![ParsedNode::Html {
                         tag_name,
                         closing_tag_name: tree.closing_tag_name,
                         attributes,
@@ -632,21 +634,21 @@ mod tests {
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
-    fn node_name(node: &Node) -> &str {
+    fn node_name(node: &ParsedNode) -> &str {
         match node {
-            Node::Doctype { .. } => "doctype",
-            Node::ComponentReference { .. } => "component_reference",
-            Node::If { .. } => "if",
-            Node::For { .. } => "for",
-            Node::Html { tag_name, .. } => tag_name.as_str(),
-            Node::Text { .. } => "text",
-            Node::TextExpression { .. } => "text_expression",
-            Node::Placeholder { .. } => "error",
+            ParsedNode::Doctype { .. } => "doctype",
+            ParsedNode::ComponentReference { .. } => "component_reference",
+            ParsedNode::If { .. } => "if",
+            ParsedNode::For { .. } => "for",
+            ParsedNode::Html { tag_name, .. } => tag_name.as_str(),
+            ParsedNode::Text { .. } => "text",
+            ParsedNode::TextExpression { .. } => "text_expression",
+            ParsedNode::Placeholder { .. } => "error",
         }
     }
 
-    fn write_node(node: &Node, depth: usize, lines: &mut Vec<String>) {
-        if matches!(node, Node::Text { .. }) {
+    fn write_node(node: &ParsedNode, depth: usize, lines: &mut Vec<String>) {
+        if matches!(node, ParsedNode::Text { .. }) {
             return;
         }
         let left = format!("{}{}", "    ".repeat(depth).as_str(), node_name(node));

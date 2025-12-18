@@ -5,7 +5,7 @@ use crate::document::{
     DocumentPosition,
     document_cursor::{DocumentRange, Ranged, StringSpan},
 };
-use crate::dop::ParseTree;
+use crate::dop::ParsedExpr;
 use crate::dop::VarName;
 
 use crate::hop::symbols::component_name::ComponentName;
@@ -13,24 +13,24 @@ use crate::hop::symbols::module_name::ModuleName;
 
 use super::ast::Attribute;
 
-/// An Argument represents a parsed argument with a name and a value.
+/// An ParsedArgument represents a parsed argument with a name and a value.
 /// E.g. <my-comp {x: [1,2], y: 2}>
 ///                ^^^^^^^^
 #[derive(Debug, Clone)]
-pub struct Argument {
+pub struct ParsedArgument {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
-    pub var_expr: ParseTree,
+    pub var_expr: ParsedExpr,
 }
 
-impl Display for Argument {
+impl Display for ParsedArgument {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.var_name, self.var_expr)
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum Node {
+pub enum ParsedNode {
     /// A Text node represents text in the document.
     /// E.g. <div>hello world</div>
     ///           ^^^^^^^^^^^
@@ -43,7 +43,7 @@ pub enum Node {
     /// E.g. <div>hello {world}</div>
     ///                 ^^^^^^^
     TextExpression {
-        expression: ParseTree,
+        expression: ParsedExpr,
         range: DocumentRange,
     },
 
@@ -58,16 +58,16 @@ pub enum Node {
         component_name_opening_range: DocumentRange,
         component_name_closing_range: Option<DocumentRange>,
         definition_module: Option<ModuleName>,
-        args: Option<(Vec<Argument>, DocumentRange)>,
-        children: Vec<Node>,
+        args: Option<(Vec<ParsedArgument>, DocumentRange)>,
+        children: Vec<ParsedNode>,
         range: DocumentRange,
     },
 
     /// An If node contains content that is only evaluated when its condition
     /// expression evaluates to true.
     If {
-        condition: ParseTree,
-        children: Vec<Node>,
+        condition: ParsedExpr,
+        children: Vec<ParsedNode>,
         range: DocumentRange,
     },
 
@@ -76,8 +76,8 @@ pub enum Node {
     For {
         var_name: VarName,
         var_name_range: DocumentRange,
-        array_expr: ParseTree,
-        children: Vec<Node>,
+        array_expr: ParsedExpr,
+        children: Vec<ParsedNode>,
         range: DocumentRange,
     },
 
@@ -94,7 +94,7 @@ pub enum Node {
         tag_name: DocumentRange,
         closing_tag_name: Option<DocumentRange>,
         attributes: BTreeMap<StringSpan, Attribute>,
-        children: Vec<Node>,
+        children: Vec<ParsedNode>,
         range: DocumentRange,
     },
 
@@ -104,23 +104,23 @@ pub enum Node {
     /// We use Placeholder nodes to be able to construct the child nodes of the node that could not be
     /// constructed. This is useful for e.g. go-to-definition in the language server.
     Placeholder {
-        children: Vec<Node>,
+        children: Vec<ParsedNode>,
         range: DocumentRange,
     },
 }
 
-impl Node {
+impl ParsedNode {
     /// Get the direct children of a node.
     pub fn children(&self) -> &[Self] {
         match self {
-            Node::ComponentReference { children, .. } => children,
-            Node::If { children, .. } => children,
-            Node::For { children, .. } => children,
-            Node::Html { children, .. } => children,
-            Node::Placeholder { children, .. } => children,
-            Node::Doctype { .. } => &[],
-            Node::Text { .. } => &[],
-            Node::TextExpression { .. } => &[],
+            ParsedNode::ComponentReference { children, .. } => children,
+            ParsedNode::If { children, .. } => children,
+            ParsedNode::For { children, .. } => children,
+            ParsedNode::Html { children, .. } => children,
+            ParsedNode::Placeholder { children, .. } => children,
+            ParsedNode::Doctype { .. } => &[],
+            ParsedNode::Text { .. } => &[],
+            ParsedNode::TextExpression { .. } => &[],
         }
     }
 
@@ -135,11 +135,11 @@ impl Node {
     ///  ^^^
     pub fn tag_name(&self) -> Option<&DocumentRange> {
         match self {
-            Node::ComponentReference {
+            ParsedNode::ComponentReference {
                 component_name_opening_range: tag_name,
                 ..
             } => Some(tag_name),
-            Node::Html { tag_name, .. } => Some(tag_name),
+            ParsedNode::Html { tag_name, .. } => Some(tag_name),
             _ => None,
         }
     }
@@ -151,11 +151,11 @@ impl Node {
     ///                   ^^^
     pub fn closing_tag_name(&self) -> Option<&DocumentRange> {
         match self {
-            Node::ComponentReference {
+            ParsedNode::ComponentReference {
                 component_name_closing_range: closing_tag_name,
                 ..
             } => closing_tag_name.as_ref(),
-            Node::Html {
+            ParsedNode::Html {
                 closing_tag_name, ..
             } => closing_tag_name.as_ref(),
             _ => None,
@@ -184,33 +184,33 @@ impl Node {
     }
 }
 
-impl Ranged for Node {
+impl Ranged for ParsedNode {
     fn range(&self) -> &DocumentRange {
         match self {
-            Node::Text { range, .. }
-            | Node::TextExpression { range, .. }
-            | Node::ComponentReference { range, .. }
-            | Node::If { range, .. }
-            | Node::For { range, .. }
-            | Node::Html { range, .. }
-            | Node::Placeholder { range, .. }
-            | Node::Doctype { range, .. } => range,
+            ParsedNode::Text { range, .. }
+            | ParsedNode::TextExpression { range, .. }
+            | ParsedNode::ComponentReference { range, .. }
+            | ParsedNode::If { range, .. }
+            | ParsedNode::For { range, .. }
+            | ParsedNode::Html { range, .. }
+            | ParsedNode::Placeholder { range, .. }
+            | ParsedNode::Doctype { range, .. } => range,
         }
     }
 }
 
 pub struct DepthFirstIterator<'a> {
-    stack: Vec<&'a Node>,
+    stack: Vec<&'a ParsedNode>,
 }
 
 impl<'a> DepthFirstIterator<'a> {
-    fn new(root: &'a Node) -> Self {
+    fn new(root: &'a ParsedNode) -> Self {
         Self { stack: vec![root] }
     }
 }
 
 impl<'a> Iterator for DepthFirstIterator<'a> {
-    type Item = &'a Node;
+    type Item = &'a ParsedNode;
 
     fn next(&mut self) -> Option<Self::Item> {
         let current = self.stack.pop()?;

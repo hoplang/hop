@@ -74,15 +74,15 @@ impl Display for ParsedType {
 
 /// A single arm in a match expression, e.g. `Color::Red => "red"`
 #[derive(Debug, Clone)]
-pub struct MatchArm {
+pub struct ParsedMatchArm {
     /// The pattern being matched (must be an enum literal, e.g., `Color::Red`)
-    pub pattern: ParseTree,
+    pub pattern: ParsedExpr,
     /// The expression to evaluate if this arm matches
-    pub body: ParseTree,
+    pub body: ParsedExpr,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum BinaryOp {
+pub enum ParsedBinaryOp {
     Eq,
     NotEq,
     LessThan,
@@ -97,7 +97,7 @@ pub enum BinaryOp {
 }
 
 #[derive(Debug, Clone)]
-pub enum ParseTree {
+pub enum ParsedExpr {
     /// A variable expression, e.g. foo
     Var {
         value: VarName,
@@ -157,7 +157,7 @@ pub enum ParseTree {
 
     BinaryOp {
         left: Box<Self>,
-        operator: BinaryOp,
+        operator: ParsedBinaryOp,
         right: Box<Self>,
         annotation: DocumentRange,
     },
@@ -171,33 +171,33 @@ pub enum ParseTree {
     /// A match expression, e.g. `match color {Red => "red", Blue => "blue"}`
     Match {
         subject: Box<Self>,
-        arms: Vec<MatchArm>,
+        arms: Vec<ParsedMatchArm>,
         annotation: DocumentRange,
     },
 }
 
-impl ParseTree {
+impl ParsedExpr {
     pub fn annotation(&self) -> &DocumentRange {
         match self {
-            ParseTree::Var { annotation, .. }
-            | ParseTree::FieldAccess { annotation, .. }
-            | ParseTree::StringLiteral { annotation, .. }
-            | ParseTree::BooleanLiteral { annotation, .. }
-            | ParseTree::IntLiteral { annotation, .. }
-            | ParseTree::FloatLiteral { annotation, .. }
-            | ParseTree::ArrayLiteral { annotation, .. }
-            | ParseTree::RecordLiteral { annotation, .. }
-            | ParseTree::EnumLiteral { annotation, .. }
-            | ParseTree::BinaryOp { annotation, .. }
-            | ParseTree::Negation { annotation, .. }
-            | ParseTree::Match { annotation, .. } => annotation,
+            ParsedExpr::Var { annotation, .. }
+            | ParsedExpr::FieldAccess { annotation, .. }
+            | ParsedExpr::StringLiteral { annotation, .. }
+            | ParsedExpr::BooleanLiteral { annotation, .. }
+            | ParsedExpr::IntLiteral { annotation, .. }
+            | ParsedExpr::FloatLiteral { annotation, .. }
+            | ParsedExpr::ArrayLiteral { annotation, .. }
+            | ParsedExpr::RecordLiteral { annotation, .. }
+            | ParsedExpr::EnumLiteral { annotation, .. }
+            | ParsedExpr::BinaryOp { annotation, .. }
+            | ParsedExpr::Negation { annotation, .. }
+            | ParsedExpr::Match { annotation, .. } => annotation,
         }
     }
 
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            ParseTree::Var { value, .. } => BoxDoc::text(value.as_str()),
-            ParseTree::FieldAccess {
+            ParsedExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
+            ParsedExpr::FieldAccess {
                 record: object,
                 field,
                 ..
@@ -205,11 +205,11 @@ impl ParseTree {
                 .to_doc()
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(field.as_str())),
-            ParseTree::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
-            ParseTree::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            ParseTree::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            ParseTree::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            ParseTree::ArrayLiteral { elements, .. } => {
+            ParsedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
+            ParsedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            ParsedExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            ParsedExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
+            ParsedExpr::ArrayLiteral { elements, .. } => {
                 if elements.is_empty() {
                     BoxDoc::text("[]")
                 } else {
@@ -228,7 +228,7 @@ impl ParseTree {
                         .append(BoxDoc::text("]"))
                 }
             }
-            ParseTree::RecordLiteral {
+            ParsedExpr::RecordLiteral {
                 record_name,
                 fields,
                 ..
@@ -256,7 +256,7 @@ impl ParseTree {
                         .append(BoxDoc::text(")"))
                 }
             }
-            ParseTree::BinaryOp {
+            ParsedExpr::BinaryOp {
                 left,
                 operator,
                 right,
@@ -267,19 +267,19 @@ impl ParseTree {
                 .append(BoxDoc::text(format!(" {} ", operator)))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            ParseTree::Negation { operand, .. } => BoxDoc::nil()
+            ParsedExpr::Negation { operand, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::text("!"))
                 .append(operand.to_doc())
                 .append(BoxDoc::text(")")),
-            ParseTree::EnumLiteral {
+            ParsedExpr::EnumLiteral {
                 enum_name,
                 variant_name,
                 ..
             } => BoxDoc::text(enum_name.as_str())
                 .append(BoxDoc::text("::"))
                 .append(BoxDoc::text(variant_name.as_str())),
-            ParseTree::Match { subject, arms, .. } => {
+            ParsedExpr::Match { subject, arms, .. } => {
                 if arms.is_empty() {
                     BoxDoc::text("match ")
                         .append(subject.to_doc())
@@ -311,32 +311,32 @@ impl ParseTree {
     }
 }
 
-impl Ranged for ParseTree {
+impl Ranged for ParsedExpr {
     fn range(&self) -> &DocumentRange {
         self.annotation()
     }
 }
 
-impl Display for ParseTree {
+impl Display for ParsedExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(60))
     }
 }
 
-impl Display for BinaryOp {
+impl Display for ParsedBinaryOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BinaryOp::Eq => write!(f, "=="),
-            BinaryOp::NotEq => write!(f, "!="),
-            BinaryOp::LessThan => write!(f, "<"),
-            BinaryOp::GreaterThan => write!(f, ">"),
-            BinaryOp::LessThanOrEqual => write!(f, "<="),
-            BinaryOp::GreaterThanOrEqual => write!(f, ">="),
-            BinaryOp::LogicalAnd => write!(f, "&&"),
-            BinaryOp::LogicalOr => write!(f, "||"),
-            BinaryOp::Plus => write!(f, "+"),
-            BinaryOp::Minus => write!(f, "-"),
-            BinaryOp::Multiply => write!(f, "*"),
+            ParsedBinaryOp::Eq => write!(f, "=="),
+            ParsedBinaryOp::NotEq => write!(f, "!="),
+            ParsedBinaryOp::LessThan => write!(f, "<"),
+            ParsedBinaryOp::GreaterThan => write!(f, ">"),
+            ParsedBinaryOp::LessThanOrEqual => write!(f, "<="),
+            ParsedBinaryOp::GreaterThanOrEqual => write!(f, ">="),
+            ParsedBinaryOp::LogicalAnd => write!(f, "&&"),
+            ParsedBinaryOp::LogicalOr => write!(f, "||"),
+            ParsedBinaryOp::Plus => write!(f, "+"),
+            ParsedBinaryOp::Minus => write!(f, "-"),
+            ParsedBinaryOp::Multiply => write!(f, "*"),
         }
     }
 }

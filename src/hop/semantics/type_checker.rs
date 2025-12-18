@@ -9,14 +9,15 @@ use crate::hop::syntax::ast::{Attribute, ComponentDefinition};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
-use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::semantics::typed_ast::{
-    TypedAst, TypedComponentDefinition, TypedParameter, TypedRecord,
-    TypedRecordField,
+    TypedAst, TypedComponentDefinition, TypedParameter, TypedRecord, TypedRecordField,
 };
+use crate::hop::semantics::typed_node::{
+    TypedArgument, TypedAttribute, TypedAttributeValue, TypedNode,
+};
+use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::syntax::ast::{Ast, AttributeValue};
-use crate::hop::semantics::typed_node::{TypedArgument, TypedAttribute, TypedAttributeValue, TypedNode};
-use crate::hop::syntax::node::Node;
+use crate::hop::syntax::node::ParsedNode;
 
 #[derive(Debug, Clone)]
 pub struct TypeAnnotation {
@@ -384,7 +385,7 @@ fn typecheck_module(
 }
 
 fn typecheck_node(
-    node: &Node,
+    node: &ParsedNode,
     state: &State,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
@@ -392,7 +393,7 @@ fn typecheck_node(
     records: &mut Environment<Type>,
 ) -> Option<TypedNode> {
     match node {
-        Node::If {
+        ParsedNode::If {
             condition,
             children,
             range: _,
@@ -420,7 +421,7 @@ fn typecheck_node(
             })
         }
 
-        Node::For {
+        ParsedNode::For {
             var_name,
             var_name_range,
             array_expr,
@@ -483,7 +484,7 @@ fn typecheck_node(
             })
         }
 
-        Node::ComponentReference {
+        ParsedNode::ComponentReference {
             component_name,
             component_name_opening_range: tag_name,
             definition_module,
@@ -646,7 +647,7 @@ fn typecheck_node(
             })
         }
 
-        Node::Html {
+        ParsedNode::Html {
             tag_name,
             closing_tag_name: _,
             attributes,
@@ -668,7 +669,10 @@ fn typecheck_node(
             })
         }
 
-        Node::TextExpression { expression, range: _ } => {
+        ParsedNode::TextExpression {
+            expression,
+            range: _,
+        } => {
             if let Some(typed_expr) = errors.ok_or_add(
                 dop::typecheck_expr(expression, env, records, annotations, None)
                     .map_err(Into::into),
@@ -689,13 +693,13 @@ fn typecheck_node(
             }
         }
 
-        Node::Placeholder { .. } => Some(TypedNode::Placeholder),
+        ParsedNode::Placeholder { .. } => Some(TypedNode::Placeholder),
 
-        Node::Text { value, range: _ } => Some(TypedNode::Text {
+        ParsedNode::Text { value, range: _ } => Some(TypedNode::Text {
             value: value.clone(),
         }),
 
-        Node::Doctype { value, range: _ } => Some(TypedNode::Doctype {
+        ParsedNode::Doctype { value, range: _ } => Some(TypedNode::Doctype {
             value: value.clone(),
         }),
     }
@@ -736,7 +740,9 @@ fn typecheck_attributes(
                     None
                 }
             }
-            Some(AttributeValue::String(s)) => Some(TypedAttributeValue::String(s.to_string_span())),
+            Some(AttributeValue::String(s)) => {
+                Some(TypedAttributeValue::String(s.to_string_span()))
+            }
             None => None,
         };
 

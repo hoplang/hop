@@ -10,15 +10,15 @@ use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged, St
 use crate::dop;
 
 #[derive(Debug, Clone)]
-pub enum AttributeValue {
+pub enum TokenizedAttributeValue {
     String(DocumentRange),
     Expression(DocumentRange),
 }
 
 #[derive(Debug, Clone)]
-pub struct Attribute {
+pub struct TokenizedAttribute {
     pub name: DocumentRange,
-    pub value: Option<AttributeValue>,
+    pub value: Option<TokenizedAttributeValue>,
 
     /// This is the range for the whole attribute,
     /// including possible quotes.
@@ -38,7 +38,7 @@ pub enum Token {
     },
     OpeningTag {
         tag_name: DocumentRange,
-        attributes: BTreeMap<StringSpan, Attribute>,
+        attributes: BTreeMap<StringSpan, TokenizedAttribute>,
         expression: Option<DocumentRange>,
         self_closing: bool,
         range: DocumentRange,
@@ -97,10 +97,10 @@ impl Display for Token {
                         // Sort by the order they occur in the document
                         .sorted_by(|a, b| a.range.start().cmp(&b.range.start()))
                         .map(|attr| match &attr.value {
-                            Some(AttributeValue::String(val)) => {
+                            Some(TokenizedAttributeValue::String(val)) => {
                                 format!("{}={:#?}", attr.name, val.to_string())
                             }
-                            Some(AttributeValue::Expression(val)) => {
+                            Some(TokenizedAttributeValue::Expression(val)) => {
                                 format!("{}={{{:#?}}}", attr.name, val.to_string())
                             }
                             None => attr.name.to_string(),
@@ -304,7 +304,7 @@ impl Tokenizer {
     // Expects that the iterator points to the initial alphabetic char.
     //
     // Returns None if a valid attribute could not be parsed from the iterator.
-    fn parse_attribute(&mut self) -> Option<Attribute> {
+    fn parse_attribute(&mut self) -> Option<TokenizedAttribute> {
         // consume: [a-zA-Z]
         let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
             panic!(
@@ -324,7 +324,7 @@ impl Tokenizer {
 
         // consume: '='
         let Some(eq) = self.iter.next_if(|s| s.ch() == '=') else {
-            return Some(Attribute {
+            return Some(TokenizedAttribute {
                 name: attr_name.clone(),
                 value: None,
                 range: attr_name,
@@ -338,9 +338,9 @@ impl Tokenizer {
         if self.iter.peek().map(|s| s.ch()) == Some('{') {
             // Parse expression value
             let (expr, expr_range) = self.parse_expression()?;
-            return Some(Attribute {
+            return Some(TokenizedAttribute {
                 name: attr_name.clone(),
-                value: Some(AttributeValue::Expression(expr)),
+                value: Some(TokenizedAttributeValue::Expression(expr)),
                 range: attr_name.to(expr_range),
             });
         }
@@ -369,9 +369,9 @@ impl Tokenizer {
             return None;
         };
 
-        Some(Attribute {
+        Some(TokenizedAttribute {
             name: attr_name.clone(),
-            value: attr_value.map(AttributeValue::String),
+            value: attr_value.map(TokenizedAttributeValue::String),
             range: attr_name.to(close_quote),
         })
     }
@@ -434,8 +434,13 @@ impl Tokenizer {
     ///
     /// E.g. <div foo="bar" {x: String}>
     ///           ^^^^^^^^^^^^^^^^^^^^^
-    fn parse_tag_content(&mut self) -> (BTreeMap<StringSpan, Attribute>, Option<DocumentRange>) {
-        let mut attributes: BTreeMap<StringSpan, Attribute> = BTreeMap::new();
+    fn parse_tag_content(
+        &mut self,
+    ) -> (
+        BTreeMap<StringSpan, TokenizedAttribute>,
+        Option<DocumentRange>,
+    ) {
+        let mut attributes: BTreeMap<StringSpan, TokenizedAttribute> = BTreeMap::new();
         let mut expression: Option<DocumentRange> = None;
         loop {
             self.skip_whitespace();

@@ -1,7 +1,7 @@
 use crate::document::DocumentPosition;
 
 use super::ast::Ast;
-use super::node::Node;
+use super::node::ParsedNode;
 
 /// Finds the deepest AST node that contains the given position.
 ///
@@ -21,7 +21,7 @@ use super::node::Node;
 ///     ^^^^^^^^^^^^^^^^^
 /// </div>
 ///
-pub fn find_node_at_position(ast: &Ast, position: DocumentPosition) -> Option<&Node> {
+pub fn find_node_at_position(ast: &Ast, position: DocumentPosition) -> Option<&ParsedNode> {
     for n in ast.get_component_definitions() {
         if n.range.contains_position(position) {
             for child in &n.children {

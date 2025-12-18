@@ -9,7 +9,9 @@ use crate::error_collector::ErrorCollector;
 use crate::hop::symbols::module_name::ModuleName;
 
 use super::parse_error::ParseError;
-use super::parse_tree::{BinaryOp, MatchArm, ParseTree, ParsedDeclaration, ParsedType};
+use super::parsed::{
+    ParsedBinaryOp, ParsedDeclaration, ParsedExpr, ParsedMatchArm, ParsedType,
+};
 use super::token::Token;
 use super::tokenizer::Tokenizer;
 
@@ -196,14 +198,14 @@ impl Parser {
     }
 
     // expr = logical Eof
-    pub fn parse_expr(&mut self) -> Result<ParseTree, ParseError> {
+    pub fn parse_expr(&mut self) -> Result<ParsedExpr, ParseError> {
         let result = self.parse_logical()?;
         self.expect_eof()?;
         Ok(result)
     }
 
     // exprs = logical ("," logical)* ","? Eof
-    pub fn parse_exprs(&mut self) -> Result<Vec<ParseTree>, ParseError> {
+    pub fn parse_exprs(&mut self) -> Result<Vec<ParsedExpr>, ParseError> {
         let mut exprs = Vec::new();
         self.parse_comma_separated(
             |this| {
@@ -217,7 +219,9 @@ impl Parser {
     }
 
     // loop_header = Identifier "in" logical Eof
-    pub fn parse_loop_header(&mut self) -> Result<(VarName, DocumentRange, ParseTree), ParseError> {
+    pub fn parse_loop_header(
+        &mut self,
+    ) -> Result<(VarName, DocumentRange, ParsedExpr), ParseError> {
         let (var_name, var_name_range) = self.expect_variable_name()?;
         self.expect_token(&Token::In)?;
         let array_expr = self.parse_logical()?;
@@ -234,7 +238,7 @@ impl Parser {
     }
 
     // named_argument = Identifier ":" expr
-    fn parse_argument(&mut self) -> Result<((VarName, DocumentRange), ParseTree), ParseError> {
+    fn parse_argument(&mut self) -> Result<((VarName, DocumentRange), ParsedExpr), ParseError> {
         let (var_name, var_name_range) = self.expect_variable_name()?;
         self.expect_token(&Token::Colon)?;
         let expression = self.parse_logical()?;
@@ -269,7 +273,7 @@ impl Parser {
     // arguments = argument ("," argument)* Eof
     pub fn parse_arguments(
         &mut self,
-    ) -> Result<Vec<((VarName, DocumentRange), ParseTree)>, ParseError> {
+    ) -> Result<Vec<((VarName, DocumentRange), ParsedExpr)>, ParseError> {
         let mut args = Vec::new();
         let mut seen_names = HashSet::new();
         self.parse_comma_separated(
@@ -318,28 +322,28 @@ impl Parser {
         }
     }
 
-    fn parse_logical(&mut self) -> Result<ParseTree, ParseError> {
+    fn parse_logical(&mut self) -> Result<ParsedExpr, ParseError> {
         let mut expr = self.parse_logical_and()?;
         while self.advance_if(Token::LogicalOr).is_some() {
             let right = self.parse_logical_and()?;
-            expr = ParseTree::BinaryOp {
+            expr = ParsedExpr::BinaryOp {
                 annotation: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
-                operator: BinaryOp::LogicalOr,
+                operator: ParsedBinaryOp::LogicalOr,
                 right: Box::new(right),
             };
         }
         Ok(expr)
     }
 
-    fn parse_logical_and(&mut self) -> Result<ParseTree, ParseError> {
+    fn parse_logical_and(&mut self) -> Result<ParsedExpr, ParseError> {
         let mut expr = self.parse_equality()?;
         while self.advance_if(Token::LogicalAnd).is_some() {
             let right = self.parse_equality()?;
-            expr = ParseTree::BinaryOp {
+            expr = ParsedExpr::BinaryOp {
                 annotation: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
-                operator: BinaryOp::LogicalAnd,
+                operator: ParsedBinaryOp::LogicalAnd,
                 right: Box::new(right),
             };
         }
@@ -347,23 +351,23 @@ impl Parser {
     }
 
     // equality = relational ( ("==" | "!=") relational )*
-    fn parse_equality(&mut self) -> Result<ParseTree, ParseError> {
+    fn parse_equality(&mut self) -> Result<ParsedExpr, ParseError> {
         let mut expr = self.parse_relational()?;
         loop {
             if self.advance_if(Token::Eq).is_some() {
                 let right = self.parse_relational()?;
-                expr = ParseTree::BinaryOp {
+                expr = ParsedExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
-                    operator: BinaryOp::Eq,
+                    operator: ParsedBinaryOp::Eq,
                     right: Box::new(right),
                 };
             } else if self.advance_if(Token::NotEq).is_some() {
                 let right = self.parse_relational()?;
-                expr = ParseTree::BinaryOp {
+                expr = ParsedExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
-                    operator: BinaryOp::NotEq,
+                    operator: ParsedBinaryOp::NotEq,
                     right: Box::new(right),
                 };
             } else {
@@ -374,39 +378,39 @@ impl Parser {
     }
 
     // relational = additive ( ("<" | ">" | "<=" | ">=") additive )*
-    fn parse_relational(&mut self) -> Result<ParseTree, ParseError> {
+    fn parse_relational(&mut self) -> Result<ParsedExpr, ParseError> {
         let mut expr = self.parse_additive()?;
         loop {
             if self.advance_if(Token::LessThan).is_some() {
                 let right = self.parse_additive()?;
-                expr = ParseTree::BinaryOp {
+                expr = ParsedExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
-                    operator: BinaryOp::LessThan,
+                    operator: ParsedBinaryOp::LessThan,
                     right: Box::new(right),
                 };
             } else if self.advance_if(Token::GreaterThan).is_some() {
                 let right = self.parse_additive()?;
-                expr = ParseTree::BinaryOp {
+                expr = ParsedExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
-                    operator: BinaryOp::GreaterThan,
+                    operator: ParsedBinaryOp::GreaterThan,
                     right: Box::new(right),
                 };
             } else if self.advance_if(Token::LessThanOrEqual).is_some() {
                 let right = self.parse_additive()?;
-                expr = ParseTree::BinaryOp {
+                expr = ParsedExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
-                    operator: BinaryOp::LessThanOrEqual,
+                    operator: ParsedBinaryOp::LessThanOrEqual,
                     right: Box::new(right),
                 };
             } else if self.advance_if(Token::GreaterThanOrEqual).is_some() {
                 let right = self.parse_additive()?;
-                expr = ParseTree::BinaryOp {
+                expr = ParsedExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
-                    operator: BinaryOp::GreaterThanOrEqual,
+                    operator: ParsedBinaryOp::GreaterThanOrEqual,
                     right: Box::new(right),
                 };
             } else {
@@ -417,23 +421,23 @@ impl Parser {
     }
 
     // additive = multiplicative ( ("+" | "-") multiplicative )*
-    fn parse_additive(&mut self) -> Result<ParseTree, ParseError> {
+    fn parse_additive(&mut self) -> Result<ParsedExpr, ParseError> {
         let mut expr = self.parse_multiplicative()?;
         loop {
             if self.advance_if(Token::Plus).is_some() {
                 let right = self.parse_multiplicative()?;
-                expr = ParseTree::BinaryOp {
+                expr = ParsedExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
-                    operator: BinaryOp::Plus,
+                    operator: ParsedBinaryOp::Plus,
                     right: Box::new(right),
                 };
             } else if self.advance_if(Token::Minus).is_some() {
                 let right = self.parse_multiplicative()?;
-                expr = ParseTree::BinaryOp {
+                expr = ParsedExpr::BinaryOp {
                     annotation: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
-                    operator: BinaryOp::Minus,
+                    operator: ParsedBinaryOp::Minus,
                     right: Box::new(right),
                 };
             } else {
@@ -444,14 +448,14 @@ impl Parser {
     }
 
     // multiplicative = unary ( "*" unary )*
-    fn parse_multiplicative(&mut self) -> Result<ParseTree, ParseError> {
+    fn parse_multiplicative(&mut self) -> Result<ParsedExpr, ParseError> {
         let mut expr = self.parse_unary()?;
         while self.advance_if(Token::Asterisk).is_some() {
             let right = self.parse_unary()?;
-            expr = ParseTree::BinaryOp {
+            expr = ParsedExpr::BinaryOp {
                 annotation: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
-                operator: BinaryOp::Multiply,
+                operator: ParsedBinaryOp::Multiply,
                 right: Box::new(right),
             };
         }
@@ -459,10 +463,10 @@ impl Parser {
     }
 
     // unary = ( "!" )* primary
-    fn parse_unary(&mut self) -> Result<ParseTree, ParseError> {
+    fn parse_unary(&mut self) -> Result<ParsedExpr, ParseError> {
         if let Some(operator_range) = self.advance_if(Token::Not) {
             let expr = self.parse_unary()?; // Right associative for multiple !
-            Ok(ParseTree::Negation {
+            Ok(ParsedExpr::Negation {
                 annotation: operator_range.to(expr.range().clone()),
                 operand: Box::new(expr),
             })
@@ -475,14 +479,14 @@ impl Parser {
     fn parse_array_literal(
         &mut self,
         left_bracket: DocumentRange,
-    ) -> Result<ParseTree, ParseError> {
+    ) -> Result<ParsedExpr, ParseError> {
         let mut elements = Vec::new();
         let right_bracket =
             self.parse_delimited_list(&Token::LeftBracket, &left_bracket, |this| {
                 elements.push(this.parse_logical()?);
                 Ok(())
             })?;
-        Ok(ParseTree::ArrayLiteral {
+        Ok(ParsedExpr::ArrayLiteral {
             elements,
             annotation: left_bracket.to(right_bracket),
         })
@@ -492,14 +496,14 @@ impl Parser {
         &mut self,
         identifier: StringSpan,
         range: DocumentRange,
-    ) -> Result<ParseTree, ParseError> {
+    ) -> Result<ParsedExpr, ParseError> {
         let var_name =
             VarName::new(identifier.as_str()).map_err(|error| ParseError::InvalidVariableName {
                 name: identifier,
                 error,
                 range: range.clone(),
             })?;
-        let mut expr = ParseTree::Var {
+        let mut expr = ParsedExpr::Var {
             annotation: range.clone(),
             value: var_name,
         };
@@ -516,7 +520,7 @@ impl Parser {
                         }
                     })?;
                     let range = expr.range().clone().to(range.clone());
-                    expr = ParseTree::FieldAccess {
+                    expr = ParsedExpr::FieldAccess {
                         record: Box::new(expr),
                         field: field_name,
                         annotation: range,
@@ -535,7 +539,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_primary(&mut self) -> Result<ParseTree, ParseError> {
+    fn parse_primary(&mut self) -> Result<ParsedExpr, ParseError> {
         match self.iter.next().transpose()? {
             Some((Token::Identifier(name), name_range)) => {
                 self.parse_field_access(name, name_range)
@@ -553,23 +557,23 @@ impl Parser {
                     self.parse_record_literal(name, name_range)
                 }
             }
-            Some((Token::StringLiteral(value), range)) => Ok(ParseTree::StringLiteral {
+            Some((Token::StringLiteral(value), range)) => Ok(ParsedExpr::StringLiteral {
                 value,
                 annotation: range,
             }),
-            Some((Token::True, range)) => Ok(ParseTree::BooleanLiteral {
+            Some((Token::True, range)) => Ok(ParsedExpr::BooleanLiteral {
                 value: true,
                 annotation: range,
             }),
-            Some((Token::False, range)) => Ok(ParseTree::BooleanLiteral {
+            Some((Token::False, range)) => Ok(ParsedExpr::BooleanLiteral {
                 value: false,
                 annotation: range,
             }),
-            Some((Token::IntLiteral(value), range)) => Ok(ParseTree::IntLiteral {
+            Some((Token::IntLiteral(value), range)) => Ok(ParsedExpr::IntLiteral {
                 value,
                 annotation: range,
             }),
-            Some((Token::FloatLiteral(value), range)) => Ok(ParseTree::FloatLiteral {
+            Some((Token::FloatLiteral(value), range)) => Ok(ParsedExpr::FloatLiteral {
                 value,
                 annotation: range,
             }),
@@ -594,7 +598,7 @@ impl Parser {
         &mut self,
         name: StringSpan,
         name_range: DocumentRange,
-    ) -> Result<ParseTree, ParseError> {
+    ) -> Result<ParsedExpr, ParseError> {
         let left_paren = self.expect_token(&Token::LeftParen)?;
         let mut fields = Vec::new();
         let right_paren = self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
@@ -603,7 +607,7 @@ impl Parser {
             fields.push((field_name, this.parse_logical()?));
             Ok(())
         })?;
-        Ok(ParseTree::RecordLiteral {
+        Ok(ParsedExpr::RecordLiteral {
             record_name: name.as_str().to_string(),
             fields,
             annotation: name_range.to(right_paren),
@@ -617,10 +621,10 @@ impl Parser {
         &mut self,
         enum_name: StringSpan,
         enum_name_range: DocumentRange,
-    ) -> Result<ParseTree, ParseError> {
+    ) -> Result<ParsedExpr, ParseError> {
         self.expect_token(&Token::ColonColon)?;
         let (variant_name, variant_range) = self.expect_type_name()?;
-        Ok(ParseTree::EnumLiteral {
+        Ok(ParsedExpr::EnumLiteral {
             enum_name: enum_name.as_str().to_string(),
             variant_name: variant_name.as_str().to_string(),
             annotation: enum_name_range.to(variant_range),
@@ -630,7 +634,7 @@ impl Parser {
     /// Parse a match expression.
     ///
     /// Syntax: `match subject {Pattern1 => expr1, Pattern2 => expr2}`
-    fn parse_match_expr(&mut self, match_range: DocumentRange) -> Result<ParseTree, ParseError> {
+    fn parse_match_expr(&mut self, match_range: DocumentRange) -> Result<ParsedExpr, ParseError> {
         let subject = self.parse_primary()?;
         let left_brace = self.expect_token(&Token::LeftBrace)?;
 
@@ -646,11 +650,11 @@ impl Parser {
             let pattern = this.parse_primary()?;
             this.expect_token(&Token::FatArrow)?;
             let body = this.parse_logical()?;
-            arms.push(MatchArm { pattern, body });
+            arms.push(ParsedMatchArm { pattern, body });
             Ok(())
         })?;
 
-        Ok(ParseTree::Match {
+        Ok(ParsedExpr::Match {
             subject: Box::new(subject),
             arms,
             annotation: match_range.to(right_brace),

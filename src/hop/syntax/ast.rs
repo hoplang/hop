@@ -1,7 +1,7 @@
 use std::fmt::{self, Display};
 
 use crate::document::document_cursor::{DocumentRange, Ranged};
-use crate::dop::ParseTree;
+use crate::dop::ParsedExpr;
 use crate::dop::ParsedType;
 use crate::dop::VarName;
 use crate::dop::symbols::field_name::FieldName;
@@ -9,7 +9,7 @@ use crate::dop::symbols::type_name::TypeName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 
-use super::node::Node;
+use super::node::ParsedNode;
 
 /// A Parameter represents a parsed parameter with type annotation.
 /// E.g. <my-comp {x: string, y: string}>
@@ -29,7 +29,7 @@ impl Display for Parameter {
 
 #[derive(Debug, Clone)]
 pub enum AttributeValue {
-    Expressions(Vec<ParseTree>),
+    Expressions(Vec<ParsedExpr>),
     String(DocumentRange),
 }
 
@@ -99,7 +99,7 @@ impl Ast {
     }
 
     /// Returns an iterator over all nodes in the AST, iterating depth-first.
-    pub fn iter_all_nodes(&self) -> impl Iterator<Item = &Node> {
+    pub fn iter_all_nodes(&self) -> impl Iterator<Item = &ParsedNode> {
         self.component_definitions
             .iter()
             .flat_map(|n| &n.children)
@@ -178,7 +178,7 @@ pub struct ComponentDefinition {
     pub tag_name: DocumentRange,
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<Parameter>, DocumentRange)>,
-    pub children: Vec<Node>,
+    pub children: Vec<ParsedNode>,
     pub range: DocumentRange,
 }
 

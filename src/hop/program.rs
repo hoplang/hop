@@ -11,12 +11,12 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
 use super::semantics::type_checker::TypeChecker;
+use super::semantics::typed_ast::TypedAst;
 use super::symbols::component_name::ComponentName;
 use super::symbols::module_name::ModuleName;
-use super::semantics::typed_ast::TypedAst;
 use super::syntax::ast::Ast;
 use super::syntax::find_node::find_node_at_position;
-use super::syntax::node::Node;
+use super::syntax::node::ParsedNode;
 
 /// HoverInfo is a message that should be displayed when the user hovers
 /// a specific range in the source code.
@@ -184,7 +184,7 @@ impl Program {
         }
 
         match node {
-            Node::ComponentReference {
+            ParsedNode::ComponentReference {
                 component_name,
                 definition_module,
                 ..
@@ -199,7 +199,7 @@ impl Program {
                     range: component_def.tag_name.clone(),
                 })
             }
-            Node::Html { tag_name, .. } => {
+            ParsedNode::Html { tag_name, .. } => {
                 // Navigate to the opening tag of this HTML element
                 Some(DefinitionLocation {
                     module: module_name.clone(),
@@ -236,14 +236,14 @@ impl Program {
         }
 
         match node {
-            Node::ComponentReference {
+            ParsedNode::ComponentReference {
                 component_name,
                 definition_module: definition_location,
                 ..
             } => definition_location.as_ref().map(|target_module| {
                 self.collect_component_rename_locations(component_name, target_module)
             }),
-            n @ Node::Html { .. } => Some(
+            n @ ParsedNode::Html { .. } => Some(
                 n.tag_names()
                     .map(|range| RenameLocation {
                         module: module_name.clone(),
@@ -335,7 +335,7 @@ impl Program {
             locations.extend(
                 ast.iter_all_nodes()
                     .filter(|node| match node {
-                        Node::ComponentReference {
+                        ParsedNode::ComponentReference {
                             component_name: ref_component_name,
                             definition_module: reference_definition_module,
                             ..
