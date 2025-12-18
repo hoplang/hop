@@ -173,20 +173,18 @@ pub fn parse(
                             name,
                             name_range,
                             fields,
-                            range,
+                            range: _,
                         } => {
                             let record = Record {
                                 name: name.clone(),
                                 name_range: name_range.clone(),
                                 fields: fields
                                     .iter()
-                                    .map(|(field_name, field_name_range, field_type)| RecordField {
+                                    .map(|(field_name, _field_name_range, field_type)| RecordField {
                                         name: field_name.clone(),
-                                        name_range: field_name_range.clone(),
                                         field_type: field_type.clone(),
                                     })
                                     .collect(),
-                                range,
                             };
                             let name = record.name();
                             if defined_records.contains(name)

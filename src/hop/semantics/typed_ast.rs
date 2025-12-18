@@ -1,11 +1,23 @@
 use crate::document::document_cursor::DocumentRange;
+use crate::dop::symbols::field_name::FieldName;
 use crate::dop::{Expr, Type, VarName};
 use crate::hop::symbols::component_name::ComponentName;
-use crate::hop::syntax::ast::{Attribute, Enum, Record};
+use crate::hop::syntax::ast::{Attribute, Enum};
 use crate::hop::syntax::node::TypedNode;
 
 pub type TypedAttribute = Attribute<Expr>;
-pub type TypedRecord = Record<Type>;
+
+#[derive(Debug, Clone)]
+pub struct TypedRecordField {
+    pub name: FieldName,
+    pub field_type: Type,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedRecord {
+    pub name: String,
+    pub fields: Vec<TypedRecordField>,
+}
 
 #[derive(Debug, Clone)]
 pub struct TypedParameter {

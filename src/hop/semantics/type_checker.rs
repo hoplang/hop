@@ -13,8 +13,9 @@ use std::fmt::{self, Display};
 use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::semantics::typed_ast::{
     TypedAst, TypedAttribute, TypedComponentDefinition, TypedParameter, TypedRecord,
+    TypedRecordField,
 };
-use crate::hop::syntax::ast::{Ast, AttributeValue, RecordField};
+use crate::hop::syntax::ast::{Ast, AttributeValue};
 use crate::hop::syntax::node::{Node, TypedNode, UntypedNode};
 
 #[derive(Debug, Clone)]
@@ -248,9 +249,8 @@ fn typecheck_module(
         for field in &record.fields {
             match resolve_type(&field.field_type, &mut records_env) {
                 Ok(resolved_type) => {
-                    typed_fields.push(RecordField {
+                    typed_fields.push(TypedRecordField {
                         name: field.name.clone(),
-                        name_range: field.name_range.clone(),
                         field_type: resolved_type,
                     });
                 }
@@ -264,10 +264,8 @@ fn typecheck_module(
         // Only add record if all fields resolved successfully
         if !has_errors {
             let typed_record = TypedRecord {
-                name: record.name.clone(),
-                name_range: record.name_range.clone(),
+                name: record.name().to_string(),
                 fields: typed_fields.clone(),
-                range: record.range.clone(),
             };
             // Store typed record in state so other modules can import it
             state.set_typed_record(&module.name, record.name(), typed_record.clone());

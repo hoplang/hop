@@ -21,7 +21,7 @@ pub fn orchestrate(
         .values()
         .flat_map(|module| module.get_records())
         .map(|record| IrRecord {
-            name: record.name().to_string(),
+            name: record.name.clone(),
             fields: record
                 .fields
                 .iter()

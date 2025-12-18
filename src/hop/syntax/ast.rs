@@ -34,7 +34,6 @@ pub enum AttributeValue<T = ParseTree> {
     String(DocumentRange),
 }
 
-
 /// An Attribute is an attribute on a node, it can either
 /// be empty, an expression or a string value.
 #[derive(Debug, Clone)]
@@ -172,26 +171,23 @@ impl Import {
 }
 
 #[derive(Debug, Clone)]
-pub struct RecordField<A = ParsedType> {
+pub struct RecordField {
     pub name: FieldName,
-    pub name_range: DocumentRange,
-    pub field_type: A,
+    pub field_type: ParsedType,
 }
 
 #[derive(Debug, Clone)]
-pub struct Record<A = ParsedType> {
+pub struct Record {
     pub name: TypeName,
     pub name_range: DocumentRange,
-    pub fields: Vec<RecordField<A>>,
-    pub range: DocumentRange,
+    pub fields: Vec<RecordField>,
 }
 
-impl<A> Record<A> {
+impl Record {
     pub fn name(&self) -> &str {
         self.name.as_str()
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct EnumVariant {
