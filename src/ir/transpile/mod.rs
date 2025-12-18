@@ -174,7 +174,7 @@ pub trait ExpressionTranspiler {
             IrExpr::BooleanLiteral { value, .. } => self.transpile_boolean_literal(*value),
             IrExpr::FloatLiteral { value, .. } => self.transpile_float_literal(*value),
             IrExpr::IntLiteral { value, .. } => self.transpile_int_literal(*value),
-            IrExpr::ArrayLiteral { elements, .. } => match expr.as_type() {
+            IrExpr::ArrayLiteral { elements, kind, .. } => match kind {
                 Type::Array(elem_type) => self.transpile_array_literal(elements, elem_type),
                 _ => {
                     unreachable!()
