@@ -3,7 +3,6 @@ use std::iter::Peekable;
 
 use super::ast::{
     self, Ast, ComponentDefinition, Enum, EnumVariant, Import, Record, RecordField,
-    UntypedComponentDefinition,
 };
 use super::node::Argument;
 use super::node::{Node, UntypedNode};
@@ -285,7 +284,7 @@ fn parse_component_definition(
     tree: TokenTree,
     children: Vec<UntypedNode>,
     errors: &mut ErrorCollector<ParseError>,
-) -> Option<UntypedComponentDefinition> {
+) -> Option<ComponentDefinition> {
     let Token::OpeningTag {
         tag_name,
         attributes,
@@ -631,7 +630,7 @@ fn construct_nodes(
 
 #[cfg(test)]
 mod tests {
-    use super::ast::UntypedComponentDefinition;
+    use super::ast::ComponentDefinition;
     use super::*;
     use crate::document::{DocumentAnnotator, document_cursor::Ranged};
     use crate::error_collector::ErrorCollector;
@@ -667,7 +666,7 @@ mod tests {
         }
     }
 
-    pub fn format_component_definition(d: &UntypedComponentDefinition) -> String {
+    pub fn format_component_definition(d: &ComponentDefinition) -> String {
         let mut lines = Vec::new();
         for child in &d.children {
             write_node(child, 0, &mut lines);

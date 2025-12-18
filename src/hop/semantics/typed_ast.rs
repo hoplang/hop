@@ -1,9 +1,25 @@
-use crate::dop::{Expr, Type};
-use crate::hop::syntax::ast::{Attribute, ComponentDefinition, Enum, Record};
+use crate::document::document_cursor::DocumentRange;
+use crate::dop::{Expr, Type, VarName};
+use crate::hop::symbols::component_name::ComponentName;
+use crate::hop::syntax::ast::{Attribute, Enum, Record};
+use crate::hop::syntax::node::TypedNode;
 
 pub type TypedAttribute = Attribute<Expr>;
 pub type TypedRecord = Record<Type>;
-pub type TypedComponentDefinition = ComponentDefinition<Expr, Type>;
+
+#[derive(Debug, Clone)]
+pub struct TypedParameter {
+    pub var_name: VarName,
+    pub var_type: Type,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedComponentDefinition {
+    pub component_name: ComponentName,
+    pub tag_name: DocumentRange,
+    pub children: Vec<TypedNode>,
+    pub params: Option<(Vec<TypedParameter>, DocumentRange)>,
+}
 
 #[derive(Debug, Clone)]
 pub struct TypedAst {

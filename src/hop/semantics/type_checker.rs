@@ -11,7 +11,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
 use crate::hop::symbols::module_name::ModuleName;
-use crate::hop::semantics::typed_ast::{TypedAst, TypedAttribute, TypedRecord};
+use crate::hop::semantics::typed_ast::{
+    TypedAst, TypedAttribute, TypedComponentDefinition, TypedParameter, TypedRecord,
+};
 use crate::hop::syntax::ast::{Ast, AttributeValue, RecordField};
 use crate::hop::syntax::node::{Node, TypedNode, UntypedNode};
 
@@ -293,8 +295,8 @@ fn typecheck_module(
             tag_name: name,
             params,
             children,
-            range,
-            closing_tag_name,
+            range: _,
+            closing_tag_name: _,
         } = component_def;
 
         // Push parameters to environment and validate their types
@@ -303,7 +305,7 @@ fn typecheck_module(
         // Collect resolved parameter types for ComponentTypeInformation
         let mut resolved_param_types: Vec<(String, Type)> = Vec::new();
         // Build typed parameters with resolved type annotations
-        let mut typed_params: Vec<Parameter<Type>> = Vec::new();
+        let mut typed_params: Vec<TypedParameter> = Vec::new();
         if let Some((params, _)) = params {
             for param in params {
                 match resolve_type(&param.var_type, &mut records_env) {
@@ -316,9 +318,8 @@ fn typecheck_module(
                         let _ = env.push(param.var_name.to_string(), param_type.clone());
                         pushed_params.push(param);
                         resolved_param_types.push((param.var_name.to_string(), param_type.clone()));
-                        typed_params.push(Parameter {
+                        typed_params.push(TypedParameter {
                             var_name: param.var_name.clone(),
-                            var_name_range: param.var_name_range.clone(),
                             var_type: param_type,
                         });
                     }
@@ -369,12 +370,10 @@ fn typecheck_module(
         } else {
             None
         };
-        typed_component_definitions.push(ComponentDefinition {
+        typed_component_definitions.push(TypedComponentDefinition {
             component_name: component_name.clone(),
             tag_name: name.clone(),
-            closing_tag_name: closing_tag_name.clone(),
             params: typed_params_option,
-            range: range.clone(),
             children: typed_children,
         });
     }

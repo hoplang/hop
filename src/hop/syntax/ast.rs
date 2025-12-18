@@ -50,13 +50,13 @@ pub struct Ast {
     imports: Vec<Import>,
     records: Vec<Record>,
     enums: Vec<Enum>,
-    component_definitions: Vec<UntypedComponentDefinition>,
+    component_definitions: Vec<ComponentDefinition>,
 }
 
 impl Ast {
     pub fn new(
         name: ModuleName,
-        component_definitions: Vec<UntypedComponentDefinition>,
+        component_definitions: Vec<ComponentDefinition>,
         imports: Vec<Import>,
         records: Vec<Record>,
         enums: Vec<Enum>,
@@ -70,7 +70,7 @@ impl Ast {
         }
     }
 
-    pub fn get_component_definition(&self, name: &str) -> Option<&UntypedComponentDefinition> {
+    pub fn get_component_definition(&self, name: &str) -> Option<&ComponentDefinition> {
         self.component_definitions
             .iter()
             .find(|&n| n.tag_name.as_str() == name)
@@ -82,7 +82,7 @@ impl Ast {
     }
 
     /// Returns a reference to all component definition nodes in the AST.
-    pub fn get_component_definitions(&self) -> &[UntypedComponentDefinition] {
+    pub fn get_component_definitions(&self) -> &[ComponentDefinition] {
         &self.component_definitions
     }
 
@@ -211,25 +211,23 @@ impl Enum {
     }
 }
 
-pub type UntypedComponentDefinition = ComponentDefinition<ParseTree, ParsedType>;
-
 #[derive(Debug, Clone)]
-pub struct ComponentDefinition<E, P = ParsedType> {
+pub struct ComponentDefinition {
     pub component_name: ComponentName,
-    pub tag_name: DocumentRange, // Keep for source location/error reporting
+    pub tag_name: DocumentRange,
     pub closing_tag_name: Option<DocumentRange>,
-    pub params: Option<(Vec<Parameter<P>>, DocumentRange)>,
-    pub children: Vec<Node<E>>,
+    pub params: Option<(Vec<Parameter>, DocumentRange)>,
+    pub children: Vec<Node<ParseTree>>,
     pub range: DocumentRange,
 }
 
-impl<E, P> Ranged for ComponentDefinition<E, P> {
+impl Ranged for ComponentDefinition {
     fn range(&self) -> &DocumentRange {
         &self.range
     }
 }
 
-impl<E, P> ComponentDefinition<E, P> {
+impl ComponentDefinition {
     pub fn tag_name_ranges(&self) -> impl Iterator<Item = &DocumentRange> {
         self.closing_tag_name.iter().chain(Some(&self.tag_name))
     }
