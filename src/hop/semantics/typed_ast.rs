@@ -5,26 +5,15 @@ use crate::hop::semantics::typed_node::TypedNode;
 use crate::hop::symbols::component_name::ComponentName;
 
 #[derive(Debug, Clone)]
-pub struct TypedRecordField {
-    pub name: FieldName,
-    pub field_type: Type,
-}
-
-#[derive(Debug, Clone)]
 pub struct TypedRecord {
     pub name: TypeName,
-    pub fields: Vec<TypedRecordField>,
-}
-
-#[derive(Debug, Clone)]
-pub struct TypedEnumVariant {
-    pub name: TypeName,
+    pub fields: Vec<(FieldName, Type)>,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedEnum {
     pub name: TypeName,
-    pub variants: Vec<TypedEnumVariant>,
+    pub variants: Vec<TypeName>,
 }
 
 impl TypedEnum {
@@ -34,16 +23,10 @@ impl TypedEnum {
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedParameter {
-    pub var_name: VarName,
-    pub var_type: Type,
-}
-
-#[derive(Debug, Clone)]
 pub struct TypedComponentDefinition {
     pub component_name: ComponentName,
     pub children: Vec<TypedNode>,
-    pub params: Option<Vec<TypedParameter>>,
+    pub params: Option<Vec<(VarName, Type)>>,
 }
 
 #[derive(Debug, Clone)]

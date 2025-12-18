@@ -1,7 +1,7 @@
 use super::type_error::TypeError;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::symbols::type_name::TypeName;
-use crate::dop::{self, Type, resolve_type};
+use crate::dop::{self, Type, VarName, resolve_type};
 use crate::environment::Environment;
 use crate::error_collector::ErrorCollector;
 use crate::hop::syntax::parsed_ast::ParsedParameter;
@@ -10,8 +10,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
 use crate::hop::semantics::typed_ast::{
-    TypedAst, TypedComponentDefinition, TypedEnum, TypedEnumVariant, TypedParameter, TypedRecord,
-    TypedRecordField,
+    TypedAst, TypedComponentDefinition, TypedEnum, TypedRecord,
 };
 use crate::hop::semantics::typed_node::{
     TypedArgument, TypedAttribute, TypedAttributeValue, TypedNode,
@@ -218,11 +217,7 @@ fn typecheck_module(
                 let record_type = Type::Record {
                     module: imported_module.clone(),
                     name: TypeName::new(imported_name.as_str()).unwrap(),
-                    fields: record
-                        .fields
-                        .iter()
-                        .map(|f| (f.name.clone(), f.field_type.clone()))
-                        .collect(),
+                    fields: record.fields.clone(),
                 };
                 let _ = records_env.push(imported_name.as_str().to_string(), record_type);
             }
@@ -244,13 +239,7 @@ fn typecheck_module(
 
         typed_enums.push(TypedEnum {
             name: enum_decl.name.clone(),
-            variants: enum_decl
-                .variants
-                .iter()
-                .map(|v| TypedEnumVariant {
-                    name: v.name.clone(),
-                })
-                .collect(),
+            variants: enum_decl.variants.iter().map(|v| v.name.clone()).collect(),
         });
     }
 
@@ -264,10 +253,7 @@ fn typecheck_module(
         for field in &record.fields {
             match resolve_type(&field.field_type, &mut records_env) {
                 Ok(resolved_type) => {
-                    typed_fields.push(TypedRecordField {
-                        name: field.name.clone(),
-                        field_type: resolved_type,
-                    });
+                    typed_fields.push((field.name.clone(), resolved_type));
                 }
                 Err(e) => {
                     errors.push(e.into());
@@ -289,10 +275,7 @@ fn typecheck_module(
             let record_type = Type::Record {
                 module: module.name.clone(),
                 name: TypeName::new(record_name).unwrap(),
-                fields: typed_fields
-                    .iter()
-                    .map(|f| (f.name.clone(), f.field_type.clone()))
-                    .collect(),
+                fields: typed_fields,
             };
             let _ = records_env.push(record_name.to_string(), record_type);
         }
@@ -318,7 +301,7 @@ fn typecheck_module(
         // Collect resolved parameter types for ComponentTypeInformation
         let mut resolved_param_types: Vec<(String, Type)> = Vec::new();
         // Build typed parameters with resolved type annotations
-        let mut typed_params: Vec<TypedParameter> = Vec::new();
+        let mut typed_params: Vec<(VarName, Type)> = Vec::new();
         if let Some((params, _)) = params {
             for param in params {
                 match resolve_type(&param.var_type, &mut records_env) {
@@ -331,10 +314,7 @@ fn typecheck_module(
                         let _ = env.push(param.var_name.to_string(), param_type.clone());
                         pushed_params.push(param);
                         resolved_param_types.push((param.var_name.to_string(), param_type.clone()));
-                        typed_params.push(TypedParameter {
-                            var_name: param.var_name.clone(),
-                            var_type: param_type,
-                        });
+                        typed_params.push((param.var_name.clone(), param_type));
                     }
                     Err(e) => {
                         errors.push(e.into());

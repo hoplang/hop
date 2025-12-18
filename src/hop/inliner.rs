@@ -74,9 +74,9 @@ impl Inliner {
                             .clone()
                             .map(|p| {
                                 p.into_iter()
-                                    .map(|param| InlinedParameter {
-                                        var_name: param.var_name,
-                                        var_type: param.var_type,
+                                    .map(|(var_name, var_type)| InlinedParameter {
+                                        var_name,
+                                        var_type,
                                     })
                                     .collect()
                             })
@@ -120,7 +120,9 @@ impl Inliner {
             .map(|params| {
                 params
                     .iter()
-                    .any(|p| p.var_name.as_str() == "children" && p.var_type == Type::TrustedHTML)
+                    .any(|(var_name, var_type)| {
+                        var_name.as_str() == "children" && *var_type == Type::TrustedHTML
+                    })
             })
             .unwrap_or(false)
     }
@@ -148,12 +150,12 @@ impl Inliner {
         if let Some(params) = &component.params {
             // Process parameters in reverse order to create proper nesting
             // Skip the children parameter - it's handled via slot_content
-            for param in params.iter().rev() {
-                if param.var_name.as_str() == "children" {
+            for (var_name, _var_type) in params.iter().rev() {
+                if var_name.as_str() == "children" {
                     continue;
                 }
 
-                let param_name = param.var_name.clone();
+                let param_name = var_name.clone();
 
                 // Find corresponding argument value
                 let value = args

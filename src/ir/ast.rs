@@ -3,6 +3,7 @@ use std::{collections::HashMap, fmt};
 use crate::dop::VarName;
 use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::dop::symbols::field_name::FieldName;
+use crate::dop::symbols::type_name::TypeName;
 use crate::hop::symbols::component_name::ComponentName;
 use pretty::BoxDoc;
 
@@ -29,7 +30,7 @@ pub struct IrRecord {
 #[derive(Debug, Clone)]
 pub struct IrEnum {
     pub name: String,
-    pub variants: Vec<String>,
+    pub variants: Vec<TypeName>,
 }
 
 /// An IR module containing entrypoints and type declarations.

@@ -171,8 +171,8 @@ impl Transpiler for GoTranspiler {
                 BoxDoc::line()
                     .append(BoxDoc::intersperse(
                         enum_def.variants.iter().enumerate().map(|(i, variant)| {
-                            let const_name =
-                                BoxDoc::text(enum_def.name.as_str()).append(BoxDoc::text(variant));
+                            let const_name = BoxDoc::text(enum_def.name.as_str())
+                                .append(BoxDoc::text(variant.as_str()));
                             if i == 0 {
                                 const_name
                                     .append(BoxDoc::text(" "))
@@ -1525,7 +1525,11 @@ mod tests {
 
         let enums = vec![IrEnum {
             name: "Color".to_string(),
-            variants: vec!["Red".to_string(), "Green".to_string(), "Blue".to_string()],
+            variants: vec![
+                TypeName::new("Red").unwrap(),
+                TypeName::new("Green").unwrap(),
+                TypeName::new("Blue").unwrap(),
+            ],
         }];
 
         let module = IrModule {

@@ -22,11 +22,7 @@ pub fn orchestrate(
         .flat_map(|module| module.get_records())
         .map(|record| IrRecord {
             name: record.name.to_string(),
-            fields: record
-                .fields
-                .iter()
-                .map(|f| (f.name.clone(), f.field_type.clone()))
-                .collect(),
+            fields: record.fields.clone(),
         })
         .collect();
     records.sort_by(|a, b| a.name.cmp(&b.name));
@@ -37,11 +33,7 @@ pub fn orchestrate(
         .flat_map(|module| module.get_enums())
         .map(|enum_decl| IrEnum {
             name: enum_decl.name().to_string(),
-            variants: enum_decl
-                .variants
-                .iter()
-                .map(|v| v.name.as_str().to_string())
-                .collect(),
+            variants: enum_decl.variants.clone(),
         })
         .collect();
     enums.sort_by(|a, b| a.name.cmp(&b.name));
