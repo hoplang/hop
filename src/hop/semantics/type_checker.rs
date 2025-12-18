@@ -10,7 +10,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
 use crate::hop::semantics::typed_ast::{
-    TypedAst, TypedComponentDefinition, TypedParameter, TypedRecord, TypedRecordField,
+    TypedAst, TypedComponentDefinition, TypedEnum, TypedEnumVariant, TypedParameter, TypedRecord,
+    TypedRecordField,
 };
 use crate::hop::semantics::typed_node::{
     TypedArgument, TypedAttribute, TypedAttributeValue, TypedNode,
@@ -229,7 +230,9 @@ fn typecheck_module(
     }
 
     // Register enum types in the type environment first,
-    // so records can reference enums in their field types
+    // so records can reference enums in their field types.
+    // Also build typed enum structures.
+    let mut typed_enums: Vec<TypedEnum> = Vec::new();
     for enum_decl in module.get_enums() {
         let enum_name = enum_decl.name();
         let enum_type = Type::Enum {
@@ -238,6 +241,17 @@ fn typecheck_module(
             variants: enum_decl.variants.iter().map(|v| v.name.clone()).collect(),
         };
         let _ = records_env.push(enum_name.to_string(), enum_type);
+
+        typed_enums.push(TypedEnum {
+            name: enum_decl.name.clone(),
+            variants: enum_decl
+                .variants
+                .iter()
+                .map(|v| TypedEnumVariant {
+                    name: v.name.clone(),
+                })
+                .collect(),
+        });
     }
 
     // Validate record field types and build typed records
@@ -377,11 +391,7 @@ fn typecheck_module(
     }
 
     // Build and return the typed AST
-    TypedAst::new(
-        typed_component_definitions,
-        typed_records,
-        module.get_enums().to_vec(),
-    )
+    TypedAst::new(typed_component_definitions, typed_records, typed_enums)
 }
 
 fn typecheck_node(

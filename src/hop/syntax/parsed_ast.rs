@@ -11,7 +11,7 @@ use crate::hop::symbols::module_name::ModuleName;
 
 use super::parsed_node::ParsedNode;
 
-/// A Parameter represents a parsed parameter with type annotation.
+/// A ParsedParameter represents a parsed parameter with type annotation.
 /// E.g. <my-comp {x: string, y: string}>
 ///                ^^^^^^^^^
 #[derive(Debug, Clone)]
