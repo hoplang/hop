@@ -392,12 +392,12 @@ impl Compiler {
                 kind,
                 id: expr_id,
             },
-            Expr::RecordInstantiation {
+            Expr::RecordLiteral {
                 record_name,
                 fields,
                 kind,
                 ..
-            } => IrExpr::RecordInstantiation {
+            } => IrExpr::RecordLiteral {
                 record_name,
                 fields: fields
                     .into_iter()
@@ -524,12 +524,12 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
-            Expr::EnumInstantiation {
+            Expr::EnumLiteral {
                 enum_name,
                 variant_name,
                 kind,
                 ..
-            } => IrExpr::EnumInstantiation {
+            } => IrExpr::EnumLiteral {
                 enum_name,
                 variant_name,
                 kind,

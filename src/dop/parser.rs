@@ -592,9 +592,9 @@ impl Parser {
                     .map(|(t, _)| t)
                     == Some(&Token::ColonColon);
                 if is_enum_variant {
-                    self.parse_enum_instantiation(name, name_range)
+                    self.parse_enum_literal(name, name_range)
                 } else {
-                    self.parse_record_instantiation(name, name_range)
+                    self.parse_record_literal(name, name_range)
                 }
             }
             Some((Token::StringLiteral(value), range)) => Ok(SyntacticExpr::StringLiteral {
@@ -634,7 +634,7 @@ impl Parser {
         }
     }
 
-    fn parse_record_instantiation(
+    fn parse_record_literal(
         &mut self,
         name: StringSpan,
         name_range: DocumentRange,
@@ -647,24 +647,24 @@ impl Parser {
             fields.push((field_name, this.parse_logical()?));
             Ok(())
         })?;
-        Ok(SyntacticExpr::RecordInstantiation {
+        Ok(SyntacticExpr::RecordLiteral {
             record_name: name.as_str().to_string(),
             fields,
             annotation: name_range.to(right_paren),
         })
     }
 
-    /// Parse an enum instantiation expression.
+    /// Parse an enum literal expression.
     ///
     /// Syntax: `EnumName::VariantName`
-    fn parse_enum_instantiation(
+    fn parse_enum_literal(
         &mut self,
         enum_name: StringSpan,
         enum_name_range: DocumentRange,
     ) -> Result<SyntacticExpr, ParseError> {
         self.expect_token(&Token::ColonColon)?;
         let (variant_name, variant_range) = self.expect_type_name()?;
-        Ok(SyntacticExpr::EnumInstantiation {
+        Ok(SyntacticExpr::EnumLiteral {
             enum_name: enum_name.as_str().to_string(),
             variant_name: variant_name.as_str().to_string(),
             annotation: enum_name_range.to(variant_range),
@@ -1010,11 +1010,11 @@ mod tests {
     }
 
     ///////////////////////////////////////////////////////////////////////////
-    /// RECORD INSTANTIATION                                                ///
+    /// RECORD LITERAL                                                      ///
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_record_instantiation_with_single_field() {
+    fn should_accept_record_literal_with_single_field() {
         check_parse_expr(
             r#"User(name: "John")"#,
             expect![[r#"
@@ -1024,7 +1024,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_instantiation_with_multiple_fields() {
+    fn should_accept_record_literal_with_multiple_fields() {
         check_parse_expr(
             r#"User(name: "John", age: 30, active: true)"#,
             expect![[r#"
@@ -1034,7 +1034,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_instantiation_with_no_fields() {
+    fn should_accept_record_literal_with_no_fields() {
         check_parse_expr(
             "Empty()",
             expect![[r#"
@@ -1044,7 +1044,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_instantiation_with_trailing_comma() {
+    fn should_accept_record_literal_with_trailing_comma() {
         check_parse_expr(
             r#"User(name: "John", age: 30,)"#,
             expect![[r#"
@@ -1054,7 +1054,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_instantiation_with_multiline_fields() {
+    fn should_accept_record_literal_with_multiline_fields() {
         check_parse_expr(
             indoc! {r#"
                 User(
@@ -1068,7 +1068,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_instantiation_with_nested_records() {
+    fn should_accept_record_literal_with_nested_records() {
         check_parse_expr(
             r#"Wrapper(inner: Inner(value: 42))"#,
             expect![[r#"
@@ -1078,7 +1078,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_instantiation_with_expression_values() {
+    fn should_accept_record_literal_with_expression_values() {
         check_parse_expr(
             "Point(x: a + b, y: c * 2)",
             expect![[r#"
@@ -1088,7 +1088,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_instantiation_when_closing_paren_is_missing() {
+    fn should_reject_record_literal_when_closing_paren_is_missing() {
         check_parse_expr(
             r#"User(name: "John""#,
             expect![[r#"
@@ -1100,7 +1100,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_instantiation_when_colon_is_missing() {
+    fn should_reject_record_literal_when_colon_is_missing() {
         check_parse_expr(
             r#"User(name "John")"#,
             expect![[r#"
@@ -2486,11 +2486,11 @@ mod tests {
     }
 
     ///////////////////////////////////////////////////////////////////////////
-    /// ENUM INSTANTIATION                                                  ///
+    /// ENUM LITERAL                                                        ///
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
-    fn should_accept_enum_instantiation() {
+    fn should_accept_enum_literal() {
         check_parse_expr(
             "Color::Red",
             expect![[r#"
@@ -2500,7 +2500,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_instantiation_in_equality() {
+    fn should_accept_enum_literal_in_equality() {
         check_parse_expr(
             "Color::Red == Color::Green",
             expect![[r#"
@@ -2510,7 +2510,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_enum_instantiation_in_record_field() {
+    fn should_accept_enum_literal_in_record_field() {
         check_parse_expr(
             r#"User(name: "Alice", status: Status::Active)"#,
             expect![[r#"
@@ -2520,7 +2520,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_enum_instantiation_with_lowercase_variant() {
+    fn should_reject_enum_literal_with_lowercase_variant() {
         check_parse_expr(
             "Color::red",
             expect![[r#"
@@ -2532,7 +2532,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_enum_instantiation_missing_variant() {
+    fn should_reject_enum_literal_missing_variant() {
         check_parse_expr(
             "Color::",
             expect![[r#"

@@ -52,15 +52,15 @@ pub enum Expr {
     /// An array literal expression, e.g. [1, 2, 3]
     ArrayLiteral { elements: Vec<Self>, kind: Type },
 
-    /// A record instantiation expression, e.g. User(name: "John", age: 30)
-    RecordInstantiation {
+    /// A record literal expression, e.g. User(name: "John", age: 30)
+    RecordLiteral {
         record_name: String,
         fields: Vec<(FieldName, Self)>,
         kind: Type,
     },
 
-    /// An enum instantiation expression, e.g. Color::Red
-    EnumInstantiation {
+    /// An enum literal expression, e.g. Color::Red
+    EnumLiteral {
         enum_name: String,
         variant_name: String,
         kind: Type,
@@ -169,8 +169,8 @@ impl Expr {
             Expr::Var { kind, .. }
             | Expr::FieldAccess { kind, .. }
             | Expr::ArrayLiteral { kind, .. }
-            | Expr::RecordInstantiation { kind, .. }
-            | Expr::EnumInstantiation { kind, .. }
+            | Expr::RecordLiteral { kind, .. }
+            | Expr::EnumLiteral { kind, .. }
             | Expr::Match { kind, .. } => kind,
 
             Expr::FloatLiteral { .. } => &FLOAT_TYPE,
@@ -232,7 +232,7 @@ impl Expr {
                         .append(BoxDoc::text("]"))
                 }
             }
-            Expr::RecordInstantiation {
+            Expr::RecordLiteral {
                 record_name,
                 fields,
                 ..
@@ -337,7 +337,7 @@ impl Expr {
                 .append(BoxDoc::text(" || "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            Expr::EnumInstantiation {
+            Expr::EnumLiteral {
                 enum_name,
                 variant_name,
                 ..

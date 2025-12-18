@@ -127,16 +127,16 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// A record instantiation expression, e.g. User(name: "John", age: 30)
-    RecordInstantiation {
+    /// A record literal expression, e.g. User(name: "John", age: 30)
+    RecordLiteral {
         record_name: String,
         fields: Vec<(FieldName, IrExpr)>,
         kind: Type,
         id: ExprId,
     },
 
-    /// An enum instantiation expression, e.g. Color::Red
-    EnumInstantiation {
+    /// An enum literal expression, e.g. Color::Red
+    EnumLiteral {
         enum_name: String,
         variant_name: String,
         kind: Type,
@@ -506,8 +506,8 @@ impl IrExpr {
             | IrExpr::FloatLiteral { id, .. }
             | IrExpr::IntLiteral { id, .. }
             | IrExpr::ArrayLiteral { id, .. }
-            | IrExpr::RecordInstantiation { id, .. }
-            | IrExpr::EnumInstantiation { id, .. }
+            | IrExpr::RecordLiteral { id, .. }
+            | IrExpr::EnumLiteral { id, .. }
             | IrExpr::JsonEncode { id, .. }
             | IrExpr::EnvLookup { id, .. }
             | IrExpr::StringConcat { id, .. }
@@ -537,8 +537,8 @@ impl IrExpr {
             IrExpr::Var { kind, .. }
             | IrExpr::FieldAccess { kind, .. }
             | IrExpr::ArrayLiteral { kind, .. }
-            | IrExpr::RecordInstantiation { kind, .. }
-            | IrExpr::EnumInstantiation { kind, .. } => kind,
+            | IrExpr::RecordLiteral { kind, .. }
+            | IrExpr::EnumLiteral { kind, .. } => kind,
 
             IrExpr::FloatLiteral { .. } => &FLOAT_TYPE,
             IrExpr::IntLiteral { .. } => &INT_TYPE,
@@ -599,7 +599,7 @@ impl IrExpr {
                         .append(BoxDoc::text("]"))
                 }
             }
-            IrExpr::RecordInstantiation {
+            IrExpr::RecordLiteral {
                 record_name,
                 fields,
                 ..
@@ -712,7 +712,7 @@ impl IrExpr {
                 .append(BoxDoc::text(" || "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            IrExpr::EnumInstantiation {
+            IrExpr::EnumLiteral {
                 enum_name,
                 variant_name,
                 ..
@@ -737,7 +737,7 @@ impl IrExpr {
                     elem.traverse(f);
                 }
             }
-            IrExpr::RecordInstantiation { fields, .. } => {
+            IrExpr::RecordLiteral { fields, .. } => {
                 for (_, value) in fields {
                     value.traverse(f);
                 }
@@ -771,7 +771,7 @@ impl IrExpr {
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
             | IrExpr::IntLiteral { .. }
-            | IrExpr::EnumInstantiation { .. } => {}
+            | IrExpr::EnumLiteral { .. } => {}
         }
     }
 
@@ -790,7 +790,7 @@ impl IrExpr {
                     elem.traverse_mut(f);
                 }
             }
-            IrExpr::RecordInstantiation { fields, .. } => {
+            IrExpr::RecordLiteral { fields, .. } => {
                 for (_, value) in fields {
                     value.traverse_mut(f);
                 }
@@ -824,7 +824,7 @@ impl IrExpr {
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
             | IrExpr::IntLiteral { .. }
-            | IrExpr::EnumInstantiation { .. } => {}
+            | IrExpr::EnumLiteral { .. } => {}
         }
     }
 }

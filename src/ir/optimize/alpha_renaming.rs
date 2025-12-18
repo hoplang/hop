@@ -144,12 +144,12 @@ impl AlphaRenamingPass {
                 kind,
                 id,
             },
-            IrExpr::RecordInstantiation {
+            IrExpr::RecordLiteral {
                 record_name,
                 fields,
                 kind,
                 id,
-            } => IrExpr::RecordInstantiation {
+            } => IrExpr::RecordLiteral {
                 record_name,
                 fields: fields
                     .into_iter()
@@ -242,7 +242,7 @@ impl AlphaRenamingPass {
             IrExpr::BooleanLiteral { .. } => expr,
             IrExpr::FloatLiteral { .. } => expr,
             IrExpr::IntLiteral { .. } => expr,
-            IrExpr::EnumInstantiation { .. } => expr,
+            IrExpr::EnumLiteral { .. } => expr,
             IrExpr::BooleanLogicalAnd { left, right, id } => IrExpr::BooleanLogicalAnd {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),

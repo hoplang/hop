@@ -2831,7 +2831,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_expression_with_enum_variant_instantiation() {
+    fn should_accept_match_expression_with_enum_literal() {
         check(
             indoc! {r#"
                 -- main.hop --

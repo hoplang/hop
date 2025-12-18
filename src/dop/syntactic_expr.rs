@@ -8,7 +8,7 @@ use pretty::BoxDoc;
 /// A single arm in a match expression, e.g. `Color::Red => "red"`
 #[derive(Debug, Clone)]
 pub struct MatchArm {
-    /// The pattern being matched (must be an EnumInstantiation, e.g., `Color::Red`)
+    /// The pattern being matched (must be an enum literal, e.g., `Color::Red`)
     pub pattern: SyntacticExpr,
     /// The expression to evaluate if this arm matches
     pub body: SyntacticExpr,
@@ -74,15 +74,15 @@ pub enum SyntacticExpr {
         annotation: DocumentRange,
     },
 
-    /// A record instantiation expression, e.g. User(name: "John", age: 30)
-    RecordInstantiation {
+    /// A record literal expression, e.g. User(name: "John", age: 30)
+    RecordLiteral {
         record_name: String,
         fields: Vec<(FieldName, Self)>,
         annotation: DocumentRange,
     },
 
-    /// An enum instantiation expression, e.g. Color::Red
-    EnumInstantiation {
+    /// An enum literal expression, e.g. Color::Red
+    EnumLiteral {
         enum_name: String,
         variant_name: String,
         annotation: DocumentRange,
@@ -119,8 +119,8 @@ impl SyntacticExpr {
             | SyntacticExpr::IntLiteral { annotation, .. }
             | SyntacticExpr::FloatLiteral { annotation, .. }
             | SyntacticExpr::ArrayLiteral { annotation, .. }
-            | SyntacticExpr::RecordInstantiation { annotation, .. }
-            | SyntacticExpr::EnumInstantiation { annotation, .. }
+            | SyntacticExpr::RecordLiteral { annotation, .. }
+            | SyntacticExpr::EnumLiteral { annotation, .. }
             | SyntacticExpr::BinaryOp { annotation, .. }
             | SyntacticExpr::Negation { annotation, .. }
             | SyntacticExpr::Match { annotation, .. } => annotation,
@@ -161,7 +161,7 @@ impl SyntacticExpr {
                         .append(BoxDoc::text("]"))
                 }
             }
-            SyntacticExpr::RecordInstantiation {
+            SyntacticExpr::RecordLiteral {
                 record_name,
                 fields,
                 ..
@@ -205,7 +205,7 @@ impl SyntacticExpr {
                 .append(BoxDoc::text("!"))
                 .append(operand.to_doc())
                 .append(BoxDoc::text(")")),
-            SyntacticExpr::EnumInstantiation {
+            SyntacticExpr::EnumLiteral {
                 enum_name,
                 variant_name,
                 ..

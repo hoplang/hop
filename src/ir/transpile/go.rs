@@ -485,12 +485,12 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text("}"))
     }
 
-    fn transpile_record_instantiation<'a>(
+    fn transpile_record_literal<'a>(
         &self,
         record_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
     ) -> BoxDoc<'a> {
-        // In Go, record instantiation is a struct literal with type name
+        // In Go, record literal is a struct literal with type name
         BoxDoc::text(record_name)
             .append(BoxDoc::text("{"))
             .append(
@@ -512,7 +512,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text("}"))
     }
 
-    fn transpile_enum_instantiation<'a>(
+    fn transpile_enum_literal<'a>(
         &self,
         enum_name: &'a str,
         variant_name: &'a str,
@@ -1353,7 +1353,7 @@ mod tests {
     }
 
     #[test]
-    fn record_instantiation() {
+    fn record_literal() {
         use crate::ir::test_utils::build_ir_with_records;
 
         let records_def = vec![("User", vec![("name", Type::String), ("age", Type::Int)])];
@@ -1413,7 +1413,7 @@ mod tests {
     }
 
     #[test]
-    fn enum_instantiation_in_condition() {
+    fn enum_literal_in_condition() {
         use crate::ir::test_utils::build_ir_with_enums;
 
         let enums_def = vec![("Color", vec!["Red", "Green", "Blue"])];

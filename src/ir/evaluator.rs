@@ -147,8 +147,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             }
             Ok(Value::Array(array))
         }
-        IrExpr::RecordInstantiation { fields, .. } => {
-            // Record instantiation evaluates to an object
+        IrExpr::RecordLiteral { fields, .. } => {
+            // Record literal evaluates to an object
             let mut obj = serde_json::Map::new();
             for (key, value) in fields {
                 obj.insert(key.as_str().to_string(), evaluate_expr(value, env)?);
@@ -497,7 +497,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 }
             }
         }
-        IrExpr::EnumInstantiation { variant_name, .. } => {
+        IrExpr::EnumLiteral { variant_name, .. } => {
             // Enum variants evaluate to their string name
             Ok(Value::String(variant_name.clone()))
         }
@@ -641,7 +641,7 @@ mod tests {
     }
 
     #[test]
-    fn should_evaluate_enum_instantiation_in_condition() {
+    fn should_evaluate_enum_literal_in_condition() {
         check(
             build_ir_with_enums(
                 "Test",

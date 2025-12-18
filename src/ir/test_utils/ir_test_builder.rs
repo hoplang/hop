@@ -319,7 +319,7 @@ impl IrTestBuilder {
             .records
             .get(record_name)
             .unwrap_or_else(|| panic!("Record '{}' not found in test builder", record_name));
-        IrExpr::RecordInstantiation {
+        IrExpr::RecordLiteral {
             record_name: record_name.to_string(),
             fields: fields
                 .into_iter()
@@ -352,7 +352,7 @@ impl IrTestBuilder {
         }
 
         let test_module = ModuleName::new("test").unwrap();
-        IrExpr::EnumInstantiation {
+        IrExpr::EnumLiteral {
             enum_name: enum_name.to_string(),
             variant_name: variant_name.to_string(),
             kind: Type::Enum {

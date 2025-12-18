@@ -80,22 +80,22 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Missing field '{field_name}' in instantiation of record '{record_name}'")]
-    RecordInstantiationMissingRecordField {
+    #[error("Missing field '{field_name}' in record literal '{record_name}'")]
+    RecordLiteralMissingRecordField {
         field_name: String,
         record_name: String,
         range: DocumentRange,
     },
 
-    #[error("Unknown field '{field_name}' in instantiation of record '{record_name}'")]
-    RecordInstantiationUnknownRecordField {
+    #[error("Unknown field '{field_name}' in record literal '{record_name}'")]
+    RecordLiteralUnknownRecordField {
         field_name: String,
         record_name: String,
         range: DocumentRange,
     },
 
     #[error("Field '{field_name}' expects type {expected}, but got {found}")]
-    RecordInstantiationFieldTypeMismatch {
+    RecordLiteralFieldTypeMismatch {
         field_name: String,
         expected: String,
         found: String,
@@ -166,9 +166,9 @@ impl Ranged for TypeError {
             | TypeError::IncompatibleTypesForMultiplication { range, .. }
             | TypeError::UndefinedType { range, .. }
             | TypeError::UndefinedRecord { range, .. }
-            | TypeError::RecordInstantiationMissingRecordField { range, .. }
-            | TypeError::RecordInstantiationUnknownRecordField { range, .. }
-            | TypeError::RecordInstantiationFieldTypeMismatch { range, .. }
+            | TypeError::RecordLiteralMissingRecordField { range, .. }
+            | TypeError::RecordLiteralUnknownRecordField { range, .. }
+            | TypeError::RecordLiteralFieldTypeMismatch { range, .. }
             | TypeError::UndefinedEnum { range, .. }
             | TypeError::UndefinedEnumVariant { range, .. }
             | TypeError::MatchSubjectNotEnum { range, .. }

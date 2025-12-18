@@ -152,12 +152,12 @@ pub trait ExpressionTranspiler {
     fn transpile_float_subtract<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_multiply<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_multiply<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_record_instantiation<'a>(
+    fn transpile_record_literal<'a>(
         &self,
         record_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
     ) -> BoxDoc<'a>;
-    fn transpile_enum_instantiation<'a>(
+    fn transpile_enum_literal<'a>(
         &self,
         enum_name: &'a str,
         variant_name: &'a str,
@@ -180,11 +180,11 @@ pub trait ExpressionTranspiler {
                     unreachable!()
                 }
             },
-            IrExpr::RecordInstantiation {
+            IrExpr::RecordLiteral {
                 record_name,
                 fields,
                 ..
-            } => self.transpile_record_instantiation(record_name, fields),
+            } => self.transpile_record_literal(record_name, fields),
             IrExpr::JsonEncode { value, .. } => self.transpile_json_encode(value),
             IrExpr::EnvLookup { key, .. } => self.transpile_env_lookup(key),
             IrExpr::StringConcat { left, right, .. } => self.transpile_string_concat(left, right),
@@ -280,11 +280,11 @@ pub trait ExpressionTranspiler {
                 NumericType::Int => self.transpile_int_multiply(left, right),
                 NumericType::Float => self.transpile_float_multiply(left, right),
             },
-            IrExpr::EnumInstantiation {
+            IrExpr::EnumLiteral {
                 enum_name,
                 variant_name,
                 ..
-            } => self.transpile_enum_instantiation(enum_name, variant_name),
+            } => self.transpile_enum_literal(enum_name, variant_name),
         }
     }
 }

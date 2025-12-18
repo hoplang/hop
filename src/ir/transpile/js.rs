@@ -407,12 +407,12 @@ impl ExpressionTranspiler for JsTranspiler {
             .append(BoxDoc::text("]"))
     }
 
-    fn transpile_record_instantiation<'a>(
+    fn transpile_record_literal<'a>(
         &self,
         _record_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
     ) -> BoxDoc<'a> {
-        // In JavaScript/TypeScript, record instantiation is the same as object literal
+        // In JavaScript/TypeScript, record literal is the same as object literal
         BoxDoc::nil()
             .append(BoxDoc::text("{"))
             .append(BoxDoc::intersperse(
@@ -426,12 +426,12 @@ impl ExpressionTranspiler for JsTranspiler {
             .append(BoxDoc::text("}"))
     }
 
-    fn transpile_enum_instantiation<'a>(
+    fn transpile_enum_literal<'a>(
         &self,
         _enum_name: &'a str,
         _variant_name: &'a str,
     ) -> BoxDoc<'a> {
-        panic!("Enum instantiation transpilation for JavaScript/TypeScript not yet implemented")
+        panic!("Enum literal transpilation for JavaScript/TypeScript not yet implemented")
     }
 
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
@@ -1423,7 +1423,7 @@ mod tests {
     }
 
     #[test]
-    fn record_instantiation() {
+    fn record_literal() {
         use crate::ir::test_utils::build_ir_with_records;
 
         let records_def = vec![("User", vec![("name", Type::String), ("age", Type::Int)])];

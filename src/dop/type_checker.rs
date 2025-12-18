@@ -599,7 +599,7 @@ pub fn typecheck_expr(
                 })
             }
         }
-        SyntacticExpr::RecordInstantiation {
+        SyntacticExpr::RecordLiteral {
             record_name,
             fields,
             annotation: range,
@@ -640,7 +640,7 @@ pub fn typecheck_expr(
 
                 // Check if this field exists in the record
                 let expected_type = expected_fields.get(field_name_str).ok_or_else(|| {
-                    TypeError::RecordInstantiationUnknownRecordField {
+                    TypeError::RecordLiteralUnknownRecordField {
                         field_name: field_name_str.to_string(),
                         record_name: record_name.clone(),
                         range: field_value.range().clone(),
@@ -654,7 +654,7 @@ pub fn typecheck_expr(
 
                 // Check that the types match
                 if !actual_type.is_subtype(expected_type) {
-                    return Err(TypeError::RecordInstantiationFieldTypeMismatch {
+                    return Err(TypeError::RecordLiteralFieldTypeMismatch {
                         field_name: field_name_str.to_string(),
                         expected: expected_type.to_string(),
                         found: actual_type.to_string(),
@@ -669,7 +669,7 @@ pub fn typecheck_expr(
             // Check for missing fields
             for expected_field in expected_fields.keys() {
                 if !provided_fields.contains(expected_field) {
-                    return Err(TypeError::RecordInstantiationMissingRecordField {
+                    return Err(TypeError::RecordLiteralMissingRecordField {
                         field_name: (*expected_field).to_string(),
                         record_name: record_name.clone(),
                         range: range.clone(),
@@ -677,13 +677,13 @@ pub fn typecheck_expr(
                 }
             }
 
-            Ok(Expr::RecordInstantiation {
+            Ok(Expr::RecordLiteral {
                 record_name: record_name.clone(),
                 fields: typed_fields,
                 kind: record_type,
             })
         }
-        SyntacticExpr::EnumInstantiation {
+        SyntacticExpr::EnumLiteral {
             enum_name,
             variant_name,
             annotation: range,
@@ -717,7 +717,7 @@ pub fn typecheck_expr(
                 }
             }
 
-            Ok(Expr::EnumInstantiation {
+            Ok(Expr::EnumLiteral {
                 enum_name: enum_name.clone(),
                 variant_name: variant_name.clone(),
                 kind: enum_type,
@@ -753,9 +753,9 @@ pub fn typecheck_expr(
             let mut result_type: Option<Type> = None;
 
             for arm in arms {
-                // Pattern must be an enum instantiation
+                // Pattern must be an enum literal
                 let (pattern_enum_name, pattern_variant_name, pattern_range) = match &arm.pattern {
-                    SyntacticExpr::EnumInstantiation {
+                    SyntacticExpr::EnumLiteral {
                         enum_name,
                         variant_name,
                         annotation,
@@ -1769,7 +1769,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_simple_record_instantiation() {
+    fn should_accept_simple_record_literal() {
         check(
             "record User {name: String, age: Int}",
             &[],
@@ -1779,7 +1779,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_instantiation_with_variables() {
+    fn should_accept_record_literal_with_variables() {
         check(
             "record User {name: String, age: Int}",
             &[("user_name", "String"), ("user_age", "Int")],
@@ -1789,7 +1789,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_instantiation_of_undefined_record() {
+    fn should_reject_literal_of_undefined_record() {
         check(
             "",
             &[],
@@ -1803,13 +1803,13 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_instantiation_with_missing_field() {
+    fn should_reject_record_literal_with_missing_field() {
         check(
             "record User {name: String, age: Int}",
             &[],
             r#"User(name: "John")"#,
             expect![[r#"
-                error: Missing field 'age' in instantiation of record 'User'
+                error: Missing field 'age' in record literal 'User'
                 User(name: "John")
                 ^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1817,13 +1817,13 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_instantiation_with_unknown_field() {
+    fn should_reject_record_literal_with_unknown_field() {
         check(
             "record User {name: String}",
             &[],
             r#"User(name: "John", email: "john@example.com")"#,
             expect![[r#"
-                error: Unknown field 'email' in instantiation of record 'User'
+                error: Unknown field 'email' in record literal 'User'
                 User(name: "John", email: "john@example.com")
                                           ^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1831,7 +1831,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_record_instantiation_with_type_mismatch() {
+    fn should_reject_record_literal_with_type_mismatch() {
         check(
             "record User {name: String, age: Int}",
             &[],
@@ -1845,7 +1845,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_nested_record_instantiation() {
+    fn should_accept_nested_record_literal() {
         check(
             indoc! {"
                 record Address {city: String}
@@ -2080,10 +2080,10 @@ mod tests {
         );
     }
 
-    // Enum variant instantiation tests
+    // Enum literal tests
 
     #[test]
-    fn should_accept_enum_variant_instantiation() {
+    fn should_accept_enum_literal() {
         check(
             indoc! {"
                 enum Color {
