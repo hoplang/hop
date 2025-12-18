@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
 
 use super::ast::{
-    self, Ast, ComponentDefinition, Enum, EnumVariant, Import, Record, UntypedAst,
+    self, Ast, ComponentDefinition, Enum, EnumVariant, Import, Record, RecordField, UntypedAst,
     UntypedComponentDefinition,
 };
 use super::node::Argument;
@@ -170,8 +170,27 @@ pub fn parse(
                             }
                             imports.push(import);
                         }
-                        Declaration::Record { declaration, range } => {
-                            let record = Record { declaration, range };
+                        Declaration::Record {
+                            name,
+                            name_range,
+                            fields,
+                            range,
+                        } => {
+                            let record = Record {
+                                name: name.clone(),
+                                name_range: name_range.clone(),
+                                fields: fields
+                                    .iter()
+                                    .map(|(field_name, field_name_range, field_type)| {
+                                        RecordField {
+                                            name: field_name.clone(),
+                                            name_range: field_name_range.clone(),
+                                            field_type: field_type.clone(),
+                                        }
+                                    })
+                                    .collect(),
+                                range,
+                            };
                             let name = record.name();
                             if defined_records.contains(name)
                                 || defined_enums.contains(name)
@@ -179,8 +198,8 @@ pub fn parse(
                                 || imported_components.contains_key(name)
                             {
                                 errors.push(ParseError::TypeNameIsAlreadyDefined {
-                                    name: record.declaration.name_range.to_string_span(),
-                                    range: record.declaration.name_range.clone(),
+                                    name: record.name_range.to_string_span(),
+                                    range: record.name_range.clone(),
                                 });
                             } else {
                                 defined_records.insert(name.to_string());

@@ -1,6 +1,6 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::symbols::type_name::TypeName;
-use crate::dop::{self, RecordDeclaration, RecordDeclarationField, Type, resolve_type};
+use crate::dop::{self, Type, resolve_type};
 use crate::hop::syntax::ast::Parameter;
 use crate::hop::syntax::node::Argument;
 use crate::error_collector::ErrorCollector;
@@ -11,7 +11,7 @@ use super::type_error::TypeError;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
-use crate::hop::syntax::ast::{AttributeValue, TypedAst, TypedAttribute, TypedRecord, UntypedAst};
+use crate::hop::syntax::ast::{AttributeValue, RecordField, TypedAst, TypedAttribute, TypedRecord, UntypedAst};
 use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::syntax::node::{Node, TypedNode, UntypedNode};
 
@@ -43,7 +43,7 @@ pub struct ComponentTypeInformation {
 #[derive(Debug, Clone, Default)]
 pub struct ModuleTypeInformation {
     components: HashMap<String, ComponentTypeInformation>,
-    records: HashMap<String, RecordDeclaration<Type>>,
+    records: HashMap<String, TypedRecord>,
 }
 
 impl ModuleTypeInformation {
@@ -80,11 +80,11 @@ impl ModuleTypeInformation {
         self.records.contains_key(record_name)
     }
 
-    fn get_typed_record(&self, record_name: &str) -> Option<&dop::RecordDeclaration<Type>> {
+    fn get_typed_record(&self, record_name: &str) -> Option<&TypedRecord> {
         self.records.get(record_name)
     }
 
-    fn set_typed_record(&mut self, record_name: &str, record: dop::RecordDeclaration<Type>) {
+    fn set_typed_record(&mut self, record_name: &str, record: TypedRecord) {
         self.records.insert(record_name.to_string(), record);
     }
 }
@@ -111,7 +111,7 @@ impl State {
         &mut self,
         module_name: &ModuleName,
         record_name: &str,
-        record: dop::RecordDeclaration<Type>,
+        record: TypedRecord,
     ) {
         self.modules
             .entry(module_name.clone())
@@ -243,10 +243,10 @@ fn typecheck_module(
         let mut typed_fields = Vec::new();
         let mut has_errors = false;
 
-        for field in &record.declaration.fields {
+        for field in &record.fields {
             match resolve_type(&field.field_type, &mut records_env) {
                 Ok(resolved_type) => {
-                    typed_fields.push(RecordDeclarationField {
+                    typed_fields.push(RecordField {
                         name: field.name.clone(),
                         name_range: field.name_range.clone(),
                         field_type: resolved_type,
@@ -261,17 +261,15 @@ fn typecheck_module(
 
         // Only add record if all fields resolved successfully
         if !has_errors {
-            let typed_decl = dop::RecordDeclaration {
-                name: record.declaration.name.clone(),
-                name_range: record.declaration.name_range.clone(),
+            let typed_record = TypedRecord {
+                name: record.name.clone(),
+                name_range: record.name_range.clone(),
                 fields: typed_fields.clone(),
+                range: record.range.clone(),
             };
             // Store typed record in state so other modules can import it
-            state.set_typed_record(&module.name, record.name(), typed_decl.clone());
-            typed_records.push(TypedRecord {
-                declaration: typed_decl,
-                range: record.range.clone(),
-            });
+            state.set_typed_record(&module.name, record.name(), typed_record.clone());
+            typed_records.push(typed_record);
             // Add this record to records_env so subsequent records can reference it
             let record_type = Type::Record {
                 module: module.name.clone(),

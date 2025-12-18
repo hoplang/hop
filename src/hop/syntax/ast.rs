@@ -2,10 +2,10 @@ use std::fmt::{self, Display};
 
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::dop::symbols::field_name::FieldName;
 use crate::dop::Expr;
 use crate::dop::ParseTree;
 use crate::dop::ParsedType;
-use crate::dop::RecordDeclaration;
 use crate::dop::Type;
 use crate::dop::VarName;
 use crate::dop::symbols::type_name::TypeName;
@@ -178,14 +178,23 @@ impl Import {
 }
 
 #[derive(Debug, Clone)]
+pub struct RecordField<A = ParsedType> {
+    pub name: FieldName,
+    pub name_range: DocumentRange,
+    pub field_type: A,
+}
+
+#[derive(Debug, Clone)]
 pub struct Record<A = ParsedType> {
-    pub declaration: RecordDeclaration<A>,
+    pub name: TypeName,
+    pub name_range: DocumentRange,
+    pub fields: Vec<RecordField<A>>,
     pub range: DocumentRange,
 }
 
 impl<A> Record<A> {
     pub fn name(&self) -> &str {
-        self.declaration.name.as_str()
+        self.name.as_str()
     }
 }
 

@@ -9,10 +9,7 @@ use crate::error_collector::ErrorCollector;
 use crate::hop::symbols::module_name::ModuleName;
 
 use super::parse_error::ParseError;
-use super::parse_tree::{
-    BinaryOp, Declaration, MatchArm, ParseTree, ParsedType, RecordDeclaration,
-    RecordDeclarationField,
-};
+use super::parse_tree::{BinaryOp, Declaration, MatchArm, ParseTree, ParsedType};
 use super::token::Token;
 use super::tokenizer::Tokenizer;
 
@@ -756,33 +753,25 @@ impl Parser {
         let mut fields = Vec::new();
         let mut seen_names = HashSet::new();
         let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
-            let (name, name_range) = this.expect_field_name()?;
+            let (field_name, field_name_range) = this.expect_field_name()?;
             this.expect_token(&Token::Colon)?;
             let field_type = this.parse_type()?;
-            let field = RecordDeclarationField {
-                name,
-                name_range,
-                field_type,
-            };
-            if !seen_names.insert(field.name.as_str().to_string()) {
+            if !seen_names.insert(field_name.as_str().to_string()) {
                 return Err(ParseError::DuplicateField {
-                    name: field.name_range.to_string_span(),
-                    range: field.name_range.clone(),
+                    name: field_name_range.to_string_span(),
+                    range: field_name_range.clone(),
                 });
             }
-            fields.push(field);
+            fields.push((field_name, field_name_range, field_type));
             Ok(())
         })?;
 
-        let declaration = RecordDeclaration {
-            name,
-            name_range,
-            fields,
-        };
         let full_range = start_range.to(right_brace);
 
         Ok(Declaration::Record {
-            declaration,
+            name,
+            name_range,
+            fields,
             range: full_range,
         })
     }

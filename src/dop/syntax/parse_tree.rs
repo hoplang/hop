@@ -341,45 +341,6 @@ impl Display for BinaryOp {
     }
 }
 
-
-/// A RecordDeclarationField represents a field in a record declaration.
-/// E.g. record Foo {bar: String, baz: Int}
-///                  ^^^^^^^^^^^
-#[derive(Debug, Clone)]
-pub struct RecordDeclarationField<T = ParsedType> {
-    pub name: FieldName,
-    pub name_range: DocumentRange,
-    pub field_type: T,
-}
-
-impl Display for RecordDeclarationField {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.name, self.field_type)
-    }
-}
-
-/// A RecordDeclaration represents a full record type declaration.
-/// E.g. record User {name: String, age: Int}
-#[derive(Debug, Clone)]
-pub struct RecordDeclaration<A = ParsedType> {
-    pub name: TypeName,
-    pub name_range: DocumentRange,
-    pub fields: Vec<RecordDeclarationField<A>>,
-}
-
-impl Display for RecordDeclaration {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "record {} {{", self.name)?;
-        for (i, field) in self.fields.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{}", field)?;
-        }
-        write!(f, "}}")
-    }
-}
-
 /// A declaration: either an import, a record, or an enum definition.
 #[derive(Clone)]
 pub enum Declaration {
@@ -398,8 +359,12 @@ pub enum Declaration {
     },
     /// A record declaration: `record Name {fields...}`
     Record {
-        /// The fully parsed record declaration.
-        declaration: RecordDeclaration,
+        /// The name of the record type.
+        name: TypeName,
+        /// The range of the record name in the source.
+        name_range: DocumentRange,
+        /// The fields of the record (name, name_range, type).
+        fields: Vec<(FieldName, DocumentRange, ParsedType)>,
         /// The full range of the declaration.
         range: DocumentRange,
     },
@@ -438,16 +403,16 @@ impl Declaration {
                 )
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("}")),
-            Declaration::Record { declaration, .. } => {
-                let fields_doc = if declaration.fields.is_empty() {
+            Declaration::Record { name, fields, .. } => {
+                let fields_doc = if fields.is_empty() {
                     BoxDoc::nil()
                 } else {
                     BoxDoc::line()
                         .append(BoxDoc::intersperse(
-                            declaration.fields.iter().map(|f| {
-                                BoxDoc::text(f.name.to_string())
+                            fields.iter().map(|(field_name, _, field_type)| {
+                                BoxDoc::text(field_name.to_string())
                                     .append(BoxDoc::text(": "))
-                                    .append(BoxDoc::text(f.field_type.to_string()))
+                                    .append(BoxDoc::text(field_type.to_string()))
                             }),
                             BoxDoc::text(",").append(BoxDoc::line()),
                         ))
@@ -462,7 +427,7 @@ impl Declaration {
                     .append(
                         BoxDoc::line()
                             .append(BoxDoc::text("name: "))
-                            .append(BoxDoc::text(declaration.name.as_str()))
+                            .append(BoxDoc::text(name.as_str()))
                             .append(BoxDoc::text(","))
                             .append(BoxDoc::line())
                             .append(BoxDoc::text("fields: {"))

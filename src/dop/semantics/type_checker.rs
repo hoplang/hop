@@ -864,22 +864,23 @@ mod tests {
                     };
                     let _ = type_env.push(name.to_string(), enum_type);
                 }
-                Declaration::Record { declaration, .. } => {
-                    let fields: Vec<_> = declaration
-                        .fields
+                Declaration::Record {
+                    name, fields: decl_fields, ..
+                } => {
+                    let fields: Vec<_> = decl_fields
                         .iter()
-                        .map(|f| {
-                            let field_type = resolve_type(&f.field_type, &mut type_env)
+                        .map(|(field_name, _, field_type)| {
+                            let resolved_type = resolve_type(field_type, &mut type_env)
                                 .expect("Test record field type should be valid");
-                            (f.name.clone(), field_type)
+                            (field_name.clone(), resolved_type)
                         })
                         .collect();
                     let record_type = Type::Record {
                         module: test_module.clone(),
-                        name: TypeName::new(declaration.name.as_str()).unwrap(),
+                        name: TypeName::new(name.as_str()).unwrap(),
                         fields,
                     };
-                    let _ = type_env.push(declaration.name.to_string(), record_type);
+                    let _ = type_env.push(name.to_string(), record_type);
                 }
                 Declaration::Import { .. } => {
                     panic!("Import declarations not supported in tests");

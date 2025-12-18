@@ -153,7 +153,7 @@ impl Program {
                 if let Some(record) = target_ast.get_record(imported_name) {
                     return Some(DefinitionLocation {
                         module: target_module.clone(),
-                        range: record.declaration.name_range.clone(),
+                        range: record.name_range.clone(),
                     });
                 }
             }

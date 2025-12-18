@@ -23,7 +23,6 @@ pub fn orchestrate(
         .map(|record| IrRecord {
             name: record.name().to_string(),
             fields: record
-                .declaration
                 .fields
                 .iter()
                 .map(|f| (f.name.clone(), f.field_type.clone()))
