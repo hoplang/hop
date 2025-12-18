@@ -6,7 +6,7 @@ use super::type_error::TypeError;
 use crate::document::document_cursor::Ranged as _;
 use crate::dop::Expr;
 use crate::dop::syntax::parse_tree::{BinaryOp, ParseTree, ParsedType};
-use crate::hop::environment::Environment;
+use crate::environment::Environment;
 use crate::hop::semantics::type_checker::TypeAnnotation;
 
 /// Resolve a syntactic Type to a semantic Type.

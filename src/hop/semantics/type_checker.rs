@@ -6,7 +6,7 @@ use crate::hop::syntax::node::Argument;
 use crate::error_collector::ErrorCollector;
 use crate::hop::syntax::ast::Ast;
 use crate::hop::syntax::ast::{Attribute, ComponentDefinition};
-use crate::hop::environment::Environment;
+use crate::environment::Environment;
 use super::type_error::TypeError;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};

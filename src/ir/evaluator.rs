@@ -1,4 +1,4 @@
-use crate::hop::environment::Environment;
+use crate::environment::Environment;
 use crate::ir::IrExpr;
 use crate::{
     common::escape_html,
