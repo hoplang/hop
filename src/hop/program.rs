@@ -11,8 +11,8 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
 use super::syntax::ast::{TypedAst, UntypedAst};
-use super::component_name::ComponentName;
-use super::module_name::ModuleName;
+use super::symbols::component_name::ComponentName;
+use super::symbols::module_name::ModuleName;
 use super::syntax::node::Node;
 use super::type_checker::TypeChecker;
 

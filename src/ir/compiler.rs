@@ -3,7 +3,7 @@ use crate::document::document_cursor::StringSpan;
 use crate::dop::Expr;
 use crate::dop::semantics::r#type::EquatableType;
 use crate::dop::{Type, VarName};
-use crate::hop::component_name::ComponentName;
+use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode,
 };

@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
 use super::syntax::ast::{AttributeValue, TypedAst, TypedAttribute, TypedRecord, UntypedAst};
-use super::module_name::ModuleName;
+use super::symbols::module_name::ModuleName;
 use super::syntax::node::{Node, TypedNode, UntypedNode};
 
 #[derive(Debug, Clone)]
@@ -792,7 +792,7 @@ fn typecheck_attributes(
 mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
-    use crate::hop::module_name::ModuleName;
+    use crate::hop::symbols::module_name::ModuleName;
     use crate::hop::syntax::parser::parse;
     use expect_test::{Expect, expect};
     use indoc::indoc;

@@ -1,9 +1,8 @@
-pub mod component_name;
 pub mod environment;
 pub mod inlined_ast;
 pub mod inliner;
-pub mod module_name;
 pub mod program;
+pub mod symbols;
 pub mod syntax;
 pub mod toposorter;
 pub mod type_checker;

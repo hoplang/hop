@@ -6,7 +6,7 @@ use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
 use crate::error_collector::ErrorCollector;
-use crate::hop::module_name::ModuleName;
+use crate::hop::symbols::module_name::ModuleName;
 
 use super::parse_error::ParseError;
 use super::parse_tree::{

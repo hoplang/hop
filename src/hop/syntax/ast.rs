@@ -8,8 +8,8 @@ use crate::dop::ParseTree;
 use crate::dop::ParsedType;
 use crate::dop::Type;
 use crate::dop::symbols::type_name::TypeName;
-use crate::hop::component_name::ComponentName;
-use crate::hop::module_name::ModuleName;
+use crate::hop::symbols::component_name::ComponentName;
+use crate::hop::symbols::module_name::ModuleName;
 use super::node::Node;
 
 #[derive(Debug, Clone)]

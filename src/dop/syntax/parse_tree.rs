@@ -5,7 +5,7 @@ use crate::dop::semantics::expr::Expr;
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
-use crate::hop::module_name::ModuleName;
+use crate::hop::symbols::module_name::ModuleName;
 use pretty::BoxDoc;
 
 pub type TypedArgument = Argument<Expr>;

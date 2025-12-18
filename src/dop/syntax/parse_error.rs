@@ -2,7 +2,7 @@ use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::symbols::field_name::InvalidFieldNameError;
 use crate::dop::symbols::type_name::InvalidTypeNameError;
 use crate::dop::symbols::var_name::InvalidVarNameError;
-use crate::hop::module_name::InvalidModuleNameError;
+use crate::hop::symbols::module_name::InvalidModuleNameError;
 use thiserror::Error;
 
 use super::token::Token;

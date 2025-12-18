@@ -12,7 +12,7 @@ pub use python::PythonTranspiler;
 
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, Type};
-use crate::hop::component_name::ComponentName;
+use crate::hop::symbols::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
 
 pub trait Transpiler {

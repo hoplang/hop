@@ -26,7 +26,7 @@ pub enum ParseError {
 
     #[error("{error}")]
     InvalidComponentName {
-        error: crate::hop::component_name::InvalidComponentNameError,
+        error: crate::hop::symbols::component_name::InvalidComponentNameError,
         range: DocumentRange,
     },
 

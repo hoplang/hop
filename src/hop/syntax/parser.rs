@@ -7,8 +7,8 @@ use crate::dop::Declaration;
 use crate::dop::Parser;
 use crate::error_collector::ErrorCollector;
 use super::ast::{self, Ast, ComponentDefinition, Enum, Import, Record, UntypedAst, UntypedComponentDefinition};
-use crate::hop::component_name::ComponentName;
-use crate::hop::module_name::ModuleName;
+use crate::hop::symbols::component_name::ComponentName;
+use crate::hop::symbols::module_name::ModuleName;
 use super::node::{Node, UntypedNode};
 use super::token_tree::{TokenTree, build_tree};
 

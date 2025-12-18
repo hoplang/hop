@@ -5,7 +5,7 @@ use crate::dop::VarName;
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode, InlinedParameter,
 };
-use crate::hop::module_name::ModuleName;
+use crate::hop::symbols::module_name::ModuleName;
 use std::cell::RefCell;
 
 pub fn build_inlined_auto<F>(

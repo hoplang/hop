@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::dop::VarName;
-use crate::hop::component_name::ComponentName;
+use crate::hop::symbols::component_name::ComponentName;
 use pretty::BoxDoc;
 
 // This module contains the types and implementations for ASTs in

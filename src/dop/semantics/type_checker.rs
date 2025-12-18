@@ -852,7 +852,7 @@ mod tests {
     use crate::document::DocumentAnnotator;
     use crate::dop::{EnumDeclaration, Parser, RecordDeclaration, RecordDeclarationField};
     use crate::error_collector::ErrorCollector;
-    use crate::hop::module_name::ModuleName;
+    use crate::hop::symbols::module_name::ModuleName;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 

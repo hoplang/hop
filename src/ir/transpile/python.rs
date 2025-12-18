@@ -5,7 +5,7 @@ use crate::dop::symbols::field_name::FieldName;
 #[cfg(test)]
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::semantics::r#type::Type;
-use crate::hop::component_name::ComponentName;
+use crate::hop::symbols::component_name::ComponentName;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
 
 pub struct PythonTranspiler {}
@@ -700,7 +700,7 @@ impl TypeTranspiler for PythonTranspiler {
 mod tests {
     use super::*;
     use crate::{
-        hop::module_name::ModuleName,
+        hop::symbols::module_name::ModuleName,
         ir::{IrRecord, test_utils::build_ir_auto},
     };
     use expect_test::{Expect, expect};

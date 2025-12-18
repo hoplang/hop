@@ -1,6 +1,6 @@
 use crate::document::DocumentAnnotator;
-use crate::hop::component_name::ComponentName;
-use crate::hop::module_name::ModuleName;
+use crate::hop::symbols::component_name::ComponentName;
+use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::program::Program;
 use axum::body::Body;
 use axum::extract::State;
@@ -156,7 +156,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::hop::module_name::ModuleName;
+    use crate::hop::symbols::module_name::ModuleName;
     use axum_test::TestServer;
     use expect_test::expect;
     use serde_json::json;

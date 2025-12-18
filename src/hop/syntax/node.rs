@@ -9,8 +9,8 @@ use crate::dop::Expr;
 use crate::dop::ParseTree;
 use crate::dop::VarName;
 
-use crate::hop::component_name::ComponentName;
-use crate::hop::module_name::ModuleName;
+use crate::hop::symbols::component_name::ComponentName;
+use crate::hop::symbols::module_name::ModuleName;
 
 use super::ast::Attribute;
 

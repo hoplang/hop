@@ -6,7 +6,7 @@ use std::{
 use tokio::fs as async_fs;
 
 use super::config::HopConfig;
-use crate::hop::module_name::ModuleName;
+use crate::hop::symbols::module_name::ModuleName;
 
 /// Check if a directory should be skipped during .hop file search
 fn should_skip_directory(dir_name: &str) -> bool {

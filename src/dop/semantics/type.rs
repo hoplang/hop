@@ -4,7 +4,7 @@ use pretty::BoxDoc;
 
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
-use crate::hop::module_name::ModuleName;
+use crate::hop::symbols::module_name::ModuleName;
 
 /// An EquatableType is a type where its values can be compared
 /// using `==` and `!=`.

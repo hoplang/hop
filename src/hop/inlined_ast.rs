@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, fmt};
 use crate::document::document_cursor::StringSpan;
 use crate::dop::Expr;
 use crate::dop::VarName;
-use crate::hop::module_name::ModuleName;
+use crate::hop::symbols::module_name::ModuleName;
 use pretty::BoxDoc;
 
 #[derive(Debug, Clone)]
