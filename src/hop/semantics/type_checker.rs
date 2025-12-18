@@ -364,7 +364,7 @@ fn typecheck_module(
 
         // Build typed ComponentDefinition with resolved parameter types
         let typed_params_option = if params.is_some() {
-            Some((typed_params, params.as_ref().unwrap().1.clone()))
+            Some(typed_params)
         } else {
             None
         };

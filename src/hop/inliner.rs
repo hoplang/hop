@@ -73,7 +73,7 @@ impl Inliner {
                             .params
                             .clone()
                             .map(|p| {
-                                p.0.into_iter()
+                                p.into_iter()
                                     .map(|param| InlinedParameter {
                                         var_name: param.var_name,
                                         var_type: param.var_type,
@@ -117,7 +117,7 @@ impl Inliner {
         component
             .params
             .as_ref()
-            .map(|(params, _)| {
+            .map(|params| {
                 params
                     .iter()
                     .any(|p| p.var_name.as_str() == "children" && p.var_type == Type::TrustedHTML)
@@ -145,7 +145,7 @@ impl Inliner {
 
         // Build parameter bindings (excluding children - handled via slot mechanism)
         let mut body = inlined_children;
-        if let Some((params, _)) = &component.params {
+        if let Some(params) = &component.params {
             // Process parameters in reverse order to create proper nesting
             // Skip the children parameter - it's handled via slot_content
             for param in params.iter().rev() {

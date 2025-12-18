@@ -1,4 +1,3 @@
-use crate::document::document_cursor::DocumentRange;
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::{Expr, Type, VarName};
 use crate::hop::symbols::component_name::ComponentName;
@@ -29,7 +28,7 @@ pub struct TypedParameter {
 pub struct TypedComponentDefinition {
     pub component_name: ComponentName,
     pub children: Vec<TypedNode>,
-    pub params: Option<(Vec<TypedParameter>, DocumentRange)>,
+    pub params: Option<Vec<TypedParameter>>,
 }
 
 #[derive(Debug, Clone)]
