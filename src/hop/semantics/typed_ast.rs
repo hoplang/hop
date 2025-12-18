@@ -28,7 +28,6 @@ pub struct TypedParameter {
 #[derive(Debug, Clone)]
 pub struct TypedComponentDefinition {
     pub component_name: ComponentName,
-    pub tag_name: DocumentRange,
     pub children: Vec<TypedNode>,
     pub params: Option<(Vec<TypedParameter>, DocumentRange)>,
 }
@@ -56,7 +55,7 @@ impl TypedAst {
     pub fn get_component_definition(&self, name: &str) -> Option<&TypedComponentDefinition> {
         self.component_definitions
             .iter()
-            .find(|&n| n.tag_name.as_str() == name)
+            .find(|&n| n.component_name.as_str() == name)
     }
 
     /// Returns a reference to all component definition nodes in the AST.

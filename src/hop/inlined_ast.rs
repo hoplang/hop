@@ -3,6 +3,7 @@ use std::{collections::BTreeMap, fmt};
 use crate::document::document_cursor::StringSpan;
 use crate::dop::Expr;
 use crate::dop::VarName;
+use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use pretty::BoxDoc;
 
@@ -27,7 +28,7 @@ pub struct InlinedAttribute {
 #[derive(Debug, Clone)]
 pub struct InlinedEntrypoint {
     pub module_name: ModuleName,
-    pub tag_name: StringSpan,
+    pub component_name: ComponentName,
     pub params: Vec<InlinedParameter>,
     pub children: Vec<InlinedNode>,
 }
@@ -103,7 +104,7 @@ impl InlinedAttribute {
 impl InlinedEntrypoint {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         BoxDoc::text("<")
-            .append(BoxDoc::text(self.tag_name.as_str()))
+            .append(BoxDoc::text(self.component_name.as_str()))
             .append(if self.params.is_empty() {
                 BoxDoc::nil()
             } else {
@@ -127,7 +128,7 @@ impl InlinedEntrypoint {
                     .nest(2)
             })
             .append(BoxDoc::text("</"))
-            .append(BoxDoc::text(self.tag_name.as_str()))
+            .append(BoxDoc::text(self.component_name.as_str()))
             .append(BoxDoc::text(">"))
     }
 }

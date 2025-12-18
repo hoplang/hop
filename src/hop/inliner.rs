@@ -67,7 +67,7 @@ impl Inliner {
                 if included {
                     result.push(InlinedEntrypoint {
                         module_name: module_name.clone(),
-                        tag_name: component.tag_name.to_string_span(),
+                        component_name: component.component_name.clone(),
                         children: Self::inline_nodes(&component.children, None, &asts),
                         params: component
                             .params
@@ -164,7 +164,7 @@ impl Inliner {
                         panic!(
                             "Missing required parameter '{}' for component '{}' in module '{}'.",
                             param_name,
-                            component.tag_name.as_str(),
+                            component.component_name.as_str(),
                             module_name
                         )
                     });

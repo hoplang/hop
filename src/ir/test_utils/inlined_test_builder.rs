@@ -5,6 +5,7 @@ use crate::dop::VarName;
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode, InlinedParameter,
 };
+use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use std::cell::RefCell;
 
@@ -48,10 +49,10 @@ impl InlinedTestBuilder {
         }
     }
 
-    fn build(&self, tag_name: &str, children: Vec<InlinedNode>) -> InlinedEntrypoint {
+    fn build(&self, component_name: &str, children: Vec<InlinedNode>) -> InlinedEntrypoint {
         InlinedEntrypoint {
             module_name: ModuleName::new("test").unwrap(),
-            tag_name: StringSpan::new(tag_name.to_string()),
+            component_name: ComponentName::new(component_name.to_string()).unwrap(),
             params: self.params.clone(),
             children,
         }

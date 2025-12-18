@@ -370,7 +370,6 @@ fn typecheck_module(
         };
         typed_component_definitions.push(TypedComponentDefinition {
             component_name: component_name.clone(),
-            tag_name: name.clone(),
             params: typed_params_option,
             children: typed_children,
         });

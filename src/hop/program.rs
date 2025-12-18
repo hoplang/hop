@@ -426,13 +426,13 @@ impl Program {
         let component_exists = module
             .get_component_definitions()
             .iter()
-            .any(|comp| comp.tag_name.as_str() == component_name.as_str());
+            .any(|comp| comp.component_name.as_str() == component_name.as_str());
 
         if !component_exists {
             let available_components: Vec<_> = module
                 .get_component_definitions()
                 .iter()
-                .map(|comp| comp.tag_name.as_str())
+                .map(|comp| comp.component_name.as_str())
                 .collect();
 
             anyhow::bail!(

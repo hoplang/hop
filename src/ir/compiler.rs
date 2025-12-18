@@ -6,7 +6,6 @@ use crate::dop::{Type, VarName};
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode,
 };
-use crate::hop::symbols::component_name::ComponentName;
 use std::collections::BTreeMap;
 
 use super::ast::{ExprId, IrEntrypoint, IrExpr, IrStatement, StatementId};
@@ -33,14 +32,14 @@ impl Compiler {
             .map(|param| (param.var_name, param.var_type))
             .collect::<Vec<_>>();
 
-        let tag_name = entrypoint.tag_name;
+        let component_name = entrypoint.component_name;
         let module_name = &entrypoint.module_name;
         let children = entrypoint.children;
 
         // Always generate both development and production bodies
         let dev_body = compiler.generate_development_mode_body(
             &module_name.to_string(),
-            tag_name.as_str(),
+            component_name.as_str(),
             &param_info,
         );
         let prod_body = compiler.compile_nodes(children, None);
@@ -73,8 +72,7 @@ impl Compiler {
         }];
 
         IrEntrypoint {
-            name: ComponentName::new(tag_name.to_string())
-                .expect("Entrypoint should have valid component name"),
+            name: component_name,
             parameters: param_info,
             body,
         }
