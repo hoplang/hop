@@ -10,7 +10,7 @@ use super::node::{Node, UntypedNode};
 use super::token_tree::{TokenTree, build_tree};
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, StringSpan};
 use crate::dop;
-use crate::dop::Declaration;
+use crate::dop::ParsedDeclaration;
 use crate::dop::Parser;
 use crate::error_collector::ErrorCollector;
 use crate::hop::symbols::component_name::ComponentName;
@@ -145,7 +145,7 @@ pub fn parse(
                 let mut decl_errors = ErrorCollector::new();
                 for decl in Parser::from(range.clone()).parse_declarations(&mut decl_errors) {
                     match decl {
-                        Declaration::Import {
+                        ParsedDeclaration::Import {
                             name,
                             name_range,
                             path,
@@ -170,7 +170,7 @@ pub fn parse(
                             }
                             imports.push(import);
                         }
-                        Declaration::Record {
+                        ParsedDeclaration::Record {
                             name,
                             name_range,
                             fields,
@@ -181,12 +181,10 @@ pub fn parse(
                                 name_range: name_range.clone(),
                                 fields: fields
                                     .iter()
-                                    .map(|(field_name, field_name_range, field_type)| {
-                                        RecordField {
-                                            name: field_name.clone(),
-                                            name_range: field_name_range.clone(),
-                                            field_type: field_type.clone(),
-                                        }
+                                    .map(|(field_name, field_name_range, field_type)| RecordField {
+                                        name: field_name.clone(),
+                                        name_range: field_name_range.clone(),
+                                        field_type: field_type.clone(),
                                     })
                                     .collect(),
                                 range,
@@ -206,7 +204,7 @@ pub fn parse(
                             }
                             records.push(record);
                         }
-                        Declaration::Enum {
+                        ParsedDeclaration::Enum {
                             name,
                             name_range,
                             variants,

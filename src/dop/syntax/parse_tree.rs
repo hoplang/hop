@@ -341,9 +341,9 @@ impl Display for BinaryOp {
     }
 }
 
-/// A declaration: either an import, a record, or an enum definition.
+/// A declaration: either an import, a record, or an enum.
 #[derive(Clone)]
-pub enum Declaration {
+pub enum ParsedDeclaration {
     /// An import declaration: `import module::path::Name`
     Import {
         /// The name of the imported type.
@@ -381,11 +381,11 @@ pub enum Declaration {
     },
 }
 
-impl Declaration {
+impl ParsedDeclaration {
     /// Convert this declaration to a pretty-printable document.
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            Declaration::Import {
+            ParsedDeclaration::Import {
                 name, module_name, ..
             } => BoxDoc::text("Import")
                 .append(BoxDoc::space())
@@ -403,7 +403,7 @@ impl Declaration {
                 )
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("}")),
-            Declaration::Record { name, fields, .. } => {
+            ParsedDeclaration::Record { name, fields, .. } => {
                 let fields_doc = if fields.is_empty() {
                     BoxDoc::nil()
                 } else {
@@ -438,7 +438,7 @@ impl Declaration {
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("}"))
             }
-            Declaration::Enum { name, variants, .. } => {
+            ParsedDeclaration::Enum { name, variants, .. } => {
                 let variants_doc = if variants.is_empty() {
                     BoxDoc::nil()
                 } else {
@@ -475,24 +475,24 @@ impl Declaration {
     }
 }
 
-impl fmt::Display for Declaration {
+impl fmt::Display for ParsedDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(80))
     }
 }
 
-impl fmt::Debug for Declaration {
+impl fmt::Debug for ParsedDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self, f)
     }
 }
 
-impl Ranged for Declaration {
+impl Ranged for ParsedDeclaration {
     fn range(&self) -> &DocumentRange {
         match self {
-            Declaration::Import { range, .. }
-            | Declaration::Record { range, .. }
-            | Declaration::Enum { range, .. } => range,
+            ParsedDeclaration::Import { range, .. }
+            | ParsedDeclaration::Record { range, .. }
+            | ParsedDeclaration::Enum { range, .. } => range,
         }
     }
 }

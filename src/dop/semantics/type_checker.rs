@@ -838,7 +838,7 @@ mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
     use crate::dop::symbols::type_name::TypeName;
-    use crate::dop::{Declaration, Parser};
+    use crate::dop::{ParsedDeclaration, Parser};
     use crate::error_collector::ErrorCollector;
     use crate::hop::symbols::module_name::ModuleName;
     use expect_test::{Expect, expect};
@@ -854,9 +854,7 @@ mod tests {
         let mut errors = ErrorCollector::new();
         for declaration in parser.parse_declarations(&mut errors) {
             match declaration {
-                Declaration::Enum {
-                    name, variants, ..
-                } => {
+                ParsedDeclaration::Enum { name, variants, .. } => {
                     let enum_type = Type::Enum {
                         module: test_module.clone(),
                         name: TypeName::new(name.as_str()).unwrap(),
@@ -864,8 +862,10 @@ mod tests {
                     };
                     let _ = type_env.push(name.to_string(), enum_type);
                 }
-                Declaration::Record {
-                    name, fields: decl_fields, ..
+                ParsedDeclaration::Record {
+                    name,
+                    fields: decl_fields,
+                    ..
                 } => {
                     let fields: Vec<_> = decl_fields
                         .iter()
@@ -882,7 +882,7 @@ mod tests {
                     };
                     let _ = type_env.push(name.to_string(), record_type);
                 }
-                Declaration::Import { .. } => {
+                ParsedDeclaration::Import { .. } => {
                     panic!("Import declarations not supported in tests");
                 }
             }

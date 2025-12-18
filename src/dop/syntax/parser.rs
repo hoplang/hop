@@ -9,7 +9,7 @@ use crate::error_collector::ErrorCollector;
 use crate::hop::symbols::module_name::ModuleName;
 
 use super::parse_error::ParseError;
-use super::parse_tree::{BinaryOp, Declaration, MatchArm, ParseTree, ParsedType};
+use super::parse_tree::{BinaryOp, MatchArm, ParseTree, ParsedDeclaration, ParsedType};
 use super::token::Token;
 use super::tokenizer::Tokenizer;
 
@@ -217,9 +217,7 @@ impl Parser {
     }
 
     // loop_header = Identifier "in" logical Eof
-    pub fn parse_loop_header(
-        &mut self,
-    ) -> Result<(VarName, DocumentRange, ParseTree), ParseError> {
+    pub fn parse_loop_header(&mut self) -> Result<(VarName, DocumentRange, ParseTree), ParseError> {
         let (var_name, var_name_range) = self.expect_variable_name()?;
         self.expect_token(&Token::In)?;
         let array_expr = self.parse_logical()?;
@@ -632,10 +630,7 @@ impl Parser {
     /// Parse a match expression.
     ///
     /// Syntax: `match subject {Pattern1 => expr1, Pattern2 => expr2}`
-    fn parse_match_expr(
-        &mut self,
-        match_range: DocumentRange,
-    ) -> Result<ParseTree, ParseError> {
+    fn parse_match_expr(&mut self, match_range: DocumentRange) -> Result<ParseTree, ParseError> {
         let subject = self.parse_primary()?;
         let left_brace = self.expect_token(&Token::LeftBrace)?;
 
@@ -665,7 +660,7 @@ impl Parser {
     /// Parse an import declaration.
     ///
     /// Syntax: `import module::path::ComponentName`
-    fn parse_import_declaration(&mut self) -> Result<Declaration, ParseError> {
+    fn parse_import_declaration(&mut self) -> Result<ParsedDeclaration, ParseError> {
         let import_range = self.expect_token(&Token::Import)?;
 
         let mut path_segments: Vec<DocumentRange> = Vec::new();
@@ -733,7 +728,7 @@ impl Parser {
             .clone()
             .to(name_range.clone());
 
-        Ok(Declaration::Import {
+        Ok(ParsedDeclaration::Import {
             name,
             name_range: name_range.clone(),
             path: path_range,
@@ -745,7 +740,7 @@ impl Parser {
     /// Parse a record declaration.
     ///
     /// Syntax: `record Name {field: Type, ...}`
-    fn parse_record_declaration(&mut self) -> Result<Declaration, ParseError> {
+    fn parse_record_declaration(&mut self) -> Result<ParsedDeclaration, ParseError> {
         let start_range = self.expect_token(&Token::Record)?;
         let (name, name_range) = self.expect_type_name()?;
         let left_brace = self.expect_token(&Token::LeftBrace)?;
@@ -768,7 +763,7 @@ impl Parser {
 
         let full_range = start_range.to(right_brace);
 
-        Ok(Declaration::Record {
+        Ok(ParsedDeclaration::Record {
             name,
             name_range,
             fields,
@@ -779,7 +774,7 @@ impl Parser {
     /// Parse an enum declaration.
     ///
     /// Syntax: `enum Name {Variant1, Variant2, ...}`
-    fn parse_enum_declaration(&mut self) -> Result<Declaration, ParseError> {
+    fn parse_enum_declaration(&mut self) -> Result<ParsedDeclaration, ParseError> {
         let start_range = self.expect_token(&Token::Enum)?;
         let (name, name_range) = self.expect_type_name()?;
         let left_brace = self.expect_token(&Token::LeftBrace)?;
@@ -800,7 +795,7 @@ impl Parser {
 
         let full_range = start_range.to(right_brace);
 
-        Ok(Declaration::Enum {
+        Ok(ParsedDeclaration::Enum {
             name,
             name_range,
             variants,
@@ -815,7 +810,7 @@ impl Parser {
     pub fn parse_declarations(
         &mut self,
         errors: &mut ErrorCollector<ParseError>,
-    ) -> Vec<Declaration> {
+    ) -> Vec<ParsedDeclaration> {
         let mut declarations = Vec::new();
 
         loop {
