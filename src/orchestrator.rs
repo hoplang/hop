@@ -32,7 +32,7 @@ pub fn orchestrate(
         .values()
         .flat_map(|module| module.get_enums())
         .map(|enum_decl| IrEnum {
-            name: enum_decl.name().to_string(),
+            name: enum_decl.name.as_str().to_string(),
             variants: enum_decl.variants.clone(),
         })
         .collect();

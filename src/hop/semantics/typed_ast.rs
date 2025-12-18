@@ -16,12 +16,6 @@ pub struct TypedEnumDeclaration {
     pub variants: Vec<TypeName>,
 }
 
-impl TypedEnumDeclaration {
-    pub fn name(&self) -> &str {
-        self.name.as_str()
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct TypedComponentDeclaration {
     pub component_name: ComponentName,
