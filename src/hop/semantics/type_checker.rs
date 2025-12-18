@@ -6,7 +6,6 @@ use crate::environment::Environment;
 use crate::error_collector::ErrorCollector;
 use crate::hop::syntax::ast::Parameter;
 use crate::hop::syntax::ast::{Attribute, ComponentDefinition};
-use crate::hop::syntax::node::Argument;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
@@ -16,8 +15,8 @@ use crate::hop::semantics::typed_ast::{
     TypedRecordField,
 };
 use crate::hop::syntax::ast::{Ast, AttributeValue};
-use crate::hop::semantics::typed_node::TypedNode;
-use crate::hop::syntax::node::{Node, UntypedNode};
+use crate::hop::semantics::typed_node::{TypedArgument, TypedNode};
+use crate::hop::syntax::node::Node;
 
 #[derive(Debug, Clone)]
 pub struct TypeAnnotation {
@@ -385,7 +384,7 @@ fn typecheck_module(
 }
 
 fn typecheck_node(
-    node: &UntypedNode,
+    node: &Node,
     state: &State,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
@@ -396,7 +395,7 @@ fn typecheck_node(
         Node::If {
             condition,
             children,
-            range,
+            range: _,
         } => {
             let typed_children = children
                 .iter()
@@ -415,9 +414,8 @@ fn typecheck_node(
                 })
             }
 
-            Some(Node::If {
+            Some(TypedNode::If {
                 condition: typed_condition,
-                range: range.clone(),
                 children: typed_children,
             })
         }
@@ -427,7 +425,7 @@ fn typecheck_node(
             var_name_range,
             array_expr,
             children,
-            range,
+            range: _,
         } => {
             let typed_array = errors.ok_or_add(
                 dop::typecheck_expr(array_expr, env, records, annotations, None)
@@ -478,11 +476,9 @@ fn typecheck_node(
                 }
             }
 
-            Some(Node::For {
+            Some(TypedNode::For {
                 var_name: var_name.clone(),
-                var_name_range: var_name_range.clone(),
                 array_expr: typed_array,
-                range: range.clone(),
                 children: typed_children,
             })
         }
@@ -491,10 +487,10 @@ fn typecheck_node(
             component_name,
             component_name_opening_range: tag_name,
             definition_module,
-            component_name_closing_range: closing_tag_name,
+            component_name_closing_range: _closing_tag_name,
             args,
             children,
-            range,
+            range: _,
         } => {
             // Transform children
             let typed_children = children
@@ -626,9 +622,8 @@ fn typecheck_node(
                         }
 
                         // Build the typed argument
-                        typed_arguments.push(Argument {
+                        typed_arguments.push(TypedArgument {
                             var_name: arg.var_name.clone(),
-                            var_name_range: arg.var_name_range.clone(),
                             var_expr: typed_expr,
                         });
 
@@ -639,27 +634,24 @@ fn typecheck_node(
                         });
                     }
 
-                    Some((typed_arguments, args_range.clone()))
+                    Some(typed_arguments)
                 }
             };
 
-            Some(Node::ComponentReference {
+            Some(TypedNode::ComponentReference {
                 component_name: component_name.clone(),
-                component_name_opening_range: tag_name.clone(),
                 definition_module: definition_module.clone(),
-                component_name_closing_range: closing_tag_name.clone(),
                 args: typed_args,
-                range: range.clone(),
                 children: typed_children,
             })
         }
 
         Node::Html {
             tag_name,
-            closing_tag_name,
+            closing_tag_name: _,
             attributes,
             children,
-            range,
+            range: _,
         } => {
             let typed_attributes =
                 typecheck_attributes(attributes, env, annotations, errors, records);
@@ -669,16 +661,14 @@ fn typecheck_node(
                 .filter_map(|child| typecheck_node(child, state, env, annotations, errors, records))
                 .collect();
 
-            Some(Node::Html {
+            Some(TypedNode::Html {
                 tag_name: tag_name.clone(),
-                closing_tag_name: closing_tag_name.clone(),
                 attributes: typed_attributes,
-                range: range.clone(),
                 children: typed_children,
             })
         }
 
-        Node::TextExpression { expression, range } => {
+        Node::TextExpression { expression, range: _ } => {
             if let Some(typed_expr) = errors.ok_or_add(
                 dop::typecheck_expr(expression, env, records, annotations, None)
                     .map_err(Into::into),
@@ -691,35 +681,22 @@ fn typecheck_node(
                         range: expression.range().clone(),
                     });
                 }
-                Some(Node::TextExpression {
+                Some(TypedNode::TextExpression {
                     expression: typed_expr,
-                    range: range.clone(),
                 })
             } else {
                 None
             }
         }
 
-        Node::Placeholder { children, range } => {
-            let typed_children = children
-                .iter()
-                .filter_map(|child| typecheck_node(child, state, env, annotations, errors, records))
-                .collect();
+        Node::Placeholder { .. } => Some(TypedNode::Placeholder),
 
-            Some(Node::Placeholder {
-                range: range.clone(),
-                children: typed_children,
-            })
-        }
-
-        Node::Text { value, range } => Some(Node::Text {
+        Node::Text { value, range: _ } => Some(TypedNode::Text {
             value: value.clone(),
-            range: range.clone(),
         }),
 
-        Node::Doctype { value, range } => Some(Node::Doctype {
+        Node::Doctype { value, range: _ } => Some(TypedNode::Doctype {
             value: value.clone(),
-            range: range.clone(),
         }),
     }
 }

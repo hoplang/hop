@@ -5,11 +5,8 @@ use crate::hop::inlined_ast::{
 };
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
-use crate::hop::semantics::typed_ast::{TypedAst, TypedAttribute, TypedComponentDefinition};
-use crate::hop::syntax::ast::AttributeValue;
-use crate::hop::syntax::node::TypedArgument;
-use crate::hop::semantics::typed_node::TypedNode;
-use crate::hop::syntax::node::Node;
+use crate::hop::semantics::typed_ast::{TypedAst, TypedAttribute, TypedAttributeValue, TypedComponentDefinition};
+use crate::hop::semantics::typed_node::{TypedArgument, TypedNode};
 use anyhow::Result;
 use std::collections::{BTreeMap, HashMap};
 
@@ -95,10 +92,10 @@ impl Inliner {
         InlinedAttribute {
             name: attr.name.to_string(),
             value: attr.value.as_ref().map(|v| match v {
-                AttributeValue::Expressions(exprs) => {
+                TypedAttributeValue::Expressions(exprs) => {
                     InlinedAttributeValue::Expressions(exprs.clone())
                 }
-                AttributeValue::String(s) => InlinedAttributeValue::String(s.to_string()),
+                TypedAttributeValue::String(s) => InlinedAttributeValue::String(s.to_string()),
             }),
         }
     }
@@ -202,12 +199,11 @@ impl Inliner {
         asts: &HashMap<ModuleName, TypedAst>,
     ) -> Vec<InlinedNode> {
         match node {
-            Node::ComponentReference {
+            TypedNode::ComponentReference {
                 component_name,
                 definition_module,
                 args,
                 children,
-                ..
             } => {
                 // Get the component definition
                 let module = definition_module
@@ -219,35 +215,32 @@ impl Inliner {
                     .expect("Component definition should exist");
 
                 // Inline the component
-                let args_vec = args.as_ref().map(|(v, _)| v.as_slice()).unwrap_or(&[]);
+                let args_vec = args.as_ref().map(|v| v.as_slice()).unwrap_or(&[]);
                 Self::inline_component_reference(module, component, args_vec, children, asts)
             }
 
-            Node::Html {
+            TypedNode::Html {
                 tag_name,
                 attributes,
                 children,
-                ..
             } => vec![InlinedNode::Html {
                 tag_name: tag_name.to_string_span(),
                 attributes: Self::convert_attributes(attributes),
                 children: Self::inline_nodes(children, slot_content, asts),
             }],
 
-            Node::If {
+            TypedNode::If {
                 condition,
                 children,
-                ..
             } => vec![InlinedNode::If {
                 condition: condition.clone(),
                 children: Self::inline_nodes(children, slot_content, asts),
             }],
 
-            Node::For {
+            TypedNode::For {
                 var_name,
                 array_expr,
                 children,
-                ..
             } => vec![InlinedNode::For {
                 var_name: var_name.clone(),
                 array_expr: array_expr.clone(),
@@ -255,12 +248,12 @@ impl Inliner {
             }],
 
             // Leaf nodes - return as is
-            Node::Text { value, .. } => vec![InlinedNode::Text {
+            TypedNode::Text { value } => vec![InlinedNode::Text {
                 value: value.clone(),
             }],
 
             // Check if this is {children} expression that should be replaced with slot content
-            Node::TextExpression { expression, .. } => {
+            TypedNode::TextExpression { expression } => {
                 // Check if this is a `children` variable of type TrustedHTML
                 if let Expr::Var { value, kind, .. } = expression {
                     if value.as_str() == "children" && *kind == Type::TrustedHTML {
@@ -279,11 +272,11 @@ impl Inliner {
                 }]
             }
 
-            Node::Doctype { value, .. } => vec![InlinedNode::Doctype {
+            TypedNode::Doctype { value } => vec![InlinedNode::Doctype {
                 value: value.clone(),
             }],
 
-            Node::Placeholder { .. } => panic!(),
+            TypedNode::Placeholder => panic!(),
         }
     }
 }

@@ -5,7 +5,6 @@ use crate::document::{
     DocumentPosition,
     document_cursor::{DocumentRange, Ranged, StringSpan},
 };
-use crate::dop::Expr;
 use crate::dop::ParseTree;
 use crate::dop::VarName;
 
@@ -14,28 +13,24 @@ use crate::hop::symbols::module_name::ModuleName;
 
 use super::ast::Attribute;
 
-pub type TypedArgument = Argument<Expr>;
-
 /// An Argument represents a parsed argument with a name and a value.
 /// E.g. <my-comp {x: [1,2], y: 2}>
 ///                ^^^^^^^^
 #[derive(Debug, Clone)]
-pub struct Argument<T = ParseTree> {
+pub struct Argument {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
-    pub var_expr: T,
+    pub var_expr: ParseTree,
 }
 
-impl<T: Display> Display for Argument<T> {
+impl Display for Argument {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.var_name, self.var_expr)
     }
 }
 
-pub type UntypedNode = Node<ParseTree>;
-
 #[derive(Debug, Clone)]
-pub enum Node<E> {
+pub enum Node {
     /// A Text node represents text in the document.
     /// E.g. <div>hello world</div>
     ///           ^^^^^^^^^^^
@@ -47,7 +42,10 @@ pub enum Node<E> {
     /// A TextExpression represents an expression that occurs in a text position.
     /// E.g. <div>hello {world}</div>
     ///                 ^^^^^^^
-    TextExpression { expression: E, range: DocumentRange },
+    TextExpression {
+        expression: ParseTree,
+        range: DocumentRange,
+    },
 
     /// A ComponentReference represents a reference to a component.
     /// E.g.
@@ -60,16 +58,16 @@ pub enum Node<E> {
         component_name_opening_range: DocumentRange,
         component_name_closing_range: Option<DocumentRange>,
         definition_module: Option<ModuleName>,
-        args: Option<(Vec<Argument<E>>, DocumentRange)>,
-        children: Vec<Self>,
+        args: Option<(Vec<Argument>, DocumentRange)>,
+        children: Vec<Node>,
         range: DocumentRange,
     },
 
     /// An If node contains content that is only evaluated when its condition
     /// expression evaluates to true.
     If {
-        condition: E,
-        children: Vec<Self>,
+        condition: ParseTree,
+        children: Vec<Node>,
         range: DocumentRange,
     },
 
@@ -78,8 +76,8 @@ pub enum Node<E> {
     For {
         var_name: VarName,
         var_name_range: DocumentRange,
-        array_expr: E,
-        children: Vec<Self>,
+        array_expr: ParseTree,
+        children: Vec<Node>,
         range: DocumentRange,
     },
 
@@ -95,8 +93,8 @@ pub enum Node<E> {
     Html {
         tag_name: DocumentRange,
         closing_tag_name: Option<DocumentRange>,
-        attributes: BTreeMap<StringSpan, Attribute<E>>,
-        children: Vec<Self>,
+        attributes: BTreeMap<StringSpan, Attribute>,
+        children: Vec<Node>,
         range: DocumentRange,
     },
 
@@ -106,12 +104,12 @@ pub enum Node<E> {
     /// We use Placeholder nodes to be able to construct the child nodes of the node that could not be
     /// constructed. This is useful for e.g. go-to-definition in the language server.
     Placeholder {
-        children: Vec<Self>,
+        children: Vec<Node>,
         range: DocumentRange,
     },
 }
 
-impl<T> Node<T> {
+impl Node {
     /// Get the direct children of a node.
     pub fn children(&self) -> &[Self] {
         match self {
@@ -126,7 +124,7 @@ impl<T> Node<T> {
         }
     }
 
-    pub fn iter_depth_first(&self) -> DepthFirstIterator<'_, T> {
+    pub fn iter_depth_first(&self) -> DepthFirstIterator<'_> {
         DepthFirstIterator::new(self)
     }
 
@@ -172,9 +170,7 @@ impl<T> Node<T> {
     pub fn tag_names(&self) -> impl Iterator<Item = &DocumentRange> {
         self.tag_name().into_iter().chain(self.closing_tag_name())
     }
-}
 
-impl<T> Node<T> {
     pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&Self> {
         if !self.range().contains_position(position) {
             return None;
@@ -188,7 +184,7 @@ impl<T> Node<T> {
     }
 }
 
-impl<T> Ranged for Node<T> {
+impl Ranged for Node {
     fn range(&self) -> &DocumentRange {
         match self {
             Node::Text { range, .. }
@@ -203,18 +199,18 @@ impl<T> Ranged for Node<T> {
     }
 }
 
-pub struct DepthFirstIterator<'a, T> {
-    stack: Vec<&'a Node<T>>,
+pub struct DepthFirstIterator<'a> {
+    stack: Vec<&'a Node>,
 }
 
-impl<'a, T> DepthFirstIterator<'a, T> {
-    fn new(root: &'a Node<T>) -> Self {
+impl<'a> DepthFirstIterator<'a> {
+    fn new(root: &'a Node) -> Self {
         Self { stack: vec![root] }
     }
 }
 
-impl<'a, T> Iterator for DepthFirstIterator<'a, T> {
-    type Item = &'a Node<T>;
+impl<'a> Iterator for DepthFirstIterator<'a> {
+    type Item = &'a Node;
 
     fn next(&mut self) -> Option<Self::Item> {
         let current = self.stack.pop()?;

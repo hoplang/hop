@@ -101,7 +101,7 @@ impl Ast {
     }
 
     /// Returns an iterator over all nodes in the AST, iterating depth-first.
-    pub fn iter_all_nodes(&self) -> impl Iterator<Item = &Node<ParseTree>> {
+    pub fn iter_all_nodes(&self) -> impl Iterator<Item = &Node> {
         self.component_definitions
             .iter()
             .flat_map(|n| &n.children)
@@ -126,7 +126,7 @@ impl Ast {
     ///     ^^^^^^^^^^^^^^^^^
     /// </div>
     ///
-    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&Node<ParseTree>> {
+    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&Node> {
         for n in &self.component_definitions {
             if n.range.contains_position(position) {
                 for child in &n.children {
@@ -213,7 +213,7 @@ pub struct ComponentDefinition {
     pub tag_name: DocumentRange,
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<Parameter>, DocumentRange)>,
-    pub children: Vec<Node<ParseTree>>,
+    pub children: Vec<Node>,
     pub range: DocumentRange,
 }
 

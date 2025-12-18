@@ -4,8 +4,7 @@ use std::iter::Peekable;
 use super::ast::{
     self, Ast, ComponentDefinition, Enum, EnumVariant, Import, Record, RecordField,
 };
-use super::node::Argument;
-use super::node::{Node, UntypedNode};
+use super::node::{Argument, Node};
 use super::token_tree::{TokenTree, build_tree};
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, StringSpan};
 use crate::dop;
@@ -238,7 +237,7 @@ pub fn parse(
                 }
             }
             _ => {
-                let children: Vec<UntypedNode> = std::mem::take(&mut tree.children)
+                let children: Vec<Node> = std::mem::take(&mut tree.children)
                     .into_iter()
                     .flat_map(|child| {
                         construct_nodes(
@@ -280,7 +279,7 @@ pub fn parse(
 /// or `None` for other token types (text, comments, etc.).
 fn parse_component_definition(
     tree: TokenTree,
-    children: Vec<UntypedNode>,
+    children: Vec<Node>,
     errors: &mut ErrorCollector<ParseError>,
 ) -> Option<ComponentDefinition> {
     let Token::OpeningTag {
@@ -352,7 +351,7 @@ fn construct_nodes(
     module_name: &ModuleName,
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, ModuleName>,
-) -> Vec<UntypedNode> {
+) -> Vec<Node> {
     match tree.token {
         Token::Comment { .. } => {
             // Skip comments
@@ -635,7 +634,7 @@ mod tests {
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
-    fn node_name(node: &UntypedNode) -> &str {
+    fn node_name(node: &Node) -> &str {
         match node {
             Node::Doctype { .. } => "doctype",
             Node::ComponentReference { .. } => "component_reference",
@@ -648,7 +647,7 @@ mod tests {
         }
     }
 
-    fn write_node(node: &UntypedNode, depth: usize, lines: &mut Vec<String>) {
+    fn write_node(node: &Node, depth: usize, lines: &mut Vec<String>) {
         if matches!(node, Node::Text { .. }) {
             return;
         }
