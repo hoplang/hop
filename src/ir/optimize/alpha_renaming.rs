@@ -204,34 +204,12 @@ impl AlphaRenamingPass {
                 operand_types,
                 id,
             },
-            IrExpr::GreaterThan {
-                left,
-                right,
-                operand_types,
-                id,
-            } => IrExpr::GreaterThan {
-                left: Box::new(self.rename_expr(*left)),
-                right: Box::new(self.rename_expr(*right)),
-                operand_types,
-                id,
-            },
             IrExpr::LessThanOrEqual {
                 left,
                 right,
                 operand_types,
                 id,
             } => IrExpr::LessThanOrEqual {
-                left: Box::new(self.rename_expr(*left)),
-                right: Box::new(self.rename_expr(*right)),
-                operand_types,
-                id,
-            },
-            IrExpr::GreaterThanOrEqual {
-                left,
-                right,
-                operand_types,
-                id,
-            } => IrExpr::GreaterThanOrEqual {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),
                 operand_types,

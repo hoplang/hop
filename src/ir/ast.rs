@@ -221,24 +221,8 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// Greater than expression
-    GreaterThan {
-        left: Box<IrExpr>,
-        right: Box<IrExpr>,
-        operand_types: ComparableType,
-        id: ExprId,
-    },
-
     /// Less than or equal expression
     LessThanOrEqual {
-        left: Box<IrExpr>,
-        right: Box<IrExpr>,
-        operand_types: ComparableType,
-        id: ExprId,
-    },
-
-    /// Greater than or equal expression
-    GreaterThanOrEqual {
         left: Box<IrExpr>,
         right: Box<IrExpr>,
         operand_types: ComparableType,
@@ -520,9 +504,7 @@ impl IrExpr {
             | IrExpr::Equals { id, .. }
             | IrExpr::NotEquals { id, .. }
             | IrExpr::LessThan { id, .. }
-            | IrExpr::GreaterThan { id, .. }
-            | IrExpr::LessThanOrEqual { id, .. }
-            | IrExpr::GreaterThanOrEqual { id, .. } => *id,
+            | IrExpr::LessThanOrEqual { id, .. } => *id,
         }
     }
 
@@ -560,9 +542,7 @@ impl IrExpr {
             | IrExpr::Equals { .. }
             | IrExpr::NotEquals { .. }
             | IrExpr::LessThan { .. }
-            | IrExpr::GreaterThan { .. }
             | IrExpr::LessThanOrEqual { .. }
-            | IrExpr::GreaterThanOrEqual { .. }
             | IrExpr::BooleanLogicalAnd { .. }
             | IrExpr::BooleanLogicalOr { .. } => &BOOL_TYPE,
         }
@@ -682,22 +662,10 @@ impl IrExpr {
                 .append(BoxDoc::text(" < "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            IrExpr::GreaterThan { left, right, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" > "))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
             IrExpr::LessThanOrEqual { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
                 .append(BoxDoc::text(" <= "))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
-            IrExpr::GreaterThanOrEqual { left, right, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" >= "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
             IrExpr::BooleanLogicalAnd { left, right, .. } => BoxDoc::nil()
@@ -754,9 +722,7 @@ impl IrExpr {
             IrExpr::Equals { left, right, .. }
             | IrExpr::NotEquals { left, right, .. }
             | IrExpr::LessThan { left, right, .. }
-            | IrExpr::GreaterThan { left, right, .. }
             | IrExpr::LessThanOrEqual { left, right, .. }
-            | IrExpr::GreaterThanOrEqual { left, right, .. }
             | IrExpr::StringConcat { left, right, .. }
             | IrExpr::NumericAdd { left, right, .. }
             | IrExpr::NumericSubtract { left, right, .. }
@@ -811,9 +777,7 @@ impl IrExpr {
             | IrExpr::Equals { left, right, .. }
             | IrExpr::NotEquals { left, right, .. }
             | IrExpr::LessThan { left, right, .. }
-            | IrExpr::GreaterThan { left, right, .. }
             | IrExpr::LessThanOrEqual { left, right, .. }
-            | IrExpr::GreaterThanOrEqual { left, right, .. }
             | IrExpr::BooleanLogicalAnd { left, right, .. }
             | IrExpr::BooleanLogicalOr { left, right, .. } => {
                 left.traverse_mut(f);

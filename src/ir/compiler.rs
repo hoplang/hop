@@ -448,14 +448,15 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
+            // Convert a > b to b < a
             Expr::GreaterThan {
                 left,
                 right,
                 operand_types,
                 ..
-            } => IrExpr::GreaterThan {
-                left: Box::new(self.compile_expr(*left)),
-                right: Box::new(self.compile_expr(*right)),
+            } => IrExpr::LessThan {
+                left: Box::new(self.compile_expr(*right)),
+                right: Box::new(self.compile_expr(*left)),
                 operand_types,
                 id: expr_id,
             },
@@ -470,14 +471,15 @@ impl Compiler {
                 operand_types,
                 id: expr_id,
             },
+            // Convert a >= b to b <= a
             Expr::GreaterThanOrEqual {
                 left,
                 right,
                 operand_types,
                 ..
-            } => IrExpr::GreaterThanOrEqual {
-                left: Box::new(self.compile_expr(*left)),
-                right: Box::new(self.compile_expr(*right)),
+            } => IrExpr::LessThanOrEqual {
+                left: Box::new(self.compile_expr(*right)),
+                right: Box::new(self.compile_expr(*left)),
                 operand_types,
                 id: expr_id,
             },

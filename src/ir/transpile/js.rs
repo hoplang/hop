@@ -542,24 +542,6 @@ impl ExpressionTranspiler for JsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_int_greater_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::nil()
-            .append(BoxDoc::text("("))
-            .append(self.transpile_expr(left))
-            .append(BoxDoc::text(" > "))
-            .append(self.transpile_expr(right))
-            .append(BoxDoc::text(")"))
-    }
-
-    fn transpile_float_greater_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::nil()
-            .append(BoxDoc::text("("))
-            .append(self.transpile_expr(left))
-            .append(BoxDoc::text(" > "))
-            .append(self.transpile_expr(right))
-            .append(BoxDoc::text(")"))
-    }
-
     fn transpile_int_less_than_or_equal<'a>(
         &self,
         left: &'a IrExpr,
@@ -582,32 +564,6 @@ impl ExpressionTranspiler for JsTranspiler {
             .append(BoxDoc::text("("))
             .append(self.transpile_expr(left))
             .append(BoxDoc::text(" <= "))
-            .append(self.transpile_expr(right))
-            .append(BoxDoc::text(")"))
-    }
-
-    fn transpile_int_greater_than_or_equal<'a>(
-        &self,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
-    ) -> BoxDoc<'a> {
-        BoxDoc::nil()
-            .append(BoxDoc::text("("))
-            .append(self.transpile_expr(left))
-            .append(BoxDoc::text(" >= "))
-            .append(self.transpile_expr(right))
-            .append(BoxDoc::text(")"))
-    }
-
-    fn transpile_float_greater_than_or_equal<'a>(
-        &self,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
-    ) -> BoxDoc<'a> {
-        BoxDoc::nil()
-            .append(BoxDoc::text("("))
-            .append(self.transpile_expr(left))
-            .append(BoxDoc::text(" >= "))
             .append(self.transpile_expr(right))
             .append(BoxDoc::text(")"))
     }

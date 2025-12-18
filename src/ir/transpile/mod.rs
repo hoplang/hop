@@ -118,24 +118,12 @@ pub trait ExpressionTranspiler {
     fn transpile_enum_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_int_greater_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_float_greater_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_less_than_or_equal<'a>(
         &self,
         left: &'a IrExpr,
         right: &'a IrExpr,
     ) -> BoxDoc<'a>;
     fn transpile_float_less_than_or_equal<'a>(
-        &self,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
-    ) -> BoxDoc<'a>;
-    fn transpile_int_greater_than_or_equal<'a>(
-        &self,
-        left: &'a IrExpr,
-        right: &'a IrExpr,
-    ) -> BoxDoc<'a>;
-    fn transpile_float_greater_than_or_equal<'a>(
         &self,
         left: &'a IrExpr,
         right: &'a IrExpr,
@@ -222,15 +210,6 @@ pub trait ExpressionTranspiler {
                 ComparableType::Int => self.transpile_int_less_than(left, right),
                 ComparableType::Float => self.transpile_float_less_than(left, right),
             },
-            IrExpr::GreaterThan {
-                left,
-                right,
-                operand_types,
-                ..
-            } => match operand_types {
-                ComparableType::Int => self.transpile_int_greater_than(left, right),
-                ComparableType::Float => self.transpile_float_greater_than(left, right),
-            },
             IrExpr::LessThanOrEqual {
                 left,
                 right,
@@ -239,15 +218,6 @@ pub trait ExpressionTranspiler {
             } => match operand_types {
                 ComparableType::Int => self.transpile_int_less_than_or_equal(left, right),
                 ComparableType::Float => self.transpile_float_less_than_or_equal(left, right),
-            },
-            IrExpr::GreaterThanOrEqual {
-                left,
-                right,
-                operand_types,
-                ..
-            } => match operand_types {
-                ComparableType::Int => self.transpile_int_greater_than_or_equal(left, right),
-                ComparableType::Float => self.transpile_float_greater_than_or_equal(left, right),
             },
             IrExpr::BooleanLogicalAnd { left, right, .. } => {
                 self.transpile_logical_and(left, right)
