@@ -1,4 +1,5 @@
 use crate::dop::symbols::field_name::FieldName;
+use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{Expr, Type, VarName};
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::syntax::ast::{Attribute, Enum};
@@ -14,7 +15,7 @@ pub struct TypedRecordField {
 
 #[derive(Debug, Clone)]
 pub struct TypedRecord {
-    pub name: String,
+    pub name: TypeName,
     pub fields: Vec<TypedRecordField>,
 }
 

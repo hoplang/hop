@@ -264,7 +264,7 @@ fn typecheck_module(
         // Only add record if all fields resolved successfully
         if !has_errors {
             let typed_record = TypedRecord {
-                name: record.name().to_string(),
+                name: record.name.clone(),
                 fields: typed_fields.clone(),
             };
             // Store typed record in state so other modules can import it
