@@ -5,7 +5,7 @@ pub mod token;
 pub mod tokenizer;
 
 pub use parse_error::ParseError;
-pub use parse_tree::{ParseTree, ParsedType};
-pub use parser::{Argument, Parameter, Parser};
+pub use parse_tree::{Argument, Parameter, ParseTree, ParsedType};
+pub use parser::Parser;
 pub use token::Token;
 pub use tokenizer::Tokenizer;

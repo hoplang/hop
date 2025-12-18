@@ -1,56 +1,20 @@
 use std::collections::HashSet;
-use std::fmt::{self, Display};
 use std::iter::Peekable;
 
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _, StringSpan};
 use crate::dop::declaration::{
     Declaration, EnumDeclaration, EnumVariant, RecordDeclaration, RecordDeclarationField,
 };
-use crate::dop::semantics::expr::Expr;
 use crate::dop::symbols::field_name::FieldName;
-use super::parse_tree::{BinaryOp, MatchArm, ParseTree, ParsedType};
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
 use crate::error_collector::ErrorCollector;
 use crate::hop::module_name::ModuleName;
 
 use super::parse_error::ParseError;
+use super::parse_tree::{Argument, BinaryOp, MatchArm, Parameter, ParseTree, ParsedType};
 use super::token::Token;
 use super::tokenizer::Tokenizer;
-
-/// A Parameter represents a parsed parameter with type annotation.
-/// E.g. <my-comp {x: string, y: string}>
-///                ^^^^^^^^^
-#[derive(Debug, Clone)]
-pub struct Parameter<T = ParsedType> {
-    pub var_name: VarName,
-    pub var_name_range: DocumentRange,
-    pub var_type: T,
-}
-
-impl Display for Parameter {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.var_name, self.var_type)
-    }
-}
-
-pub type TypedArgument = Argument<Expr>;
-
-/// An Argument represents a parsed argument with a name and a value.
-/// E.g. <my-comp {x: [1,2], y: 2}>
-///                ^^^^^^^^
-#[derive(Debug, Clone)]
-pub struct Argument<T = ParseTree> {
-    pub var_name: VarName,
-    pub var_name_range: DocumentRange,
-    pub var_expr: T,
-}
-
-impl<T: Display> Display for Argument<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.var_name, self.var_expr)
-    }
-}
 
 pub struct Parser {
     iter: Peekable<Tokenizer>,
