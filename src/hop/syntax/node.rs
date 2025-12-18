@@ -9,7 +9,10 @@ use crate::dop::Expr;
 use crate::dop::ParseTree;
 use crate::dop::VarName;
 
-use super::{ast::Attribute, component_name::ComponentName, module_name::ModuleName};
+use crate::hop::component_name::ComponentName;
+use crate::hop::module_name::ModuleName;
+
+use super::ast::Attribute;
 
 pub type UntypedNode = Node<ParseTree>;
 pub type TypedNode = Node<Expr>;

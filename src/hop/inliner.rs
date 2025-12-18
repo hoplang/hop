@@ -1,13 +1,13 @@
 use crate::document::document_cursor::StringSpan;
 use crate::dop::syntax::parse_tree::TypedArgument;
 use crate::dop::{Expr, Type};
-use crate::hop::ast::{AttributeValue, TypedAst, TypedAttribute, TypedComponentDefinition};
+use crate::hop::syntax::ast::{AttributeValue, TypedAst, TypedAttribute, TypedComponentDefinition};
 use crate::hop::component_name::ComponentName;
 use crate::hop::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypoint, InlinedNode, InlinedParameter,
 };
 use crate::hop::module_name::ModuleName;
-use crate::hop::node::{Node, TypedNode};
+use crate::hop::syntax::node::{Node, TypedNode};
 use anyhow::Result;
 use std::collections::{BTreeMap, HashMap};
 
@@ -291,7 +291,7 @@ mod tests {
     use super::*;
     use crate::error_collector::ErrorCollector;
     use crate::hop::module_name::ModuleName;
-    use crate::hop::parser::parse;
+    use crate::hop::syntax::parser::parse;
     use crate::hop::type_checker::TypeChecker;
     use expect_test::{Expect, expect};
 

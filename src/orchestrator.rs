@@ -1,4 +1,4 @@
-use crate::hop::ast::TypedAst;
+use crate::hop::syntax::ast::TypedAst;
 use crate::hop::component_name::ComponentName;
 use crate::hop::inliner::Inliner;
 use crate::hop::module_name::ModuleName;

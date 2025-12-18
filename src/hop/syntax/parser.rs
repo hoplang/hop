@@ -6,16 +6,14 @@ use crate::dop;
 use crate::dop::Declaration;
 use crate::dop::Parser;
 use crate::error_collector::ErrorCollector;
-use crate::hop::ast::{Ast, ComponentDefinition, Enum, Import, Record};
-use crate::hop::parse_error::ParseError;
-use crate::hop::token_tree::{TokenTree, build_tree};
-use crate::hop::tokenizer::{Token, Tokenizer};
-
-use super::ast::{self, UntypedAst, UntypedComponentDefinition};
-use super::component_name::ComponentName;
-use super::module_name::ModuleName;
+use super::ast::{self, Ast, ComponentDefinition, Enum, Import, Record, UntypedAst, UntypedComponentDefinition};
+use crate::hop::component_name::ComponentName;
+use crate::hop::module_name::ModuleName;
 use super::node::{Node, UntypedNode};
-use super::tokenizer;
+use super::token_tree::{TokenTree, build_tree};
+
+use super::parse_error::ParseError;
+use super::tokenizer::{self, Token, Tokenizer};
 
 struct AttributeValidator {
     attributes: BTreeMap<StringSpan, tokenizer::Attribute>,
@@ -583,7 +581,7 @@ mod tests {
     use super::*;
     use crate::document::{DocumentAnnotator, document_cursor::Ranged};
     use crate::error_collector::ErrorCollector;
-    use crate::hop::ast::UntypedComponentDefinition;
+    use super::ast::UntypedComponentDefinition;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 

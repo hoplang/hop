@@ -7,7 +7,7 @@ use itertools::Itertools as _;
 
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged, StringSpan};
 use crate::dop;
-use crate::hop::parse_error::ParseError;
+use super::parse_error::ParseError;
 
 #[derive(Debug, Clone)]
 pub enum AttributeValue {

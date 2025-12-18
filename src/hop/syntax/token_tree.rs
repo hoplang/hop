@@ -1,9 +1,9 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::{DocumentRange, Ranged as _};
 use crate::error_collector::ErrorCollector;
-use crate::hop::parse_error::ParseError;
-use crate::hop::tokenizer::Token;
-use crate::hop::tokenizer::Tokenizer;
+use super::parse_error::ParseError;
+use super::tokenizer::Token;
+use super::tokenizer::Tokenizer;
 use std::fmt::{self, Display};
 
 /// A TokenTree represents a tree of tokens.
@@ -178,7 +178,7 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut ErrorCollector<ParseError>)
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hop::tokenizer::Tokenizer;
+    use crate::hop::syntax::tokenizer::Tokenizer;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 

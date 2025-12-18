@@ -10,7 +10,6 @@ use crate::dop::Type;
 use crate::dop::symbols::type_name::TypeName;
 use crate::hop::component_name::ComponentName;
 use crate::hop::module_name::ModuleName;
-
 use super::node::Node;
 
 #[derive(Debug, Clone)]
@@ -217,7 +216,7 @@ mod tests {
     use crate::document::DocumentAnnotator;
     use crate::document::SimpleAnnotation;
     use crate::document::extract_position::extract_position;
-    use crate::hop::parser::parse;
+    use crate::hop::syntax::parser::parse;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 

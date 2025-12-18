@@ -4,16 +4,16 @@ use crate::dop::{
     self, Argument, Parameter, RecordDeclaration, RecordDeclarationField, Type, resolve_type,
 };
 use crate::error_collector::ErrorCollector;
-use crate::hop::ast::Ast;
-use crate::hop::ast::{Attribute, ComponentDefinition};
+use crate::hop::syntax::ast::Ast;
+use crate::hop::syntax::ast::{Attribute, ComponentDefinition};
 use crate::hop::environment::Environment;
 use crate::hop::type_error::TypeError;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
-use super::ast::{AttributeValue, TypedAst, TypedAttribute, TypedRecord, UntypedAst};
+use super::syntax::ast::{AttributeValue, TypedAst, TypedAttribute, TypedRecord, UntypedAst};
 use super::module_name::ModuleName;
-use super::node::{Node, TypedNode, UntypedNode};
+use super::syntax::node::{Node, TypedNode, UntypedNode};
 
 #[derive(Debug, Clone)]
 pub struct TypeAnnotation {
@@ -793,7 +793,7 @@ mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
     use crate::hop::module_name::ModuleName;
-    use crate::hop::parser::parse;
+    use crate::hop::syntax::parser::parse;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use simple_txtar::Archive;
