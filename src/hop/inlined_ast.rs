@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, fmt};
 
 use crate::document::document_cursor::StringSpan;
+use crate::dop::Type;
 use crate::dop::TypedExpr;
 use crate::dop::VarName;
 use crate::hop::symbols::component_name::ComponentName;
@@ -10,7 +11,7 @@ use pretty::BoxDoc;
 #[derive(Debug, Clone)]
 pub struct InlinedParameter {
     pub var_name: VarName,
-    pub var_type: crate::dop::Type,
+    pub var_type: Type,
 }
 
 #[derive(Debug, Clone)]
