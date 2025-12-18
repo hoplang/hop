@@ -49,10 +49,16 @@ struct RecordTypeInformation {
     fields: Vec<(FieldName, Type)>,
 }
 
+#[derive(Debug, Clone)]
+struct EnumTypeInformation {
+    variants: Vec<TypeName>,
+}
+
 #[derive(Debug, Clone, Default)]
 struct ModuleTypeInformation {
     components: HashMap<String, ComponentTypeInformation>,
     records: HashMap<String, RecordTypeInformation>,
+    enums: HashMap<String, EnumTypeInformation>,
 }
 
 impl ModuleTypeInformation {
@@ -96,6 +102,18 @@ impl ModuleTypeInformation {
     fn set_typed_record(&mut self, record_name: &str, record: RecordTypeInformation) {
         self.records.insert(record_name.to_string(), record);
     }
+
+    fn enum_is_declared(&self, enum_name: &str) -> bool {
+        self.enums.contains_key(enum_name)
+    }
+
+    fn get_typed_enum(&self, enum_name: &str) -> Option<&EnumTypeInformation> {
+        self.enums.get(enum_name)
+    }
+
+    fn set_typed_enum(&mut self, enum_name: &str, enum_info: EnumTypeInformation) {
+        self.enums.insert(enum_name.to_string(), enum_info);
+    }
 }
 
 #[derive(Debug, Default)]
@@ -126,6 +144,18 @@ impl State {
             .entry(module_name.clone())
             .or_default()
             .set_typed_record(record_name, type_info);
+    }
+
+    fn set_enum_type_info(
+        &mut self,
+        module_name: &ModuleName,
+        enum_name: &str,
+        type_info: EnumTypeInformation,
+    ) {
+        self.modules
+            .entry(module_name.clone())
+            .or_default()
+            .set_typed_enum(enum_name, type_info);
     }
 }
 
@@ -186,6 +216,7 @@ fn typecheck_module(
         ModuleTypeInformation {
             components: HashMap::new(),
             records: HashMap::new(),
+            enums: HashMap::new(),
         },
     );
 
@@ -193,7 +224,7 @@ fn typecheck_module(
     // of declared type names.
     let mut type_env: Environment<Type> = Environment::new();
 
-    // Validate imports and collect imported records
+    // Validate imports and collect imported records/enums
     for import in module.get_import_declarations() {
         let imported_module = import.imported_module();
         let imported_name = import.imported_type_name();
@@ -205,11 +236,12 @@ fn typecheck_module(
             continue;
         };
 
-        // Check if the import is a component or a record
+        // Check if the import is a component, record, or enum
         let is_component = module_state.component_is_declared(imported_name.as_str());
         let is_record = module_state.record_is_declared(imported_name.as_str());
+        let is_enum = module_state.enum_is_declared(imported_name.as_str());
 
-        if !is_component && !is_record {
+        if !is_component && !is_record && !is_enum {
             errors.push(TypeError::UndeclaredComponent {
                 module: imported_module.to_string(),
                 component: imported_name.to_string(),
@@ -230,21 +262,45 @@ fn typecheck_module(
                 );
             }
         }
+
+        // If it's an enum, add it to our type environment
+        if is_enum {
+            if let Some(enum_info) = module_state.get_typed_enum(imported_name.as_str()) {
+                let _ = type_env.push(
+                    imported_name.as_str().to_string(),
+                    Type::Enum {
+                        module: imported_module.clone(),
+                        name: TypeName::new(imported_name.as_str()).unwrap(),
+                        variants: enum_info.variants.clone(),
+                    },
+                );
+            }
+        }
     }
 
     let mut typed_enums: Vec<TypedEnumDeclaration> = Vec::new();
     for enum_decl in module.get_enum_declarations() {
         let enum_name = enum_decl.name();
+        let variants: Vec<TypeName> = enum_decl.variants.iter().map(|v| v.name.clone()).collect();
         let enum_type = Type::Enum {
             module: module.name.clone(),
             name: TypeName::new(enum_name).unwrap(),
-            variants: enum_decl.variants.iter().map(|v| v.name.clone()).collect(),
+            variants: variants.clone(),
         };
         let _ = type_env.push(enum_name.to_string(), enum_type);
 
+        // Store enum type info in state so other modules can import it
+        state.set_enum_type_info(
+            &module.name,
+            enum_name,
+            EnumTypeInformation {
+                variants: variants.clone(),
+            },
+        );
+
         typed_enums.push(TypedEnumDeclaration {
             name: enum_decl.name.clone(),
-            variants: enum_decl.variants.iter().map(|v| v.name.clone()).collect(),
+            variants,
         });
     }
 
@@ -2584,6 +2640,55 @@ mod tests {
                 4 | <Baz>
                 5 |     <Bar {user: User(name: "Alice", address: Address(city: "NYC"))} />
                   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_import_and_use_of_enums_declared_in_other_modules() {
+        check(
+            indoc! {r#"
+                -- colors.hop --
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+
+                <ColorDisplay {color: Color}>
+                    <div>{match color {
+                        Color::Red => "red",
+                        Color::Green => "green",
+                        Color::Blue => "blue",
+                    }}</div>
+                </ColorDisplay>
+
+                -- main.hop --
+                import colors::Color
+                import colors::ColorDisplay
+
+                <Main>
+                    <ColorDisplay {color: Color::Red}/>
+                </Main>
+            "#},
+            expect![[r#"
+                color: colors::Color
+                  --> colors.hop (line 7, col 16)
+                 6 | 
+                 7 | <ColorDisplay {color: Color}>
+                   |                ^^^^^
+
+                color: colors::Color
+                  --> colors.hop (line 8, col 17)
+                 7 | <ColorDisplay {color: Color}>
+                 8 |     <div>{match color {
+                   |                 ^^^^^
+
+                color: colors::Color
+                  --> main.hop (line 5, col 27)
+                4 | <Main>
+                5 |     <ColorDisplay {color: Color::Red}/>
+                  |                           ^^^^^^^^^^
             "#]],
         );
     }
