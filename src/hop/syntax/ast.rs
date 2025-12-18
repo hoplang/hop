@@ -16,10 +16,10 @@ use super::node::Node;
 /// E.g. <my-comp {x: string, y: string}>
 ///                ^^^^^^^^^
 #[derive(Debug, Clone)]
-pub struct Parameter<T = ParsedType> {
+pub struct Parameter {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
-    pub var_type: T,
+    pub var_type: ParsedType,
 }
 
 impl Display for Parameter {
