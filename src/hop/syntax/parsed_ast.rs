@@ -545,9 +545,9 @@ mod tests {
                 }>
                   <div class={
                     match color {
-                      Color::Red => "red",
+                      Color::Red   => "red",
                       Color::Green => "green",
-                      Color::Blue => "blue",
+                      Color::Blue  => "blue",
                     },
                   } />
                 </Main>
@@ -667,14 +667,14 @@ mod tests {
                 }>
                   <div class={
                     match color {
-                      Color::Red => "red",
+                      Color::Red   => "red",
                       Color::Green => "green",
-                      Color::Blue => "blue",
+                      Color::Blue  => "blue",
                     },
                     match size {
-                      Size::Small => "sm",
+                      Size::Small  => "sm",
                       Size::Medium => "md",
-                      Size::Large => "lg",
+                      Size::Large  => "lg",
                     },
                   } />
                 </Main>
