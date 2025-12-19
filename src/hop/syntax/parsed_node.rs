@@ -298,12 +298,14 @@ impl ParsedNode {
                 } else {
                     tag_doc
                         .append(BoxDoc::text(">"))
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::intersperse(
-                            children.iter().map(|c| c.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .nest(2)
+                        .append(
+                            BoxDoc::line()
+                                .append(BoxDoc::intersperse(
+                                    children.iter().map(|c| c.to_doc()),
+                                    BoxDoc::line(),
+                                ))
+                                .nest(2),
+                        )
                         .append(BoxDoc::line())
                         .append(BoxDoc::text("</"))
                         .append(BoxDoc::text(tag_name.as_str()))

@@ -563,6 +563,42 @@ mod tests {
     }
 
     #[test]
+    fn html_with_multiple_class_expressions_to_doc() {
+        check(
+            r#"<Main><div class={"foo","bar","baz"}></div></Main>"#,
+            expect![[r#"
+                <Main>
+                  <div class={
+                    "foo",
+                    "bar",
+                    "baz",
+                  } />
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn html_with_multiple_class_expressions_and_child_to_doc() {
+        check(
+            r#"<Main {name: String}><div class={"foo","bar","baz"}>{name}</div></Main>"#,
+            expect![[r#"
+                <Main {
+                  name: String,
+                }>
+                  <div class={
+                    "foo",
+                    "bar",
+                    "baz",
+                  }>
+                    {name}
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
     fn component_with_two_match_expressions_to_doc() {
         check(
             r#"enum Color { Red, Green, Blue }
