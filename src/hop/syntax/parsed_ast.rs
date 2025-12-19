@@ -45,16 +45,17 @@ pub enum ParsedAttributeValue {
 impl ParsedAttributeValue {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            ParsedAttributeValue::Expressions(exprs) => {
-                let mut doc = BoxDoc::text("{");
-                for (i, expr) in exprs.iter().enumerate() {
-                    if i > 0 {
-                        doc = doc.append(BoxDoc::text(", "));
-                    }
-                    doc = doc.append(expr.to_doc());
-                }
-                doc.append(BoxDoc::text("}"))
-            }
+            ParsedAttributeValue::Expressions(exprs) => BoxDoc::text("{")
+                .append(
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            exprs.iter().map(|e| e.to_doc().append(BoxDoc::text(","))),
+                            BoxDoc::line(),
+                        ))
+                        .nest(2),
+                )
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("}")),
             ParsedAttributeValue::String(range) => {
                 BoxDoc::text(format!("\"{}\"", range.as_str()))
             }
@@ -339,10 +340,15 @@ impl ParsedComponentDeclaration {
             .append(BoxDoc::text(self.component_name.as_str()))
             .append(match &self.params {
                 Some((params, _)) if !params.is_empty() => BoxDoc::text(" {")
-                    .append(BoxDoc::intersperse(
-                        params.iter().map(|p| p.to_doc()),
-                        BoxDoc::text(", "),
-                    ))
+                    .append(
+                        BoxDoc::line()
+                            .append(BoxDoc::intersperse(
+                                params.iter().map(|p| p.to_doc().append(BoxDoc::text(","))),
+                                BoxDoc::line(),
+                            ))
+                            .nest(2),
+                    )
+                    .append(BoxDoc::line())
                     .append(BoxDoc::text("}")),
                 _ => BoxDoc::nil(),
             })
@@ -376,7 +382,8 @@ mod tests {
     fn check(source: &str, expected: Expect) {
         let mut errors = ErrorCollector::<ParseError>::new();
         let ast = parser::parse(ModuleName::new("test").unwrap(), source.to_string(), &mut errors);
-        expected.assert_eq(&ast.to_doc().pretty(80).to_string());
+        assert!(errors.is_empty(), "Parse errors: {:?}", errors);
+        expected.assert_eq(&ast.to_doc().pretty(60).to_string());
     }
 
     #[test]
@@ -438,10 +445,97 @@ mod tests {
         check(
             "<Main {name: String, count: Int}><div>{name}</div></Main>",
             expect![[r#"
-                <Main {name: String, count: Int}>
+                <Main {
+                  name: String,
+                  count: Int,
+                }>
                   <div>
                     {name}
                   </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_declaration_with_many_parameters_to_doc() {
+        check(
+            "<Main {first_name: String, last_name: String, email: String, age: Int, active: Bool, role: String}></Main>",
+            expect![[r#"
+                <Main {
+                  first_name: String,
+                  last_name: String,
+                  email: String,
+                  age: Int,
+                  active: Bool,
+                  role: String,
+                }></Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_match_expression_to_doc() {
+        check(
+            r#"enum Color { Red, Green, Blue }
+<Main {color: Color}><div class={match color { Color::Red => "red", Color::Green => "green", Color::Blue => "blue" }}></div></Main>"#,
+            expect![[r#"
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
+
+                <Main {
+                  color: Color,
+                }>
+                  <div class={
+                    match color {
+                      Color::Red => "red",
+                      Color::Green => "green",
+                      Color::Blue => "blue",
+                    },
+                  } />
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_two_match_expressions_to_doc() {
+        check(
+            r#"enum Color { Red, Green, Blue }
+enum Size { Small, Medium, Large }
+<Main {color: Color, size: Size}><div class={match color { Color::Red => "red", Color::Green => "green", Color::Blue => "blue" }, match size { Size::Small => "sm", Size::Medium => "md", Size::Large => "lg" }}></div></Main>"#,
+            expect![[r#"
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
+
+                enum Size {
+                  Small,
+                  Medium,
+                  Large,
+                }
+
+                <Main {
+                  color: Color,
+                  size: Size,
+                }>
+                  <div class={
+                    match color {
+                      Color::Red => "red",
+                      Color::Green => "green",
+                      Color::Blue => "blue",
+                    },
+                    match size {
+                      Size::Small => "sm",
+                      Size::Medium => "md",
+                      Size::Large => "lg",
+                    },
+                  } />
                 </Main>
             "#]],
         );
