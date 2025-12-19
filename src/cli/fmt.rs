@@ -2,6 +2,7 @@ use crate::error_collector::ErrorCollector;
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::syntax::parse_error::ParseError;
 use crate::hop::syntax::parser;
+use crate::hop::syntax::transform::sort_imports::sort_imports;
 use crate::hop::syntax::transform::whitespace_removal::remove_whitespace;
 use anyhow::Result;
 use std::path::Path;
@@ -39,6 +40,7 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
         }
 
         let ast = remove_whitespace(ast);
+        let ast = sort_imports(ast);
         let formatted = ast.to_doc().pretty(60).to_string();
 
         if formatted != source {
@@ -175,5 +177,40 @@ mod tests {
         // Verify other.hop was NOT formatted (still on one line)
         let other_content = fs::read_to_string(temp_dir.join("other.hop")).unwrap();
         assert_eq!(other_content, "<Other><span>world</span></Other>\n");
+    }
+
+    #[test]
+    fn sorts_imports_alphabetically() {
+        let archive = Archive::from(indoc! {r#"
+            -- hop.toml --
+            [compile]
+            target = "ts"
+            output_path = "app.ts"
+            -- main.hop --
+            import zebra::Animal
+            import apple::Fruit
+            import mango::Tropical
+            <Main></Main>
+        "#});
+
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let project_root = ProjectRoot::from(&temp_dir).unwrap();
+
+        let result = execute(&project_root, None).unwrap();
+
+        assert_eq!(result.files_formatted, 1);
+        assert_eq!(result.files_unchanged, 0);
+
+        let formatted_content = fs::read_to_string(temp_dir.join("main.hop")).unwrap();
+        assert_eq!(
+            formatted_content,
+            indoc! {r#"
+                import apple::Fruit
+                import mango::Tropical
+                import zebra::Animal
+
+                <Main></Main>
+            "#}
+        );
     }
 }
