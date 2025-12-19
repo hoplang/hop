@@ -539,6 +539,27 @@ mod tests {
     }
 
     #[test]
+    fn html_with_class_and_expression_to_doc() {
+        check(
+            r#"record Character { name: String }
+<Main {character: Character}><h1 class="text-2xl font-bold">{character.name}</h1></Main>"#,
+            expect![[r#"
+                record Character {
+                  name: String,
+                }
+
+                <Main {
+                  character: Character,
+                }>
+                  <h1 class="text-2xl font-bold">
+                    {character.name}
+                  </h1>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
     fn component_with_two_match_expressions_to_doc() {
         check(
             r#"enum Color { Red, Green, Blue }
