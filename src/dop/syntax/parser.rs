@@ -1032,7 +1032,7 @@ mod tests {
         check_parse_expr(
             "Point(x: a + b, y: c * 2)",
             expect![[r#"
-                Point(x: (a + b), y: (c * 2))
+                Point(x: a + b, y: c * 2)
             "#]],
         );
     }
@@ -1158,7 +1158,7 @@ mod tests {
         check_parse_arguments(
             "user: user.name, enabled: !user.disabled",
             expect![[r#"
-                [user: user.name, enabled: (!user.disabled)]
+                [user: user.name, enabled: !user.disabled]
             "#]],
         );
     }
@@ -1282,7 +1282,7 @@ mod tests {
         check_parse_exprs(
             "x + y, a == b, !c",
             expect![[r#"
-                [(x + y), (a == b), (!c)]
+                [x + y, a == b, !c]
             "#]],
         );
     }
@@ -1520,7 +1520,7 @@ mod tests {
         check_parse_expr(
             "a == b == c",
             expect![[r#"
-                ((a == b) == c)
+                a == b == c
             "#]],
         );
     }
@@ -1530,7 +1530,7 @@ mod tests {
         check_parse_expr(
             "user.name == admin.name",
             expect![[r#"
-                (user.name == admin.name)
+                user.name == admin.name
             "#]],
         );
     }
@@ -1540,7 +1540,7 @@ mod tests {
         check_parse_expr(
             "x <= y",
             expect![[r#"
-                (x <= y)
+                x <= y
             "#]],
         );
     }
@@ -1550,7 +1550,7 @@ mod tests {
         check_parse_expr(
             "a <= b <= c",
             expect![[r#"
-                ((a <= b) <= c)
+                a <= b <= c
             "#]],
         );
     }
@@ -1560,7 +1560,7 @@ mod tests {
         check_parse_expr(
             "x >= y",
             expect![[r#"
-                (x >= y)
+                x >= y
             "#]],
         );
     }
@@ -1570,7 +1570,7 @@ mod tests {
         check_parse_expr(
             "a >= b >= c",
             expect![[r#"
-                ((a >= b) >= c)
+                a >= b >= c
             "#]],
         );
     }
@@ -1620,7 +1620,7 @@ mod tests {
         check_parse_expr(
             "42 + 3.14",
             expect![[r#"
-                (42 + 3.14)
+                42 + 3.14
             "#]],
         );
     }
@@ -1630,7 +1630,7 @@ mod tests {
         check_parse_expr(
             "(x == y)",
             expect![[r#"
-                (x == y)
+                x == y
             "#]],
         );
     }
@@ -1650,7 +1650,7 @@ mod tests {
         check_parse_expr(
             r#""guest" == user.role"#,
             expect![[r#"
-                ("guest" == user.role)
+                "guest" == user.role
             "#]],
         );
     }
@@ -1660,7 +1660,7 @@ mod tests {
         check_parse_expr(
             "x == y",
             expect![[r#"
-                (x == y)
+                x == y
             "#]],
         );
     }
@@ -1690,7 +1690,7 @@ mod tests {
         check_parse_expr(
             r#""apple" == "orange""#,
             expect![[r#"
-                ("apple" == "orange")
+                "apple" == "orange"
             "#]],
         );
     }
@@ -1700,7 +1700,7 @@ mod tests {
         check_parse_expr(
             r#"user.name == "admin""#,
             expect![[r#"
-                (user.name == "admin")
+                user.name == "admin"
             "#]],
         );
     }
@@ -1720,7 +1720,7 @@ mod tests {
         check_parse_expr(
             "  user . name   ==   admin . name  ",
             expect![[r#"
-                (user.name == admin.name)
+                user.name == admin.name
             "#]],
         );
     }
@@ -1770,7 +1770,7 @@ mod tests {
         check_parse_expr(
             "[[1 == [1 == 2], [] == []], [3, 4]]",
             expect![[r#"
-                [[(1 == [(1 == 2)]), ([] == [])], [3, 4]]
+                [[1 == [1 == 2], [] == []], [3, 4]]
             "#]],
         );
     }
@@ -1810,7 +1810,7 @@ mod tests {
         check_parse_expr(
             "[\n\tuser.name,\n\t!user.disabled,\n]",
             expect![[r#"
-                [user.name, (!user.disabled)]
+                [user.name, !user.disabled]
             "#]],
         );
     }
@@ -1820,7 +1820,7 @@ mod tests {
         check_parse_expr(
             r#""hello" + "world""#,
             expect![[r#"
-                ("hello" + "world")
+                "hello" + "world"
             "#]],
         );
     }
@@ -1830,7 +1830,7 @@ mod tests {
         check_parse_expr(
             r#""hello" + " " + "world""#,
             expect![[r#"
-                (("hello" + " ") + "world")
+                "hello" + " " + "world"
             "#]],
         );
     }
@@ -1840,7 +1840,7 @@ mod tests {
         check_parse_expr(
             r#"greeting + " " + name"#,
             expect![[r#"
-                ((greeting + " ") + name)
+                greeting + " " + name
             "#]],
         );
     }
@@ -1850,7 +1850,7 @@ mod tests {
         check_parse_expr(
             r#""a" + "b" == "ab""#,
             expect![[r#"
-                (("a" + "b") == "ab")
+                "a" + "b" == "ab"
             "#]],
         );
     }
@@ -1860,7 +1860,7 @@ mod tests {
         check_parse_expr(
             r#"user.first_name + " " + user.last_name"#,
             expect![[r#"
-                ((user.first_name + " ") + user.last_name)
+                user.first_name + " " + user.last_name
             "#]],
         );
     }
@@ -1870,7 +1870,7 @@ mod tests {
         check_parse_expr(
             "x != y",
             expect![[r#"
-                (x != y)
+                x != y
             "#]],
         );
     }
@@ -1880,7 +1880,7 @@ mod tests {
         check_parse_expr(
             r#""hello" != "world""#,
             expect![[r#"
-                ("hello" != "world")
+                "hello" != "world"
             "#]],
         );
     }
@@ -1890,7 +1890,7 @@ mod tests {
         check_parse_expr(
             "a != b != c",
             expect![[r#"
-                ((a != b) != c)
+                a != b != c
             "#]],
         );
     }
@@ -1900,7 +1900,7 @@ mod tests {
         check_parse_expr(
             "a == b != c",
             expect![[r#"
-                ((a == b) != c)
+                a == b != c
             "#]],
         );
     }
@@ -1910,7 +1910,7 @@ mod tests {
         check_parse_expr(
             "a && b",
             expect![[r#"
-                (a && b)
+                a && b
             "#]],
         );
     }
@@ -1920,7 +1920,7 @@ mod tests {
         check_parse_expr(
             "a && b && c",
             expect![[r#"
-                ((a && b) && c)
+                a && b && c
             "#]],
         );
     }
@@ -1930,7 +1930,7 @@ mod tests {
         check_parse_expr(
             "a && b == c",
             expect![[r#"
-                (a && (b == c))
+                a && b == c
             "#]],
         );
     }
@@ -1940,7 +1940,7 @@ mod tests {
         check_parse_expr(
             "a == b && c != d",
             expect![[r#"
-                ((a == b) && (c != d))
+                a == b && c != d
             "#]],
         );
     }
@@ -1950,7 +1950,7 @@ mod tests {
         check_parse_expr(
             "x > y && a <= b",
             expect![[r#"
-                ((x > y) && (a <= b))
+                x > y && a <= b
             "#]],
         );
     }
@@ -1960,7 +1960,7 @@ mod tests {
         check_parse_expr(
             "!a && !b",
             expect![[r#"
-                ((!a) && (!b))
+                !a && !b
             "#]],
         );
     }
@@ -1970,7 +1970,7 @@ mod tests {
         check_parse_expr(
             "a || b",
             expect![[r#"
-                (a || b)
+                a || b
             "#]],
         );
     }
@@ -1980,7 +1980,7 @@ mod tests {
         check_parse_expr(
             "a || b || c",
             expect![[r#"
-                ((a || b) || c)
+                a || b || c
             "#]],
         );
     }
@@ -1990,7 +1990,7 @@ mod tests {
         check_parse_expr(
             "a || b == c",
             expect![[r#"
-                (a || (b == c))
+                a || b == c
             "#]],
         );
     }
@@ -2000,7 +2000,7 @@ mod tests {
         check_parse_expr(
             "a && b || c",
             expect![[r#"
-                ((a && b) || c)
+                a && b || c
             "#]],
         );
     }
@@ -2010,7 +2010,7 @@ mod tests {
         check_parse_expr(
             "a || b && c || d",
             expect![[r#"
-                ((a || (b && c)) || d)
+                a || b && c || d
             "#]],
         );
     }
@@ -2020,7 +2020,7 @@ mod tests {
         check_parse_expr(
             "x > y && a || b < c",
             expect![[r#"
-                (((x > y) && a) || (b < c))
+                x > y && a || b < c
             "#]],
         );
     }
@@ -2030,7 +2030,7 @@ mod tests {
         check_parse_expr(
             "!a || !b",
             expect![[r#"
-                ((!a) || (!b))
+                !a || !b
             "#]],
         );
     }
@@ -2040,7 +2040,7 @@ mod tests {
         check_parse_expr(
             "x + y == z",
             expect![[r#"
-                ((x + y) == z)
+                x + y == z
             "#]],
         );
     }
@@ -2050,7 +2050,7 @@ mod tests {
         check_parse_expr(
             "x + y > z && enabled",
             expect![[r#"
-                (((x + y) > z) && enabled)
+                x + y > z && enabled
             "#]],
         );
     }
@@ -2060,7 +2060,7 @@ mod tests {
         check_parse_expr(
             "x + y + z",
             expect![[r#"
-                ((x + y) + z)
+                x + y + z
             "#]],
         );
     }
@@ -2454,7 +2454,7 @@ mod tests {
         check_parse_expr(
             "Color::Red == Color::Green",
             expect![[r#"
-                (Color::Red == Color::Green)
+                Color::Red == Color::Green
             "#]],
         );
     }

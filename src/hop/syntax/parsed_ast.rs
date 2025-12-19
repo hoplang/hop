@@ -683,6 +683,131 @@ mod tests {
     }
 
     #[test]
+    fn if_with_equality_condition_to_doc() {
+        check(
+            indoc! {"
+                <Main {a: String, b: String}>
+                  <if {a == b}>
+                    <div>equal</div>
+                  </if>
+                </Main>
+            "},
+            expect![[r#"
+                <Main {
+                  a: String,
+                  b: String,
+                }>
+                  <if {a == b}>
+                    <div>
+                      equal
+                    </div>
+                  </if>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn if_with_logical_and_condition_to_doc() {
+        check(
+            indoc! {"
+                <Main {a: Bool, b: Bool}>
+                  <if {a && b}>
+                    <div>both true</div>
+                  </if>
+                </Main>
+            "},
+            expect![[r#"
+                <Main {
+                  a: Bool,
+                  b: Bool,
+                }>
+                  <if {a && b}>
+                    <div>
+                      both true
+                    </div>
+                  </if>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn if_with_nested_logical_operators_to_doc() {
+        check(
+            indoc! {"
+                <Main {a: Bool, b: Bool, c: Bool}>
+                  <if {a && b || c}>
+                    <div>complex</div>
+                  </if>
+                </Main>
+            "},
+            expect![[r#"
+                <Main {
+                  a: Bool,
+                  b: Bool,
+                  c: Bool,
+                }>
+                  <if {a && b || c}>
+                    <div>
+                      complex
+                    </div>
+                  </if>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn if_with_negation_to_doc() {
+        check(
+            indoc! {"
+                <Main {a: Bool}>
+                  <if {!a}>
+                    <div>not a</div>
+                  </if>
+                </Main>
+            "},
+            expect![[r#"
+                <Main {
+                  a: Bool,
+                }>
+                  <if {!a}>
+                    <div>
+                      not a
+                    </div>
+                  </if>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn if_with_negated_equality_to_doc() {
+        check(
+            indoc! {"
+                <Main {a: String, b: String}>
+                  <if {!(a == b)}>
+                    <div>not equal</div>
+                  </if>
+                </Main>
+            "},
+            expect![[r#"
+                <Main {
+                  a: String,
+                  b: String,
+                }>
+                  <if {!(a == b)}>
+                    <div>
+                      not equal
+                    </div>
+                  </if>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
     fn whitespace_removal_multiline_text() {
         check(
             indoc! {"

@@ -176,6 +176,23 @@ pub enum ParsedExpr {
     },
 }
 
+impl ParsedBinaryOp {
+    /// Returns the precedence of this operator (higher = binds tighter).
+    fn precedence(&self) -> u8 {
+        match self {
+            ParsedBinaryOp::LogicalOr => 1,
+            ParsedBinaryOp::LogicalAnd => 2,
+            ParsedBinaryOp::Eq | ParsedBinaryOp::NotEq => 3,
+            ParsedBinaryOp::LessThan
+            | ParsedBinaryOp::GreaterThan
+            | ParsedBinaryOp::LessThanOrEqual
+            | ParsedBinaryOp::GreaterThanOrEqual => 4,
+            ParsedBinaryOp::Plus | ParsedBinaryOp::Minus => 5,
+            ParsedBinaryOp::Multiply => 6,
+        }
+    }
+}
+
 impl ParsedExpr {
     pub fn annotation(&self) -> &DocumentRange {
         match self {
@@ -191,6 +208,40 @@ impl ParsedExpr {
             | ParsedExpr::BinaryOp { annotation, .. }
             | ParsedExpr::Negation { annotation, .. }
             | ParsedExpr::Match { annotation, .. } => annotation,
+        }
+    }
+
+    /// Returns true if this expression is "atomic" (never needs parentheses).
+    fn is_atomic(&self) -> bool {
+        matches!(
+            self,
+            ParsedExpr::Var { .. }
+                | ParsedExpr::FieldAccess { .. }
+                | ParsedExpr::StringLiteral { .. }
+                | ParsedExpr::BooleanLiteral { .. }
+                | ParsedExpr::IntLiteral { .. }
+                | ParsedExpr::FloatLiteral { .. }
+                | ParsedExpr::ArrayLiteral { .. }
+                | ParsedExpr::RecordLiteral { .. }
+                | ParsedExpr::EnumLiteral { .. }
+                | ParsedExpr::Match { .. }
+        )
+    }
+
+    /// Converts this expression to a doc, adding parentheses if needed based on parent precedence.
+    fn to_doc_with_precedence(&self, parent_precedence: u8) -> BoxDoc<'_> {
+        match self {
+            ParsedExpr::BinaryOp { operator, .. } => {
+                let needs_parens = operator.precedence() < parent_precedence;
+                if needs_parens {
+                    BoxDoc::text("(")
+                        .append(self.to_doc())
+                        .append(BoxDoc::text(")"))
+                } else {
+                    self.to_doc()
+                }
+            }
+            _ => self.to_doc(),
         }
     }
 
@@ -261,17 +312,21 @@ impl ParsedExpr {
                 operator,
                 right,
                 ..
-            } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(format!(" {} ", operator)))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
-            ParsedExpr::Negation { operand, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(BoxDoc::text("!"))
-                .append(operand.to_doc())
-                .append(BoxDoc::text(")")),
+            } => {
+                let prec = operator.precedence();
+                left.to_doc_with_precedence(prec)
+                    .append(BoxDoc::text(format!(" {} ", operator)))
+                    .append(right.to_doc_with_precedence(prec))
+            }
+            ParsedExpr::Negation { operand, .. } => {
+                if operand.is_atomic() {
+                    BoxDoc::text("!").append(operand.to_doc())
+                } else {
+                    BoxDoc::text("!(")
+                        .append(operand.to_doc())
+                        .append(BoxDoc::text(")"))
+                }
+            }
             ParsedExpr::EnumLiteral {
                 enum_name,
                 variant_name,
