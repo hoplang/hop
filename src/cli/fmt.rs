@@ -2,7 +2,7 @@ use crate::error_collector::ErrorCollector;
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::syntax::parse_error::ParseError;
 use crate::hop::syntax::parser;
-use crate::hop::syntax::whitespace_removal::remove_whitespace;
+use crate::hop::syntax::transform::whitespace_removal::remove_whitespace;
 use anyhow::Result;
 use std::path::Path;
 

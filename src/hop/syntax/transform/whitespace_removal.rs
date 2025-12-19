@@ -1,7 +1,7 @@
 use crate::document::document_cursor::{DocumentRange, StringSpan};
 
-use super::parsed_ast::{ParsedAst, ParsedComponentDeclaration, ParsedDeclaration};
-use super::parsed_node::ParsedNode;
+use crate::hop::syntax::parsed_ast::{ParsedAst, ParsedComponentDeclaration, ParsedDeclaration};
+use crate::hop::syntax::parsed_node::ParsedNode;
 
 /// Removes leading and trailing whitespace from text nodes in a ParsedAst.
 ///

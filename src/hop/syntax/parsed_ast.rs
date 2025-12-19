@@ -386,7 +386,7 @@ mod tests {
     use crate::hop::symbols::module_name::ModuleName;
     use crate::hop::syntax::parse_error::ParseError;
     use crate::hop::syntax::parser;
-    use crate::hop::syntax::whitespace_removal::remove_whitespace;
+    use crate::hop::syntax::transform::whitespace_removal::remove_whitespace;
 
     fn check(source: &str, expected: Expect) {
         let mut errors = ErrorCollector::<ParseError>::new();
