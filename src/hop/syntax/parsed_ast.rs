@@ -1,7 +1,6 @@
 use std::fmt::{self, Display};
 
 use crate::document::document_cursor::{DocumentRange, Ranged};
-use pretty::BoxDoc;
 use crate::dop::ParsedExpr;
 use crate::dop::ParsedType;
 use crate::dop::VarName;
@@ -9,6 +8,7 @@ use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
+use pretty::BoxDoc;
 
 use super::parsed_node::ParsedNode;
 
@@ -56,9 +56,7 @@ impl ParsedAttributeValue {
                 )
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("}")),
-            ParsedAttributeValue::String(range) => {
-                BoxDoc::text(format!("\"{}\"", range.as_str()))
-            }
+            ParsedAttributeValue::String(range) => BoxDoc::text(format!("\"{}\"", range.as_str())),
         }
     }
 }
@@ -392,7 +390,11 @@ mod tests {
 
     fn check(source: &str, expected: Expect) {
         let mut errors = ErrorCollector::<ParseError>::new();
-        let ast = parser::parse(ModuleName::new("test").unwrap(), source.to_string(), &mut errors);
+        let ast = parser::parse(
+            ModuleName::new("test").unwrap(),
+            source.to_string(),
+            &mut errors,
+        );
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
         let ast = remove_whitespace(ast);
         expected.assert_eq(&ast.to_doc().pretty(60).to_string());
