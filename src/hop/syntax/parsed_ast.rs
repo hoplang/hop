@@ -170,11 +170,20 @@ impl ParsedAst {
         if self.declarations.is_empty() {
             BoxDoc::nil()
         } else {
-            BoxDoc::intersperse(
-                self.declarations.iter().map(|d| d.to_doc()),
-                BoxDoc::line().append(BoxDoc::line()),
-            )
-            .append(BoxDoc::line())
+            let mut doc = BoxDoc::nil();
+            let mut prev_was_import = false;
+            for (i, decl) in self.declarations.iter().enumerate() {
+                if i > 0 {
+                    doc = doc.append(BoxDoc::line());
+                    let curr_is_import = matches!(decl, ParsedDeclaration::Import(_));
+                    if !(prev_was_import && curr_is_import) {
+                        doc = doc.append(BoxDoc::line());
+                    }
+                }
+                doc = doc.append(decl.to_doc());
+                prev_was_import = matches!(decl, ParsedDeclaration::Import(_));
+            }
+            doc.append(BoxDoc::line())
         }
     }
 }
@@ -392,6 +401,22 @@ mod tests {
             "import foo::Bar",
             expect![[r#"
                 import foo::Bar
+            "#]],
+        );
+    }
+
+    #[test]
+    fn multiple_import_declarations_to_doc() {
+        check(
+            "import foo::Bar import baz::Qux import components::Button record User { name: String }",
+            expect![[r#"
+                import foo::Bar
+                import baz::Qux
+                import components::Button
+
+                record User {
+                  name: String,
+                }
             "#]],
         );
     }
