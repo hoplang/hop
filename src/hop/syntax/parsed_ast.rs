@@ -403,7 +403,9 @@ mod tests {
     #[test]
     fn import_declaration_to_doc() {
         check(
-            "import foo::Bar",
+            indoc! {"
+                import foo::Bar
+            "},
             expect![[r#"
                 import foo::Bar
             "#]],
@@ -413,7 +415,12 @@ mod tests {
     #[test]
     fn multiple_import_declarations_to_doc() {
         check(
-            "import foo::Bar import baz::Qux import components::Button record User { name: String }",
+            indoc! {"
+                import foo::Bar
+                import baz::Qux
+                import components::Button
+                record User { name: String }
+            "},
             expect![[r#"
                 import foo::Bar
                 import baz::Qux
@@ -429,7 +436,9 @@ mod tests {
     #[test]
     fn record_declaration_single_field_to_doc() {
         check(
-            "record User { name: String }",
+            indoc! {"
+                record User { name: String }
+            "},
             expect![[r#"
                 record User {
                   name: String,
@@ -441,7 +450,9 @@ mod tests {
     #[test]
     fn enum_declaration_multiple_variants_to_doc() {
         check(
-            "enum Color { Red, Green, Blue }",
+            indoc! {"
+                enum Color { Red, Green, Blue }
+            "},
             expect![[r#"
                 enum Color {
                   Red,
@@ -455,7 +466,10 @@ mod tests {
     #[test]
     fn two_record_declarations_to_doc() {
         check(
-            "record User { name: String, age: Int } record Post { title: String, author: User }",
+            indoc! {"
+                record User { name: String, age: Int }
+                record Post { title: String, author: User }
+            "},
             expect![[r#"
                 record User {
                   name: String,
@@ -473,7 +487,11 @@ mod tests {
     #[test]
     fn component_declaration_to_doc() {
         check(
-            "<Main {name: String, count: Int}><div>{name}</div></Main>",
+            indoc! {"
+                <Main {name: String, count: Int}>
+                  <div>{name}</div>
+                </Main>
+            "},
             expect![[r#"
                 <Main {
                   name: String,
@@ -490,7 +508,9 @@ mod tests {
     #[test]
     fn component_declaration_with_many_parameters_to_doc() {
         check(
-            "<Main {first_name: String, last_name: String, email: String, age: Int, active: Bool, role: String}></Main>",
+            indoc! {"
+                <Main {first_name: String, last_name: String, email: String, age: Int, active: Bool, role: String}></Main>
+            "},
             expect![[r#"
                 <Main {
                   first_name: String,
@@ -507,8 +527,12 @@ mod tests {
     #[test]
     fn component_with_match_expression_to_doc() {
         check(
-            r#"enum Color { Red, Green, Blue }
-<Main {color: Color}><div class={match color { Color::Red => "red", Color::Green => "green", Color::Blue => "blue" }}></div></Main>"#,
+            indoc! {r#"
+                enum Color { Red, Green, Blue }
+                <Main {color: Color}>
+                  <div class={match color { Color::Red => "red", Color::Green => "green", Color::Blue => "blue" }}></div>
+                </Main>
+            "#},
             expect![[r#"
                 enum Color {
                   Red,
@@ -534,7 +558,9 @@ mod tests {
     #[test]
     fn component_declaration_with_text_child_to_doc() {
         check(
-            "<Main>hello</Main>",
+            indoc! {"
+                <Main>hello</Main>
+            "},
             expect![[r#"
                 <Main>
                   hello
@@ -546,8 +572,12 @@ mod tests {
     #[test]
     fn html_with_class_and_expression_to_doc() {
         check(
-            r#"record Character { name: String }
-<Main {character: Character}><h1 class="text-2xl font-bold">{character.name}</h1></Main>"#,
+            indoc! {r#"
+                record Character { name: String }
+                <Main {character: Character}>
+                  <h1 class="text-2xl font-bold">{character.name}</h1>
+                </Main>
+            "#},
             expect![[r#"
                 record Character {
                   name: String,
@@ -567,7 +597,11 @@ mod tests {
     #[test]
     fn html_with_multiple_class_expressions_to_doc() {
         check(
-            r#"<Main><div class={"foo","bar","baz"}></div></Main>"#,
+            indoc! {r#"
+                <Main>
+                  <div class={"foo","bar","baz"}></div>
+                </Main>
+            "#},
             expect![[r#"
                 <Main>
                   <div class={
@@ -583,7 +617,11 @@ mod tests {
     #[test]
     fn html_with_multiple_class_expressions_and_child_to_doc() {
         check(
-            r#"<Main {name: String}><div class={"foo","bar","baz"}>{name}</div></Main>"#,
+            indoc! {r#"
+                <Main {name: String}>
+                  <div class={"foo","bar","baz"}>{name}</div>
+                </Main>
+            "#},
             expect![[r#"
                 <Main {
                   name: String,
@@ -603,9 +641,13 @@ mod tests {
     #[test]
     fn component_with_two_match_expressions_to_doc() {
         check(
-            r#"enum Color { Red, Green, Blue }
-enum Size { Small, Medium, Large }
-<Main {color: Color, size: Size}><div class={match color { Color::Red => "red", Color::Green => "green", Color::Blue => "blue" }, match size { Size::Small => "sm", Size::Medium => "md", Size::Large => "lg" }}></div></Main>"#,
+            indoc! {r#"
+                enum Color { Red, Green, Blue }
+                enum Size { Small, Medium, Large }
+                <Main {color: Color, size: Size}>
+                  <div class={match color { Color::Red => "red", Color::Green => "green", Color::Blue => "blue" }, match size { Size::Small => "sm", Size::Medium => "md", Size::Large => "lg" }}></div>
+                </Main>
+            "#},
             expect![[r#"
                 enum Color {
                   Red,
