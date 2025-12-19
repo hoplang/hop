@@ -382,16 +382,19 @@ impl ParsedComponentDeclaration {
 #[cfg(test)]
 mod tests {
     use expect_test::{Expect, expect};
+    use indoc::indoc;
 
     use crate::error_collector::ErrorCollector;
     use crate::hop::symbols::module_name::ModuleName;
     use crate::hop::syntax::parse_error::ParseError;
     use crate::hop::syntax::parser;
+    use crate::hop::syntax::whitespace_removal::remove_whitespace;
 
     fn check(source: &str, expected: Expect) {
         let mut errors = ErrorCollector::<ParseError>::new();
         let ast = parser::parse(ModuleName::new("test").unwrap(), source.to_string(), &mut errors);
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
+        let ast = remove_whitespace(ast);
         expected.assert_eq(&ast.to_doc().pretty(60).to_string());
     }
 
@@ -594,6 +597,62 @@ enum Size { Small, Medium, Large }
                       Size::Large => "lg",
                     },
                   } />
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn whitespace_removal_multiline_text() {
+        check(
+            indoc! {"
+                <Main>
+                  hello
+                  world
+                </Main>
+            "},
+            expect![[r#"
+                <Main>
+                  hello
+                  world
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn whitespace_removal_nested_html() {
+        check(
+            indoc! {"
+                <Main>
+                  <div>
+                    content
+                  </div>
+                </Main>
+            "},
+            expect![[r#"
+                <Main>
+                  <div>
+                    content
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn whitespace_removal_empty_lines() {
+        check(
+            indoc! {"
+                <Main>
+
+                  hello
+
+                </Main>
+            "},
+            expect![[r#"
+                <Main>
+                  hello
                 </Main>
             "#]],
         );

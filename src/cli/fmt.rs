@@ -2,6 +2,7 @@ use crate::error_collector::ErrorCollector;
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::syntax::parse_error::ParseError;
 use crate::hop::syntax::parser;
+use crate::hop::syntax::whitespace_removal::remove_whitespace;
 use anyhow::Result;
 
 pub struct FmtResult {
@@ -28,6 +29,7 @@ pub fn execute(project_root: &ProjectRoot) -> Result<FmtResult> {
             continue;
         }
 
+        let ast = remove_whitespace(ast);
         let formatted = ast.to_doc().pretty(60).to_string();
 
         if formatted != source {

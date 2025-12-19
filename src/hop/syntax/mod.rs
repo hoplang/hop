@@ -5,3 +5,4 @@ pub mod parse_error;
 pub mod parser;
 pub mod token_tree;
 pub mod tokenizer;
+pub mod whitespace_removal;
