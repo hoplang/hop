@@ -195,7 +195,7 @@ impl ParsedNode {
 
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            ParsedNode::Text { value, .. } => BoxDoc::text(format!("{:?}", value.as_str())),
+            ParsedNode::Text { value, .. } => BoxDoc::text(value.as_str()),
             ParsedNode::TextExpression { expression, .. } => BoxDoc::text("{")
                 .append(expression.to_doc())
                 .append(BoxDoc::text("}")),

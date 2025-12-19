@@ -527,6 +527,18 @@ mod tests {
     }
 
     #[test]
+    fn component_declaration_with_text_child_to_doc() {
+        check(
+            "<Main>hello</Main>",
+            expect![[r#"
+                <Main>
+                  hello
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
     fn component_with_two_match_expressions_to_doc() {
         check(
             r#"enum Color { Red, Green, Blue }
