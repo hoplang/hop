@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 
+use pretty::BoxDoc;
+
 use crate::document::{
     DocumentPosition,
     document_cursor::{DocumentRange, Ranged, StringSpan},
@@ -25,7 +27,15 @@ pub struct ParsedArgument {
 
 impl Display for ParsedArgument {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.var_name, self.var_expr)
+        write!(f, "{}", self.to_doc().pretty(60))
+    }
+}
+
+impl ParsedArgument {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        BoxDoc::text(self.var_name.as_str())
+            .append(BoxDoc::text(": "))
+            .append(self.var_expr.to_doc())
     }
 }
 
@@ -182,6 +192,141 @@ impl ParsedNode {
         }
         Some(self)
     }
+
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        match self {
+            ParsedNode::Text { value, .. } => BoxDoc::text(format!("{:?}", value.as_str())),
+            ParsedNode::TextExpression { expression, .. } => BoxDoc::text("{")
+                .append(expression.to_doc())
+                .append(BoxDoc::text("}")),
+            ParsedNode::ComponentReference {
+                component_name,
+                args,
+                children,
+                ..
+            } => {
+                let tag_doc = BoxDoc::text("<")
+                    .append(BoxDoc::text(component_name.as_str()))
+                    .append(match args {
+                        Some((args, _)) if !args.is_empty() => BoxDoc::text(" {")
+                            .append(BoxDoc::intersperse(
+                                args.iter().map(|a| a.to_doc()),
+                                BoxDoc::text(", "),
+                            ))
+                            .append(BoxDoc::text("}")),
+                        _ => BoxDoc::nil(),
+                    });
+
+                if children.is_empty() {
+                    tag_doc.append(BoxDoc::text(" />"))
+                } else {
+                    tag_doc
+                        .append(BoxDoc::text(">"))
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::intersperse(
+                            children.iter().map(|c| c.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .nest(2)
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("</"))
+                        .append(BoxDoc::text(component_name.as_str()))
+                        .append(BoxDoc::text(">"))
+                }
+            }
+            ParsedNode::If {
+                condition,
+                children,
+                ..
+            } => BoxDoc::text("<if {")
+                .append(condition.to_doc())
+                .append(BoxDoc::text("}>"))
+                .append(if children.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            children.iter().map(|c| c.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .nest(2)
+                        .append(BoxDoc::line())
+                })
+                .append(BoxDoc::text("</if>")),
+            ParsedNode::For {
+                var_name,
+                array_expr,
+                children,
+                ..
+            } => BoxDoc::text("<for {")
+                .append(BoxDoc::text(var_name.as_str()))
+                .append(BoxDoc::text(" in "))
+                .append(array_expr.to_doc())
+                .append(BoxDoc::text("}>"))
+                .append(if children.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            children.iter().map(|c| c.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .nest(2)
+                        .append(BoxDoc::line())
+                })
+                .append(BoxDoc::text("</for>")),
+            ParsedNode::Doctype { value, .. } => BoxDoc::text(value.as_str()),
+            ParsedNode::Html {
+                tag_name,
+                attributes,
+                children,
+                ..
+            } => {
+                let mut tag_doc = BoxDoc::text("<").append(BoxDoc::text(tag_name.as_str()));
+
+                if !attributes.is_empty() {
+                    tag_doc = tag_doc
+                        .append(BoxDoc::text(" "))
+                        .append(BoxDoc::intersperse(
+                            attributes.values().map(|attr| attr.to_doc()),
+                            BoxDoc::text(" "),
+                        ));
+                }
+
+                if children.is_empty() {
+                    tag_doc.append(BoxDoc::text(" />"))
+                } else {
+                    tag_doc
+                        .append(BoxDoc::text(">"))
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::intersperse(
+                            children.iter().map(|c| c.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .nest(2)
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("</"))
+                        .append(BoxDoc::text(tag_name.as_str()))
+                        .append(BoxDoc::text(">"))
+                }
+            }
+            ParsedNode::Placeholder { children, .. } => {
+                if children.is_empty() {
+                    BoxDoc::text("<placeholder />")
+                } else {
+                    BoxDoc::text("<placeholder>")
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::intersperse(
+                            children.iter().map(|c| c.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .nest(2)
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("</placeholder>"))
+                }
+            }
+        }
+    }
 }
 
 impl Ranged for ParsedNode {
@@ -196,6 +341,12 @@ impl Ranged for ParsedNode {
             | ParsedNode::Placeholder { range, .. }
             | ParsedNode::Doctype { range, .. } => range,
         }
+    }
+}
+
+impl Display for ParsedNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_doc().pretty(80))
     }
 }
 

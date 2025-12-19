@@ -1,6 +1,7 @@
 use std::fmt::{self, Display};
 
 use crate::document::document_cursor::{DocumentRange, Ranged};
+use pretty::BoxDoc;
 use crate::dop::ParsedExpr;
 use crate::dop::ParsedType;
 use crate::dop::VarName;
@@ -23,7 +24,15 @@ pub struct ParsedParameter {
 
 impl Display for ParsedParameter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.var_name, self.var_type)
+        write!(f, "{}", self.to_doc().pretty(60))
+    }
+}
+
+impl ParsedParameter {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        BoxDoc::text(self.var_name.as_str())
+            .append(BoxDoc::text(": "))
+            .append(self.var_type.to_doc())
     }
 }
 
@@ -31,6 +40,26 @@ impl Display for ParsedParameter {
 pub enum ParsedAttributeValue {
     Expressions(Vec<ParsedExpr>),
     String(DocumentRange),
+}
+
+impl ParsedAttributeValue {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        match self {
+            ParsedAttributeValue::Expressions(exprs) => {
+                let mut doc = BoxDoc::text("{");
+                for (i, expr) in exprs.iter().enumerate() {
+                    if i > 0 {
+                        doc = doc.append(BoxDoc::text(", "));
+                    }
+                    doc = doc.append(expr.to_doc());
+                }
+                doc.append(BoxDoc::text("}"))
+            }
+            ParsedAttributeValue::String(range) => {
+                BoxDoc::text(format!("\"{}\"", range.as_str()))
+            }
+        }
+    }
 }
 
 /// A ParsedAttribute is an attribute on a node, it can either
@@ -41,6 +70,16 @@ pub struct ParsedAttribute {
     pub value: Option<ParsedAttributeValue>,
 }
 
+impl ParsedAttribute {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        let name_doc = BoxDoc::text(self.name.as_str());
+        match &self.value {
+            Some(value) => name_doc.append(BoxDoc::text("=")).append(value.to_doc()),
+            None => name_doc,
+        }
+    }
+}
+
 /// A declaration in a Hop module - can be an import, record, enum, or component.
 #[derive(Debug, Clone)]
 pub enum ParsedDeclaration {
@@ -48,6 +87,17 @@ pub enum ParsedDeclaration {
     Record(ParsedRecordDeclaration),
     Enum(ParsedEnumDeclaration),
     Component(ParsedComponentDeclaration),
+}
+
+impl ParsedDeclaration {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        match self {
+            ParsedDeclaration::Import(import) => import.to_doc(),
+            ParsedDeclaration::Record(record) => record.to_doc(),
+            ParsedDeclaration::Enum(e) => e.to_doc(),
+            ParsedDeclaration::Component(component) => component.to_doc(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -114,6 +164,24 @@ impl ParsedAst {
             .flat_map(|n| &n.children)
             .flat_map(|n| n.iter_depth_first())
     }
+
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        if self.declarations.is_empty() {
+            BoxDoc::nil()
+        } else {
+            BoxDoc::intersperse(
+                self.declarations.iter().map(|d| d.to_doc()),
+                BoxDoc::line().append(BoxDoc::line()),
+            )
+            .append(BoxDoc::line())
+        }
+    }
+}
+
+impl Display for ParsedAst {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_doc().pretty(80))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -142,12 +210,28 @@ impl ParsedImportDeclaration {
     pub fn imports_from(&self, module_name: &ModuleName) -> bool {
         &self.module_name == module_name
     }
+
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        BoxDoc::text("import")
+            .append(BoxDoc::space())
+            .append(BoxDoc::text(self.module_name.to_string()))
+            .append(BoxDoc::text("::"))
+            .append(BoxDoc::text(self.type_name.as_str()))
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct ParsedRecordDeclarationField {
     pub name: FieldName,
     pub field_type: ParsedType,
+}
+
+impl ParsedRecordDeclarationField {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        BoxDoc::text(self.name.as_str())
+            .append(BoxDoc::text(": "))
+            .append(self.field_type.to_doc())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -161,11 +245,38 @@ impl ParsedRecordDeclaration {
     pub fn name(&self) -> &str {
         self.name.as_str()
     }
+
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        BoxDoc::text("record")
+            .append(BoxDoc::space())
+            .append(BoxDoc::text(self.name.as_str()))
+            .append(BoxDoc::space())
+            .append(BoxDoc::text("{"))
+            .append(if self.fields.is_empty() {
+                BoxDoc::nil()
+            } else {
+                BoxDoc::line()
+                    .append(BoxDoc::intersperse(
+                        self.fields.iter().map(|f| f.to_doc()),
+                        BoxDoc::text(",").append(BoxDoc::line()),
+                    ))
+                    .append(BoxDoc::text(","))
+                    .nest(2)
+                    .append(BoxDoc::line())
+            })
+            .append(BoxDoc::text("}"))
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct ParsedEnumDeclarationVariant {
     pub name: TypeName,
+}
+
+impl ParsedEnumDeclarationVariant {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        BoxDoc::text(self.name.as_str())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -178,6 +289,27 @@ pub struct ParsedEnumDeclaration {
 impl ParsedEnumDeclaration {
     pub fn name(&self) -> &str {
         self.name.as_str()
+    }
+
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        BoxDoc::text("enum")
+            .append(BoxDoc::space())
+            .append(BoxDoc::text(self.name.as_str()))
+            .append(BoxDoc::space())
+            .append(BoxDoc::text("{"))
+            .append(if self.variants.is_empty() {
+                BoxDoc::nil()
+            } else {
+                BoxDoc::line()
+                    .append(BoxDoc::intersperse(
+                        self.variants.iter().map(|v| v.to_doc()),
+                        BoxDoc::text(",").append(BoxDoc::line()),
+                    ))
+                    .append(BoxDoc::text(","))
+                    .nest(2)
+                    .append(BoxDoc::line())
+            })
+            .append(BoxDoc::text("}"))
     }
 }
 
@@ -200,5 +332,118 @@ impl Ranged for ParsedComponentDeclaration {
 impl ParsedComponentDeclaration {
     pub fn tag_name_ranges(&self) -> impl Iterator<Item = &DocumentRange> {
         self.closing_tag_name.iter().chain(Some(&self.tag_name))
+    }
+
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        BoxDoc::text("<")
+            .append(BoxDoc::text(self.component_name.as_str()))
+            .append(match &self.params {
+                Some((params, _)) if !params.is_empty() => BoxDoc::text(" {")
+                    .append(BoxDoc::intersperse(
+                        params.iter().map(|p| p.to_doc()),
+                        BoxDoc::text(", "),
+                    ))
+                    .append(BoxDoc::text("}")),
+                _ => BoxDoc::nil(),
+            })
+            .append(BoxDoc::text(">"))
+            .append(if self.children.is_empty() {
+                BoxDoc::nil()
+            } else {
+                BoxDoc::line()
+                    .append(BoxDoc::intersperse(
+                        self.children.iter().map(|c| c.to_doc()),
+                        BoxDoc::line(),
+                    ))
+                    .nest(2)
+                    .append(BoxDoc::line())
+            })
+            .append(BoxDoc::text("</"))
+            .append(BoxDoc::text(self.component_name.as_str()))
+            .append(BoxDoc::text(">"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use expect_test::{Expect, expect};
+
+    use crate::error_collector::ErrorCollector;
+    use crate::hop::symbols::module_name::ModuleName;
+    use crate::hop::syntax::parse_error::ParseError;
+    use crate::hop::syntax::parser;
+
+    fn check(source: &str, expected: Expect) {
+        let mut errors = ErrorCollector::<ParseError>::new();
+        let ast = parser::parse(ModuleName::new("test").unwrap(), source.to_string(), &mut errors);
+        expected.assert_eq(&ast.to_doc().pretty(80).to_string());
+    }
+
+    #[test]
+    fn import_declaration_to_doc() {
+        check(
+            "import foo::Bar",
+            expect![[r#"
+                import foo::Bar
+            "#]],
+        );
+    }
+
+    #[test]
+    fn record_declaration_single_field_to_doc() {
+        check(
+            "record User { name: String }",
+            expect![[r#"
+                record User {
+                  name: String,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_declaration_multiple_variants_to_doc() {
+        check(
+            "enum Color { Red, Green, Blue }",
+            expect![[r#"
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn two_record_declarations_to_doc() {
+        check(
+            "record User { name: String, age: Int } record Post { title: String, author: User }",
+            expect![[r#"
+                record User {
+                  name: String,
+                  age: Int,
+                }
+
+                record Post {
+                  title: String,
+                  author: User,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_declaration_to_doc() {
+        check(
+            "<Main {name: String, count: Int}><div>{name}</div></Main>",
+            expect![[r#"
+                <Main {name: String, count: Int}>
+                  <div>
+                    {name}
+                  </div>
+                </Main>
+            "#]],
+        );
     }
 }
