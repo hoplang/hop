@@ -44,6 +44,12 @@ enum Commands {
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
     },
+    /// Format all .hop files in a project
+    Fmt {
+        /// Path to project root
+        #[arg(long)]
+        projectdir: Option<String>,
+    },
     /// Run the LSP server
     Lsp,
 }
@@ -62,6 +68,25 @@ async fn main() -> anyhow::Result<()> {
     match &cli.command {
         Some(Commands::Lsp) => {
             cli::lsp::execute().await;
+        }
+        Some(Commands::Fmt { projectdir }) => {
+            use colored::*;
+
+            let root = match projectdir {
+                Some(d) => ProjectRoot::from(Path::new(d))?,
+                None => ProjectRoot::find_upwards(Path::new("."))?,
+            };
+
+            let result = cli::fmt::execute(&root)?;
+
+            println!();
+            println!("  {} | formatted", "hop".bold());
+            println!();
+            println!(
+                "    {} file(s) formatted, {} unchanged",
+                result.files_formatted, result.files_unchanged
+            );
+            println!();
         }
         Some(Commands::Compile { projectdir }) => {
             use std::time::Instant;
