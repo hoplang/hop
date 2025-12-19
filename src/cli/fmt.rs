@@ -4,18 +4,27 @@ use crate::hop::syntax::parse_error::ParseError;
 use crate::hop::syntax::parser;
 use crate::hop::syntax::whitespace_removal::remove_whitespace;
 use anyhow::Result;
+use std::path::Path;
 
 pub struct FmtResult {
     pub files_formatted: usize,
     pub files_unchanged: usize,
 }
 
-pub fn execute(project_root: &ProjectRoot) -> Result<FmtResult> {
-    let hop_modules = project_root.load_all_hop_modules()?;
-
-    if hop_modules.is_empty() {
-        anyhow::bail!("No .hop files found in project");
-    }
+pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResult> {
+    let hop_modules = match file {
+        Some(file_path) => {
+            let (module_name, content) = project_root.load_hop_module(Path::new(file_path))?;
+            vec![(module_name, content)]
+        }
+        None => {
+            let modules = project_root.load_all_hop_modules()?;
+            if modules.is_empty() {
+                anyhow::bail!("No .hop files found in project");
+            }
+            modules.into_iter().collect()
+        }
+    };
 
     let mut files_formatted = 0;
     let mut files_unchanged = 0;
@@ -69,7 +78,7 @@ mod tests {
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
         let project_root = ProjectRoot::from(&temp_dir).unwrap();
 
-        let result = execute(&project_root).unwrap();
+        let result = execute(&project_root, None).unwrap();
 
         assert_eq!(result.files_formatted, 1);
         assert_eq!(result.files_unchanged, 0);
@@ -106,7 +115,7 @@ mod tests {
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
         let project_root = ProjectRoot::from(&temp_dir).unwrap();
 
-        let result = execute(&project_root).unwrap();
+        let result = execute(&project_root, None).unwrap();
 
         assert_eq!(result.files_formatted, 2);
         assert_eq!(result.files_unchanged, 0);
@@ -128,10 +137,43 @@ mod tests {
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
         let project_root = ProjectRoot::from(&temp_dir).unwrap();
 
-        let result = execute(&project_root).unwrap();
+        let result = execute(&project_root, None).unwrap();
 
         // Only the valid file should be formatted
         assert_eq!(result.files_formatted, 1);
         assert_eq!(result.files_unchanged, 0);
+    }
+
+    #[test]
+    fn formats_single_file() {
+        let archive = Archive::from(indoc! {r#"
+            -- hop.toml --
+            [compile]
+            target = "ts"
+            output_path = "app.ts"
+            -- main.hop --
+            <Main><div>hello</div></Main>
+            -- other.hop --
+            <Other><span>world</span></Other>
+        "#});
+
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let project_root = ProjectRoot::from(&temp_dir).unwrap();
+
+        let main_path = temp_dir.join("main.hop");
+        let result = execute(&project_root, Some(main_path.to_str().unwrap())).unwrap();
+
+        // Only main.hop should be formatted
+        assert_eq!(result.files_formatted, 1);
+        assert_eq!(result.files_unchanged, 0);
+
+        // Verify main.hop was formatted
+        let main_content = fs::read_to_string(&main_path).unwrap();
+        assert!(main_content.contains("<Main>"));
+        assert!(main_content.contains("  <div>"));
+
+        // Verify other.hop was NOT formatted (still on one line)
+        let other_content = fs::read_to_string(temp_dir.join("other.hop")).unwrap();
+        assert_eq!(other_content, "<Other><span>world</span></Other>\n");
     }
 }

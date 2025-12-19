@@ -49,6 +49,8 @@ enum Commands {
         /// Path to project root
         #[arg(long)]
         projectdir: Option<String>,
+        /// Specific .hop file to format (formats all files if not specified)
+        file: Option<String>,
     },
     /// Run the LSP server
     Lsp,
@@ -69,7 +71,7 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Lsp) => {
             cli::lsp::execute().await;
         }
-        Some(Commands::Fmt { projectdir }) => {
+        Some(Commands::Fmt { projectdir, file }) => {
             use colored::*;
 
             let root = match projectdir {
@@ -77,7 +79,7 @@ async fn main() -> anyhow::Result<()> {
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
 
-            let result = cli::fmt::execute(&root)?;
+            let result = cli::fmt::execute(&root, file.as_deref())?;
 
             println!();
             println!("  {} | formatted", "hop".bold());

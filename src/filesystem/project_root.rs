@@ -132,6 +132,23 @@ impl ProjectRoot {
         Ok(modules)
     }
 
+    /// Load a single hop module from a file path, returning module_name -> content
+    pub fn load_hop_module(&self, file_path: &Path) -> anyhow::Result<(ModuleName, String)> {
+        let canonical_path = file_path
+            .canonicalize()
+            .with_context(|| format!("Failed to canonicalize path {:?}", file_path))?;
+
+        if canonical_path.extension().and_then(|s| s.to_str()) != Some("hop") {
+            anyhow::bail!("File {:?} is not a .hop file", file_path);
+        }
+
+        let module_name = self.path_to_module_name(&canonical_path)?;
+        let content = std::fs::read_to_string(&canonical_path)
+            .with_context(|| format!("Failed to read file {:?}", canonical_path))?;
+
+        Ok((module_name, content))
+    }
+
     /// Recursively find all .hop files in this project root
     fn find_hop_files(&self) -> anyhow::Result<Vec<PathBuf>> {
         let mut hop_files = Vec::new();
