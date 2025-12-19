@@ -41,67 +41,76 @@ pub struct ParsedAttribute {
     pub value: Option<ParsedAttributeValue>,
 }
 
+/// A declaration in a Hop module - can be an import, record, enum, or component.
+#[derive(Debug, Clone)]
+pub enum ParsedDeclaration {
+    Import(ParsedImportDeclaration),
+    Record(ParsedRecordDeclaration),
+    Enum(ParsedEnumDeclaration),
+    Component(ParsedComponentDeclaration),
+}
+
 #[derive(Debug, Clone)]
 pub struct ParsedAst {
     pub name: ModuleName,
-    import_declarations: Vec<ParsedImportDeclaration>,
-    record_declarations: Vec<ParsedRecordDeclaration>,
-    enum_declarations: Vec<ParsedEnumDeclaration>,
-    component_declarations: Vec<ParsedComponentDeclaration>,
+    declarations: Vec<ParsedDeclaration>,
 }
 
 impl ParsedAst {
-    pub fn new(
-        name: ModuleName,
-        component_declarations: Vec<ParsedComponentDeclaration>,
-        imports: Vec<ParsedImportDeclaration>,
-        records: Vec<ParsedRecordDeclaration>,
-        enums: Vec<ParsedEnumDeclaration>,
-    ) -> Self {
-        Self {
-            name,
-            component_declarations,
-            import_declarations: imports,
-            record_declarations: records,
-            enum_declarations: enums,
-        }
+    pub fn new(name: ModuleName, declarations: Vec<ParsedDeclaration>) -> Self {
+        Self { name, declarations }
+    }
+
+    /// Returns a reference to all declarations in the AST, preserving their original order.
+    pub fn get_declarations(&self) -> &[ParsedDeclaration] {
+        &self.declarations
     }
 
     pub fn get_component_declaration(&self, name: &str) -> Option<&ParsedComponentDeclaration> {
-        self.component_declarations
-            .iter()
-            .find(|&n| n.tag_name.as_str() == name)
+        self.get_component_declarations()
+            .find(|n| n.tag_name.as_str() == name)
     }
 
     /// Finds a record declaration by name.
     pub fn get_record_declaration(&self, name: &str) -> Option<&ParsedRecordDeclaration> {
-        self.record_declarations.iter().find(|&r| r.name() == name)
+        self.get_record_declarations().find(|r| r.name() == name)
     }
 
-    /// Returns a reference to all component declarations in the AST.
-    pub fn get_component_declarations(&self) -> &[ParsedComponentDeclaration] {
-        &self.component_declarations
+    /// Returns an iterator over all component declarations in the AST.
+    pub fn get_component_declarations(&self) -> impl Iterator<Item = &ParsedComponentDeclaration> {
+        self.declarations.iter().filter_map(|d| match d {
+            ParsedDeclaration::Component(c) => Some(c),
+            _ => None,
+        })
     }
 
-    /// Returns a reference to all import declarations in the AST.
-    pub fn get_import_declarations(&self) -> &[ParsedImportDeclaration] {
-        &self.import_declarations
+    /// Returns an iterator over all import declarations in the AST.
+    pub fn get_import_declarations(&self) -> impl Iterator<Item = &ParsedImportDeclaration> {
+        self.declarations.iter().filter_map(|d| match d {
+            ParsedDeclaration::Import(i) => Some(i),
+            _ => None,
+        })
     }
 
-    /// Returns a reference to all record declarations in the AST.
-    pub fn get_record_declarations(&self) -> &[ParsedRecordDeclaration] {
-        &self.record_declarations
+    /// Returns an iterator over all record declarations in the AST.
+    pub fn get_record_declarations(&self) -> impl Iterator<Item = &ParsedRecordDeclaration> {
+        self.declarations.iter().filter_map(|d| match d {
+            ParsedDeclaration::Record(r) => Some(r),
+            _ => None,
+        })
     }
 
-    /// Returns a reference to all enum declarations in the AST.
-    pub fn get_enum_declarations(&self) -> &[ParsedEnumDeclaration] {
-        &self.enum_declarations
+    /// Returns an iterator over all enum declarations in the AST.
+    pub fn get_enum_declarations(&self) -> impl Iterator<Item = &ParsedEnumDeclaration> {
+        self.declarations.iter().filter_map(|d| match d {
+            ParsedDeclaration::Enum(e) => Some(e),
+            _ => None,
+        })
     }
 
     /// Returns an iterator over all nodes in the AST, iterating depth-first.
     pub fn iter_all_nodes(&self) -> impl Iterator<Item = &ParsedNode> {
-        self.component_declarations
-            .iter()
+        self.get_component_declarations()
             .flat_map(|n| &n.children)
             .flat_map(|n| n.iter_depth_first())
     }

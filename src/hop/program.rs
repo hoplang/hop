@@ -80,7 +80,6 @@ impl Program {
         // Get all modules that this module depends on
         let module_dependencies = module
             .get_import_declarations()
-            .iter()
             .map(|import_node| import_node.imported_module().clone())
             .collect::<HashSet<ModuleName>>();
 
@@ -322,7 +321,6 @@ impl Program {
             // Find all import statements that import this component
             locations.extend(
                 ast.get_import_declarations()
-                    .iter()
                     .filter(|n| {
                         n.imports_type(component_name.as_str()) && n.imports_from(definition_module)
                     })

@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
 
 use super::parsed_ast::{
-    self, ParsedAst, ParsedComponentDeclaration, ParsedEnumDeclaration,
+    self, ParsedAst, ParsedComponentDeclaration, ParsedDeclaration, ParsedEnumDeclaration,
     ParsedEnumDeclarationVariant, ParsedImportDeclaration, ParsedRecordDeclaration,
     ParsedRecordDeclarationField,
 };
@@ -10,7 +10,7 @@ use super::parsed_node::{ParsedArgument, ParsedNode};
 use super::token_tree::{TokenTree, build_tree};
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, StringSpan};
 use crate::dop;
-use crate::dop::ParsedDeclaration;
+use crate::dop::ParsedDeclaration as DopParsedDeclaration;
 use crate::dop::Parser;
 use crate::error_collector::ErrorCollector;
 use crate::hop::symbols::component_name::ComponentName;
@@ -130,10 +130,7 @@ pub fn parse(
     let tokenizer = Tokenizer::from_range(source_range);
     let trees = build_tree(tokenizer, errors);
 
-    let mut components = Vec::new();
-    let mut imports = Vec::new();
-    let mut records = Vec::new();
-    let mut enums = Vec::new();
+    let mut declarations = Vec::new();
 
     let mut defined_components = HashSet::new();
     let mut imported_components = HashMap::new();
@@ -147,7 +144,7 @@ pub fn parse(
                 let mut decl_errors = ErrorCollector::new();
                 for decl in Parser::from(range.clone()).parse_declarations(&mut decl_errors) {
                     match decl {
-                        ParsedDeclaration::Import {
+                        DopParsedDeclaration::Import {
                             name,
                             name_range,
                             path,
@@ -170,9 +167,9 @@ pub fn parse(
                                 imported_components
                                     .insert(name_str.to_string(), import.module_name.clone());
                             }
-                            imports.push(import);
+                            declarations.push(ParsedDeclaration::Import(import));
                         }
-                        ParsedDeclaration::Record {
+                        DopParsedDeclaration::Record {
                             name,
                             name_range,
                             fields,
@@ -204,9 +201,9 @@ pub fn parse(
                             } else {
                                 defined_records.insert(name.to_string());
                             }
-                            records.push(record);
+                            declarations.push(ParsedDeclaration::Record(record));
                         }
-                        ParsedDeclaration::Enum {
+                        DopParsedDeclaration::Enum {
                             name,
                             name_range,
                             variants,
@@ -235,7 +232,7 @@ pub fn parse(
                             } else {
                                 defined_enums.insert(name.to_string());
                             }
-                            enums.push(enum_decl);
+                            declarations.push(ParsedDeclaration::Enum(enum_decl));
                         }
                     }
                 }
@@ -272,13 +269,13 @@ pub fn parse(
                     } else {
                         defined_components.insert(name.to_string());
                     }
-                    components.push(component);
+                    declarations.push(ParsedDeclaration::Component(component));
                 }
             }
         }
     }
 
-    ParsedAst::new(module_name, components, imports, records, enums)
+    ParsedAst::new(module_name, declarations)
 }
 
 /// Try to parse a token tree as a component declaration.
