@@ -3,7 +3,7 @@ use crate::document::document_cursor::StringSpan;
 use crate::dop::TypedExpr;
 use crate::dop::semantics::r#type::EquatableType;
 use crate::dop::{Type, VarName};
-use crate::hop::inlined_ast::{
+use crate::inlined::{
     InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
 };
 use std::collections::BTreeMap;

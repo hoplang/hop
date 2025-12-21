@@ -1,4 +1,4 @@
-use crate::hop::inliner::Inliner;
+use crate::inlined::Inliner;
 use crate::hop::semantics::typed_ast::TypedAst;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
@@ -6,7 +6,7 @@ use crate::ir::syntax::{
     AlphaRenamingPass, ConstantPropagationPass, Pass, UnusedIfEliminationPass,
     UnusedLetEliminationPass, WriteExprSimplificationPass,
 };
-use crate::ir::transform::{DoctypeInjector, HtmlStructureInjector, TailwindInjector};
+use crate::inlined::{DoctypeInjector, HtmlStructureInjector, TailwindInjector};
 use crate::ir::{Compiler, IrEnumDeclaration, IrModule, IrRecordDeclaration};
 use anyhow::Result;
 use std::collections::HashMap;

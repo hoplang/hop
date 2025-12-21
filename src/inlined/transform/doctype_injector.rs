@@ -1,6 +1,6 @@
 use crate::{
     document::document_cursor::StringSpan,
-    hop::inlined_ast::{InlinedComponentDeclaration, InlinedNode},
+    inlined::{InlinedComponentDeclaration, InlinedNode},
 };
 
 /// Transform that injects <!DOCTYPE html> at the beginning of entrypoints

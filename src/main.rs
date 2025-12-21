@@ -6,6 +6,7 @@ mod environment;
 mod error_collector;
 mod filesystem;
 mod hop;
+mod inlined;
 mod ir;
 mod orchestrator;
 mod test_utils;

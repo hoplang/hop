@@ -2,7 +2,6 @@ pub mod evaluator;
 pub mod syntax;
 #[cfg(test)]
 pub mod test_utils;
-pub mod transform;
 pub mod transpile;
 
 pub use syntax::ast;
