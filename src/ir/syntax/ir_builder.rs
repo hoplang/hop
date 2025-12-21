@@ -9,16 +9,15 @@ use crate::ir::ast::{ExprId, IrExpr, IrStatement, StatementId};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-pub fn build_ir_auto<F>(name: &str, params: Vec<(&str, Type)>, body_fn: F) -> IrComponentDeclaration
+pub fn build_ir<F>(name: &str, params: Vec<(&str, Type)>, body_fn: F) -> IrComponentDeclaration
 where
-    F: FnOnce(&mut IrAutoBuilder),
+    F: FnOnce(&mut IrBuilder),
 {
     let params_owned: Vec<(String, Type)> = params
         .into_iter()
         .map(|(k, v)| (k.to_string(), v))
         .collect();
-    let inner_builder = IrTestBuilder::new(params_owned);
-    let mut builder = IrAutoBuilder::new(inner_builder);
+    let mut builder = IrBuilder::new(params_owned, BTreeMap::new(), BTreeMap::new());
     body_fn(&mut builder);
     builder.build(name)
 }
@@ -30,14 +29,25 @@ pub fn build_ir_with_records<F>(
     body_fn: F,
 ) -> IrComponentDeclaration
 where
-    F: FnOnce(&mut IrAutoBuilder),
+    F: FnOnce(&mut IrBuilder),
 {
     let params_owned: Vec<(String, Type)> = params
         .into_iter()
         .map(|(k, v)| (k.to_string(), v))
         .collect();
-    let inner_builder = IrTestBuilder::with_records(params_owned, records);
-    let mut builder = IrAutoBuilder::new(inner_builder);
+
+    let records_map: BTreeMap<String, BTreeMap<String, Type>> = records
+        .into_iter()
+        .map(|(name, fields)| {
+            let fields_map: BTreeMap<String, Type> = fields
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect();
+            (name.to_string(), fields_map)
+        })
+        .collect();
+
+    let mut builder = IrBuilder::new(params_owned, records_map, BTreeMap::new());
     body_fn(&mut builder);
     builder.build(name)
 }
@@ -49,29 +59,44 @@ pub fn build_ir_with_enums<F>(
     body_fn: F,
 ) -> IrComponentDeclaration
 where
-    F: FnOnce(&mut IrAutoBuilder),
+    F: FnOnce(&mut IrBuilder),
 {
     let params_owned: Vec<(String, Type)> = params
         .into_iter()
         .map(|(k, v)| (k.to_string(), v))
         .collect();
-    let inner_builder = IrTestBuilder::with_enums(params_owned, enums);
-    let mut builder = IrAutoBuilder::new(inner_builder);
+
+    let enums_map: BTreeMap<String, Vec<String>> = enums
+        .into_iter()
+        .map(|(name, variants)| {
+            (
+                name.to_string(),
+                variants.into_iter().map(|v| v.to_string()).collect(),
+            )
+        })
+        .collect();
+
+    let mut builder = IrBuilder::new(params_owned, BTreeMap::new(), enums_map);
     body_fn(&mut builder);
     builder.build(name)
 }
 
-pub struct IrTestBuilder {
+pub struct IrBuilder {
     next_expr_id: RefCell<ExprId>,
     next_node_id: RefCell<StatementId>,
     var_stack: RefCell<Vec<(String, Type)>>,
     params: Vec<(VarName, Type)>,
     records: BTreeMap<String, BTreeMap<String, Type>>,
     enums: BTreeMap<String, Vec<String>>,
+    statements: Vec<IrStatement>,
 }
 
-impl IrTestBuilder {
-    fn new(params: Vec<(String, Type)>) -> Self {
+impl IrBuilder {
+    fn new(
+        params: Vec<(String, Type)>,
+        records: BTreeMap<String, BTreeMap<String, Type>>,
+        enums: BTreeMap<String, Vec<String>>,
+    ) -> Self {
         let initial_vars = params.clone();
 
         Self {
@@ -82,70 +107,30 @@ impl IrTestBuilder {
                 .into_iter()
                 .map(|(s, t)| (VarName::try_from(s).unwrap(), t))
                 .collect(),
-            records: BTreeMap::new(),
-            enums: BTreeMap::new(),
+            records,
+            enums,
+            statements: Vec::new(),
         }
     }
 
-    fn with_records(params: Vec<(String, Type)>, records: Vec<(&str, Vec<(&str, Type)>)>) -> Self {
-        let initial_vars = params.clone();
-
-        let records_map: BTreeMap<String, BTreeMap<String, Type>> = records
-            .into_iter()
-            .map(|(name, fields)| {
-                let fields_map: BTreeMap<String, Type> = fields
-                    .into_iter()
-                    .map(|(k, v)| (k.to_string(), v))
-                    .collect();
-                (name.to_string(), fields_map)
-            })
-            .collect();
-
+    fn new_scoped(&self) -> Self {
         Self {
-            next_expr_id: RefCell::new(1),
-            next_node_id: RefCell::new(1),
-            var_stack: RefCell::new(initial_vars),
-            params: params
-                .into_iter()
-                .map(|(s, t)| (VarName::try_from(s).unwrap(), t))
-                .collect(),
-            records: records_map,
-            enums: BTreeMap::new(),
+            next_expr_id: self.next_expr_id.clone(),
+            next_node_id: self.next_node_id.clone(),
+            var_stack: self.var_stack.clone(),
+            params: self.params.clone(),
+            records: self.records.clone(),
+            enums: self.enums.clone(),
+            statements: Vec::new(),
         }
     }
 
-    fn with_enums(params: Vec<(String, Type)>, enums: Vec<(&str, Vec<&str>)>) -> Self {
-        let initial_vars = params.clone();
-
-        let enums_map: BTreeMap<String, Vec<String>> = enums
-            .into_iter()
-            .map(|(name, variants)| {
-                (
-                    name.to_string(),
-                    variants.into_iter().map(|v| v.to_string()).collect(),
-                )
-            })
-            .collect();
-
-        Self {
-            next_expr_id: RefCell::new(1),
-            next_node_id: RefCell::new(1),
-            var_stack: RefCell::new(initial_vars),
-            params: params
-                .into_iter()
-                .map(|(s, t)| (VarName::try_from(s).unwrap(), t))
-                .collect(),
-            records: BTreeMap::new(),
-            enums: enums_map,
-        }
-    }
-
-    fn build(&self, name: &str, body: Vec<IrStatement>) -> IrComponentDeclaration {
+    fn build(self, name: &str) -> IrComponentDeclaration {
         IrComponentDeclaration {
             name: ComponentName::new(name.to_string())
                 .expect("Test component name should be valid"),
-            parameters: self.params.clone(),
-            body,
+            parameters: self.params,
+            body: self.statements,
         }
     }
 
@@ -191,7 +176,6 @@ impl IrTestBuilder {
     }
 
     pub fn var(&self, name: &str) -> IrExpr {
-        // Look up variable in the stack (search from end to beginning for most recent binding)
         let typ = self
             .var_stack
             .borrow()
@@ -277,7 +261,6 @@ impl IrTestBuilder {
     }
 
     pub fn array(&self, elements: Vec<IrExpr>) -> IrExpr {
-        // Determine the array element type from the first element
         let element_type = elements
             .first()
             .map(|first| Box::new(first.as_type().clone()))
@@ -299,7 +282,6 @@ impl IrTestBuilder {
     }
 
     pub fn record(&self, record_name: &str, fields: Vec<(&str, IrExpr)>) -> IrExpr {
-        // Verify the record exists and check field types
         let record_fields = self
             .records
             .get(record_name)
@@ -315,10 +297,6 @@ impl IrTestBuilder {
         }
 
         let test_module = ModuleName::new("test").unwrap();
-        let record_fields = self
-            .records
-            .get(record_name)
-            .unwrap_or_else(|| panic!("Record '{}' not found in test builder", record_name));
         IrExpr::RecordLiteral {
             record_name: record_name.to_string(),
             fields: fields
@@ -338,7 +316,6 @@ impl IrTestBuilder {
     }
 
     pub fn enum_variant(&self, enum_name: &str, variant_name: &str) -> IrExpr {
-        // Verify the enum exists and the variant is valid
         let variants = self
             .enums
             .get(enum_name)
@@ -392,107 +369,6 @@ impl IrTestBuilder {
         }
     }
 
-    // Node builders
-    pub fn write(&self, s: &str) -> IrStatement {
-        IrStatement::Write {
-            id: self.next_node_id(),
-            content: s.to_string(),
-        }
-    }
-
-    pub fn write_expr(&self, expr: IrExpr, escape: bool) -> IrStatement {
-        assert!(
-            matches!(expr.as_type(), Type::String | Type::TrustedHTML),
-            "WriteExpr expects String or TrustedHTML, got: {}",
-            expr
-        );
-        IrStatement::WriteExpr {
-            id: self.next_node_id(),
-            expr,
-            escape,
-        }
-    }
-
-    pub fn if_stmt(&self, cond: IrExpr, body: Vec<IrStatement>) -> IrStatement {
-        assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
-        IrStatement::If {
-            id: self.next_node_id(),
-            condition: cond,
-            body,
-            else_body: None,
-        }
-    }
-
-    pub fn if_else_stmt(
-        &self,
-        cond: IrExpr,
-        body: Vec<IrStatement>,
-        else_body: Vec<IrStatement>,
-    ) -> IrStatement {
-        assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
-        IrStatement::If {
-            id: self.next_node_id(),
-            condition: cond,
-            body,
-            else_body: Some(else_body),
-        }
-    }
-
-    pub fn for_loop<F>(&self, var: &str, array: IrExpr, body_fn: F) -> IrStatement
-    where
-        F: FnOnce(&Self) -> Vec<IrStatement>,
-    {
-        // Extract element type from array
-        let element_type = match array.as_type() {
-            Type::Array(elem_type) => (**elem_type).clone(),
-            _ => panic!("Cannot iterate over non-array type"),
-        };
-
-        // Push the loop variable onto the stack
-        self.var_stack
-            .borrow_mut()
-            .push((var.to_string(), element_type));
-
-        // Evaluate the body with the variable in scope
-        let body = body_fn(self);
-
-        // Pop the loop variable from the stack
-        self.var_stack.borrow_mut().pop();
-
-        IrStatement::For {
-            id: self.next_node_id(),
-            var: VarName::try_from(var.to_string()).unwrap(),
-            array,
-            body,
-        }
-    }
-
-    pub fn let_stmt<F>(&self, var: &str, value: IrExpr, body_fn: F) -> IrStatement
-    where
-        F: FnOnce(&Self) -> Vec<IrStatement>,
-    {
-        // Get the type from the value expression
-        let value_type = value.as_type().clone();
-
-        // Push the variable onto the stack
-        self.var_stack
-            .borrow_mut()
-            .push((var.to_string(), value_type));
-
-        // Evaluate the body with the variable in scope
-        let body = body_fn(self);
-
-        // Pop the variable from the stack
-        self.var_stack.borrow_mut().pop();
-
-        IrStatement::Let {
-            id: self.next_node_id(),
-            var: VarName::try_from(var.to_string()).unwrap(),
-            value,
-            body,
-        }
-    }
-
     pub fn json_encode(&self, value: IrExpr) -> IrExpr {
         IrExpr::JsonEncode {
             value: Box::new(value),
@@ -514,46 +390,26 @@ impl IrTestBuilder {
             id: self.next_expr_id(),
         }
     }
-}
-
-pub struct IrAutoBuilder {
-    inner: IrTestBuilder,
-    statements: Vec<IrStatement>,
-}
-
-impl IrAutoBuilder {
-    fn new(inner: IrTestBuilder) -> Self {
-        Self {
-            inner,
-            statements: Vec::new(),
-        }
-    }
-
-    fn new_scoped(&self) -> Self {
-        Self {
-            inner: IrTestBuilder {
-                next_expr_id: self.inner.next_expr_id.clone(),
-                next_node_id: self.inner.next_node_id.clone(),
-                var_stack: self.inner.var_stack.clone(),
-                params: self.inner.params.clone(),
-                records: self.inner.records.clone(),
-                enums: self.inner.enums.clone(),
-            },
-            statements: Vec::new(),
-        }
-    }
-
-    fn build(self, name: &str) -> IrComponentDeclaration {
-        self.inner.build(name, self.statements)
-    }
 
     // Statement methods that auto-collect
     pub fn write(&mut self, s: &str) {
-        self.statements.push(self.inner.write(s));
+        self.statements.push(IrStatement::Write {
+            id: self.next_node_id(),
+            content: s.to_string(),
+        });
     }
 
     pub fn write_expr(&mut self, expr: IrExpr, escape: bool) {
-        self.statements.push(self.inner.write_expr(expr, escape));
+        assert!(
+            matches!(expr.as_type(), Type::String | Type::TrustedHTML),
+            "WriteExpr expects String or TrustedHTML, got: {}",
+            expr
+        );
+        self.statements.push(IrStatement::WriteExpr {
+            id: self.next_node_id(),
+            expr,
+            escape,
+        });
     }
 
     pub fn write_expr_escaped(&mut self, expr: IrExpr) {
@@ -564,10 +420,15 @@ impl IrAutoBuilder {
     where
         F: FnOnce(&mut Self),
     {
+        assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
         let mut inner_builder = self.new_scoped();
         body_fn(&mut inner_builder);
-        let body = inner_builder.statements;
-        self.statements.push(self.inner.if_stmt(cond, body));
+        self.statements.push(IrStatement::If {
+            id: self.next_node_id(),
+            condition: cond,
+            body: inner_builder.statements,
+            else_body: None,
+        });
     }
 
     pub fn if_else_stmt<F, G>(&mut self, cond: IrExpr, body_fn: F, else_body_fn: G)
@@ -575,133 +436,68 @@ impl IrAutoBuilder {
         F: FnOnce(&mut Self),
         G: FnOnce(&mut Self),
     {
+        assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
+
         let mut body_builder = self.new_scoped();
         body_fn(&mut body_builder);
-        let body = body_builder.statements;
 
         let mut else_builder = self.new_scoped();
         else_body_fn(&mut else_builder);
-        let else_body = else_builder.statements;
 
-        self.statements
-            .push(self.inner.if_else_stmt(cond, body, else_body));
+        self.statements.push(IrStatement::If {
+            id: self.next_node_id(),
+            condition: cond,
+            body: body_builder.statements,
+            else_body: Some(else_builder.statements),
+        });
     }
 
     pub fn for_loop<F>(&mut self, var: &str, array: IrExpr, body_fn: F)
     where
         F: FnOnce(&mut Self),
     {
-        // Extract element type from array
         let element_type = match array.as_type() {
             Type::Array(elem_type) => (**elem_type).clone(),
             _ => panic!("Cannot iterate over non-array type"),
         };
 
-        // Push the loop variable onto the stack
-        self.inner
-            .var_stack
+        self.var_stack
             .borrow_mut()
             .push((var.to_string(), element_type));
 
-        // Create scoped builder and evaluate the body
         let mut inner_builder = self.new_scoped();
         body_fn(&mut inner_builder);
-        let body = inner_builder.statements;
 
-        // Pop the loop variable from the stack
-        self.inner.var_stack.borrow_mut().pop();
+        self.var_stack.borrow_mut().pop();
 
-        self.statements
-            .push(self.inner.for_loop(var, array, |_| body));
+        self.statements.push(IrStatement::For {
+            id: self.next_node_id(),
+            var: VarName::try_from(var.to_string()).unwrap(),
+            array,
+            body: inner_builder.statements,
+        });
     }
 
     pub fn let_stmt<F>(&mut self, var: &str, value: IrExpr, body_fn: F)
     where
         F: FnOnce(&mut Self),
     {
-        // Get the type from the value expression
         let value_type = value.as_type().clone();
 
-        // Push the variable onto the stack
-        self.inner
-            .var_stack
+        self.var_stack
             .borrow_mut()
             .push((var.to_string(), value_type));
 
-        // Create scoped builder and evaluate the body
         let mut inner_builder = self.new_scoped();
         body_fn(&mut inner_builder);
-        let body = inner_builder.statements;
 
-        // Pop the variable from the stack
-        self.inner.var_stack.borrow_mut().pop();
+        self.var_stack.borrow_mut().pop();
 
-        self.statements
-            .push(self.inner.let_stmt(var, value, |_| body));
-    }
-
-    // Expression methods - delegate to inner builder
-    pub fn str(&self, s: &str) -> IrExpr {
-        self.inner.str(s)
-    }
-
-    pub fn int(&self, n: i64) -> IrExpr {
-        self.inner.int(n)
-    }
-
-    pub fn float(&self, n: f64) -> IrExpr {
-        self.inner.float(n)
-    }
-
-    pub fn bool(&self, b: bool) -> IrExpr {
-        self.inner.bool(b)
-    }
-
-    pub fn var(&self, name: &str) -> IrExpr {
-        self.inner.var(name)
-    }
-
-    pub fn eq(&self, left: IrExpr, right: IrExpr) -> IrExpr {
-        self.inner.eq(left, right)
-    }
-
-    pub fn less_than(&self, left: IrExpr, right: IrExpr) -> IrExpr {
-        self.inner.less_than(left, right)
-    }
-
-    pub fn not(&self, operand: IrExpr) -> IrExpr {
-        self.inner.not(operand)
-    }
-
-    pub fn array(&self, elements: Vec<IrExpr>) -> IrExpr {
-        self.inner.array(elements)
-    }
-
-    pub fn typed_array(&self, element_type: Type, elements: Vec<IrExpr>) -> IrExpr {
-        self.inner.typed_array(element_type, elements)
-    }
-
-    pub fn record(&self, record_name: &str, fields: Vec<(&str, IrExpr)>) -> IrExpr {
-        self.inner.record(record_name, fields)
-    }
-
-    pub fn enum_variant(&self, enum_name: &str, variant_name: &str) -> IrExpr {
-        self.inner.enum_variant(enum_name, variant_name)
-    }
-
-    pub fn field_access(&self, object: IrExpr, field: &str) -> IrExpr {
-        self.inner.field_access(object, field)
-    }
-
-    pub fn json_encode(&self, value: IrExpr) -> IrExpr {
-        self.inner.json_encode(value)
-    }
-
-    pub fn string_concat(&self, left: IrExpr, right: IrExpr) -> IrExpr {
-        self.inner.string_concat(left, right)
-    }
-
-    pub fn env_lookup(&self, key: IrExpr) -> IrExpr {
-        self.inner.env_lookup(key)
+        self.statements.push(IrStatement::Let {
+            id: self.next_node_id(),
+            var: VarName::try_from(var.to_string()).unwrap(),
+            value,
+            body: inner_builder.statements,
+        });
     }
 }

@@ -376,7 +376,7 @@ impl Pass for AlphaRenamingPass {
 mod tests {
     use super::*;
     use crate::dop::Type;
-    use crate::ir::test_utils::build_ir_auto;
+    use crate::ir::syntax::ir_builder::build_ir;
     use expect_test::{Expect, expect};
 
     fn check(input_entrypoint: IrComponentDeclaration, expected: Expect) {
@@ -390,7 +390,7 @@ mod tests {
     #[test]
     fn simple_no_renaming() {
         check(
-            build_ir_auto("Test", vec![("x", Type::String)], |t| {
+            build_ir("Test", vec![("x", Type::String)], |t| {
                 t.write_expr_escaped(t.var("x"));
             }),
             expect![[r#"
@@ -410,7 +410,7 @@ mod tests {
     #[test]
     fn shadowing_in_for_loop() {
         check(
-            build_ir_auto("Test", vec![("x", Type::String)], |t| {
+            build_ir("Test", vec![("x", Type::String)], |t| {
                 t.for_loop("x", t.array(vec![t.str("a")]), |t| {
                     t.write_expr_escaped(t.var("x"));
                 });
@@ -436,7 +436,7 @@ mod tests {
     #[test]
     fn sibling_scopes() {
         check(
-            build_ir_auto("Test", vec![], |t| {
+            build_ir("Test", vec![], |t| {
                 t.for_loop("x", t.array(vec![t.str("a")]), |t| {
                     t.write_expr_escaped(t.var("x"));
                 });
@@ -471,7 +471,7 @@ mod tests {
     #[test]
     fn nested_let_bindings() {
         check(
-            build_ir_auto("Test", vec![], |t| {
+            build_ir("Test", vec![], |t| {
                 t.let_stmt("x", t.str("hello"), |t| {
                     t.write_expr_escaped(t.var("x"));
                     t.let_stmt("x", t.str("world"), |t| {
@@ -506,7 +506,7 @@ mod tests {
     #[test]
     fn multiple_parameters() {
         check(
-            build_ir_auto(
+            build_ir(
                 "Test",
                 vec![("x", Type::String), ("y", Type::String)],
                 |t| {
@@ -542,7 +542,7 @@ mod tests {
     #[test]
     fn sibling_let_bindings() {
         check(
-            build_ir_auto("Test", vec![], |t| {
+            build_ir("Test", vec![], |t| {
                 t.let_stmt("x", t.str("first"), |t| {
                     t.write_expr_escaped(t.var("x"));
                 });
@@ -577,7 +577,7 @@ mod tests {
     #[test]
     fn complex_nesting() {
         check(
-            build_ir_auto(
+            build_ir(
                 "Test",
                 vec![("items", Type::Array(Box::new(Type::String)))],
                 |t| {

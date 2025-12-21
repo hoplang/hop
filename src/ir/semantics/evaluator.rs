@@ -460,7 +460,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
 mod tests {
     use super::*;
     use crate::dop::Type;
-    use crate::ir::test_utils::{build_ir_auto, build_ir_with_enums};
+    use crate::ir::syntax::ir_builder::{build_ir, build_ir_with_enums};
     use expect_test::{Expect, expect};
     use serde_json::json;
 
@@ -477,7 +477,7 @@ mod tests {
     #[test]
     fn should_evaluate_simple_write() {
         check(
-            build_ir_auto("Test", vec![], |t| {
+            build_ir("Test", vec![], |t| {
                 t.write("<div>Hello World</div>");
             }),
             vec![],
@@ -496,7 +496,7 @@ mod tests {
     #[test]
     fn should_escape_html_in_expressions() {
         check(
-            build_ir_auto("Test", vec![("content", Type::String)], |t| {
+            build_ir("Test", vec![("content", Type::String)], |t| {
                 t.write_expr_escaped(t.var("content"));
             }),
             vec![("content", json!("<script>alert('xss')</script>"))],
@@ -515,7 +515,7 @@ mod tests {
     #[test]
     fn should_render_if_body_when_condition_is_true() {
         check(
-            build_ir_auto("Test", vec![("show", Type::Bool)], |t| {
+            build_ir("Test", vec![("show", Type::Bool)], |t| {
                 t.if_stmt(t.var("show"), |t| {
                     t.write("<div>Visible</div>");
                 });
@@ -538,7 +538,7 @@ mod tests {
     #[test]
     fn should_skip_if_body_when_condition_is_false() {
         check(
-            build_ir_auto("Test", vec![("show", Type::Bool)], |t| {
+            build_ir("Test", vec![("show", Type::Bool)], |t| {
                 t.if_stmt(t.var("show"), |t| {
                     t.write("<div>Hidden</div>");
                 });
@@ -561,7 +561,7 @@ mod tests {
     #[test]
     fn should_iterate_over_array_in_for_loop() {
         check(
-            build_ir_auto(
+            build_ir(
                 "Test",
                 vec![("items", Type::Array(Box::new(Type::String)))],
                 |t| {

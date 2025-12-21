@@ -709,7 +709,7 @@ mod tests {
     use super::*;
     use crate::{
         hop::symbols::module_name::ModuleName,
-        ir::{IrRecordDeclaration, test_utils::build_ir_auto},
+        ir::{syntax::ir_builder::build_ir, IrRecordDeclaration},
     };
     use expect_test::{Expect, expect};
 
@@ -748,7 +748,7 @@ mod tests {
 
     #[test]
     fn simple_component() {
-        let entrypoints = vec![build_ir_auto("HelloWorld", vec![], |t| {
+        let entrypoints = vec![build_ir("HelloWorld", vec![], |t| {
             t.write("<h1>Hello, World!</h1>\n");
         })];
 
@@ -783,7 +783,7 @@ mod tests {
 
     #[test]
     fn component_with_params_and_escaping() {
-        let entrypoints = vec![build_ir_auto(
+        let entrypoints = vec![build_ir(
             "UserInfo",
             vec![("name", Type::String), ("age", Type::String)],
             |t| {
@@ -868,7 +868,7 @@ mod tests {
 
     #[test]
     fn typescript_with_types() {
-        let entrypoints = vec![build_ir_auto(
+        let entrypoints = vec![build_ir(
             "ConditionalDisplay",
             vec![("title", Type::String), ("show", Type::Bool)],
             |t| {
@@ -941,7 +941,7 @@ mod tests {
 
     #[test]
     fn for_loop_with_array() {
-        let entrypoints = vec![build_ir_auto(
+        let entrypoints = vec![build_ir(
             "ListItems",
             vec![("items", Type::Array(Box::new(Type::String)))],
             |t| {
@@ -1022,7 +1022,7 @@ mod tests {
 
     #[test]
     fn let_binding() {
-        let entrypoints = vec![build_ir_auto("GreetingCard", vec![], |t| {
+        let entrypoints = vec![build_ir("GreetingCard", vec![], |t| {
             t.let_stmt("greeting", t.str("Hello from hop!"), |t| {
                 t.write("<div class=\"card\">\n");
                 t.write("<p>");
@@ -1097,7 +1097,7 @@ mod tests {
 
     #[test]
     fn nested_components_with_let_bindings() {
-        let entrypoints = vec![build_ir_auto("TestMainComp", vec![], |t| {
+        let entrypoints = vec![build_ir("TestMainComp", vec![], |t| {
             t.write("<div data-hop-id=\"test/card-comp\">");
             t.let_stmt("title", t.str("Hello World"), |t| {
                 t.write("<h2>");
@@ -1172,7 +1172,7 @@ mod tests {
 
     #[test]
     fn trusted_html_type() {
-        let entrypoints = vec![build_ir_auto(
+        let entrypoints = vec![build_ir(
             "RenderHtml",
             vec![
                 ("safe_content", Type::TrustedHTML),
@@ -1252,7 +1252,7 @@ mod tests {
 
     #[test]
     fn record_declarations() {
-        use crate::ir::test_utils::build_ir_with_records;
+        use crate::ir::syntax::ir_builder::build_ir_with_records;
 
         let records_def = vec![
             (
@@ -1380,7 +1380,7 @@ mod tests {
 
     #[test]
     fn record_literal() {
-        use crate::ir::test_utils::build_ir_with_records;
+        use crate::ir::syntax::ir_builder::build_ir_with_records;
 
         let records_def = vec![("User", vec![("name", Type::String), ("age", Type::Int)])];
 

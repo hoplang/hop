@@ -61,7 +61,7 @@ impl Pass for UnusedIfEliminationPass {
 mod tests {
     use super::*;
     use crate::dop::Type;
-    use crate::ir::test_utils::build_ir_auto;
+    use crate::ir::syntax::ir_builder::build_ir;
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrComponentDeclaration, expected: Expect) {
@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn should_eliminate_if_statement_that_is_always_true() {
         check(
-            build_ir_auto("Test", vec![], |t| {
+            build_ir("Test", vec![], |t| {
                 t.if_stmt(t.bool(true), |t| {
                     t.write("Always shown");
                 });
@@ -99,7 +99,7 @@ mod tests {
     #[test]
     fn should_eliminate_if_statement_that_is_always_false() {
         check(
-            build_ir_auto("Test", vec![], |t| {
+            build_ir("Test", vec![], |t| {
                 t.if_stmt(t.bool(false), |t| {
                     t.write("Never shown");
                 });
@@ -125,7 +125,7 @@ mod tests {
     #[test]
     fn should_preserve_if_statement_with_dynamic_conditions() {
         check(
-            build_ir_auto("Test", vec![("show", Type::Bool)], |t| {
+            build_ir("Test", vec![("show", Type::Bool)], |t| {
                 t.if_stmt(t.var("show"), |t| {
                     t.write("Dynamic");
                 });
@@ -164,7 +164,7 @@ mod tests {
     #[test]
     fn should_handle_elimination_of_nested_if_statements() {
         check(
-            build_ir_auto("Test", vec![("condition", Type::Bool)], |t| {
+            build_ir("Test", vec![("condition", Type::Bool)], |t| {
                 t.if_stmt(t.var("condition"), |t| {
                     t.write("Before nested");
                     t.if_stmt(t.bool(true), |t| {

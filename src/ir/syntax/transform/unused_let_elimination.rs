@@ -99,7 +99,7 @@ impl Pass for UnusedLetEliminationPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::test_utils::build_ir_auto;
+    use crate::ir::syntax::ir_builder::build_ir;
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrComponentDeclaration, expected: Expect) {
@@ -113,7 +113,7 @@ mod tests {
     #[test]
     fn should_eliminate_unused_let_in_outermost_scope() {
         check(
-            build_ir_auto("Test", vec![], |t| {
+            build_ir("Test", vec![], |t| {
                 t.let_stmt("unused", t.str("value"), |t| {
                     t.write("Hello");
                 });
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn should_preserve_let_statement_when_variable_is_used_in_text_expression() {
         check(
-            build_ir_auto("Test", vec![], |t| {
+            build_ir("Test", vec![], |t| {
                 t.let_stmt("message", t.str("Hello"), |t| {
                     t.write_expr(t.var("message"), false);
                 });
@@ -163,7 +163,7 @@ mod tests {
     #[test]
     fn should_preserve_let_statement_when_variable_is_used_in_if_statement() {
         check(
-            build_ir_auto("Test", vec![], |t| {
+            build_ir("Test", vec![], |t| {
                 t.let_stmt("cond", t.bool(true), |t| {
                     t.if_stmt(t.var("cond"), |t| {
                         t.write("Condition is true");
@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn should_eliminate_let_statement_inside_if_body() {
         check(
-            build_ir_auto("Test", vec![], |t| {
+            build_ir("Test", vec![], |t| {
                 t.if_stmt(t.bool(true), |t| {
                     t.let_stmt("unused", t.str("value"), |t| {
                         t.write("Inside if");
@@ -225,7 +225,7 @@ mod tests {
     #[test]
     fn should_eliminate_let_statement_inside_for_loop_body() {
         check(
-            build_ir_auto("Test", vec![], |t| {
+            build_ir("Test", vec![], |t| {
                 let items = t.array(vec![t.str("a"), t.str("b")]);
                 t.for_loop("item", items, |t| {
                     t.let_stmt("unused", t.str("value"), |t| {
@@ -256,7 +256,7 @@ mod tests {
     #[test]
     fn should_preserve_let_statement_when_variable_is_used_in_binary_op() {
         check(
-            build_ir_auto("Test", vec![], |t| {
+            build_ir("Test", vec![], |t| {
                 t.let_stmt("x", t.bool(true), |t| {
                     t.let_stmt("y", t.bool(false), |t| {
                         t.if_stmt(t.eq(t.var("x"), t.var("y")), |t| {
@@ -294,7 +294,7 @@ mod tests {
     #[test]
     fn should_eliminate_let_statements_declared_in_sequence() {
         check(
-            build_ir_auto("Test", vec![], |t| {
+            build_ir("Test", vec![], |t| {
                 t.let_stmt("a", t.str("a_value"), |t| {
                     t.write("First");
                 });
@@ -328,7 +328,7 @@ mod tests {
     #[test]
     fn should_preserve_let_statement_when_variable_is_used_inside_array() {
         check(
-            build_ir_auto("Test", vec![], |t| {
+            build_ir("Test", vec![], |t| {
                 let items = t.array(vec![t.str("a"), t.str("b")]);
                 t.let_stmt("items", items, |t| {
                     t.for_loop("item", t.var("items"), |t| {
@@ -361,7 +361,7 @@ mod tests {
     #[test]
     fn should_eliminate_let_statement_when_sibling_statement_uses_same_variable() {
         check(
-            build_ir_auto("Test", vec![], |t| {
+            build_ir("Test", vec![], |t| {
                 t.let_stmt("x", t.str("first x"), |t| {
                     t.write_expr(t.var("x"), false);
                 });
@@ -394,7 +394,7 @@ mod tests {
     #[test]
     fn should_eliminate_nested_unused_let_statements() {
         check(
-            build_ir_auto("Test", vec![], |t| {
+            build_ir("Test", vec![], |t| {
                 t.let_stmt("outer", t.str("outer_value"), |t| {
                     t.let_stmt("inner", t.str("inner_value"), |t| {
                         t.write("No variables used");
@@ -422,7 +422,7 @@ mod tests {
     #[test]
     fn should_eliminate_deeply_nested_unused_let_statements() {
         check(
-            build_ir_auto("Test", vec![], |t| {
+            build_ir("Test", vec![], |t| {
                 t.let_stmt("level1", t.str("value1"), |t| {
                     t.let_stmt("level2", t.str("value2"), |t| {
                         t.let_stmt("level3", t.str("value3"), |t| {
