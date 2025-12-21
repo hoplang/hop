@@ -59,208 +59,83 @@ mod tests {
 
     /// Helper to check DOCTYPE injection for entrypoint
     fn check_doctype_injection(entrypoint: InlinedComponentDeclaration, expected: Expect) {
-        // Format before
         let before = format_entrypoint_children(&entrypoint);
-
-        // Apply transform
         let transformed_entrypoint = DoctypeInjector::run(entrypoint);
-
-        // Format after
         let after = format_entrypoint_children(&transformed_entrypoint);
-
-        // Create output with before/after format
         let output = format!("-- before --\n{}\n-- after --\n{}\n", before, after);
-
         expected.assert_eq(&output);
     }
 
     #[test]
-    fn inject_doctype_when_missing() {
+    fn should_not_inject_when_doctype_is_already_present() {
         let entrypoint = build_inlined("MainComp", [], |t| {
-            t.text("                    "); // Leading whitespace
-            t.html("html", vec![], |t| {
-                t.text("\n                        ");
-                t.html("body", vec![], |t| {
-                    t.text("Hello World");
-                });
-                t.text("\n                    ");
-            });
-            t.text("\n                "); // Trailing whitespace
-        });
-
-        check_doctype_injection(
-            entrypoint,
-            expect![[r#"
-            -- before --
-            "                    "
-            <html>
-              "\n                        "
-              <body>
-                "Hello World"
-              </body>
-              "\n                    "
-            </html>
-            "\n                "
-            -- after --
-            <!DOCTYPE html>
-            "                    "
-            <html>
-              "\n                        "
-              <body>
-                "Hello World"
-              </body>
-              "\n                    "
-            </html>
-            "\n                "
-        "#]],
-        );
-    }
-
-    #[test]
-    fn no_injection_when_doctype_present() {
-        let entrypoint = build_inlined("MainComp", [], |t| {
-            t.text("                    "); // Leading whitespace
             t.doctype("<!DOCTYPE html>");
-            t.text("                    "); // Whitespace after doctype
-            t.html("html", vec![], |t| {
-                t.text("\n                        ");
-                t.html("body", vec![], |t| {
-                    t.text("Hello World");
-                });
-                t.text("\n                    ");
-            });
-            t.text("\n                "); // Trailing whitespace
         });
 
         check_doctype_injection(
             entrypoint,
             expect![[r#"
-            -- before --
-            "                    "
-            <!DOCTYPE html>
-            "                    "
-            <html>
-              "\n                        "
-              <body>
-                "Hello World"
-              </body>
-              "\n                    "
-            </html>
-            "\n                "
-            -- after --
-            "                    "
-            <!DOCTYPE html>
-            "                    "
-            <html>
-              "\n                        "
-              <body>
-                "Hello World"
-              </body>
-              "\n                    "
-            </html>
-            "\n                "
-        "#]],
+                -- before --
+                <!DOCTYPE html>
+                -- after --
+                <!DOCTYPE html>
+            "#]],
         );
     }
 
     #[test]
-    fn empty_entrypoint() {
+    fn should_not_inject_when_doctype_is_already_present_after_leading_whitespace() {
+        let entrypoint = build_inlined("MainComp", [], |t| {
+            t.text("\n");
+            t.doctype("<!DOCTYPE html>");
+        });
+
+        check_doctype_injection(
+            entrypoint,
+            expect![[r#"
+                -- before --
+                "\n"
+                <!DOCTYPE html>
+                -- after --
+                "\n"
+                <!DOCTYPE html>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_inject_doctype_for_whitespace_only_entrypoint() {
         let entrypoint = build_inlined("EmptyComp", [], |t| {
-            t.text("\n                "); // Only whitespace
+            t.text("\n");
         });
 
         check_doctype_injection(
             entrypoint,
             expect![[r#"
-            -- before --
-            "\n                "
-            -- after --
-            <!DOCTYPE html>
-            "\n                "
-        "#]],
+                -- before --
+                "\n"
+                -- after --
+                <!DOCTYPE html>
+                "\n"
+            "#]],
         );
     }
 
     #[test]
-    fn entrypoint_with_text_only() {
+    fn should_inject_doctype_for_text_only_entrypoint() {
         let entrypoint = build_inlined("TextComp", [], |t| {
-            t.text("\n                    Just some text content\n                ");
+            t.text("Just some text content");
         });
 
         check_doctype_injection(
             entrypoint,
             expect![[r#"
-            -- before --
-            "\n                    Just some text content\n                "
-            -- after --
-            <!DOCTYPE html>
-            "\n                    Just some text content\n                "
-        "#]],
-        );
-    }
-
-    #[test]
-    fn doctype_with_leading_whitespace() {
-        let entrypoint = build_inlined("MainComp", [], |t| {
-            t.text("\n\n                    "); // Extra leading whitespace
-            t.doctype("<!DOCTYPE html>");
-            t.text("\n                    "); // Whitespace after doctype
-            t.html("html", vec![], |t| {
-                t.text("Content");
-            });
-            t.text("\n                "); // Trailing whitespace
-        });
-
-        check_doctype_injection(
-            entrypoint,
-            expect![[r#"
-            -- before --
-            "\n\n                    "
-            <!DOCTYPE html>
-            "\n                    "
-            <html>
-              "Content"
-            </html>
-            "\n                "
-            -- after --
-            "\n\n                    "
-            <!DOCTYPE html>
-            "\n                    "
-            <html>
-              "Content"
-            </html>
-            "\n                "
-        "#]],
-        );
-    }
-
-    #[test]
-    fn inject_preserves_leading_whitespace() {
-        let entrypoint = build_inlined("MainComp", [], |t| {
-            t.text("\n\n                    "); // Extra leading whitespace
-            t.html("html", vec![], |t| {
-                t.text("Content");
-            });
-            t.text("\n                "); // Trailing whitespace
-        });
-
-        check_doctype_injection(
-            entrypoint,
-            expect![[r#"
-            -- before --
-            "\n\n                    "
-            <html>
-              "Content"
-            </html>
-            "\n                "
-            -- after --
-            <!DOCTYPE html>
-            "\n\n                    "
-            <html>
-              "Content"
-            </html>
-            "\n                "
-        "#]],
+                -- before --
+                "Just some text content"
+                -- after --
+                <!DOCTYPE html>
+                "Just some text content"
+            "#]],
         );
     }
 }
