@@ -1,4 +1,6 @@
 pub mod inlined_ast;
+#[cfg(test)]
+pub mod inlined_test_builder;
 pub mod inliner;
 pub mod transform;
 

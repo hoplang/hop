@@ -545,7 +545,7 @@ impl Compiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::test_utils::build_inlined_auto;
+    use crate::inlined::inlined_test_builder::build_inlined_auto;
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: InlinedComponentDeclaration, expected: Expect) {
