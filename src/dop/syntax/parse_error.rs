@@ -42,6 +42,12 @@ pub enum ParseError {
         range: DocumentRange,
     },
 
+    #[error("Expected token '{expected}' but got end of file")]
+    ExpectedTokenButGotEof {
+        expected: Token,
+        range: DocumentRange,
+    },
+
     #[error("Unexpected token '{token}'")]
     UnexpectedToken { token: Token, range: DocumentRange },
 
@@ -87,6 +93,9 @@ pub enum ParseError {
     #[error("Expected type name but got {actual}")]
     ExpectedTypeNameButGot { actual: Token, range: DocumentRange },
 
+    #[error("Expected type name but got end of file")]
+    ExpectedTypeNameButGotEof { range: DocumentRange },
+
     #[error("Invalid number format")]
     InvalidNumberFormat { range: DocumentRange },
 
@@ -127,6 +136,7 @@ impl Ranged for ParseError {
             | ParseError::UnexpectedCharacter { range, .. }
             | ParseError::InvalidNumberFormat { range, .. }
             | ParseError::ExpectedTokenButGot { range, .. }
+            | ParseError::ExpectedTokenButGotEof { range, .. }
             | ParseError::ExpectedDoubleEqButGotSingleEq { range, .. }
             | ParseError::UnexpectedToken { range, .. }
             | ParseError::ExpectedVariableNameButGot { range, .. }
@@ -135,6 +145,7 @@ impl Ranged for ParseError {
             | ParseError::InvalidVariableName { range, .. }
             | ParseError::InvalidFieldName { range, .. }
             | ParseError::ExpectedTypeNameButGot { range, .. }
+            | ParseError::ExpectedTypeNameButGotEof { range }
             | ParseError::UnexpectedEndOfFieldAccess { range, .. }
             | ParseError::DuplicateParameter { range, .. }
             | ParseError::DuplicateField { range, .. }

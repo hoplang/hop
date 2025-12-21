@@ -58,7 +58,8 @@ impl Parser {
                 actual,
                 range: range.clone(),
             }),
-            None => Err(ParseError::UnexpectedEof {
+            None => Err(ParseError::ExpectedTokenButGotEof {
+                expected: expected.clone(),
                 range: self.range.clone(),
             }),
         }
@@ -137,7 +138,7 @@ impl Parser {
                 Ok((type_name, range))
             }
             Some((actual, range)) => Err(ParseError::ExpectedTypeNameButGot { actual, range }),
-            None => Err(ParseError::UnexpectedEof {
+            None => Err(ParseError::ExpectedTypeNameButGotEof {
                 range: self.range.clone(),
             }),
         }
@@ -314,7 +315,7 @@ impl Parser {
                 range,
             }),
             Some((actual, range)) => Err(ParseError::ExpectedTypeNameButGot { actual, range }),
-            None => Err(ParseError::UnexpectedEof {
+            None => Err(ParseError::ExpectedTypeNameButGotEof {
                 range: self.range.clone(),
             }),
         }
@@ -2486,7 +2487,7 @@ mod tests {
         check_parse_expr(
             "Color::",
             expect![[r#"
-                error: Unexpected end of expression
+                error: Expected type name but got end of file
                 Color::
                 ^^^^^^^
             "#]],

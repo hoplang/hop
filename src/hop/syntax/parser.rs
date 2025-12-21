@@ -1000,7 +1000,7 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                error: Unexpected end of expression
+                error: Expected token 'in' but got end of file
                 1 | <Main>
                 2 |     <for {foo}>
                   |           ^^^
@@ -1052,7 +1052,7 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                error: Unexpected end of expression
+                error: Expected type name but got end of file
                 1 | <Main {data: Array[}>
                   |        ^^^^^^^^^^^^
             "#]],
@@ -1580,7 +1580,7 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                error: Unexpected end of expression
+                error: Expected type name but got end of file
                 1 | record
                   | ^^^^^^
                 2 | <Main>
