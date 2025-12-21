@@ -10,13 +10,10 @@ use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use std::cell::RefCell;
 
-pub fn build_inlined<F>(
-    tag_name: &str,
-    params: Vec<(&str, Type)>,
-    children_fn: F,
-) -> InlinedComponentDeclaration
+pub fn build_inlined<F, P>(tag_name: &str, params: P, children_fn: F) -> InlinedComponentDeclaration
 where
     F: FnOnce(&mut InlinedBuilder),
+    P: IntoIterator<Item = (&'static str, Type)>,
 {
     let params_owned: Vec<(String, Type)> = params
         .into_iter()
@@ -209,5 +206,137 @@ impl InlinedBuilder {
             name: String::new(),
             value: Some(InlinedAttributeValue::Expressions(exprs)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use expect_test::{Expect, expect};
+
+    fn check(component: InlinedComponentDeclaration, expected: Expect) {
+        expected.assert_eq(&component.to_string());
+    }
+
+    #[test]
+    fn simple_text() {
+        check(
+            build_inlined("Hello", [], |b| {
+                b.text("Hello, World!");
+            }),
+            expect![[r#"
+                <Hello>
+                  "Hello, World!"
+                </Hello>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn html_with_attributes() {
+        check(
+            build_inlined("Card", [], |b| {
+                b.div(vec![("class", b.attr_str("container"))], |b| {
+                    b.text("Content");
+                });
+            }),
+            expect![[r#"
+                <Card>
+                  <div class="container">
+                    "Content"
+                  </div>
+                </Card>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_params() {
+        check(
+            build_inlined("Greeting", [("name", Type::String)], |b| {
+                b.text("Hello, ");
+                b.text_expr(b.var_expr("name"));
+            }),
+            expect![[r#"
+                <Greeting {name: String}>
+                  "Hello, "
+                  {name}
+                </Greeting>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn for_loop_with_scoped_variable() {
+        check(
+            build_inlined(
+                "List",
+                [("items", Type::Array(Box::new(Type::String)))],
+                |b| {
+                    b.ul(vec![], |b| {
+                        b.for_node("item", b.var_expr("items"), |b| {
+                            b.li(vec![], |b| {
+                                b.text_expr(b.var_expr("item"));
+                            });
+                        });
+                    });
+                },
+            ),
+            expect![[r#"
+                <List {items: Array[String]}>
+                  <ul>
+                    <for {item in items}>
+                      <li>
+                        {item}
+                      </li>
+                    </for>
+                  </ul>
+                </List>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn if_conditional() {
+        check(
+            build_inlined("Toggle", [("visible", Type::Bool)], |b| {
+                b.if_node(b.var_expr("visible"), |b| {
+                    b.div(vec![], |b| {
+                        b.text("Shown");
+                    });
+                });
+            }),
+            expect![[r#"
+                <Toggle {visible: Bool}>
+                  <if {visible}>
+                    <div>
+                      "Shown"
+                    </div>
+                  </if>
+                </Toggle>
+            "#]],
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Variable 'missing' not found in scope")]
+    fn panics_on_undefined_variable() {
+        build_inlined("Bad", [], |b| {
+            b.text_expr(b.var_expr("missing"));
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "Variable 'item' not found in scope")]
+    fn loop_variable_not_accessible_outside_loop() {
+        build_inlined(
+            "Bad",
+            [("items", Type::Array(Box::new(Type::String)))],
+            |b| {
+                b.for_node("item", b.var_expr("items"), |_| {});
+                // item should not be accessible here
+                b.text_expr(b.var_expr("item"));
+            },
+        );
     }
 }

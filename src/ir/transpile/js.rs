@@ -709,7 +709,7 @@ mod tests {
     use super::*;
     use crate::{
         hop::symbols::module_name::ModuleName,
-        ir::{syntax::ir_builder::build_ir, IrRecordDeclaration},
+        ir::{IrRecordDeclaration, syntax::builder::build_ir},
     };
     use expect_test::{Expect, expect};
 
@@ -748,7 +748,7 @@ mod tests {
 
     #[test]
     fn simple_component() {
-        let entrypoints = vec![build_ir("HelloWorld", vec![], |t| {
+        let entrypoints = vec![build_ir("HelloWorld", [], |t| {
             t.write("<h1>Hello, World!</h1>\n");
         })];
 
@@ -1022,7 +1022,7 @@ mod tests {
 
     #[test]
     fn let_binding() {
-        let entrypoints = vec![build_ir("GreetingCard", vec![], |t| {
+        let entrypoints = vec![build_ir("GreetingCard", [], |t| {
             t.let_stmt("greeting", t.str("Hello from hop!"), |t| {
                 t.write("<div class=\"card\">\n");
                 t.write("<p>");
@@ -1097,7 +1097,7 @@ mod tests {
 
     #[test]
     fn nested_components_with_let_bindings() {
-        let entrypoints = vec![build_ir("TestMainComp", vec![], |t| {
+        let entrypoints = vec![build_ir("TestMainComp", [], |t| {
             t.write("<div data-hop-id=\"test/card-comp\">");
             t.let_stmt("title", t.str("Hello World"), |t| {
                 t.write("<h2>");
@@ -1252,7 +1252,7 @@ mod tests {
 
     #[test]
     fn record_declarations() {
-        use crate::ir::syntax::ir_builder::build_ir_with_records;
+        use crate::ir::syntax::builder::build_ir_with_records;
 
         let records_def = vec![
             (
@@ -1380,7 +1380,7 @@ mod tests {
 
     #[test]
     fn record_literal() {
-        use crate::ir::syntax::ir_builder::build_ir_with_records;
+        use crate::ir::syntax::builder::build_ir_with_records;
 
         let records_def = vec![("User", vec![("name", Type::String), ("age", Type::Int)])];
 

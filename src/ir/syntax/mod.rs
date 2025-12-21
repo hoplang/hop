@@ -1,7 +1,7 @@
 pub mod ast;
-mod compiler;
 #[cfg(test)]
-pub mod ir_builder;
+pub mod builder;
+mod compiler;
 pub mod transform;
 
 pub use ast::{IrEnumDeclaration, IrExpr, IrModule, IrRecordDeclaration};

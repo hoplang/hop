@@ -767,7 +767,7 @@ mod tests {
     use super::*;
     use crate::{
         hop::symbols::module_name::ModuleName,
-        ir::{syntax::ir_builder::build_ir, IrRecordDeclaration},
+        ir::{IrRecordDeclaration, syntax::builder::build_ir},
     };
     use expect_test::{Expect, expect};
 
@@ -800,7 +800,7 @@ mod tests {
 
     #[test]
     fn simple_component() {
-        let entrypoints = vec![build_ir("TestMainComp", vec![], |t| {
+        let entrypoints = vec![build_ir("TestMainComp", [], |t| {
             t.write("<div>Hello World</div>\n");
         })];
 
@@ -880,7 +880,7 @@ mod tests {
 
     #[test]
     fn json_encode_empty_array_literal() {
-        let entrypoints = vec![build_ir("TestMainComp", vec![], |t| {
+        let entrypoints = vec![build_ir("TestMainComp", [], |t| {
             t.write_expr(t.json_encode(t.typed_array(Type::String, vec![])), false);
         })];
 
@@ -915,15 +915,11 @@ mod tests {
 
     #[test]
     fn if_condition() {
-        let entrypoints = vec![build_ir(
-            "TestMainComp",
-            vec![("show", Type::Bool)],
-            |t| {
-                t.if_stmt(t.var("show"), |t| {
-                    t.write("<div>Visible</div>\n");
-                });
-            },
-        )];
+        let entrypoints = vec![build_ir("TestMainComp", [("show", Type::Bool)], |t| {
+            t.if_stmt(t.var("show"), |t| {
+                t.write("<div>Visible</div>\n");
+            });
+        })];
 
         check(
             &entrypoints,
@@ -1008,7 +1004,7 @@ mod tests {
 
     #[test]
     fn loop_over_array_literal() {
-        let entrypoints = vec![build_ir("TestArrayLiteralLoop", vec![], |t| {
+        let entrypoints = vec![build_ir("TestArrayLiteralLoop", [], |t| {
             t.write("<ul>\n");
             t.for_loop(
                 "color",
@@ -1170,7 +1166,7 @@ mod tests {
 
     #[test]
     fn env_lookup() {
-        let entrypoints = vec![build_ir("TestEnv", vec![], |t| {
+        let entrypoints = vec![build_ir("TestEnv", [], |t| {
             t.write("<div>API URL: ");
             t.write_expr(t.env_lookup(t.str("API_URL")), false);
             t.write("</div>\n");
@@ -1205,7 +1201,7 @@ mod tests {
 
     #[test]
     fn record_declarations() {
-        use crate::ir::syntax::ir_builder::build_ir_with_records;
+        use crate::ir::syntax::builder::build_ir_with_records;
 
         let records_def = vec![
             (
@@ -1306,7 +1302,7 @@ mod tests {
 
     #[test]
     fn record_literal() {
-        use crate::ir::syntax::ir_builder::build_ir_with_records;
+        use crate::ir::syntax::builder::build_ir_with_records;
 
         let records_def = vec![("User", vec![("name", Type::String), ("age", Type::Int)])];
 
@@ -1366,7 +1362,7 @@ mod tests {
 
     #[test]
     fn enum_literal_in_condition() {
-        use crate::ir::syntax::ir_builder::build_ir_with_enums;
+        use crate::ir::syntax::builder::build_ir_with_enums;
 
         let enums_def = vec![("Color", vec!["Red", "Green", "Blue"])];
 
@@ -1424,7 +1420,7 @@ mod tests {
 
     #[test]
     fn enum_equality_comparison() {
-        use crate::ir::syntax::ir_builder::build_ir_with_enums;
+        use crate::ir::syntax::builder::build_ir_with_enums;
 
         let enums_def = vec![("Status", vec!["Active", "Inactive", "Pending"])];
 
@@ -1498,7 +1494,7 @@ mod tests {
     #[test]
     fn enum_type_declarations() {
         use crate::ir::ast::IrEnumDeclaration;
-        use crate::ir::syntax::ir_builder::build_ir_with_enums;
+        use crate::ir::syntax::builder::build_ir_with_enums;
 
         let enums_def = vec![("Color", vec!["Red", "Green", "Blue"])];
 

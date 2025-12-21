@@ -32,7 +32,7 @@ impl Pass for WriteExprSimplificationPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{dop::Type, ir::syntax::ir_builder::build_ir};
+    use crate::{dop::Type, ir::syntax::builder::build_ir};
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrComponentDeclaration, expected: Expect) {
@@ -46,7 +46,7 @@ mod tests {
     #[test]
     fn simplify_constant_string() {
         check(
-            build_ir("Test", vec![], |t| {
+            build_ir("Test", [], |t| {
                 // WriteExpr with constant string should become Write
                 t.write_expr(t.str("Hello, World!"), false);
             }),
@@ -67,7 +67,7 @@ mod tests {
     #[test]
     fn simplify_with_escaping() {
         check(
-            build_ir("Test", vec![], |t| {
+            build_ir("Test", [], |t| {
                 // WriteExpr with escaping enabled
                 t.write_expr(t.str("<div>Hello & Goodbye</div>"), true);
             }),
@@ -88,7 +88,7 @@ mod tests {
     #[test]
     fn nested_transformations() {
         check(
-            build_ir("Test", vec![], |t| {
+            build_ir("Test", [], |t| {
                 t.if_stmt(t.bool(true), |t| {
                     t.write_expr(t.str("Inside if"), false);
                     t.for_loop("item", t.array(vec![t.str("foo")]), |t| {
@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn mixed_write_and_write_expr() {
         check(
-            build_ir("Test", vec![("x", Type::String)], |t| {
+            build_ir("Test", [("x", Type::String)], |t| {
                 t.write("Already a Write statement");
                 t.write_expr(t.str("Will become Write"), false);
                 t.write_expr(t.var("x"), false);

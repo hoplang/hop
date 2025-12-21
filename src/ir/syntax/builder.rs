@@ -9,9 +9,10 @@ use crate::ir::ast::{ExprId, IrExpr, IrStatement, StatementId};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-pub fn build_ir<F>(name: &str, params: Vec<(&str, Type)>, body_fn: F) -> IrComponentDeclaration
+pub fn build_ir<F, P>(name: &str, params: P, body_fn: F) -> IrComponentDeclaration
 where
     F: FnOnce(&mut IrBuilder),
+    P: IntoIterator<Item = (&'static str, Type)>,
 {
     let params_owned: Vec<(String, Type)> = params
         .into_iter()
@@ -22,14 +23,15 @@ where
     builder.build(name)
 }
 
-pub fn build_ir_with_records<F>(
+pub fn build_ir_with_records<F, P>(
     name: &str,
-    params: Vec<(&str, Type)>,
+    params: P,
     records: Vec<(&str, Vec<(&str, Type)>)>,
     body_fn: F,
 ) -> IrComponentDeclaration
 where
     F: FnOnce(&mut IrBuilder),
+    P: IntoIterator<Item = (&'static str, Type)>,
 {
     let params_owned: Vec<(String, Type)> = params
         .into_iter()
@@ -52,14 +54,15 @@ where
     builder.build(name)
 }
 
-pub fn build_ir_with_enums<F>(
+pub fn build_ir_with_enums<F, P>(
     name: &str,
-    params: Vec<(&str, Type)>,
+    params: P,
     enums: Vec<(&str, Vec<&str>)>,
     body_fn: F,
 ) -> IrComponentDeclaration
 where
     F: FnOnce(&mut IrBuilder),
+    P: IntoIterator<Item = (&'static str, Type)>,
 {
     let params_owned: Vec<(String, Type)> = params
         .into_iter()

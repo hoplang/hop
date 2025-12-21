@@ -701,7 +701,7 @@ mod tests {
     use super::*;
     use crate::{
         hop::symbols::module_name::ModuleName,
-        ir::{syntax::ir_builder::build_ir, IrRecordDeclaration},
+        ir::{IrRecordDeclaration, syntax::builder::build_ir},
     };
     use expect_test::{Expect, expect};
 
@@ -734,7 +734,7 @@ mod tests {
 
     #[test]
     fn simple_component() {
-        let entrypoints = vec![build_ir("TestMainComp", vec![], |t| {
+        let entrypoints = vec![build_ir("TestMainComp", [], |t| {
             t.write("<div>Hello World</div>\n");
         })];
 
@@ -806,15 +806,11 @@ mod tests {
 
     #[test]
     fn if_condition() {
-        let entrypoints = vec![build_ir(
-            "TestMainComp",
-            vec![("show", Type::Bool)],
-            |t| {
-                t.if_stmt(t.var("show"), |t| {
-                    t.write("<div>Visible</div>\n");
-                });
-            },
-        )];
+        let entrypoints = vec![build_ir("TestMainComp", [("show", Type::Bool)], |t| {
+            t.if_stmt(t.var("show"), |t| {
+                t.write("<div>Visible</div>\n");
+            });
+        })];
 
         check(
             &entrypoints,
@@ -891,7 +887,7 @@ mod tests {
 
     #[test]
     fn let_binding() {
-        let entrypoints = vec![build_ir("TestGreeting", vec![], |t| {
+        let entrypoints = vec![build_ir("TestGreeting", [], |t| {
             t.let_stmt("greeting", t.str("Hello from Python!"), |t| {
                 t.write("<p>");
                 t.write_expr_escaped(t.var("greeting"));
@@ -976,15 +972,11 @@ mod tests {
 
     #[test]
     fn not_operator() {
-        let entrypoints = vec![build_ir(
-            "TestNot",
-            vec![("active", Type::Bool)],
-            |t| {
-                t.if_stmt(t.not(t.var("active")), |t| {
-                    t.write("<div>Inactive</div>\n");
-                });
-            },
-        )];
+        let entrypoints = vec![build_ir("TestNot", [("active", Type::Bool)], |t| {
+            t.if_stmt(t.not(t.var("active")), |t| {
+                t.write("<div>Inactive</div>\n");
+            });
+        })];
 
         check(
             &entrypoints,
@@ -1070,7 +1062,7 @@ mod tests {
 
     #[test]
     fn record_declarations() {
-        use crate::ir::syntax::ir_builder::build_ir_with_records;
+        use crate::ir::syntax::builder::build_ir_with_records;
 
         let records_def = vec![
             (
@@ -1168,7 +1160,7 @@ mod tests {
 
     #[test]
     fn record_literal() {
-        use crate::ir::syntax::ir_builder::build_ir_with_records;
+        use crate::ir::syntax::builder::build_ir_with_records;
 
         let records_def = vec![("User", vec![("name", Type::String), ("age", Type::Int)])];
 

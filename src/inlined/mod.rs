@@ -1,6 +1,6 @@
-pub mod inlined_ast;
 #[cfg(test)]
-pub mod inlined_builder;
+pub mod builder;
+pub mod inlined_ast;
 pub mod inliner;
 pub mod transform;
 

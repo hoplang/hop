@@ -213,7 +213,7 @@ impl Pass for ConstantPropagationPass {
 
 #[cfg(test)]
 mod tests {
-    use crate::ir::syntax::ir_builder::build_ir;
+    use crate::ir::syntax::builder::build_ir;
     use expect_test::{Expect, expect};
 
     use super::*;
@@ -229,7 +229,7 @@ mod tests {
     #[test]
     fn should_fold_simple_boolean_negation() {
         check(
-            build_ir("Test", vec![], |t| {
+            build_ir("Test", [], |t| {
                 t.if_stmt(t.not(t.bool(false)), |t| {
                     t.write("Should be true");
                 });
@@ -255,7 +255,7 @@ mod tests {
     #[test]
     fn should_fold_double_boolean_negation() {
         check(
-            build_ir("Test", vec![], |t| {
+            build_ir("Test", [], |t| {
                 t.if_stmt(t.not(t.not(t.bool(true))), |t| {
                     t.write("Double negation");
                 });
@@ -281,7 +281,7 @@ mod tests {
     #[test]
     fn should_fold_triple_boolean_negation() {
         check(
-            build_ir("Test", vec![], |t| {
+            build_ir("Test", [], |t| {
                 t.if_stmt(t.not(t.not(t.not(t.bool(false)))), |t| {
                     t.write("Triple negation");
                 });
@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn should_fold_boolean_equality_comparisons() {
-        let ep = build_ir("Test", vec![], |t| {
+        let ep = build_ir("Test", [], |t| {
             t.if_stmt(t.eq(t.bool(true), t.bool(true)), |t| {
                 t.write("true == true");
             });
@@ -352,7 +352,7 @@ mod tests {
     #[test]
     fn should_fold_equality_with_nested_negations() {
         check(
-            build_ir("Test", vec![], |t| {
+            build_ir("Test", [], |t| {
                 t.if_stmt(
                     t.eq(t.not(t.not(t.bool(false))), t.not(t.bool(false))),
                     |t| {
@@ -381,7 +381,7 @@ mod tests {
     #[test]
     fn should_propagate_constants_through_variables() {
         check(
-            build_ir("Test", vec![], |t| {
+            build_ir("Test", [], |t| {
                 t.let_stmt("x", t.not(t.not(t.bool(true))), |t| {
                     t.if_stmt(t.var("x"), |t| {
                         t.write("x is true");
@@ -422,7 +422,7 @@ mod tests {
     #[test]
     fn should_fold_equality_with_variable_operands() {
         check(
-            build_ir("Test", vec![], |t| {
+            build_ir("Test", [], |t| {
                 t.let_stmt("x", t.bool(true), |t| {
                     t.let_stmt("y", t.not(t.bool(true)), |t| {
                         t.if_stmt(t.eq(t.var("x"), t.var("y")), |t| {
@@ -469,7 +469,7 @@ mod tests {
     #[test]
     fn should_propagate_string_constants_through_variables() {
         check(
-            build_ir("Test", vec![], |t| {
+            build_ir("Test", [], |t| {
                 t.let_stmt("message", t.str("Hello, World!"), |t| {
                     t.write_expr_escaped(t.var("message"));
                 });
@@ -495,7 +495,7 @@ mod tests {
     #[test]
     fn should_propagate_nested_string_variables() {
         check(
-            build_ir("Test", vec![], |t| {
+            build_ir("Test", [], |t| {
                 t.let_stmt("greeting", t.str("Hello"), |t| {
                     t.let_stmt("name", t.str("World"), |t| {
                         t.write_expr_escaped(t.var("greeting"));
@@ -530,7 +530,7 @@ mod tests {
     #[test]
     fn should_propagate_string_variable_to_multiple_uses() {
         check(
-            build_ir("Test", vec![], |t| {
+            build_ir("Test", [], |t| {
                 t.let_stmt("title", t.str("Welcome"), |t| {
                     t.write_expr_escaped(t.var("title"));
                     t.write_expr_escaped(t.var("title"));
@@ -568,7 +568,7 @@ mod tests {
     #[test]
     fn should_fold_string_equality_comparisons() {
         check(
-            build_ir("Test", vec![], |t| {
+            build_ir("Test", [], |t| {
                 t.if_stmt(t.eq(t.str("hello"), t.str("hello")), |t| {
                     t.write("Strings are equal");
                 });
@@ -624,7 +624,7 @@ mod tests {
     #[test]
     fn should_fold_nested_string_concatenation() {
         check(
-            build_ir("Test", vec![], |t| {
+            build_ir("Test", [], |t| {
                 t.write_expr_escaped(
                     t.string_concat(t.string_concat(t.str("Hello"), t.str(" ")), t.str("World")),
                 );
@@ -646,7 +646,7 @@ mod tests {
     #[test]
     fn should_fold_string_concatenation_in_equality() {
         check(
-            build_ir("Test", vec![], |t| {
+            build_ir("Test", [], |t| {
                 t.if_stmt(
                     t.eq(t.string_concat(t.str("foo"), t.str("bar")), t.str("foobar")),
                     |t| {
@@ -690,7 +690,7 @@ mod tests {
     #[test]
     fn should_fold_string_concatenation_with_propagated_variables() {
         check(
-            build_ir("Test", vec![], |t| {
+            build_ir("Test", [], |t| {
                 t.let_stmt("prefix", t.str("Hello"), |t| {
                     t.let_stmt("suffix", t.string_concat(t.str(" "), t.str("World")), |t| {
                         t.let_stmt(
