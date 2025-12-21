@@ -2,7 +2,7 @@ use crate::document::document_cursor::StringSpan;
 use crate::dop::Type;
 use crate::dop::TypedExpr;
 use crate::dop::VarName;
-use crate::inlined::{
+use crate::inlined::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
     InlinedParameter,
 };

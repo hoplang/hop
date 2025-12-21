@@ -461,7 +461,7 @@ impl Program {
         })?;
 
         // Evaluate the entrypoint
-        ir::evaluator::evaluate_entrypoint(entrypoint, args)
+        ir::semantics::evaluator::evaluate_entrypoint(entrypoint, args)
     }
 
     /// Get all typed modules for compilation

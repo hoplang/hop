@@ -8,7 +8,7 @@ use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use super::ast::{IrComponentDeclaration, IrStatement};
+use crate::ir::syntax::ast::{IrComponentDeclaration, IrStatement};
 
 /// Evaluate an IR entrypoint with the given arguments
 pub fn evaluate_entrypoint(
