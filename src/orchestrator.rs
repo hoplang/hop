@@ -2,7 +2,7 @@ use crate::hop::inliner::Inliner;
 use crate::hop::semantics::typed_ast::TypedAst;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
-use crate::ir::optimize::{
+use crate::ir::syntax::{
     AlphaRenamingPass, ConstantPropagationPass, Pass, UnusedIfEliminationPass,
     UnusedLetEliminationPass, WriteExprSimplificationPass,
 };
