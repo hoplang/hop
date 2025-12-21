@@ -99,7 +99,7 @@ impl TailwindInjector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::inlined::inlined_test_builder::build_inlined_auto;
+    use crate::inlined::inlined_builder::build_inlined;
     use expect_test::{Expect, expect};
 
     /// Helper to pretty-print entrypoint children for testing
@@ -135,7 +135,7 @@ mod tests {
 
     #[test]
     fn inject_css_into_head() {
-        let entrypoint = build_inlined_auto("MainComp", vec![], |t| {
+        let entrypoint = build_inlined("MainComp", vec![], |t| {
             t.html("html", vec![], |t| {
                 t.html("head", vec![], |_| {});
                 t.html("body", vec![], |t| {

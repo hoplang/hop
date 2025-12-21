@@ -545,7 +545,7 @@ impl Compiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::inlined::inlined_test_builder::build_inlined_auto;
+    use crate::inlined::inlined_builder::build_inlined;
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: InlinedComponentDeclaration, expected: Expect) {
@@ -559,7 +559,7 @@ mod tests {
     #[test]
     fn should_compile_simple_text() {
         check(
-            build_inlined_auto("MainComp", vec![], |t| {
+            build_inlined("MainComp", vec![], |t| {
                 t.text("Hello World");
             }),
             expect![[r#"
@@ -589,7 +589,7 @@ mod tests {
     #[test]
     fn should_compile_text_expression() {
         check(
-            build_inlined_auto("MainComp", vec![("name", Type::String)], |t| {
+            build_inlined("MainComp", vec![("name", Type::String)], |t| {
                 t.text("Hello ");
                 t.text_expr(t.var_expr("name"));
             }),
@@ -624,7 +624,7 @@ mod tests {
     #[test]
     fn should_compile_html_element() {
         check(
-            build_inlined_auto("MainComp", vec![], |t| {
+            build_inlined("MainComp", vec![], |t| {
                 t.div(vec![], |t| {
                     t.text("Content");
                 });
@@ -661,7 +661,7 @@ mod tests {
     #[test]
     fn should_compile_if_node() {
         check(
-            build_inlined_auto("MainComp", vec![("show", Type::Bool)], |t| {
+            build_inlined("MainComp", vec![("show", Type::Bool)], |t| {
                 t.if_node(t.var_expr("show"), |t| {
                     t.div(vec![], |t| {
                         t.text("Visible");
@@ -706,7 +706,7 @@ mod tests {
     #[test]
     fn should_compile_for_node() {
         check(
-            build_inlined_auto(
+            build_inlined(
                 "MainComp",
                 vec![("items", Type::Array(Box::new(Type::String)))],
                 |t| {
@@ -762,7 +762,7 @@ mod tests {
     #[test]
     fn should_compile_static_attributes() {
         check(
-            build_inlined_auto("MainComp", vec![], |t| {
+            build_inlined("MainComp", vec![], |t| {
                 t.div(
                     vec![("class", t.attr_str("base")), ("id", t.attr_str("test"))],
                     |t| {
@@ -804,7 +804,7 @@ mod tests {
     #[test]
     fn should_compile_dynamic_attributes() {
         check(
-            build_inlined_auto("MainComp", vec![("cls", Type::String)], |t| {
+            build_inlined("MainComp", vec![("cls", Type::String)], |t| {
                 t.div(
                     vec![
                         ("class", t.attr_str("base")),
@@ -853,7 +853,7 @@ mod tests {
     #[test]
     fn should_compile_attributes_with_multiple_expressions() {
         check(
-            build_inlined_auto(
+            build_inlined(
                 "MainComp",
                 vec![
                     ("base_class", Type::String),
@@ -927,7 +927,7 @@ mod tests {
     #[test]
     fn should_generate_development_mode_bootstrap() {
         check(
-            build_inlined_auto(
+            build_inlined(
                 "TestComp",
                 vec![("name", Type::String), ("count", Type::String)],
                 |t| {

@@ -44,7 +44,7 @@ impl DoctypeInjector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::inlined::inlined_test_builder::build_inlined_auto;
+    use crate::inlined::inlined_builder::build_inlined;
     use expect_test::{Expect, expect};
 
     /// Helper to pretty-print entrypoint children for testing
@@ -76,7 +76,7 @@ mod tests {
 
     #[test]
     fn inject_doctype_when_missing() {
-        let entrypoint = build_inlined_auto("MainComp", vec![], |t| {
+        let entrypoint = build_inlined("MainComp", vec![], |t| {
             t.text("                    "); // Leading whitespace
             t.html("html", vec![], |t| {
                 t.text("\n                        ");
@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn no_injection_when_doctype_present() {
-        let entrypoint = build_inlined_auto("MainComp", vec![], |t| {
+        let entrypoint = build_inlined("MainComp", vec![], |t| {
             t.text("                    "); // Leading whitespace
             t.doctype("<!DOCTYPE html>");
             t.text("                    "); // Whitespace after doctype
@@ -165,7 +165,7 @@ mod tests {
 
     #[test]
     fn empty_entrypoint() {
-        let entrypoint = build_inlined_auto("EmptyComp", vec![], |t| {
+        let entrypoint = build_inlined("EmptyComp", vec![], |t| {
             t.text("\n                "); // Only whitespace
         });
 
@@ -183,7 +183,7 @@ mod tests {
 
     #[test]
     fn entrypoint_with_text_only() {
-        let entrypoint = build_inlined_auto("TextComp", vec![], |t| {
+        let entrypoint = build_inlined("TextComp", vec![], |t| {
             t.text("\n                    Just some text content\n                ");
         });
 
@@ -201,7 +201,7 @@ mod tests {
 
     #[test]
     fn doctype_with_leading_whitespace() {
-        let entrypoint = build_inlined_auto("MainComp", vec![], |t| {
+        let entrypoint = build_inlined("MainComp", vec![], |t| {
             t.text("\n\n                    "); // Extra leading whitespace
             t.doctype("<!DOCTYPE html>");
             t.text("\n                    "); // Whitespace after doctype
@@ -236,7 +236,7 @@ mod tests {
 
     #[test]
     fn inject_preserves_leading_whitespace() {
-        let entrypoint = build_inlined_auto("MainComp", vec![], |t| {
+        let entrypoint = build_inlined("MainComp", vec![], |t| {
             t.text("\n\n                    "); // Extra leading whitespace
             t.html("html", vec![], |t| {
                 t.text("Content");

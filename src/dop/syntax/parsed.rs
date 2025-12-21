@@ -360,10 +360,7 @@ impl ParsedExpr {
                                             " ".repeat(max_pattern_width - pattern_str.len());
                                         // Use flat_alt: no padding on single line, padding on multi-line
                                         BoxDoc::text(pattern_str.clone())
-                                            .append(
-                                                BoxDoc::text(padding)
-                                                    .flat_alt(BoxDoc::nil()),
-                                            )
+                                            .append(BoxDoc::text(padding).flat_alt(BoxDoc::nil()))
                                             .append(BoxDoc::text(" => "))
                                             .append(arm.body.to_doc())
                                     }),

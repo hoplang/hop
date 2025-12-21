@@ -4,9 +4,9 @@ use crate::error_collector::ErrorCollector;
 use crate::hop::semantics::type_error::TypeError;
 use crate::hop::syntax::parse_error::ParseError;
 use crate::hop::syntax::parser::parse;
-use crate::toposorter::TopoSorter;
 use crate::ir;
 use crate::orchestrator::orchestrate;
+use crate::toposorter::TopoSorter;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
