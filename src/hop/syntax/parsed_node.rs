@@ -3,10 +3,7 @@ use std::fmt::{self, Display};
 
 use pretty::BoxDoc;
 
-use crate::document::{
-    DocumentPosition,
-    document_cursor::{DocumentRange, Ranged, StringSpan},
-};
+use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::ParsedExpr;
 use crate::dop::VarName;
 
@@ -179,18 +176,6 @@ impl ParsedNode {
     ///  ^^^              ^^^
     pub fn tag_names(&self) -> impl Iterator<Item = &DocumentRange> {
         self.tag_name().into_iter().chain(self.closing_tag_name())
-    }
-
-    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&Self> {
-        if !self.range().contains_position(position) {
-            return None;
-        }
-        for child in self.children() {
-            if let Some(node) = child.find_node_at_position(position) {
-                return Some(node);
-            }
-        }
-        Some(self)
     }
 
     pub fn to_doc(&self) -> BoxDoc<'_> {

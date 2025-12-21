@@ -1,4 +1,5 @@
 use crate::document::DocumentPosition;
+use crate::document::document_cursor::Ranged;
 
 use super::parsed_ast::ParsedAst;
 use super::parsed_node::ParsedNode;
@@ -25,7 +26,7 @@ pub fn find_node_at_position(ast: &ParsedAst, position: DocumentPosition) -> Opt
     for n in ast.get_component_declarations() {
         if n.range.contains_position(position) {
             for child in &n.children {
-                if let Some(node) = child.find_node_at_position(position) {
+                if let Some(node) = find_node_at_position_in_node(child, position) {
                     return Some(node);
                 }
             }
@@ -34,6 +35,21 @@ pub fn find_node_at_position(ast: &ParsedAst, position: DocumentPosition) -> Opt
     }
 
     None
+}
+
+fn find_node_at_position_in_node(
+    node: &ParsedNode,
+    position: DocumentPosition,
+) -> Option<&ParsedNode> {
+    if !node.range().contains_position(position) {
+        return None;
+    }
+    for child in node.children() {
+        if let Some(found) = find_node_at_position_in_node(child, position) {
+            return Some(found);
+        }
+    }
+    Some(node)
 }
 
 #[cfg(test)]
