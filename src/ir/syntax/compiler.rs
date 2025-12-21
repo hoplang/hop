@@ -38,7 +38,7 @@ impl Compiler {
 
         // Always generate both development and production bodies
         let dev_body = compiler.generate_development_mode_body(
-            &module_name.to_string(),
+            &module_name.to_path().to_string(),
             component_name.as_str(),
             &param_info,
         );
