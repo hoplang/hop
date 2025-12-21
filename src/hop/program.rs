@@ -4,7 +4,7 @@ use crate::error_collector::ErrorCollector;
 use crate::hop::semantics::type_error::TypeError;
 use crate::hop::syntax::parse_error::ParseError;
 use crate::hop::syntax::parser::parse;
-use crate::hop::toposorter::TopoSorter;
+use crate::toposorter::TopoSorter;
 use crate::ir;
 use crate::orchestrator::orchestrate;
 use anyhow::Result;

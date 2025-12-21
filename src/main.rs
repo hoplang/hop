@@ -9,6 +9,7 @@ mod hop;
 mod ir;
 mod orchestrator;
 mod test_utils;
+mod toposorter;
 mod tui;
 
 use clap::{CommandFactory, Parser, Subcommand};
