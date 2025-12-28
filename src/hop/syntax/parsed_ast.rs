@@ -862,4 +862,39 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn nested_components_with_record_attributes_to_doc() {
+        check(
+            indoc! {r#"
+                <IconsPage>
+                  <div class="flex">
+                    <div class="border-r max-w-80 h-screen">
+                      <Sidebar />
+                    </div>
+                    <div class="flex gap-4 p-8">
+                      <IconItem {id: "radix-icons", title: "Radix Icons", img_src: "/img/iphone.jpg", description: "A crisp set of 15×15 icons designed by the @workos team."} />
+                    </div>
+                  </div>
+                </IconsPage>
+            "#},
+            expect![[r#"
+                <IconsPage>
+                  <div class="flex">
+                    <div class="border-r max-w-80 h-screen">
+                      <Sidebar/>
+                    </div>
+                    <div class="flex gap-4 p-8">
+                      <IconItem {
+                        id: "radix-icons",
+                        title: "Radix Icons",
+                        img_src: "/img/iphone.jpg",
+                        description: "A crisp set of 15×15 icons designed by the @workos team.",
+                      }/>
+                    </div>
+                  </div>
+                </IconsPage>
+            "#]],
+        );
+    }
 }

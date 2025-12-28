@@ -194,16 +194,21 @@ impl ParsedNode {
                     .append(BoxDoc::text(component_name.as_str()))
                     .append(match args {
                         Some((args, _)) if !args.is_empty() => BoxDoc::text(" {")
-                            .append(BoxDoc::intersperse(
-                                args.iter().map(|a| a.to_doc()),
-                                BoxDoc::text(", "),
-                            ))
+                            .append(
+                                BoxDoc::line()
+                                    .append(BoxDoc::intersperse(
+                                        args.iter().map(|a| a.to_doc().append(BoxDoc::text(","))),
+                                        BoxDoc::line(),
+                                    ))
+                                    .nest(2),
+                            )
+                            .append(BoxDoc::line())
                             .append(BoxDoc::text("}")),
                         _ => BoxDoc::nil(),
                     });
 
                 if children.is_empty() {
-                    tag_doc.append(BoxDoc::text(" />"))
+                    tag_doc.append(BoxDoc::text("/>"))
                 } else {
                     tag_doc
                         .append(BoxDoc::text(">"))
