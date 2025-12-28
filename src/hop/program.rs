@@ -220,9 +220,7 @@ impl Program {
         // Check if cursor is on a record declaration name
         for record in ast.get_record_declarations() {
             if record.name_range.contains_position(position) {
-                return Some(
-                    self.collect_record_rename_locations(record.name(), module_name),
-                );
+                return Some(self.collect_record_rename_locations(record.name(), module_name));
             }
         }
 
@@ -404,9 +402,7 @@ impl Program {
             // Find all import statements that import this record
             locations.extend(
                 ast.get_import_declarations()
-                    .filter(|n| {
-                        n.imports_type(record_name) && n.imports_from(definition_module)
-                    })
+                    .filter(|n| n.imports_type(record_name) && n.imports_from(definition_module))
                     .map(|n| RenameLocation {
                         module: module_name.clone(),
                         range: n.type_name_range().clone(),
@@ -417,9 +413,12 @@ impl Program {
             for component in ast.get_component_declarations() {
                 if let Some((params, _)) = &component.params {
                     for param in params {
-                        locations.extend(
-                            self.collect_type_references(&param.var_type, record_name, definition_module, module_name),
-                        );
+                        locations.extend(self.collect_type_references(
+                            &param.var_type,
+                            record_name,
+                            definition_module,
+                            module_name,
+                        ));
                     }
                 }
             }
@@ -1322,6 +1321,31 @@ mod tests {
         );
     }
 
+    #[test]
+    fn should_find_rename_locations_even_when_there_is_parse_errors() {
+        check_rename_locations(
+            indoc! {r#"
+                -- main.hop --
+                <Main>
+                  ^
+                  <div>
+                  <span>
+                </Main>
+            "#},
+            expect![[r#"
+                Rename
+                  --> main.hop (line 1, col 2)
+                1 | <Main>
+                  |  ^^^^
+
+                Rename
+                  --> main.hop (line 4, col 3)
+                4 | </Main>
+                  |   ^^^^
+            "#]],
+        );
+    }
+
     ///////////////////////////////////////////////////////////////////////////
     /// RENAMEABLE SYMBOL                                                   ///
     ///////////////////////////////////////////////////////////////////////////
@@ -1413,36 +1437,6 @@ mod tests {
                   --> main (line 2, col 4)
                 2 |   <div>
                   |    ^^^
-            "#]],
-        );
-    }
-
-    ///////////////////////////////////////////////////////////////////////////
-    /// RENAME WITH ERRORS                                                  ///
-    ///////////////////////////////////////////////////////////////////////////
-
-    // Even when there's parse errors we should be able to rename.
-    #[test]
-    fn should_find_rename_locations_even_with_parse_errors() {
-        check_rename_locations(
-            indoc! {r#"
-                -- main.hop --
-                <Main>
-                  ^
-                  <div>
-                  <span>
-                </Main>
-            "#},
-            expect![[r#"
-                Rename
-                  --> main.hop (line 1, col 2)
-                1 | <Main>
-                  |  ^^^^
-
-                Rename
-                  --> main.hop (line 4, col 3)
-                4 | </Main>
-                  |   ^^^^
             "#]],
         );
     }
