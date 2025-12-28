@@ -8,4 +8,4 @@ pub use inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
 };
 pub use inliner::Inliner;
-pub use transform::{DoctypeInjector, HtmlStructureInjector, TailwindInjector};
+pub use transform::{DoctypeInjector, HtmlStructureInjector, MetaInjector, TailwindInjector};

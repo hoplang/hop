@@ -6,7 +6,7 @@ use crate::ir::syntax::{
     AlphaRenamingPass, ConstantPropagationPass, Pass, UnusedIfEliminationPass,
     UnusedLetEliminationPass, WriteExprSimplificationPass,
 };
-use crate::inlined::{DoctypeInjector, HtmlStructureInjector, TailwindInjector};
+use crate::inlined::{DoctypeInjector, HtmlStructureInjector, MetaInjector, TailwindInjector};
 use crate::ir::{Compiler, IrEnumDeclaration, IrModule, IrRecordDeclaration};
 use anyhow::Result;
 use std::collections::HashMap;
@@ -43,6 +43,7 @@ pub fn orchestrate(
         // transform ASTs
         .map(DoctypeInjector::run)
         .map(HtmlStructureInjector::run)
+        .map(MetaInjector::run)
         .map(|entrypoint| TailwindInjector::run(entrypoint, generated_tailwind_css))
         // compile to IR
         .map(Compiler::compile)

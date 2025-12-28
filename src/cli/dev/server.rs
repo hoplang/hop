@@ -210,7 +210,7 @@ mod tests {
         response.assert_status_ok();
         expect![[r#"
             <!DOCTYPE html>
-              <html><head></head><body><h1>Welcome</h1>
+              <html><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1" name="viewport"></head><body><h1>Welcome</h1>
               <p>Hello, Alice!</p>
             </body></html>"#]]
         .assert_eq(&response.text());
@@ -237,7 +237,7 @@ mod tests {
         response.assert_status_ok();
         expect![[r#"
             <!DOCTYPE html>
-              <html><head></head><body><div>Simple content</div>
+              <html><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1" name="viewport"></head><body><div>Simple content</div>
             </body></html>"#]]
         .assert_eq(&response.text());
     }
@@ -270,7 +270,7 @@ mod tests {
         response.assert_status_ok();
         expect![[r#"
             <!DOCTYPE html>
-              <html><head></head><body><div>
+              <html><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1" name="viewport"></head><body><div>
               <button>Click me</button>
             </div>
             </body></html>"#]]
