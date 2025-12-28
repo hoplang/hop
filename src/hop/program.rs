@@ -1,5 +1,6 @@
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::dop::ParsedType;
 use crate::error_collector::ErrorCollector;
 use crate::hop::semantics::type_error::TypeError;
 use crate::hop::syntax::parse_error::ParseError;
@@ -215,6 +216,16 @@ impl Program {
         position: DocumentPosition,
     ) -> Option<Vec<RenameLocation>> {
         let ast = self.modules.get(module_name)?;
+
+        // Check if cursor is on a record declaration name
+        for record in ast.get_record_declarations() {
+            if record.name_range.contains_position(position) {
+                return Some(
+                    self.collect_record_rename_locations(record.name(), module_name),
+                );
+            }
+        }
+
         for node in ast.get_component_declarations() {
             if node
                 .tag_name_ranges()
@@ -256,7 +267,7 @@ impl Program {
 
     /// Returns information about a renameable symbol at the given position.
     ///
-    /// Checks if the position is on a component name (reference or definition)
+    /// Checks if the position is on a component name, record name (reference or definition)
     /// and returns the symbol's current name and range if found.
     pub fn get_renameable_symbol(
         &self,
@@ -264,6 +275,16 @@ impl Program {
         position: DocumentPosition,
     ) -> Option<RenameableSymbol> {
         let ast = self.modules.get(module_name)?;
+
+        // Check if cursor is on a record declaration name
+        for record in ast.get_record_declarations() {
+            if record.name_range.contains_position(position) {
+                return Some(RenameableSymbol {
+                    current_name: record.name_range.to_string_span(),
+                    range: record.name_range.clone(),
+                });
+            }
+        }
 
         for component_node in ast.get_component_declarations() {
             if let Some(range) = component_node
@@ -352,6 +373,108 @@ impl Program {
                         range: range.clone(),
                     }),
             );
+        }
+
+        locations
+    }
+
+    /// Collects all locations where a record type should be renamed, including:
+    /// - The record declaration
+    /// - All type annotations that reference the record
+    /// - All import statements that import the record
+    fn collect_record_rename_locations(
+        &self,
+        record_name: &str,
+        definition_module: &ModuleName,
+    ) -> Vec<RenameLocation> {
+        let mut locations = Vec::new();
+
+        // Add the record declaration itself
+        if let Some(module) = self.modules.get(definition_module) {
+            if let Some(record) = module.get_record_declaration(record_name) {
+                locations.push(RenameLocation {
+                    module: definition_module.clone(),
+                    range: record.name_range.clone(),
+                });
+            }
+        }
+
+        // Search all modules for references to this record
+        for (module_name, ast) in &self.modules {
+            // Find all import statements that import this record
+            locations.extend(
+                ast.get_import_declarations()
+                    .filter(|n| {
+                        n.imports_type(record_name) && n.imports_from(definition_module)
+                    })
+                    .map(|n| RenameLocation {
+                        module: module_name.clone(),
+                        range: n.type_name_range().clone(),
+                    }),
+            );
+
+            // Find all type references in component parameters
+            for component in ast.get_component_declarations() {
+                if let Some((params, _)) = &component.params {
+                    for param in params {
+                        locations.extend(
+                            self.collect_type_references(&param.var_type, record_name, definition_module, module_name),
+                        );
+                    }
+                }
+            }
+        }
+
+        locations
+    }
+
+    /// Recursively collects all references to a named type within a ParsedType.
+    /// This handles nested types like Array[Icon].
+    fn collect_type_references(
+        &self,
+        parsed_type: &ParsedType,
+        record_name: &str,
+        definition_module: &ModuleName,
+        current_module: &ModuleName,
+    ) -> Vec<RenameLocation> {
+        let mut locations = Vec::new();
+
+        match parsed_type {
+            ParsedType::Named { name, range } => {
+                // Check if this is a reference to the record we're renaming
+                // For local references (same module), just match by name
+                // For imported references, we need to verify the import points to the right module
+                let is_local = current_module == definition_module && name == record_name;
+                let is_imported = self.modules.get(current_module).is_some_and(|ast| {
+                    ast.get_import_declarations().any(|import| {
+                        import.imports_type(record_name)
+                            && import.imports_from(definition_module)
+                            && name == record_name
+                    })
+                });
+
+                if is_local || is_imported {
+                    locations.push(RenameLocation {
+                        module: current_module.clone(),
+                        range: range.clone(),
+                    });
+                }
+            }
+            ParsedType::Array { element, .. } => {
+                // Recursively check the element type
+                locations.extend(self.collect_type_references(
+                    element,
+                    record_name,
+                    definition_module,
+                    current_module,
+                ));
+            }
+            // Primitive types don't need renaming
+            ParsedType::String { .. }
+            | ParsedType::Bool { .. }
+            | ParsedType::Int { .. }
+            | ParsedType::Float { .. }
+            | ParsedType::TrustedHTML { .. } => {}
         }
 
         locations
@@ -1112,6 +1235,89 @@ mod tests {
                   --> main.hop (line 2, col 6)
                 2 |     <br />
                   |      ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_rename_locations_for_record_type() {
+        check_rename_locations(
+            indoc! {r#"
+                -- main.hop --
+                record Icon {
+                       ^
+                  id: String,
+                  title: String,
+                  img_src: String,
+                  description: String,
+                }
+
+                <IconItem {
+                  icon: Icon,
+                }>
+                  <a class="flex flex-col gap-2" href={
+                    "/icons/" + icon.id,
+                  }>
+                    <img class="rounded-lg object-cover aspect-3/2" src={
+                      icon.img_src,
+                    } />
+                    <h2 class="font-semibold text-lg">
+                      {icon.title}
+                    </h2>
+                    {icon.description}
+                  </a>
+                </IconItem>
+
+                <IconsPage {
+                  icons: Array[Icon],
+                }>
+                  <div class="flex">
+                      <for {icon in icons}>
+                        <IconItem {
+                          icon: icon,
+                        }/>
+                      </for>
+                  </div>
+                </IconsPage>
+
+                <IconShowPage {
+                  icon: Icon,
+                }>
+                  <div class="flex">
+                    <div class="flex flex-col gap-4 p-8 mx-auto my-8 w-full max-w-4xl">
+                      <h1 class="text-xl font-semibold">
+                        {icon.title}
+                      </h1>
+                      <div>
+                        {icon.description}
+                      </div>
+                      <img class="rounded-lg" src={
+                        icon.img_src,
+                      } />
+                    </div>
+                  </div>
+                </IconShowPage>
+            "#},
+            expect![[r#"
+                Rename
+                  --> main.hop (line 1, col 8)
+                 1 | record Icon {
+                   |        ^^^^
+
+                Rename
+                  --> main.hop (line 9, col 9)
+                 9 |   icon: Icon,
+                   |         ^^^^
+
+                Rename
+                  --> main.hop (line 25, col 16)
+                25 |   icons: Array[Icon],
+                   |                ^^^^
+
+                Rename
+                  --> main.hop (line 37, col 9)
+                37 |   icon: Icon,
+                   |         ^^^^
             "#]],
         );
     }
