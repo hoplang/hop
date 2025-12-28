@@ -897,4 +897,33 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn component_with_string_concatenation_attribute_to_doc() {
+        check(
+            indoc! {r#"
+                record Product { id: String }
+                <IconShowPage {product: Product}>
+                  <Button {href: "/download/" + product.id}>
+                    hello
+                  </Button>
+                </IconShowPage>
+            "#},
+            expect![[r#"
+                record Product {
+                  id: String,
+                }
+
+                <IconShowPage {
+                  product: Product,
+                }>
+                  <Button {
+                    href: "/download/" + product.id,
+                  }>
+                    hello
+                  </Button>
+                </IconShowPage>
+            "#]],
+        );
+    }
 }
