@@ -8,7 +8,9 @@ use crate::inlined::{
 };
 use std::collections::BTreeMap;
 
-use super::ast::{ExprId, IrComponentDeclaration, IrExpr, IrStatement, StatementId};
+use super::ast::{
+    ExprId, IrComponentDeclaration, IrEnumPattern, IrExpr, IrMatchArm, IrStatement, StatementId,
+};
 
 pub struct Compiler {
     // Expression ID generation
@@ -544,7 +546,25 @@ impl Compiler {
                 kind,
                 id: expr_id,
             },
-            TypedExpr::Match { .. } => todo!("Match expression compilation not yet implemented"),
+            TypedExpr::Match {
+                subject,
+                arms,
+                kind,
+            } => IrExpr::Match {
+                subject: Box::new(self.compile_expr(*subject)),
+                arms: arms
+                    .into_iter()
+                    .map(|arm| IrMatchArm {
+                        pattern: IrEnumPattern {
+                            enum_name: arm.pattern.enum_name,
+                            variant_name: arm.pattern.variant_name,
+                        },
+                        body: self.compile_expr(arm.body),
+                    })
+                    .collect(),
+                kind,
+                id: expr_id,
+            },
         }
     }
 }

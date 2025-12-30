@@ -41,6 +41,22 @@ pub struct IrModule {
     pub enums: Vec<IrEnumDeclaration>,
 }
 
+/// A pattern that matches an enum variant in a match expression
+#[derive(Debug, Clone, PartialEq)]
+pub struct IrEnumPattern {
+    pub enum_name: String,
+    pub variant_name: String,
+}
+
+/// A single arm in a match expression, e.g. `Color::Red => "red"`
+#[derive(Debug, Clone, PartialEq)]
+pub struct IrMatchArm {
+    /// The enum variant being matched (e.g., `Color::Red`)
+    pub pattern: IrEnumPattern,
+    /// The expression to evaluate if this arm matches
+    pub body: IrExpr,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrStatement {
     /// Write literal string to the output stream.
@@ -130,6 +146,14 @@ pub enum IrExpr {
     EnumLiteral {
         enum_name: String,
         variant_name: String,
+        kind: Type,
+        id: ExprId,
+    },
+
+    /// A match expression, e.g. match color { Color::Red => "red", Color::Blue => "blue" }
+    Match {
+        subject: Box<IrExpr>,
+        arms: Vec<IrMatchArm>,
         kind: Type,
         id: ExprId,
     },
@@ -475,6 +499,7 @@ impl IrExpr {
             | IrExpr::ArrayLiteral { id, .. }
             | IrExpr::RecordLiteral { id, .. }
             | IrExpr::EnumLiteral { id, .. }
+            | IrExpr::Match { id, .. }
             | IrExpr::JsonEncode { id, .. }
             | IrExpr::EnvLookup { id, .. }
             | IrExpr::StringConcat { id, .. }
@@ -502,7 +527,8 @@ impl IrExpr {
             | IrExpr::FieldAccess { kind, .. }
             | IrExpr::ArrayLiteral { kind, .. }
             | IrExpr::RecordLiteral { kind, .. }
-            | IrExpr::EnumLiteral { kind, .. } => kind,
+            | IrExpr::EnumLiteral { kind, .. }
+            | IrExpr::Match { kind, .. } => kind,
 
             IrExpr::FloatLiteral { .. } => &FLOAT_TYPE,
             IrExpr::IntLiteral { .. } => &INT_TYPE,
@@ -662,6 +688,35 @@ impl IrExpr {
             } => BoxDoc::text(enum_name.as_str())
                 .append(BoxDoc::text("::"))
                 .append(BoxDoc::text(variant_name.as_str())),
+            IrExpr::Match { subject, arms, .. } => {
+                if arms.is_empty() {
+                    BoxDoc::text("match ")
+                        .append(subject.to_doc())
+                        .append(BoxDoc::text(" {}"))
+                } else {
+                    BoxDoc::text("match ")
+                        .append(subject.to_doc())
+                        .append(BoxDoc::text(" {"))
+                        .append(
+                            BoxDoc::line_()
+                                .append(BoxDoc::intersperse(
+                                    arms.iter().map(|arm| {
+                                        BoxDoc::text(arm.pattern.enum_name.as_str())
+                                            .append(BoxDoc::text("::"))
+                                            .append(BoxDoc::text(arm.pattern.variant_name.as_str()))
+                                            .append(BoxDoc::text(" => "))
+                                            .append(arm.body.to_doc())
+                                    }),
+                                    BoxDoc::text(",").append(BoxDoc::line()),
+                                ))
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                .append(BoxDoc::line_())
+                                .nest(2)
+                                .group(),
+                        )
+                        .append(BoxDoc::text("}"))
+                }
+            }
         }
     }
 
@@ -705,6 +760,12 @@ impl IrExpr {
             | IrExpr::BooleanLogicalOr { left, right, .. } => {
                 left.traverse(f);
                 right.traverse(f);
+            }
+            IrExpr::Match { subject, arms, .. } => {
+                subject.traverse(f);
+                for arm in arms {
+                    arm.body.traverse(f);
+                }
             }
             IrExpr::Var { .. }
             | IrExpr::StringLiteral { .. }
@@ -755,6 +816,12 @@ impl IrExpr {
             | IrExpr::BooleanLogicalOr { left, right, .. } => {
                 left.traverse_mut(f);
                 right.traverse_mut(f);
+            }
+            IrExpr::Match { subject, arms, .. } => {
+                subject.traverse_mut(f);
+                for arm in arms {
+                    arm.body.traverse_mut(f);
+                }
             }
             IrExpr::Var { .. }
             | IrExpr::StringLiteral { .. }

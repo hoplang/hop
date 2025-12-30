@@ -393,6 +393,25 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             // Enum variants evaluate to their string name
             Ok(Value::String(variant_name.clone()))
         }
+        IrExpr::Match { subject, arms, .. } => {
+            // Evaluate the subject to get the variant name
+            let subject_val = evaluate_expr(subject, env)?;
+            let variant_name = subject_val
+                .as_str()
+                .ok_or_else(|| anyhow!("Match subject must evaluate to a string (enum variant)"))?;
+
+            // Find the matching arm
+            for arm in arms {
+                if arm.pattern.variant_name == variant_name {
+                    return evaluate_expr(&arm.body, env);
+                }
+            }
+
+            Err(anyhow!(
+                "No matching arm found for variant '{}'",
+                variant_name
+            ))
+        }
     }
 }
 

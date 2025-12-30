@@ -412,6 +412,43 @@ impl IrBuilder {
         }
     }
 
+    /// Create a match expression over an enum value
+    /// arms is a list of (variant_name, body_expr) tuples
+    pub fn match_expr(&self, subject: IrExpr, arms: Vec<(&str, IrExpr)>) -> IrExpr {
+        use crate::ir::ast::{IrEnumPattern, IrMatchArm};
+
+        // Get the enum type from the subject
+        let (enum_name, result_type) = match subject.as_type() {
+            Type::Enum { name, .. } => {
+                // Use the type of the first arm's body as the result type
+                let result_type = arms
+                    .first()
+                    .map(|(_, body)| body.as_type().clone())
+                    .unwrap_or(Type::String);
+                (name.as_str().to_string(), result_type)
+            }
+            _ => panic!("Match subject must be an enum type"),
+        };
+
+        let ir_arms: Vec<IrMatchArm> = arms
+            .into_iter()
+            .map(|(variant_name, body)| IrMatchArm {
+                pattern: IrEnumPattern {
+                    enum_name: enum_name.clone(),
+                    variant_name: variant_name.to_string(),
+                },
+                body,
+            })
+            .collect();
+
+        IrExpr::Match {
+            subject: Box::new(subject),
+            arms: ir_arms,
+            kind: result_type,
+            id: self.next_expr_id(),
+        }
+    }
+
     pub fn field_access(&self, object: IrExpr, field_str: &str) -> IrExpr {
         let field_name = FieldName::new(field_str).unwrap();
         let field_type = match object.as_type() {

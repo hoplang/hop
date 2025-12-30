@@ -4,7 +4,7 @@ use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspile
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrModule, IrStatement};
+use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrMatchArm, IrModule, IrStatement};
 
 pub struct TsTranspiler {
     /// Internal flag to use template literals instead of double quotes
@@ -658,6 +658,41 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(self.transpile_expr(right))
             .append(BoxDoc::text(")"))
     }
+
+    fn transpile_match<'a>(&self, subject: &'a IrExpr, arms: &'a [IrMatchArm]) -> BoxDoc<'a> {
+        // Transpile match to an IIFE with a switch statement:
+        // (() => { switch (subject.__tag) { case "ColorRed": return body; ... } })()
+        // The __tag uses the pattern EnumNameVariantName (e.g., ColorRed)
+        let cases = BoxDoc::intersperse(
+            arms.iter().map(|arm| {
+                // Build the class name: EnumName + VariantName (e.g., ColorRed)
+                let class_name = format!("{}{}", arm.pattern.enum_name, arm.pattern.variant_name);
+                BoxDoc::text("case \"")
+                    .append(BoxDoc::text(class_name))
+                    .append(BoxDoc::text("\": return "))
+                    .append(self.transpile_expr(&arm.body))
+                    .append(BoxDoc::text(";"))
+            }),
+            BoxDoc::line(),
+        );
+
+        let switch_body = BoxDoc::text("switch (")
+            .append(self.transpile_expr(subject))
+            .append(BoxDoc::text(".__tag) {"))
+            .append(BoxDoc::line().append(cases).nest(2))
+            .append(BoxDoc::line())
+            .append(BoxDoc::text("}"));
+
+        let iife_close = "})()";
+
+        BoxDoc::text("(() => {")
+            .append(BoxDoc::line())
+            .append(switch_body)
+            .nest(2)
+            .append(BoxDoc::line())
+            .append(BoxDoc::text(iife_close))
+            .group()
+    }
 }
 
 impl TypeTranspiler for TsTranspiler {
@@ -1276,6 +1311,103 @@ mod tests {
                         if (color.equals(new ColorRed())) {
                             output += "<div>Red!</div>";
                         }
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn match_expression() {
+        use crate::dop::symbols::type_name::TypeName;
+        use crate::hop::symbols::module_name::ModuleName;
+
+        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
+
+        let color_type = Type::Enum {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Color").unwrap(),
+            variants: vec![
+                TypeName::new("Red").unwrap(),
+                TypeName::new("Green").unwrap(),
+                TypeName::new("Blue").unwrap(),
+            ],
+        };
+
+        let module = build_module_with_enums(
+            "ColorName",
+            vec![("color", color_type)],
+            enums,
+            |t| {
+                // Use match expression to convert color to string
+                let match_result = t.match_expr(
+                    t.var("color"),
+                    vec![
+                        ("Red", t.str("red")),
+                        ("Green", t.str("green")),
+                        ("Blue", t.str("blue")),
+                    ],
+                );
+                t.write_expr_escaped(match_result);
+            },
+        );
+
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                ColorName(color: test::Color) {
+                  write_escaped(match color {
+                    Color::Red => "red",
+                    Color::Green => "green",
+                    Color::Blue => "blue",
+                  })
+                }
+
+                -- after --
+                export type Color = ColorRed | ColorGreen | ColorBlue;
+
+                export class ColorRed {
+                    readonly __tag = "ColorRed";
+                    equals(o: Color): boolean {
+                        return o.__tag === "ColorRed";
+                    }
+                }
+
+                export class ColorGreen {
+                    readonly __tag = "ColorGreen";
+                    equals(o: Color): boolean {
+                        return o.__tag === "ColorGreen";
+                    }
+                }
+
+                export class ColorBlue {
+                    readonly __tag = "ColorBlue";
+                    equals(o: Color): boolean {
+                        return o.__tag === "ColorBlue";
+                    }
+                }
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    colorName: ({ color }: { color: Color }): string => {
+                        let output: string = "";
+                        output += escapeHtml((() => {
+                          switch (color.__tag) {
+                            case "ColorRed": return "red";
+                            case "ColorGreen": return "green";
+                            case "ColorBlue": return "blue";
+                          }
+                        })());
                         return output;
                     }
                 }
