@@ -196,14 +196,6 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// Not equals expression
-    NotEquals {
-        left: Box<IrExpr>,
-        right: Box<IrExpr>,
-        operand_types: EquatableType,
-        id: ExprId,
-    },
-
     /// Less than expression
     LessThan {
         left: Box<IrExpr>,
@@ -493,7 +485,6 @@ impl IrExpr {
             | IrExpr::BooleanLogicalAnd { id, .. }
             | IrExpr::BooleanLogicalOr { id, .. }
             | IrExpr::Equals { id, .. }
-            | IrExpr::NotEquals { id, .. }
             | IrExpr::LessThan { id, .. }
             | IrExpr::LessThanOrEqual { id, .. } => *id,
         }
@@ -531,7 +522,6 @@ impl IrExpr {
             IrExpr::BooleanLiteral { .. }
             | IrExpr::BooleanNegation { .. }
             | IrExpr::Equals { .. }
-            | IrExpr::NotEquals { .. }
             | IrExpr::LessThan { .. }
             | IrExpr::LessThanOrEqual { .. }
             | IrExpr::BooleanLogicalAnd { .. }
@@ -641,12 +631,6 @@ impl IrExpr {
                 .append(BoxDoc::text(" == "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            IrExpr::NotEquals { left, right, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(left.to_doc())
-                .append(BoxDoc::text(" != "))
-                .append(right.to_doc())
-                .append(BoxDoc::text(")")),
             IrExpr::LessThan { left, right, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(left.to_doc())
@@ -711,7 +695,6 @@ impl IrExpr {
                 key.traverse(f);
             }
             IrExpr::Equals { left, right, .. }
-            | IrExpr::NotEquals { left, right, .. }
             | IrExpr::LessThan { left, right, .. }
             | IrExpr::LessThanOrEqual { left, right, .. }
             | IrExpr::StringConcat { left, right, .. }
@@ -766,7 +749,6 @@ impl IrExpr {
             | IrExpr::NumericSubtract { left, right, .. }
             | IrExpr::NumericMultiply { left, right, .. }
             | IrExpr::Equals { left, right, .. }
-            | IrExpr::NotEquals { left, right, .. }
             | IrExpr::LessThan { left, right, .. }
             | IrExpr::LessThanOrEqual { left, right, .. }
             | IrExpr::BooleanLogicalAnd { left, right, .. }

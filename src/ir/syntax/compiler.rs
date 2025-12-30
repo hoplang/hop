@@ -431,12 +431,19 @@ impl Compiler {
                 right,
                 operand_types,
                 ..
-            } => IrExpr::NotEquals {
-                left: Box::new(self.compile_expr(*left)),
-                right: Box::new(self.compile_expr(*right)),
-                operand_types,
-                id: expr_id,
-            },
+            } => {
+                // Desugar NotEquals into BooleanNegation(Equals(...))
+                let equals_id = self.next_expr_id();
+                IrExpr::BooleanNegation {
+                    operand: Box::new(IrExpr::Equals {
+                        left: Box::new(self.compile_expr(*left)),
+                        right: Box::new(self.compile_expr(*right)),
+                        operand_types,
+                        id: equals_id,
+                    }),
+                    id: expr_id,
+                }
+            }
             TypedExpr::LessThan {
                 left,
                 right,

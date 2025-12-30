@@ -242,66 +242,6 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             let right_str = right_val.as_str().unwrap();
             Ok(Value::Bool(left_str == right_str))
         }
-        IrExpr::NotEquals {
-            left,
-            right,
-            operand_types: EquatableType::Bool,
-            ..
-        } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
-            let left_bool = left_val.as_bool().unwrap_or(false);
-            let right_bool = right_val.as_bool().unwrap_or(false);
-            Ok(Value::Bool(left_bool != right_bool))
-        }
-        IrExpr::NotEquals {
-            left,
-            right,
-            operand_types: EquatableType::String,
-            ..
-        } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
-            let left_str = left_val.as_str().unwrap();
-            let right_str = right_val.as_str().unwrap();
-            Ok(Value::Bool(left_str != right_str))
-        }
-        IrExpr::NotEquals {
-            left,
-            right,
-            operand_types: EquatableType::Int,
-            ..
-        } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
-            let left_int = left_val.as_i64().unwrap_or(0);
-            let right_int = right_val.as_i64().unwrap_or(0);
-            Ok(Value::Bool(left_int != right_int))
-        }
-        IrExpr::NotEquals {
-            left,
-            right,
-            operand_types: EquatableType::Float,
-            ..
-        } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
-            let left_float = left_val.as_f64().unwrap_or(0.0);
-            let right_float = right_val.as_f64().unwrap_or(0.0);
-            Ok(Value::Bool(left_float != right_float))
-        }
-        IrExpr::NotEquals {
-            left,
-            right,
-            operand_types: EquatableType::Enum { .. },
-            ..
-        } => {
-            let left_val = evaluate_expr(left, env)?;
-            let right_val = evaluate_expr(right, env)?;
-            let left_str = left_val.as_str().unwrap();
-            let right_str = right_val.as_str().unwrap();
-            Ok(Value::Bool(left_str != right_str))
-        }
         IrExpr::LessThan {
             left,
             right,

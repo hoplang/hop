@@ -111,11 +111,6 @@ pub trait ExpressionTranspiler {
     fn transpile_int_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_enum_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_string_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_bool_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_int_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_float_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
-    fn transpile_enum_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_int_less_than_or_equal<'a>(
@@ -184,18 +179,6 @@ pub trait ExpressionTranspiler {
                 EquatableType::Int => self.transpile_int_equals(left, right),
                 EquatableType::Float => self.transpile_float_equals(left, right),
                 EquatableType::Enum { .. } => self.transpile_enum_equals(left, right),
-            },
-            IrExpr::NotEquals {
-                left,
-                right,
-                operand_types,
-                ..
-            } => match operand_types {
-                EquatableType::Bool => self.transpile_bool_not_equals(left, right),
-                EquatableType::String => self.transpile_string_not_equals(left, right),
-                EquatableType::Int => self.transpile_int_not_equals(left, right),
-                EquatableType::Float => self.transpile_float_not_equals(left, right),
-                EquatableType::Enum { .. } => self.transpile_enum_not_equals(left, right),
             },
             IrExpr::LessThan {
                 left,

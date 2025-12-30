@@ -513,51 +513,6 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_string_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::nil()
-            .append(BoxDoc::text("("))
-            .append(self.transpile_expr(left))
-            .append(BoxDoc::text(" !== "))
-            .append(self.transpile_expr(right))
-            .append(BoxDoc::text(")"))
-    }
-
-    fn transpile_bool_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::nil()
-            .append(BoxDoc::text("("))
-            .append(self.transpile_expr(left))
-            .append(BoxDoc::text(" !== "))
-            .append(self.transpile_expr(right))
-            .append(BoxDoc::text(")"))
-    }
-
-    fn transpile_int_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::nil()
-            .append(BoxDoc::text("("))
-            .append(self.transpile_expr(left))
-            .append(BoxDoc::text(" !== "))
-            .append(self.transpile_expr(right))
-            .append(BoxDoc::text(")"))
-    }
-
-    fn transpile_float_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::nil()
-            .append(BoxDoc::text("("))
-            .append(self.transpile_expr(left))
-            .append(BoxDoc::text(" !== "))
-            .append(self.transpile_expr(right))
-            .append(BoxDoc::text(")"))
-    }
-
-    fn transpile_enum_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
-        // Use negation of the .equals() method
-        BoxDoc::text("!")
-            .append(self.transpile_expr(left))
-            .append(BoxDoc::text(".equals("))
-            .append(self.transpile_expr(right))
-            .append(BoxDoc::text(")"))
-    }
-
     fn transpile_int_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("("))
