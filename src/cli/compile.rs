@@ -4,7 +4,7 @@ use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::program::Program;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
-use crate::ir::{GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler};
+use crate::ir::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
 use crate::orchestrator::orchestrate;
 use crate::tui::timing;
 use anyhow::Result;
@@ -141,14 +141,9 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
 
     // Generate code based on target language
     let generated_code = match resolved.target {
-        TargetLanguage::Javascript => {
-            timer.start_phase("transpiling to js");
-            let transpiler = JsTranspiler::new(LanguageMode::JavaScript);
-            transpiler.transpile_module(&ir_module)
-        }
         TargetLanguage::Typescript => {
             timer.start_phase("transpiling to ts");
-            let transpiler = JsTranspiler::new(LanguageMode::TypeScript);
+            let transpiler = TsTranspiler::new();
             transpiler.transpile_module(&ir_module)
         }
         TargetLanguage::Go => {

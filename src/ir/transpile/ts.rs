@@ -8,22 +8,14 @@ use crate::dop::symbols::type_name::TypeName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrModule, IrStatement};
 
-#[derive(Debug, Clone, Copy)]
-pub enum LanguageMode {
-    JavaScript,
-    TypeScript,
-}
-
-pub struct JsTranspiler {
-    mode: LanguageMode,
+pub struct TsTranspiler {
     /// Internal flag to use template literals instead of double quotes
     use_template_literals: bool,
 }
 
-impl JsTranspiler {
-    pub fn new(mode: LanguageMode) -> Self {
+impl TsTranspiler {
+    pub fn new() -> Self {
         Self {
-            mode,
             use_template_literals: false,
         }
     }
@@ -62,7 +54,6 @@ impl JsTranspiler {
         }
     }
 
-    // Helper method to escape strings for JavaScript literals
     fn escape_string(&self, s: &str) -> String {
         if self.use_template_literals {
             // For template literals, only escape backticks and ${
@@ -89,7 +80,13 @@ impl JsTranspiler {
     }
 }
 
-impl Transpiler for JsTranspiler {
+impl Default for TsTranspiler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Transpiler for TsTranspiler {
     fn transpile_module(&self, module: &IrModule) -> String {
         let entrypoints = &module.components;
         let records = &module.records;
@@ -106,8 +103,8 @@ impl Transpiler for JsTranspiler {
 
         let mut result = BoxDoc::nil();
 
-        // Add TrustedHTML type definition for TypeScript
-        if needs_trusted_html && matches!(self.mode, LanguageMode::TypeScript) {
+        // Add TrustedHTML type definition
+        if needs_trusted_html {
             result = result
                 .append(BoxDoc::text(
                     "type TrustedHTML = string & { readonly __brand: unique symbol };",
@@ -116,8 +113,8 @@ impl Transpiler for JsTranspiler {
                 .append(BoxDoc::line());
         }
 
-        // Add record type definitions for TypeScript
-        if matches!(self.mode, LanguageMode::TypeScript) && !records.is_empty() {
+        // Add record type definitions
+        if !records.is_empty() {
             for record in records {
                 result = result
                     .append(BoxDoc::text("interface "))
@@ -146,12 +143,7 @@ impl Transpiler for JsTranspiler {
 
         if needs_escape_html {
             result = result
-                .append(match self.mode {
-                    LanguageMode::JavaScript => BoxDoc::text("function escapeHtml(str) {"),
-                    LanguageMode::TypeScript => {
-                        BoxDoc::text("function escapeHtml(str: string): string {")
-                    }
-                })
+                .append(BoxDoc::text("function escapeHtml(str: string): string {"))
                 .append(
                     BoxDoc::nil()
                         .append(BoxDoc::line())
@@ -207,7 +199,6 @@ impl Transpiler for JsTranspiler {
         name: &'a ComponentName,
         entrypoint: &'a IrComponentDeclaration,
     ) -> BoxDoc<'a> {
-        // Convert PascalCase to camelCase for JavaScript function name
         let camel_case_name = name.to_camel_case();
 
         let mut result = BoxDoc::as_string(camel_case_name).append(BoxDoc::text(": ("));
@@ -225,37 +216,28 @@ impl Transpiler for JsTranspiler {
                 .append(BoxDoc::text(" }"));
 
             // Generate TypeScript interface for parameters
-            if matches!(self.mode, LanguageMode::TypeScript) {
-                result = result
-                    .append(BoxDoc::text(": { "))
-                    .append(BoxDoc::intersperse(
-                        entrypoint.parameters.iter().map(|(name, ty)| {
-                            BoxDoc::text(name.as_str())
-                                .append(BoxDoc::text(": "))
-                                .append(self.transpile_type(ty))
-                        }),
-                        BoxDoc::text(", "),
-                    ))
-                    .append(BoxDoc::text(" }"));
-            }
+            result = result
+                .append(BoxDoc::text(": { "))
+                .append(BoxDoc::intersperse(
+                    entrypoint.parameters.iter().map(|(name, ty)| {
+                        BoxDoc::text(name.as_str())
+                            .append(BoxDoc::text(": "))
+                            .append(self.transpile_type(ty))
+                    }),
+                    BoxDoc::text(", "),
+                ))
+                .append(BoxDoc::text(" }"));
         }
 
         // Function body
         result
             .append(BoxDoc::text(")"))
-            .append(if matches!(self.mode, LanguageMode::TypeScript) {
-                BoxDoc::text(": string")
-            } else {
-                BoxDoc::nil()
-            })
+            .append(BoxDoc::text(": string"))
             .append(BoxDoc::text(" => {"))
             .append(
                 BoxDoc::nil()
                     .append(BoxDoc::line())
-                    .append(match self.mode {
-                        LanguageMode::JavaScript => BoxDoc::text("let output = \"\";"),
-                        LanguageMode::TypeScript => BoxDoc::text("let output: string = \"\";"),
-                    })
+                    .append(BoxDoc::text("let output: string = \"\";"))
                     .append(BoxDoc::line())
                     .append(self.transpile_statements(&entrypoint.body))
                     .append(BoxDoc::line())
@@ -267,7 +249,7 @@ impl Transpiler for JsTranspiler {
     }
 }
 
-impl StatementTranspiler for JsTranspiler {
+impl StatementTranspiler for TsTranspiler {
     fn transpile_write<'a>(&self, content: &'a str) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("output += "))
@@ -362,7 +344,7 @@ impl StatementTranspiler for JsTranspiler {
     }
 }
 
-impl ExpressionTranspiler for JsTranspiler {
+impl ExpressionTranspiler for TsTranspiler {
     fn transpile_var<'a>(&self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }
@@ -412,7 +394,6 @@ impl ExpressionTranspiler for JsTranspiler {
         _record_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
     ) -> BoxDoc<'a> {
-        // In JavaScript/TypeScript, record literal is the same as object literal
         BoxDoc::nil()
             .append(BoxDoc::text("{"))
             .append(BoxDoc::intersperse(
@@ -431,7 +412,7 @@ impl ExpressionTranspiler for JsTranspiler {
         _enum_name: &'a str,
         _variant_name: &'a str,
     ) -> BoxDoc<'a> {
-        panic!("Enum literal transpilation for JavaScript/TypeScript not yet implemented")
+        panic!("Enum literal transpilation for TypeScript not yet implemented")
     }
 
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
@@ -671,7 +652,7 @@ impl ExpressionTranspiler for JsTranspiler {
     }
 }
 
-impl TypeTranspiler for JsTranspiler {
+impl TypeTranspiler for TsTranspiler {
     fn transpile_bool_type<'a>(&self) -> BoxDoc<'a> {
         BoxDoc::text("boolean")
     }
@@ -681,10 +662,7 @@ impl TypeTranspiler for JsTranspiler {
     }
 
     fn transpile_trusted_html_type<'a>(&self) -> BoxDoc<'a> {
-        match self.mode {
-            LanguageMode::TypeScript => BoxDoc::text("TrustedHTML"),
-            LanguageMode::JavaScript => BoxDoc::text("string"),
-        }
+        BoxDoc::text("TrustedHTML")
     }
 
     fn transpile_float_type<'a>(&self) -> BoxDoc<'a> {
@@ -713,13 +691,13 @@ mod tests {
     };
     use expect_test::{Expect, expect};
 
-    fn transpile_with_pretty(entrypoints: &[IrComponentDeclaration], mode: LanguageMode) -> String {
+    fn transpile_with_pretty(entrypoints: &[IrComponentDeclaration]) -> String {
         let module = IrModule {
             components: entrypoints.to_vec(),
             records: vec![],
             enums: vec![],
         };
-        let transpiler = JsTranspiler::new(mode);
+        let transpiler = TsTranspiler::new();
         transpiler.transpile_module(&module)
     }
 
@@ -732,16 +710,10 @@ mod tests {
             .join("\n\n");
 
         // Format TypeScript output
-        let ts_output = transpile_with_pretty(entrypoints, LanguageMode::TypeScript);
+        let ts_output = transpile_with_pretty(entrypoints);
 
-        // Format JavaScript output
-        let js_output = transpile_with_pretty(entrypoints, LanguageMode::JavaScript);
-
-        // Create output with before/ts/js format
-        let output = format!(
-            "-- before --\n{}\n-- ts --\n{}\n-- js --\n{}",
-            before, ts_output, js_output
-        );
+        // Create output with before/after format
+        let output = format!("-- before --\n{}\n-- after --\n{}", before, ts_output);
 
         expected.assert_eq(&output);
     }
@@ -760,19 +732,10 @@ mod tests {
                   write("<h1>Hello, World!</h1>\n")
                 }
 
-                -- ts --
+                -- after --
                 export default {
                     helloWorld: (): string => {
                         let output: string = "";
-                        output += "<h1>Hello, World!</h1>\n";
-                        return output;
-                    }
-                }
-
-                -- js --
-                export default {
-                    helloWorld: () => {
-                        let output = "";
                         output += "<h1>Hello, World!</h1>\n";
                         return output;
                     }
@@ -813,7 +776,7 @@ mod tests {
                   write("</div>\n")
                 }
 
-                -- ts --
+                -- after --
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -837,37 +800,12 @@ mod tests {
                         return output;
                     }
                 }
-
-                -- js --
-                function escapeHtml(str) {
-                    return str
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
-                }
-
-                export default {
-                    userInfo: ({ name, age }) => {
-                        let output = "";
-                        output += "<div>\n";
-                        output += "<h2>Name: ";
-                        output += escapeHtml(name);
-                        output += "</h2>\n";
-                        output += "<p>Age: ";
-                        output += age;
-                        output += "</p>\n";
-                        output += "</div>\n";
-                        return output;
-                    }
-                }
             "#]],
         );
     }
 
     #[test]
-    fn typescript_with_types() {
+    fn conditional_display() {
         let entrypoints = vec![build_ir(
             "ConditionalDisplay",
             vec![("title", Type::String), ("show", Type::Bool)],
@@ -892,7 +830,7 @@ mod tests {
                   }
                 }
 
-                -- ts --
+                -- after --
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -905,28 +843,6 @@ mod tests {
                 export default {
                     conditionalDisplay: ({ title, show }: { title: string, show: boolean }): string => {
                         let output: string = "";
-                        if (show) {
-                            output += "<h1>";
-                            output += escapeHtml(title);
-                            output += "</h1>\n";
-                        }
-                        return output;
-                    }
-                }
-
-                -- js --
-                function escapeHtml(str) {
-                    return str
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
-                }
-
-                export default {
-                    conditionalDisplay: ({ title, show }) => {
-                        let output = "";
                         if (show) {
                             output += "<h1>";
                             output += escapeHtml(title);
@@ -969,7 +885,7 @@ mod tests {
                   write("</ul>\n")
                 }
 
-                -- ts --
+                -- after --
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -982,30 +898,6 @@ mod tests {
                 export default {
                     listItems: ({ items }: { items: string[] }): string => {
                         let output: string = "";
-                        output += "<ul>\n";
-                        for (const item of items) {
-                            output += "<li>";
-                            output += escapeHtml(item);
-                            output += "</li>\n";
-                        }
-                        output += "</ul>\n";
-                        return output;
-                    }
-                }
-
-                -- js --
-                function escapeHtml(str) {
-                    return str
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
-                }
-
-                export default {
-                    listItems: ({ items }) => {
-                        let output = "";
                         output += "<ul>\n";
                         for (const item of items) {
                             output += "<li>";
@@ -1046,7 +938,7 @@ mod tests {
                   }
                 }
 
-                -- ts --
+                -- after --
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -1059,29 +951,6 @@ mod tests {
                 export default {
                     greetingCard: (): string => {
                         let output: string = "";
-                        const greeting = "Hello from hop!";
-                        output += "<div class=\"card\">\n";
-                        output += "<p>";
-                        output += escapeHtml(greeting);
-                        output += "</p>\n";
-                        output += "</div>\n";
-                        return output;
-                    }
-                }
-
-                -- js --
-                function escapeHtml(str) {
-                    return str
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
-                }
-
-                export default {
-                    greetingCard: () => {
-                        let output = "";
                         const greeting = "Hello from hop!";
                         output += "<div class=\"card\">\n";
                         output += "<p>";
@@ -1121,7 +990,7 @@ mod tests {
                   write("</div>")
                 }
 
-                -- ts --
+                -- after --
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -1134,29 +1003,6 @@ mod tests {
                 export default {
                     testMainComp: (): string => {
                         let output: string = "";
-                        output += "<div data-hop-id=\"test/card-comp\">";
-                        const title = "Hello World";
-                        output += "<h2>";
-                        output += escapeHtml(title);
-                        output += "</h2>";
-                        output += "</div>";
-                        return output;
-                    }
-                }
-
-                -- js --
-                function escapeHtml(str) {
-                    return str
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
-                }
-
-                export default {
-                    testMainComp: () => {
-                        let output = "";
                         output += "<div data-hop-id=\"test/card-comp\">";
                         const title = "Hello World";
                         output += "<h2>";
@@ -1201,7 +1047,7 @@ mod tests {
                   write("</div>")
                 }
 
-                -- ts --
+                -- after --
                 type TrustedHTML = string & { readonly __brand: unique symbol };
 
                 function escapeHtml(str: string): string {
@@ -1216,28 +1062,6 @@ mod tests {
                 export default {
                     renderHtml: ({ safe_content, user_input }: { safe_content: TrustedHTML, user_input: string }): string => {
                         let output: string = "";
-                        output += "<div>";
-                        output += safe_content;
-                        output += "</div><div>";
-                        output += escapeHtml(user_input);
-                        output += "</div>";
-                        return output;
-                    }
-                }
-
-                -- js --
-                function escapeHtml(str) {
-                    return str
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
-                }
-
-                export default {
-                    renderHtml: ({ safe_content, user_input }) => {
-                        let output = "";
                         output += "<div>";
                         output += safe_content;
                         output += "</div><div>";
@@ -1315,16 +1139,10 @@ mod tests {
             enums: vec![],
         };
 
-        let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
-        let ts_output = ts_transpiler.transpile_module(&module);
-
-        let js_transpiler = JsTranspiler::new(LanguageMode::JavaScript);
-        let js_output = js_transpiler.transpile_module(&module);
-
-        let output = format!("-- ts --\n{}\n-- js --\n{}", ts_output, js_output);
+        let transpiler = TsTranspiler::new();
+        let output = transpiler.transpile_module(&module);
 
         expect![[r#"
-            -- ts --
             interface User {
                 name: string;
                 age: number;
@@ -1348,26 +1166,6 @@ mod tests {
             export default {
                 userProfile: ({ user }: { user: User }): string => {
                     let output: string = "";
-                    output += "<div>";
-                    output += escapeHtml(user.name);
-                    output += "</div>";
-                    return output;
-                }
-            }
-
-            -- js --
-            function escapeHtml(str) {
-                return str
-                    .replace(/&/g, '&amp;')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;')
-                    .replace(/"/g, '&quot;')
-                    .replace(/'/g, '&#39;');
-            }
-
-            export default {
-                userProfile: ({ user }) => {
-                    let output = "";
                     output += "<div>";
                     output += escapeHtml(user.name);
                     output += "</div>";
@@ -1410,16 +1208,10 @@ mod tests {
             enums: vec![],
         };
 
-        let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
-        let ts_output = ts_transpiler.transpile_module(&module);
-
-        let js_transpiler = JsTranspiler::new(LanguageMode::JavaScript);
-        let js_output = js_transpiler.transpile_module(&module);
-
-        let output = format!("-- ts --\n{}\n-- js --\n{}", ts_output, js_output);
+        let transpiler = TsTranspiler::new();
+        let output = transpiler.transpile_module(&module);
 
         expect![[r#"
-            -- ts --
             interface User {
                 name: string;
                 age: number;
@@ -1437,26 +1229,6 @@ mod tests {
             export default {
                 createUser: (): string => {
                     let output: string = "";
-                    output += "<div>";
-                    output += escapeHtml({name: "John", age: 30}.name);
-                    output += "</div>";
-                    return output;
-                }
-            }
-
-            -- js --
-            function escapeHtml(str) {
-                return str
-                    .replace(/&/g, '&amp;')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;')
-                    .replace(/"/g, '&quot;')
-                    .replace(/'/g, '&#39;');
-            }
-
-            export default {
-                createUser: () => {
-                    let output = "";
                     output += "<div>";
                     output += escapeHtml({name: "John", age: 30}.name);
                     output += "</div>";

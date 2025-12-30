@@ -1,4 +1,4 @@
-use super::{GoTranspiler, JsTranspiler, LanguageMode, PythonTranspiler, Transpiler};
+use super::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
 use crate::dop::semantics::r#type::Type;
 use crate::ir::ast::{IrComponentDeclaration, IrModule};
 use crate::ir::syntax::builder::build_ir;
@@ -32,21 +32,17 @@ impl TypeCheckTestCase {
     }
 }
 
-fn execute_javascript(code: &str, is_typescript: bool) -> Result<String, String> {
+fn execute_typescript(code: &str) -> Result<String, String> {
     let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
-    let extension = if is_typescript { "ts" } else { "js" };
-    let module_file = temp_dir.path().join(format!("module.{}", extension));
-    let runner_file = temp_dir.path().join(format!("runner.{}", extension));
+    let module_file = temp_dir.path().join("module.ts");
+    let runner_file = temp_dir.path().join("runner.ts");
 
     fs::write(&module_file, code).map_err(|e| format!("Failed to write module file: {}", e))?;
 
-    let runner_code = format!(
-        r#"
-import module from './module.{}';
+    let runner_code = r#"
+import module from './module.ts';
 console.log(module.test());
-"#,
-        extension
-    );
+"#;
 
     fs::write(&runner_file, runner_code)
         .map_err(|e| format!("Failed to write runner file: {}", e))?;
@@ -156,10 +152,7 @@ fn run_integration_test(test_case: TestCase) -> Result<(), String> {
         enums: vec![],
     };
 
-    let js_transpiler = JsTranspiler::new(LanguageMode::JavaScript);
-    let js_code = js_transpiler.transpile_module(&module);
-
-    let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
+    let ts_transpiler = TsTranspiler::new();
     let ts_code = ts_transpiler.transpile_module(&module);
 
     let go_transpiler = GoTranspiler::new("components".to_string());
@@ -168,23 +161,13 @@ fn run_integration_test(test_case: TestCase) -> Result<(), String> {
     let python_transpiler = PythonTranspiler::new();
     let python_code = python_transpiler.transpile_module(&module);
 
-    let js_output = execute_javascript(&js_code, false)
-        .map_err(|e| format!("JavaScript execution failed: {}", e))?;
-
-    let ts_output = execute_javascript(&ts_code, true)
+    let ts_output = execute_typescript(&ts_code)
         .map_err(|e| format!("TypeScript execution failed: {}", e))?;
 
     let go_output = execute_go(&go_code).map_err(|e| format!("Go execution failed: {}", e))?;
 
     let python_output =
         execute_python(&python_code).map_err(|e| format!("Python execution failed: {}", e))?;
-
-    if js_output != test_case.expected_output {
-        return Err(format!(
-            "JavaScript output mismatch:\nExpected: {}\nGot: {}",
-            test_case.expected_output, js_output
-        ));
-    }
 
     if ts_output != test_case.expected_output {
         return Err(format!(
@@ -210,43 +193,27 @@ fn run_integration_test(test_case: TestCase) -> Result<(), String> {
     Ok(())
 }
 
-fn typecheck_javascript(code: &str, is_typescript: bool) -> Result<(), String> {
+fn typecheck_typescript(code: &str) -> Result<(), String> {
     let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
-    let extension = if is_typescript { "ts" } else { "js" };
-    let module_file = temp_dir.path().join(format!("module.{}", extension));
+    let module_file = temp_dir.path().join("module.ts");
 
     fs::write(&module_file, code).map_err(|e| format!("Failed to write module file: {}", e))?;
-
-    let mut args = vec!["x", "tsc", "--noEmit", "--target", "ES2020"];
-
-    if is_typescript {
-        args.push("--strict");
-    } else {
-        args.push("--allowJs");
-        args.push("--checkJs");
-    }
 
     let file_path = module_file
         .to_str()
         .ok_or_else(|| "Failed to convert path to string".to_string())?;
-    args.push(file_path);
 
     let output = Command::new("bun")
-        .args(&args)
+        .args(["x", "tsc", "--noEmit", "--target", "ES2020", "--strict", file_path])
         .output()
         .map_err(|e| format!("Failed to execute TypeScript compiler: {}", e))?;
 
     if !output.status.success() {
-        let lang = if is_typescript {
-            "TypeScript"
-        } else {
-            "JavaScript"
-        };
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
         return Err(format!(
-            "{} type checking failed:\nSTDERR:\n{}\nSTDOUT:\n{}",
-            lang, stderr, stdout
+            "TypeScript type checking failed:\nSTDERR:\n{}\nSTDOUT:\n{}",
+            stderr, stdout
         ));
     }
 
@@ -317,13 +284,9 @@ fn run_type_check_test(test_case: TypeCheckTestCase) -> Result<(), String> {
         enums: vec![],
     };
 
-    let js_transpiler = JsTranspiler::new(LanguageMode::JavaScript);
-    let js_code = js_transpiler.transpile_module(&module);
-    typecheck_javascript(&js_code, false)?;
-
-    let ts_transpiler = JsTranspiler::new(LanguageMode::TypeScript);
+    let ts_transpiler = TsTranspiler::new();
     let ts_code = ts_transpiler.transpile_module(&module);
-    typecheck_javascript(&ts_code, true)?;
+    typecheck_typescript(&ts_code)?;
 
     let go_transpiler = GoTranspiler::new("components".to_string());
     let go_code = go_transpiler.transpile_module(&module);

@@ -1,14 +1,14 @@
 pub mod go;
-pub mod js;
 pub mod python;
+pub mod ts;
 
 #[cfg(test)]
 pub mod integration_tests;
 
 pub use go::GoTranspiler;
-pub use js::{JsTranspiler, LanguageMode};
 use pretty::BoxDoc;
 pub use python::PythonTranspiler;
+pub use ts::TsTranspiler;
 
 use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::dop::symbols::field_name::FieldName;
