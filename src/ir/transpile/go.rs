@@ -3,8 +3,6 @@ use pretty::BoxDoc;
 use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
-#[cfg(test)]
-use crate::dop::symbols::type_name::TypeName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrModule, IrStatement};
 use std::collections::BTreeSet;
@@ -765,32 +763,23 @@ impl TypeTranspiler for GoTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        hop::symbols::module_name::ModuleName,
-        ir::{IrRecordDeclaration, syntax::builder::build_ir},
+    use crate::ir::syntax::builder::{
+        build_module, build_module_with_enums, build_module_with_records,
     };
     use expect_test::{Expect, expect};
 
-    fn transpile_with_pretty(entrypoints: &[IrComponentDeclaration]) -> String {
-        let module = IrModule {
-            components: entrypoints.to_vec(),
-            records: vec![],
-            enums: vec![],
-        };
-        let transpiler = GoTranspiler::new("components".to_string());
-        transpiler.transpile_module(&module)
-    }
-
-    fn check(entrypoints: &[IrComponentDeclaration], expected: Expect) {
+    fn check(module: &IrModule, expected: Expect) {
         // Format before (IR)
-        let before = entrypoints
+        let before = module
+            .components
             .iter()
             .map(|ep| ep.to_string())
             .collect::<Vec<_>>()
             .join("\n\n");
 
         // Format after (Go code)
-        let after = transpile_with_pretty(entrypoints);
+        let transpiler = GoTranspiler::new("components".to_string());
+        let after = transpiler.transpile_module(module);
 
         // Create output with before/after format
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
@@ -800,12 +789,12 @@ mod tests {
 
     #[test]
     fn simple_component() {
-        let entrypoints = vec![build_ir("TestMainComp", [], |t| {
+        let module = build_module("TestMainComp", [], |t| {
             t.write("<div>Hello World</div>\n");
-        })];
+        });
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 TestMainComp() {
@@ -828,7 +817,7 @@ mod tests {
 
     #[test]
     fn component_with_parameters() {
-        let entrypoints = vec![build_ir(
+        let module = build_module(
             "TestGreetingComp",
             vec![("name", Type::String), ("message", Type::String)],
             |t| {
@@ -838,10 +827,10 @@ mod tests {
                 t.write_expr_escaped(t.var("message"));
                 t.write("</h1>\n");
             },
-        )];
+        );
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 TestGreetingComp(name: String, message: String) {
@@ -880,13 +869,13 @@ mod tests {
 
     #[test]
     fn json_encode_empty_array_literal() {
-        let entrypoints = vec![build_ir("TestMainComp", [], |t| {
+        let module = build_module("TestMainComp", [], |t| {
             t.write_expr(t.json_encode(t.typed_array(Type::String, vec![])), false);
-        })];
+        });
 
         // In Go, []string{} is the correct way to declare an empty string slice.
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 TestMainComp() {
@@ -915,14 +904,14 @@ mod tests {
 
     #[test]
     fn if_condition() {
-        let entrypoints = vec![build_ir("TestMainComp", [("show", Type::Bool)], |t| {
+        let module = build_module("TestMainComp", [("show", Type::Bool)], |t| {
             t.if_stmt(t.var("show"), |t| {
                 t.write("<div>Visible</div>\n");
             });
-        })];
+        });
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 TestMainComp(show: Bool) {
@@ -954,7 +943,7 @@ mod tests {
 
     #[test]
     fn for_loop() {
-        let entrypoints = vec![build_ir(
+        let module = build_module(
             "TestMainComp",
             vec![("items", Type::Array(Box::new(Type::String)))],
             |t| {
@@ -964,10 +953,10 @@ mod tests {
                     t.write("</li>\n");
                 });
             },
-        )];
+        );
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 TestMainComp(items: Array[String]) {
@@ -1004,7 +993,7 @@ mod tests {
 
     #[test]
     fn loop_over_array_literal() {
-        let entrypoints = vec![build_ir("TestArrayLiteralLoop", [], |t| {
+        let module = build_module("TestArrayLiteralLoop", [], |t| {
             t.write("<ul>\n");
             t.for_loop(
                 "color",
@@ -1016,10 +1005,10 @@ mod tests {
                 },
             );
             t.write("</ul>\n");
-        })];
+        });
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 TestArrayLiteralLoop() {
@@ -1055,7 +1044,7 @@ mod tests {
 
     #[test]
     fn string_comparison() {
-        let entrypoints = vec![build_ir(
+        let module = build_module(
             "TestAuthCheck",
             vec![("user_role", Type::String), ("expected_role", Type::String)],
             |t| {
@@ -1066,10 +1055,10 @@ mod tests {
                     t.write("<div>Admin panel available</div>\n");
                 });
             },
-        )];
+        );
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 TestAuthCheck(user_role: String, expected_role: String) {
@@ -1109,7 +1098,7 @@ mod tests {
 
     #[test]
     fn trusted_html_type() {
-        let entrypoints = vec![build_ir(
+        let module = build_module(
             "RenderHtml",
             vec![
                 ("safe_content", Type::TrustedHTML),
@@ -1122,10 +1111,10 @@ mod tests {
                 t.write_expr_escaped(t.var("user_input"));
                 t.write("</div>");
             },
-        )];
+        );
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 RenderHtml(safe_content: TrustedHTML, user_input: String) {
@@ -1166,14 +1155,14 @@ mod tests {
 
     #[test]
     fn env_lookup() {
-        let entrypoints = vec![build_ir("TestEnv", [], |t| {
+        let module = build_module("TestEnv", [], |t| {
             t.write("<div>API URL: ");
             t.write_expr(t.env_lookup(t.str("API_URL")), false);
             t.write("</div>\n");
-        })];
+        });
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 TestEnv() {
@@ -1201,9 +1190,10 @@ mod tests {
 
     #[test]
     fn record_declarations() {
-        use crate::ir::syntax::builder::build_ir_with_records;
+        use crate::dop::symbols::{field_name::FieldName, type_name::TypeName};
+        use crate::hop::symbols::module_name::ModuleName;
 
-        let records_def = vec![
+        let records = vec![
             (
                 "User",
                 vec![
@@ -1218,7 +1208,7 @@ mod tests {
             ),
         ];
 
-        let entrypoints = vec![build_ir_with_records(
+        let module = build_module_with_records(
             "UserProfile",
             vec![(
                 "user",
@@ -1232,139 +1222,109 @@ mod tests {
                     ],
                 },
             )],
-            records_def,
+            records,
             |t| {
                 t.write("<div>");
                 t.write_expr_escaped(t.field_access(t.var("user"), "name"));
                 t.write("</div>");
             },
-        )];
+        );
 
-        let records = vec![
-            IrRecordDeclaration {
-                name: "User".to_string(),
-                fields: vec![
-                    (FieldName::new("name").unwrap(), Type::String),
-                    (FieldName::new("age").unwrap(), Type::Int),
-                    (FieldName::new("active").unwrap(), Type::Bool),
-                ],
-            },
-            IrRecordDeclaration {
-                name: "Address".to_string(),
-                fields: vec![
-                    (FieldName::new("street").unwrap(), Type::String),
-                    (FieldName::new("city").unwrap(), Type::String),
-                ],
-            },
-        ];
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                UserProfile(user: test::User) {
+                  write("<div>")
+                  write_escaped(user.name)
+                  write("</div>")
+                }
 
-        let module = IrModule {
-            components: entrypoints,
-            records,
-            enums: vec![],
-        };
+                -- after --
+                package components
 
-        let transpiler = GoTranspiler::new("components".to_string());
-        let output = transpiler.transpile_module(&module);
+                import (
+                	"html"
+                	"io"
+                )
 
-        expect![[r#"
-            package components
+                type User struct {
+                	Name string `json:"name"`
+                	Age int `json:"age"`
+                	Active bool `json:"active"`
+                }
 
-            import (
-            	"html"
-            	"io"
-            )
+                type Address struct {
+                	Street string `json:"street"`
+                	City string `json:"city"`
+                }
 
-            type User struct {
-            	Name string `json:"name"`
-            	Age int `json:"age"`
-            	Active bool `json:"active"`
-            }
+                type UserProfileParams struct {
+                	User User `json:"user"`
+                }
 
-            type Address struct {
-            	Street string `json:"street"`
-            	City string `json:"city"`
-            }
-
-            type UserProfileParams struct {
-            	User User `json:"user"`
-            }
-
-            func UserProfile(w io.Writer, params UserProfileParams) {
-            	user := params.User
-            	io.WriteString(w, "<div>")
-            	io.WriteString(w, html.EscapeString(user.Name))
-            	io.WriteString(w, "</div>")
-            }
-        "#]]
-        .assert_eq(&output);
+                func UserProfile(w io.Writer, params UserProfileParams) {
+                	user := params.User
+                	io.WriteString(w, "<div>")
+                	io.WriteString(w, html.EscapeString(user.Name))
+                	io.WriteString(w, "</div>")
+                }
+            "#]],
+        );
     }
 
     #[test]
     fn record_literal() {
-        use crate::ir::syntax::builder::build_ir_with_records;
+        let records = vec![("User", vec![("name", Type::String), ("age", Type::Int)])];
 
-        let records_def = vec![("User", vec![("name", Type::String), ("age", Type::Int)])];
+        let module = build_module_with_records("CreateUser", vec![], records, |t| {
+            t.write("<div>");
+            let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
+            t.write_expr_escaped(t.field_access(user, "name"));
+            t.write("</div>");
+        });
 
-        let entrypoints = vec![build_ir_with_records(
-            "CreateUser",
-            vec![],
-            records_def,
-            |t| {
-                t.write("<div>");
-                let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
-                t.write_expr_escaped(t.field_access(user, "name"));
-                t.write("</div>");
-            },
-        )];
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                CreateUser() {
+                  write("<div>")
+                  write_escaped(User(name: "John", age: 30).name)
+                  write("</div>")
+                }
 
-        let records = vec![IrRecordDeclaration {
-            name: "User".to_string(),
-            fields: vec![
-                (FieldName::new("name").unwrap(), Type::String),
-                (FieldName::new("age").unwrap(), Type::Int),
-            ],
-        }];
+                -- after --
+                package components
 
-        let module = IrModule {
-            components: entrypoints,
-            records,
-            enums: vec![],
-        };
+                import (
+                	"html"
+                	"io"
+                )
 
-        let transpiler = GoTranspiler::new("components".to_string());
-        let output = transpiler.transpile_module(&module);
+                type User struct {
+                	Name string `json:"name"`
+                	Age int `json:"age"`
+                }
 
-        expect![[r#"
-            package components
-
-            import (
-            	"html"
-            	"io"
-            )
-
-            type User struct {
-            	Name string `json:"name"`
-            	Age int `json:"age"`
-            }
-
-            func CreateUser(w io.Writer) {
-            	io.WriteString(w, "<div>")
-            	io.WriteString(w, html.EscapeString(User{
-            		Name: "John",
-            		Age: 30,
-            	}.Name))
-            	io.WriteString(w, "</div>")
-            }
-        "#]]
-        .assert_eq(&output);
+                func CreateUser(w io.Writer) {
+                	io.WriteString(w, "<div>")
+                	io.WriteString(w, html.EscapeString(User{
+                		Name: "John",
+                		Age: 30,
+                	}.Name))
+                	io.WriteString(w, "</div>")
+                }
+            "#]],
+        );
     }
 
     #[test]
     fn enum_literal_in_condition() {
-        use crate::ir::syntax::builder::build_ir_with_enums;
+        use crate::dop::symbols::type_name::TypeName;
+        use crate::hop::symbols::module_name::ModuleName;
 
-        let enums_def = vec![("Color", vec!["Red", "Green", "Blue"])];
+        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
 
         let color_type = Type::Enum {
             module: ModuleName::new("test").unwrap(),
@@ -1376,19 +1336,19 @@ mod tests {
             ],
         };
 
-        let entrypoints = vec![build_ir_with_enums(
+        let module = build_module_with_enums(
             "ColorDisplay",
             vec![("color", color_type)],
-            enums_def,
+            enums,
             |t| {
                 t.if_stmt(t.eq(t.var("color"), t.enum_variant("Color", "Red")), |t| {
                     t.write("<div>It's red!</div>");
                 });
             },
-        )];
+        );
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 ColorDisplay(color: test::Color) {
@@ -1402,6 +1362,14 @@ mod tests {
 
                 import (
                 	"io"
+                )
+
+                type Color int
+
+                const (
+                	ColorRed Color = iota
+                	ColorGreen
+                	ColorBlue
                 )
 
                 type ColorDisplayParams struct {
@@ -1420,9 +1388,10 @@ mod tests {
 
     #[test]
     fn enum_equality_comparison() {
-        use crate::ir::syntax::builder::build_ir_with_enums;
+        use crate::dop::symbols::type_name::TypeName;
+        use crate::hop::symbols::module_name::ModuleName;
 
-        let enums_def = vec![("Status", vec!["Active", "Inactive", "Pending"])];
+        let enums = vec![("Status", vec!["Active", "Inactive", "Pending"])];
 
         let status_type = Type::Enum {
             module: ModuleName::new("test").unwrap(),
@@ -1434,10 +1403,10 @@ mod tests {
             ],
         };
 
-        let entrypoints = vec![build_ir_with_enums(
+        let module = build_module_with_enums(
             "StatusCheck",
             vec![("status", status_type)],
-            enums_def,
+            enums,
             |t| {
                 t.if_stmt(
                     t.eq(t.var("status"), t.enum_variant("Status", "Active")),
@@ -1452,10 +1421,10 @@ mod tests {
                     },
                 );
             },
-        )];
+        );
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 StatusCheck(status: test::Status) {
@@ -1472,6 +1441,14 @@ mod tests {
 
                 import (
                 	"io"
+                )
+
+                type Status int
+
+                const (
+                	StatusActive Status = iota
+                	StatusInactive
+                	StatusPending
                 )
 
                 type StatusCheckParams struct {
@@ -1493,10 +1470,10 @@ mod tests {
 
     #[test]
     fn enum_type_declarations() {
-        use crate::ir::ast::IrEnumDeclaration;
-        use crate::ir::syntax::builder::build_ir_with_enums;
+        use crate::dop::symbols::type_name::TypeName;
+        use crate::hop::symbols::module_name::ModuleName;
 
-        let enums_def = vec![("Color", vec!["Red", "Green", "Blue"])];
+        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
 
         let color_type = Type::Enum {
             module: ModuleName::new("test").unwrap(),
@@ -1508,61 +1485,53 @@ mod tests {
             ],
         };
 
-        let entrypoints = vec![build_ir_with_enums(
+        let module = build_module_with_enums(
             "ColorDisplay",
             vec![("color", color_type)],
-            enums_def,
+            enums,
             |t| {
                 t.if_stmt(t.eq(t.var("color"), t.enum_variant("Color", "Red")), |t| {
                     t.write("<div>Red!</div>");
                 });
             },
-        )];
+        );
 
-        let enums = vec![IrEnumDeclaration {
-            name: "Color".to_string(),
-            variants: vec![
-                TypeName::new("Red").unwrap(),
-                TypeName::new("Green").unwrap(),
-                TypeName::new("Blue").unwrap(),
-            ],
-        }];
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                ColorDisplay(color: test::Color) {
+                  if (color == Color::Red) {
+                    write("<div>Red!</div>")
+                  }
+                }
 
-        let module = IrModule {
-            components: entrypoints,
-            records: vec![],
-            enums,
-        };
+                -- after --
+                package components
 
-        let transpiler = GoTranspiler::new("components".to_string());
-        let output = transpiler.transpile_module(&module);
+                import (
+                	"io"
+                )
 
-        expect![[r#"
-            package components
+                type Color int
 
-            import (
-            	"io"
-            )
+                const (
+                	ColorRed Color = iota
+                	ColorGreen
+                	ColorBlue
+                )
 
-            type Color int
+                type ColorDisplayParams struct {
+                	Color Color `json:"color"`
+                }
 
-            const (
-            	ColorRed Color = iota
-            	ColorGreen
-            	ColorBlue
-            )
-
-            type ColorDisplayParams struct {
-            	Color Color `json:"color"`
-            }
-
-            func ColorDisplay(w io.Writer, params ColorDisplayParams) {
-            	color := params.Color
-            	if (color == ColorRed) {
-            		io.WriteString(w, "<div>Red!</div>")
-            	}
-            }
-        "#]]
-        .assert_eq(&output);
+                func ColorDisplay(w io.Writer, params ColorDisplayParams) {
+                	color := params.Color
+                	if (color == ColorRed) {
+                		io.WriteString(w, "<div>Red!</div>")
+                	}
+                }
+            "#]],
+        );
     }
 }

@@ -3,8 +3,6 @@ use pretty::BoxDoc;
 use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
-#[cfg(test)]
-use crate::dop::symbols::type_name::TypeName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrModule, IrStatement};
 
@@ -699,32 +697,21 @@ impl TypeTranspiler for PythonTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        hop::symbols::module_name::ModuleName,
-        ir::{IrRecordDeclaration, syntax::builder::build_ir},
-    };
+    use crate::ir::syntax::builder::{build_module, build_module_with_records};
     use expect_test::{Expect, expect};
 
-    fn transpile_with_pretty(entrypoints: &[IrComponentDeclaration]) -> String {
-        let module = IrModule {
-            components: entrypoints.to_vec(),
-            records: vec![],
-            enums: vec![],
-        };
-        let transpiler = PythonTranspiler::new();
-        transpiler.transpile_module(&module)
-    }
-
-    fn check(entrypoints: &[IrComponentDeclaration], expected: Expect) {
+    fn check(module: &IrModule, expected: Expect) {
         // Format before (IR)
-        let before = entrypoints
+        let before = module
+            .components
             .iter()
             .map(|ep| ep.to_string())
             .collect::<Vec<_>>()
             .join("\n\n");
 
         // Format after (Python code)
-        let after = transpile_with_pretty(entrypoints);
+        let transpiler = PythonTranspiler::new();
+        let after = transpiler.transpile_module(module);
 
         // Create output with before/after format
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
@@ -734,12 +721,12 @@ mod tests {
 
     #[test]
     fn simple_component() {
-        let entrypoints = vec![build_ir("TestMainComp", [], |t| {
+        let module = build_module("TestMainComp", [], |t| {
             t.write("<div>Hello World</div>\n");
-        })];
+        });
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 TestMainComp() {
@@ -757,7 +744,7 @@ mod tests {
 
     #[test]
     fn component_with_parameters() {
-        let entrypoints = vec![build_ir(
+        let module = build_module(
             "TestGreetingComp",
             vec![("name", Type::String), ("message", Type::String)],
             |t| {
@@ -767,10 +754,10 @@ mod tests {
                 t.write_expr_escaped(t.var("message"));
                 t.write("</h1>\n");
             },
-        )];
+        );
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 TestGreetingComp(name: String, message: String) {
@@ -806,14 +793,14 @@ mod tests {
 
     #[test]
     fn if_condition() {
-        let entrypoints = vec![build_ir("TestMainComp", [("show", Type::Bool)], |t| {
+        let module = build_module("TestMainComp", [("show", Type::Bool)], |t| {
             t.if_stmt(t.var("show"), |t| {
                 t.write("<div>Visible</div>\n");
             });
-        })];
+        });
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 TestMainComp(show: Bool) {
@@ -841,7 +828,7 @@ mod tests {
 
     #[test]
     fn for_loop() {
-        let entrypoints = vec![build_ir(
+        let module = build_module(
             "TestMainComp",
             vec![("items", Type::Array(Box::new(Type::String)))],
             |t| {
@@ -851,10 +838,10 @@ mod tests {
                     t.write("</li>\n");
                 });
             },
-        )];
+        );
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 TestMainComp(items: Array[String]) {
@@ -887,16 +874,16 @@ mod tests {
 
     #[test]
     fn let_binding() {
-        let entrypoints = vec![build_ir("TestGreeting", [], |t| {
+        let module = build_module("TestGreeting", [], |t| {
             t.let_stmt("greeting", t.str("Hello from Python!"), |t| {
                 t.write("<p>");
                 t.write_expr_escaped(t.var("greeting"));
                 t.write("</p>\n");
             });
-        })];
+        });
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 TestGreeting() {
@@ -923,7 +910,7 @@ mod tests {
 
     #[test]
     fn string_comparison() {
-        let entrypoints = vec![build_ir(
+        let module = build_module(
             "TestAuthCheck",
             vec![("user_role", Type::String), ("expected_role", Type::String)],
             |t| {
@@ -934,10 +921,10 @@ mod tests {
                     t.write("<div>Admin panel available</div>\n");
                 });
             },
-        )];
+        );
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 TestAuthCheck(user_role: String, expected_role: String) {
@@ -972,14 +959,14 @@ mod tests {
 
     #[test]
     fn not_operator() {
-        let entrypoints = vec![build_ir("TestNot", [("active", Type::Bool)], |t| {
+        let module = build_module("TestNot", [("active", Type::Bool)], |t| {
             t.if_stmt(t.not(t.var("active")), |t| {
                 t.write("<div>Inactive</div>\n");
             });
-        })];
+        });
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 TestNot(active: Bool) {
@@ -1007,7 +994,7 @@ mod tests {
 
     #[test]
     fn trusted_html_type() {
-        let entrypoints = vec![build_ir(
+        let module = build_module(
             "RenderHtml",
             vec![
                 ("safe_content", Type::TrustedHTML),
@@ -1020,10 +1007,10 @@ mod tests {
                 t.write_expr_escaped(t.var("user_input"));
                 t.write("</div>");
             },
-        )];
+        );
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 RenderHtml(safe_content: TrustedHTML, user_input: String) {
@@ -1062,9 +1049,10 @@ mod tests {
 
     #[test]
     fn record_declarations() {
-        use crate::ir::syntax::builder::build_ir_with_records;
+        use crate::dop::symbols::{field_name::FieldName, type_name::TypeName};
+        use crate::hop::symbols::module_name::ModuleName;
 
-        let records_def = vec![
+        let records = vec![
             (
                 "User",
                 vec![
@@ -1079,7 +1067,7 @@ mod tests {
             ),
         ];
 
-        let entrypoints = vec![build_ir_with_records(
+        let module = build_module_with_records(
             "UserProfile",
             vec![(
                 "user",
@@ -1093,122 +1081,91 @@ mod tests {
                     ],
                 },
             )],
-            records_def,
+            records,
             |t| {
                 t.write("<div>");
                 t.write_expr_escaped(t.field_access(t.var("user"), "name"));
                 t.write("</div>");
             },
-        )];
+        );
 
-        let records = vec![
-            IrRecordDeclaration {
-                name: "User".to_string(),
-                fields: vec![
-                    (FieldName::new("name").unwrap(), Type::String),
-                    (FieldName::new("age").unwrap(), Type::Int),
-                    (FieldName::new("active").unwrap(), Type::Bool),
-                ],
-            },
-            IrRecordDeclaration {
-                name: "Address".to_string(),
-                fields: vec![
-                    (FieldName::new("street").unwrap(), Type::String),
-                    (FieldName::new("city").unwrap(), Type::String),
-                ],
-            },
-        ];
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                UserProfile(user: test::User) {
+                  write("<div>")
+                  write_escaped(user.name)
+                  write("</div>")
+                }
 
-        let module = IrModule {
-            components: entrypoints,
-            records,
-            enums: vec![],
-        };
+                -- after --
+                from dataclasses import dataclass
+                from html import escape as html_escape
 
-        let transpiler = PythonTranspiler::new();
-        let output = transpiler.transpile_module(&module);
+                @dataclass
+                class User:
+                    name: str
+                    age: int
+                    active: bool
 
-        expect![[r#"
-            from dataclasses import dataclass
-            from html import escape as html_escape
+                @dataclass
+                class Address:
+                    street: str
+                    city: str
 
-            @dataclass
-            class User:
-                name: str
-                age: int
-                active: bool
+                @dataclass
+                class UserProfileParams:
+                    user: User
 
-            @dataclass
-            class Address:
-                street: str
-                city: str
-
-            @dataclass
-            class UserProfileParams:
-                user: User
-
-            def user_profile(params: UserProfileParams) -> str:
-                user = params.user
-                output = []
-                output.append("<div>")
-                output.append(html_escape(user.name))
-                output.append("</div>")
-                return ''.join(output)
-        "#]]
-        .assert_eq(&output);
+                def user_profile(params: UserProfileParams) -> str:
+                    user = params.user
+                    output = []
+                    output.append("<div>")
+                    output.append(html_escape(user.name))
+                    output.append("</div>")
+                    return ''.join(output)
+            "#]],
+        );
     }
 
     #[test]
     fn record_literal() {
-        use crate::ir::syntax::builder::build_ir_with_records;
+        let records = vec![("User", vec![("name", Type::String), ("age", Type::Int)])];
 
-        let records_def = vec![("User", vec![("name", Type::String), ("age", Type::Int)])];
+        let module = build_module_with_records("CreateUser", vec![], records, |t| {
+            t.write("<div>");
+            let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
+            t.write_expr_escaped(t.field_access(user, "name"));
+            t.write("</div>");
+        });
 
-        let entrypoints = vec![build_ir_with_records(
-            "CreateUser",
-            vec![],
-            records_def,
-            |t| {
-                t.write("<div>");
-                let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
-                t.write_expr_escaped(t.field_access(user, "name"));
-                t.write("</div>");
-            },
-        )];
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                CreateUser() {
+                  write("<div>")
+                  write_escaped(User(name: "John", age: 30).name)
+                  write("</div>")
+                }
 
-        let records = vec![IrRecordDeclaration {
-            name: "User".to_string(),
-            fields: vec![
-                (FieldName::new("name").unwrap(), Type::String),
-                (FieldName::new("age").unwrap(), Type::Int),
-            ],
-        }];
+                -- after --
+                from dataclasses import dataclass
+                from html import escape as html_escape
 
-        let module = IrModule {
-            components: entrypoints,
-            records,
-            enums: vec![],
-        };
+                @dataclass
+                class User:
+                    name: str
+                    age: int
 
-        let transpiler = PythonTranspiler::new();
-        let output = transpiler.transpile_module(&module);
-
-        expect![[r#"
-            from dataclasses import dataclass
-            from html import escape as html_escape
-
-            @dataclass
-            class User:
-                name: str
-                age: int
-
-            def create_user() -> str:
-                output = []
-                output.append("<div>")
-                output.append(html_escape(User(name="John", age=30).name))
-                output.append("</div>")
-                return ''.join(output)
-        "#]]
-        .assert_eq(&output);
+                def create_user() -> str:
+                    output = []
+                    output.append("<div>")
+                    output.append(html_escape(User(name="John", age=30).name))
+                    output.append("</div>")
+                    return ''.join(output)
+            "#]],
+        );
     }
 }
