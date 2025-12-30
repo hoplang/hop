@@ -4,7 +4,7 @@ use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{Type, VarName};
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
-use crate::ir::ast::IrComponentDeclaration;
+use crate::ir::ast::{IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration};
 use crate::ir::ast::{ExprId, IrExpr, IrStatement, StatementId};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -82,6 +82,74 @@ where
     let mut builder = IrBuilder::new(params_owned, BTreeMap::new(), enums_map);
     body_fn(&mut builder);
     builder.build(name)
+}
+
+/// Build a simple module with just components (no records or enums)
+pub fn build_module<F, P>(name: &str, params: P, body_fn: F) -> IrModule
+where
+    F: FnOnce(&mut IrBuilder),
+    P: IntoIterator<Item = (&'static str, Type)>,
+{
+    IrModule {
+        components: vec![build_ir(name, params, body_fn)],
+        records: vec![],
+        enums: vec![],
+    }
+}
+
+/// Build a module with records
+pub fn build_module_with_records<F, P>(
+    name: &str,
+    params: P,
+    records: Vec<(&str, Vec<(&str, Type)>)>,
+    body_fn: F,
+) -> IrModule
+where
+    F: FnOnce(&mut IrBuilder),
+    P: IntoIterator<Item = (&'static str, Type)>,
+{
+    let record_declarations: Vec<IrRecordDeclaration> = records
+        .iter()
+        .map(|(name, fields)| IrRecordDeclaration {
+            name: name.to_string(),
+            fields: fields
+                .iter()
+                .map(|(k, v)| (FieldName::new(k).unwrap(), v.clone()))
+                .collect(),
+        })
+        .collect();
+
+    IrModule {
+        components: vec![build_ir_with_records(name, params, records, body_fn)],
+        records: record_declarations,
+        enums: vec![],
+    }
+}
+
+/// Build a module with enums
+pub fn build_module_with_enums<F, P>(
+    name: &str,
+    params: P,
+    enums: Vec<(&str, Vec<&str>)>,
+    body_fn: F,
+) -> IrModule
+where
+    F: FnOnce(&mut IrBuilder),
+    P: IntoIterator<Item = (&'static str, Type)>,
+{
+    let enum_declarations: Vec<IrEnumDeclaration> = enums
+        .iter()
+        .map(|(name, variants)| IrEnumDeclaration {
+            name: name.to_string(),
+            variants: variants.iter().map(|v| TypeName::new(v).unwrap()).collect(),
+        })
+        .collect();
+
+    IrModule {
+        components: vec![build_ir_with_enums(name, params, enums, body_fn)],
+        records: vec![],
+        enums: enum_declarations,
+    }
 }
 
 pub struct IrBuilder {

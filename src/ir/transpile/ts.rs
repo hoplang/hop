@@ -3,8 +3,6 @@ use pretty::BoxDoc;
 use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
-#[cfg(test)]
-use crate::dop::symbols::type_name::TypeName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrModule, IrStatement};
 
@@ -740,32 +738,23 @@ impl TypeTranspiler for TsTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        hop::symbols::module_name::ModuleName,
-        ir::{IrRecordDeclaration, syntax::builder::build_ir},
+    use crate::ir::syntax::builder::{
+        build_module, build_module_with_enums, build_module_with_records,
     };
     use expect_test::{Expect, expect};
 
-    fn transpile_with_pretty(entrypoints: &[IrComponentDeclaration]) -> String {
-        let module = IrModule {
-            components: entrypoints.to_vec(),
-            records: vec![],
-            enums: vec![],
-        };
-        let transpiler = TsTranspiler::new();
-        transpiler.transpile_module(&module)
-    }
-
-    fn check(entrypoints: &[IrComponentDeclaration], expected: Expect) {
+    fn check(module: &IrModule, expected: Expect) {
         // Format before (IR)
-        let before = entrypoints
+        let before = module
+            .components
             .iter()
             .map(|ep| ep.to_string())
             .collect::<Vec<_>>()
             .join("\n\n");
 
         // Format TypeScript output
-        let ts_output = transpile_with_pretty(entrypoints);
+        let transpiler = TsTranspiler::new();
+        let ts_output = transpiler.transpile_module(module);
 
         // Create output with before/after format
         let output = format!("-- before --\n{}\n-- after --\n{}", before, ts_output);
@@ -775,12 +764,12 @@ mod tests {
 
     #[test]
     fn simple_component() {
-        let entrypoints = vec![build_ir("HelloWorld", [], |t| {
+        let module = build_module("HelloWorld", [], |t| {
             t.write("<h1>Hello, World!</h1>\n");
-        })];
+        });
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 HelloWorld() {
@@ -801,7 +790,7 @@ mod tests {
 
     #[test]
     fn component_with_params_and_escaping() {
-        let entrypoints = vec![build_ir(
+        let module = build_module(
             "UserInfo",
             vec![("name", Type::String), ("age", Type::String)],
             |t| {
@@ -814,10 +803,10 @@ mod tests {
                 t.write("</p>\n");
                 t.write("</div>\n");
             },
-        )];
+        );
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 UserInfo(name: String, age: String) {
@@ -861,7 +850,7 @@ mod tests {
 
     #[test]
     fn conditional_display() {
-        let entrypoints = vec![build_ir(
+        let module = build_module(
             "ConditionalDisplay",
             vec![("title", Type::String), ("show", Type::Bool)],
             |t| {
@@ -871,10 +860,10 @@ mod tests {
                     t.write("</h1>\n");
                 });
             },
-        )];
+        );
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 ConditionalDisplay(title: String, show: Bool) {
@@ -912,7 +901,7 @@ mod tests {
 
     #[test]
     fn for_loop_with_array() {
-        let entrypoints = vec![build_ir(
+        let module = build_module(
             "ListItems",
             vec![("items", Type::Array(Box::new(Type::String)))],
             |t| {
@@ -924,10 +913,10 @@ mod tests {
                 });
                 t.write("</ul>\n");
             },
-        )];
+        );
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 ListItems(items: Array[String]) {
@@ -969,7 +958,7 @@ mod tests {
 
     #[test]
     fn let_binding() {
-        let entrypoints = vec![build_ir("GreetingCard", [], |t| {
+        let module = build_module("GreetingCard", [], |t| {
             t.let_stmt("greeting", t.str("Hello from hop!"), |t| {
                 t.write("<div class=\"card\">\n");
                 t.write("<p>");
@@ -977,10 +966,10 @@ mod tests {
                 t.write("</p>\n");
                 t.write("</div>\n");
             });
-        })];
+        });
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 GreetingCard() {
@@ -1021,7 +1010,7 @@ mod tests {
 
     #[test]
     fn nested_components_with_let_bindings() {
-        let entrypoints = vec![build_ir("TestMainComp", [], |t| {
+        let module = build_module("TestMainComp", [], |t| {
             t.write("<div data-hop-id=\"test/card-comp\">");
             t.let_stmt("title", t.str("Hello World"), |t| {
                 t.write("<h2>");
@@ -1029,10 +1018,10 @@ mod tests {
                 t.write("</h2>");
             });
             t.write("</div>");
-        })];
+        });
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 TestMainComp() {
@@ -1073,7 +1062,7 @@ mod tests {
 
     #[test]
     fn trusted_html_type() {
-        let entrypoints = vec![build_ir(
+        let module = build_module(
             "RenderHtml",
             vec![
                 ("safe_content", Type::TrustedHTML),
@@ -1088,10 +1077,10 @@ mod tests {
                 t.write_expr_escaped(t.var("user_input"));
                 t.write("</div>");
             },
-        )];
+        );
 
         check(
-            &entrypoints,
+            &module,
             expect![[r#"
                 -- before --
                 RenderHtml(safe_content: TrustedHTML, user_input: String) {
@@ -1131,9 +1120,10 @@ mod tests {
 
     #[test]
     fn record_declarations() {
-        use crate::ir::syntax::builder::build_ir_with_records;
+        use crate::dop::symbols::{field_name::FieldName, type_name::TypeName};
+        use crate::hop::symbols::module_name::ModuleName;
 
-        let records_def = vec![
+        let records = vec![
             (
                 "User",
                 vec![
@@ -1148,7 +1138,7 @@ mod tests {
             ),
         ];
 
-        let entrypoints = vec![build_ir_with_records(
+        let module = build_module_with_records(
             "UserProfile",
             vec![(
                 "user",
@@ -1162,144 +1152,113 @@ mod tests {
                     ],
                 },
             )],
-            records_def,
+            records,
             |t| {
                 t.write("<div>");
                 t.write_expr_escaped(t.field_access(t.var("user"), "name"));
                 t.write("</div>");
             },
-        )];
+        );
 
-        let records = vec![
-            IrRecordDeclaration {
-                name: "User".to_string(),
-                fields: vec![
-                    (FieldName::new("name").unwrap(), Type::String),
-                    (FieldName::new("age").unwrap(), Type::Int),
-                    (FieldName::new("active").unwrap(), Type::Bool),
-                ],
-            },
-            IrRecordDeclaration {
-                name: "Address".to_string(),
-                fields: vec![
-                    (FieldName::new("street").unwrap(), Type::String),
-                    (FieldName::new("city").unwrap(), Type::String),
-                ],
-            },
-        ];
-
-        let module = IrModule {
-            components: entrypoints,
-            records,
-            enums: vec![],
-        };
-
-        let transpiler = TsTranspiler::new();
-        let output = transpiler.transpile_module(&module);
-
-        expect![[r#"
-            export interface User {
-                name: string;
-                age: number;
-                active: boolean;
-            }
-
-            export interface Address {
-                street: string;
-                city: string;
-            }
-
-            function escapeHtml(str: string): string {
-                return str
-                    .replace(/&/g, '&amp;')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;')
-                    .replace(/"/g, '&quot;')
-                    .replace(/'/g, '&#39;');
-            }
-
-            export default {
-                userProfile: ({ user }: { user: User }): string => {
-                    let output: string = "";
-                    output += "<div>";
-                    output += escapeHtml(user.name);
-                    output += "</div>";
-                    return output;
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                UserProfile(user: test::User) {
+                  write("<div>")
+                  write_escaped(user.name)
+                  write("</div>")
                 }
-            }
-        "#]]
-        .assert_eq(&output);
+
+                -- after --
+                export interface User {
+                    name: string;
+                    age: number;
+                    active: boolean;
+                }
+
+                export interface Address {
+                    street: string;
+                    city: string;
+                }
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    userProfile: ({ user }: { user: User }): string => {
+                        let output: string = "";
+                        output += "<div>";
+                        output += escapeHtml(user.name);
+                        output += "</div>";
+                        return output;
+                    }
+                }
+            "#]],
+        );
     }
 
     #[test]
     fn record_literal() {
-        use crate::ir::syntax::builder::build_ir_with_records;
+        let records = vec![("User", vec![("name", Type::String), ("age", Type::Int)])];
 
-        let records_def = vec![("User", vec![("name", Type::String), ("age", Type::Int)])];
+        let module = build_module_with_records("CreateUser", vec![], records, |t| {
+            t.write("<div>");
+            let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
+            t.write_expr_escaped(t.field_access(user, "name"));
+            t.write("</div>");
+        });
 
-        let entrypoints = vec![build_ir_with_records(
-            "CreateUser",
-            vec![],
-            records_def,
-            |t| {
-                t.write("<div>");
-                let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
-                t.write_expr_escaped(t.field_access(user, "name"));
-                t.write("</div>");
-            },
-        )];
-
-        let records = vec![IrRecordDeclaration {
-            name: "User".to_string(),
-            fields: vec![
-                (FieldName::new("name").unwrap(), Type::String),
-                (FieldName::new("age").unwrap(), Type::Int),
-            ],
-        }];
-
-        let module = IrModule {
-            components: entrypoints,
-            records,
-            enums: vec![],
-        };
-
-        let transpiler = TsTranspiler::new();
-        let output = transpiler.transpile_module(&module);
-
-        expect![[r#"
-            export interface User {
-                name: string;
-                age: number;
-            }
-
-            function escapeHtml(str: string): string {
-                return str
-                    .replace(/&/g, '&amp;')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;')
-                    .replace(/"/g, '&quot;')
-                    .replace(/'/g, '&#39;');
-            }
-
-            export default {
-                createUser: (): string => {
-                    let output: string = "";
-                    output += "<div>";
-                    output += escapeHtml({name: "John", age: 30}.name);
-                    output += "</div>";
-                    return output;
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                CreateUser() {
+                  write("<div>")
+                  write_escaped(User(name: "John", age: 30).name)
+                  write("</div>")
                 }
-            }
-        "#]]
-        .assert_eq(&output);
+
+                -- after --
+                export interface User {
+                    name: string;
+                    age: number;
+                }
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    createUser: (): string => {
+                        let output: string = "";
+                        output += "<div>";
+                        output += escapeHtml({name: "John", age: 30}.name);
+                        output += "</div>";
+                        return output;
+                    }
+                }
+            "#]],
+        );
     }
 
     #[test]
     fn enum_type_declarations() {
-        use crate::ir::ast::IrEnumDeclaration;
-        use crate::ir::syntax::builder::build_ir_with_enums;
+        use crate::dop::symbols::type_name::TypeName;
+        use crate::hop::symbols::module_name::ModuleName;
 
-        let enums_def = vec![("Color", vec!["Red", "Green", "Blue"])];
+        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
 
         let color_type = Type::Enum {
             module: ModuleName::new("test").unwrap(),
@@ -1311,69 +1270,61 @@ mod tests {
             ],
         };
 
-        let entrypoints = vec![build_ir_with_enums(
+        let module = build_module_with_enums(
             "ColorDisplay",
             vec![("color", color_type)],
-            enums_def,
+            enums,
             |t| {
                 t.if_stmt(t.eq(t.var("color"), t.enum_variant("Color", "Red")), |t| {
                     t.write("<div>Red!</div>");
                 });
             },
-        )];
+        );
 
-        let enums = vec![IrEnumDeclaration {
-            name: "Color".to_string(),
-            variants: vec![
-                TypeName::new("Red").unwrap(),
-                TypeName::new("Green").unwrap(),
-                TypeName::new("Blue").unwrap(),
-            ],
-        }];
-
-        let module = IrModule {
-            components: entrypoints,
-            records: vec![],
-            enums,
-        };
-
-        let transpiler = TsTranspiler::new();
-        let output = transpiler.transpile_module(&module);
-
-        expect![[r#"
-            export type Color = ColorRed | ColorGreen | ColorBlue;
-
-            export class ColorRed {
-                readonly __tag = "ColorRed";
-                equals(o: Color): boolean {
-                    return o.__tag === "ColorRed";
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                ColorDisplay(color: test::Color) {
+                  if (color == Color::Red) {
+                    write("<div>Red!</div>")
+                  }
                 }
-            }
 
-            export class ColorGreen {
-                readonly __tag = "ColorGreen";
-                equals(o: Color): boolean {
-                    return o.__tag === "ColorGreen";
-                }
-            }
+                -- after --
+                export type Color = ColorRed | ColorGreen | ColorBlue;
 
-            export class ColorBlue {
-                readonly __tag = "ColorBlue";
-                equals(o: Color): boolean {
-                    return o.__tag === "ColorBlue";
-                }
-            }
-
-            export default {
-                colorDisplay: ({ color }: { color: Color }): string => {
-                    let output: string = "";
-                    if (color.equals(new ColorRed())) {
-                        output += "<div>Red!</div>";
+                export class ColorRed {
+                    readonly __tag = "ColorRed";
+                    equals(o: Color): boolean {
+                        return o.__tag === "ColorRed";
                     }
-                    return output;
                 }
-            }
-        "#]]
-        .assert_eq(&output);
+
+                export class ColorGreen {
+                    readonly __tag = "ColorGreen";
+                    equals(o: Color): boolean {
+                        return o.__tag === "ColorGreen";
+                    }
+                }
+
+                export class ColorBlue {
+                    readonly __tag = "ColorBlue";
+                    equals(o: Color): boolean {
+                        return o.__tag === "ColorBlue";
+                    }
+                }
+
+                export default {
+                    colorDisplay: ({ color }: { color: Color }): string => {
+                        let output: string = "";
+                        if (color.equals(new ColorRed())) {
+                            output += "<div>Red!</div>";
+                        }
+                        return output;
+                    }
+                }
+            "#]],
+        );
     }
 }
