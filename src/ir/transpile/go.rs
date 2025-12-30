@@ -149,46 +149,58 @@ impl Transpiler for GoTranspiler {
                 .append(BoxDoc::line());
         }
 
-        // Generate enum type definitions
+        // Generate enum type definitions (interface-based)
         for enum_def in &module.enums {
-            // Generate: type EnumName int
+            // Generate: type EnumName interface { Equals(o EnumName) bool }
             result = result
                 .append(BoxDoc::text("type "))
                 .append(BoxDoc::text(enum_def.name.as_str()))
-                .append(BoxDoc::text(" int"))
+                .append(BoxDoc::text(" interface {"))
+                .append(
+                    BoxDoc::line()
+                        .append(BoxDoc::text("Equals(o "))
+                        .append(BoxDoc::text(enum_def.name.as_str()))
+                        .append(BoxDoc::text(") bool"))
+                        .nest(1),
+                )
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("}"))
                 .append(BoxDoc::line())
                 .append(BoxDoc::line());
 
-            // Generate const block with iota
-            // const (
-            //     EnumNameVariant1 EnumName = iota
-            //     EnumNameVariant2
-            //     ...
-            // )
-            result = result.append(BoxDoc::text("const (")).append(
-                BoxDoc::line()
-                    .append(BoxDoc::intersperse(
-                        enum_def.variants.iter().enumerate().map(|(i, variant)| {
-                            let const_name = BoxDoc::text(enum_def.name.as_str())
-                                .append(BoxDoc::text(variant.as_str()));
-                            if i == 0 {
-                                const_name
-                                    .append(BoxDoc::text(" "))
-                                    .append(BoxDoc::text(enum_def.name.as_str()))
-                                    .append(BoxDoc::text(" = iota"))
-                            } else {
-                                const_name
-                            }
-                        }),
-                        BoxDoc::line(),
-                    ))
-                    .nest(1),
-            );
-            result = result
-                .append(BoxDoc::line())
-                .append(BoxDoc::text(")"))
-                .append(BoxDoc::line())
-                .append(BoxDoc::line());
+            // Generate a struct and Equals method for each variant
+            for variant in &enum_def.variants {
+                let struct_name = format!("{}{}", enum_def.name, variant.as_str());
+
+                // Generate: type EnumNameVariant struct{}
+                result = result
+                    .append(BoxDoc::text("type "))
+                    .append(BoxDoc::as_string(struct_name.clone()))
+                    .append(BoxDoc::text(" struct{}"))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::line());
+
+                // Generate: func (e EnumNameVariant) Equals(o EnumName) bool { _, ok := o.(EnumNameVariant); return ok }
+                result = result
+                    .append(BoxDoc::text("func (e "))
+                    .append(BoxDoc::as_string(struct_name.clone()))
+                    .append(BoxDoc::text(") Equals(o "))
+                    .append(BoxDoc::text(enum_def.name.as_str()))
+                    .append(BoxDoc::text(") bool {"))
+                    .append(
+                        BoxDoc::line()
+                            .append(BoxDoc::text("_, ok := o.("))
+                            .append(BoxDoc::as_string(struct_name.clone()))
+                            .append(BoxDoc::text(")"))
+                            .append(BoxDoc::line())
+                            .append(BoxDoc::text("return ok"))
+                            .nest(1),
+                    )
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("}"))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::line());
+            }
         }
 
         // Generate record type structs
@@ -511,8 +523,10 @@ impl ExpressionTranspiler for GoTranspiler {
     }
 
     fn transpile_enum_literal<'a>(&self, enum_name: &'a str, variant_name: &'a str) -> BoxDoc<'a> {
-        // In Go, enum variants are int constants with the pattern EnumNameVariantName
-        BoxDoc::text(enum_name).append(BoxDoc::text(variant_name))
+        // In Go, enum variants are structs with the pattern EnumNameVariantName{}
+        BoxDoc::text(enum_name)
+            .append(BoxDoc::text(variant_name))
+            .append(BoxDoc::text("{}"))
     }
 
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
@@ -548,9 +562,9 @@ impl ExpressionTranspiler for GoTranspiler {
     }
 
     fn transpile_enum_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::text("(")
-            .append(self.transpile_expr(left))
-            .append(BoxDoc::text(" == "))
+        // Use the Equals method on the interface-based enum
+        self.transpile_expr(left)
+            .append(BoxDoc::text(".Equals("))
             .append(self.transpile_expr(right))
             .append(BoxDoc::text(")"))
     }
@@ -588,9 +602,10 @@ impl ExpressionTranspiler for GoTranspiler {
     }
 
     fn transpile_enum_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::text("(")
+        // Use negation of the Equals method
+        BoxDoc::text("!")
             .append(self.transpile_expr(left))
-            .append(BoxDoc::text(" != "))
+            .append(BoxDoc::text(".Equals("))
             .append(self.transpile_expr(right))
             .append(BoxDoc::text(")"))
     }
@@ -1364,13 +1379,30 @@ mod tests {
                 	"io"
                 )
 
-                type Color int
+                type Color interface {
+                	Equals(o Color) bool
+                }
 
-                const (
-                	ColorRed Color = iota
-                	ColorGreen
-                	ColorBlue
-                )
+                type ColorRed struct{}
+
+                func (e ColorRed) Equals(o Color) bool {
+                	_, ok := o.(ColorRed)
+                	return ok
+                }
+
+                type ColorGreen struct{}
+
+                func (e ColorGreen) Equals(o Color) bool {
+                	_, ok := o.(ColorGreen)
+                	return ok
+                }
+
+                type ColorBlue struct{}
+
+                func (e ColorBlue) Equals(o Color) bool {
+                	_, ok := o.(ColorBlue)
+                	return ok
+                }
 
                 type ColorDisplayParams struct {
                 	Color Color `json:"color"`
@@ -1378,7 +1410,7 @@ mod tests {
 
                 func ColorDisplay(w io.Writer, params ColorDisplayParams) {
                 	color := params.Color
-                	if (color == ColorRed) {
+                	if color.Equals(ColorRed{}) {
                 		io.WriteString(w, "<div>It's red!</div>")
                 	}
                 }
@@ -1443,13 +1475,30 @@ mod tests {
                 	"io"
                 )
 
-                type Status int
+                type Status interface {
+                	Equals(o Status) bool
+                }
 
-                const (
-                	StatusActive Status = iota
-                	StatusInactive
-                	StatusPending
-                )
+                type StatusActive struct{}
+
+                func (e StatusActive) Equals(o Status) bool {
+                	_, ok := o.(StatusActive)
+                	return ok
+                }
+
+                type StatusInactive struct{}
+
+                func (e StatusInactive) Equals(o Status) bool {
+                	_, ok := o.(StatusInactive)
+                	return ok
+                }
+
+                type StatusPending struct{}
+
+                func (e StatusPending) Equals(o Status) bool {
+                	_, ok := o.(StatusPending)
+                	return ok
+                }
 
                 type StatusCheckParams struct {
                 	Status Status `json:"status"`
@@ -1457,10 +1506,10 @@ mod tests {
 
                 func StatusCheck(w io.Writer, params StatusCheckParams) {
                 	status := params.Status
-                	if (status == StatusActive) {
+                	if status.Equals(StatusActive{}) {
                 		io.WriteString(w, "<span class=\"active\">Active</span>")
                 	}
-                	if (status == StatusPending) {
+                	if status.Equals(StatusPending{}) {
                 		io.WriteString(w, "<span class=\"pending\">Pending</span>")
                 	}
                 }
@@ -1513,13 +1562,30 @@ mod tests {
                 	"io"
                 )
 
-                type Color int
+                type Color interface {
+                	Equals(o Color) bool
+                }
 
-                const (
-                	ColorRed Color = iota
-                	ColorGreen
-                	ColorBlue
-                )
+                type ColorRed struct{}
+
+                func (e ColorRed) Equals(o Color) bool {
+                	_, ok := o.(ColorRed)
+                	return ok
+                }
+
+                type ColorGreen struct{}
+
+                func (e ColorGreen) Equals(o Color) bool {
+                	_, ok := o.(ColorGreen)
+                	return ok
+                }
+
+                type ColorBlue struct{}
+
+                func (e ColorBlue) Equals(o Color) bool {
+                	_, ok := o.(ColorBlue)
+                	return ok
+                }
 
                 type ColorDisplayParams struct {
                 	Color Color `json:"color"`
@@ -1527,7 +1593,7 @@ mod tests {
 
                 func ColorDisplay(w io.Writer, params ColorDisplayParams) {
                 	color := params.Color
-                	if (color == ColorRed) {
+                	if color.Equals(ColorRed{}) {
                 		io.WriteString(w, "<div>Red!</div>")
                 	}
                 }

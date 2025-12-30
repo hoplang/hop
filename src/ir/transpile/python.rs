@@ -115,6 +115,12 @@ impl Transpiler for PythonTranspiler {
             needs_dataclasses = true;
         }
 
+        // Check if we have enums to generate
+        let needs_protocol = !module.enums.is_empty();
+        if needs_protocol {
+            needs_dataclasses = true;
+        }
+
         let needs_trusted_html = self.scan_for_trusted_html(entrypoints);
 
         let mut result = BoxDoc::nil();
@@ -132,9 +138,17 @@ impl Transpiler for PythonTranspiler {
                 .append(BoxDoc::line());
         }
 
-        if needs_trusted_html {
+        if needs_trusted_html && needs_protocol {
+            result = result
+                .append(BoxDoc::text("from typing import NewType, Protocol"))
+                .append(BoxDoc::line());
+        } else if needs_trusted_html {
             result = result
                 .append(BoxDoc::text("from typing import NewType"))
+                .append(BoxDoc::line());
+        } else if needs_protocol {
+            result = result
+                .append(BoxDoc::text("from typing import Protocol"))
                 .append(BoxDoc::line());
         }
 
@@ -160,6 +174,52 @@ impl Transpiler for PythonTranspiler {
                 .append(BoxDoc::text("TrustedHTML = NewType('TrustedHTML', str)"))
                 .append(BoxDoc::line())
                 .append(BoxDoc::line());
+        }
+
+        // Generate enum type definitions (Protocol + dataclasses)
+        for enum_def in &module.enums {
+            // Generate: class EnumName(Protocol): def equals(self, o: "EnumName") -> bool: ...
+            result = result
+                .append(BoxDoc::text("class "))
+                .append(BoxDoc::text(enum_def.name.as_str()))
+                .append(BoxDoc::text("(Protocol):"))
+                .append(
+                    BoxDoc::line()
+                        .append(BoxDoc::text("def equals(self, o: \""))
+                        .append(BoxDoc::text(enum_def.name.as_str()))
+                        .append(BoxDoc::text("\") -> bool: ..."))
+                        .nest(4),
+                )
+                .append(BoxDoc::line())
+                .append(BoxDoc::line());
+
+            // Generate a dataclass for each variant
+            for variant in &enum_def.variants {
+                let class_name = format!("{}{}", enum_def.name, variant.as_str());
+
+                result = result
+                    .append(BoxDoc::text("@dataclass"))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("class "))
+                    .append(BoxDoc::as_string(class_name.clone()))
+                    .append(BoxDoc::text(":"))
+                    .append(
+                        BoxDoc::line()
+                            .append(BoxDoc::text("def equals(self, o: "))
+                            .append(BoxDoc::text(enum_def.name.as_str()))
+                            .append(BoxDoc::text(") -> bool:"))
+                            .append(
+                                BoxDoc::line()
+                                    .append(BoxDoc::text("return isinstance(o, "))
+                                    .append(BoxDoc::as_string(class_name.clone()))
+                                    .append(BoxDoc::text(")"))
+                                    .nest(4),
+                            )
+                            .nest(4),
+                    )
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::line());
+            }
         }
 
         // Generate record type dataclasses
@@ -441,10 +501,13 @@ impl ExpressionTranspiler for PythonTranspiler {
 
     fn transpile_enum_literal<'a>(
         &self,
-        _enum_name: &'a str,
-        _variant_name: &'a str,
+        enum_name: &'a str,
+        variant_name: &'a str,
     ) -> BoxDoc<'a> {
-        panic!("Enum literal transpilation for Python not yet implemented")
+        // In Python, enum variants are dataclasses with the pattern EnumNameVariantName()
+        BoxDoc::text(enum_name)
+            .append(BoxDoc::text(variant_name))
+            .append(BoxDoc::text("()"))
     }
 
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
@@ -480,9 +543,9 @@ impl ExpressionTranspiler for PythonTranspiler {
     }
 
     fn transpile_enum_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::text("(")
-            .append(self.transpile_expr(left))
-            .append(BoxDoc::text(" == "))
+        // Use the equals method on the Protocol-based enum
+        self.transpile_expr(left)
+            .append(BoxDoc::text(".equals("))
             .append(self.transpile_expr(right))
             .append(BoxDoc::text(")"))
     }
@@ -520,9 +583,10 @@ impl ExpressionTranspiler for PythonTranspiler {
     }
 
     fn transpile_enum_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::text("(")
+        // Use negation of the equals method
+        BoxDoc::text("not ")
             .append(self.transpile_expr(left))
-            .append(BoxDoc::text(" != "))
+            .append(BoxDoc::text(".equals("))
             .append(self.transpile_expr(right))
             .append(BoxDoc::text(")"))
     }
@@ -697,7 +761,7 @@ impl TypeTranspiler for PythonTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::syntax::builder::{build_module, build_module_with_records};
+    use crate::ir::syntax::builder::{build_module, build_module_with_enums, build_module_with_records};
     use expect_test::{Expect, expect};
 
     fn check(module: &IrModule, expected: Expect) {
@@ -1164,6 +1228,80 @@ mod tests {
                     output.append("<div>")
                     output.append(html_escape(User(name="John", age=30).name))
                     output.append("</div>")
+                    return ''.join(output)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_type_declarations() {
+        use crate::dop::symbols::type_name::TypeName;
+        use crate::hop::symbols::module_name::ModuleName;
+
+        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
+
+        let color_type = Type::Enum {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Color").unwrap(),
+            variants: vec![
+                TypeName::new("Red").unwrap(),
+                TypeName::new("Green").unwrap(),
+                TypeName::new("Blue").unwrap(),
+            ],
+        };
+
+        let module = build_module_with_enums(
+            "ColorDisplay",
+            vec![("color", color_type)],
+            enums,
+            |t| {
+                t.if_stmt(t.eq(t.var("color"), t.enum_variant("Color", "Red")), |t| {
+                    t.write("<div>Red!</div>");
+                });
+            },
+        );
+
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                ColorDisplay(color: test::Color) {
+                  if (color == Color::Red) {
+                    write("<div>Red!</div>")
+                  }
+                }
+
+                -- after --
+                from dataclasses import dataclass
+                from typing import Protocol
+
+                class Color(Protocol):
+                    def equals(self, o: "Color") -> bool: ...
+
+                @dataclass
+                class ColorRed:
+                    def equals(self, o: Color) -> bool:
+                        return isinstance(o, ColorRed)
+
+                @dataclass
+                class ColorGreen:
+                    def equals(self, o: Color) -> bool:
+                        return isinstance(o, ColorGreen)
+
+                @dataclass
+                class ColorBlue:
+                    def equals(self, o: Color) -> bool:
+                        return isinstance(o, ColorBlue)
+
+                @dataclass
+                class ColorDisplayParams:
+                    color: Color
+
+                def color_display(params: ColorDisplayParams) -> str:
+                    color = params.color
+                    output = []
+                    if color.equals(ColorRed()):
+                        output.append("<div>Red!</div>")
                     return ''.join(output)
             "#]],
         );
