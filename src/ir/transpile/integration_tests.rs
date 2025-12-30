@@ -1,7 +1,7 @@
 use super::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
 use crate::dop::semantics::r#type::Type;
-use crate::ir::ast::{IrComponentDeclaration, IrModule};
-use crate::ir::syntax::builder::build_ir;
+use crate::ir::ast::{IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration};
+use crate::ir::syntax::builder::{build_ir, build_ir_with_enums};
 use std::fs;
 use std::process::Command;
 use tempfile::TempDir;
@@ -10,6 +10,8 @@ use tempfile::TempDir;
 struct TestCase {
     entrypoint: IrComponentDeclaration,
     expected_output: &'static str,
+    enums: Vec<IrEnumDeclaration>,
+    records: Vec<IrRecordDeclaration>,
 }
 
 impl TestCase {
@@ -17,18 +19,46 @@ impl TestCase {
         Self {
             entrypoint,
             expected_output,
+            enums: vec![],
+            records: vec![],
         }
+    }
+
+    fn with_enums(mut self, enums: Vec<IrEnumDeclaration>) -> Self {
+        self.enums = enums;
+        self
+    }
+
+    fn with_records(mut self, records: Vec<IrRecordDeclaration>) -> Self {
+        self.records = records;
+        self
     }
 }
 
 #[derive(Debug)]
 struct TypeCheckTestCase {
     entrypoints: Vec<IrComponentDeclaration>,
+    enums: Vec<IrEnumDeclaration>,
+    records: Vec<IrRecordDeclaration>,
 }
 
 impl TypeCheckTestCase {
     fn new(entrypoints: Vec<IrComponentDeclaration>) -> Self {
-        Self { entrypoints }
+        Self {
+            entrypoints,
+            enums: vec![],
+            records: vec![],
+        }
+    }
+
+    fn with_enums(mut self, enums: Vec<IrEnumDeclaration>) -> Self {
+        self.enums = enums;
+        self
+    }
+
+    fn with_records(mut self, records: Vec<IrRecordDeclaration>) -> Self {
+        self.records = records;
+        self
     }
 }
 
@@ -148,8 +178,8 @@ go 1.24
 fn run_integration_test(test_case: TestCase) -> Result<(), String> {
     let module = IrModule {
         components: vec![test_case.entrypoint],
-        records: vec![],
-        enums: vec![],
+        records: test_case.records,
+        enums: test_case.enums,
     };
 
     let ts_transpiler = TsTranspiler::new();
@@ -280,8 +310,8 @@ fn typecheck_go(code: &str) -> Result<(), String> {
 fn run_type_check_test(test_case: TypeCheckTestCase) -> Result<(), String> {
     let module = IrModule {
         components: test_case.entrypoints,
-        records: vec![],
-        enums: vec![],
+        records: test_case.records,
+        enums: test_case.enums,
     };
 
     let ts_transpiler = TsTranspiler::new();
@@ -579,5 +609,81 @@ mod tests {
             })]);
 
         run_type_check_test(test_case).expect("Type check test failed");
+    }
+
+    #[test]
+    #[ignore]
+    fn enum_equality_comparison() {
+        use crate::dop::symbols::type_name::TypeName;
+
+        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
+
+        let enum_declarations = vec![IrEnumDeclaration {
+            name: "Color".to_string(),
+            variants: vec![
+                TypeName::new("Red").unwrap(),
+                TypeName::new("Green").unwrap(),
+                TypeName::new("Blue").unwrap(),
+            ],
+        }];
+
+        // Test that a color variable equals Color::Red
+        let test_case = TestCase::new(
+            build_ir_with_enums("Test", [], enums.clone(), |t| {
+                t.let_stmt("color", t.enum_variant("Color", "Red"), |t| {
+                    t.if_else_stmt(
+                        t.eq(t.var("color"), t.enum_variant("Color", "Red")),
+                        |t| {
+                            t.write("equal");
+                        },
+                        |t| {
+                            t.write("not equal");
+                        },
+                    );
+                });
+            }),
+            "equal",
+        )
+        .with_enums(enum_declarations);
+
+        run_integration_test(test_case).expect("Integration test failed");
+    }
+
+    #[test]
+    #[ignore]
+    fn enum_equality_different_variants() {
+        use crate::dop::symbols::type_name::TypeName;
+
+        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
+
+        let enum_declarations = vec![IrEnumDeclaration {
+            name: "Color".to_string(),
+            variants: vec![
+                TypeName::new("Red").unwrap(),
+                TypeName::new("Green").unwrap(),
+                TypeName::new("Blue").unwrap(),
+            ],
+        }];
+
+        // Test that a color variable does not equal a different variant
+        let test_case = TestCase::new(
+            build_ir_with_enums("Test", [], enums.clone(), |t| {
+                t.let_stmt("color", t.enum_variant("Color", "Red"), |t| {
+                    t.if_else_stmt(
+                        t.eq(t.var("color"), t.enum_variant("Color", "Green")),
+                        |t| {
+                            t.write("equal");
+                        },
+                        |t| {
+                            t.write("not equal");
+                        },
+                    );
+                });
+            }),
+            "not equal",
+        )
+        .with_enums(enum_declarations);
+
+        run_integration_test(test_case).expect("Integration test failed");
     }
 }
