@@ -113,11 +113,63 @@ impl Transpiler for TsTranspiler {
                 .append(BoxDoc::line());
         }
 
+        // Add enum type definitions (class-based)
+        for enum_def in &module.enums {
+            // Generate union type: export type Foo = FooA | FooB;
+            result = result
+                .append(BoxDoc::text("export type "))
+                .append(BoxDoc::text(enum_def.name.as_str()))
+                .append(BoxDoc::text(" = "))
+                .append(BoxDoc::intersperse(
+                    enum_def.variants.iter().map(|variant| {
+                        BoxDoc::text(enum_def.name.as_str()).append(BoxDoc::text(variant.as_str()))
+                    }),
+                    BoxDoc::text(" | "),
+                ))
+                .append(BoxDoc::text(";"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line());
+
+            // Generate a class for each variant
+            for variant in &enum_def.variants {
+                let class_name = format!("{}{}", enum_def.name, variant.as_str());
+                result = result
+                    .append(BoxDoc::text("export class "))
+                    .append(BoxDoc::as_string(class_name.clone()))
+                    .append(BoxDoc::text(" {"))
+                    .append(
+                        BoxDoc::nil()
+                            .append(BoxDoc::line())
+                            .append(BoxDoc::text("readonly __tag = \""))
+                            .append(BoxDoc::as_string(class_name.clone()))
+                            .append(BoxDoc::text("\";"))
+                            .append(BoxDoc::line())
+                            .append(BoxDoc::text("equals(o: "))
+                            .append(BoxDoc::text(enum_def.name.as_str()))
+                            .append(BoxDoc::text("): boolean {"))
+                            .append(
+                                BoxDoc::line()
+                                    .append(BoxDoc::text("return o.__tag === \""))
+                                    .append(BoxDoc::as_string(class_name))
+                                    .append(BoxDoc::text("\";"))
+                                    .nest(4),
+                            )
+                            .append(BoxDoc::line())
+                            .append(BoxDoc::text("}"))
+                            .nest(4),
+                    )
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("}"))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::line());
+            }
+        }
+
         // Add record type definitions
         if !records.is_empty() {
             for record in records {
                 result = result
-                    .append(BoxDoc::text("interface "))
+                    .append(BoxDoc::text("export interface "))
                     .append(BoxDoc::text(record.name.as_str()))
                     .append(BoxDoc::text(" {"))
                     .append(
@@ -409,10 +461,14 @@ impl ExpressionTranspiler for TsTranspiler {
 
     fn transpile_enum_literal<'a>(
         &self,
-        _enum_name: &'a str,
-        _variant_name: &'a str,
+        enum_name: &'a str,
+        variant_name: &'a str,
     ) -> BoxDoc<'a> {
-        panic!("Enum literal transpilation for TypeScript not yet implemented")
+        // Generate: new EnumNameVariantName()
+        BoxDoc::text("new ")
+            .append(BoxDoc::text(enum_name))
+            .append(BoxDoc::text(variant_name))
+            .append(BoxDoc::text("()"))
     }
 
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
@@ -452,10 +508,9 @@ impl ExpressionTranspiler for TsTranspiler {
     }
 
     fn transpile_enum_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::nil()
-            .append(BoxDoc::text("("))
-            .append(self.transpile_expr(left))
-            .append(BoxDoc::text(" === "))
+        // Use the .equals() method on the class-based enum
+        self.transpile_expr(left)
+            .append(BoxDoc::text(".equals("))
             .append(self.transpile_expr(right))
             .append(BoxDoc::text(")"))
     }
@@ -497,10 +552,10 @@ impl ExpressionTranspiler for TsTranspiler {
     }
 
     fn transpile_enum_not_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
-        BoxDoc::nil()
-            .append(BoxDoc::text("("))
+        // Use negation of the .equals() method
+        BoxDoc::text("!")
             .append(self.transpile_expr(left))
-            .append(BoxDoc::text(" !== "))
+            .append(BoxDoc::text(".equals("))
             .append(self.transpile_expr(right))
             .append(BoxDoc::text(")"))
     }
@@ -1143,13 +1198,13 @@ mod tests {
         let output = transpiler.transpile_module(&module);
 
         expect![[r#"
-            interface User {
+            export interface User {
                 name: string;
                 age: number;
                 active: boolean;
             }
 
-            interface Address {
+            export interface Address {
                 street: string;
                 city: string;
             }
@@ -1212,7 +1267,7 @@ mod tests {
         let output = transpiler.transpile_module(&module);
 
         expect![[r#"
-            interface User {
+            export interface User {
                 name: string;
                 age: number;
             }
@@ -1232,6 +1287,89 @@ mod tests {
                     output += "<div>";
                     output += escapeHtml({name: "John", age: 30}.name);
                     output += "</div>";
+                    return output;
+                }
+            }
+        "#]]
+        .assert_eq(&output);
+    }
+
+    #[test]
+    fn enum_type_declarations() {
+        use crate::ir::ast::IrEnumDeclaration;
+        use crate::ir::syntax::builder::build_ir_with_enums;
+
+        let enums_def = vec![("Color", vec!["Red", "Green", "Blue"])];
+
+        let color_type = Type::Enum {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Color").unwrap(),
+            variants: vec![
+                TypeName::new("Red").unwrap(),
+                TypeName::new("Green").unwrap(),
+                TypeName::new("Blue").unwrap(),
+            ],
+        };
+
+        let entrypoints = vec![build_ir_with_enums(
+            "ColorDisplay",
+            vec![("color", color_type)],
+            enums_def,
+            |t| {
+                t.if_stmt(t.eq(t.var("color"), t.enum_variant("Color", "Red")), |t| {
+                    t.write("<div>Red!</div>");
+                });
+            },
+        )];
+
+        let enums = vec![IrEnumDeclaration {
+            name: "Color".to_string(),
+            variants: vec![
+                TypeName::new("Red").unwrap(),
+                TypeName::new("Green").unwrap(),
+                TypeName::new("Blue").unwrap(),
+            ],
+        }];
+
+        let module = IrModule {
+            components: entrypoints,
+            records: vec![],
+            enums,
+        };
+
+        let transpiler = TsTranspiler::new();
+        let output = transpiler.transpile_module(&module);
+
+        expect![[r#"
+            export type Color = ColorRed | ColorGreen | ColorBlue;
+
+            export class ColorRed {
+                readonly __tag = "ColorRed";
+                equals(o: Color): boolean {
+                    return o.__tag === "ColorRed";
+                }
+            }
+
+            export class ColorGreen {
+                readonly __tag = "ColorGreen";
+                equals(o: Color): boolean {
+                    return o.__tag === "ColorGreen";
+                }
+            }
+
+            export class ColorBlue {
+                readonly __tag = "ColorBlue";
+                equals(o: Color): boolean {
+                    return o.__tag === "ColorBlue";
+                }
+            }
+
+            export default {
+                colorDisplay: ({ color }: { color: Color }): string => {
+                    let output: string = "";
+                    if (color.equals(new ColorRed())) {
+                        output += "<div>Red!</div>";
+                    }
                     return output;
                 }
             }
