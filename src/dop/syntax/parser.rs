@@ -228,12 +228,19 @@ impl Parser {
         Ok((var_name, var_name_range, array_expr))
     }
 
-    // parameter_with_type = Identifier ":" type
-    fn parse_parameter(&mut self) -> Result<((VarName, DocumentRange), ParsedType), ParseError> {
+    // parameter_with_type = Identifier ":" type ("=" primary)?
+    fn parse_parameter(
+        &mut self,
+    ) -> Result<((VarName, DocumentRange), ParsedType, Option<ParsedExpr>), ParseError> {
         let (var_name, var_name_range) = self.expect_variable_name()?;
         self.expect_token(&Token::Colon)?;
         let var_type = self.parse_type()?;
-        Ok(((var_name, var_name_range), var_type))
+        let default_value = if self.advance_if(Token::Assign).is_some() {
+            Some(self.parse_primary()?)
+        } else {
+            None
+        };
+        Ok(((var_name, var_name_range), var_type, default_value))
     }
 
     // named_argument = Identifier ":" expr
@@ -247,7 +254,7 @@ impl Parser {
     // parameters = parameter ("," parameter)* Eof
     pub fn parse_parameters(
         &mut self,
-    ) -> Result<Vec<((VarName, DocumentRange), ParsedType)>, ParseError> {
+    ) -> Result<Vec<((VarName, DocumentRange), ParsedType, Option<ParsedExpr>)>, ParseError> {
         let mut params = Vec::new();
         let mut seen_names = HashSet::new();
         self.parse_comma_separated(
@@ -906,8 +913,11 @@ mod tests {
             Ok(result) => {
                 let params: Vec<String> = result
                     .into_iter()
-                    .map(|((var_name, _var_name_range), var_type)| {
-                        format!("{}: {}", var_name, var_type)
+                    .map(|((var_name, _var_name_range), var_type, default_value)| {
+                        match default_value {
+                            Some(default) => format!("{}: {} = {}", var_name, var_type, default),
+                            None => format!("{}: {}", var_name, var_type),
+                        }
                     })
                     .collect();
                 format!("[{}]\n", params.join(", "))

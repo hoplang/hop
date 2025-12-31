@@ -12,14 +12,16 @@ use pretty::BoxDoc;
 
 use super::parsed_node::ParsedNode;
 
-/// A ParsedParameter represents a parsed parameter with type annotation.
-/// E.g. <my-comp {x: string, y: string}>
-///                ^^^^^^^^^
+/// A ParsedParameter represents a parsed parameter with type annotation
+/// and optional default value.
+/// E.g. <my-comp {x: String, y: String = "default"}>
+///                ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^
 #[derive(Debug, Clone)]
 pub struct ParsedParameter {
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
     pub var_type: ParsedType,
+    pub default_value: Option<ParsedExpr>,
 }
 
 impl Display for ParsedParameter {
@@ -30,9 +32,13 @@ impl Display for ParsedParameter {
 
 impl ParsedParameter {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text(self.var_name.as_str())
+        let base = BoxDoc::text(self.var_name.as_str())
             .append(BoxDoc::text(": "))
-            .append(self.var_type.to_doc())
+            .append(self.var_type.to_doc());
+        match &self.default_value {
+            Some(default) => base.append(BoxDoc::text(" = ")).append(default.to_doc()),
+            None => base,
+        }
     }
 }
 

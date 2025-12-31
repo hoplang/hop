@@ -319,10 +319,13 @@ fn parse_component_declaration(
                     let params = parsed_params
                         .into_iter()
                         .map(
-                            |((var_name, var_name_range), var_type)| parsed_ast::ParsedParameter {
-                                var_name,
-                                var_name_range,
-                                var_type,
+                            |((var_name, var_name_range), var_type, default_value)| {
+                                parsed_ast::ParsedParameter {
+                                    var_name,
+                                    var_name_range,
+                                    var_type,
+                                    default_value,
+                                }
                             },
                         )
                         .collect();
