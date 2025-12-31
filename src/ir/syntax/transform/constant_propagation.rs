@@ -12,6 +12,7 @@ use std::collections::HashMap;
 enum Const {
     Bool(bool),
     String(String),
+    Enum { enum_name: String, variant_name: String },
 }
 /// A datafrog-based constant propagation pass that tracks and propagates constant values
 pub struct ConstantPropagationPass;
@@ -21,12 +22,15 @@ impl Pass for ConstantPropagationPass {
         let mut iteration = Iteration::new();
 
         let mut initial_constants = Vec::new();
+        let mut initial_enum_constants = Vec::new();
         let mut not_relations = Vec::new();
         let mut eq_left_relations = Vec::new();
         let mut eq_right_relations = Vec::new();
         let mut concat_left_relations = Vec::new();
         let mut concat_right_relations = Vec::new();
         let mut var_references = Vec::new();
+        let mut match_subjects = Vec::new();
+        let mut match_arms_relations = Vec::new();
 
         for stmt in &entrypoint.body {
             stmt.traverse_with_scope(&mut |s, scope| {
@@ -51,6 +55,36 @@ impl Pass for ConstantPropagationPass {
                         IrExpr::StringConcat { left, right, .. } => {
                             concat_left_relations.push((left.id(), expr.id()));
                             concat_right_relations.push((right.id(), expr.id()));
+                        }
+                        IrExpr::EnumLiteral {
+                            enum_name,
+                            variant_name,
+                            ..
+                        } => {
+                            initial_constants.push((
+                                expr.id(),
+                                Const::Enum {
+                                    enum_name: enum_name.clone(),
+                                    variant_name: variant_name.clone(),
+                                },
+                            ));
+                            initial_enum_constants.push((
+                                expr.id(),
+                                (enum_name.clone(), variant_name.clone()),
+                            ));
+                        }
+                        IrExpr::Match { subject, arms, .. } => {
+                            match_subjects.push((subject.id(), expr.id()));
+                            for arm in arms {
+                                match_arms_relations.push((
+                                    (
+                                        expr.id(),
+                                        arm.pattern.enum_name.clone(),
+                                        arm.pattern.variant_name.clone(),
+                                    ),
+                                    arm.body.id(),
+                                ));
+                            }
                         }
                         IrExpr::Var { value: name, .. } => {
                             // Check if this variable is defined by a Let or For statement
@@ -102,6 +136,22 @@ impl Pass for ConstantPropagationPass {
 
         // Variable bindings: (defining_expr_id => referencing_expr_id)
         let def_to_ref = Relation::from_iter(var_references);
+
+        // Match subject expressions: (subject_id => match_id)
+        let match_subject = Relation::from_iter(match_subjects);
+
+        // Match arms: ((match_id, enum_name, variant_name) => arm_body_id)
+        let match_arm_rel = Relation::from_iter(match_arms_relations);
+
+        // Enum constant values tracked separately for match folding: (expr_id => (enum_name, variant_name))
+        let enum_const = iteration.variable::<(ExprId, (String, String))>("enum_const");
+        enum_const.extend(initial_enum_constants);
+
+        // Match expressions with known enum subjects: ((match_id, enum_name, variant_name) => match_id)
+        let match_with_enum = iteration.variable::<((ExprId, String, String), ExprId)>("match_with_enum");
+
+        // Selected arm bodies for matches with constant subjects: (arm_body_id => match_id)
+        let selected_arm = iteration.variable::<(ExprId, ExprId)>("selected_arm");
 
         while iteration.changed() {
             // const_value(exp, !b) :- not_rel(op, exp), const_value(op, Bool(b)).
@@ -178,6 +228,44 @@ impl Pass for ConstantPropagationPass {
                 &def_to_ref,
                 |_def_expr: &ExprId, val: &Const, var_expr: &ExprId| (*var_expr, val.clone()),
             );
+
+            // Propagate enum constants through variable bindings
+            // enum_const(var, (e, v)) :- enum_const(def, (e, v)), def_to_ref(def, var).
+            enum_const.from_join(
+                &enum_const,
+                &def_to_ref,
+                |_def_expr: &ExprId, ev: &(String, String), var_expr: &ExprId| {
+                    (*var_expr, ev.clone())
+                },
+            );
+
+            // Find match expressions whose subject is a constant enum
+            // match_with_enum((m, e, v), m) :- match_subject(s, m), enum_const(s, (e, v)).
+            match_with_enum.from_join(
+                &enum_const,
+                &match_subject,
+                |_subject: &ExprId, (e, v): &(String, String), match_id: &ExprId| {
+                    ((*match_id, e.clone(), v.clone()), *match_id)
+                },
+            );
+
+            // Select the matching arm body for each match with a constant subject
+            // selected_arm(arm_body, m) :- match_with_enum((m, e, v), m), match_arm_rel((m, e, v), arm_body).
+            selected_arm.from_join(
+                &match_with_enum,
+                &match_arm_rel,
+                |_key: &(ExprId, String, String), match_id: &ExprId, arm_body: &ExprId| {
+                    (*arm_body, *match_id)
+                },
+            );
+
+            // Propagate arm body's constant value to the match expression
+            // const_value(m, val) :- selected_arm(arm_body, m), const_value(arm_body, val).
+            const_value.from_join(
+                &const_value,
+                &selected_arm,
+                |_arm_body: &ExprId, val: &Const, match_id: &ExprId| (*match_id, val.clone()),
+            );
         }
 
         let const_map = const_value
@@ -201,6 +289,15 @@ impl Pass for ConstantPropagationPass {
                                     value: s.clone(),
                                     id: e.id(),
                                 },
+                                Const::Enum {
+                                    enum_name,
+                                    variant_name,
+                                } => IrExpr::EnumLiteral {
+                                    enum_name: enum_name.clone(),
+                                    variant_name: variant_name.clone(),
+                                    kind: e.as_type().clone(),
+                                    id: e.id(),
+                                },
                             };
                         }
                     });
@@ -213,7 +310,7 @@ impl Pass for ConstantPropagationPass {
 
 #[cfg(test)]
 mod tests {
-    use crate::ir::syntax::builder::build_ir;
+    use crate::ir::syntax::builder::{build_ir, build_ir_with_enums};
     use expect_test::{Expect, expect};
 
     use super::*;
@@ -722,6 +819,175 @@ mod tests {
                       let full = "Hello World" in {
                         write_escaped("Hello World")
                       }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_simple_match_expression() {
+        check(
+            build_ir_with_enums("Test", [], vec![("Color", vec!["Red", "Blue"])], |t| {
+                t.write_expr_escaped(t.match_expr(
+                    t.enum_variant("Color", "Red"),
+                    vec![("Red", t.str("red")), ("Blue", t.str("blue"))],
+                ));
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  write_escaped(match Color::Red {
+                    Color::Red => "red",
+                    Color::Blue => "blue",
+                  })
+                }
+
+                -- after --
+                Test() {
+                  write_escaped("red")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_match_with_variable_subject() {
+        check(
+            build_ir_with_enums("Test", [], vec![("Color", vec!["Red", "Blue"])], |t| {
+                t.let_stmt("color", t.enum_variant("Color", "Blue"), |t| {
+                    t.write_expr_escaped(t.match_expr(
+                        t.var("color"),
+                        vec![("Red", t.str("red")), ("Blue", t.str("blue"))],
+                    ));
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let color = Color::Blue in {
+                    write_escaped(match color {
+                      Color::Red => "red",
+                      Color::Blue => "blue",
+                    })
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let color = Color::Blue in {
+                    write_escaped("blue")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_match_with_constant_arm_body() {
+        check(
+            build_ir_with_enums("Test", [], vec![("Color", vec!["Red", "Blue"])], |t| {
+                t.if_stmt(
+                    t.match_expr(
+                        t.enum_variant("Color", "Red"),
+                        vec![("Red", t.not(t.bool(false))), ("Blue", t.bool(false))],
+                    ),
+                    |t| {
+                        t.write("Match evaluated to true");
+                    },
+                );
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  if match Color::Red {
+                    Color::Red => (!false),
+                    Color::Blue => false,
+                  } {
+                    write("Match evaluated to true")
+                  }
+                }
+
+                -- after --
+                Test() {
+                  if true {
+                    write("Match evaluated to true")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_nested_match_in_equality() {
+        check(
+            build_ir_with_enums("Test", [], vec![("Status", vec!["Active", "Inactive"])], |t| {
+                t.if_stmt(
+                    t.eq(
+                        t.match_expr(
+                            t.enum_variant("Status", "Active"),
+                            vec![("Active", t.str("on")), ("Inactive", t.str("off"))],
+                        ),
+                        t.str("on"),
+                    ),
+                    |t| {
+                        t.write("Status is active");
+                    },
+                );
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  if (match Status::Active {
+                    Status::Active => "on",
+                    Status::Inactive => "off",
+                  } == "on") {
+                    write("Status is active")
+                  }
+                }
+
+                -- after --
+                Test() {
+                  if true {
+                    write("Status is active")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_propagate_enum_constant_through_variables() {
+        check(
+            build_ir_with_enums("Test", [], vec![("Color", vec!["Red", "Blue"])], |t| {
+                t.let_stmt("x", t.enum_variant("Color", "Red"), |t| {
+                    t.let_stmt("y", t.var("x"), |t| {
+                        t.write_expr_escaped(t.match_expr(
+                            t.var("y"),
+                            vec![("Red", t.str("red")), ("Blue", t.str("blue"))],
+                        ));
+                    });
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let x = Color::Red in {
+                    let y = x in {
+                      write_escaped(match y {
+                        Color::Red => "red",
+                        Color::Blue => "blue",
+                      })
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let x = Color::Red in {
+                    let y = Color::Red in {
+                      write_escaped("red")
                     }
                   }
                 }
