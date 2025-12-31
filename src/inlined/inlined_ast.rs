@@ -12,6 +12,7 @@ use pretty::BoxDoc;
 pub struct InlinedParameter {
     pub var_name: VarName,
     pub var_type: Type,
+    pub default_value: Option<TypedExpr>,
 }
 
 #[derive(Debug, Clone)]
@@ -68,9 +69,13 @@ pub enum InlinedNode {
 
 impl InlinedParameter {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text(self.var_name.as_str())
+        let base = BoxDoc::text(self.var_name.as_str())
             .append(BoxDoc::text(": "))
-            .append(BoxDoc::text(self.var_type.to_string()))
+            .append(BoxDoc::text(self.var_type.to_string()));
+        match &self.default_value {
+            Some(default) => base.append(BoxDoc::text(" = ")).append(default.to_doc()),
+            None => base,
+        }
     }
 }
 

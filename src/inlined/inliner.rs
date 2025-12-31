@@ -73,7 +73,11 @@ impl Inliner {
                             .params
                             .iter()
                             .cloned()
-                            .map(|(var_name, var_type)| InlinedParameter { var_name, var_type })
+                            .map(|(var_name, var_type, default_value)| InlinedParameter {
+                                var_name,
+                                var_type,
+                                default_value,
+                            })
                             .collect(),
                     });
                 }
@@ -108,7 +112,7 @@ impl Inliner {
 
     /// Check if a component has a children: TrustedHTML parameter
     fn component_accepts_children(component: &TypedComponentDeclaration) -> bool {
-        component.params.iter().any(|(var_name, var_type)| {
+        component.params.iter().any(|(var_name, var_type, _)| {
             var_name.as_str() == "children" && *var_type == Type::TrustedHTML
         })
     }
@@ -135,18 +139,19 @@ impl Inliner {
         let mut body = inlined_children;
         // Process parameters in reverse order to create proper nesting
         // Skip the children parameter - it's handled via slot_content
-        for (var_name, _var_type) in component.params.iter().rev() {
+        for (var_name, _var_type, default_value) in component.params.iter().rev() {
             if var_name.as_str() == "children" {
                 continue;
             }
 
             let param_name = var_name.clone();
 
-            // Find corresponding argument value
+            // Find corresponding argument value, or use default if not provided
             let value = args
                 .iter()
                 .find(|(name, _)| name.as_str() == param_name.as_str())
                 .map(|(_, expr)| expr.clone())
+                .or_else(|| default_value.clone())
                 .unwrap_or_else(|| {
                     panic!(
                         "Missing required parameter '{}' for component '{}' in module '{}'.",
@@ -403,4 +408,183 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn component_with_default_parameter_uses_default() {
+        check_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Greeting {name: String = "World"}>
+                        <p>Hello, {name}!</p>
+                    </Greeting>
+
+                    <Main>
+                        <Greeting />
+                    </Main>
+                "#,
+            )],
+            vec![("main", "Main")],
+            expect![[r#"
+                <Main>
+                  "\n                        "
+                  <let {name = "World"}>
+                    "\n                        "
+                    <p>
+                      "Hello, "
+                      {name}
+                      "!"
+                    </p>
+                    "\n                    "
+                  </let>
+                  "\n                    "
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_default_parameter_overridden() {
+        check_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Greeting {name: String = "World"}>
+                        <p>Hello, {name}!</p>
+                    </Greeting>
+
+                    <Main>
+                        <Greeting {name: "Alice"} />
+                    </Main>
+                "#,
+            )],
+            vec![("main", "Main")],
+            expect![[r#"
+                <Main>
+                  "\n                        "
+                  <let {name = "Alice"}>
+                    "\n                        "
+                    <p>
+                      "Hello, "
+                      {name}
+                      "!"
+                    </p>
+                    "\n                    "
+                  </let>
+                  "\n                    "
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_mixed_required_and_default_parameters() {
+        check_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Button {label: String, size: String = "medium"}>
+                        <button class={size}>{label}</button>
+                    </Button>
+
+                    <Main>
+                        <Button {label: "Click me"} />
+                    </Main>
+                "#,
+            )],
+            vec![("main", "Main")],
+            expect![[r#"
+                <Main>
+                  "\n                        "
+                  <let {label = "Click me"}>
+                    <let {size = "medium"}>
+                      "\n                        "
+                      <button class={size}>
+                        {label}
+                      </button>
+                      "\n                    "
+                    </let>
+                  </let>
+                  "\n                    "
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_int_default_parameter() {
+        check_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Counter {count: Int = 0}>
+                        <if {count == 0}>
+                            <span>Zero</span>
+                        </if>
+                    </Counter>
+
+                    <Main>
+                        <Counter />
+                    </Main>
+                "#,
+            )],
+            vec![("main", "Main")],
+            expect![[r#"
+                <Main>
+                  "\n                        "
+                  <let {count = 0}>
+                    "\n                        "
+                    <if {(count == 0)}>
+                      "\n                            "
+                      <span>
+                        "Zero"
+                      </span>
+                      "\n                        "
+                    </if>
+                    "\n                    "
+                  </let>
+                  "\n                    "
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_bool_default_parameter() {
+        check_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Toggle {enabled: Bool = true}>
+                        <if {enabled}>
+                            <span>On</span>
+                        </if>
+                    </Toggle>
+
+                    <Main>
+                        <Toggle />
+                    </Main>
+                "#,
+            )],
+            vec![("main", "Main")],
+            expect![[r#"
+                <Main>
+                  "\n                        "
+                  <let {enabled = true}>
+                    "\n                        "
+                    <if {enabled}>
+                      "\n                            "
+                      <span>
+                        "On"
+                      </span>
+                      "\n                        "
+                    </if>
+                    "\n                    "
+                  </let>
+                  "\n                    "
+                </Main>
+            "#]],
+        );
+    }
+
 }

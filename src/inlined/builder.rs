@@ -41,6 +41,7 @@ impl InlinedBuilder {
                 .map(|(name, typ)| InlinedParameter {
                     var_name: VarName::try_from(name).unwrap(),
                     var_type: typ,
+                    default_value: None,
                 })
                 .collect(),
             children: Vec::new(),

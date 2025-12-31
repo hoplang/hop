@@ -2,7 +2,7 @@ use super::type_error::TypeError;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
-use crate::dop::{self, Type, VarName, resolve_type};
+use crate::dop::{self, Type, TypedExpr, VarName, resolve_type};
 use crate::environment::Environment;
 use crate::error_collector::ErrorCollector;
 use crate::hop::syntax::parsed_ast::ParsedParameter;
@@ -349,13 +349,14 @@ fn typecheck_module(
 
         let mut pushed_params: Vec<&ParsedParameter> = Vec::new();
         let mut resolved_param_types: Vec<(String, Type, bool)> = Vec::new();
-        let mut typed_params: Vec<(VarName, Type)> = Vec::new();
+        let mut typed_params: Vec<(VarName, Type, Option<TypedExpr>)> = Vec::new();
         if let Some((params, _)) = params {
             for param in params {
                 match resolve_type(&param.var_type, &mut type_env) {
                     Ok(param_type) => {
                         // Type-check default value if present
                         let has_default = param.default_value.is_some();
+                        let mut typed_default_value: Option<TypedExpr> = None;
                         if let Some(default_expr) = &param.default_value {
                             match dop::typecheck_expr(
                                 default_expr,
@@ -373,6 +374,8 @@ fn typecheck_module(
                                             found: default_type.clone(),
                                             range: default_expr.range().clone(),
                                         });
+                                    } else {
+                                        typed_default_value = Some(typed_default);
                                     }
                                 }
                                 Err(e) => {
@@ -388,9 +391,12 @@ fn typecheck_module(
                         });
                         let _ = env.push(param.var_name.to_string(), param_type.clone());
                         pushed_params.push(param);
-                        resolved_param_types
-                            .push((param.var_name.to_string(), param_type.clone(), has_default));
-                        typed_params.push((param.var_name.clone(), param_type));
+                        resolved_param_types.push((
+                            param.var_name.to_string(),
+                            param_type.clone(),
+                            has_default,
+                        ));
+                        typed_params.push((param.var_name.clone(), param_type, typed_default_value));
                     }
                     Err(e) => {
                         errors.push(e.into());
