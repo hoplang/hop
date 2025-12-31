@@ -13,21 +13,6 @@ impl PythonTranspiler {
         Self {}
     }
 
-    fn get_python_type(param_type: &Type) -> BoxDoc<'_> {
-        match param_type {
-            Type::String => BoxDoc::text("str"),
-            Type::Bool => BoxDoc::text("bool"),
-            Type::Float => BoxDoc::text("float"),
-            Type::Int => BoxDoc::text("int"),
-            Type::TrustedHTML => BoxDoc::text("TrustedHTML"),
-            Type::Array(elem) => BoxDoc::text("list[")
-                .append(Self::get_python_type(elem))
-                .append(BoxDoc::text("]")),
-            Type::Record { name, .. } => BoxDoc::text(name.as_str()),
-            Type::Enum { name, .. } => BoxDoc::text(name.as_str()),
-        }
-    }
-
     fn scan_for_imports(&self, entrypoint: &IrComponentDeclaration) -> (bool, bool, bool) {
         let mut needs_html_escape = false;
         let mut needs_json = false;
@@ -230,7 +215,7 @@ impl Transpiler for PythonTranspiler {
                 .map(|(field_name, field_type)| {
                     BoxDoc::text(field_name.as_str())
                         .append(BoxDoc::text(": "))
-                        .append(Self::get_python_type(field_type))
+                        .append(self.transpile_type(field_type))
                 })
                 .collect();
 
@@ -260,7 +245,7 @@ impl Transpiler for PythonTranspiler {
                     .map(|(param_name, param_type)| {
                         BoxDoc::text(param_name.as_str())
                             .append(BoxDoc::text(": "))
-                            .append(Self::get_python_type(param_type))
+                            .append(self.transpile_type(param_type))
                     })
                     .collect();
 
@@ -499,11 +484,7 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_enum_literal<'a>(
-        &self,
-        enum_name: &'a str,
-        variant_name: &'a str,
-    ) -> BoxDoc<'a> {
+    fn transpile_enum_literal<'a>(&self, enum_name: &'a str, variant_name: &'a str) -> BoxDoc<'a> {
         // In Python, enum variants are dataclasses with the pattern EnumNameVariantName()
         BoxDoc::text(enum_name)
             .append(BoxDoc::text(variant_name))
@@ -724,7 +705,9 @@ impl TypeTranspiler for PythonTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::syntax::builder::{build_module, build_module_with_enums, build_module_with_records};
+    use crate::ir::syntax::builder::{
+        build_module, build_module_with_enums, build_module_with_records,
+    };
     use expect_test::{Expect, expect};
 
     fn check(module: &IrModule, expected: Expect) {
@@ -1213,16 +1196,12 @@ mod tests {
             ],
         };
 
-        let module = build_module_with_enums(
-            "ColorDisplay",
-            vec![("color", color_type)],
-            enums,
-            |t| {
+        let module =
+            build_module_with_enums("ColorDisplay", vec![("color", color_type)], enums, |t| {
                 t.if_stmt(t.eq(t.var("color"), t.enum_variant("Color", "Red")), |t| {
                     t.write("<div>Red!</div>");
                 });
-            },
-        );
+            });
 
         check(
             &module,
