@@ -932,4 +932,150 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn component_with_default_string_parameter_to_doc() {
+        check(
+            indoc! {r#"
+                <Greeting {name: String = "World"}>
+                  Hello, {name}!
+                </Greeting>
+            "#},
+            expect![[r#"
+                <Greeting {
+                  name: String = "World",
+                }>
+                  Hello,
+                  {name}
+                  !
+                </Greeting>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_default_int_parameter_to_doc() {
+        check(
+            indoc! {"
+                <Counter {count: Int = 0}>
+                  {count}
+                </Counter>
+            "},
+            expect![[r#"
+                <Counter {
+                  count: Int = 0,
+                }>
+                  {count}
+                </Counter>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_default_bool_parameter_to_doc() {
+        check(
+            indoc! {"
+                <Toggle {enabled: Bool = true}>
+                </Toggle>
+            "},
+            expect![[r#"
+                <Toggle {
+                  enabled: Bool = true,
+                }></Toggle>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_mixed_required_and_default_parameters_to_doc() {
+        check(
+            indoc! {r#"
+                <UserCard {name: String, role: String = "user", active: Bool = true}>
+                  {name}
+                </UserCard>
+            "#},
+            expect![[r#"
+                <UserCard {
+                  name: String,
+                  role: String = "user",
+                  active: Bool = true,
+                }>
+                  {name}
+                </UserCard>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_default_array_parameter_to_doc() {
+        check(
+            indoc! {r#"
+                <ItemList {items: Array[String] = ["one", "two"]}>
+                </ItemList>
+            "#},
+            expect![[r#"
+                <ItemList {
+                  items: Array[String] = ["one", "two"],
+                }></ItemList>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_default_empty_array_parameter_to_doc() {
+        check(
+            indoc! {"
+                <ItemList {items: Array[String] = []}>
+                </ItemList>
+            "},
+            expect![[r#"
+                <ItemList {
+                  items: Array[String] = [],
+                }></ItemList>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_default_record_parameter_to_doc() {
+        check(
+            indoc! {r#"
+                record Config { debug: Bool, timeout: Int }
+                <Settings {config: Config = Config(debug: false, timeout: 30)}>
+                </Settings>
+            "#},
+            expect![[r#"
+                record Config {
+                  debug: Bool,
+                  timeout: Int,
+                }
+
+                <Settings {
+                  config: Config = Config(debug: false, timeout: 30),
+                }></Settings>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_default_enum_parameter_to_doc() {
+        check(
+            indoc! {"
+                enum Status { Active, Inactive, Pending }
+                <Badge {status: Status = Status::Active}>
+                </Badge>
+            "},
+            expect![[r#"
+                enum Status {
+                  Active,
+                  Inactive,
+                  Pending,
+                }
+
+                <Badge {
+                  status: Status = Status::Active,
+                }></Badge>
+            "#]],
+        );
+    }
 }

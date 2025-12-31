@@ -1731,4 +1731,110 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn should_accept_parameter_with_default_string_value() {
+        check(
+            indoc! {r#"
+                <Main {name: String = "World"}>
+                    <div>{name}</div>
+                </Main>
+            "#},
+            expect![[r#"
+                div                                               1:4-1:21
+                    text_expression                               1:9-1:15
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_parameter_with_default_int_value() {
+        check(
+            indoc! {"
+                <Main {count: Int = 42}>
+                    <span>{count}</span>
+                </Main>
+            "},
+            expect![[r#"
+                span                                              1:4-1:24
+                    text_expression                               1:10-1:17
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_parameter_with_default_bool_value() {
+        check(
+            indoc! {"
+                <Main {enabled: Bool = true}>
+                    <div></div>
+                </Main>
+            "},
+            expect![[r#"
+                div                                               1:4-1:15
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_mixed_required_and_default_parameters() {
+        check(
+            indoc! {r#"
+                <Main {name: String, role: String = "user", active: Bool = true}>
+                    <div>{name}</div>
+                </Main>
+            "#},
+            expect![[r#"
+                div                                               1:4-1:21
+                    text_expression                               1:9-1:15
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_parameter_with_default_array_value() {
+        check(
+            indoc! {r#"
+                <Main {items: Array[String] = ["a", "b"]}>
+                    <for {item in items}>
+                        {item}
+                    </for>
+                </Main>
+            "#},
+            expect![[r#"
+                for                                               1:4-3:10
+                    text_expression                               2:8-2:14
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_parameter_with_default_record_value() {
+        check(
+            indoc! {r#"
+                record Config { debug: Bool, timeout: Int }
+                <Main {config: Config = Config(debug: false, timeout: 30)}>
+                    <div></div>
+                </Main>
+            "#},
+            expect![[r#"
+                div                                               2:4-2:15
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_parameter_with_default_enum_value() {
+        check(
+            indoc! {"
+                enum Status { Active, Inactive, Pending }
+                <Main {status: Status = Status::Active}>
+                    <div></div>
+                </Main>
+            "},
+            expect![[r#"
+                div                                               2:4-2:15
+            "#]],
+        );
+    }
 }

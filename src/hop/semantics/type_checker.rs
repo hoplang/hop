@@ -39,7 +39,8 @@ impl Display for TypeAnnotation {
 
 #[derive(Debug, Clone)]
 struct ComponentTypeInformation {
-    parameters: Vec<(String, Type)>,
+    /// Parameters: (name, type, has_default)
+    parameters: Vec<(String, Type, bool)>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,7 +61,7 @@ struct ModuleTypeInformation {
 }
 
 impl ModuleTypeInformation {
-    fn get_parameter_types(&self, component_name: &str) -> Option<&[(String, Type)]> {
+    fn get_parameter_types(&self, component_name: &str) -> Option<&[(String, Type, bool)]> {
         let params = &self.components.get(component_name)?.parameters;
         if params.is_empty() {
             None
@@ -73,7 +74,7 @@ impl ModuleTypeInformation {
     fn component_accepts_children(&self, component_name: &str) -> bool {
         self.components
             .get(component_name)
-            .is_some_and(|c| c.parameters.iter().any(|(name, _)| name == "children"))
+            .is_some_and(|c| c.parameters.iter().any(|(name, _, _)| name == "children"))
     }
 
     fn component_is_declared(&self, component_name: &str) -> bool {
@@ -347,12 +348,39 @@ fn typecheck_module(
         } = component_def;
 
         let mut pushed_params: Vec<&ParsedParameter> = Vec::new();
-        let mut resolved_param_types: Vec<(String, Type)> = Vec::new();
+        let mut resolved_param_types: Vec<(String, Type, bool)> = Vec::new();
         let mut typed_params: Vec<(VarName, Type)> = Vec::new();
         if let Some((params, _)) = params {
             for param in params {
                 match resolve_type(&param.var_type, &mut type_env) {
                     Ok(param_type) => {
+                        // Type-check default value if present
+                        let has_default = param.default_value.is_some();
+                        if let Some(default_expr) = &param.default_value {
+                            match dop::typecheck_expr(
+                                default_expr,
+                                &mut env,
+                                &mut type_env,
+                                annotations,
+                                Some(&param_type),
+                            ) {
+                                Ok(typed_default) => {
+                                    let default_type = typed_default.as_type();
+                                    if !default_type.is_subtype(&param_type) {
+                                        errors.push(TypeError::DefaultValueTypeMismatch {
+                                            param_name: param.var_name.to_string(),
+                                            expected: param_type.clone(),
+                                            found: default_type.clone(),
+                                            range: default_expr.range().clone(),
+                                        });
+                                    }
+                                }
+                                Err(e) => {
+                                    errors.push(e.into());
+                                }
+                            }
+                        }
+
                         annotations.push(TypeAnnotation {
                             range: param.var_name_range.clone(),
                             typ: param_type.clone(),
@@ -360,7 +388,8 @@ fn typecheck_module(
                         });
                         let _ = env.push(param.var_name.to_string(), param_type.clone());
                         pushed_params.push(param);
-                        resolved_param_types.push((param.var_name.to_string(), param_type.clone()));
+                        resolved_param_types
+                            .push((param.var_name.to_string(), param_type.clone(), has_default));
                         typed_params.push((param.var_name.clone(), param_type));
                     }
                     Err(e) => {
@@ -565,10 +594,16 @@ fn typecheck_node(
                 .map(|params| {
                     params
                         .iter()
-                        .filter(|(name, _)| name != "children")
+                        .filter(|(name, _, _)| name != "children")
                         .cloned()
                         .collect()
                 });
+
+            // Check if there are any required (non-default) params
+            let has_required_params = params_without_children
+                .as_ref()
+                .map(|params| params.iter().any(|(_, _, has_default)| !has_default))
+                .unwrap_or(false);
 
             let typed_args = match (params_without_children.as_deref(), args) {
                 (None | Some([]), None) => Vec::new(),
@@ -578,17 +613,19 @@ fn typecheck_node(
                     });
                     Vec::new()
                 }
-                (Some(params), None) if !params.is_empty() => {
+                (Some(params), None) if has_required_params => {
                     errors.push(TypeError::missing_arguments(params, tag_name.clone()));
                     Vec::new()
                 }
-                (Some(_), None) => Vec::new(), // params is empty, no args needed
+                (Some(_), None) => Vec::new(), // no required params, args optional
                 (Some(params), Some((args, args_range))) => {
                     let mut typed_arguments = Vec::new();
-                    for (param_name, _) in params {
-                        if !args
-                            .iter()
-                            .any(|a| a.var_name.as_str() == param_name.as_str())
+                    // Only check for missing params that don't have defaults
+                    for (param_name, _, has_default) in params {
+                        if !has_default
+                            && !args
+                                .iter()
+                                .any(|a| a.var_name.as_str() == param_name.as_str())
                         {
                             errors.push(TypeError::MissingRequiredParameter {
                                 param: param_name.clone(),
@@ -609,9 +646,9 @@ fn typecheck_node(
                             continue;
                         }
 
-                        let (_, param_type) = match all_params.and_then(|p| {
+                        let (_, param_type, _) = match all_params.and_then(|p| {
                             p.iter()
-                                .find(|(name, _)| name.as_str() == arg.var_name.as_str())
+                                .find(|(name, _, _)| name.as_str() == arg.var_name.as_str())
                         }) {
                             None => {
                                 errors.push(TypeError::UnexpectedArgument {
@@ -2989,6 +3026,270 @@ mod tests {
                 12 | <Main {person: Person}>
                 13 |     <if {person.role == Role::Admin}>
                    |          ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_component_with_default_parameter_when_argument_omitted() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Greeting {name: String = "World"}>
+                  Hello, {name}!
+                </Greeting>
+                <Main>
+                  <Greeting />
+                </Main>
+            "#},
+            expect![[r#"
+                name: String
+                  --> main.hop (line 1, col 12)
+                1 | <Greeting {name: String = "World"}>
+                  |            ^^^^
+
+                name: String
+                  --> main.hop (line 2, col 11)
+                1 | <Greeting {name: String = "World"}>
+                2 |   Hello, {name}!
+                  |           ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_component_with_default_parameter_when_argument_provided() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Greeting {name: String = "World"}>
+                  Hello, {name}!
+                </Greeting>
+                <Main>
+                  <Greeting {name: "Claude"} />
+                </Main>
+            "#},
+            expect![[r#"
+                name: String
+                  --> main.hop (line 1, col 12)
+                1 | <Greeting {name: String = "World"}>
+                  |            ^^^^
+
+                name: String
+                  --> main.hop (line 2, col 11)
+                1 | <Greeting {name: String = "World"}>
+                2 |   Hello, {name}!
+                  |           ^^^^
+
+                name: String
+                  --> main.hop (line 5, col 20)
+                4 | <Main>
+                5 |   <Greeting {name: "Claude"} />
+                  |                    ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_component_with_mixed_required_and_default_parameters() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <UserCard {name: String, role: String = "user"}>
+                  {name} ({role})
+                </UserCard>
+                <Main>
+                  <UserCard {name: "Alice"} />
+                </Main>
+            "#},
+            expect![[r#"
+                name: String
+                  --> main.hop (line 1, col 12)
+                1 | <UserCard {name: String, role: String = "user"}>
+                  |            ^^^^
+
+                role: String
+                  --> main.hop (line 1, col 26)
+                1 | <UserCard {name: String, role: String = "user"}>
+                  |                          ^^^^
+
+                name: String
+                  --> main.hop (line 2, col 4)
+                1 | <UserCard {name: String, role: String = "user"}>
+                2 |   {name} ({role})
+                  |    ^^^^
+
+                role: String
+                  --> main.hop (line 2, col 12)
+                1 | <UserCard {name: String, role: String = "user"}>
+                2 |   {name} ({role})
+                  |            ^^^^
+
+                name: String
+                  --> main.hop (line 5, col 20)
+                4 | <Main>
+                5 |   <UserCard {name: "Alice"} />
+                  |                    ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_when_required_param_is_missing_but_default_param_is_provided() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <UserCard {name: String, role: String = "user"}>
+                  {name} ({role})
+                </UserCard>
+                <Main>
+                  <UserCard {role: "admin"} />
+                </Main>
+            "#},
+            expect![[r#"
+                error: Missing required parameter 'name'
+                  --> main.hop (line 5, col 14)
+                4 | <Main>
+                5 |   <UserCard {role: "admin"} />
+                  |              ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_when_default_value_type_does_not_match_parameter_type() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Greeting {name: String = 42}>
+                  Hello, {name}!
+                </Greeting>
+                <Main>
+                  <Greeting />
+                </Main>
+            "#},
+            expect![[r#"
+                error: Default value for parameter 'name' has type Int, expected String
+                  --> main.hop (line 1, col 27)
+                1 | <Greeting {name: String = 42}>
+                  |                           ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_all_default_params_component_called_without_args() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Config {debug: Bool = false, timeout: Int = 30}>
+                </Config>
+                <Main>
+                  <Config />
+                </Main>
+            "#},
+            expect![[r#"
+                error: Unused variable timeout
+                  --> main.hop (line 1, col 31)
+                1 | <Config {debug: Bool = false, timeout: Int = 30}>
+                  |                               ^^^^^^^
+
+                error: Unused variable debug
+                  --> main.hop (line 1, col 10)
+                1 | <Config {debug: Bool = false, timeout: Int = 30}>
+                  |          ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_default_empty_array_parameter() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <ItemList {items: Array[String] = []}>
+                  <for {item in items}>
+                    {item}
+                  </for>
+                </ItemList>
+                <Main>
+                  <ItemList />
+                </Main>
+            "#},
+            expect![[r#"
+                items: Array[String]
+                  --> main.hop (line 1, col 12)
+                1 | <ItemList {items: Array[String] = []}>
+                  |            ^^^^^
+
+                items: Array[String]
+                  --> main.hop (line 2, col 17)
+                1 | <ItemList {items: Array[String] = []}>
+                2 |   <for {item in items}>
+                  |                 ^^^^^
+
+                item: String
+                  --> main.hop (line 2, col 9)
+                1 | <ItemList {items: Array[String] = []}>
+                2 |   <for {item in items}>
+                  |         ^^^^
+
+                item: String
+                  --> main.hop (line 3, col 6)
+                2 |   <for {item in items}>
+                3 |     {item}
+                  |      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_default_record_parameter() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record Config { name: String, enabled: Bool }
+                <Settings {config: Config = Config(name: "default", enabled: true)}>
+                  {config.name}
+                </Settings>
+                <Main>
+                  <Settings />
+                </Main>
+            "#},
+            expect![[r#"
+                config: main::Config
+                  --> main.hop (line 2, col 12)
+                1 | record Config { name: String, enabled: Bool }
+                2 | <Settings {config: Config = Config(name: "default", enabled: true)}>
+                  |            ^^^^^^
+
+                config: main::Config
+                  --> main.hop (line 3, col 4)
+                2 | <Settings {config: Config = Config(name: "default", enabled: true)}>
+                3 |   {config.name}
+                  |    ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_default_enum_parameter() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Status { Active, Inactive, Pending }
+                <Badge {status: Status = Status::Active}>
+                </Badge>
+                <Main>
+                  <Badge />
+                </Main>
+            "#},
+            expect![[r#"
+                error: Unused variable status
+                  --> main.hop (line 2, col 9)
+                1 | enum Status { Active, Inactive, Pending }
+                2 | <Badge {status: Status = Status::Active}>
+                  |         ^^^^^^
             "#]],
         );
     }

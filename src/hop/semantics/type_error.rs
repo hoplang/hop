@@ -76,6 +76,14 @@ pub enum TypeError {
         expr_range: DocumentRange,
     },
 
+    #[error("Default value for parameter '{param_name}' has type {found}, expected {expected}")]
+    DefaultValueTypeMismatch {
+        param_name: String,
+        expected: Type,
+        found: Type,
+        range: DocumentRange,
+    },
+
     #[error("Expected string attribute, got {found}")]
     ExpectedStringAttribute { found: String, range: DocumentRange },
 
@@ -118,10 +126,15 @@ impl TypeError {
         }
     }
 
-    pub fn missing_arguments(params: &[(String, crate::dop::Type)], range: DocumentRange) -> Self {
+    pub fn missing_arguments(
+        params: &[(String, crate::dop::Type, bool)],
+        range: DocumentRange,
+    ) -> Self {
+        // Only list required (non-default) parameters
         let args = params
             .iter()
-            .map(|(name, _)| name.as_str())
+            .filter(|(_, _, has_default)| !has_default)
+            .map(|(name, _, _)| name.as_str())
             .collect::<Vec<_>>()
             .join(", ");
         TypeError::MissingArguments { args, range }
@@ -148,6 +161,7 @@ impl Ranged for TypeError {
             | TypeError::ArgumentIsIncompatible {
                 expr_range: range, ..
             }
+            | TypeError::DefaultValueTypeMismatch { range, .. }
             | TypeError::ExpectedStringAttribute { range, .. }
             | TypeError::CannotIterateOver { range, .. }
             | TypeError::ExpectedStringForTextExpression { range, .. } => range,
