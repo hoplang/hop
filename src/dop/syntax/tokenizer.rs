@@ -100,7 +100,7 @@ impl Iterator for Tokenizer {
                         let end = self.iter.next().unwrap();
                         Ok((Token::FatArrow, start.to(end)))
                     }
-                    _ => Err(ParseError::ExpectedDoubleEqButGotSingleEq { range: start }),
+                    _ => Ok((Token::Assign, start)),
                 },
                 '"' => {
                     let mut end_range = start.clone();
@@ -318,11 +318,11 @@ mod tests {
     }
 
     #[test]
-    fn should_not_consume_identifier_after_single_equals() {
+    fn should_accept_single_equals_as_assign_token() {
         check(
             "=foo",
             expect![[r#"
-                error: Expected '==' but got '='
+                token: =
                 =foo
                 ^
 

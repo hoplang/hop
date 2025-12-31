@@ -69,9 +69,6 @@ pub enum ParseError {
         range: DocumentRange,
     },
 
-    #[error("Expected '==' but got '='")]
-    ExpectedDoubleEqButGotSingleEq { range: DocumentRange },
-
     #[error("Duplicate parameter '{name}'")]
     DuplicateParameter {
         name: StringSpan,
@@ -137,7 +134,6 @@ impl Ranged for ParseError {
             | ParseError::InvalidNumberFormat { range, .. }
             | ParseError::ExpectedTokenButGot { range, .. }
             | ParseError::ExpectedTokenButGotEof { range, .. }
-            | ParseError::ExpectedDoubleEqButGotSingleEq { range, .. }
             | ParseError::UnexpectedToken { range, .. }
             | ParseError::ExpectedVariableNameButGot { range, .. }
             | ParseError::ExpectedFieldNameButGot { range, .. }
