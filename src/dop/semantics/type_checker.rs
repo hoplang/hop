@@ -2726,4 +2726,28 @@ mod tests {
     fn should_accept_none_equals_some() {
         check("", &[], "None == Some(1)", expect!["Bool"]);
     }
+
+    #[test]
+    fn should_accept_nested_some_equals_some_none() {
+        check("", &[], "Some(Some(1)) == Some(None)", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_accept_nested_some_equals_none() {
+        check("", &[], "Some(Some(1)) == None", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_reject_nested_some_with_different_inner_types() {
+        check(
+            "",
+            &[],
+            r#"Some(Some(1)) == Some(Some("2"))"#,
+            expect![[r#"
+                error: Can not compare Option[Option[Int]] to Option[Option[String]]
+                Some(Some(1)) == Some(Some("2"))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
 }
