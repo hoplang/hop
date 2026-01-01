@@ -367,7 +367,7 @@ fn typecheck_module(
                             ) {
                                 Ok(typed_default) => {
                                     let default_type = typed_default.as_type();
-                                    if !default_type.is_subtype(&param_type) {
+                                    if *default_type != param_type {
                                         errors.push(TypeError::DefaultValueTypeMismatch {
                                             param_name: param.var_name.to_string(),
                                             expected: param_type.clone(),
@@ -466,7 +466,7 @@ fn typecheck_node(
             )?;
 
             let condition_type = typed_condition.as_type();
-            if !condition_type.is_subtype(&Type::Bool) {
+            if *condition_type != Type::Bool {
                 errors.push(TypeError::ExpectedBooleanCondition {
                     found: condition_type.to_string(),
                     range: condition.range().clone(),
@@ -682,7 +682,7 @@ fn typecheck_node(
                         let arg_type = typed_expr.as_type().clone();
 
                         // param_type is already resolved from the component's defining module
-                        if !arg_type.is_subtype(param_type) {
+                        if arg_type != *param_type {
                             errors.push(TypeError::ArgumentIsIncompatible {
                                 expected: param_type.clone(),
                                 found: arg_type.clone(),
@@ -746,7 +746,7 @@ fn typecheck_node(
                     .map_err(Into::into),
             ) {
                 let expr_type = typed_expr.as_type();
-                if !expr_type.is_subtype(&Type::String) && !expr_type.is_subtype(&Type::TrustedHTML)
+                if *expr_type != Type::String && *expr_type != Type::TrustedHTML
                 {
                     errors.push(TypeError::ExpectedStringForTextExpression {
                         found: expr_type.clone(),
@@ -793,7 +793,7 @@ fn typecheck_attributes(
                     ) {
                         // Check that attributes evaluate to strings
                         let expr_type = typed_expr.as_type();
-                        if !expr_type.is_subtype(&Type::String) {
+                        if *expr_type != Type::String {
                             errors.push(TypeError::ExpectedStringAttribute {
                                 found: expr_type.to_string(),
                                 range: expr.annotation().clone(),

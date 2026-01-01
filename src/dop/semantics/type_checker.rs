@@ -384,13 +384,13 @@ pub fn typecheck_expr(
             let right_type = typed_right.as_type();
 
             // LogicalAnd only works with Bool expressions
-            if !left_type.is_subtype(&Type::Bool) {
+            if *left_type != Type::Bool {
                 return Err(TypeError::LogicalAndRequiresBoolean {
                     range: left.range().clone(),
                 });
             }
 
-            if !right_type.is_subtype(&Type::Bool) {
+            if *right_type != Type::Bool {
                 return Err(TypeError::LogicalAndRequiresBoolean {
                     range: right.range().clone(),
                 });
@@ -412,13 +412,13 @@ pub fn typecheck_expr(
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            if !left_type.is_subtype(&Type::Bool) {
+            if *left_type != Type::Bool {
                 return Err(TypeError::LogicalOrRequiresBoolean {
                     range: left.range().clone(),
                 });
             }
 
-            if !right_type.is_subtype(&Type::Bool) {
+            if *right_type != Type::Bool {
                 return Err(TypeError::LogicalOrRequiresBoolean {
                     range: right.range().clone(),
                 });
@@ -538,7 +538,7 @@ pub fn typecheck_expr(
             let operand_type = typed_operand.as_type();
 
             // Negation only works on Bool expressions
-            if !operand_type.is_subtype(&Type::Bool) {
+            if *operand_type != Type::Bool {
                 return Err(TypeError::NegationRequiresBoolean {
                     range: operand.range().clone(),
                 });
@@ -656,7 +656,7 @@ pub fn typecheck_expr(
                 let actual_type = typed_value.as_type();
 
                 // Check that the types match
-                if !actual_type.is_subtype(expected_type) {
+                if *actual_type != *expected_type {
                     return Err(TypeError::RecordLiteralFieldTypeMismatch {
                         field_name: field_name_str.to_string(),
                         expected: expected_type.to_string(),
@@ -810,7 +810,7 @@ pub fn typecheck_expr(
                         result_type = Some(body_type);
                     }
                     Some(expected) => {
-                        if !body_type.is_subtype(expected) {
+                        if body_type != *expected {
                             return Err(TypeError::MatchArmTypeMismatch {
                                 expected: expected.to_string(),
                                 found: body_type.to_string(),

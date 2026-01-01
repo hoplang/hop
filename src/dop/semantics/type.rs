@@ -34,7 +34,7 @@ pub enum NumericType {
     Float,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Type {
     String,
     Bool,
@@ -88,46 +88,42 @@ impl Type {
         }
     }
 
-    /// Check if `subtype` is a subtype of `supertype`
-    pub fn is_subtype(&self, supertype: &Type) -> bool {
-        match (self, supertype) {
+}
+
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
             (Type::Bool, Type::Bool) => true,
             (Type::String, Type::String) => true,
             (Type::Float, Type::Float) => true,
             (Type::Int, Type::Int) => true,
             (Type::TrustedHTML, Type::TrustedHTML) => true,
-            (Type::Array(sub_elem), Type::Array(super_elem)) => sub_elem.is_subtype(super_elem),
-            (Type::Option(sub_elem), Type::Option(super_elem)) => sub_elem.is_subtype(super_elem),
-
-            // Record types must have the same module and name
+            (Type::Array(left), Type::Array(right)) => left == right,
+            (Type::Option(left), Type::Option(right)) => left == right,
             (
                 Type::Record {
-                    module: sub_module,
-                    name: sub_name,
+                    module: left_module,
+                    name: left_name,
                     ..
                 },
                 Type::Record {
-                    module: super_module,
-                    name: super_name,
+                    module: right_module,
+                    name: right_name,
                     ..
                 },
-            ) => sub_module == super_module && sub_name == super_name,
-
-            // Enum types must have the same module and name
+            ) => left_module == right_module && left_name == right_name,
             (
                 Type::Enum {
-                    module: sub_module,
-                    name: sub_name,
+                    module: left_module,
+                    name: left_name,
                     ..
                 },
                 Type::Enum {
-                    module: super_module,
-                    name: super_name,
+                    module: right_module,
+                    name: right_name,
                     ..
                 },
-            ) => sub_module == super_module && sub_name == super_name,
-
-            // Otherwise, not a subtype
+            ) => left_module == right_module && left_name == right_name,
             _ => false,
         }
     }
