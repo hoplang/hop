@@ -42,6 +42,8 @@ pub enum Token {
     Record,
     Match,
     Enum,
+    Some,
+    None,
     // Type tokens
     TypeString,
     TypeInt,
@@ -49,6 +51,7 @@ pub enum Token {
     TypeBoolean,
     TypeTrustedHTML,
     TypeArray,
+    TypeOption,
 }
 
 impl Token {
@@ -104,12 +107,15 @@ impl fmt::Display for Token {
             Token::Record => write!(f, "record"),
             Token::Match => write!(f, "match"),
             Token::Enum => write!(f, "enum"),
+            Token::Some => write!(f, "Some"),
+            Token::None => write!(f, "None"),
             Token::TypeString => write!(f, "String"),
             Token::TypeInt => write!(f, "Int"),
             Token::TypeFloat => write!(f, "Float"),
             Token::TypeBoolean => write!(f, "Bool"),
             Token::TypeTrustedHTML => write!(f, "TrustedHTML"),
             Token::TypeArray => write!(f, "Array"),
+            Token::TypeOption => write!(f, "Option"),
         }
     }
 }

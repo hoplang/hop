@@ -129,6 +129,8 @@ impl Iterator for Tokenizer {
                         "record" => Token::Record,
                         "match" => Token::Match,
                         "enum" => Token::Enum,
+                        "Some" => Token::Some,
+                        "None" => Token::None,
                         // Types
                         "String" => Token::TypeString,
                         "Int" => Token::TypeInt,
@@ -136,6 +138,7 @@ impl Iterator for Tokenizer {
                         "Bool" => Token::TypeBoolean,
                         "TrustedHTML" => Token::TypeTrustedHTML,
                         "Array" => Token::TypeArray,
+                        "Option" => Token::TypeOption,
                         _ => {
                             let first_char = identifier.as_str().chars().next().unwrap();
                             if first_char.is_ascii_uppercase() {
@@ -1289,6 +1292,66 @@ mod tests {
                 token: Color
                 enum Color
                      ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_some_keyword() {
+        check(
+            "Some(x)",
+            expect![[r#"
+                token: Some
+                Some(x)
+                ^^^^
+
+                token: (
+                Some(x)
+                    ^
+
+                token: x
+                Some(x)
+                     ^
+
+                token: )
+                Some(x)
+                      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_none_keyword() {
+        check(
+            "None",
+            expect![[r#"
+                token: None
+                None
+                ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_type() {
+        check(
+            "Option[String]",
+            expect![[r#"
+                token: Option
+                Option[String]
+                ^^^^^^
+
+                token: [
+                Option[String]
+                      ^
+
+                token: String
+                Option[String]
+                       ^^^^^^
+
+                token: ]
+                Option[String]
+                             ^
             "#]],
         );
     }
