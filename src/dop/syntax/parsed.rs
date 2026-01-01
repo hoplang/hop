@@ -29,6 +29,10 @@ pub enum ParsedType {
         element: Box<ParsedType>,
         range: DocumentRange,
     },
+    Option {
+        element: Box<ParsedType>,
+        range: DocumentRange,
+    },
     Named {
         name: String,
         range: DocumentRange,
@@ -44,6 +48,7 @@ impl Ranged for ParsedType {
             | ParsedType::Float { range }
             | ParsedType::TrustedHTML { range }
             | ParsedType::Array { range, .. }
+            | ParsedType::Option { range, .. }
             | ParsedType::Named { range, .. } => range,
         }
     }
@@ -57,6 +62,10 @@ impl ParsedType {
             ParsedType::Int { .. } => BoxDoc::text("Int"),
             ParsedType::Float { .. } => BoxDoc::text("Float"),
             ParsedType::TrustedHTML { .. } => BoxDoc::text("TrustedHTML"),
+            ParsedType::Option { element, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("Option["))
+                .append(element.to_doc())
+                .append(BoxDoc::text("]")),
             ParsedType::Array { element, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("Array["))
                 .append(element.to_doc())

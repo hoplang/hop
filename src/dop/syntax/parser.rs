@@ -317,6 +317,15 @@ impl Parser {
                     range: type_array.to(right_bracket),
                 })
             }
+            Some((Token::TypeOption, type_option)) => {
+                let left_bracket = self.expect_token(&Token::LeftBracket)?;
+                let element = self.parse_type()?;
+                let right_bracket = self.expect_opposite(&Token::LeftBracket, &left_bracket)?;
+                Ok(ParsedType::Option {
+                    element: Box::new(element),
+                    range: type_option.to(right_bracket),
+                })
+            }
             Some((Token::TypeName(name), range)) => Ok(ParsedType::Named {
                 name: name.as_str().to_string(),
                 range,
@@ -1112,6 +1121,58 @@ mod tests {
             "users: Array[User]",
             expect![[r#"
                 [users: Array[User]]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_parameters_with_option_type() {
+        check_parse_parameters(
+            "name: Option[String]",
+            expect![[r#"
+                [name: Option[String]]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_parameters_with_named_type_inside_option() {
+        check_parse_parameters(
+            "user: Option[User]",
+            expect![[r#"
+                [user: Option[User]]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_parameters_with_option_inside_array() {
+        check_parse_parameters(
+            "names: Array[Option[String]]",
+            expect![[r#"
+                [names: Array[Option[String]]]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_parameters_with_array_inside_option() {
+        check_parse_parameters(
+            "items: Option[Array[Int]]",
+            expect![[r#"
+                [items: Option[Array[Int]]]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_option_with_multiple_type_parameters() {
+        check_parse_parameters(
+            "item: Option[String, String]",
+            expect![[r#"
+                error: Expected token ']' but got ','
+                item: Option[String, String]
+                                   ^
             "#]],
         );
     }

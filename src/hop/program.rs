@@ -459,7 +459,7 @@ impl Program {
                     });
                 }
             }
-            ParsedType::Array { element, .. } => {
+            ParsedType::Array { element, .. } | ParsedType::Option { element, .. } => {
                 // Recursively check the element type
                 locations.extend(self.collect_type_references(
                     element,

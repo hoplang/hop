@@ -20,6 +20,9 @@ pub fn resolve_type(
         ParsedType::Int { .. } => Ok(Type::Int),
         ParsedType::Float { .. } => Ok(Type::Float),
         ParsedType::TrustedHTML { .. } => Ok(Type::TrustedHTML),
+        ParsedType::Option { .. } => {
+            todo!()
+        }
         ParsedType::Array { element, .. } => {
             let elem_type = resolve_type(element, type_env)?;
             Ok(Type::Array(Box::new(elem_type)))
