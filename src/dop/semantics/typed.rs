@@ -63,6 +63,13 @@ pub enum TypedExpr {
         kind: Type,
     },
 
+    /// An option literal expression, e.g. Some(42) or None
+    OptionLiteral {
+        /// The inner value (Some) or None
+        value: Option<Box<Self>>,
+        kind: Type,
+    },
+
     /// A match expression, e.g. match color { Color::Red => "red", Color::Blue => "blue" }
     Match {
         subject: Box<Self>,
@@ -159,6 +166,7 @@ impl TypedExpr {
             | TypedExpr::ArrayLiteral { kind, .. }
             | TypedExpr::RecordLiteral { kind, .. }
             | TypedExpr::EnumLiteral { kind, .. }
+            | TypedExpr::OptionLiteral { kind, .. }
             | TypedExpr::Match { kind, .. } => kind,
 
             TypedExpr::FloatLiteral { .. } => &FLOAT_TYPE,
@@ -332,6 +340,12 @@ impl TypedExpr {
             } => BoxDoc::text(enum_name.as_str())
                 .append(BoxDoc::text("::"))
                 .append(BoxDoc::text(variant_name.as_str())),
+            TypedExpr::OptionLiteral { value, .. } => match value {
+                Some(inner) => BoxDoc::text("Some(")
+                    .append(inner.to_doc())
+                    .append(BoxDoc::text(")")),
+                None => BoxDoc::text("None"),
+            },
             TypedExpr::Match { subject, arms, .. } => {
                 if arms.is_empty() {
                     BoxDoc::text("match ")

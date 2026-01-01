@@ -41,6 +41,7 @@ pub enum Type {
     Float,
     TrustedHTML,
     Array(Box<Type>),
+    Option(Box<Type>),
     Record {
         module: ModuleName,
         name: TypeName,
@@ -64,7 +65,7 @@ impl Type {
                 module: module.clone(),
                 name: name.clone(),
             }),
-            Type::TrustedHTML | Type::Array(_) | Type::Record { .. } => None,
+            Type::TrustedHTML | Type::Array(_) | Type::Option(_) | Type::Record { .. } => None,
         }
     }
 
@@ -76,6 +77,7 @@ impl Type {
             | Type::String
             | Type::TrustedHTML
             | Type::Array(_)
+            | Type::Option(_)
             | Type::Record { .. }
             | Type::Enum { .. } => None,
         }
@@ -84,15 +86,13 @@ impl Type {
     /// Check if `subtype` is a subtype of `supertype`
     pub fn is_subtype(&self, supertype: &Type) -> bool {
         match (self, supertype) {
-            // Exact matches
             (Type::Bool, Type::Bool) => true,
             (Type::String, Type::String) => true,
             (Type::Float, Type::Float) => true,
             (Type::Int, Type::Int) => true,
             (Type::TrustedHTML, Type::TrustedHTML) => true,
-
-            // Arrays are covariant in their element type
             (Type::Array(sub_elem), Type::Array(super_elem)) => sub_elem.is_subtype(super_elem),
+            (Type::Option(sub_elem), Type::Option(super_elem)) => sub_elem.is_subtype(super_elem),
 
             // Record types must have the same module and name
             (
@@ -144,6 +144,10 @@ impl<'a> Type {
             Type::TrustedHTML => BoxDoc::text("TrustedHTML"),
             Type::Array(elem_type) => BoxDoc::nil()
                 .append(BoxDoc::text("Array["))
+                .append(elem_type.to_doc())
+                .append(BoxDoc::text("]")),
+            Type::Option(elem_type) => BoxDoc::nil()
+                .append(BoxDoc::text("Option["))
                 .append(elem_type.to_doc())
                 .append(BoxDoc::text("]")),
             Type::Record { module, name, .. } => BoxDoc::text(format!("{}::{}", module, name)),

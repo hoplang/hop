@@ -20,8 +20,9 @@ pub fn resolve_type(
         ParsedType::Int { .. } => Ok(Type::Int),
         ParsedType::Float { .. } => Ok(Type::Float),
         ParsedType::TrustedHTML { .. } => Ok(Type::TrustedHTML),
-        ParsedType::Option { .. } => {
-            todo!()
+        ParsedType::Option { element, .. } => {
+            let elem_type = resolve_type(element, type_env)?;
+            Ok(Type::Option(Box::new(elem_type)))
         }
         ParsedType::Array { element, .. } => {
             let elem_type = resolve_type(element, type_env)?;
@@ -833,8 +834,44 @@ pub fn typecheck_expr(
                 kind: result_type.unwrap(),
             })
         }
-        ParsedExpr::OptionLiteral { .. } => {
-            todo!()
+        ParsedExpr::OptionLiteral {
+            value,
+            annotation: range,
+        } => {
+            match value {
+                Some(inner_expr) => {
+                    // Some(value): determine expected inner type from context if available
+                    let expected_inner_type = match expected_type {
+                        Some(Type::Option(elem)) => Some(elem.as_ref()),
+                        _ => None,
+                    };
+
+                    // Type check the inner value
+                    let typed_inner =
+                        typecheck_expr(inner_expr, env, type_env, annotations, expected_inner_type)?;
+                    let inner_type = typed_inner.as_type().clone();
+
+                    Ok(TypedExpr::OptionLiteral {
+                        value: Some(Box::new(typed_inner)),
+                        kind: Type::Option(Box::new(inner_type)),
+                    })
+                }
+                None => {
+                    // None: infer element type from expected type
+                    let elem_type = match expected_type {
+                        Some(Type::Option(elem)) => (**elem).clone(),
+                        _ => {
+                            return Err(TypeError::CannotInferNoneType {
+                                range: range.clone(),
+                            });
+                        }
+                    };
+                    Ok(TypedExpr::OptionLiteral {
+                        value: None,
+                        kind: Type::Option(Box::new(elem_type)),
+                    })
+                }
+            }
         }
     }
 }
@@ -2452,6 +2489,201 @@ mod tests {
                 }
             "#},
             expect!["String"],
+        );
+    }
+
+    // Option type tests
+
+    #[test]
+    fn should_accept_some_with_integer_literal() {
+        check("", &[], "Some(42)", expect!["Option[Int]"]);
+    }
+
+    #[test]
+    fn should_accept_some_with_string_literal() {
+        check("", &[], r#"Some("hello")"#, expect!["Option[String]"]);
+    }
+
+    #[test]
+    fn should_accept_some_with_boolean_literal() {
+        check("", &[], "Some(true)", expect!["Option[Bool]"]);
+    }
+
+    #[test]
+    fn should_accept_some_with_float_literal() {
+        check("", &[], "Some(3.14)", expect!["Option[Float]"]);
+    }
+
+    #[test]
+    fn should_accept_some_with_variable() {
+        check("", &[("name", "String")], "Some(name)", expect!["Option[String]"]);
+    }
+
+    #[test]
+    fn should_accept_some_with_field_access() {
+        check(
+            "record User {name: String}",
+            &[("user", "User")],
+            "Some(user.name)",
+            expect!["Option[String]"],
+        );
+    }
+
+    #[test]
+    fn should_accept_nested_some() {
+        check("", &[], "Some(Some(42))", expect!["Option[Option[Int]]"]);
+    }
+
+    #[test]
+    fn should_accept_some_with_array() {
+        check("", &[], "Some([1, 2, 3])", expect!["Option[Array[Int]]"]);
+    }
+
+    #[test]
+    fn should_accept_some_with_record_literal() {
+        check(
+            "record Point {x: Int, y: Int}",
+            &[],
+            "Some(Point(x: 1, y: 2))",
+            expect!["Option[test::Point]"],
+        );
+    }
+
+    #[test]
+    fn should_accept_some_with_enum_literal() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[],
+            "Some(Color::Red)",
+            expect!["Option[test::Color]"],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_variable() {
+        check(
+            "",
+            &[("maybe_count", "Option[Int]")],
+            "maybe_count",
+            expect!["Option[Int]"],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_in_record_field() {
+        check(
+            "record User {name: String, age: Option[Int]}",
+            &[("user", "User")],
+            "user.age",
+            expect!["Option[Int]"],
+        );
+    }
+
+    #[test]
+    fn should_accept_none_in_record_field_assignment() {
+        check(
+            "record User {name: String, nickname: Option[String]}",
+            &[],
+            r#"User(name: "Alice", nickname: None)"#,
+            expect!["test::User"],
+        );
+    }
+
+    #[test]
+    fn should_accept_some_in_record_field_assignment() {
+        check(
+            "record User {name: String, nickname: Option[String]}",
+            &[],
+            r#"User(name: "Alice", nickname: Some("Ali"))"#,
+            expect!["test::User"],
+        );
+    }
+
+    #[test]
+    fn should_accept_nested_option_in_record_field() {
+        check(
+            "record Config {value: Option[Option[Int]]}",
+            &[],
+            "Config(value: Some(Some(42)))",
+            expect!["test::Config"],
+        );
+    }
+
+    #[test]
+    fn should_accept_none_for_nested_option_field() {
+        check(
+            "record Config {value: Option[Option[Int]]}",
+            &[],
+            "Config(value: None)",
+            expect!["test::Config"],
+        );
+    }
+
+    #[test]
+    fn should_accept_array_of_options() {
+        check(
+            "",
+            &[("items", "Array[Option[Int]]")],
+            "items",
+            expect!["Array[Option[Int]]"],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_of_array() {
+        check(
+            "",
+            &[("maybe_items", "Option[Array[Int]]")],
+            "maybe_items",
+            expect!["Option[Array[Int]]"],
+        );
+    }
+
+    #[test]
+    fn should_reject_none_without_context() {
+        check(
+            "",
+            &[],
+            "None",
+            expect![[r#"
+                error: Cannot infer type of None without context
+                None
+                ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_type_mismatch_in_option_field() {
+        check(
+            "record User {name: String, age: Option[Int]}",
+            &[],
+            r#"User(name: "Alice", age: Some("thirty"))"#,
+            expect![[r#"
+                error: Field 'age' expects type Option[Int], but got Option[String]
+                User(name: "Alice", age: Some("thirty"))
+                                         ^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_non_option_for_option_field() {
+        check(
+            "record User {name: String, age: Option[Int]}",
+            &[],
+            r#"User(name: "Alice", age: 30)"#,
+            expect![[r#"
+                error: Field 'age' expects type Option[Int], but got Int
+                User(name: "Alice", age: 30)
+                                         ^^
+            "#]],
         );
     }
 }

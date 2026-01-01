@@ -565,6 +565,9 @@ impl Compiler {
                 kind,
                 id: expr_id,
             },
+            TypedExpr::OptionLiteral { .. } => {
+                todo!()
+            }
         }
     }
 }
