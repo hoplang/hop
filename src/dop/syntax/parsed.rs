@@ -183,6 +183,12 @@ pub enum ParsedExpr {
         arms: Vec<ParsedMatchArm>,
         annotation: DocumentRange,
     },
+
+    /// An option literal expression, e.g. `Some(42)` or `None`
+    OptionLiteral {
+        value: Option<Box<Self>>,
+        annotation: DocumentRange,
+    },
 }
 
 impl ParsedBinaryOp {
@@ -216,7 +222,8 @@ impl ParsedExpr {
             | ParsedExpr::EnumLiteral { annotation, .. }
             | ParsedExpr::BinaryOp { annotation, .. }
             | ParsedExpr::Negation { annotation, .. }
-            | ParsedExpr::Match { annotation, .. } => annotation,
+            | ParsedExpr::Match { annotation, .. }
+            | ParsedExpr::OptionLiteral { annotation, .. } => annotation,
         }
     }
 
@@ -234,6 +241,7 @@ impl ParsedExpr {
                 | ParsedExpr::RecordLiteral { .. }
                 | ParsedExpr::EnumLiteral { .. }
                 | ParsedExpr::Match { .. }
+                | ParsedExpr::OptionLiteral { .. }
         )
     }
 
@@ -383,6 +391,12 @@ impl ParsedExpr {
                         .append(BoxDoc::text("}"))
                 }
             }
+            ParsedExpr::OptionLiteral { value, .. } => match value {
+                Some(inner) => BoxDoc::text("Some(")
+                    .append(inner.to_doc())
+                    .append(BoxDoc::text(")")),
+                None => BoxDoc::text("None"),
+            },
         }
     }
 }

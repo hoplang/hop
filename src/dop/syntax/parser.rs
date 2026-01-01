@@ -599,6 +599,19 @@ impl Parser {
                 Ok(expr)
             }
             Some((Token::Match, match_range)) => self.parse_match_expr(match_range),
+            Some((Token::Some, some_range)) => {
+                let left_paren = self.expect_token(&Token::LeftParen)?;
+                let value = self.parse_logical()?;
+                let right_paren = self.expect_opposite(&Token::LeftParen, &left_paren)?;
+                Ok(ParsedExpr::OptionLiteral {
+                    value: Some(Box::new(value)),
+                    annotation: some_range.to(right_paren),
+                })
+            }
+            Some((Token::None, none_range)) => Ok(ParsedExpr::OptionLiteral {
+                value: None,
+                annotation: none_range,
+            }),
             Some((token, range)) => Err(ParseError::UnexpectedToken {
                 token,
                 range: range.clone(),
@@ -2561,6 +2574,114 @@ mod tests {
                 error: Expected type name but got end of file
                 Color::
                 ^^^^^^^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// OPTION LITERAL                                                      ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_some_with_string_literal() {
+        check_parse_expr(
+            r#"Some("hello")"#,
+            expect![[r#"
+                Some("hello")
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_some_with_integer_literal() {
+        check_parse_expr(
+            "Some(42)",
+            expect![[r#"
+                Some(42)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_some_with_variable() {
+        check_parse_expr(
+            "Some(x)",
+            expect![[r#"
+                Some(x)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_some_with_expression() {
+        check_parse_expr(
+            "Some(a + b)",
+            expect![[r#"
+                Some(a + b)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_none() {
+        check_parse_expr(
+            "None",
+            expect![[r#"
+                None
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_some_with_nested_some() {
+        check_parse_expr(
+            "Some(Some(1))",
+            expect![[r#"
+                Some(Some(1))
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_some_with_none() {
+        check_parse_expr(
+            "Some(None)",
+            expect![[r#"
+                Some(None)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_in_array() {
+        check_parse_expr(
+            "[Some(1), None, Some(2)]",
+            expect![[r#"
+                [Some(1), None, Some(2)]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_some_without_parentheses() {
+        check_parse_expr(
+            "Some",
+            expect![[r#"
+                error: Expected token '(' but got end of file
+                Some
+                ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_some_with_empty_parentheses() {
+        check_parse_expr(
+            "Some()",
+            expect![[r#"
+                error: Unexpected token ')'
+                Some()
+                     ^
             "#]],
         );
     }

@@ -833,6 +833,9 @@ pub fn typecheck_expr(
                 kind: result_type.unwrap(),
             })
         }
+        ParsedExpr::OptionLiteral { .. } => {
+            todo!()
+        }
     }
 }
 
