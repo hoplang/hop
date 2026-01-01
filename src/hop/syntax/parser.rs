@@ -1837,4 +1837,46 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn should_accept_parameter_with_option_type() {
+        check(
+            indoc! {"
+                <Main {name: Option[String]}>
+                    <div></div>
+                </Main>
+            "},
+            expect![[r#"
+                div                                               1:4-1:15
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_parameter_with_default_none_value() {
+        check(
+            indoc! {"
+                <Main {name: Option[String] = None}>
+                    <div></div>
+                </Main>
+            "},
+            expect![[r#"
+                div                                               1:4-1:15
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_parameter_with_default_some_value() {
+        check(
+            indoc! {r#"
+                <Main {name: Option[String] = Some("default")}>
+                    <div></div>
+                </Main>
+            "#},
+            expect![[r#"
+                div                                               1:4-1:15
+            "#]],
+        );
+    }
 }

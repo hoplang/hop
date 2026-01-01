@@ -242,6 +242,17 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             let right_str = right_val.as_str().unwrap();
             Ok(Value::Bool(left_str == right_str))
         }
+        IrExpr::Equals {
+            left,
+            right,
+            operand_types: EquatableType::Option(_),
+            ..
+        } => {
+            let left_val = evaluate_expr(left, env)?;
+            let right_val = evaluate_expr(right, env)?;
+            // Options are equal if both are null or both have equal values
+            Ok(Value::Bool(left_val == right_val))
+        }
         IrExpr::LessThan {
             left,
             right,

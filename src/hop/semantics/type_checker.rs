@@ -3299,4 +3299,146 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn should_accept_option_parameter_with_some_argument() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Greeting {name: Option[String]}>
+                  <if {name == None}></if>
+                </Greeting>
+                <Main>
+                  <Greeting {name: Some("World")} />
+                </Main>
+            "#},
+            expect![[r#"
+                name: Option[String]
+                  --> main.hop (line 1, col 12)
+                1 | <Greeting {name: Option[String]}>
+                  |            ^^^^
+
+                name: Option[String]
+                  --> main.hop (line 2, col 8)
+                1 | <Greeting {name: Option[String]}>
+                2 |   <if {name == None}></if>
+                  |        ^^^^
+
+                name: Option[String]
+                  --> main.hop (line 5, col 20)
+                4 | <Main>
+                5 |   <Greeting {name: Some("World")} />
+                  |                    ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_parameter_with_none_argument() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Greeting {name: Option[String]}>
+                  <if {name == None}></if>
+                </Greeting>
+                <Main>
+                  <Greeting {name: None} />
+                </Main>
+            "#},
+            expect![[r#"
+                name: Option[String]
+                  --> main.hop (line 1, col 12)
+                1 | <Greeting {name: Option[String]}>
+                  |            ^^^^
+
+                name: Option[String]
+                  --> main.hop (line 2, col 8)
+                1 | <Greeting {name: Option[String]}>
+                2 |   <if {name == None}></if>
+                  |        ^^^^
+
+                name: Option[String]
+                  --> main.hop (line 5, col 20)
+                4 | <Main>
+                5 |   <Greeting {name: None} />
+                  |                    ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_parameter_with_default_none() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Greeting {name: Option[String] = None}>
+                  <if {name == None}></if>
+                </Greeting>
+                <Main>
+                  <Greeting />
+                </Main>
+            "#},
+            expect![[r#"
+                name: Option[String]
+                  --> main.hop (line 1, col 12)
+                1 | <Greeting {name: Option[String] = None}>
+                  |            ^^^^
+
+                name: Option[String]
+                  --> main.hop (line 2, col 8)
+                1 | <Greeting {name: Option[String] = None}>
+                2 |   <if {name == None}></if>
+                  |        ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_parameter_with_default_some() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Greeting {name: Option[String] = Some("World")}>
+                  <if {name == None}></if>
+                </Greeting>
+                <Main>
+                  <Greeting />
+                </Main>
+            "#},
+            expect![[r#"
+                name: Option[String]
+                  --> main.hop (line 1, col 12)
+                1 | <Greeting {name: Option[String] = Some("World")}>
+                  |            ^^^^
+
+                name: Option[String]
+                  --> main.hop (line 2, col 8)
+                1 | <Greeting {name: Option[String] = Some("World")}>
+                2 |   <if {name == None}></if>
+                  |        ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_non_option_argument_for_option_parameter() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Greeting {name: Option[String]}>
+                  <if {name == None}></if>
+                </Greeting>
+                <Main>
+                  <Greeting {name: "World"} />
+                </Main>
+            "#},
+            expect![[r#"
+                error: Argument 'name' of type String is incompatible with expected type Option[String]
+                  --> main.hop (line 5, col 20)
+                4 | <Main>
+                5 |   <Greeting {name: "World"} />
+                  |                    ^^^^^^^
+            "#]],
+        );
+    }
 }

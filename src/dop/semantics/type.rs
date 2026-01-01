@@ -15,6 +15,7 @@ pub enum EquatableType {
     Int,
     Float,
     Enum { module: ModuleName, name: TypeName },
+    Option(Box<EquatableType>),
 }
 
 /// A ComparableType is a type where its values can be ordered
@@ -65,7 +66,11 @@ impl Type {
                 module: module.clone(),
                 name: name.clone(),
             }),
-            Type::TrustedHTML | Type::Array(_) | Type::Option(_) | Type::Record { .. } => None,
+            Type::Option(inner) => {
+                let inner_equatable = inner.as_equatable_type()?;
+                Some(EquatableType::Option(Box::new(inner_equatable)))
+            }
+            Type::TrustedHTML | Type::Array(_) | Type::Record { .. } => None,
         }
     }
 

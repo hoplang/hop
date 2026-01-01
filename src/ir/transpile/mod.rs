@@ -181,6 +181,7 @@ pub trait ExpressionTranspiler {
                 EquatableType::Int => self.transpile_int_equals(left, right),
                 EquatableType::Float => self.transpile_float_equals(left, right),
                 EquatableType::Enum { .. } => self.transpile_enum_equals(left, right),
+                EquatableType::Option(_) => todo!(),
             },
             IrExpr::LessThan {
                 left,

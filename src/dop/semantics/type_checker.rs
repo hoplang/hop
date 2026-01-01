@@ -119,8 +119,19 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let typed_left = typecheck_expr(left, env, type_env, annotations, None)?;
-            let typed_right = typecheck_expr(right, env, type_env, annotations, None)?;
+            // Try left first; if it fails (e.g., None without context), try right first
+            // to infer left's type from right
+            let typed_left = typecheck_expr(left, env, type_env, annotations, None).or_else(
+                |left_err| {
+                    let typed_right = typecheck_expr(right, env, type_env, annotations, None)?;
+                    typecheck_expr(left, env, type_env, annotations, Some(typed_right.as_type()))
+                        .map_err(|_| left_err)
+                },
+            )?;
+            // Use left's type as context for right (allows Some(1) == None)
+            let typed_right =
+                typecheck_expr(right, env, type_env, annotations, Some(typed_left.as_type()))?;
+
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
@@ -2685,5 +2696,34 @@ mod tests {
                                          ^^
             "#]],
         );
+    }
+
+    #[test]
+    fn should_accept_option_equality() {
+        check("", &[], "Some(1) == Some(2)", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_reject_option_of_array_equality() {
+        check(
+            "",
+            &[],
+            "Some([1]) == Some([1])",
+            expect![[r#"
+                error: Type Option[Array[Int]] is not comparable
+                Some([1]) == Some([1])
+                ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_some_equals_none() {
+        check("", &[], "Some(1) == None", expect!["Bool"]);
+    }
+
+    #[test]
+    fn should_accept_none_equals_some() {
+        check("", &[], "None == Some(1)", expect!["Bool"]);
     }
 }
