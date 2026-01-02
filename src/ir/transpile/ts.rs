@@ -167,21 +167,30 @@ impl Transpiler for TsTranspiler {
         if !records.is_empty() {
             for record in records {
                 result = result
-                    .append(BoxDoc::text("export interface "))
+                    .append(BoxDoc::text("export class "))
                     .append(BoxDoc::text(record.name.as_str()))
                     .append(BoxDoc::text(" {"))
                     .append(
                         BoxDoc::nil()
                             .append(BoxDoc::line())
-                            .append(BoxDoc::intersperse(
-                                record.fields.iter().map(|(name, ty)| {
-                                    BoxDoc::text(name.as_str())
-                                        .append(BoxDoc::text(": "))
-                                        .append(self.transpile_type(ty))
-                                        .append(BoxDoc::text(";"))
-                                }),
-                                BoxDoc::line(),
-                            ))
+                            .append(BoxDoc::text("constructor("))
+                            .append(
+                                BoxDoc::nil()
+                                    .append(BoxDoc::line())
+                                    .append(BoxDoc::intersperse(
+                                        record.fields.iter().map(|(name, ty)| {
+                                            BoxDoc::text("public readonly ")
+                                                .append(BoxDoc::text(name.as_str()))
+                                                .append(BoxDoc::text(": "))
+                                                .append(self.transpile_type(ty))
+                                                .append(BoxDoc::text(","))
+                                        }),
+                                        BoxDoc::line(),
+                                    ))
+                                    .append(BoxDoc::line())
+                                    .nest(4),
+                            )
+                            .append(BoxDoc::text(") {}"))
                             .append(BoxDoc::line())
                             .nest(4),
                     )
@@ -441,20 +450,17 @@ impl ExpressionTranspiler for TsTranspiler {
 
     fn transpile_record_literal<'a>(
         &self,
-        _record_name: &'a str,
+        record_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
     ) -> BoxDoc<'a> {
-        BoxDoc::nil()
-            .append(BoxDoc::text("{"))
+        BoxDoc::text("new ")
+            .append(BoxDoc::text(record_name))
+            .append(BoxDoc::text("("))
             .append(BoxDoc::intersperse(
-                fields.iter().map(|(key, value)| {
-                    BoxDoc::text(key.as_str())
-                        .append(BoxDoc::text(": "))
-                        .append(self.transpile_expr(value))
-                }),
+                fields.iter().map(|(_key, value)| self.transpile_expr(value)),
                 BoxDoc::text(", "),
             ))
-            .append(BoxDoc::text("}"))
+            .append(BoxDoc::text(")"))
     }
 
     fn transpile_enum_literal<'a>(
@@ -1161,15 +1167,19 @@ mod tests {
                 }
 
                 -- after --
-                export interface User {
-                    name: string;
-                    age: number;
-                    active: boolean;
+                export class User {
+                    constructor(
+                        public readonly name: string,
+                        public readonly age: number,
+                        public readonly active: boolean,
+                    ) {}
                 }
 
-                export interface Address {
-                    street: string;
-                    city: string;
+                export class Address {
+                    constructor(
+                        public readonly street: string,
+                        public readonly city: string,
+                    ) {}
                 }
 
                 function escapeHtml(str: string): string {
@@ -1216,9 +1226,11 @@ mod tests {
                 }
 
                 -- after --
-                export interface User {
-                    name: string;
-                    age: number;
+                export class User {
+                    constructor(
+                        public readonly name: string,
+                        public readonly age: number,
+                    ) {}
                 }
 
                 function escapeHtml(str: string): string {
@@ -1234,7 +1246,7 @@ mod tests {
                     createUser: (): string => {
                         let output: string = "";
                         output += "<div>";
-                        output += escapeHtml({name: "John", age: 30}.name);
+                        output += escapeHtml(new User("John", 30).name);
                         output += "</div>";
                         return output;
                     }
