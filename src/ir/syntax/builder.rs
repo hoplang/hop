@@ -4,8 +4,8 @@ use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{Type, VarName};
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
-use crate::ir::ast::{IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration};
 use crate::ir::ast::{ExprId, IrExpr, IrStatement, StatementId};
+use crate::ir::ast::{IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 

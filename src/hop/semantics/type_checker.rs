@@ -396,7 +396,11 @@ fn typecheck_module(
                             param_type.clone(),
                             has_default,
                         ));
-                        typed_params.push((param.var_name.clone(), param_type, typed_default_value));
+                        typed_params.push((
+                            param.var_name.clone(),
+                            param_type,
+                            typed_default_value,
+                        ));
                     }
                     Err(e) => {
                         errors.push(e.into());
@@ -746,8 +750,7 @@ fn typecheck_node(
                     .map_err(Into::into),
             ) {
                 let expr_type = typed_expr.as_type();
-                if *expr_type != Type::String && *expr_type != Type::TrustedHTML
-                {
+                if *expr_type != Type::String && *expr_type != Type::TrustedHTML {
                     errors.push(TypeError::ExpectedStringForTextExpression {
                         found: expr_type.clone(),
                         range: expression.range().clone(),
@@ -796,7 +799,7 @@ fn typecheck_attributes(
                         if *expr_type != Type::String {
                             errors.push(TypeError::ExpectedStringAttribute {
                                 found: expr_type.to_string(),
-                                range: expr.annotation().clone(),
+                                range: expr.range().clone(),
                             });
                         }
                         typed_exprs.push(typed_expr);

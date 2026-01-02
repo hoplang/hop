@@ -87,7 +87,6 @@ impl Type {
             | Type::Enum { .. } => None,
         }
     }
-
 }
 
 impl PartialEq for Type {

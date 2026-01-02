@@ -12,7 +12,10 @@ use std::collections::HashMap;
 enum Const {
     Bool(bool),
     String(String),
-    Enum { enum_name: String, variant_name: String },
+    Enum {
+        enum_name: String,
+        variant_name: String,
+    },
 }
 /// A datafrog-based constant propagation pass that tracks and propagates constant values
 pub struct ConstantPropagationPass;
@@ -68,10 +71,8 @@ impl Pass for ConstantPropagationPass {
                                     variant_name: variant_name.clone(),
                                 },
                             ));
-                            initial_enum_constants.push((
-                                expr.id(),
-                                (enum_name.clone(), variant_name.clone()),
-                            ));
+                            initial_enum_constants
+                                .push((expr.id(), (enum_name.clone(), variant_name.clone())));
                         }
                         IrExpr::Match { subject, arms, .. } => {
                             match_subjects.push((subject.id(), expr.id()));
@@ -148,7 +149,8 @@ impl Pass for ConstantPropagationPass {
         enum_const.extend(initial_enum_constants);
 
         // Match expressions with known enum subjects: ((match_id, enum_name, variant_name) => match_id)
-        let match_with_enum = iteration.variable::<((ExprId, String, String), ExprId)>("match_with_enum");
+        let match_with_enum =
+            iteration.variable::<((ExprId, String, String), ExprId)>("match_with_enum");
 
         // Selected arm bodies for matches with constant subjects: (arm_body_id => match_id)
         let selected_arm = iteration.variable::<(ExprId, ExprId)>("selected_arm");
@@ -922,20 +924,25 @@ mod tests {
     #[test]
     fn should_fold_nested_match_in_equality() {
         check(
-            build_ir_with_enums("Test", [], vec![("Status", vec!["Active", "Inactive"])], |t| {
-                t.if_stmt(
-                    t.eq(
-                        t.match_expr(
-                            t.enum_variant("Status", "Active"),
-                            vec![("Active", t.str("on")), ("Inactive", t.str("off"))],
+            build_ir_with_enums(
+                "Test",
+                [],
+                vec![("Status", vec!["Active", "Inactive"])],
+                |t| {
+                    t.if_stmt(
+                        t.eq(
+                            t.match_expr(
+                                t.enum_variant("Status", "Active"),
+                                vec![("Active", t.str("on")), ("Inactive", t.str("off"))],
+                            ),
+                            t.str("on"),
                         ),
-                        t.str("on"),
-                    ),
-                    |t| {
-                        t.write("Status is active");
-                    },
-                );
-            }),
+                        |t| {
+                            t.write("Status is active");
+                        },
+                    );
+                },
+            ),
             expect![[r#"
                 -- before --
                 Test() {

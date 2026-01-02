@@ -457,17 +457,15 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(record_name))
             .append(BoxDoc::text("("))
             .append(BoxDoc::intersperse(
-                fields.iter().map(|(_key, value)| self.transpile_expr(value)),
+                fields
+                    .iter()
+                    .map(|(_key, value)| self.transpile_expr(value)),
                 BoxDoc::text(", "),
             ))
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_enum_literal<'a>(
-        &self,
-        enum_name: &'a str,
-        variant_name: &'a str,
-    ) -> BoxDoc<'a> {
+    fn transpile_enum_literal<'a>(&self, enum_name: &'a str, variant_name: &'a str) -> BoxDoc<'a> {
         // Generate: new EnumNameVariantName()
         BoxDoc::text("new ")
             .append(BoxDoc::text(enum_name))
@@ -1272,16 +1270,12 @@ mod tests {
             ],
         };
 
-        let module = build_module_with_enums(
-            "ColorDisplay",
-            vec![("color", color_type)],
-            enums,
-            |t| {
+        let module =
+            build_module_with_enums("ColorDisplay", vec![("color", color_type)], enums, |t| {
                 t.if_stmt(t.eq(t.var("color"), t.enum_variant("Color", "Red")), |t| {
                     t.write("<div>Red!</div>");
                 });
-            },
-        );
+            });
 
         check(
             &module,
@@ -1347,11 +1341,8 @@ mod tests {
             ],
         };
 
-        let module = build_module_with_enums(
-            "ColorName",
-            vec![("color", color_type)],
-            enums,
-            |t| {
+        let module =
+            build_module_with_enums("ColorName", vec![("color", color_type)], enums, |t| {
                 // Use match expression to convert color to string
                 let match_result = t.match_expr(
                     t.var("color"),
@@ -1362,8 +1353,7 @@ mod tests {
                     ],
                 );
                 t.write_expr_escaped(match_result);
-            },
-        );
+            });
 
         check(
             &module,

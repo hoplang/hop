@@ -7,7 +7,6 @@ use crate::dop::symbols::var_name::VarName;
 use crate::hop::symbols::module_name::ModuleName;
 use pretty::BoxDoc;
 
-/// A syntax representation of a type, preserving document ranges.
 #[derive(Debug, Clone)]
 pub enum ParsedType {
     String {
@@ -110,84 +109,72 @@ pub enum ParsedExpr {
     /// A variable expression, e.g. foo
     Var {
         value: VarName,
-        annotation: DocumentRange,
+        range: DocumentRange,
     },
 
     /// A field access expression, e.g. foo.bar
     FieldAccess {
         record: Box<Self>,
         field: FieldName,
-        annotation: DocumentRange,
+        range: DocumentRange,
     },
 
     /// A string literal expression, e.g. "foo bar"
-    StringLiteral {
-        value: String,
-        annotation: DocumentRange,
-    },
+    StringLiteral { value: String, range: DocumentRange },
 
     /// A boolean literal expression, e.g. true
-    BooleanLiteral {
-        value: bool,
-        annotation: DocumentRange,
-    },
+    BooleanLiteral { value: bool, range: DocumentRange },
 
     /// An integer literal expression, e.g. 42
-    IntLiteral {
-        value: i64,
-        annotation: DocumentRange,
-    },
+    IntLiteral { value: i64, range: DocumentRange },
 
     /// A float literal expression, e.g. 2.5
-    FloatLiteral {
-        value: f64,
-        annotation: DocumentRange,
-    },
+    FloatLiteral { value: f64, range: DocumentRange },
 
     /// An array literal expression, e.g. [1, 2, 3]
     ArrayLiteral {
         elements: Vec<Self>,
-        annotation: DocumentRange,
+        range: DocumentRange,
     },
 
     /// A record literal expression, e.g. User(name: "John", age: 30)
     RecordLiteral {
         record_name: String,
         fields: Vec<(FieldName, Self)>,
-        annotation: DocumentRange,
+        range: DocumentRange,
     },
 
     /// An enum literal expression, e.g. Color::Red
     EnumLiteral {
         enum_name: String,
         variant_name: String,
-        annotation: DocumentRange,
+        range: DocumentRange,
     },
 
     BinaryOp {
         left: Box<Self>,
         operator: ParsedBinaryOp,
         right: Box<Self>,
-        annotation: DocumentRange,
+        range: DocumentRange,
     },
 
     /// Boolean negation expression for negating boolean values
     Negation {
         operand: Box<Self>,
-        annotation: DocumentRange,
+        range: DocumentRange,
     },
 
     /// A match expression, e.g. `match color {Red => "red", Blue => "blue"}`
     Match {
         subject: Box<Self>,
         arms: Vec<ParsedMatchArm>,
-        annotation: DocumentRange,
+        range: DocumentRange,
     },
 
     /// An option literal expression, e.g. `Some(42)` or `None`
     OptionLiteral {
         value: Option<Box<Self>>,
-        annotation: DocumentRange,
+        range: DocumentRange,
     },
 }
 
@@ -209,21 +196,21 @@ impl ParsedBinaryOp {
 }
 
 impl ParsedExpr {
-    pub fn annotation(&self) -> &DocumentRange {
+    pub fn range(&self) -> &DocumentRange {
         match self {
-            ParsedExpr::Var { annotation, .. }
-            | ParsedExpr::FieldAccess { annotation, .. }
-            | ParsedExpr::StringLiteral { annotation, .. }
-            | ParsedExpr::BooleanLiteral { annotation, .. }
-            | ParsedExpr::IntLiteral { annotation, .. }
-            | ParsedExpr::FloatLiteral { annotation, .. }
-            | ParsedExpr::ArrayLiteral { annotation, .. }
-            | ParsedExpr::RecordLiteral { annotation, .. }
-            | ParsedExpr::EnumLiteral { annotation, .. }
-            | ParsedExpr::BinaryOp { annotation, .. }
-            | ParsedExpr::Negation { annotation, .. }
-            | ParsedExpr::Match { annotation, .. }
-            | ParsedExpr::OptionLiteral { annotation, .. } => annotation,
+            ParsedExpr::Var { range, .. }
+            | ParsedExpr::FieldAccess { range, .. }
+            | ParsedExpr::StringLiteral { range, .. }
+            | ParsedExpr::BooleanLiteral { range, .. }
+            | ParsedExpr::IntLiteral { range, .. }
+            | ParsedExpr::FloatLiteral { range, .. }
+            | ParsedExpr::ArrayLiteral { range, .. }
+            | ParsedExpr::RecordLiteral { range, .. }
+            | ParsedExpr::EnumLiteral { range, .. }
+            | ParsedExpr::BinaryOp { range, .. }
+            | ParsedExpr::Negation { range, .. }
+            | ParsedExpr::Match { range, .. }
+            | ParsedExpr::OptionLiteral { range, .. } => range,
         }
     }
 
@@ -403,7 +390,7 @@ impl ParsedExpr {
 
 impl Ranged for ParsedExpr {
     fn range(&self) -> &DocumentRange {
-        self.annotation()
+        self.range()
     }
 }
 

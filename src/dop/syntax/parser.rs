@@ -342,7 +342,7 @@ impl Parser {
         while self.advance_if(Token::LogicalOr).is_some() {
             let right = self.parse_logical_and()?;
             expr = ParsedExpr::BinaryOp {
-                annotation: expr.range().clone().to(right.range().clone()),
+                range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
                 operator: ParsedBinaryOp::LogicalOr,
                 right: Box::new(right),
@@ -356,7 +356,7 @@ impl Parser {
         while self.advance_if(Token::LogicalAnd).is_some() {
             let right = self.parse_equality()?;
             expr = ParsedExpr::BinaryOp {
-                annotation: expr.range().clone().to(right.range().clone()),
+                range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
                 operator: ParsedBinaryOp::LogicalAnd,
                 right: Box::new(right),
@@ -372,7 +372,7 @@ impl Parser {
             if self.advance_if(Token::Eq).is_some() {
                 let right = self.parse_relational()?;
                 expr = ParsedExpr::BinaryOp {
-                    annotation: expr.range().clone().to(right.range().clone()),
+                    range: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: ParsedBinaryOp::Eq,
                     right: Box::new(right),
@@ -380,7 +380,7 @@ impl Parser {
             } else if self.advance_if(Token::NotEq).is_some() {
                 let right = self.parse_relational()?;
                 expr = ParsedExpr::BinaryOp {
-                    annotation: expr.range().clone().to(right.range().clone()),
+                    range: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: ParsedBinaryOp::NotEq,
                     right: Box::new(right),
@@ -399,7 +399,7 @@ impl Parser {
             if self.advance_if(Token::LessThan).is_some() {
                 let right = self.parse_additive()?;
                 expr = ParsedExpr::BinaryOp {
-                    annotation: expr.range().clone().to(right.range().clone()),
+                    range: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: ParsedBinaryOp::LessThan,
                     right: Box::new(right),
@@ -407,7 +407,7 @@ impl Parser {
             } else if self.advance_if(Token::GreaterThan).is_some() {
                 let right = self.parse_additive()?;
                 expr = ParsedExpr::BinaryOp {
-                    annotation: expr.range().clone().to(right.range().clone()),
+                    range: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: ParsedBinaryOp::GreaterThan,
                     right: Box::new(right),
@@ -415,7 +415,7 @@ impl Parser {
             } else if self.advance_if(Token::LessThanOrEqual).is_some() {
                 let right = self.parse_additive()?;
                 expr = ParsedExpr::BinaryOp {
-                    annotation: expr.range().clone().to(right.range().clone()),
+                    range: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: ParsedBinaryOp::LessThanOrEqual,
                     right: Box::new(right),
@@ -423,7 +423,7 @@ impl Parser {
             } else if self.advance_if(Token::GreaterThanOrEqual).is_some() {
                 let right = self.parse_additive()?;
                 expr = ParsedExpr::BinaryOp {
-                    annotation: expr.range().clone().to(right.range().clone()),
+                    range: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: ParsedBinaryOp::GreaterThanOrEqual,
                     right: Box::new(right),
@@ -442,7 +442,7 @@ impl Parser {
             if self.advance_if(Token::Plus).is_some() {
                 let right = self.parse_multiplicative()?;
                 expr = ParsedExpr::BinaryOp {
-                    annotation: expr.range().clone().to(right.range().clone()),
+                    range: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: ParsedBinaryOp::Plus,
                     right: Box::new(right),
@@ -450,7 +450,7 @@ impl Parser {
             } else if self.advance_if(Token::Minus).is_some() {
                 let right = self.parse_multiplicative()?;
                 expr = ParsedExpr::BinaryOp {
-                    annotation: expr.range().clone().to(right.range().clone()),
+                    range: expr.range().clone().to(right.range().clone()),
                     left: Box::new(expr),
                     operator: ParsedBinaryOp::Minus,
                     right: Box::new(right),
@@ -468,7 +468,7 @@ impl Parser {
         while self.advance_if(Token::Asterisk).is_some() {
             let right = self.parse_unary()?;
             expr = ParsedExpr::BinaryOp {
-                annotation: expr.range().clone().to(right.range().clone()),
+                range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
                 operator: ParsedBinaryOp::Multiply,
                 right: Box::new(right),
@@ -482,7 +482,7 @@ impl Parser {
         if let Some(operator_range) = self.advance_if(Token::Not) {
             let expr = self.parse_unary()?; // Right associative for multiple !
             Ok(ParsedExpr::Negation {
-                annotation: operator_range.to(expr.range().clone()),
+                range: operator_range.to(expr.range().clone()),
                 operand: Box::new(expr),
             })
         } else {
@@ -503,7 +503,7 @@ impl Parser {
             })?;
         Ok(ParsedExpr::ArrayLiteral {
             elements,
-            annotation: left_bracket.to(right_bracket),
+            range: left_bracket.to(right_bracket),
         })
     }
 
@@ -519,7 +519,7 @@ impl Parser {
                 range: range.clone(),
             })?;
         let mut expr = ParsedExpr::Var {
-            annotation: range.clone(),
+            range: range.clone(),
             value: var_name,
         };
 
@@ -538,7 +538,7 @@ impl Parser {
                     expr = ParsedExpr::FieldAccess {
                         record: Box::new(expr),
                         field: field_name,
-                        annotation: range,
+                        range,
                     };
                 }
                 Some((_, range)) => {
@@ -572,26 +572,18 @@ impl Parser {
                     self.parse_record_literal(name, name_range)
                 }
             }
-            Some((Token::StringLiteral(value), range)) => Ok(ParsedExpr::StringLiteral {
-                value,
-                annotation: range,
-            }),
-            Some((Token::True, range)) => Ok(ParsedExpr::BooleanLiteral {
-                value: true,
-                annotation: range,
-            }),
+            Some((Token::StringLiteral(value), range)) => {
+                Ok(ParsedExpr::StringLiteral { value, range })
+            }
+            Some((Token::True, range)) => Ok(ParsedExpr::BooleanLiteral { value: true, range }),
             Some((Token::False, range)) => Ok(ParsedExpr::BooleanLiteral {
                 value: false,
-                annotation: range,
+                range,
             }),
-            Some((Token::IntLiteral(value), range)) => Ok(ParsedExpr::IntLiteral {
-                value,
-                annotation: range,
-            }),
-            Some((Token::FloatLiteral(value), range)) => Ok(ParsedExpr::FloatLiteral {
-                value,
-                annotation: range,
-            }),
+            Some((Token::IntLiteral(value), range)) => Ok(ParsedExpr::IntLiteral { value, range }),
+            Some((Token::FloatLiteral(value), range)) => {
+                Ok(ParsedExpr::FloatLiteral { value, range })
+            }
             Some((Token::LeftBracket, left_bracket)) => self.parse_array_literal(left_bracket),
             Some((Token::LeftParen, left_paren)) => {
                 let expr = self.parse_logical()?;
@@ -605,12 +597,12 @@ impl Parser {
                 let right_paren = self.expect_opposite(&Token::LeftParen, &left_paren)?;
                 Ok(ParsedExpr::OptionLiteral {
                     value: Some(Box::new(value)),
-                    annotation: some_range.to(right_paren),
+                    range: some_range.to(right_paren),
                 })
             }
             Some((Token::None, none_range)) => Ok(ParsedExpr::OptionLiteral {
                 value: None,
-                annotation: none_range,
+                range: none_range,
             }),
             Some((token, range)) => Err(ParseError::UnexpectedToken {
                 token,
@@ -638,7 +630,7 @@ impl Parser {
         Ok(ParsedExpr::RecordLiteral {
             record_name: name.as_str().to_string(),
             fields,
-            annotation: name_range.to(right_paren),
+            range: name_range.to(right_paren),
         })
     }
 
@@ -655,7 +647,7 @@ impl Parser {
         Ok(ParsedExpr::EnumLiteral {
             enum_name: enum_name.as_str().to_string(),
             variant_name: variant_name.as_str().to_string(),
-            annotation: enum_name_range.to(variant_range),
+            range: enum_name_range.to(variant_range),
         })
     }
 
@@ -685,7 +677,7 @@ impl Parser {
         Ok(ParsedExpr::Match {
             subject: Box::new(subject),
             arms,
-            annotation: match_range.to(right_brace),
+            range: match_range.to(right_brace),
         })
     }
 

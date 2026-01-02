@@ -191,8 +191,8 @@ fn run_integration_test(test_case: TestCase) -> Result<(), String> {
     let python_transpiler = PythonTranspiler::new();
     let python_code = python_transpiler.transpile_module(&module);
 
-    let ts_output = execute_typescript(&ts_code)
-        .map_err(|e| format!("TypeScript execution failed: {}", e))?;
+    let ts_output =
+        execute_typescript(&ts_code).map_err(|e| format!("TypeScript execution failed: {}", e))?;
 
     let go_output = execute_go(&go_code).map_err(|e| format!("Go execution failed: {}", e))?;
 
@@ -234,7 +234,9 @@ fn typecheck_typescript(code: &str) -> Result<(), String> {
         .ok_or_else(|| "Failed to convert path to string".to_string())?;
 
     let output = Command::new("bun")
-        .args(["x", "tsc", "--noEmit", "--target", "ES2020", "--strict", file_path])
+        .args([
+            "x", "tsc", "--noEmit", "--target", "ES2020", "--strict", file_path,
+        ])
         .output()
         .map_err(|e| format!("Failed to execute TypeScript compiler: {}", e))?;
 

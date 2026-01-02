@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use super::r#type::{NumericType, Type};
 use super::type_error::TypeError;
 use super::typed::{TypedEnumPattern, TypedMatchArm};
-use crate::document::document_cursor::Ranged as _;
 use crate::dop::TypedExpr;
 use crate::dop::syntax::parsed::{ParsedBinaryOp, ParsedExpr, ParsedType};
 use crate::environment::Environment;
@@ -77,12 +76,12 @@ pub fn typecheck_expr(
         ParsedExpr::IntLiteral { value, .. } => Ok(TypedExpr::IntLiteral { value: *value }),
         ParsedExpr::FloatLiteral { value, .. } => Ok(TypedExpr::FloatLiteral { value: *value }),
         ParsedExpr::FieldAccess {
-            record: base_expr,
+            record,
             field,
-            annotation: range,
+            range,
             ..
         } => {
-            let typed_base = typecheck_expr(base_expr, env, type_env, annotations, None)?;
+            let typed_base = typecheck_expr(record, env, type_env, annotations, None)?;
             let base_type = typed_base.as_type();
 
             match &base_type {
@@ -109,7 +108,7 @@ pub fn typecheck_expr(
                 }
                 _ => Err(TypeError::CannotUseAsRecord {
                     typ: base_type.to_string(),
-                    range: base_expr.range().clone(),
+                    range: record.range().clone(),
                 }),
             }
         }
@@ -558,10 +557,7 @@ pub fn typecheck_expr(
                 operand: Box::new(typed_operand),
             })
         }
-        ParsedExpr::ArrayLiteral {
-            elements,
-            annotation: range,
-        } => {
+        ParsedExpr::ArrayLiteral { elements, range } => {
             if elements.is_empty() {
                 // Empty array: infer element type from expected type
                 let elem_type = match expected_type {
@@ -615,7 +611,7 @@ pub fn typecheck_expr(
         ParsedExpr::RecordLiteral {
             record_name,
             fields,
-            annotation: range,
+            range,
         } => {
             // Check if the record type is defined
             let record_type = type_env
@@ -699,7 +695,7 @@ pub fn typecheck_expr(
         ParsedExpr::EnumLiteral {
             enum_name,
             variant_name,
-            annotation: range,
+            range,
         } => {
             // Look up the enum type in the type environment
             let enum_type = type_env
@@ -739,7 +735,7 @@ pub fn typecheck_expr(
         ParsedExpr::Match {
             subject,
             arms,
-            annotation: range,
+            range,
         } => {
             // Type check the subject expression
             let typed_subject = typecheck_expr(subject, env, type_env, annotations, None)?;
@@ -771,7 +767,7 @@ pub fn typecheck_expr(
                     ParsedExpr::EnumLiteral {
                         enum_name,
                         variant_name,
-                        annotation,
+                        range: annotation,
                     } => (enum_name.clone(), variant_name.clone(), annotation.clone()),
                     _ => {
                         return Err(TypeError::MatchPatternNotEnumVariant {
@@ -855,10 +851,7 @@ pub fn typecheck_expr(
                 kind: result_type.unwrap(),
             })
         }
-        ParsedExpr::OptionLiteral {
-            value,
-            annotation: range,
-        } => {
+        ParsedExpr::OptionLiteral { value, range } => {
             match value {
                 Some(inner_expr) => {
                     // Some(value): determine expected inner type from context if available

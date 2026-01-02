@@ -1314,16 +1314,12 @@ mod tests {
             ],
         };
 
-        let module = build_module_with_enums(
-            "ColorDisplay",
-            vec![("color", color_type)],
-            enums,
-            |t| {
+        let module =
+            build_module_with_enums("ColorDisplay", vec![("color", color_type)], enums, |t| {
                 t.if_stmt(t.eq(t.var("color"), t.enum_variant("Color", "Red")), |t| {
                     t.write("<div>It's red!</div>");
                 });
-            },
-        );
+            });
 
         check(
             &module,
@@ -1398,11 +1394,8 @@ mod tests {
             ],
         };
 
-        let module = build_module_with_enums(
-            "StatusCheck",
-            vec![("status", status_type)],
-            enums,
-            |t| {
+        let module =
+            build_module_with_enums("StatusCheck", vec![("status", status_type)], enums, |t| {
                 t.if_stmt(
                     t.eq(t.var("status"), t.enum_variant("Status", "Active")),
                     |t| {
@@ -1415,8 +1408,7 @@ mod tests {
                         t.write("<span class=\"pending\">Pending</span>");
                     },
                 );
-            },
-        );
+            });
 
         check(
             &module,
@@ -1497,16 +1489,12 @@ mod tests {
             ],
         };
 
-        let module = build_module_with_enums(
-            "ColorDisplay",
-            vec![("color", color_type)],
-            enums,
-            |t| {
+        let module =
+            build_module_with_enums("ColorDisplay", vec![("color", color_type)], enums, |t| {
                 t.if_stmt(t.eq(t.var("color"), t.enum_variant("Color", "Red")), |t| {
                     t.write("<div>Red!</div>");
                 });
-            },
-        );
+            });
 
         check(
             &module,
