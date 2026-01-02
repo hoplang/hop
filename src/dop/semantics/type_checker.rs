@@ -3,8 +3,9 @@ use std::collections::HashSet;
 use super::r#type::{NumericType, Type};
 use super::type_error::TypeError;
 use super::typed::{TypedEnumPattern, TypedMatchArm};
+use crate::document::document_cursor::DocumentRange;
 use crate::dop::TypedExpr;
-use crate::dop::syntax::parsed::{ParsedBinaryOp, ParsedExpr, ParsedType};
+use crate::dop::syntax::parsed::{ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedType};
 use crate::environment::Environment;
 use crate::hop::semantics::type_checker::TypeAnnotation;
 
@@ -517,10 +518,6 @@ pub fn typecheck_expr(
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
 
-            // Multiply operator works for:
-            // 1. Integer multiplication (Int * Int)
-            // 2. Float multiplication (Float * Float)
-
             match (left_type, right_type) {
                 (Type::Int, Type::Int) => Ok(TypedExpr::NumericMultiply {
                     left: Box::new(typed_left),
@@ -546,7 +543,6 @@ pub fn typecheck_expr(
             let typed_operand = typecheck_expr(operand, env, type_env, annotations, None)?;
             let operand_type = typed_operand.as_type();
 
-            // Negation only works on Bool expressions
             if *operand_type != Type::Bool {
                 return Err(TypeError::NegationRequiresBoolean {
                     range: operand.range().clone(),
@@ -736,121 +732,7 @@ pub fn typecheck_expr(
             subject,
             arms,
             range,
-        } => {
-            // Type check the subject expression
-            let typed_subject = typecheck_expr(subject, env, type_env, annotations, None)?;
-            let subject_type = typed_subject.as_type().clone();
-
-            // Subject must be an enum type
-            let (_enum_module, enum_name, enum_variants) = match &subject_type {
-                Type::Enum {
-                    module,
-                    name,
-                    variants,
-                } => (module.clone(), name.clone(), variants.clone()),
-                _ => {
-                    return Err(TypeError::MatchSubjectNotEnum {
-                        found: subject_type.to_string(),
-                        range: subject.range().clone(),
-                    });
-                }
-            };
-
-            // Track which variants have been matched
-            let mut matched_variants: HashSet<String> = HashSet::new();
-            let mut typed_arms: Vec<TypedMatchArm> = Vec::new();
-            let mut result_type: Option<Type> = None;
-
-            for arm in arms {
-                // Pattern must be an enum literal
-                let (pattern_enum_name, pattern_variant_name, pattern_range) = match &arm.pattern {
-                    ParsedExpr::EnumLiteral {
-                        enum_name,
-                        variant_name,
-                        range: annotation,
-                    } => (enum_name.clone(), variant_name.clone(), annotation.clone()),
-                    _ => {
-                        return Err(TypeError::MatchPatternNotEnumVariant {
-                            range: arm.pattern.range().clone(),
-                        });
-                    }
-                };
-
-                // Pattern enum must match subject enum
-                if pattern_enum_name != enum_name.as_str() {
-                    return Err(TypeError::MatchPatternEnumMismatch {
-                        pattern_enum: pattern_enum_name.clone(),
-                        subject_enum: enum_name.to_string(),
-                        range: pattern_range.clone(),
-                    });
-                }
-
-                // Variant must exist in the enum
-                let variant_exists = enum_variants
-                    .iter()
-                    .any(|v| v.as_str() == pattern_variant_name);
-                if !variant_exists {
-                    return Err(TypeError::UndefinedEnumVariant {
-                        enum_name: pattern_enum_name.clone(),
-                        variant_name: pattern_variant_name.clone(),
-                        range: pattern_range.clone(),
-                    });
-                }
-
-                // Check for duplicate variants
-                if matched_variants.contains(&pattern_variant_name) {
-                    return Err(TypeError::MatchDuplicateVariant {
-                        variant: pattern_variant_name.clone(),
-                        range: pattern_range.clone(),
-                    });
-                }
-                matched_variants.insert(pattern_variant_name.clone());
-
-                // Type check the arm body
-                let typed_body = typecheck_expr(&arm.body, env, type_env, annotations, None)?;
-                let body_type = typed_body.as_type().clone();
-
-                // Check that all arms have the same type
-                match &result_type {
-                    None => {
-                        result_type = Some(body_type);
-                    }
-                    Some(expected) => {
-                        if body_type != *expected {
-                            return Err(TypeError::MatchArmTypeMismatch {
-                                expected: expected.to_string(),
-                                found: body_type.to_string(),
-                                range: arm.body.range().clone(),
-                            });
-                        }
-                    }
-                }
-
-                typed_arms.push(TypedMatchArm {
-                    pattern: TypedEnumPattern {
-                        enum_name: pattern_enum_name,
-                        variant_name: pattern_variant_name,
-                    },
-                    body: typed_body,
-                });
-            }
-
-            // Check exhaustiveness: all variants must be matched
-            for variant in &enum_variants {
-                if !matched_variants.contains(variant.as_str()) {
-                    return Err(TypeError::MatchMissingVariant {
-                        variant: variant.to_string(),
-                        range: range.clone(),
-                    });
-                }
-            }
-
-            Ok(TypedExpr::Match {
-                subject: Box::new(typed_subject),
-                arms: typed_arms,
-                kind: result_type.unwrap(),
-            })
-        }
+        } => typecheck_match(subject, arms, range, env, type_env, annotations),
         ParsedExpr::OptionLiteral { value, range } => {
             match value {
                 Some(inner_expr) => {
@@ -893,6 +775,129 @@ pub fn typecheck_expr(
             }
         }
     }
+}
+
+fn typecheck_match(
+    subject: &ParsedExpr,
+    arms: &[ParsedMatchArm],
+    range: &DocumentRange,
+    env: &mut Environment<Type>,
+    type_env: &mut Environment<Type>,
+    annotations: &mut Vec<TypeAnnotation>,
+) -> Result<TypedExpr, TypeError> {
+    // Type check the subject expression
+    let typed_subject = typecheck_expr(subject, env, type_env, annotations, None)?;
+    let subject_type = typed_subject.as_type().clone();
+
+    // Subject must be an enum type
+    let (_enum_module, enum_name, enum_variants) = match &subject_type {
+        Type::Enum {
+            module,
+            name,
+            variants,
+        } => (module.clone(), name.clone(), variants.clone()),
+        _ => {
+            return Err(TypeError::MatchSubjectNotEnum {
+                found: subject_type.to_string(),
+                range: subject.range().clone(),
+            });
+        }
+    };
+
+    // Track which variants have been matched
+    let mut matched_variants: HashSet<String> = HashSet::new();
+    let mut typed_arms: Vec<TypedMatchArm> = Vec::new();
+    let mut result_type: Option<Type> = None;
+
+    for arm in arms {
+        // Pattern must be an enum literal
+        let (pattern_enum_name, pattern_variant_name, pattern_range) = match &arm.pattern {
+            ParsedExpr::EnumLiteral {
+                enum_name,
+                variant_name,
+                range: annotation,
+            } => (enum_name.clone(), variant_name.clone(), annotation.clone()),
+            _ => {
+                return Err(TypeError::MatchPatternNotEnumVariant {
+                    range: arm.pattern.range().clone(),
+                });
+            }
+        };
+
+        // Pattern enum must match subject enum
+        if pattern_enum_name != enum_name.as_str() {
+            return Err(TypeError::MatchPatternEnumMismatch {
+                pattern_enum: pattern_enum_name.clone(),
+                subject_enum: enum_name.to_string(),
+                range: pattern_range.clone(),
+            });
+        }
+
+        // Variant must exist in the enum
+        let variant_exists = enum_variants
+            .iter()
+            .any(|v| v.as_str() == pattern_variant_name);
+        if !variant_exists {
+            return Err(TypeError::UndefinedEnumVariant {
+                enum_name: pattern_enum_name.clone(),
+                variant_name: pattern_variant_name.clone(),
+                range: pattern_range.clone(),
+            });
+        }
+
+        // Check for duplicate variants
+        if matched_variants.contains(&pattern_variant_name) {
+            return Err(TypeError::MatchDuplicateVariant {
+                variant: pattern_variant_name.clone(),
+                range: pattern_range.clone(),
+            });
+        }
+        matched_variants.insert(pattern_variant_name.clone());
+
+        // Type check the arm body
+        let typed_body = typecheck_expr(&arm.body, env, type_env, annotations, None)?;
+        let body_type = typed_body.as_type().clone();
+
+        // Check that all arms have the same type
+        match &result_type {
+            None => {
+                result_type = Some(body_type);
+            }
+            Some(expected) => {
+                if body_type != *expected {
+                    return Err(TypeError::MatchArmTypeMismatch {
+                        expected: expected.to_string(),
+                        found: body_type.to_string(),
+                        range: arm.body.range().clone(),
+                    });
+                }
+            }
+        }
+
+        typed_arms.push(TypedMatchArm {
+            pattern: TypedEnumPattern {
+                enum_name: pattern_enum_name,
+                variant_name: pattern_variant_name,
+            },
+            body: typed_body,
+        });
+    }
+
+    // Check exhaustiveness: all variants must be matched
+    for variant in &enum_variants {
+        if !matched_variants.contains(variant.as_str()) {
+            return Err(TypeError::MatchMissingVariant {
+                variant: variant.to_string(),
+                range: range.clone(),
+            });
+        }
+    }
+
+    Ok(TypedExpr::Match {
+        subject: Box::new(typed_subject),
+        arms: typed_arms,
+        kind: result_type.unwrap(),
+    })
 }
 
 #[cfg(test)]
