@@ -584,9 +584,11 @@ pub fn typecheck_expr(
                 typed_elements.push(first_typed);
 
                 // Check that all elements have the same type
+                // Use first element's type as context for subsequent elements
+                let elem_context = expected_elem_type.unwrap_or(&first_type);
                 for element in elements.iter().skip(1) {
                     let typed_element =
-                        typecheck_expr(element, env, type_env, annotations, expected_elem_type)?;
+                        typecheck_expr(element, env, type_env, annotations, Some(elem_context))?;
                     let element_type = typed_element.as_type();
                     if *element_type != first_type {
                         return Err(TypeError::ArrayTypeMismatch {
@@ -1685,6 +1687,35 @@ mod tests {
                 error: Array[test::User] can not be used as a record
                 users.name
                 ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_array_of_some_and_none() {
+        check(
+            "",
+            &[],
+            "[Some(1), Some(2), None]",
+            expect!["Array[Option[Int]]"],
+        );
+    }
+
+    #[test]
+    fn should_accept_array_of_arrays_with_empty_array() {
+        check("", &[], "[[1,2],[2,3],[]]", expect!["Array[Array[Int]]"]);
+    }
+
+    #[test]
+    fn should_reject_array_with_mismatched_option_types() {
+        check(
+            "",
+            &[],
+            r#"[Some(1), Some("1")]"#,
+            expect![[r#"
+                error: Array elements must all have the same type, found Option[Int] and Option[String]
+                [Some(1), Some("1")]
+                          ^^^^^^^^^
             "#]],
         );
     }
