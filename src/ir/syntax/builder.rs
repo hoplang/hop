@@ -415,7 +415,7 @@ impl IrBuilder {
     /// Create a match expression over an enum value
     /// arms is a list of (variant_name, body_expr) tuples
     pub fn match_expr(&self, subject: IrExpr, arms: Vec<(&str, IrExpr)>) -> IrExpr {
-        use crate::ir::ast::{IrEnumPattern, IrMatchArm};
+        use crate::ir::ast::{IrMatchArm, IrMatchPattern};
 
         // Get the enum type from the subject
         let (enum_name, result_type) = match subject.as_type() {
@@ -433,7 +433,7 @@ impl IrBuilder {
         let ir_arms: Vec<IrMatchArm> = arms
             .into_iter()
             .map(|(variant_name, body)| IrMatchArm {
-                pattern: IrEnumPattern {
+                pattern: IrMatchPattern::EnumVariant {
                     enum_name: enum_name.clone(),
                     variant_name: variant_name.to_string(),
                 },

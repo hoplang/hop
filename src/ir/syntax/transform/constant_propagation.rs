@@ -2,7 +2,7 @@ use super::Pass;
 use crate::ir::{
     IrExpr,
     ast::ExprId,
-    ast::{IrComponentDeclaration, IrStatement},
+    ast::{IrComponentDeclaration, IrMatchPattern, IrStatement},
 };
 use datafrog::{Iteration, Relation};
 use std::collections::HashMap;
@@ -77,14 +77,24 @@ impl Pass for ConstantPropagationPass {
                         IrExpr::Match { subject, arms, .. } => {
                             match_subjects.push((subject.id(), expr.id()));
                             for arm in arms {
-                                match_arms_relations.push((
-                                    (
-                                        expr.id(),
-                                        arm.pattern.enum_name.clone(),
-                                        arm.pattern.variant_name.clone(),
-                                    ),
-                                    arm.body.id(),
-                                ));
+                                match &arm.pattern {
+                                    IrMatchPattern::EnumVariant {
+                                        enum_name,
+                                        variant_name,
+                                    } => {
+                                        match_arms_relations.push((
+                                            (
+                                                expr.id(),
+                                                enum_name.clone(),
+                                                variant_name.clone(),
+                                            ),
+                                            arm.body.id(),
+                                        ));
+                                    }
+                                    IrMatchPattern::Wildcard => {
+                                        // Wildcard patterns can't be constant-folded since they match anything
+                                    }
+                                }
                             }
                         }
                         IrExpr::Var { value: name, .. } => {

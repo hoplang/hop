@@ -41,18 +41,23 @@ pub struct IrModule {
     pub enums: Vec<IrEnumDeclaration>,
 }
 
-/// A pattern that matches an enum variant in a match expression
+/// A pattern in a match arm
 #[derive(Debug, Clone, PartialEq)]
-pub struct IrEnumPattern {
-    pub enum_name: String,
-    pub variant_name: String,
+pub enum IrMatchPattern {
+    /// An enum variant pattern, e.g. `Color::Red`
+    EnumVariant {
+        enum_name: String,
+        variant_name: String,
+    },
+    /// A wildcard pattern that matches anything
+    Wildcard,
 }
 
 /// A single arm in a match expression, e.g. `Color::Red => "red"`
 #[derive(Debug, Clone, PartialEq)]
 pub struct IrMatchArm {
-    /// The enum variant being matched (e.g., `Color::Red`)
-    pub pattern: IrEnumPattern,
+    /// The pattern being matched
+    pub pattern: IrMatchPattern,
     /// The expression to evaluate if this arm matches
     pub body: IrExpr,
 }
@@ -701,9 +706,16 @@ impl IrExpr {
                             BoxDoc::line_()
                                 .append(BoxDoc::intersperse(
                                     arms.iter().map(|arm| {
-                                        BoxDoc::text(arm.pattern.enum_name.as_str())
-                                            .append(BoxDoc::text("::"))
-                                            .append(BoxDoc::text(arm.pattern.variant_name.as_str()))
+                                        let pattern_doc = match &arm.pattern {
+                                            IrMatchPattern::EnumVariant {
+                                                enum_name,
+                                                variant_name,
+                                            } => BoxDoc::text(enum_name.as_str())
+                                                .append(BoxDoc::text("::"))
+                                                .append(BoxDoc::text(variant_name.as_str())),
+                                            IrMatchPattern::Wildcard => BoxDoc::text("_"),
+                                        };
+                                        pattern_doc
                                             .append(BoxDoc::text(" => "))
                                             .append(arm.body.to_doc())
                                     }),

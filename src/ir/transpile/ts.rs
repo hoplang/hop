@@ -4,7 +4,9 @@ use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspile
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrMatchArm, IrModule, IrStatement};
+use crate::ir::ast::{
+    IrComponentDeclaration, IrExpr, IrMatchArm, IrMatchPattern, IrModule, IrStatement,
+};
 
 pub struct TsTranspiler {
     /// Internal flag to use template literals instead of double quotes
@@ -668,14 +670,22 @@ impl ExpressionTranspiler for TsTranspiler {
         // (() => { switch (subject.__tag) { case "ColorRed": return body; ... } })()
         // The __tag uses the pattern EnumNameVariantName (e.g., ColorRed)
         let cases = BoxDoc::intersperse(
-            arms.iter().map(|arm| {
-                // Build the class name: EnumName + VariantName (e.g., ColorRed)
-                let class_name = format!("{}{}", arm.pattern.enum_name, arm.pattern.variant_name);
-                BoxDoc::text("case \"")
-                    .append(BoxDoc::text(class_name))
-                    .append(BoxDoc::text("\": return "))
+            arms.iter().map(|arm| match &arm.pattern {
+                IrMatchPattern::EnumVariant {
+                    enum_name,
+                    variant_name,
+                } => {
+                    // Build the class name: EnumName + VariantName (e.g., ColorRed)
+                    let class_name = format!("{}{}", enum_name, variant_name);
+                    BoxDoc::text("case \"")
+                        .append(BoxDoc::text(class_name))
+                        .append(BoxDoc::text("\": return "))
+                        .append(self.transpile_expr(&arm.body))
+                        .append(BoxDoc::text(";"))
+                }
+                IrMatchPattern::Wildcard => BoxDoc::text("default: return ")
                     .append(self.transpile_expr(&arm.body))
-                    .append(BoxDoc::text(";"))
+                    .append(BoxDoc::text(";")),
             }),
             BoxDoc::line(),
         );

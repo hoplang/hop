@@ -142,7 +142,7 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Duplicate match arm for variant '{variant}'")]
+    #[error("Redundant match arm for variant '{variant}'")]
     MatchDuplicateVariant {
         variant: String,
         range: DocumentRange,

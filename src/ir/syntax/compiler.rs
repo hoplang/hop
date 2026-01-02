@@ -2,6 +2,7 @@ use crate::common::is_void_element;
 use crate::document::document_cursor::StringSpan;
 use crate::dop::TypedExpr;
 use crate::dop::semantics::r#type::EquatableType;
+use crate::dop::semantics::typed::TypedMatchPattern;
 use crate::dop::{Type, VarName};
 use crate::inlined::{
     InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
@@ -9,7 +10,7 @@ use crate::inlined::{
 use std::collections::BTreeMap;
 
 use super::ast::{
-    ExprId, IrComponentDeclaration, IrEnumPattern, IrExpr, IrMatchArm, IrStatement, StatementId,
+    ExprId, IrComponentDeclaration, IrExpr, IrMatchArm, IrMatchPattern, IrStatement, StatementId,
 };
 
 pub struct Compiler {
@@ -555,9 +556,15 @@ impl Compiler {
                 arms: arms
                     .into_iter()
                     .map(|arm| IrMatchArm {
-                        pattern: IrEnumPattern {
-                            enum_name: arm.pattern.enum_name,
-                            variant_name: arm.pattern.variant_name,
+                        pattern: match arm.pattern {
+                            TypedMatchPattern::EnumVariant {
+                                enum_name,
+                                variant_name,
+                            } => IrMatchPattern::EnumVariant {
+                                enum_name,
+                                variant_name,
+                            },
+                            TypedMatchPattern::Wildcard => IrMatchPattern::Wildcard,
                         },
                         body: self.compile_expr(arm.body),
                     })

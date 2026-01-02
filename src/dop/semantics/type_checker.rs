@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use super::r#type::{NumericType, Type};
 use super::type_error::TypeError;
-use super::typed::{TypedEnumPattern, TypedMatchArm};
+use super::typed::{TypedMatchArm, TypedMatchPattern};
 use crate::document::document_cursor::DocumentRange;
 use crate::dop::TypedExpr;
 use crate::dop::syntax::parsed::{
@@ -814,41 +814,55 @@ fn typecheck_match(
     let mut result_type: Option<Type> = None;
 
     for arm in arms {
-        let ParsedMatchPattern::EnumVariant {
-            enum_name: pattern_enum_name,
-            variant_name: pattern_variant_name,
-            range: pattern_range,
-        } = &arm.pattern;
+        let typed_pattern = match &arm.pattern {
+            ParsedMatchPattern::EnumVariant {
+                enum_name: pattern_enum_name,
+                variant_name: pattern_variant_name,
+                range: pattern_range,
+            } => {
+                // Pattern enum must match subject enum
+                if pattern_enum_name != &enum_name {
+                    return Err(TypeError::MatchPatternEnumMismatch {
+                        pattern_enum: pattern_enum_name.to_string(),
+                        subject_enum: enum_name.to_string(),
+                        range: pattern_range.clone(),
+                    });
+                }
 
-        // Pattern enum must match subject enum
-        if pattern_enum_name != &enum_name {
-            return Err(TypeError::MatchPatternEnumMismatch {
-                pattern_enum: pattern_enum_name.to_string(),
-                subject_enum: enum_name.to_string(),
-                range: pattern_range.clone(),
-            });
-        }
+                // Variant must exist in the enum
+                let variant_exists = enum_variants
+                    .iter()
+                    .any(|v| v.as_str() == pattern_variant_name);
+                if !variant_exists {
+                    return Err(TypeError::UndefinedEnumVariant {
+                        enum_name: pattern_enum_name.to_string(),
+                        variant_name: pattern_variant_name.clone(),
+                        range: pattern_range.clone(),
+                    });
+                }
 
-        // Variant must exist in the enum
-        let variant_exists = enum_variants
-            .iter()
-            .any(|v| v.as_str() == pattern_variant_name);
-        if !variant_exists {
-            return Err(TypeError::UndefinedEnumVariant {
-                enum_name: pattern_enum_name.to_string(),
-                variant_name: pattern_variant_name.clone(),
-                range: pattern_range.clone(),
-            });
-        }
+                // Check for duplicate variants
+                if matched_variants.contains(pattern_variant_name) {
+                    return Err(TypeError::MatchDuplicateVariant {
+                        variant: pattern_variant_name.clone(),
+                        range: pattern_range.clone(),
+                    });
+                }
+                matched_variants.insert(pattern_variant_name.clone());
 
-        // Check for duplicate variants
-        if matched_variants.contains(pattern_variant_name) {
-            return Err(TypeError::MatchDuplicateVariant {
-                variant: pattern_variant_name.clone(),
-                range: pattern_range.clone(),
-            });
-        }
-        matched_variants.insert(pattern_variant_name.clone());
+                TypedMatchPattern::EnumVariant {
+                    enum_name: pattern_enum_name.to_string(),
+                    variant_name: pattern_variant_name.clone(),
+                }
+            }
+            ParsedMatchPattern::Wildcard { .. } => {
+                // Wildcard matches all remaining variants
+                for variant in &enum_variants {
+                    matched_variants.insert(variant.as_str().to_string());
+                }
+                TypedMatchPattern::Wildcard
+            }
+        };
 
         // Type check the arm body
         let typed_body = typecheck_expr(&arm.body, env, type_env, annotations, None)?;
@@ -871,10 +885,7 @@ fn typecheck_match(
         }
 
         typed_arms.push(TypedMatchArm {
-            pattern: TypedEnumPattern {
-                enum_name: pattern_enum_name.to_string(),
-                variant_name: pattern_variant_name.clone(),
-            },
+            pattern: typed_pattern,
             body: typed_body,
         });
     }
@@ -2419,7 +2430,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Duplicate match arm for variant 'Red'
+                error: Redundant match arm for variant 'Red'
                     Color::Red => "also red",
                     ^^^^^^^^^^
             "#]],
@@ -2540,6 +2551,96 @@ mod tests {
                 }
             "#},
             expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_with_wildcard_pattern() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    Color::Red => "red",
+                    _ => "other",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_with_only_wildcard() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    _ => "any color",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_with_wildcard_at_end() {
+        check(
+            indoc! {"
+                enum Status {
+                    Active,
+                    Inactive,
+                    Pending,
+                    Archived,
+                }
+            "},
+            &[("status", "Status")],
+            indoc! {"
+                match status {
+                    Status::Active => 1,
+                    Status::Inactive => 2,
+                    _ => 0,
+                }
+            "},
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_with_pattern_after_wildcard() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    Color::Red => "red",
+                    _ => "other",
+                    Color::Blue => "blue",
+                }
+            "#},
+            expect![[r#"
+                error: Redundant match arm for variant 'Blue'
+                    Color::Blue => "blue",
+                    ^^^^^^^^^^^
+            "#]],
         );
     }
 

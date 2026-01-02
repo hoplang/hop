@@ -121,6 +121,8 @@ impl Iterator for Tokenizer {
                         |s| matches!(s.ch(), 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'),
                     ));
                     let t = match identifier.as_str() {
+                        // Wildcard
+                        "_" => Token::Underscore,
                         // Keywords
                         "in" => Token::In,
                         "import" => Token::Import,
@@ -1472,6 +1474,26 @@ mod tests {
                 token: y
                 x - y x -> y
                            ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_underscore_as_wildcard() {
+        check(
+            "_ _test __",
+            expect![[r#"
+                token: _
+                _ _test __
+                ^
+
+                token: _test
+                _ _test __
+                  ^^^^^
+
+                token: __
+                _ _test __
+                        ^^
             "#]],
         );
     }

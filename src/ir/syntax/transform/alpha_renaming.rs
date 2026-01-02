@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::dop::VarName;
 
-use crate::ir::ast::{IrComponentDeclaration, IrEnumPattern, IrExpr, IrMatchArm, IrStatement};
+use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrMatchArm, IrMatchPattern, IrStatement};
 
 use super::Pass;
 
@@ -220,9 +220,15 @@ impl AlphaRenamingPass {
                 arms: arms
                     .into_iter()
                     .map(|arm| IrMatchArm {
-                        pattern: IrEnumPattern {
-                            enum_name: arm.pattern.enum_name,
-                            variant_name: arm.pattern.variant_name,
+                        pattern: match arm.pattern {
+                            IrMatchPattern::EnumVariant {
+                                enum_name,
+                                variant_name,
+                            } => IrMatchPattern::EnumVariant {
+                                enum_name,
+                                variant_name,
+                            },
+                            IrMatchPattern::Wildcard => IrMatchPattern::Wildcard,
                         },
                         body: self.rename_expr(arm.body),
                     })

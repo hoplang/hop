@@ -8,7 +8,7 @@ use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use crate::ir::syntax::ast::{IrComponentDeclaration, IrStatement};
+use crate::ir::syntax::ast::{IrComponentDeclaration, IrMatchPattern, IrStatement};
 
 /// Evaluate an IR entrypoint with the given arguments
 pub fn evaluate_entrypoint(
@@ -413,8 +413,18 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
 
             // Find the matching arm
             for arm in arms {
-                if arm.pattern.variant_name == variant_name {
-                    return evaluate_expr(&arm.body, env);
+                match &arm.pattern {
+                    IrMatchPattern::EnumVariant {
+                        variant_name: pattern_variant,
+                        ..
+                    } => {
+                        if pattern_variant == variant_name {
+                            return evaluate_expr(&arm.body, env);
+                        }
+                    }
+                    IrMatchPattern::Wildcard => {
+                        return evaluate_expr(&arm.body, env);
+                    }
                 }
             }
 
