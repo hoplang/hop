@@ -121,16 +121,26 @@ pub fn typecheck_expr(
         } => {
             // Try left first; if it fails (e.g., None without context), try right first
             // to infer left's type from right
-            let typed_left = typecheck_expr(left, env, type_env, annotations, None).or_else(
-                |left_err| {
+            let typed_left =
+                typecheck_expr(left, env, type_env, annotations, None).or_else(|left_err| {
                     let typed_right = typecheck_expr(right, env, type_env, annotations, None)?;
-                    typecheck_expr(left, env, type_env, annotations, Some(typed_right.as_type()))
-                        .map_err(|_| left_err)
-                },
-            )?;
+                    typecheck_expr(
+                        left,
+                        env,
+                        type_env,
+                        annotations,
+                        Some(typed_right.as_type()),
+                    )
+                    .map_err(|_| left_err)
+                })?;
             // Use left's type as context for right (allows Some(1) == None)
-            let typed_right =
-                typecheck_expr(right, env, type_env, annotations, Some(typed_left.as_type()))?;
+            let typed_right = typecheck_expr(
+                right,
+                env,
+                type_env,
+                annotations,
+                Some(typed_left.as_type()),
+            )?;
 
             let left_type = typed_left.as_type();
             let right_type = typed_right.as_type();
@@ -858,8 +868,13 @@ pub fn typecheck_expr(
                     };
 
                     // Type check the inner value
-                    let typed_inner =
-                        typecheck_expr(inner_expr, env, type_env, annotations, expected_inner_type)?;
+                    let typed_inner = typecheck_expr(
+                        inner_expr,
+                        env,
+                        type_env,
+                        annotations,
+                        expected_inner_type,
+                    )?;
                     let inner_type = typed_inner.as_type().clone();
 
                     Ok(TypedExpr::OptionLiteral {
@@ -1027,20 +1042,6 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_field_access_on_non_record() {
-        check(
-            "",
-            &[("count", "Float")],
-            "count.value",
-            expect![[r#"
-                error: Float can not be used as a record
-                count.value
-                ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
     fn should_reject_negation_of_string() {
         check(
             "",
@@ -1064,52 +1065,6 @@ mod tests {
                 error: Negation operator can only be applied to Bool values
                 !count
                  ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_field_access_on_nested_array() {
-        check(
-            indoc! {"
-                record Profile {name: String, active: Bool}
-                record UserInfo {profile: Profile}
-                record Config {users: Array[UserInfo]}
-            "},
-            &[("config", "Config")],
-            "config.users.profile.name",
-            expect![[r#"
-                error: Array[test::UserInfo] can not be used as a record
-                config.users.profile.name
-                ^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_field_access_on_array() {
-        check(
-            "record User {name: String}",
-            &[("users", "Array[User]")],
-            "users.name",
-            expect![[r#"
-                error: Array[test::User] can not be used as a record
-                users.name
-                ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_unknown_field_access() {
-        check(
-            "record Data {field: String}",
-            &[("data", "Data")],
-            "data.unknown",
-            expect![[r#"
-                error: Field 'unknown' not found in record 'Data'
-                data.unknown
-                ^^^^^^^^^^^^
             "#]],
         );
     }
@@ -1145,30 +1100,6 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_field_access() {
-        check(
-            "record User {name: String}",
-            &[("user", "User")],
-            "user.name",
-            expect!["String"],
-        );
-    }
-
-    #[test]
-    fn should_accept_nested_field_access() {
-        check(
-            indoc! {"
-                record Profile {name: String}
-                record User {profile: Profile}
-                record App {user: User}
-            "},
-            &[("app", "App")],
-            "app.user.profile.name",
-            expect!["String"],
-        );
-    }
-
-    #[test]
     fn should_accept_string_equality() {
         check(
             "",
@@ -1198,19 +1129,6 @@ mod tests {
             "",
             &[("enabled", "Bool")],
             "enabled == true",
-            expect!["Bool"],
-        );
-    }
-
-    #[test]
-    fn should_accept_equality_of_same_field_types() {
-        check(
-            indoc! {"
-                record User {name: String}
-                record Admin {name: String}
-            "},
-            &[("user", "User"), ("admin", "Admin")],
-            "user.name == admin.name",
             expect!["Bool"],
         );
     }
@@ -1347,74 +1265,6 @@ mod tests {
             &[("status", "Status"), ("config", "Config")],
             "!(status.enabled == config.active)",
             expect!["Bool"],
-        );
-    }
-
-    #[test]
-    fn should_accept_record_with_array_field() {
-        check(
-            "record Data {items: Array[String]}",
-            &[("data", "Data")],
-            "data.items",
-            expect!["Array[String]"],
-        );
-    }
-
-    #[test]
-    fn should_accept_deep_field_access() {
-        check(
-            indoc! {"
-                record Connection {host: String}
-                record Database {connection: Connection}
-                record Config {database: Database}
-                record System {config: Config}
-            "},
-            &[("system", "System")],
-            "system.config.database.connection.host",
-            expect!["String"],
-        );
-    }
-
-    #[test]
-    fn should_accept_multiple_field_accesses() {
-        check(
-            "record Obj {name: String, title: String}",
-            &[("obj", "Obj")],
-            "obj.name == obj.title",
-            expect!["Bool"],
-        );
-    }
-
-    #[test]
-    fn should_reject_array_with_different_element_types() {
-        check(
-            "",
-            &[],
-            "[1, true]",
-            expect![[r#"
-                error: Array elements must all have the same type, found Int and Bool
-                [1, true]
-                    ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_array_with_trailing_comma() {
-        check("", &[], "[\n\t1,\n\t2,\n\t3,\n]", expect!["Array[Int]"]);
-    }
-
-    #[test]
-    fn should_accept_single_element_array_with_trailing_comma() {
-        check(
-            "",
-            &[],
-            indoc! {r#"
-            [
-            	"hello",
-            ]
-        "#},
-            expect!["Array[String]"],
         );
     }
 
@@ -1763,16 +1613,6 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_addition_with_field_access() {
-        check(
-            "record User {x: Int, y: Int}",
-            &[("user", "User")],
-            "user.x + user.y",
-            expect!["Int"],
-        );
-    }
-
-    #[test]
     fn should_accept_mixed_addition_and_comparison() {
         check(
             "",
@@ -1781,6 +1621,79 @@ mod tests {
             expect!["Bool"],
         );
     }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// ARRAYS                                                              ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_reject_array_with_different_element_types() {
+        check(
+            "",
+            &[],
+            "[1, true]",
+            expect![[r#"
+                error: Array elements must all have the same type, found Int and Bool
+                [1, true]
+                    ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_array_with_trailing_comma() {
+        check("", &[], "[\n\t1,\n\t2,\n\t3,\n]", expect!["Array[Int]"]);
+    }
+
+    #[test]
+    fn should_accept_single_element_array_with_trailing_comma() {
+        check(
+            "",
+            &[],
+            indoc! {r#"
+            [
+            	"hello",
+            ]
+        "#},
+            expect!["Array[String]"],
+        );
+    }
+
+    #[test]
+    fn should_reject_field_access_on_nested_array() {
+        check(
+            indoc! {"
+                record Profile {name: String, active: Bool}
+                record UserInfo {profile: Profile}
+                record Config {users: Array[UserInfo]}
+            "},
+            &[("config", "Config")],
+            "config.users.profile.name",
+            expect![[r#"
+                error: Array[test::UserInfo] can not be used as a record
+                config.users.profile.name
+                ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_field_access_on_array() {
+        check(
+            "record User {name: String}",
+            &[("users", "Array[User]")],
+            "users.name",
+            expect![[r#"
+                error: Array[test::User] can not be used as a record
+                users.name
+                ^^^^^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// RECORDS                                                             ///
+    ///////////////////////////////////////////////////////////////////////////
 
     #[test]
     fn should_accept_simple_record_literal() {
@@ -1817,6 +1730,72 @@ mod tests {
     }
 
     #[test]
+    fn should_reject_unknown_field_access() {
+        check(
+            "record Data {field: String}",
+            &[("data", "Data")],
+            "data.unknown",
+            expect![[r#"
+                error: Field 'unknown' not found in record 'Data'
+                data.unknown
+                ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_equality_of_same_field_types() {
+        check(
+            indoc! {"
+                record User {name: String}
+                record Admin {name: String}
+            "},
+            &[("user", "User"), ("admin", "Admin")],
+            "user.name == admin.name",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_reject_field_access_on_non_record() {
+        check(
+            "",
+            &[("count", "Float")],
+            "count.value",
+            expect![[r#"
+                error: Float can not be used as a record
+                count.value
+                ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_deep_field_access() {
+        check(
+            indoc! {"
+                record Connection {host: String}
+                record Database {connection: Connection}
+                record Config {database: Database}
+                record System {config: Config}
+            "},
+            &[("system", "System")],
+            "system.config.database.connection.host",
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_multiple_field_accesses() {
+        check(
+            "record Obj {name: String, title: String}",
+            &[("obj", "Obj")],
+            "obj.name == obj.title",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
     fn should_reject_record_literal_with_missing_field() {
         check(
             "record User {name: String, age: Int}",
@@ -1827,6 +1806,30 @@ mod tests {
                 User(name: "John")
                 ^^^^^^^^^^^^^^^^^^
             "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_field_access() {
+        check(
+            "record User {name: String}",
+            &[("user", "User")],
+            "user.name",
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_nested_field_access() {
+        check(
+            indoc! {"
+                record Profile {name: String}
+                record User {profile: Profile}
+                record App {user: User}
+            "},
+            &[("app", "App")],
+            "app.user.profile.name",
+            expect!["String"],
         );
     }
 
@@ -1870,6 +1873,20 @@ mod tests {
             expect!["test::User"],
         );
     }
+
+    #[test]
+    fn should_accept_record_with_array_field() {
+        check(
+            "record Data {items: Array[String]}",
+            &[("data", "Data")],
+            "data.items",
+            expect!["Array[String]"],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// ENUMS                                                               ///
+    ///////////////////////////////////////////////////////////////////////////
 
     #[test]
     fn should_accept_enum_equality() {
@@ -2094,8 +2111,6 @@ mod tests {
         );
     }
 
-    // Enum literal tests
-
     #[test]
     fn should_accept_enum_literal() {
         check(
@@ -2222,7 +2237,9 @@ mod tests {
         );
     }
 
-    // Match expression tests
+    ///////////////////////////////////////////////////////////////////////////
+    /// MATCH EXPRESSION                                                    ///
+    ///////////////////////////////////////////////////////////////////////////
 
     #[test]
     fn should_accept_match_expression_with_all_variants() {
@@ -2503,7 +2520,9 @@ mod tests {
         );
     }
 
-    // Option type tests
+    ///////////////////////////////////////////////////////////////////////////
+    /// OPTION TYPE                                                         ///
+    ///////////////////////////////////////////////////////////////////////////
 
     #[test]
     fn should_accept_some_with_integer_literal() {
@@ -2527,7 +2546,12 @@ mod tests {
 
     #[test]
     fn should_accept_some_with_variable() {
-        check("", &[("name", "String")], "Some(name)", expect!["Option[String]"]);
+        check(
+            "",
+            &[("name", "String")],
+            "Some(name)",
+            expect!["Option[String]"],
+        );
     }
 
     #[test]
