@@ -122,9 +122,6 @@ pub enum TypeError {
     #[error("Match subject must be an enum type, found {found}")]
     MatchSubjectNotEnum { found: String, range: DocumentRange },
 
-    #[error("Match pattern must be an enum variant")]
-    MatchPatternNotEnumVariant { range: DocumentRange },
-
     #[error("Match pattern enum '{pattern_enum}' does not match subject enum '{subject_enum}'")]
     MatchPatternEnumMismatch {
         pattern_enum: String,
@@ -177,7 +174,6 @@ impl Ranged for TypeError {
             | TypeError::UndefinedEnum { range, .. }
             | TypeError::UndefinedEnumVariant { range, .. }
             | TypeError::MatchSubjectNotEnum { range, .. }
-            | TypeError::MatchPatternNotEnumVariant { range, .. }
             | TypeError::MatchPatternEnumMismatch { range, .. }
             | TypeError::MatchArmTypeMismatch { range, .. }
             | TypeError::MatchMissingVariant { range, .. }

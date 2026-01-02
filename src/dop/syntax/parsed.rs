@@ -80,11 +80,44 @@ impl Display for ParsedType {
     }
 }
 
+/// A pattern in a match arm
+#[derive(Debug, Clone)]
+pub enum ParsedMatchPattern {
+    /// An enum variant pattern, e.g. `Color::Red`
+    EnumVariant {
+        enum_name: TypeName,
+        variant_name: String,
+        range: DocumentRange,
+    },
+}
+
+impl Ranged for ParsedMatchPattern {
+    fn range(&self) -> &DocumentRange {
+        match self {
+            ParsedMatchPattern::EnumVariant { range, .. } => range,
+        }
+    }
+}
+
+impl ParsedMatchPattern {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        match self {
+            ParsedMatchPattern::EnumVariant {
+                enum_name,
+                variant_name,
+                ..
+            } => BoxDoc::text(enum_name.as_str().to_string())
+                .append(BoxDoc::text("::"))
+                .append(BoxDoc::text(variant_name.as_str())),
+        }
+    }
+}
+
 /// A single arm in a match expression, e.g. `Color::Red => "red"`
 #[derive(Debug, Clone)]
 pub struct ParsedMatchArm {
-    /// The pattern being matched (must be an enum literal, e.g., `Color::Red`)
-    pub pattern: ParsedExpr,
+    /// The pattern being matched
+    pub pattern: ParsedMatchPattern,
     /// The expression to evaluate if this arm matches
     pub body: ParsedExpr,
 }

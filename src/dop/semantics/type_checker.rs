@@ -5,7 +5,9 @@ use super::type_error::TypeError;
 use super::typed::{TypedEnumPattern, TypedMatchArm};
 use crate::document::document_cursor::DocumentRange;
 use crate::dop::TypedExpr;
-use crate::dop::syntax::parsed::{ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedType};
+use crate::dop::syntax::parsed::{
+    ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedMatchPattern, ParsedType,
+};
 use crate::environment::Environment;
 use crate::hop::semantics::type_checker::TypeAnnotation;
 
@@ -812,24 +814,16 @@ fn typecheck_match(
     let mut result_type: Option<Type> = None;
 
     for arm in arms {
-        // Pattern must be an enum literal
-        let (pattern_enum_name, pattern_variant_name, pattern_range) = match &arm.pattern {
-            ParsedExpr::EnumLiteral {
-                enum_name,
-                variant_name,
-                range: annotation,
-            } => (enum_name.clone(), variant_name.clone(), annotation.clone()),
-            _ => {
-                return Err(TypeError::MatchPatternNotEnumVariant {
-                    range: arm.pattern.range().clone(),
-                });
-            }
-        };
+        let ParsedMatchPattern::EnumVariant {
+            enum_name: pattern_enum_name,
+            variant_name: pattern_variant_name,
+            range: pattern_range,
+        } = &arm.pattern;
 
         // Pattern enum must match subject enum
-        if pattern_enum_name != enum_name.as_str() {
+        if pattern_enum_name != &enum_name {
             return Err(TypeError::MatchPatternEnumMismatch {
-                pattern_enum: pattern_enum_name.clone(),
+                pattern_enum: pattern_enum_name.to_string(),
                 subject_enum: enum_name.to_string(),
                 range: pattern_range.clone(),
             });
@@ -841,14 +835,14 @@ fn typecheck_match(
             .any(|v| v.as_str() == pattern_variant_name);
         if !variant_exists {
             return Err(TypeError::UndefinedEnumVariant {
-                enum_name: pattern_enum_name.clone(),
+                enum_name: pattern_enum_name.to_string(),
                 variant_name: pattern_variant_name.clone(),
                 range: pattern_range.clone(),
             });
         }
 
         // Check for duplicate variants
-        if matched_variants.contains(&pattern_variant_name) {
+        if matched_variants.contains(pattern_variant_name) {
             return Err(TypeError::MatchDuplicateVariant {
                 variant: pattern_variant_name.clone(),
                 range: pattern_range.clone(),
@@ -878,8 +872,8 @@ fn typecheck_match(
 
         typed_arms.push(TypedMatchArm {
             pattern: TypedEnumPattern {
-                enum_name: pattern_enum_name,
-                variant_name: pattern_variant_name,
+                enum_name: pattern_enum_name.to_string(),
+                variant_name: pattern_variant_name.clone(),
             },
             body: typed_body,
         });

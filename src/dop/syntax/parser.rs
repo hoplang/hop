@@ -9,7 +9,9 @@ use crate::error_collector::ErrorCollector;
 use crate::hop::symbols::module_name::ModuleName;
 
 use super::parse_error::ParseError;
-use super::parsed::{ParsedBinaryOp, ParsedDeclaration, ParsedExpr, ParsedMatchArm, ParsedType};
+use super::parsed::{
+    ParsedBinaryOp, ParsedDeclaration, ParsedExpr, ParsedMatchArm, ParsedMatchPattern, ParsedType,
+};
 use super::token::Token;
 use super::tokenizer::Tokenizer;
 
@@ -651,6 +653,20 @@ impl Parser {
         })
     }
 
+    /// Parse a match pattern.
+    ///
+    /// Syntax: `EnumName::VariantName`
+    fn parse_match_pattern(&mut self) -> Result<ParsedMatchPattern, ParseError> {
+        let (enum_name, enum_name_range) = self.expect_type_name()?;
+        self.expect_token(&Token::ColonColon)?;
+        let (variant_name, variant_range) = self.expect_type_name()?;
+        Ok(ParsedMatchPattern::EnumVariant {
+            enum_name,
+            variant_name: variant_name.as_str().to_string(),
+            range: enum_name_range.to(variant_range),
+        })
+    }
+
     /// Parse a match expression.
     ///
     /// Syntax: `match subject {Pattern1 => expr1, Pattern2 => expr2}`
@@ -667,7 +683,7 @@ impl Parser {
 
         let mut arms = Vec::new();
         let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
-            let pattern = this.parse_primary()?;
+            let pattern = this.parse_match_pattern()?;
             this.expect_token(&Token::FatArrow)?;
             let body = this.parse_logical()?;
             arms.push(ParsedMatchArm { pattern, body });
