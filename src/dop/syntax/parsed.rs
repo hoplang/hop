@@ -80,33 +80,64 @@ impl Display for ParsedType {
     }
 }
 
-/// A pattern in a match arm
+/// A constructor pattern (non-wildcard pattern that matches a specific value)
 #[derive(Debug, Clone)]
-pub enum ParsedMatchPattern {
+pub enum Constructor {
+    /// A boolean true pattern
+    BooleanTrue,
+    /// A boolean false pattern
+    BooleanFalse,
+    /// An Option Some pattern, e.g. `Some(_)`
+    OptionSome,
+    /// An Option None pattern, e.g. `None`
+    OptionNone,
     /// An enum variant pattern, e.g. `Color::Red`
     EnumVariant {
         enum_name: TypeName,
         variant_name: String,
+    },
+}
+
+impl Constructor {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        match self {
+            Constructor::EnumVariant {
+                enum_name,
+                variant_name,
+            } => BoxDoc::text(enum_name.as_str().to_string())
+                .append(BoxDoc::text("::"))
+                .append(BoxDoc::text(variant_name.as_str())),
+            Constructor::BooleanTrue => BoxDoc::text("true"),
+            Constructor::BooleanFalse => BoxDoc::text("false"),
+            Constructor::OptionSome => BoxDoc::text("Some(_)"),
+            Constructor::OptionNone => BoxDoc::text("None"),
+        }
+    }
+}
+
+impl std::fmt::Display for Constructor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_doc().pretty(80))
+    }
+}
+
+/// A pattern in a match arm
+#[derive(Debug, Clone)]
+pub enum ParsedMatchPattern {
+    /// A constructor pattern that matches a specific value
+    Constructor {
+        constructor: Constructor,
         range: DocumentRange,
     },
-    /// A boolean literal pattern, e.g. `true` or `false`
-    BooleanLiteral { value: bool, range: DocumentRange },
     /// A wildcard pattern that matches anything, written as `_`
     Wildcard { range: DocumentRange },
-    /// An Option Some pattern, e.g. `Some(_)`
-    OptionSome { range: DocumentRange },
-    /// An Option None pattern, e.g. `None`
-    OptionNone { range: DocumentRange },
 }
 
 impl Ranged for ParsedMatchPattern {
     fn range(&self) -> &DocumentRange {
         match self {
-            ParsedMatchPattern::EnumVariant { range, .. }
-            | ParsedMatchPattern::BooleanLiteral { range, .. }
-            | ParsedMatchPattern::Wildcard { range }
-            | ParsedMatchPattern::OptionSome { range }
-            | ParsedMatchPattern::OptionNone { range } => range,
+            ParsedMatchPattern::Constructor { range, .. }
+            | ParsedMatchPattern::Wildcard { range } => range,
         }
     }
 }
@@ -114,18 +145,8 @@ impl Ranged for ParsedMatchPattern {
 impl ParsedMatchPattern {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            ParsedMatchPattern::EnumVariant {
-                enum_name,
-                variant_name,
-                ..
-            } => BoxDoc::text(enum_name.as_str().to_string())
-                .append(BoxDoc::text("::"))
-                .append(BoxDoc::text(variant_name.as_str())),
-            ParsedMatchPattern::BooleanLiteral { value: true, .. } => BoxDoc::text("true"),
-            ParsedMatchPattern::BooleanLiteral { value: false, .. } => BoxDoc::text("false"),
+            ParsedMatchPattern::Constructor { constructor, .. } => constructor.to_doc(),
             ParsedMatchPattern::Wildcard { .. } => BoxDoc::text("_"),
-            ParsedMatchPattern::OptionSome { .. } => BoxDoc::text("Some(_)"),
-            ParsedMatchPattern::OptionNone { .. } => BoxDoc::text("None"),
         }
     }
 }

@@ -7,9 +7,9 @@ use super::typed::{
     TypedBoolMatchArm, TypedBoolPattern, TypedEnumMatchArm, TypedEnumPattern, TypedOptionMatchArm,
     TypedOptionPattern,
 };
-use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::document::document_cursor::DocumentRange;
 use crate::dop::TypedExpr;
-use crate::dop::syntax::parsed::{ParsedExpr, ParsedMatchArm, ParsedMatchPattern};
+use crate::dop::syntax::parsed::{Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern};
 use crate::environment::Environment;
 use crate::hop::semantics::type_checker::TypeAnnotation;
 
@@ -64,9 +64,12 @@ fn typecheck_enum_match(
 
     for arm in arms {
         let typed_pattern = match &arm.pattern {
-            ParsedMatchPattern::EnumVariant {
-                enum_name: pattern_enum_name,
-                variant_name: pattern_variant_name,
+            ParsedMatchPattern::Constructor {
+                constructor:
+                    Constructor::EnumVariant {
+                        enum_name: pattern_enum_name,
+                        variant_name: pattern_variant_name,
+                    },
                 range: pattern_range,
             } => {
                 // Pattern enum must match subject enum
@@ -111,11 +114,11 @@ fn typecheck_enum_match(
                 }
                 TypedEnumPattern::Wildcard
             }
-            _ => {
+            ParsedMatchPattern::Constructor { range, .. } => {
                 return Err(TypeError::MatchPatternTypeMismatch {
                     expected: "enum".to_string(),
                     found: arm.pattern.to_string(),
-                    range: arm.pattern.range().clone(),
+                    range: range.clone(),
                 });
             }
         };
@@ -178,28 +181,31 @@ fn typecheck_bool_match(
 
     for arm in arms {
         let typed_pattern = match &arm.pattern {
-            ParsedMatchPattern::BooleanLiteral { value, range } => {
-                // Check for duplicate patterns
-                if *value && matched_true {
+            ParsedMatchPattern::Constructor {
+                constructor: Constructor::BooleanTrue,
+                range,
+            } => {
+                if matched_true {
                     return Err(TypeError::MatchDuplicateVariant {
                         variant: "true".to_string(),
                         range: range.clone(),
                     });
                 }
-                if !*value && matched_false {
+                matched_true = true;
+                TypedBoolPattern::Literal(true)
+            }
+            ParsedMatchPattern::Constructor {
+                constructor: Constructor::BooleanFalse,
+                range,
+            } => {
+                if matched_false {
                     return Err(TypeError::MatchDuplicateVariant {
                         variant: "false".to_string(),
                         range: range.clone(),
                     });
                 }
-
-                if *value {
-                    matched_true = true;
-                } else {
-                    matched_false = true;
-                }
-
-                TypedBoolPattern::Literal(*value)
+                matched_false = true;
+                TypedBoolPattern::Literal(false)
             }
             ParsedMatchPattern::Wildcard { .. } => {
                 // Wildcard matches all remaining values
@@ -207,11 +213,11 @@ fn typecheck_bool_match(
                 matched_false = true;
                 TypedBoolPattern::Wildcard
             }
-            _ => {
+            ParsedMatchPattern::Constructor { range, .. } => {
                 return Err(TypeError::MatchPatternTypeMismatch {
                     expected: "boolean".to_string(),
                     found: arm.pattern.to_string(),
-                    range: arm.pattern.range().clone(),
+                    range: range.clone(),
                 });
             }
         };
@@ -278,7 +284,10 @@ fn typecheck_option_match(
 
     for arm in arms {
         let typed_pattern = match &arm.pattern {
-            ParsedMatchPattern::OptionSome { range } => {
+            ParsedMatchPattern::Constructor {
+                constructor: Constructor::OptionSome,
+                range,
+            } => {
                 // Check for duplicate patterns
                 if matched_some {
                     return Err(TypeError::MatchDuplicateVariant {
@@ -289,7 +298,10 @@ fn typecheck_option_match(
                 matched_some = true;
                 TypedOptionPattern::Some
             }
-            ParsedMatchPattern::OptionNone { range } => {
+            ParsedMatchPattern::Constructor {
+                constructor: Constructor::OptionNone,
+                range,
+            } => {
                 // Check for duplicate patterns
                 if matched_none {
                     return Err(TypeError::MatchDuplicateVariant {
@@ -306,11 +318,11 @@ fn typecheck_option_match(
                 matched_none = true;
                 TypedOptionPattern::Wildcard
             }
-            _ => {
+            ParsedMatchPattern::Constructor { range, .. } => {
                 return Err(TypeError::MatchPatternTypeMismatch {
                     expected: "option".to_string(),
                     found: arm.pattern.to_string(),
-                    range: arm.pattern.range().clone(),
+                    range: range.clone(),
                 });
             }
         };

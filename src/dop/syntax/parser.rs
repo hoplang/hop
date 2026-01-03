@@ -10,7 +10,8 @@ use crate::hop::symbols::module_name::ModuleName;
 
 use super::parse_error::ParseError;
 use super::parsed::{
-    ParsedBinaryOp, ParsedDeclaration, ParsedExpr, ParsedMatchArm, ParsedMatchPattern, ParsedType,
+    Constructor, ParsedBinaryOp, ParsedDeclaration, ParsedExpr, ParsedMatchArm,
+    ParsedMatchPattern, ParsedType,
 };
 use super::token::Token;
 use super::tokenizer::Tokenizer;
@@ -662,11 +663,14 @@ impl Parser {
 
         // Check for boolean literal patterns
         if let Some(range) = self.advance_if(Token::True) {
-            return Ok(ParsedMatchPattern::BooleanLiteral { value: true, range });
+            return Ok(ParsedMatchPattern::Constructor {
+                constructor: Constructor::BooleanTrue,
+                range,
+            });
         }
         if let Some(range) = self.advance_if(Token::False) {
-            return Ok(ParsedMatchPattern::BooleanLiteral {
-                value: false,
+            return Ok(ParsedMatchPattern::Constructor {
+                constructor: Constructor::BooleanFalse,
                 range,
             });
         }
@@ -676,20 +680,26 @@ impl Parser {
             self.expect_token(&Token::LeftParen)?;
             self.expect_token(&Token::Underscore)?;
             let right_paren = self.expect_token(&Token::RightParen)?;
-            return Ok(ParsedMatchPattern::OptionSome {
+            return Ok(ParsedMatchPattern::Constructor {
+                constructor: Constructor::OptionSome,
                 range: some_range.to(right_paren),
             });
         }
         if let Some(range) = self.advance_if(Token::None) {
-            return Ok(ParsedMatchPattern::OptionNone { range });
+            return Ok(ParsedMatchPattern::Constructor {
+                constructor: Constructor::OptionNone,
+                range,
+            });
         }
 
         let (enum_name, enum_name_range) = self.expect_type_name()?;
         self.expect_token(&Token::ColonColon)?;
         let (variant_name, variant_range) = self.expect_type_name()?;
-        Ok(ParsedMatchPattern::EnumVariant {
-            enum_name,
-            variant_name: variant_name.as_str().to_string(),
+        Ok(ParsedMatchPattern::Constructor {
+            constructor: Constructor::EnumVariant {
+                enum_name,
+                variant_name: variant_name.as_str().to_string(),
+            },
             range: enum_name_range.to(variant_range),
         })
     }
