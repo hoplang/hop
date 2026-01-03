@@ -655,7 +655,7 @@ impl Parser {
     }
 
     /// Parse a match pattern.
-    fn parse_match_pattern(&mut self) -> Result<ParsedMatchPattern, ParseError> {
+    pub fn parse_match_pattern(&mut self) -> Result<ParsedMatchPattern, ParseError> {
         // Check for wildcard pattern
         if let Some(range) = self.advance_if(Token::Underscore) {
             return Ok(ParsedMatchPattern::Wildcard { range });

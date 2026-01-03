@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use crate::dop::symbols::type_name::TypeName;
-use crate::dop::syntax::parsed::Constructor;
+use crate::dop::syntax::parsed::{Constructor, ParsedMatchPattern};
 
 use super::r#type::Type;
 
@@ -20,21 +20,12 @@ pub struct Body {
     value: usize,
 }
 
-/// A user defined pattern such as `Some(x)`.
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub enum Pattern {
-    /// A pattern such as `Some(true)`.
-    Constructor(Constructor, Vec<Pattern>),
-    /// A wildcard pattern, i.e. `_`.
-    Wildcard,
-}
-
 /// A variable used in a match expression.
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct Variable(pub String);
 
 /// A single case (or row) in a match expression/table.
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Debug)]
 pub struct Row {
     columns: Vec<Column>,
     body: Body,
@@ -58,14 +49,14 @@ impl Row {
 /// A column contains a single variable to test, and a pattern to test against
 /// that variable. A row may contain multiple columns, though this wouldn't be
 /// exposed to the source language.
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Debug)]
 pub struct Column {
     variable: Variable,
-    pattern: Pattern,
+    pattern: ParsedMatchPattern,
 }
 
 impl Column {
-    fn new(variable: Variable, pattern: Pattern) -> Self {
+    fn new(variable: Variable, pattern: ParsedMatchPattern) -> Self {
         Self { variable, pattern }
     }
 }
@@ -324,7 +315,7 @@ impl Compiler {
         for row in &mut rows {
             // Remove columns that contain wildcards
             row.columns
-                .retain(|col| !matches!(&col.pattern, Pattern::Wildcard));
+                .retain(|col| !matches!(&col.pattern, ParsedMatchPattern::Wildcard { .. }));
         }
 
         // There may be multiple rows, but if the first one has no patterns
@@ -395,7 +386,12 @@ impl Compiler {
         // assign the correct sub matches to these constructors.
         for mut row in rows {
             if let Some(col) = row.remove_column(&branch_var) {
-                if let Pattern::Constructor(cons, args) = col.pattern {
+                if let ParsedMatchPattern::Constructor {
+                    constructor: cons,
+                    args,
+                    ..
+                } = col.pattern
+                {
                     let idx = self.constructor_index(&cons, type_env);
                     let mut cols = row.columns;
 
@@ -506,27 +502,12 @@ impl fmt::Display for Body {
     }
 }
 
-impl fmt::Display for Pattern {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Pattern::Constructor(cons, args) => {
-                write!(f, "{cons}")?;
-                if !args.is_empty() {
-                    let args: Vec<_> = args.iter().map(|a| a.to_string()).collect();
-                    write!(f, "({})", args.join(", "))?;
-                }
-                Ok(())
-            }
-            Pattern::Wildcard => write!(f, "_"),
-        }
-    }
-}
-
 // TESTS ----------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dop::syntax::parser::Parser;
     use crate::hop::symbols::module_name::ModuleName;
     use expect_test::expect;
 
@@ -534,34 +515,11 @@ mod tests {
         ModuleName::new("test").unwrap()
     }
 
-    fn tt() -> Pattern {
-        Pattern::Constructor(Constructor::BooleanTrue, Vec::new())
-    }
-
-    fn ff() -> Pattern {
-        Pattern::Constructor(Constructor::BooleanFalse, Vec::new())
-    }
-
-    fn wild() -> Pattern {
-        Pattern::Wildcard
-    }
-
-    fn some(inner: Pattern) -> Pattern {
-        Pattern::Constructor(Constructor::OptionSome, vec![inner])
-    }
-
-    fn none() -> Pattern {
-        Pattern::Constructor(Constructor::OptionNone, Vec::new())
-    }
-
-    fn variant(enum_name: &str, variant_name: &str, args: Vec<Pattern>) -> Pattern {
-        Pattern::Constructor(
-            Constructor::EnumVariant {
-                enum_name: TypeName::new(enum_name).unwrap(),
-                variant_name: variant_name.to_string(),
-            },
-            args,
-        )
+    /// Parse a pattern string into a ParsedMatchPattern
+    fn pat(s: &str) -> ParsedMatchPattern {
+        Parser::from(s)
+            .parse_match_pattern()
+            .expect("failed to parse pattern")
     }
 
     fn new_variable(var_env: &mut HashMap<Variable, Type>, name: &str, typ: Type) -> Variable {
@@ -573,7 +531,7 @@ mod tests {
     fn compile(
         compiler: Compiler,
         input: Variable,
-        rules: Vec<Pattern>,
+        rules: Vec<ParsedMatchPattern>,
         type_env: &HashMap<TypeName, Type>,
         var_env: &mut HashMap<Variable, Type>,
     ) -> Match {
@@ -589,7 +547,7 @@ mod tests {
     fn check(
         compiler: Compiler,
         input: Variable,
-        rules: Vec<Pattern>,
+        rules: Vec<ParsedMatchPattern>,
         type_env: &HashMap<TypeName, Type>,
         var_env: &mut HashMap<Variable, Type>,
         expected: expect_test::Expect,
@@ -630,7 +588,7 @@ mod tests {
         check(
             compiler,
             input,
-            vec![tt(), ff()],
+            vec![pat("true"), pat("false")],
             &HashMap::new(),
             &mut var_env,
             expect![[r#"
@@ -662,7 +620,7 @@ mod tests {
         check(
             compiler,
             input,
-            vec![tt()],
+            vec![pat("true")],
             &HashMap::new(),
             &mut var_env,
             expect![[r#"
@@ -695,7 +653,7 @@ mod tests {
         check(
             compiler,
             input,
-            vec![tt(), tt(), ff()],
+            vec![pat("true"), pat("true"), pat("false")],
             &HashMap::new(),
             &mut var_env,
             expect![[r#"
@@ -728,7 +686,7 @@ mod tests {
         check(
             compiler,
             input,
-            vec![tt(), wild()],
+            vec![pat("true"), pat("_")],
             &HashMap::new(),
             &mut var_env,
             expect![[r#"
@@ -760,7 +718,7 @@ mod tests {
         check(
             compiler,
             input,
-            vec![some(tt())],
+            vec![pat("Some(true)")],
             &HashMap::new(),
             &mut var_env,
             expect![[r#"
@@ -800,7 +758,7 @@ mod tests {
         check(
             compiler,
             input,
-            vec![some(tt()), some(wild()), none()],
+            vec![pat("Some(true)"), pat("Some(_)"), pat("None")],
             &HashMap::new(),
             &mut var_env,
             expect![[r#"
@@ -840,7 +798,7 @@ mod tests {
         check(
             compiler,
             input,
-            vec![some(tt()), some(tt()), some(wild()), none()],
+            vec![pat("Some(true)"), pat("Some(true)"), pat("Some(_)"), pat("None")],
             &HashMap::new(),
             &mut var_env,
             expect![[r#"
@@ -881,7 +839,7 @@ mod tests {
         check(
             compiler,
             input,
-            vec![some(tt()), wild()],
+            vec![pat("Some(true)"), pat("_")],
             &HashMap::new(),
             &mut var_env,
             expect![[r#"
@@ -932,8 +890,8 @@ mod tests {
             compiler,
             input,
             vec![
-                variant("Light", "Red", Vec::new()),
-                variant("Light", "Green", Vec::new()),
+                pat("Light::Red"),
+                pat("Light::Green"),
             ],
             &type_env,
             &mut var_env,
@@ -971,7 +929,7 @@ mod tests {
         check(
             compiler,
             input,
-            vec![wild(), wild(), tt(), ff()],
+            vec![pat("_"), pat("_"), pat("true"), pat("false")],
             &HashMap::new(),
             &mut var_env,
             expect![[r#"
@@ -1009,8 +967,8 @@ mod tests {
             compiler,
             input,
             vec![
-                variant("Result", "Ok", Vec::new()),
-                variant("Result", "Err", Vec::new()),
+                pat("Result::Ok"),
+                pat("Result::Err"),
             ],
             &type_env,
             &mut var_env,
@@ -1047,7 +1005,7 @@ mod tests {
         check(
             compiler,
             input,
-            vec![some(some(tt())), some(none()), none()],
+            vec![pat("Some(Some(true))"), pat("Some(None)"), pat("None")],
             &HashMap::new(),
             &mut var_env,
             expect![[r#"
@@ -1096,7 +1054,7 @@ mod tests {
         check(
             compiler,
             input,
-            vec![wild()],
+            vec![pat("_")],
             &HashMap::new(),
             &mut var_env,
             expect![[r#"
@@ -1120,7 +1078,7 @@ mod tests {
         check(
             compiler,
             input,
-            vec![tt(), wild()],
+            vec![pat("true"), pat("_")],
             &HashMap::new(),
             &mut var_env,
             expect![[r#"
@@ -1152,7 +1110,7 @@ mod tests {
         check(
             compiler,
             input,
-            vec![some(wild()), none()],
+            vec![pat("Some(_)"), pat("None")],
             &HashMap::new(),
             &mut var_env,
             expect![[r#"
