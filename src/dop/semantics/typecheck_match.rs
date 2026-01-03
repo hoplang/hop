@@ -17,12 +17,12 @@ pub fn typecheck_match(
     subject: &ParsedExpr,
     arms: &[ParsedMatchArm],
     range: &DocumentRange,
-    env: &mut Environment<Type>,
+    var_env: &mut Environment<Type>,
     type_env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> Result<TypedExpr, TypeError> {
     // Type check the subject expression
-    let typed_subject = typecheck_expr(subject, env, type_env, annotations, None)?;
+    let typed_subject = typecheck_expr(subject, var_env, type_env, annotations, None)?;
     let subject_type = typed_subject.as_type().clone();
 
     // Subject must be an enum, boolean, or option type
@@ -33,13 +33,15 @@ pub fn typecheck_match(
             variants,
             arms,
             range,
-            env,
+            var_env,
             type_env,
             annotations,
         ),
-        Type::Bool => typecheck_bool_match(&typed_subject, arms, range, env, type_env, annotations),
+        Type::Bool => {
+            typecheck_bool_match(&typed_subject, arms, range, var_env, type_env, annotations)
+        }
         Type::Option(_) => {
-            typecheck_option_match(&typed_subject, arms, range, env, type_env, annotations)
+            typecheck_option_match(&typed_subject, arms, range, var_env, type_env, annotations)
         }
         _ => Err(TypeError::MatchNotImplementedForType {
             found: subject_type.to_string(),
