@@ -16,7 +16,7 @@ pub enum InvalidTypeNameError {
 
 /// A TypeName represents a validated type name in dop.
 /// Type names must be PascalCase (start with uppercase letter).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub struct TypeName {
     value: String,
 }

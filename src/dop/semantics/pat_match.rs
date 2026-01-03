@@ -8,6 +8,11 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+use crate::dop::symbols::type_name::TypeName;
+use crate::hop::symbols::module_name::ModuleName;
+
+use super::r#type::Type;
+
 /// The body of code to evaluate in case of a match.
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct Body {
@@ -23,8 +28,9 @@ pub enum Constructor {
     OptionSome,
     OptionNone,
     EnumVariant {
-        enum_name: String,
-        variant_name: String,
+        module: ModuleName,
+        name: TypeName,
+        variant: TypeName,
     },
 }
 
@@ -35,14 +41,6 @@ pub enum Pattern {
     Constructor(Constructor, Vec<Pattern>),
     /// A wildcard pattern, i.e. `_`.
     Wildcard,
-}
-
-/// A representation of a type.
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub enum Type {
-    Bool,
-    Option(Box<Type>),
-    Enum { name: String, variants: Vec<String> },
 }
 
 /// A variable used in a match expression.
@@ -253,9 +251,9 @@ impl Match {
                         Constructor::OptionNone => {
                             terms.push(Term::new(var.clone(), "None".to_string(), Vec::new()));
                         }
-                        Constructor::EnumVariant { variant_name, .. } => {
+                        Constructor::EnumVariant { variant, .. } => {
                             let args = case.arguments.clone();
-                            terms.push(Term::new(var.clone(), variant_name.clone(), args));
+                            terms.push(Term::new(var.clone(), variant.to_string(), args));
                         }
                     }
 
@@ -287,21 +285,27 @@ impl Compiler {
     }
 
     /// Returns the index of a constructor.
-    fn constructor_index(&self, cons: &Constructor, type_env: &HashMap<String, Type>) -> usize {
+    fn constructor_index(
+        &self,
+        cons: &Constructor,
+        type_env: &HashMap<(ModuleName, TypeName), Type>,
+    ) -> usize {
         match cons {
             Constructor::BooleanFalse => 0,
             Constructor::BooleanTrue => 1,
             Constructor::OptionSome => 0,
             Constructor::OptionNone => 1,
             Constructor::EnumVariant {
-                enum_name,
-                variant_name,
+                module,
+                name,
+                variant,
             } => {
-                let typ = type_env.get(enum_name).expect("unknown enum");
+                let key = (module.clone(), name.clone());
+                let typ = type_env.get(&key).expect("unknown enum");
                 if let Type::Enum { variants, .. } = typ {
                     variants
                         .iter()
-                        .position(|name| name == variant_name)
+                        .position(|v| v == variant)
                         .expect("unknown variant")
                 } else {
                     panic!("type is not an enum")
@@ -313,7 +317,7 @@ impl Compiler {
     pub fn compile(
         mut self,
         rows: Vec<Row>,
-        type_env: &HashMap<String, Type>,
+        type_env: &HashMap<(ModuleName, TypeName), Type>,
         var_env: &mut HashMap<Variable, Type>,
     ) -> Match {
         Match {
@@ -325,7 +329,7 @@ impl Compiler {
     fn compile_rows(
         &mut self,
         mut rows: Vec<Row>,
-        type_env: &HashMap<String, Type>,
+        type_env: &HashMap<(ModuleName, TypeName), Type>,
         var_env: &mut HashMap<Variable, Type>,
     ) -> Decision {
         if rows.is_empty() {
@@ -368,21 +372,26 @@ impl Compiler {
                 ]
             }
             Type::Enum {
-                name: enum_name,
+                module,
+                name,
                 variants,
             } => variants
                 .iter()
-                .map(|variant_name| {
+                .map(|variant| {
                     (
                         Constructor::EnumVariant {
-                            enum_name: enum_name.clone(),
-                            variant_name: variant_name.clone(),
+                            module: module.clone(),
+                            name: name.clone(),
+                            variant: variant.clone(),
                         },
                         Vec::new(),
                         Vec::new(),
                     )
                 })
                 .collect(),
+            Type::String | Type::Int | Type::Float | Type::TrustedHTML | Type::Array(_) | Type::Record { .. } => {
+                panic!("pattern matching not supported for this type")
+            }
         };
 
         // Compile the cases and sub cases for the constructor located at the
@@ -515,7 +524,7 @@ impl fmt::Display for Constructor {
             Constructor::BooleanFalse => write!(f, "false"),
             Constructor::OptionSome => write!(f, "Some"),
             Constructor::OptionNone => write!(f, "None"),
-            Constructor::EnumVariant { variant_name, .. } => write!(f, "{variant_name}"),
+            Constructor::EnumVariant { variant, .. } => write!(f, "{variant}"),
         }
     }
 }
@@ -549,6 +558,10 @@ mod tests {
     use super::*;
     use expect_test::expect;
 
+    fn test_module() -> ModuleName {
+        ModuleName::new("test").unwrap()
+    }
+
     fn tt() -> Pattern {
         Pattern::Constructor(Constructor::BooleanTrue, Vec::new())
     }
@@ -572,8 +585,9 @@ mod tests {
     fn variant(enum_name: &str, variant_name: &str, args: Vec<Pattern>) -> Pattern {
         Pattern::Constructor(
             Constructor::EnumVariant {
-                enum_name: enum_name.to_string(),
-                variant_name: variant_name.to_string(),
+                module: test_module(),
+                name: TypeName::new(enum_name).unwrap(),
+                variant: TypeName::new(variant_name).unwrap(),
             },
             args,
         )
@@ -589,7 +603,7 @@ mod tests {
         compiler: Compiler,
         input: Variable,
         rules: Vec<Pattern>,
-        type_env: &HashMap<String, Type>,
+        type_env: &HashMap<(ModuleName, TypeName), Type>,
         var_env: &mut HashMap<Variable, Type>,
     ) -> Match {
         let rows = rules
@@ -605,7 +619,7 @@ mod tests {
         compiler: Compiler,
         input: Variable,
         rules: Vec<Pattern>,
-        type_env: &HashMap<String, Type>,
+        type_env: &HashMap<(ModuleName, TypeName), Type>,
         var_env: &mut HashMap<Variable, Type>,
         expected: expect_test::Expect,
     ) {
@@ -932,11 +946,19 @@ mod tests {
         let compiler = Compiler::new();
         let mut var_env = HashMap::new();
         let traffic_light = Type::Enum {
-            name: "Light".to_string(),
-            variants: vec!["Red".to_string(), "Yellow".to_string(), "Green".to_string()],
+            module: test_module(),
+            name: TypeName::new("Light").unwrap(),
+            variants: vec![
+                TypeName::new("Red").unwrap(),
+                TypeName::new("Yellow").unwrap(),
+                TypeName::new("Green").unwrap(),
+            ],
         };
         let mut type_env = HashMap::new();
-        type_env.insert("Light".to_string(), traffic_light.clone());
+        type_env.insert(
+            (test_module(), TypeName::new("Light").unwrap()),
+            traffic_light.clone(),
+        );
         let input = new_variable(&mut var_env, "in", traffic_light);
         check(
             compiler,
@@ -1005,11 +1027,18 @@ mod tests {
         let compiler = Compiler::new();
         let mut var_env = HashMap::new();
         let result_type = Type::Enum {
-            name: "Result".to_string(),
-            variants: vec!["Ok".to_string(), "Err".to_string()],
+            module: test_module(),
+            name: TypeName::new("Result").unwrap(),
+            variants: vec![
+                TypeName::new("Ok").unwrap(),
+                TypeName::new("Err").unwrap(),
+            ],
         };
         let mut type_env = HashMap::new();
-        type_env.insert("Result".to_string(), result_type.clone());
+        type_env.insert(
+            (test_module(), TypeName::new("Result").unwrap()),
+            result_type.clone(),
+        );
         let input = new_variable(&mut var_env, "in", result_type);
         check(
             compiler,
