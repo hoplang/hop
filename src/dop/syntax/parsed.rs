@@ -81,7 +81,7 @@ impl Display for ParsedType {
 }
 
 /// A constructor pattern (non-wildcard pattern that matches a specific value)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Constructor {
     /// A boolean true pattern
     BooleanTrue,

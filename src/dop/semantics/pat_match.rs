@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use crate::dop::symbols::type_name::TypeName;
-use crate::hop::symbols::module_name::ModuleName;
+use crate::dop::syntax::parsed::Constructor;
 
 use super::r#type::Type;
 
@@ -18,20 +18,6 @@ use super::r#type::Type;
 pub struct Body {
     /// The branch to run in case of a match.
     value: usize,
-}
-
-/// A type constructor.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Constructor {
-    BooleanTrue,
-    BooleanFalse,
-    OptionSome,
-    OptionNone,
-    EnumVariant {
-        module: ModuleName,
-        name: TypeName,
-        variant: TypeName,
-    },
 }
 
 /// A user defined pattern such as `Some(x)`.
@@ -251,9 +237,9 @@ impl Match {
                         Constructor::OptionNone => {
                             terms.push(Term::new(var.clone(), "None".to_string(), Vec::new()));
                         }
-                        Constructor::EnumVariant { variant, .. } => {
+                        Constructor::EnumVariant { variant_name, .. } => {
                             let args = case.arguments.clone();
-                            terms.push(Term::new(var.clone(), variant.to_string(), args));
+                            terms.push(Term::new(var.clone(), variant_name.clone(), args));
                         }
                     }
 
@@ -288,7 +274,7 @@ impl Compiler {
     fn constructor_index(
         &self,
         cons: &Constructor,
-        type_env: &HashMap<(ModuleName, TypeName), Type>,
+        type_env: &HashMap<TypeName, Type>,
     ) -> usize {
         match cons {
             Constructor::BooleanFalse => 0,
@@ -296,16 +282,14 @@ impl Compiler {
             Constructor::OptionSome => 0,
             Constructor::OptionNone => 1,
             Constructor::EnumVariant {
-                module,
-                name,
-                variant,
+                enum_name,
+                variant_name,
             } => {
-                let key = (module.clone(), name.clone());
-                let typ = type_env.get(&key).expect("unknown enum");
+                let typ = type_env.get(enum_name).expect("unknown enum");
                 if let Type::Enum { variants, .. } = typ {
                     variants
                         .iter()
-                        .position(|v| v == variant)
+                        .position(|v| v.as_str() == variant_name)
                         .expect("unknown variant")
                 } else {
                     panic!("type is not an enum")
@@ -317,7 +301,7 @@ impl Compiler {
     pub fn compile(
         mut self,
         rows: Vec<Row>,
-        type_env: &HashMap<(ModuleName, TypeName), Type>,
+        type_env: &HashMap<TypeName, Type>,
         var_env: &mut HashMap<Variable, Type>,
     ) -> Match {
         Match {
@@ -329,7 +313,7 @@ impl Compiler {
     fn compile_rows(
         &mut self,
         mut rows: Vec<Row>,
-        type_env: &HashMap<(ModuleName, TypeName), Type>,
+        type_env: &HashMap<TypeName, Type>,
         var_env: &mut HashMap<Variable, Type>,
     ) -> Decision {
         if rows.is_empty() {
@@ -372,17 +356,16 @@ impl Compiler {
                 ]
             }
             Type::Enum {
-                module,
                 name,
                 variants,
+                ..
             } => variants
                 .iter()
                 .map(|variant| {
                     (
                         Constructor::EnumVariant {
-                            module: module.clone(),
-                            name: name.clone(),
-                            variant: variant.clone(),
+                            enum_name: name.clone(),
+                            variant_name: variant.to_string(),
                         },
                         Vec::new(),
                         Vec::new(),
@@ -517,18 +500,6 @@ impl Case {
     }
 }
 
-impl fmt::Display for Constructor {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Constructor::BooleanTrue => write!(f, "true"),
-            Constructor::BooleanFalse => write!(f, "false"),
-            Constructor::OptionSome => write!(f, "Some"),
-            Constructor::OptionNone => write!(f, "None"),
-            Constructor::EnumVariant { variant, .. } => write!(f, "{variant}"),
-        }
-    }
-}
-
 impl fmt::Display for Body {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "body({})", self.value)
@@ -556,6 +527,7 @@ impl fmt::Display for Pattern {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hop::symbols::module_name::ModuleName;
     use expect_test::expect;
 
     fn test_module() -> ModuleName {
@@ -585,9 +557,8 @@ mod tests {
     fn variant(enum_name: &str, variant_name: &str, args: Vec<Pattern>) -> Pattern {
         Pattern::Constructor(
             Constructor::EnumVariant {
-                module: test_module(),
-                name: TypeName::new(enum_name).unwrap(),
-                variant: TypeName::new(variant_name).unwrap(),
+                enum_name: TypeName::new(enum_name).unwrap(),
+                variant_name: variant_name.to_string(),
             },
             args,
         )
@@ -603,7 +574,7 @@ mod tests {
         compiler: Compiler,
         input: Variable,
         rules: Vec<Pattern>,
-        type_env: &HashMap<(ModuleName, TypeName), Type>,
+        type_env: &HashMap<TypeName, Type>,
         var_env: &mut HashMap<Variable, Type>,
     ) -> Match {
         let rows = rules
@@ -619,7 +590,7 @@ mod tests {
         compiler: Compiler,
         input: Variable,
         rules: Vec<Pattern>,
-        type_env: &HashMap<(ModuleName, TypeName), Type>,
+        type_env: &HashMap<TypeName, Type>,
         var_env: &mut HashMap<Variable, Type>,
         expected: expect_test::Expect,
     ) {
@@ -795,11 +766,11 @@ mod tests {
             expect![[r#"
                 -- input --
                 match in {
-                  Some(true) => 0
+                  Some(_)(true) => 0
                 }
                 -- output --
                 switch in {
-                  Some(v0) => {
+                  Some(_)(v0) => {
                     switch v0 {
                       false => {
                         fail
@@ -835,13 +806,13 @@ mod tests {
             expect![[r#"
                 -- input --
                 match in {
-                  Some(true) => 0
-                  Some(_) => 1
+                  Some(_)(true) => 0
+                  Some(_)(_) => 1
                   None => 2
                 }
                 -- output --
                 switch in {
-                  Some(v0) => {
+                  Some(_)(v0) => {
                     switch v0 {
                       false => {
                         body(1)
@@ -875,14 +846,14 @@ mod tests {
             expect![[r#"
                 -- input --
                 match in {
-                  Some(true) => 0
-                  Some(true) => 1
-                  Some(_) => 2
+                  Some(_)(true) => 0
+                  Some(_)(true) => 1
+                  Some(_)(_) => 2
                   None => 3
                 }
                 -- output --
                 switch in {
-                  Some(v0) => {
+                  Some(_)(v0) => {
                     switch v0 {
                       false => {
                         body(2)
@@ -916,12 +887,12 @@ mod tests {
             expect![[r#"
                 -- input --
                 match in {
-                  Some(true) => 0
+                  Some(_)(true) => 0
                   _ => 1
                 }
                 -- output --
                 switch in {
-                  Some(v0) => {
+                  Some(_)(v0) => {
                     switch v0 {
                       false => {
                         body(1)
@@ -955,10 +926,7 @@ mod tests {
             ],
         };
         let mut type_env = HashMap::new();
-        type_env.insert(
-            (test_module(), TypeName::new("Light").unwrap()),
-            traffic_light.clone(),
-        );
+        type_env.insert(TypeName::new("Light").unwrap(), traffic_light.clone());
         let input = new_variable(&mut var_env, "in", traffic_light);
         check(
             compiler,
@@ -972,18 +940,18 @@ mod tests {
             expect![[r#"
                 -- input --
                 match in {
-                  Red => 0
-                  Green => 1
+                  Light::Red => 0
+                  Light::Green => 1
                 }
                 -- output --
                 switch in {
-                  Red => {
+                  Light::Red => {
                     body(0)
                   }
-                  Yellow => {
+                  Light::Yellow => {
                     fail
                   }
-                  Green => {
+                  Light::Green => {
                     body(1)
                   }
                 }
@@ -1035,10 +1003,7 @@ mod tests {
             ],
         };
         let mut type_env = HashMap::new();
-        type_env.insert(
-            (test_module(), TypeName::new("Result").unwrap()),
-            result_type.clone(),
-        );
+        type_env.insert(TypeName::new("Result").unwrap(), result_type.clone());
         let input = new_variable(&mut var_env, "in", result_type);
         check(
             compiler,
@@ -1052,15 +1017,15 @@ mod tests {
             expect![[r#"
                 -- input --
                 match in {
-                  Ok => 0
-                  Err => 1
+                  Result::Ok => 0
+                  Result::Err => 1
                 }
                 -- output --
                 switch in {
-                  Ok => {
+                  Result::Ok => {
                     body(0)
                   }
-                  Err => {
+                  Result::Err => {
                     body(1)
                   }
                 }
@@ -1088,15 +1053,15 @@ mod tests {
             expect![[r#"
                 -- input --
                 match in {
-                  Some(Some(true)) => 0
-                  Some(None) => 1
+                  Some(_)(Some(_)(true)) => 0
+                  Some(_)(None) => 1
                   None => 2
                 }
                 -- output --
                 switch in {
-                  Some(v0) => {
+                  Some(_)(v0) => {
                     switch v0 {
-                      Some(v1) => {
+                      Some(_)(v1) => {
                         switch v1 {
                           false => {
                             fail
@@ -1193,12 +1158,12 @@ mod tests {
             expect![[r#"
                 -- input --
                 match in {
-                  Some(_) => 0
+                  Some(_)(_) => 0
                   None => 1
                 }
                 -- output --
                 switch in {
-                  Some(v0) => {
+                  Some(_)(v0) => {
                     body(0)
                   }
                   None => {
