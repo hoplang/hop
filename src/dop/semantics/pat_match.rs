@@ -17,7 +17,13 @@ use super::r#type::Type;
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct Body {
     /// The branch to run in case of a match.
-    value: usize,
+    pub value: usize,
+}
+
+impl Body {
+    pub fn new(value: usize) -> Self {
+        Self { value }
+    }
 }
 
 /// A variable used in a match expression.
@@ -32,7 +38,7 @@ pub struct Row {
 }
 
 impl Row {
-    fn new(columns: Vec<Column>, body: Body) -> Self {
+    pub fn new(columns: Vec<Column>, body: Body) -> Self {
         Self { columns, body }
     }
 
@@ -56,7 +62,7 @@ pub struct Column {
 }
 
 impl Column {
-    fn new(variable: Variable, pattern: ParsedMatchPattern) -> Self {
+    pub fn new(variable: Variable, pattern: ParsedMatchPattern) -> Self {
         Self { variable, pattern }
     }
 }
@@ -112,6 +118,25 @@ pub struct Diagnostics {
     /// If a right-hand side isn't in this list it means its pattern is
     /// redundant.
     reachable: Vec<usize>,
+}
+
+impl Diagnostics {
+    /// Returns true if the match is missing one or more patterns.
+    pub fn is_missing(&self) -> bool {
+        self.missing
+    }
+
+    /// Returns the indices of reachable (non-redundant) arms.
+    pub fn reachable(&self) -> &[usize] {
+        &self.reachable
+    }
+
+    /// Returns the indices of unreachable (redundant) arms.
+    pub fn unreachable(&self, total_arms: usize) -> Vec<usize> {
+        (0..total_arms)
+            .filter(|i| !self.reachable.contains(i))
+            .collect()
+    }
 }
 
 /// The result of compiling a pattern match expression.

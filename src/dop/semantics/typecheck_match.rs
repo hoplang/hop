@@ -1,5 +1,6 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 
+use super::pat_match::{Body, Column, Compiler, Match, Row, Variable};
 use super::r#type::Type;
 use super::type_checker::typecheck_expr;
 use super::type_error::TypeError;
@@ -7,11 +8,74 @@ use super::typed::{
     TypedBoolMatchArm, TypedBoolPattern, TypedEnumMatchArm, TypedEnumPattern, TypedOptionMatchArm,
     TypedOptionPattern,
 };
-use crate::document::document_cursor::DocumentRange;
+use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::TypedExpr;
+use crate::dop::symbols::type_name::TypeName;
 use crate::dop::syntax::parsed::{Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern};
 use crate::environment::Environment;
 use crate::hop::semantics::type_checker::TypeAnnotation;
+
+/// Compile patterns using pat_match and check for exhaustiveness and redundancy.
+fn compile_and_check_patterns(
+    arms: &[ParsedMatchArm],
+    subject_type: &Type,
+    match_range: &DocumentRange,
+) -> Result<Match, TypeError> {
+    // Create the subject variable
+    let subject_var = Variable("$subject".to_string());
+
+    // Build rows from the match arms
+    let rows: Vec<Row> = arms
+        .iter()
+        .enumerate()
+        .map(|(idx, arm)| {
+            Row::new(
+                vec![Column::new(subject_var.clone(), arm.pattern.clone())],
+                Body::new(idx),
+            )
+        })
+        .collect();
+
+    // Set up the type environment for enum types
+    let mut pat_type_env: HashMap<TypeName, Type> = HashMap::new();
+    if let Type::Enum { name, .. } = subject_type {
+        pat_type_env.insert(name.clone(), subject_type.clone());
+    }
+
+    // Set up the variable environment
+    let mut pat_var_env: HashMap<Variable, Type> = HashMap::new();
+    pat_var_env.insert(subject_var, subject_type.clone());
+
+    // Compile the patterns
+    let result = Compiler::new().compile(rows, &pat_type_env, &mut pat_var_env);
+
+    // Check for redundant patterns (unreachable arms)
+    let unreachable = result.diagnostics.unreachable(arms.len());
+    if let Some(&first_unreachable) = unreachable.first() {
+        let arm = &arms[first_unreachable];
+        let variant_name = match &arm.pattern {
+            ParsedMatchPattern::Constructor { constructor, .. } => constructor.to_string(),
+            ParsedMatchPattern::Wildcard { .. } => "_".to_string(),
+        };
+        return Err(TypeError::MatchDuplicateVariant {
+            variant: variant_name,
+            range: arm.pattern.range().clone(),
+        });
+    }
+
+    // Check for missing patterns
+    if result.diagnostics.is_missing() {
+        let missing = result.missing_patterns();
+        if let Some(first_missing) = missing.first() {
+            return Err(TypeError::MatchMissingVariant {
+                variant: first_missing.clone(),
+                range: match_range.clone(),
+            });
+        }
+    }
+
+    Ok(result)
+}
 
 pub fn typecheck_match(
     subject: &ParsedExpr,
@@ -60,12 +124,11 @@ fn typecheck_enum_match(
     type_env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> Result<TypedExpr, TypeError> {
-    let mut matched_variants: HashSet<String> = HashSet::new();
-    let mut typed_arms: Vec<TypedEnumMatchArm> = Vec::new();
-    let mut result_type: Option<Type> = None;
+    let subject_type = typed_subject.as_type();
 
+    // First validate pattern types (must be enum variants or wildcards)
     for arm in arms {
-        let typed_pattern = match &arm.pattern {
+        match &arm.pattern {
             ParsedMatchPattern::Constructor {
                 constructor:
                     Constructor::EnumVariant {
@@ -95,27 +158,9 @@ fn typecheck_enum_match(
                         range: pattern_range.clone(),
                     });
                 }
-
-                // Check for duplicate variants
-                if matched_variants.contains(pattern_variant_name) {
-                    return Err(TypeError::MatchDuplicateVariant {
-                        variant: pattern_variant_name.clone(),
-                        range: pattern_range.clone(),
-                    });
-                }
-                matched_variants.insert(pattern_variant_name.clone());
-
-                TypedEnumPattern::Variant {
-                    enum_name: pattern_enum_name.to_string(),
-                    variant_name: pattern_variant_name.clone(),
-                }
             }
             ParsedMatchPattern::Wildcard { .. } => {
-                // Wildcard matches all remaining variants
-                for variant in enum_variants {
-                    matched_variants.insert(variant.as_str().to_string());
-                }
-                TypedEnumPattern::Wildcard
+                // Wildcard is always valid
             }
             ParsedMatchPattern::Constructor { range, .. } => {
                 return Err(TypeError::MatchPatternTypeMismatch {
@@ -124,6 +169,31 @@ fn typecheck_enum_match(
                     range: range.clone(),
                 });
             }
+        }
+    }
+
+    // Use pat_match to check exhaustiveness and redundancy
+    compile_and_check_patterns(arms, subject_type, range)?;
+
+    // Now typecheck arm bodies and build typed output
+    let mut typed_arms: Vec<TypedEnumMatchArm> = Vec::new();
+    let mut result_type: Option<Type> = None;
+
+    for arm in arms {
+        let typed_pattern = match &arm.pattern {
+            ParsedMatchPattern::Constructor {
+                constructor:
+                    Constructor::EnumVariant {
+                        enum_name: pattern_enum_name,
+                        variant_name: pattern_variant_name,
+                    },
+                ..
+            } => TypedEnumPattern::Variant {
+                enum_name: pattern_enum_name.to_string(),
+                variant_name: pattern_variant_name.clone(),
+            },
+            ParsedMatchPattern::Wildcard { .. } => TypedEnumPattern::Wildcard,
+            _ => unreachable!("Pattern type already validated"),
         };
 
         // Type check the arm body
@@ -152,16 +222,6 @@ fn typecheck_enum_match(
         });
     }
 
-    // Check exhaustiveness: all variants must be matched
-    for variant in enum_variants {
-        if !matched_variants.contains(variant.as_str()) {
-            return Err(TypeError::MatchMissingVariant {
-                variant: variant.to_string(),
-                range: range.clone(),
-            });
-        }
-    }
-
     Ok(TypedExpr::EnumMatch {
         subject: Box::new(typed_subject.clone()),
         arms: typed_arms,
@@ -177,46 +237,19 @@ fn typecheck_bool_match(
     type_env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> Result<TypedExpr, TypeError> {
-    let mut matched_true = false;
-    let mut matched_false = false;
-    let mut typed_arms: Vec<TypedBoolMatchArm> = Vec::new();
-    let mut result_type: Option<Type> = None;
+    let subject_type = typed_subject.as_type();
 
+    // First validate pattern types (must be boolean literals or wildcards)
     for arm in arms {
-        let typed_pattern = match &arm.pattern {
+        match &arm.pattern {
             ParsedMatchPattern::Constructor {
-                constructor: Constructor::BooleanTrue,
-                range,
+                constructor: Constructor::BooleanTrue | Constructor::BooleanFalse,
                 ..
             } => {
-                if matched_true {
-                    return Err(TypeError::MatchDuplicateVariant {
-                        variant: "true".to_string(),
-                        range: range.clone(),
-                    });
-                }
-                matched_true = true;
-                TypedBoolPattern::Literal(true)
-            }
-            ParsedMatchPattern::Constructor {
-                constructor: Constructor::BooleanFalse,
-                range,
-                ..
-            } => {
-                if matched_false {
-                    return Err(TypeError::MatchDuplicateVariant {
-                        variant: "false".to_string(),
-                        range: range.clone(),
-                    });
-                }
-                matched_false = true;
-                TypedBoolPattern::Literal(false)
+                // Valid boolean pattern
             }
             ParsedMatchPattern::Wildcard { .. } => {
-                // Wildcard matches all remaining values
-                matched_true = true;
-                matched_false = true;
-                TypedBoolPattern::Wildcard
+                // Wildcard is always valid
             }
             ParsedMatchPattern::Constructor { range, .. } => {
                 return Err(TypeError::MatchPatternTypeMismatch {
@@ -225,6 +258,28 @@ fn typecheck_bool_match(
                     range: range.clone(),
                 });
             }
+        }
+    }
+
+    // Use pat_match to check exhaustiveness and redundancy
+    compile_and_check_patterns(arms, subject_type, range)?;
+
+    // Now typecheck arm bodies and build typed output
+    let mut typed_arms: Vec<TypedBoolMatchArm> = Vec::new();
+    let mut result_type: Option<Type> = None;
+
+    for arm in arms {
+        let typed_pattern = match &arm.pattern {
+            ParsedMatchPattern::Constructor {
+                constructor: Constructor::BooleanTrue,
+                ..
+            } => TypedBoolPattern::Literal(true),
+            ParsedMatchPattern::Constructor {
+                constructor: Constructor::BooleanFalse,
+                ..
+            } => TypedBoolPattern::Literal(false),
+            ParsedMatchPattern::Wildcard { .. } => TypedBoolPattern::Wildcard,
+            _ => unreachable!("Pattern type already validated"),
         };
 
         // Type check the arm body
@@ -253,20 +308,6 @@ fn typecheck_bool_match(
         });
     }
 
-    // Check exhaustiveness: both true and false must be matched
-    if !matched_true {
-        return Err(TypeError::MatchMissingVariant {
-            variant: "true".to_string(),
-            range: range.clone(),
-        });
-    }
-    if !matched_false {
-        return Err(TypeError::MatchMissingVariant {
-            variant: "false".to_string(),
-            range: range.clone(),
-        });
-    }
-
     Ok(TypedExpr::BoolMatch {
         subject: Box::new(typed_subject.clone()),
         arms: typed_arms,
@@ -282,48 +323,19 @@ fn typecheck_option_match(
     type_env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> Result<TypedExpr, TypeError> {
-    let mut matched_some = false;
-    let mut matched_none = false;
-    let mut typed_arms: Vec<TypedOptionMatchArm> = Vec::new();
-    let mut result_type: Option<Type> = None;
+    let subject_type = typed_subject.as_type();
 
+    // First validate pattern types (must be option patterns or wildcards)
     for arm in arms {
-        let typed_pattern = match &arm.pattern {
+        match &arm.pattern {
             ParsedMatchPattern::Constructor {
-                constructor: Constructor::OptionSome,
-                range,
+                constructor: Constructor::OptionSome | Constructor::OptionNone,
                 ..
             } => {
-                // Check for duplicate patterns
-                if matched_some {
-                    return Err(TypeError::MatchDuplicateVariant {
-                        variant: "Some(_)".to_string(),
-                        range: range.clone(),
-                    });
-                }
-                matched_some = true;
-                TypedOptionPattern::Some
-            }
-            ParsedMatchPattern::Constructor {
-                constructor: Constructor::OptionNone,
-                range,
-                ..
-            } => {
-                // Check for duplicate patterns
-                if matched_none {
-                    return Err(TypeError::MatchDuplicateVariant {
-                        variant: "None".to_string(),
-                        range: range.clone(),
-                    });
-                }
-                matched_none = true;
-                TypedOptionPattern::None
+                // Valid option pattern
             }
             ParsedMatchPattern::Wildcard { .. } => {
-                // Wildcard matches all remaining values
-                matched_some = true;
-                matched_none = true;
-                TypedOptionPattern::Wildcard
+                // Wildcard is always valid
             }
             ParsedMatchPattern::Constructor { range, .. } => {
                 return Err(TypeError::MatchPatternTypeMismatch {
@@ -332,6 +344,28 @@ fn typecheck_option_match(
                     range: range.clone(),
                 });
             }
+        }
+    }
+
+    // Use pat_match to check exhaustiveness and redundancy
+    compile_and_check_patterns(arms, subject_type, range)?;
+
+    // Now typecheck arm bodies and build typed output
+    let mut typed_arms: Vec<TypedOptionMatchArm> = Vec::new();
+    let mut result_type: Option<Type> = None;
+
+    for arm in arms {
+        let typed_pattern = match &arm.pattern {
+            ParsedMatchPattern::Constructor {
+                constructor: Constructor::OptionSome,
+                ..
+            } => TypedOptionPattern::Some,
+            ParsedMatchPattern::Constructor {
+                constructor: Constructor::OptionNone,
+                ..
+            } => TypedOptionPattern::None,
+            ParsedMatchPattern::Wildcard { .. } => TypedOptionPattern::Wildcard,
+            _ => unreachable!("Pattern type already validated"),
         };
 
         // Type check the arm body
@@ -357,20 +391,6 @@ fn typecheck_option_match(
         typed_arms.push(TypedOptionMatchArm {
             pattern: typed_pattern,
             body: typed_body,
-        });
-    }
-
-    // Check exhaustiveness: both Some and None must be matched
-    if !matched_some {
-        return Err(TypeError::MatchMissingVariant {
-            variant: "Some(_)".to_string(),
-            range: range.clone(),
-        });
-    }
-    if !matched_none {
-        return Err(TypeError::MatchMissingVariant {
-            variant: "None".to_string(),
-            range: range.clone(),
         });
     }
 
@@ -626,7 +646,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Redundant match arm for variant 'Red'
+                error: Redundant match arm for variant 'Color::Red'
                     Color::Red => "also red",
                     ^^^^^^^^^^
             "#]],
@@ -833,7 +853,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Redundant match arm for variant 'Blue'
+                error: Redundant match arm for variant 'Color::Blue'
                     Color::Blue => "blue",
                     ^^^^^^^^^^^
             "#]],
