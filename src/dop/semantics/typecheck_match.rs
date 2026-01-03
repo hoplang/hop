@@ -3,8 +3,11 @@ use std::collections::HashSet;
 use super::r#type::Type;
 use super::type_checker::typecheck_expr;
 use super::type_error::TypeError;
-use super::typed::{TypedBoolMatchArm, TypedBoolPattern, TypedEnumMatchArm, TypedEnumPattern};
-use crate::document::document_cursor::DocumentRange;
+use super::typed::{
+    TypedBoolMatchArm, TypedBoolPattern, TypedEnumMatchArm, TypedEnumPattern, TypedOptionMatchArm,
+    TypedOptionPattern,
+};
+use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::TypedExpr;
 use crate::dop::syntax::parsed::{ParsedExpr, ParsedMatchArm, ParsedMatchPattern};
 use crate::environment::Environment;
@@ -22,7 +25,7 @@ pub fn typecheck_match(
     let typed_subject = typecheck_expr(subject, env, type_env, annotations, None)?;
     let subject_type = typed_subject.as_type().clone();
 
-    // Subject must be an enum or boolean type
+    // Subject must be an enum, boolean, or option type
     match &subject_type {
         Type::Enum { name, variants, .. } => typecheck_enum_match(
             &typed_subject,
@@ -35,6 +38,9 @@ pub fn typecheck_match(
             annotations,
         ),
         Type::Bool => typecheck_bool_match(&typed_subject, arms, range, env, type_env, annotations),
+        Type::Option(_) => {
+            typecheck_option_match(&typed_subject, arms, range, env, type_env, annotations)
+        }
         _ => Err(TypeError::MatchNotImplementedForType {
             found: subject_type.to_string(),
             range: subject.range().clone(),
@@ -98,19 +104,19 @@ fn typecheck_enum_match(
                     variant_name: pattern_variant_name.clone(),
                 }
             }
-            ParsedMatchPattern::BooleanLiteral { range, .. } => {
-                return Err(TypeError::MatchPatternTypeMismatch {
-                    expected: "enum".to_string(),
-                    found: "boolean".to_string(),
-                    range: range.clone(),
-                });
-            }
             ParsedMatchPattern::Wildcard { .. } => {
                 // Wildcard matches all remaining variants
                 for variant in enum_variants {
                     matched_variants.insert(variant.as_str().to_string());
                 }
                 TypedEnumPattern::Wildcard
+            }
+            _ => {
+                return Err(TypeError::MatchPatternTypeMismatch {
+                    expected: "enum".to_string(),
+                    found: arm.pattern.to_string(),
+                    range: arm.pattern.range().clone(),
+                });
             }
         };
 
@@ -195,18 +201,18 @@ fn typecheck_bool_match(
 
                 TypedBoolPattern::Literal(*value)
             }
-            ParsedMatchPattern::EnumVariant { range, .. } => {
-                return Err(TypeError::MatchPatternTypeMismatch {
-                    expected: "boolean".to_string(),
-                    found: "enum".to_string(),
-                    range: range.clone(),
-                });
-            }
             ParsedMatchPattern::Wildcard { .. } => {
                 // Wildcard matches all remaining values
                 matched_true = true;
                 matched_false = true;
                 TypedBoolPattern::Wildcard
+            }
+            _ => {
+                return Err(TypeError::MatchPatternTypeMismatch {
+                    expected: "boolean".to_string(),
+                    found: arm.pattern.to_string(),
+                    range: arm.pattern.range().clone(),
+                });
             }
         };
 
@@ -251,6 +257,105 @@ fn typecheck_bool_match(
     }
 
     Ok(TypedExpr::BoolMatch {
+        subject: Box::new(typed_subject.clone()),
+        arms: typed_arms,
+        kind: result_type.unwrap(),
+    })
+}
+
+fn typecheck_option_match(
+    typed_subject: &TypedExpr,
+    arms: &[ParsedMatchArm],
+    range: &DocumentRange,
+    env: &mut Environment<Type>,
+    type_env: &mut Environment<Type>,
+    annotations: &mut Vec<TypeAnnotation>,
+) -> Result<TypedExpr, TypeError> {
+    let mut matched_some = false;
+    let mut matched_none = false;
+    let mut typed_arms: Vec<TypedOptionMatchArm> = Vec::new();
+    let mut result_type: Option<Type> = None;
+
+    for arm in arms {
+        let typed_pattern = match &arm.pattern {
+            ParsedMatchPattern::OptionSome { range } => {
+                // Check for duplicate patterns
+                if matched_some {
+                    return Err(TypeError::MatchDuplicateVariant {
+                        variant: "Some(_)".to_string(),
+                        range: range.clone(),
+                    });
+                }
+                matched_some = true;
+                TypedOptionPattern::Some
+            }
+            ParsedMatchPattern::OptionNone { range } => {
+                // Check for duplicate patterns
+                if matched_none {
+                    return Err(TypeError::MatchDuplicateVariant {
+                        variant: "None".to_string(),
+                        range: range.clone(),
+                    });
+                }
+                matched_none = true;
+                TypedOptionPattern::None
+            }
+            ParsedMatchPattern::Wildcard { .. } => {
+                // Wildcard matches all remaining values
+                matched_some = true;
+                matched_none = true;
+                TypedOptionPattern::Wildcard
+            }
+            _ => {
+                return Err(TypeError::MatchPatternTypeMismatch {
+                    expected: "option".to_string(),
+                    found: arm.pattern.to_string(),
+                    range: arm.pattern.range().clone(),
+                });
+            }
+        };
+
+        // Type check the arm body
+        let typed_body = typecheck_expr(&arm.body, env, type_env, annotations, None)?;
+        let body_type = typed_body.as_type().clone();
+
+        // Check that all arms have the same type
+        match &result_type {
+            None => {
+                result_type = Some(body_type);
+            }
+            Some(expected) => {
+                if body_type != *expected {
+                    return Err(TypeError::MatchArmTypeMismatch {
+                        expected: expected.to_string(),
+                        found: body_type.to_string(),
+                        range: arm.body.range().clone(),
+                    });
+                }
+            }
+        }
+
+        typed_arms.push(TypedOptionMatchArm {
+            pattern: typed_pattern,
+            body: typed_body,
+        });
+    }
+
+    // Check exhaustiveness: both Some and None must be matched
+    if !matched_some {
+        return Err(TypeError::MatchMissingVariant {
+            variant: "Some(_)".to_string(),
+            range: range.clone(),
+        });
+    }
+    if !matched_none {
+        return Err(TypeError::MatchMissingVariant {
+            variant: "None".to_string(),
+            range: range.clone(),
+        });
+    }
+
+    Ok(TypedExpr::OptionMatch {
         subject: Box::new(typed_subject.clone()),
         arms: typed_arms,
         kind: result_type.unwrap(),
@@ -844,7 +949,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern type mismatch: expected boolean, found enum
+                error: Match pattern type mismatch: expected boolean, found Color::Red
                     Color::Red => "red",
                     ^^^^^^^^^^
             "#]],
@@ -868,9 +973,261 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern type mismatch: expected enum, found boolean
+                error: Match pattern type mismatch: expected enum, found true
                     true => "yes",
                     ^^^^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// OPTION MATCH                                                        ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_option_match_with_some_and_none() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    Some(_) => "has value",
+                    None    => "empty",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_match_returning_int() {
+        check(
+            "",
+            &[("opt", "Option[String]")],
+            indoc! {"
+                match opt {
+                    Some(_) => 1,
+                    None    => 0,
+                }
+            "},
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_match_with_wildcard() {
+        check(
+            "",
+            &[("opt", "Option[Bool]")],
+            indoc! {r#"
+                match opt {
+                    Some(_) => "has value",
+                    _       => "fallback",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_match_with_only_wildcard() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    _ => "always this",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_reject_option_match_missing_some() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    None => "empty",
+                }
+            "#},
+            expect![[r#"
+                error: Match expression is missing arm for variant 'Some(_)'
+                match opt {
+                ^^^^^^^^^^^
+                    None => "empty",
+                ^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_option_match_missing_none() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    Some(_) => "has value",
+                }
+            "#},
+            expect![[r#"
+                error: Match expression is missing arm for variant 'None'
+                match opt {
+                ^^^^^^^^^^^
+                    Some(_) => "has value",
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_option_match_duplicate_some() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    Some(_) => "first",
+                    Some(_) => "second",
+                    None    => "empty",
+                }
+            "#},
+            expect![[r#"
+                error: Redundant match arm for variant 'Some(_)'
+                    Some(_) => "second",
+                    ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_option_match_duplicate_none() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    Some(_) => "has value",
+                    None    => "first",
+                    None    => "second",
+                }
+            "#},
+            expect![[r#"
+                error: Redundant match arm for variant 'None'
+                    None    => "second",
+                    ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_option_match_with_mismatched_arm_types() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {"
+                match opt {
+                    Some(_) => 42,
+                    None    => true,
+                }
+            "},
+            expect![[r#"
+                error: Match arms must all have the same type, expected Int but found Bool
+                    None    => true,
+                               ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_enum_pattern_in_option_match() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                }
+            "},
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    Color::Red => "red",
+                    None       => "empty",
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern type mismatch: expected option, found Color::Red
+                    Color::Red => "red",
+                    ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_boolean_pattern_in_option_match() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    true => "yes",
+                    None => "empty",
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern type mismatch: expected option, found true
+                    true => "yes",
+                    ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_option_pattern_in_enum_match() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    Some(_)      => "has value",
+                    Color::Green => "green",
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern type mismatch: expected enum, found Some(_)
+                    Some(_)      => "has value",
+                    ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_option_pattern_in_bool_match() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    Some(_) => "has value",
+                    false   => "no",
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern type mismatch: expected boolean, found Some(_)
+                    Some(_) => "has value",
+                    ^^^^^^^
             "#]],
         );
     }

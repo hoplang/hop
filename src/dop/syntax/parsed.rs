@@ -93,6 +93,10 @@ pub enum ParsedMatchPattern {
     BooleanLiteral { value: bool, range: DocumentRange },
     /// A wildcard pattern that matches anything, written as `_`
     Wildcard { range: DocumentRange },
+    /// An Option Some pattern, e.g. `Some(_)`
+    OptionSome { range: DocumentRange },
+    /// An Option None pattern, e.g. `None`
+    OptionNone { range: DocumentRange },
 }
 
 impl Ranged for ParsedMatchPattern {
@@ -100,7 +104,9 @@ impl Ranged for ParsedMatchPattern {
         match self {
             ParsedMatchPattern::EnumVariant { range, .. }
             | ParsedMatchPattern::BooleanLiteral { range, .. }
-            | ParsedMatchPattern::Wildcard { range } => range,
+            | ParsedMatchPattern::Wildcard { range }
+            | ParsedMatchPattern::OptionSome { range }
+            | ParsedMatchPattern::OptionNone { range } => range,
         }
     }
 }
@@ -118,7 +124,15 @@ impl ParsedMatchPattern {
             ParsedMatchPattern::BooleanLiteral { value: true, .. } => BoxDoc::text("true"),
             ParsedMatchPattern::BooleanLiteral { value: false, .. } => BoxDoc::text("false"),
             ParsedMatchPattern::Wildcard { .. } => BoxDoc::text("_"),
+            ParsedMatchPattern::OptionSome { .. } => BoxDoc::text("Some(_)"),
+            ParsedMatchPattern::OptionNone { .. } => BoxDoc::text("None"),
         }
+    }
+}
+
+impl std::fmt::Display for ParsedMatchPattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_doc().pretty(80))
     }
 }
 

@@ -2,7 +2,7 @@ use crate::common::is_void_element;
 use crate::document::document_cursor::StringSpan;
 use crate::dop::TypedExpr;
 use crate::dop::semantics::r#type::EquatableType;
-use crate::dop::semantics::typed::{TypedBoolPattern, TypedEnumPattern};
+use crate::dop::semantics::typed::{TypedBoolPattern, TypedEnumPattern, TypedOptionPattern};
 use crate::dop::{Type, VarName};
 use crate::inlined::{
     InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 
 use super::ast::{
     ExprId, IrBoolMatchArm, IrBoolPattern, IrComponentDeclaration, IrEnumMatchArm, IrEnumPattern,
-    IrExpr, IrStatement, StatementId,
+    IrExpr, IrOptionMatchArm, IrOptionPattern, IrStatement, StatementId,
 };
 
 pub struct Compiler {
@@ -585,6 +585,26 @@ impl Compiler {
                         pattern: match arm.pattern {
                             TypedBoolPattern::Literal(value) => IrBoolPattern::Literal(value),
                             TypedBoolPattern::Wildcard => IrBoolPattern::Wildcard,
+                        },
+                        body: self.compile_expr(arm.body),
+                    })
+                    .collect(),
+                kind,
+                id: expr_id,
+            },
+            TypedExpr::OptionMatch {
+                subject,
+                arms,
+                kind,
+            } => IrExpr::OptionMatch {
+                subject: Box::new(self.compile_expr(*subject)),
+                arms: arms
+                    .into_iter()
+                    .map(|arm| IrOptionMatchArm {
+                        pattern: match arm.pattern {
+                            TypedOptionPattern::Some => IrOptionPattern::Some,
+                            TypedOptionPattern::None => IrOptionPattern::None,
+                            TypedOptionPattern::Wildcard => IrOptionPattern::Wildcard,
                         },
                         body: self.compile_expr(arm.body),
                     })

@@ -450,7 +450,12 @@ impl IrBuilder {
     }
 
     /// Create a match expression over a boolean value
-    pub fn bool_match_expr(&self, subject: IrExpr, true_body: IrExpr, false_body: IrExpr) -> IrExpr {
+    pub fn bool_match_expr(
+        &self,
+        subject: IrExpr,
+        true_body: IrExpr,
+        false_body: IrExpr,
+    ) -> IrExpr {
         use crate::ir::ast::{IrBoolMatchArm, IrBoolPattern};
 
         let result_type = true_body.as_type().clone();
@@ -467,6 +472,36 @@ impl IrBuilder {
         ];
 
         IrExpr::BoolMatch {
+            subject: Box::new(subject),
+            arms: ir_arms,
+            kind: result_type,
+            id: self.next_expr_id(),
+        }
+    }
+
+    /// Create a match expression over an option value
+    pub fn option_match_expr(
+        &self,
+        subject: IrExpr,
+        some_body: IrExpr,
+        none_body: IrExpr,
+    ) -> IrExpr {
+        use crate::ir::ast::{IrOptionMatchArm, IrOptionPattern};
+
+        let result_type = some_body.as_type().clone();
+
+        let ir_arms = vec![
+            IrOptionMatchArm {
+                pattern: IrOptionPattern::Some,
+                body: some_body,
+            },
+            IrOptionMatchArm {
+                pattern: IrOptionPattern::None,
+                body: none_body,
+            },
+        ];
+
+        IrExpr::OptionMatch {
             subject: Box::new(subject),
             arms: ir_arms,
             kind: result_type,

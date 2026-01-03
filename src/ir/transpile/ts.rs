@@ -757,6 +757,14 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(false_doc)
             .append(BoxDoc::text(")"))
     }
+
+    fn transpile_match_option<'a>(
+        &self,
+        _subject: &'a IrExpr,
+        _arms: &'a [crate::ir::ast::IrOptionMatchArm],
+    ) -> BoxDoc<'a> {
+        panic!("Option match expressions are not yet supported in TypeScript transpilation")
+    }
 }
 
 impl TypeTranspiler for TsTranspiler {
@@ -1480,11 +1488,7 @@ mod tests {
     #[test]
     fn bool_match_expression() {
         let module = build_module("IsActive", vec![("active", Type::Bool)], |t| {
-            let match_result = t.bool_match_expr(
-                t.var("active"),
-                t.str("yes"),
-                t.str("no"),
-            );
+            let match_result = t.bool_match_expr(t.var("active"), t.str("yes"), t.str("no"));
             t.write_expr_escaped(match_result);
         });
 

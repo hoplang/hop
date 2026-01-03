@@ -107,6 +107,9 @@ impl Pass for ConstantPropagationPass {
                                 }
                             }
                         }
+                        IrExpr::OptionMatch { .. } => {
+                            // Option patterns are not currently constant-folded
+                        }
                         IrExpr::Var { value: name, .. } => {
                             // Check if this variable is defined by a Let or For statement
                             if let Some(defining_stmt) = scope.get(&name.to_string()) {

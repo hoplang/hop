@@ -14,7 +14,8 @@ use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, 
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::ir::ast::{
-    IrBoolMatchArm, IrComponentDeclaration, IrEnumMatchArm, IrExpr, IrModule, IrStatement,
+    IrBoolMatchArm, IrComponentDeclaration, IrEnumMatchArm, IrExpr, IrModule, IrOptionMatchArm,
+    IrStatement,
 };
 
 pub trait Transpiler {
@@ -154,6 +155,11 @@ pub trait ExpressionTranspiler {
         subject: &'a IrExpr,
         arms: &'a [IrBoolMatchArm],
     ) -> BoxDoc<'a>;
+    fn transpile_match_option<'a>(
+        &self,
+        subject: &'a IrExpr,
+        arms: &'a [IrOptionMatchArm],
+    ) -> BoxDoc<'a>;
     fn transpile_expr<'a>(&self, expr: &'a IrExpr) -> BoxDoc<'a> {
         match expr {
             IrExpr::Var { value, .. } => self.transpile_var(value.as_str()),
@@ -250,6 +256,7 @@ pub trait ExpressionTranspiler {
             } => self.transpile_enum_literal(enum_name, variant_name),
             IrExpr::EnumMatch { subject, arms, .. } => self.transpile_match_enum(subject, arms),
             IrExpr::BoolMatch { subject, arms, .. } => self.transpile_match_bool(subject, arms),
+            IrExpr::OptionMatch { subject, arms, .. } => self.transpile_match_option(subject, arms),
         }
     }
 }

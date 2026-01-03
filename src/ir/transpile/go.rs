@@ -720,6 +720,14 @@ impl ExpressionTranspiler for GoTranspiler {
     ) -> BoxDoc<'a> {
         panic!("Match expressions are not yet supported in Go transpilation")
     }
+
+    fn transpile_match_option<'a>(
+        &self,
+        _subject: &'a IrExpr,
+        _arms: &'a [crate::ir::ast::IrOptionMatchArm],
+    ) -> BoxDoc<'a> {
+        panic!("Option match expressions are not yet supported in Go transpilation")
+    }
 }
 
 impl TypeTranspiler for GoTranspiler {

@@ -8,7 +8,9 @@ use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use crate::ir::syntax::ast::{IrBoolPattern, IrComponentDeclaration, IrEnumPattern, IrStatement};
+use crate::ir::syntax::ast::{
+    IrBoolPattern, IrComponentDeclaration, IrEnumPattern, IrOptionPattern, IrStatement,
+};
 
 /// Evaluate an IR entrypoint with the given arguments
 pub fn evaluate_entrypoint(
@@ -458,6 +460,34 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 "No matching arm found for boolean '{}'",
                 subject_bool
             ))
+        }
+        IrExpr::OptionMatch { subject, arms, .. } => {
+            // Evaluate the subject to get the option value
+            let subject_val = evaluate_expr(subject, env)?;
+
+            // Check if it's Some or None
+            let is_some = !subject_val.is_null();
+
+            // Find the matching arm
+            for arm in arms {
+                match &arm.pattern {
+                    IrOptionPattern::Some => {
+                        if is_some {
+                            return evaluate_expr(&arm.body, env);
+                        }
+                    }
+                    IrOptionPattern::None => {
+                        if !is_some {
+                            return evaluate_expr(&arm.body, env);
+                        }
+                    }
+                    IrOptionPattern::Wildcard => {
+                        return evaluate_expr(&arm.body, env);
+                    }
+                }
+            }
+
+            Err(anyhow!("No matching arm found for option value"))
         }
     }
 }

@@ -671,6 +671,19 @@ impl Parser {
             });
         }
 
+        // Check for Option patterns: Some(_) and None
+        if let Some(some_range) = self.advance_if(Token::Some) {
+            self.expect_token(&Token::LeftParen)?;
+            self.expect_token(&Token::Underscore)?;
+            let right_paren = self.expect_token(&Token::RightParen)?;
+            return Ok(ParsedMatchPattern::OptionSome {
+                range: some_range.to(right_paren),
+            });
+        }
+        if let Some(range) = self.advance_if(Token::None) {
+            return Ok(ParsedMatchPattern::OptionNone { range });
+        }
+
         let (enum_name, enum_name_range) = self.expect_type_name()?;
         self.expect_token(&Token::ColonColon)?;
         let (variant_name, variant_range) = self.expect_type_name()?;
