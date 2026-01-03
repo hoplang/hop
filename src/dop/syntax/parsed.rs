@@ -127,6 +127,7 @@ pub enum ParsedMatchPattern {
     /// A constructor pattern that matches a specific value
     Constructor {
         constructor: Constructor,
+        args: Vec<ParsedMatchPattern>,
         range: DocumentRange,
     },
     /// A wildcard pattern that matches anything, written as `_`
@@ -145,7 +146,22 @@ impl Ranged for ParsedMatchPattern {
 impl ParsedMatchPattern {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            ParsedMatchPattern::Constructor { constructor, .. } => constructor.to_doc(),
+            ParsedMatchPattern::Constructor {
+                constructor, args, ..
+            } => {
+                let base = constructor.to_doc();
+                if args.is_empty() {
+                    base
+                } else {
+                    let args_doc = BoxDoc::intersperse(
+                        args.iter().map(|a| a.to_doc()),
+                        BoxDoc::text(", "),
+                    );
+                    base.append(BoxDoc::text("("))
+                        .append(args_doc)
+                        .append(BoxDoc::text(")"))
+                }
+            }
             ParsedMatchPattern::Wildcard { .. } => BoxDoc::text("_"),
         }
     }

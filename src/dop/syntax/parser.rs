@@ -665,29 +665,33 @@ impl Parser {
         if let Some(range) = self.advance_if(Token::True) {
             return Ok(ParsedMatchPattern::Constructor {
                 constructor: Constructor::BooleanTrue,
+                args: Vec::new(),
                 range,
             });
         }
         if let Some(range) = self.advance_if(Token::False) {
             return Ok(ParsedMatchPattern::Constructor {
                 constructor: Constructor::BooleanFalse,
+                args: Vec::new(),
                 range,
             });
         }
 
-        // Check for Option patterns: Some(_) and None
+        // Check for Option patterns: Some(...) and None
         if let Some(some_range) = self.advance_if(Token::Some) {
             self.expect_token(&Token::LeftParen)?;
-            self.expect_token(&Token::Underscore)?;
+            let inner_pattern = self.parse_match_pattern()?;
             let right_paren = self.expect_token(&Token::RightParen)?;
             return Ok(ParsedMatchPattern::Constructor {
                 constructor: Constructor::OptionSome,
+                args: vec![inner_pattern],
                 range: some_range.to(right_paren),
             });
         }
         if let Some(range) = self.advance_if(Token::None) {
             return Ok(ParsedMatchPattern::Constructor {
                 constructor: Constructor::OptionNone,
+                args: Vec::new(),
                 range,
             });
         }
@@ -700,6 +704,7 @@ impl Parser {
                 enum_name,
                 variant_name: variant_name.as_str().to_string(),
             },
+            args: Vec::new(),
             range: enum_name_range.to(variant_range),
         })
     }

@@ -73,6 +73,7 @@ fn typecheck_enum_match(
                         variant_name: pattern_variant_name,
                     },
                 range: pattern_range,
+                ..
             } => {
                 // Pattern enum must match subject enum
                 if pattern_enum_name != enum_name {
@@ -186,6 +187,7 @@ fn typecheck_bool_match(
             ParsedMatchPattern::Constructor {
                 constructor: Constructor::BooleanTrue,
                 range,
+                ..
             } => {
                 if matched_true {
                     return Err(TypeError::MatchDuplicateVariant {
@@ -199,6 +201,7 @@ fn typecheck_bool_match(
             ParsedMatchPattern::Constructor {
                 constructor: Constructor::BooleanFalse,
                 range,
+                ..
             } => {
                 if matched_false {
                     return Err(TypeError::MatchDuplicateVariant {
@@ -289,6 +292,7 @@ fn typecheck_option_match(
             ParsedMatchPattern::Constructor {
                 constructor: Constructor::OptionSome,
                 range,
+                ..
             } => {
                 // Check for duplicate patterns
                 if matched_some {
@@ -303,6 +307,7 @@ fn typecheck_option_match(
             ParsedMatchPattern::Constructor {
                 constructor: Constructor::OptionNone,
                 range,
+                ..
             } => {
                 // Check for duplicate patterns
                 if matched_none {
@@ -1220,7 +1225,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern type mismatch: expected enum, found Some(_)
+                error: Match pattern type mismatch: expected enum, found Some(_)(_)
                     Some(_)      => "has value",
                     ^^^^^^^
             "#]],
@@ -1239,7 +1244,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern type mismatch: expected boolean, found Some(_)
+                error: Match pattern type mismatch: expected boolean, found Some(_)(_)
                     Some(_) => "has value",
                     ^^^^^^^
             "#]],
