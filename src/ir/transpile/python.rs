@@ -4,7 +4,9 @@ use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspile
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrMatchArm, IrModule, IrStatement};
+use crate::ir::ast::{
+    IrBoolMatchArm, IrComponentDeclaration, IrEnumMatchArm, IrExpr, IrModule, IrStatement,
+};
 
 pub struct PythonTranspiler {}
 
@@ -665,7 +667,19 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_match<'a>(&self, _subject: &'a IrExpr, _arms: &'a [IrMatchArm]) -> BoxDoc<'a> {
+    fn transpile_match_enum<'a>(
+        &self,
+        _subject: &'a IrExpr,
+        _arms: &'a [IrEnumMatchArm],
+    ) -> BoxDoc<'a> {
+        panic!("Match expressions are not yet supported in Python transpilation")
+    }
+
+    fn transpile_match_bool<'a>(
+        &self,
+        _subject: &'a IrExpr,
+        _arms: &'a [IrBoolMatchArm],
+    ) -> BoxDoc<'a> {
         panic!("Match expressions are not yet supported in Python transpilation")
     }
 }

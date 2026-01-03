@@ -13,7 +13,9 @@ pub use ts::TsTranspiler;
 use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrMatchArm, IrModule, IrStatement};
+use crate::ir::ast::{
+    IrBoolMatchArm, IrComponentDeclaration, IrEnumMatchArm, IrExpr, IrModule, IrStatement,
+};
 
 pub trait Transpiler {
     fn transpile_entrypoint<'a>(
@@ -142,7 +144,16 @@ pub trait ExpressionTranspiler {
         fields: &'a [(FieldName, IrExpr)],
     ) -> BoxDoc<'a>;
     fn transpile_enum_literal<'a>(&self, enum_name: &'a str, variant_name: &'a str) -> BoxDoc<'a>;
-    fn transpile_match<'a>(&self, subject: &'a IrExpr, arms: &'a [IrMatchArm]) -> BoxDoc<'a>;
+    fn transpile_match_enum<'a>(
+        &self,
+        subject: &'a IrExpr,
+        arms: &'a [IrEnumMatchArm],
+    ) -> BoxDoc<'a>;
+    fn transpile_match_bool<'a>(
+        &self,
+        subject: &'a IrExpr,
+        arms: &'a [IrBoolMatchArm],
+    ) -> BoxDoc<'a>;
     fn transpile_expr<'a>(&self, expr: &'a IrExpr) -> BoxDoc<'a> {
         match expr {
             IrExpr::Var { value, .. } => self.transpile_var(value.as_str()),
@@ -237,7 +248,8 @@ pub trait ExpressionTranspiler {
                 variant_name,
                 ..
             } => self.transpile_enum_literal(enum_name, variant_name),
-            IrExpr::Match { subject, arms, .. } => self.transpile_match(subject, arms),
+            IrExpr::EnumMatch { subject, arms, .. } => self.transpile_match_enum(subject, arms),
+            IrExpr::BoolMatch { subject, arms, .. } => self.transpile_match_bool(subject, arms),
         }
     }
 }

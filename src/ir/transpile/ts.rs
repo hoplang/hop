@@ -5,7 +5,7 @@ use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::ir::ast::{
-    IrComponentDeclaration, IrExpr, IrMatchArm, IrMatchPattern, IrModule, IrStatement,
+    IrBoolPattern, IrComponentDeclaration, IrEnumPattern, IrExpr, IrModule, IrStatement,
 };
 
 pub struct TsTranspiler {
@@ -665,13 +665,17 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_match<'a>(&self, subject: &'a IrExpr, arms: &'a [IrMatchArm]) -> BoxDoc<'a> {
-        // Transpile match to an IIFE with a switch statement:
+    fn transpile_match_enum<'a>(
+        &self,
+        subject: &'a IrExpr,
+        arms: &'a [crate::ir::ast::IrEnumMatchArm],
+    ) -> BoxDoc<'a> {
+        // Transpile enum match to an IIFE with a switch statement:
         // (() => { switch (subject.__tag) { case "ColorRed": return body; ... } })()
         // The __tag uses the pattern EnumNameVariantName (e.g., ColorRed)
         let cases = BoxDoc::intersperse(
             arms.iter().map(|arm| match &arm.pattern {
-                IrMatchPattern::EnumVariant {
+                IrEnumPattern::Variant {
                     enum_name,
                     variant_name,
                 } => {
@@ -683,7 +687,7 @@ impl ExpressionTranspiler for TsTranspiler {
                         .append(self.transpile_expr(&arm.body))
                         .append(BoxDoc::text(";"))
                 }
-                IrMatchPattern::Wildcard => BoxDoc::text("default: return ")
+                IrEnumPattern::Wildcard => BoxDoc::text("default: return ")
                     .append(self.transpile_expr(&arm.body))
                     .append(BoxDoc::text(";")),
             }),
@@ -706,6 +710,52 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::line())
             .append(BoxDoc::text(iife_close))
             .group()
+    }
+
+    fn transpile_match_bool<'a>(
+        &self,
+        subject: &'a IrExpr,
+        arms: &'a [crate::ir::ast::IrBoolMatchArm],
+    ) -> BoxDoc<'a> {
+        // Transpile boolean match to a ternary expression
+        // For simplicity, use: subject ? trueBody : falseBody
+        let mut true_body = None;
+        let mut false_body = None;
+
+        for arm in arms {
+            match &arm.pattern {
+                IrBoolPattern::Literal(true) => {
+                    true_body = Some(&arm.body);
+                }
+                IrBoolPattern::Literal(false) => {
+                    false_body = Some(&arm.body);
+                }
+                IrBoolPattern::Wildcard => {
+                    // Wildcard fills in any missing patterns
+                    if true_body.is_none() {
+                        true_body = Some(&arm.body);
+                    }
+                    if false_body.is_none() {
+                        false_body = Some(&arm.body);
+                    }
+                }
+            }
+        }
+
+        let true_doc = true_body
+            .map(|b| self.transpile_expr(b))
+            .unwrap_or_else(|| BoxDoc::text("undefined"));
+        let false_doc = false_body
+            .map(|b| self.transpile_expr(b))
+            .unwrap_or_else(|| BoxDoc::text("undefined"));
+
+        BoxDoc::text("(")
+            .append(self.transpile_expr(subject))
+            .append(BoxDoc::text(" ? "))
+            .append(true_doc)
+            .append(BoxDoc::text(" : "))
+            .append(false_doc)
+            .append(BoxDoc::text(")"))
     }
 }
 
@@ -1420,6 +1470,46 @@ mod tests {
                             case "ColorBlue": return "blue";
                           }
                         })());
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn bool_match_expression() {
+        let module = build_module("IsActive", vec![("active", Type::Bool)], |t| {
+            let match_result = t.bool_match_expr(
+                t.var("active"),
+                t.str("yes"),
+                t.str("no"),
+            );
+            t.write_expr_escaped(match_result);
+        });
+
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                IsActive(active: Bool) {
+                  write_escaped(match active {true => "yes", false => "no"})
+                }
+
+                -- after --
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    isActive: ({ active }: { active: boolean }): string => {
+                        let output: string = "";
+                        output += escapeHtml((active ? "yes" : "no"));
                         return output;
                     }
                 }

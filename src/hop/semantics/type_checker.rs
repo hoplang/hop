@@ -2818,7 +2818,7 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                error: Match subject must be an enum type, found String
+                error: Match is not implemented for type String
                   --> main.hop (line 2, col 17)
                 1 | <Main {name: String}>
                 2 |     <div>{match name {Color::Red => "red"}}</div>

@@ -2,7 +2,7 @@ use crate::common::is_void_element;
 use crate::document::document_cursor::StringSpan;
 use crate::dop::TypedExpr;
 use crate::dop::semantics::r#type::EquatableType;
-use crate::dop::semantics::typed::TypedMatchPattern;
+use crate::dop::semantics::typed::{TypedBoolPattern, TypedEnumPattern};
 use crate::dop::{Type, VarName};
 use crate::inlined::{
     InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
@@ -10,7 +10,8 @@ use crate::inlined::{
 use std::collections::BTreeMap;
 
 use super::ast::{
-    ExprId, IrComponentDeclaration, IrExpr, IrMatchArm, IrMatchPattern, IrStatement, StatementId,
+    ExprId, IrBoolMatchArm, IrBoolPattern, IrComponentDeclaration, IrEnumMatchArm, IrEnumPattern,
+    IrExpr, IrStatement, StatementId,
 };
 
 pub struct Compiler {
@@ -547,24 +548,43 @@ impl Compiler {
                 kind,
                 id: expr_id,
             },
-            TypedExpr::Match {
+            TypedExpr::EnumMatch {
                 subject,
                 arms,
                 kind,
-            } => IrExpr::Match {
+            } => IrExpr::EnumMatch {
                 subject: Box::new(self.compile_expr(*subject)),
                 arms: arms
                     .into_iter()
-                    .map(|arm| IrMatchArm {
+                    .map(|arm| IrEnumMatchArm {
                         pattern: match arm.pattern {
-                            TypedMatchPattern::EnumVariant {
+                            TypedEnumPattern::Variant {
                                 enum_name,
                                 variant_name,
-                            } => IrMatchPattern::EnumVariant {
+                            } => IrEnumPattern::Variant {
                                 enum_name,
                                 variant_name,
                             },
-                            TypedMatchPattern::Wildcard => IrMatchPattern::Wildcard,
+                            TypedEnumPattern::Wildcard => IrEnumPattern::Wildcard,
+                        },
+                        body: self.compile_expr(arm.body),
+                    })
+                    .collect(),
+                kind,
+                id: expr_id,
+            },
+            TypedExpr::BoolMatch {
+                subject,
+                arms,
+                kind,
+            } => IrExpr::BoolMatch {
+                subject: Box::new(self.compile_expr(*subject)),
+                arms: arms
+                    .into_iter()
+                    .map(|arm| IrBoolMatchArm {
+                        pattern: match arm.pattern {
+                            TypedBoolPattern::Literal(value) => IrBoolPattern::Literal(value),
+                            TypedBoolPattern::Wildcard => IrBoolPattern::Wildcard,
                         },
                         body: self.compile_expr(arm.body),
                     })

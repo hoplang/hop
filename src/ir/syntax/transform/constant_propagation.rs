@@ -2,7 +2,7 @@ use super::Pass;
 use crate::ir::{
     IrExpr,
     ast::ExprId,
-    ast::{IrComponentDeclaration, IrMatchPattern, IrStatement},
+    ast::{IrBoolPattern, IrComponentDeclaration, IrEnumPattern, IrStatement},
 };
 use datafrog::{Iteration, Relation};
 use std::collections::HashMap;
@@ -74,24 +74,34 @@ impl Pass for ConstantPropagationPass {
                             initial_enum_constants
                                 .push((expr.id(), (enum_name.clone(), variant_name.clone())));
                         }
-                        IrExpr::Match { subject, arms, .. } => {
+                        IrExpr::EnumMatch { subject, arms, .. } => {
                             match_subjects.push((subject.id(), expr.id()));
                             for arm in arms {
                                 match &arm.pattern {
-                                    IrMatchPattern::EnumVariant {
+                                    IrEnumPattern::Variant {
                                         enum_name,
                                         variant_name,
                                     } => {
                                         match_arms_relations.push((
-                                            (
-                                                expr.id(),
-                                                enum_name.clone(),
-                                                variant_name.clone(),
-                                            ),
+                                            (expr.id(), enum_name.clone(), variant_name.clone()),
                                             arm.body.id(),
                                         ));
                                     }
-                                    IrMatchPattern::Wildcard => {
+                                    IrEnumPattern::Wildcard => {
+                                        // Wildcard patterns can't be constant-folded since they match anything
+                                    }
+                                }
+                            }
+                        }
+                        IrExpr::BoolMatch { arms, .. } => {
+                            // Boolean patterns are not currently constant-folded
+                            // but we still need to handle them to avoid missing the arms
+                            for arm in arms {
+                                match &arm.pattern {
+                                    IrBoolPattern::Literal(_) => {
+                                        // Boolean patterns are not currently constant-folded
+                                    }
+                                    IrBoolPattern::Wildcard => {
                                         // Wildcard patterns can't be constant-folded since they match anything
                                     }
                                 }

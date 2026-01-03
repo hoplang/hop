@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use super::r#type::{NumericType, Type};
 use super::type_error::TypeError;
-use super::typed::{TypedMatchArm, TypedMatchPattern};
+use super::typed::{TypedBoolMatchArm, TypedBoolPattern, TypedEnumMatchArm, TypedEnumPattern};
 use crate::document::document_cursor::DocumentRange;
 use crate::dop::TypedExpr;
 use crate::dop::syntax::parsed::{
@@ -793,24 +793,38 @@ fn typecheck_match(
     let typed_subject = typecheck_expr(subject, env, type_env, annotations, None)?;
     let subject_type = typed_subject.as_type().clone();
 
-    // Subject must be an enum type
-    let (_enum_module, enum_name, enum_variants) = match &subject_type {
-        Type::Enum {
-            module,
+    // Subject must be an enum or boolean type
+    match &subject_type {
+        Type::Enum { name, variants, .. } => typecheck_enum_match(
+            &typed_subject,
             name,
             variants,
-        } => (module.clone(), name.clone(), variants.clone()),
-        _ => {
-            return Err(TypeError::MatchSubjectNotEnum {
-                found: subject_type.to_string(),
-                range: subject.range().clone(),
-            });
-        }
-    };
+            arms,
+            range,
+            env,
+            type_env,
+            annotations,
+        ),
+        Type::Bool => typecheck_bool_match(&typed_subject, arms, range, env, type_env, annotations),
+        _ => Err(TypeError::MatchNotImplementedForType {
+            found: subject_type.to_string(),
+            range: subject.range().clone(),
+        }),
+    }
+}
 
-    // Track which variants have been matched
+fn typecheck_enum_match(
+    typed_subject: &TypedExpr,
+    enum_name: &crate::dop::symbols::type_name::TypeName,
+    enum_variants: &[crate::dop::symbols::type_name::TypeName],
+    arms: &[ParsedMatchArm],
+    range: &DocumentRange,
+    env: &mut Environment<Type>,
+    type_env: &mut Environment<Type>,
+    annotations: &mut Vec<TypeAnnotation>,
+) -> Result<TypedExpr, TypeError> {
     let mut matched_variants: HashSet<String> = HashSet::new();
-    let mut typed_arms: Vec<TypedMatchArm> = Vec::new();
+    let mut typed_arms: Vec<TypedEnumMatchArm> = Vec::new();
     let mut result_type: Option<Type> = None;
 
     for arm in arms {
@@ -821,7 +835,7 @@ fn typecheck_match(
                 range: pattern_range,
             } => {
                 // Pattern enum must match subject enum
-                if pattern_enum_name != &enum_name {
+                if pattern_enum_name != enum_name {
                     return Err(TypeError::MatchPatternEnumMismatch {
                         pattern_enum: pattern_enum_name.to_string(),
                         subject_enum: enum_name.to_string(),
@@ -850,17 +864,24 @@ fn typecheck_match(
                 }
                 matched_variants.insert(pattern_variant_name.clone());
 
-                TypedMatchPattern::EnumVariant {
+                TypedEnumPattern::Variant {
                     enum_name: pattern_enum_name.to_string(),
                     variant_name: pattern_variant_name.clone(),
                 }
             }
+            ParsedMatchPattern::BooleanLiteral { range, .. } => {
+                return Err(TypeError::MatchPatternTypeMismatch {
+                    expected: "enum".to_string(),
+                    found: "boolean".to_string(),
+                    range: range.clone(),
+                });
+            }
             ParsedMatchPattern::Wildcard { .. } => {
                 // Wildcard matches all remaining variants
-                for variant in &enum_variants {
+                for variant in enum_variants {
                     matched_variants.insert(variant.as_str().to_string());
                 }
-                TypedMatchPattern::Wildcard
+                TypedEnumPattern::Wildcard
             }
         };
 
@@ -884,14 +905,14 @@ fn typecheck_match(
             }
         }
 
-        typed_arms.push(TypedMatchArm {
+        typed_arms.push(TypedEnumMatchArm {
             pattern: typed_pattern,
             body: typed_body,
         });
     }
 
     // Check exhaustiveness: all variants must be matched
-    for variant in &enum_variants {
+    for variant in enum_variants {
         if !matched_variants.contains(variant.as_str()) {
             return Err(TypeError::MatchMissingVariant {
                 variant: variant.to_string(),
@@ -900,8 +921,108 @@ fn typecheck_match(
         }
     }
 
-    Ok(TypedExpr::Match {
-        subject: Box::new(typed_subject),
+    Ok(TypedExpr::EnumMatch {
+        subject: Box::new(typed_subject.clone()),
+        arms: typed_arms,
+        kind: result_type.unwrap(),
+    })
+}
+
+fn typecheck_bool_match(
+    typed_subject: &TypedExpr,
+    arms: &[ParsedMatchArm],
+    range: &DocumentRange,
+    env: &mut Environment<Type>,
+    type_env: &mut Environment<Type>,
+    annotations: &mut Vec<TypeAnnotation>,
+) -> Result<TypedExpr, TypeError> {
+    let mut matched_true = false;
+    let mut matched_false = false;
+    let mut typed_arms: Vec<TypedBoolMatchArm> = Vec::new();
+    let mut result_type: Option<Type> = None;
+
+    for arm in arms {
+        let typed_pattern = match &arm.pattern {
+            ParsedMatchPattern::BooleanLiteral { value, range } => {
+                // Check for duplicate patterns
+                if *value && matched_true {
+                    return Err(TypeError::MatchDuplicateVariant {
+                        variant: "true".to_string(),
+                        range: range.clone(),
+                    });
+                }
+                if !*value && matched_false {
+                    return Err(TypeError::MatchDuplicateVariant {
+                        variant: "false".to_string(),
+                        range: range.clone(),
+                    });
+                }
+
+                if *value {
+                    matched_true = true;
+                } else {
+                    matched_false = true;
+                }
+
+                TypedBoolPattern::Literal(*value)
+            }
+            ParsedMatchPattern::EnumVariant { range, .. } => {
+                return Err(TypeError::MatchPatternTypeMismatch {
+                    expected: "boolean".to_string(),
+                    found: "enum".to_string(),
+                    range: range.clone(),
+                });
+            }
+            ParsedMatchPattern::Wildcard { .. } => {
+                // Wildcard matches all remaining values
+                matched_true = true;
+                matched_false = true;
+                TypedBoolPattern::Wildcard
+            }
+        };
+
+        // Type check the arm body
+        let typed_body = typecheck_expr(&arm.body, env, type_env, annotations, None)?;
+        let body_type = typed_body.as_type().clone();
+
+        // Check that all arms have the same type
+        match &result_type {
+            None => {
+                result_type = Some(body_type);
+            }
+            Some(expected) => {
+                if body_type != *expected {
+                    return Err(TypeError::MatchArmTypeMismatch {
+                        expected: expected.to_string(),
+                        found: body_type.to_string(),
+                        range: arm.body.range().clone(),
+                    });
+                }
+            }
+        }
+
+        typed_arms.push(TypedBoolMatchArm {
+            pattern: typed_pattern,
+            body: typed_body,
+        });
+    }
+
+    // Check exhaustiveness: both true and false must be matched
+    if !matched_true {
+        return Err(TypeError::MatchMissingVariant {
+            variant: "true".to_string(),
+            range: range.clone(),
+        });
+    }
+    if !matched_false {
+        return Err(TypeError::MatchMissingVariant {
+            variant: "false".to_string(),
+            range: range.clone(),
+        });
+    }
+
+    Ok(TypedExpr::BoolMatch {
+        subject: Box::new(typed_subject.clone()),
         arms: typed_arms,
         kind: result_type.unwrap(),
     })
@@ -2350,7 +2471,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match subject must be an enum type, found String
+                error: Match is not implemented for type String
                 match name {
                       ^^^^
             "#]],
@@ -2640,6 +2761,165 @@ mod tests {
                 error: Redundant match arm for variant 'Blue'
                     Color::Blue => "blue",
                     ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// BOOLEAN MATCH EXPRESSION                                            ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_boolean_match_with_both_values() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    true => "yes",
+                    false => "no",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_boolean_match_with_wildcard() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    true => "yes",
+                    _ => "no",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_boolean_match_with_only_wildcard() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    _ => "always",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_reject_boolean_match_missing_false() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    true => "yes",
+                }
+            "#},
+            expect![[r#"
+                error: Match expression is missing arm for variant 'false'
+                match flag {
+                ^^^^^^^^^^^^
+                    true => "yes",
+                ^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_boolean_match_missing_true() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    false => "no",
+                }
+            "#},
+            expect![[r#"
+                error: Match expression is missing arm for variant 'true'
+                match flag {
+                ^^^^^^^^^^^^
+                    false => "no",
+                ^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_boolean_match_duplicate_true() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    true => "yes",
+                    true => "also yes",
+                    false => "no",
+                }
+            "#},
+            expect![[r#"
+                error: Redundant match arm for variant 'true'
+                    true => "also yes",
+                    ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_enum_pattern_in_boolean_match() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                }
+            "},
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    Color::Red => "red",
+                    false => "no",
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern type mismatch: expected boolean, found enum
+                    Color::Red => "red",
+                    ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_boolean_pattern_in_enum_match() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    true => "yes",
+                    Color::Green => "green",
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern type mismatch: expected enum, found boolean
+                    true => "yes",
+                    ^^^^
             "#]],
         );
     }

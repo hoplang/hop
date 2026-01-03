@@ -41,11 +41,11 @@ pub struct IrModule {
     pub enums: Vec<IrEnumDeclaration>,
 }
 
-/// A pattern in a match arm
+/// A pattern in an enum match arm
 #[derive(Debug, Clone, PartialEq)]
-pub enum IrMatchPattern {
+pub enum IrEnumPattern {
     /// An enum variant pattern, e.g. `Color::Red`
-    EnumVariant {
+    Variant {
         enum_name: String,
         variant_name: String,
     },
@@ -53,11 +53,29 @@ pub enum IrMatchPattern {
     Wildcard,
 }
 
-/// A single arm in a match expression, e.g. `Color::Red => "red"`
+/// A pattern in a boolean match arm
 #[derive(Debug, Clone, PartialEq)]
-pub struct IrMatchArm {
+pub enum IrBoolPattern {
+    /// A boolean literal pattern, e.g. `true` or `false`
+    Literal(bool),
+    /// A wildcard pattern that matches anything
+    Wildcard,
+}
+
+/// A single arm in an enum match expression, e.g. `Color::Red => "red"`
+#[derive(Debug, Clone, PartialEq)]
+pub struct IrEnumMatchArm {
     /// The pattern being matched
-    pub pattern: IrMatchPattern,
+    pub pattern: IrEnumPattern,
+    /// The expression to evaluate if this arm matches
+    pub body: IrExpr,
+}
+
+/// A single arm in a boolean match expression, e.g. `true => "yes"`
+#[derive(Debug, Clone, PartialEq)]
+pub struct IrBoolMatchArm {
+    /// The pattern being matched
+    pub pattern: IrBoolPattern,
     /// The expression to evaluate if this arm matches
     pub body: IrExpr,
 }
@@ -155,10 +173,18 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// A match expression, e.g. match color { Color::Red => "red", Color::Blue => "blue" }
-    Match {
+    /// An enum match expression, e.g. match color { Color::Red => "red", Color::Blue => "blue" }
+    EnumMatch {
         subject: Box<IrExpr>,
-        arms: Vec<IrMatchArm>,
+        arms: Vec<IrEnumMatchArm>,
+        kind: Type,
+        id: ExprId,
+    },
+
+    /// A boolean match expression, e.g. match flag { true => "yes", false => "no" }
+    BoolMatch {
+        subject: Box<IrExpr>,
+        arms: Vec<IrBoolMatchArm>,
         kind: Type,
         id: ExprId,
     },
@@ -504,7 +530,8 @@ impl IrExpr {
             | IrExpr::ArrayLiteral { id, .. }
             | IrExpr::RecordLiteral { id, .. }
             | IrExpr::EnumLiteral { id, .. }
-            | IrExpr::Match { id, .. }
+            | IrExpr::EnumMatch { id, .. }
+            | IrExpr::BoolMatch { id, .. }
             | IrExpr::JsonEncode { id, .. }
             | IrExpr::EnvLookup { id, .. }
             | IrExpr::StringConcat { id, .. }
@@ -533,7 +560,8 @@ impl IrExpr {
             | IrExpr::ArrayLiteral { kind, .. }
             | IrExpr::RecordLiteral { kind, .. }
             | IrExpr::EnumLiteral { kind, .. }
-            | IrExpr::Match { kind, .. } => kind,
+            | IrExpr::EnumMatch { kind, .. }
+            | IrExpr::BoolMatch { kind, .. } => kind,
 
             IrExpr::FloatLiteral { .. } => &FLOAT_TYPE,
             IrExpr::IntLiteral { .. } => &INT_TYPE,
@@ -693,7 +721,7 @@ impl IrExpr {
             } => BoxDoc::text(enum_name.as_str())
                 .append(BoxDoc::text("::"))
                 .append(BoxDoc::text(variant_name.as_str())),
-            IrExpr::Match { subject, arms, .. } => {
+            IrExpr::EnumMatch { subject, arms, .. } => {
                 if arms.is_empty() {
                     BoxDoc::text("match ")
                         .append(subject.to_doc())
@@ -707,13 +735,45 @@ impl IrExpr {
                                 .append(BoxDoc::intersperse(
                                     arms.iter().map(|arm| {
                                         let pattern_doc = match &arm.pattern {
-                                            IrMatchPattern::EnumVariant {
+                                            IrEnumPattern::Variant {
                                                 enum_name,
                                                 variant_name,
                                             } => BoxDoc::text(enum_name.as_str())
                                                 .append(BoxDoc::text("::"))
                                                 .append(BoxDoc::text(variant_name.as_str())),
-                                            IrMatchPattern::Wildcard => BoxDoc::text("_"),
+                                            IrEnumPattern::Wildcard => BoxDoc::text("_"),
+                                        };
+                                        pattern_doc
+                                            .append(BoxDoc::text(" => "))
+                                            .append(arm.body.to_doc())
+                                    }),
+                                    BoxDoc::text(",").append(BoxDoc::line()),
+                                ))
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                .append(BoxDoc::line_())
+                                .nest(2)
+                                .group(),
+                        )
+                        .append(BoxDoc::text("}"))
+                }
+            }
+            IrExpr::BoolMatch { subject, arms, .. } => {
+                if arms.is_empty() {
+                    BoxDoc::text("match ")
+                        .append(subject.to_doc())
+                        .append(BoxDoc::text(" {}"))
+                } else {
+                    BoxDoc::text("match ")
+                        .append(subject.to_doc())
+                        .append(BoxDoc::text(" {"))
+                        .append(
+                            BoxDoc::line_()
+                                .append(BoxDoc::intersperse(
+                                    arms.iter().map(|arm| {
+                                        let pattern_doc = match &arm.pattern {
+                                            IrBoolPattern::Literal(true) => BoxDoc::text("true"),
+                                            IrBoolPattern::Literal(false) => BoxDoc::text("false"),
+                                            IrBoolPattern::Wildcard => BoxDoc::text("_"),
                                         };
                                         pattern_doc
                                             .append(BoxDoc::text(" => "))
@@ -773,7 +833,13 @@ impl IrExpr {
                 left.traverse(f);
                 right.traverse(f);
             }
-            IrExpr::Match { subject, arms, .. } => {
+            IrExpr::EnumMatch { subject, arms, .. } => {
+                subject.traverse(f);
+                for arm in arms {
+                    arm.body.traverse(f);
+                }
+            }
+            IrExpr::BoolMatch { subject, arms, .. } => {
                 subject.traverse(f);
                 for arm in arms {
                     arm.body.traverse(f);
@@ -829,7 +895,13 @@ impl IrExpr {
                 left.traverse_mut(f);
                 right.traverse_mut(f);
             }
-            IrExpr::Match { subject, arms, .. } => {
+            IrExpr::EnumMatch { subject, arms, .. } => {
+                subject.traverse_mut(f);
+                for arm in arms {
+                    arm.body.traverse_mut(f);
+                }
+            }
+            IrExpr::BoolMatch { subject, arms, .. } => {
                 subject.traverse_mut(f);
                 for arm in arms {
                     arm.body.traverse_mut(f);

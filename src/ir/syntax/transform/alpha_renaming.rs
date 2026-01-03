@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::dop::VarName;
 
-use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrMatchArm, IrMatchPattern, IrStatement};
+use crate::ir::ast::{IrBoolMatchArm, IrComponentDeclaration, IrEnumMatchArm, IrExpr, IrStatement};
 
 use super::Pass;
 
@@ -210,26 +210,34 @@ impl AlphaRenamingPass {
             IrExpr::FloatLiteral { .. } => expr,
             IrExpr::IntLiteral { .. } => expr,
             IrExpr::EnumLiteral { .. } => expr,
-            IrExpr::Match {
+            IrExpr::EnumMatch {
                 subject,
                 arms,
                 kind,
                 id,
-            } => IrExpr::Match {
+            } => IrExpr::EnumMatch {
                 subject: Box::new(self.rename_expr(*subject)),
                 arms: arms
                     .into_iter()
-                    .map(|arm| IrMatchArm {
-                        pattern: match arm.pattern {
-                            IrMatchPattern::EnumVariant {
-                                enum_name,
-                                variant_name,
-                            } => IrMatchPattern::EnumVariant {
-                                enum_name,
-                                variant_name,
-                            },
-                            IrMatchPattern::Wildcard => IrMatchPattern::Wildcard,
-                        },
+                    .map(|arm| IrEnumMatchArm {
+                        pattern: arm.pattern,
+                        body: self.rename_expr(arm.body),
+                    })
+                    .collect(),
+                kind,
+                id,
+            },
+            IrExpr::BoolMatch {
+                subject,
+                arms,
+                kind,
+                id,
+            } => IrExpr::BoolMatch {
+                subject: Box::new(self.rename_expr(*subject)),
+                arms: arms
+                    .into_iter()
+                    .map(|arm| IrBoolMatchArm {
+                        pattern: arm.pattern,
                         body: self.rename_expr(arm.body),
                     })
                     .collect(),

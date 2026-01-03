@@ -8,7 +8,7 @@ use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use crate::ir::syntax::ast::{IrComponentDeclaration, IrMatchPattern, IrStatement};
+use crate::ir::syntax::ast::{IrBoolPattern, IrComponentDeclaration, IrEnumPattern, IrStatement};
 
 /// Evaluate an IR entrypoint with the given arguments
 pub fn evaluate_entrypoint(
@@ -404,7 +404,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             // Enum variants evaluate to their string name
             Ok(Value::String(variant_name.clone()))
         }
-        IrExpr::Match { subject, arms, .. } => {
+        IrExpr::EnumMatch { subject, arms, .. } => {
             // Evaluate the subject to get the variant name
             let subject_val = evaluate_expr(subject, env)?;
             let variant_name = subject_val
@@ -414,7 +414,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             // Find the matching arm
             for arm in arms {
                 match &arm.pattern {
-                    IrMatchPattern::EnumVariant {
+                    IrEnumPattern::Variant {
                         variant_name: pattern_variant,
                         ..
                     } => {
@@ -422,7 +422,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                             return evaluate_expr(&arm.body, env);
                         }
                     }
-                    IrMatchPattern::Wildcard => {
+                    IrEnumPattern::Wildcard => {
                         return evaluate_expr(&arm.body, env);
                     }
                 }
@@ -431,6 +431,32 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             Err(anyhow!(
                 "No matching arm found for variant '{}'",
                 variant_name
+            ))
+        }
+        IrExpr::BoolMatch { subject, arms, .. } => {
+            // Evaluate the subject to get the boolean value
+            let subject_val = evaluate_expr(subject, env)?;
+            let subject_bool = subject_val
+                .as_bool()
+                .ok_or_else(|| anyhow!("Match subject must evaluate to a boolean"))?;
+
+            // Find the matching arm
+            for arm in arms {
+                match &arm.pattern {
+                    IrBoolPattern::Literal(pattern_value) => {
+                        if *pattern_value == subject_bool {
+                            return evaluate_expr(&arm.body, env);
+                        }
+                    }
+                    IrBoolPattern::Wildcard => {
+                        return evaluate_expr(&arm.body, env);
+                    }
+                }
+            }
+
+            Err(anyhow!(
+                "No matching arm found for boolean '{}'",
+                subject_bool
             ))
         }
     }

@@ -6,11 +6,11 @@ use pretty::BoxDoc;
 
 use super::r#type::{ComparableType, EquatableType, NumericType, Type};
 
-/// A pattern in a match arm
+/// A pattern in an enum match arm
 #[derive(Debug, Clone, PartialEq)]
-pub enum TypedMatchPattern {
+pub enum TypedEnumPattern {
     /// An enum variant pattern, e.g. `Color::Red`
-    EnumVariant {
+    Variant {
         enum_name: String,
         variant_name: String,
     },
@@ -18,11 +18,29 @@ pub enum TypedMatchPattern {
     Wildcard,
 }
 
-/// A single arm in a match expression, e.g. `Color::Red => "red"`
+/// A pattern in a boolean match arm
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedMatchArm {
+pub enum TypedBoolPattern {
+    /// A boolean literal pattern, e.g. `true` or `false`
+    Literal(bool),
+    /// A wildcard pattern that matches anything
+    Wildcard,
+}
+
+/// A single arm in an enum match expression, e.g. `Color::Red => "red"`
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedEnumMatchArm {
     /// The pattern being matched
-    pub pattern: TypedMatchPattern,
+    pub pattern: TypedEnumPattern,
+    /// The expression to evaluate if this arm matches
+    pub body: TypedExpr,
+}
+
+/// A single arm in a boolean match expression, e.g. `true => "yes"`
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedBoolMatchArm {
+    /// The pattern being matched
+    pub pattern: TypedBoolPattern,
     /// The expression to evaluate if this arm matches
     pub body: TypedExpr,
 }
@@ -75,10 +93,17 @@ pub enum TypedExpr {
         kind: Type,
     },
 
-    /// A match expression, e.g. match color { Color::Red => "red", Color::Blue => "blue" }
-    Match {
+    /// An enum match expression, e.g. match color { Color::Red => "red", Color::Blue => "blue" }
+    EnumMatch {
         subject: Box<Self>,
-        arms: Vec<TypedMatchArm>,
+        arms: Vec<TypedEnumMatchArm>,
+        kind: Type,
+    },
+
+    /// A boolean match expression, e.g. match flag { true => "yes", false => "no" }
+    BoolMatch {
+        subject: Box<Self>,
+        arms: Vec<TypedBoolMatchArm>,
         kind: Type,
     },
 
@@ -172,7 +197,8 @@ impl TypedExpr {
             | TypedExpr::RecordLiteral { kind, .. }
             | TypedExpr::EnumLiteral { kind, .. }
             | TypedExpr::OptionLiteral { kind, .. }
-            | TypedExpr::Match { kind, .. } => kind,
+            | TypedExpr::EnumMatch { kind, .. }
+            | TypedExpr::BoolMatch { kind, .. } => kind,
 
             TypedExpr::FloatLiteral { .. } => &FLOAT_TYPE,
             TypedExpr::IntLiteral { .. } => &INT_TYPE,
@@ -351,7 +377,7 @@ impl TypedExpr {
                     .append(BoxDoc::text(")")),
                 None => BoxDoc::text("None"),
             },
-            TypedExpr::Match { subject, arms, .. } => {
+            TypedExpr::EnumMatch { subject, arms, .. } => {
                 if arms.is_empty() {
                     BoxDoc::text("match ")
                         .append(subject.to_doc())
@@ -365,13 +391,47 @@ impl TypedExpr {
                                 .append(BoxDoc::intersperse(
                                     arms.iter().map(|arm| {
                                         let pattern_doc = match &arm.pattern {
-                                            TypedMatchPattern::EnumVariant {
+                                            TypedEnumPattern::Variant {
                                                 enum_name,
                                                 variant_name,
                                             } => BoxDoc::text(enum_name.as_str())
                                                 .append(BoxDoc::text("::"))
                                                 .append(BoxDoc::text(variant_name.as_str())),
-                                            TypedMatchPattern::Wildcard => BoxDoc::text("_"),
+                                            TypedEnumPattern::Wildcard => BoxDoc::text("_"),
+                                        };
+                                        pattern_doc
+                                            .append(BoxDoc::text(" => "))
+                                            .append(arm.body.to_doc())
+                                    }),
+                                    BoxDoc::text(",").append(BoxDoc::line()),
+                                ))
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                .append(BoxDoc::line_())
+                                .nest(2)
+                                .group(),
+                        )
+                        .append(BoxDoc::text("}"))
+                }
+            }
+            TypedExpr::BoolMatch { subject, arms, .. } => {
+                if arms.is_empty() {
+                    BoxDoc::text("match ")
+                        .append(subject.to_doc())
+                        .append(BoxDoc::text(" {}"))
+                } else {
+                    BoxDoc::text("match ")
+                        .append(subject.to_doc())
+                        .append(BoxDoc::text(" {"))
+                        .append(
+                            BoxDoc::line_()
+                                .append(BoxDoc::intersperse(
+                                    arms.iter().map(|arm| {
+                                        let pattern_doc = match &arm.pattern {
+                                            TypedBoolPattern::Literal(true) => BoxDoc::text("true"),
+                                            TypedBoolPattern::Literal(false) => {
+                                                BoxDoc::text("false")
+                                            }
+                                            TypedBoolPattern::Wildcard => BoxDoc::text("_"),
                                         };
                                         pattern_doc
                                             .append(BoxDoc::text(" => "))

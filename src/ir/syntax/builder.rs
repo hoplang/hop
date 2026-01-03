@@ -415,7 +415,7 @@ impl IrBuilder {
     /// Create a match expression over an enum value
     /// arms is a list of (variant_name, body_expr) tuples
     pub fn match_expr(&self, subject: IrExpr, arms: Vec<(&str, IrExpr)>) -> IrExpr {
-        use crate::ir::ast::{IrMatchArm, IrMatchPattern};
+        use crate::ir::ast::{IrEnumMatchArm, IrEnumPattern};
 
         // Get the enum type from the subject
         let (enum_name, result_type) = match subject.as_type() {
@@ -430,10 +430,10 @@ impl IrBuilder {
             _ => panic!("Match subject must be an enum type"),
         };
 
-        let ir_arms: Vec<IrMatchArm> = arms
+        let ir_arms: Vec<IrEnumMatchArm> = arms
             .into_iter()
-            .map(|(variant_name, body)| IrMatchArm {
-                pattern: IrMatchPattern::EnumVariant {
+            .map(|(variant_name, body)| IrEnumMatchArm {
+                pattern: IrEnumPattern::Variant {
                     enum_name: enum_name.clone(),
                     variant_name: variant_name.to_string(),
                 },
@@ -441,7 +441,32 @@ impl IrBuilder {
             })
             .collect();
 
-        IrExpr::Match {
+        IrExpr::EnumMatch {
+            subject: Box::new(subject),
+            arms: ir_arms,
+            kind: result_type,
+            id: self.next_expr_id(),
+        }
+    }
+
+    /// Create a match expression over a boolean value
+    pub fn bool_match_expr(&self, subject: IrExpr, true_body: IrExpr, false_body: IrExpr) -> IrExpr {
+        use crate::ir::ast::{IrBoolMatchArm, IrBoolPattern};
+
+        let result_type = true_body.as_type().clone();
+
+        let ir_arms = vec![
+            IrBoolMatchArm {
+                pattern: IrBoolPattern::Literal(true),
+                body: true_body,
+            },
+            IrBoolMatchArm {
+                pattern: IrBoolPattern::Literal(false),
+                body: false_body,
+            },
+        ];
+
+        IrExpr::BoolMatch {
             subject: Box::new(subject),
             arms: ir_arms,
             kind: result_type,

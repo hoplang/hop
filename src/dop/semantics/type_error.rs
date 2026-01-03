@@ -119,8 +119,8 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Match subject must be an enum type, found {found}")]
-    MatchSubjectNotEnum { found: String, range: DocumentRange },
+    #[error("Match is not implemented for type {found}")]
+    MatchNotImplementedForType { found: String, range: DocumentRange },
 
     #[error("Match pattern enum '{pattern_enum}' does not match subject enum '{subject_enum}'")]
     MatchPatternEnumMismatch {
@@ -145,6 +145,13 @@ pub enum TypeError {
     #[error("Redundant match arm for variant '{variant}'")]
     MatchDuplicateVariant {
         variant: String,
+        range: DocumentRange,
+    },
+
+    #[error("Match pattern type mismatch: expected {expected}, found {found}")]
+    MatchPatternTypeMismatch {
+        expected: String,
+        found: String,
         range: DocumentRange,
     },
 }
@@ -173,11 +180,12 @@ impl Ranged for TypeError {
             | TypeError::RecordLiteralFieldTypeMismatch { range, .. }
             | TypeError::UndefinedEnum { range, .. }
             | TypeError::UndefinedEnumVariant { range, .. }
-            | TypeError::MatchSubjectNotEnum { range, .. }
+            | TypeError::MatchNotImplementedForType { range, .. }
             | TypeError::MatchPatternEnumMismatch { range, .. }
             | TypeError::MatchArmTypeMismatch { range, .. }
             | TypeError::MatchMissingVariant { range, .. }
-            | TypeError::MatchDuplicateVariant { range, .. } => range,
+            | TypeError::MatchDuplicateVariant { range, .. }
+            | TypeError::MatchPatternTypeMismatch { range, .. } => range,
         }
     }
 }

@@ -89,6 +89,8 @@ pub enum ParsedMatchPattern {
         variant_name: String,
         range: DocumentRange,
     },
+    /// A boolean literal pattern, e.g. `true` or `false`
+    BooleanLiteral { value: bool, range: DocumentRange },
     /// A wildcard pattern that matches anything, written as `_`
     Wildcard { range: DocumentRange },
 }
@@ -97,6 +99,7 @@ impl Ranged for ParsedMatchPattern {
     fn range(&self) -> &DocumentRange {
         match self {
             ParsedMatchPattern::EnumVariant { range, .. }
+            | ParsedMatchPattern::BooleanLiteral { range, .. }
             | ParsedMatchPattern::Wildcard { range } => range,
         }
     }
@@ -112,6 +115,8 @@ impl ParsedMatchPattern {
             } => BoxDoc::text(enum_name.as_str().to_string())
                 .append(BoxDoc::text("::"))
                 .append(BoxDoc::text(variant_name.as_str())),
+            ParsedMatchPattern::BooleanLiteral { value: true, .. } => BoxDoc::text("true"),
+            ParsedMatchPattern::BooleanLiteral { value: false, .. } => BoxDoc::text("false"),
             ParsedMatchPattern::Wildcard { .. } => BoxDoc::text("_"),
         }
     }
