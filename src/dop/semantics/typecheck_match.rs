@@ -883,6 +883,31 @@ mod tests {
         );
     }
 
+    #[test]
+    fn should_reject_match_with_multiple_wildcards() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    _ => "first",
+                    _ => "second",
+                }
+            "#},
+            expect![[r#"
+                error: Redundant match arm for variant '_'
+                    _ => "second",
+                    ^
+            "#]],
+        );
+    }
+
     ///////////////////////////////////////////////////////////////////////////
     /// BOOLEAN MATCH                                                       ///
     ///////////////////////////////////////////////////////////////////////////
@@ -1439,6 +1464,72 @@ mod tests {
                 error: Match pattern type mismatch: expected boolean, found None
                     Some(None) => 0,
                          ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_match_with_nested_enum() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("opt", "Option[Color]")],
+            indoc! {r#"
+                match opt {
+                    Some(Color::Red)   => "red",
+                    Some(Color::Green) => "green",
+                    Some(Color::Blue)  => "blue",
+                    None               => "none",
+                }
+            "#},
+            expect![[r#"
+                match opt {
+                  Some(v0) => match v0 {
+                    Color::Red => "red",
+                    Color::Green => "green",
+                    Color::Blue => "blue",
+                  },
+                  None => "none",
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_non_exhaustive_option_match_with_nested_enum() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("opt", "Option[Color]")],
+            indoc! {r#"
+                match opt {
+                    Some(Color::Red)   => "red",
+                    Some(Color::Green) => "green",
+                    None               => "none",
+                }
+            "#},
+            expect![[r#"
+                error: Match expression is missing arm for variant 'Some(Blue)'
+                match opt {
+                ^^^^^^^^^^^
+                    Some(Color::Red)   => "red",
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    Some(Color::Green) => "green",
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    None               => "none",
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
             "#]],
         );
     }
