@@ -150,11 +150,6 @@ impl Diagnostics {
         self.missing
     }
 
-    /// Returns the indices of reachable (non-redundant) arms.
-    pub fn reachable(&self) -> &[usize] {
-        &self.reachable
-    }
-
     /// Returns the indices of unreachable (redundant) arms.
     pub fn unreachable(&self, total_arms: usize) -> Vec<usize> {
         (0..total_arms)
@@ -311,11 +306,7 @@ impl Compiler {
     }
 
     /// Returns the index of a constructor.
-    fn constructor_index(
-        &self,
-        cons: &Constructor,
-        type_env: &mut Environment<Type>,
-    ) -> usize {
+    fn constructor_index(&self, cons: &Constructor, type_env: &mut Environment<Type>) -> usize {
         match cons {
             Constructor::BooleanFalse => 0,
             Constructor::BooleanTrue => 1,
@@ -395,11 +386,7 @@ impl Compiler {
                     (Constructor::OptionNone, Vec::new(), Vec::new()),
                 ]
             }
-            Type::Enum {
-                name,
-                variants,
-                ..
-            } => variants
+            Type::Enum { name, variants, .. } => variants
                 .iter()
                 .map(|variant| {
                     (
@@ -412,7 +399,12 @@ impl Compiler {
                     )
                 })
                 .collect(),
-            Type::String | Type::Int | Type::Float | Type::TrustedHTML | Type::Array(_) | Type::Record { .. } => {
+            Type::String
+            | Type::Int
+            | Type::Float
+            | Type::TrustedHTML
+            | Type::Array(_)
+            | Type::Record { .. } => {
                 panic!("pattern matching not supported for this type")
             }
         };
@@ -847,7 +839,12 @@ mod tests {
         check(
             compiler,
             input,
-            vec![pat("Some(true)"), pat("Some(true)"), pat("Some(_)"), pat("None")],
+            vec![
+                pat("Some(true)"),
+                pat("Some(true)"),
+                pat("Some(_)"),
+                pat("None"),
+            ],
             &mut Environment::new(),
             &mut var_env,
             expect![[r#"
@@ -938,10 +935,7 @@ mod tests {
         check(
             compiler,
             input,
-            vec![
-                pat("Light::Red"),
-                pat("Light::Green"),
-            ],
+            vec![pat("Light::Red"), pat("Light::Green")],
             &mut type_env,
             &mut var_env,
             expect![[r#"
@@ -1004,10 +998,7 @@ mod tests {
         let result_type = Type::Enum {
             module: test_module(),
             name: TypeName::new("Result").unwrap(),
-            variants: vec![
-                TypeName::new("Ok").unwrap(),
-                TypeName::new("Err").unwrap(),
-            ],
+            variants: vec![TypeName::new("Ok").unwrap(), TypeName::new("Err").unwrap()],
         };
         let mut type_env = Environment::new();
         let _ = type_env.push("Result".to_string(), result_type.clone());
@@ -1015,10 +1006,7 @@ mod tests {
         check(
             compiler,
             input,
-            vec![
-                pat("Result::Ok"),
-                pat("Result::Err"),
-            ],
+            vec![pat("Result::Ok"), pat("Result::Err")],
             &mut type_env,
             &mut var_env,
             expect![[r#"

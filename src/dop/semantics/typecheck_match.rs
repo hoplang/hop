@@ -13,10 +13,46 @@ use crate::dop::syntax::parsed::{Constructor, ParsedExpr, ParsedMatchArm, Parsed
 use crate::environment::Environment;
 use crate::hop::semantics::type_checker::TypeAnnotation;
 
-/// Recursively validate that a pattern is compatible with the expected type.
+// Typecheck a match expression and compile it to a TypedExpr.
+pub fn typecheck_match(
+    subject: &ParsedExpr,
+    arms: &[ParsedMatchArm],
+    range: &DocumentRange,
+    var_env: &mut Environment<Type>,
+    type_env: &mut Environment<Type>,
+    annotations: &mut Vec<TypeAnnotation>,
+) -> Result<TypedExpr, TypeError> {
+    let typed_subject = typecheck_expr(subject, var_env, type_env, annotations, None)?;
+    let subject_type = typed_subject.as_type().clone();
+
+    if !matches!(&subject_type, Type::Enum { .. } | Type::Bool | Type::Option(_)) {
+        return Err(TypeError::MatchNotImplementedForType {
+            found: subject_type.to_string(),
+            range: subject.range().clone(),
+        });
+    }
+
+    for arm in arms {
+        validate_pattern_type(&arm.pattern, &subject_type)?;
+    }
+
+    let compiled = compile_and_check_patterns(arms, &subject_type, range, type_env)?;
+
+    let (typed_bodies, result_type) = typecheck_arm_bodies(arms, var_env, type_env, annotations)?;
+
+    Ok(decision_to_typed_expr(
+        &compiled.tree,
+        &typed_bodies,
+        result_type,
+        Some(typed_subject),
+    ))
+}
+
+/// Recursively validate that a pattern is compatible with the subject type,
+/// i.e. the type of the expression that is being matched.
 fn validate_pattern_type(
     pattern: &ParsedMatchPattern,
-    expected_type: &Type,
+    subject_type: &Type,
 ) -> Result<(), TypeError> {
     match pattern {
         ParsedMatchPattern::Wildcard { .. } => Ok(()),
@@ -24,8 +60,7 @@ fn validate_pattern_type(
             constructor,
             args,
             range,
-        } => match (constructor, expected_type) {
-            // Enum variant pattern
+        } => match (constructor, subject_type) {
             (
                 Constructor::EnumVariant {
                     enum_name: pattern_enum_name,
@@ -37,7 +72,6 @@ fn validate_pattern_type(
                     ..
                 },
             ) => {
-                // Pattern enum must match subject enum
                 if pattern_enum_name != subject_enum_name {
                     return Err(TypeError::MatchPatternEnumMismatch {
                         pattern_enum: pattern_enum_name.to_string(),
@@ -46,7 +80,6 @@ fn validate_pattern_type(
                     });
                 }
 
-                // Variant must exist in the enum
                 let variant_exists = variants.iter().any(|v| v.as_str() == pattern_variant_name);
                 if !variant_exists {
                     return Err(TypeError::UndefinedEnumVariant {
@@ -59,10 +92,8 @@ fn validate_pattern_type(
                 Ok(())
             }
 
-            // Boolean patterns
             (Constructor::BooleanTrue | Constructor::BooleanFalse, Type::Bool) => Ok(()),
 
-            // Option Some pattern - recursively validate the inner pattern
             (Constructor::OptionSome, Type::Option(inner_type)) => {
                 if let Some(inner_pattern) = args.first() {
                     validate_pattern_type(inner_pattern, inner_type)?;
@@ -70,33 +101,26 @@ fn validate_pattern_type(
                 Ok(())
             }
 
-            // Option None pattern
             (Constructor::OptionNone, Type::Option(_)) => Ok(()),
 
-            // Type mismatches
-            (_, Type::Enum { .. }) => Err(TypeError::MatchPatternTypeMismatch {
-                expected: "enum".to_string(),
-                found: pattern.to_string(),
-                range: range.clone(),
-            }),
-
-            (_, Type::Bool) => Err(TypeError::MatchPatternTypeMismatch {
-                expected: "boolean".to_string(),
-                found: pattern.to_string(),
-                range: range.clone(),
-            }),
-
-            (_, Type::Option(_)) => Err(TypeError::MatchPatternTypeMismatch {
-                expected: "option".to_string(),
-                found: pattern.to_string(),
-                range: range.clone(),
-            }),
-
-            // Unsupported type for pattern matching
-            _ => Err(TypeError::MatchNotImplementedForType {
-                found: expected_type.to_string(),
-                range: range.clone(),
-            }),
+            _ => {
+                let expected = match subject_type {
+                    Type::Enum { .. } => "enum",
+                    Type::Bool => "boolean",
+                    Type::Option(_) => "option",
+                    _ => {
+                        return Err(TypeError::MatchNotImplementedForType {
+                            found: subject_type.to_string(),
+                            range: range.clone(),
+                        })
+                    }
+                };
+                Err(TypeError::MatchPatternTypeMismatch {
+                    expected: expected.to_string(),
+                    found: pattern.to_string(),
+                    range: range.clone(),
+                })
+            }
         },
     }
 }
@@ -138,42 +162,20 @@ fn typecheck_arm_bodies(
 }
 
 /// Convert a compiled Decision tree into a TypedExpr.
-///
-/// This function recursively transforms the decision tree produced by the pattern
-/// matching compiler into a nested TypedExpr structure. Each `Switch` node becomes
-/// a match expression, and `Success` nodes reference the corresponding typed body.
-///
-/// # Arguments
-/// * `decision` - The compiled decision tree
-/// * `typed_bodies` - The typed arm bodies, indexed by arm number
-/// * `result_type` - The result type of the match expression
-/// * `subject_expr` - Optional expression to use as the subject for the root Switch.
-///   If `None`, a variable reference is created. This is used to substitute the
-///   actual subject expression at the root level while using variable references
-///   for nested switches.
-///
-/// # Panics
-/// Panics if `Decision::Failure` is encountered, which indicates a non-exhaustive
-/// match. This should not happen if exhaustiveness checking passed.
-pub fn decision_to_typed_expr(
+fn decision_to_typed_expr(
     decision: &Decision,
     typed_bodies: &[TypedExpr],
     result_type: Type,
     subject_expr: Option<TypedExpr>,
 ) -> TypedExpr {
     match decision {
-        Decision::Success(body) => {
-            // Leaf node - return the corresponding typed body
-            typed_bodies[body.value].clone()
-        }
+        Decision::Success(body) => typed_bodies[body.value].clone(),
 
         Decision::Failure => {
-            // Non-exhaustive path - should not happen for well-typed matches
             panic!("Non-exhaustive match reached in decision_to_typed_expr")
         }
 
         Decision::Switch(var, cases) => {
-            // Use provided subject expression or create a variable reference
             let subject = Box::new(subject_expr.unwrap_or_else(|| TypedExpr::Var {
                 value: VarName::new(&var.name).expect("invalid variable name"),
                 kind: var.typ.clone(),
@@ -212,7 +214,6 @@ pub fn decision_to_typed_expr(
                         .map(|case| {
                             let pattern = match &case.constructor {
                                 Constructor::OptionSome => {
-                                    // Extract the binding from case.arguments if present
                                     let binding = case.arguments.first().map(|var| {
                                         (
                                             VarName::new(&var.name).expect("invalid variable name"),
@@ -285,10 +286,8 @@ fn compile_and_check_patterns(
     match_range: &DocumentRange,
     type_env: &mut Environment<Type>,
 ) -> Result<Match, TypeError> {
-    // Create the subject variable
     let subject_var = Variable::new("$subject".to_string(), subject_type.clone());
 
-    // Build rows from the match arms
     let rows: Vec<Row> = arms
         .iter()
         .enumerate()
@@ -300,14 +299,11 @@ fn compile_and_check_patterns(
         })
         .collect();
 
-    // Set up the variable environment
     let mut pat_var_env: Environment<Type> = Environment::new();
     let _ = pat_var_env.push(subject_var.name.clone(), subject_type.clone());
 
-    // Compile the patterns
     let result = Compiler::new().compile(rows, type_env, &mut pat_var_env);
 
-    // Check for redundant patterns (unreachable arms)
     let unreachable = result.diagnostics.unreachable(arms.len());
     if let Some(&first_unreachable) = unreachable.first() {
         let arm = &arms[first_unreachable];
@@ -321,7 +317,6 @@ fn compile_and_check_patterns(
         });
     }
 
-    // Check for missing patterns
     if result.diagnostics.is_missing() {
         let missing = result.missing_patterns();
         if let Some(first_missing) = missing.first() {
@@ -335,58 +330,17 @@ fn compile_and_check_patterns(
     Ok(result)
 }
 
-pub fn typecheck_match(
-    subject: &ParsedExpr,
-    arms: &[ParsedMatchArm],
-    range: &DocumentRange,
-    var_env: &mut Environment<Type>,
-    type_env: &mut Environment<Type>,
-    annotations: &mut Vec<TypeAnnotation>,
-) -> Result<TypedExpr, TypeError> {
-    // Type check the subject expression
-    let typed_subject = typecheck_expr(subject, var_env, type_env, annotations, None)?;
-    let subject_type = typed_subject.as_type().clone();
-
-    // Subject must be an enum, boolean, or option type
-    match &subject_type {
-        Type::Enum { .. } | Type::Bool | Type::Option(_) => {}
-        _ => {
-            return Err(TypeError::MatchNotImplementedForType {
-                found: subject_type.to_string(),
-                range: subject.range().clone(),
-            });
-        }
-    }
-
-    // Validate pattern types
-    for arm in arms {
-        validate_pattern_type(&arm.pattern, &subject_type)?;
-    }
-
-    // Compile patterns and check exhaustiveness/redundancy
-    let compiled = compile_and_check_patterns(arms, &subject_type, range, type_env)?;
-
-    // Typecheck arm bodies
-    let (typed_bodies, result_type) = typecheck_arm_bodies(arms, var_env, type_env, annotations)?;
-
-    // Convert decision tree to typed expression
-    Ok(decision_to_typed_expr(
-        &compiled.tree,
-        &typed_bodies,
-        result_type,
-        Some(typed_subject),
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
+    use super::typecheck_match;
     use crate::document::DocumentAnnotator;
     use crate::dop::semantics::r#type::Type;
-    use crate::dop::semantics::type_checker::{resolve_type, typecheck_expr};
+    use crate::dop::semantics::type_checker::resolve_type;
     use crate::dop::symbols::type_name::TypeName;
+    use crate::dop::syntax::parsed::ParsedExpr;
     use crate::dop::{ParsedDeclaration, Parser};
     use crate::environment::Environment;
     use crate::error_collector::ErrorCollector;
@@ -452,13 +406,20 @@ mod tests {
 
         let mut annotations = Vec::new();
 
-        let actual = match typecheck_expr(&expr, &mut env, &mut type_env, &mut annotations, None) {
-            Ok(typed_expr) => format!("{}\n", typed_expr.to_doc().pretty(20)),
-            Err(e) => DocumentAnnotator::new()
-                .with_label("error")
-                .without_location()
-                .without_line_numbers()
-                .annotate(None, [e]),
+        let actual = match expr {
+            ParsedExpr::Match {
+                subject,
+                arms,
+                range,
+            } => match typecheck_match(&subject, &arms, &range, &mut env, &mut type_env, &mut annotations) {
+                Ok(typed_expr) => format!("{}\n", typed_expr.to_doc().pretty(20)),
+                Err(e) => DocumentAnnotator::new()
+                    .with_label("error")
+                    .without_location()
+                    .without_line_numbers()
+                    .annotate(None, [e]),
+            },
+            _ => panic!("Expected a match expression, got: {:?}", expr),
         };
 
         expected.assert_eq(&actual);
@@ -1245,6 +1206,30 @@ mod tests {
             "#},
             expect![[r#"
                 match opt {
+                  Some(v0) => match v0 {
+                    Some(v1) => 0,
+                    None => 1,
+                  },
+                  None => 2,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_exhaustive_nested_option_match_with_literal_subject() {
+        check(
+            "",
+            &[],
+            indoc! {r#"
+                match Some(Some(10)) {
+                    Some(Some(_)) => 0,
+                    Some(None)    => 1,
+                    None          => 2,
+                }
+            "#},
+            expect![[r#"
+                match Some(Some(10)) {
                   Some(v0) => match v0 {
                     Some(v1) => 0,
                     None => 1,

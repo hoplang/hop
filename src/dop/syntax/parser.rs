@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::iter::Peekable;
 
-use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _, StringSpan};
+use crate::document::document_cursor::{DocumentCursor, DocumentRange, StringSpan};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
@@ -10,8 +10,8 @@ use crate::hop::symbols::module_name::ModuleName;
 
 use super::parse_error::ParseError;
 use super::parsed::{
-    Constructor, ParsedBinaryOp, ParsedDeclaration, ParsedExpr, ParsedMatchArm,
-    ParsedMatchPattern, ParsedType,
+    Constructor, ParsedBinaryOp, ParsedDeclaration, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
+    ParsedType,
 };
 use super::token::Token;
 use super::tokenizer::Tokenizer;
@@ -939,7 +939,7 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::{DocumentAnnotator, SimpleAnnotation};
+    use crate::document::{DocumentAnnotator, SimpleAnnotation, document_cursor::Ranged as _};
     use expect_test::{Expect, expect};
     use indoc::indoc;
 

@@ -28,11 +28,6 @@ impl TestCase {
         self.enums = enums;
         self
     }
-
-    fn with_records(mut self, records: Vec<IrRecordDeclaration>) -> Self {
-        self.records = records;
-        self
-    }
 }
 
 #[derive(Debug)]
@@ -49,16 +44,6 @@ impl TypeCheckTestCase {
             enums: vec![],
             records: vec![],
         }
-    }
-
-    fn with_enums(mut self, enums: Vec<IrEnumDeclaration>) -> Self {
-        self.enums = enums;
-        self
-    }
-
-    fn with_records(mut self, records: Vec<IrRecordDeclaration>) -> Self {
-        self.records = records;
-        self
     }
 }
 
