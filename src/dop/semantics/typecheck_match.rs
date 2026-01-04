@@ -320,7 +320,7 @@ fn compile_and_check_patterns(
             ParsedMatchPattern::Constructor { constructor, .. } => constructor.to_string(),
             ParsedMatchPattern::Wildcard { .. } => "_".to_string(),
         };
-        return Err(TypeError::MatchDuplicateVariant {
+        return Err(TypeError::MatchUnreachableArm {
             variant: variant_name,
             range: arm.pattern.range().clone(),
         });
@@ -640,7 +640,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Redundant match arm for variant 'Color::Red'
+                error: Unreachable match arm for variant 'Color::Red'
                     Color::Red => 1,
                     ^^^^^^^^^^
             "#]],
@@ -876,7 +876,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Redundant match arm for variant 'Color::Blue'
+                error: Unreachable match arm for variant 'Color::Blue'
                     Color::Blue => "blue",
                     ^^^^^^^^^^^
             "#]],
@@ -901,7 +901,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Redundant match arm for variant '_'
+                error: Unreachable match arm for variant '_'
                     _ => "second",
                     ^
             "#]],
@@ -1025,7 +1025,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Redundant match arm for variant 'true'
+                error: Unreachable match arm for variant 'true'
                     true => 1,
                     ^^^^
             "#]],
@@ -1317,7 +1317,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Redundant match arm for variant 'Some(_)'
+                error: Unreachable match arm for variant 'Some(_)'
                     Some(_) => 1,
                     ^^^^^^^
             "#]],
@@ -1337,7 +1337,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Redundant match arm for variant 'None'
+                error: Unreachable match arm for variant 'None'
                     None    => 2,
                     ^^^^
             "#]],

@@ -142,8 +142,8 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Redundant match arm for variant '{variant}'")]
-    MatchDuplicateVariant {
+    #[error("Unreachable match arm for variant '{variant}'")]
+    MatchUnreachableArm {
         variant: String,
         range: DocumentRange,
     },
@@ -187,7 +187,7 @@ impl Ranged for TypeError {
             | TypeError::MatchPatternEnumMismatch { range, .. }
             | TypeError::MatchArmTypeMismatch { range, .. }
             | TypeError::MatchMissingVariant { range, .. }
-            | TypeError::MatchDuplicateVariant { range, .. }
+            | TypeError::MatchUnreachableArm { range, .. }
             | TypeError::MatchPatternTypeMismatch { range, .. }
             | TypeError::MatchNoArms { range, .. } => range,
         }
