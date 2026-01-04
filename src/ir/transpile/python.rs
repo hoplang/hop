@@ -5,7 +5,7 @@ use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::ir::ast::{
-    IrBoolMatchArm, IrComponentDeclaration, IrEnumMatchArm, IrExpr, IrModule, IrStatement,
+    IrComponentDeclaration, IrEnumMatchArm, IrExpr, IrModule, IrStatement,
 };
 
 pub struct PythonTranspiler {}
@@ -678,7 +678,8 @@ impl ExpressionTranspiler for PythonTranspiler {
     fn transpile_bool_match<'a>(
         &self,
         _subject: &'a IrExpr,
-        _arms: &'a [IrBoolMatchArm],
+        _true_body: &'a IrExpr,
+        _false_body: &'a IrExpr,
     ) -> BoxDoc<'a> {
         panic!("Match expressions are not yet supported in Python transpilation")
     }
@@ -686,7 +687,9 @@ impl ExpressionTranspiler for PythonTranspiler {
     fn transpile_option_match<'a>(
         &self,
         _subject: &'a IrExpr,
-        _arms: &'a [crate::ir::ast::IrOptionMatchArm],
+        _some_arm_binding: &'a Option<(crate::dop::symbols::var_name::VarName, crate::dop::semantics::r#type::Type)>,
+        _some_arm_body: &'a IrExpr,
+        _none_arm_body: &'a IrExpr,
     ) -> BoxDoc<'a> {
         panic!("Option match expressions are not yet supported in Python transpilation")
     }

@@ -8,9 +8,7 @@ use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use crate::ir::syntax::ast::{
-    IrBoolPattern, IrComponentDeclaration, IrEnumPattern, IrOptionPattern, IrStatement,
-};
+use crate::ir::syntax::ast::{IrComponentDeclaration, IrEnumPattern, IrStatement};
 
 /// Evaluate an IR entrypoint with the given arguments
 pub fn evaluate_entrypoint(
@@ -432,60 +430,49 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 variant_name
             ))
         }
-        IrExpr::BoolMatch { subject, arms, .. } => {
+        IrExpr::BoolMatch {
+            subject,
+            true_body,
+            false_body,
+            ..
+        } => {
             // Evaluate the subject to get the boolean value
             let subject_val = evaluate_expr(subject, env)?;
             let subject_bool = subject_val
                 .as_bool()
                 .ok_or_else(|| anyhow!("Match subject must evaluate to a boolean"))?;
 
-            // Find the matching arm
-            for arm in arms {
-                match &arm.pattern {
-                    IrBoolPattern::Literal(pattern_value) => {
-                        if *pattern_value == subject_bool {
-                            return evaluate_expr(&arm.body, env);
-                        }
-                    }
-                }
+            if subject_bool {
+                evaluate_expr(true_body, env)
+            } else {
+                evaluate_expr(false_body, env)
             }
-
-            Err(anyhow!(
-                "No matching arm found for boolean '{}'",
-                subject_bool
-            ))
         }
-        IrExpr::OptionMatch { subject, arms, .. } => {
+        IrExpr::OptionMatch {
+            subject,
+            some_arm_binding,
+            some_arm_body,
+            none_arm_body,
+            ..
+        } => {
             // Evaluate the subject to get the option value
             let subject_val = evaluate_expr(subject, env)?;
 
             // Check if it's Some or None
             let is_some = !subject_val.is_null();
 
-            // Find the matching arm
-            for arm in arms {
-                match &arm.pattern {
-                    IrOptionPattern::Some { binding } => {
-                        if is_some {
-                            // If there's a binding, add the inner value to the environment
-                            if let Some((var_name, _)) = binding {
-                                let _ = env.push(var_name.to_string(), subject_val.clone());
-                                let result = evaluate_expr(&arm.body, env);
-                                env.pop();
-                                return result;
-                            }
-                            return evaluate_expr(&arm.body, env);
-                        }
-                    }
-                    IrOptionPattern::None => {
-                        if !is_some {
-                            return evaluate_expr(&arm.body, env);
-                        }
-                    }
+            if is_some {
+                // If there's a binding, add the inner value to the environment
+                if let Some((var_name, _)) = some_arm_binding {
+                    let _ = env.push(var_name.to_string(), subject_val.clone());
+                    let result = evaluate_expr(some_arm_body, env);
+                    env.pop();
+                    return result;
                 }
+                evaluate_expr(some_arm_body, env)
+            } else {
+                evaluate_expr(none_arm_body, env)
             }
-
-            Err(anyhow!("No matching arm found for option value"))
         }
         IrExpr::Let { var, value, body, .. } => {
             let val = evaluate_expr(value, env)?;

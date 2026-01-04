@@ -4,10 +4,7 @@ use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspile
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::ir::ast::{
-    IrBoolPattern, IrComponentDeclaration, IrEnumPattern, IrExpr, IrModule, IrOptionMatchArm,
-    IrOptionPattern, IrStatement,
-};
+use crate::ir::ast::{IrComponentDeclaration, IrEnumPattern, IrExpr, IrModule, IrStatement};
 
 pub struct TsTranspiler {
     /// Internal flag to use template literals instead of double quotes
@@ -727,86 +724,62 @@ impl ExpressionTranspiler for TsTranspiler {
     fn transpile_bool_match<'a>(
         &self,
         subject: &'a IrExpr,
-        arms: &'a [crate::ir::ast::IrBoolMatchArm],
+        true_body: &'a IrExpr,
+        false_body: &'a IrExpr,
     ) -> BoxDoc<'a> {
-        // Transpile boolean match to a ternary expression
-        // For simplicity, use: subject ? trueBody : falseBody
-        let mut true_body = None;
-        let mut false_body = None;
-
-        for arm in arms {
-            match &arm.pattern {
-                IrBoolPattern::Literal(true) => {
-                    true_body = Some(&arm.body);
-                }
-                IrBoolPattern::Literal(false) => {
-                    false_body = Some(&arm.body);
-                }
-            }
-        }
-
-        let true_doc = true_body
-            .map(|b| self.transpile_expr(b))
-            .unwrap_or_else(|| BoxDoc::text("undefined"));
-        let false_doc = false_body
-            .map(|b| self.transpile_expr(b))
-            .unwrap_or_else(|| BoxDoc::text("undefined"));
-
+        // Transpile boolean match to a ternary expression: subject ? trueBody : falseBody
         BoxDoc::text("(")
             .append(self.transpile_expr(subject))
             .append(BoxDoc::text(" ? "))
-            .append(true_doc)
+            .append(self.transpile_expr(true_body))
             .append(BoxDoc::text(" : "))
-            .append(false_doc)
+            .append(self.transpile_expr(false_body))
             .append(BoxDoc::text(")"))
     }
 
     fn transpile_option_match<'a>(
         &self,
         subject: &'a IrExpr,
-        arms: &'a [IrOptionMatchArm],
+        some_arm_binding: &'a Option<(crate::dop::symbols::var_name::VarName, crate::dop::semantics::r#type::Type)>,
+        some_arm_body: &'a IrExpr,
+        none_arm_body: &'a IrExpr,
     ) -> BoxDoc<'a> {
-        let cases = BoxDoc::intersperse(
-            arms.iter().map(|arm| match &arm.pattern {
-                IrOptionPattern::Some { binding } => {
-                    let body_doc = self.transpile_expr(&arm.body);
-                    if let Some((var_name, _)) = binding {
-                        // case "Some": {
-                        //   const v0 = subject.value;
-                        //   return body;
-                        // }
-                        BoxDoc::text("case \"Some\": {")
-                            .append(
-                                BoxDoc::line()
-                                    .append(BoxDoc::text("const "))
-                                    .append(BoxDoc::text(var_name.as_str()))
-                                    .append(BoxDoc::text(" = "))
-                                    .append(self.transpile_expr(subject))
-                                    .append(BoxDoc::text(".value;"))
-                                    .append(BoxDoc::line())
-                                    .append(BoxDoc::text("return "))
-                                    .append(body_doc)
-                                    .append(BoxDoc::text(";"))
-                                    .nest(2),
-                            )
+        let some_case = {
+            let body_doc = self.transpile_expr(some_arm_body);
+            if let Some((var_name, _)) = some_arm_binding {
+                // case "Some": {
+                //   const v0 = subject.value;
+                //   return body;
+                // }
+                BoxDoc::text("case \"Some\": {")
+                    .append(
+                        BoxDoc::line()
+                            .append(BoxDoc::text("const "))
+                            .append(BoxDoc::text(var_name.as_str()))
+                            .append(BoxDoc::text(" = "))
+                            .append(self.transpile_expr(subject))
+                            .append(BoxDoc::text(".value;"))
                             .append(BoxDoc::line())
-                            .append(BoxDoc::text("}"))
-                    } else {
-                        // case "Some": return body;
-                        BoxDoc::text("case \"Some\": return ")
+                            .append(BoxDoc::text("return "))
                             .append(body_doc)
                             .append(BoxDoc::text(";"))
-                    }
-                }
-                IrOptionPattern::None => {
-                    // case "None": return body;
-                    BoxDoc::text("case \"None\": return ")
-                        .append(self.transpile_expr(&arm.body))
-                        .append(BoxDoc::text(";"))
-                }
-            }),
-            BoxDoc::line(),
-        );
+                            .nest(2),
+                    )
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("}"))
+            } else {
+                // case "Some": return body;
+                BoxDoc::text("case \"Some\": return ")
+                    .append(body_doc)
+                    .append(BoxDoc::text(";"))
+            }
+        };
+
+        let none_case = BoxDoc::text("case \"None\": return ")
+            .append(self.transpile_expr(none_arm_body))
+            .append(BoxDoc::text(";"));
+
+        let cases = BoxDoc::intersperse([some_case, none_case], BoxDoc::line());
 
         let switch_body = BoxDoc::text("switch (")
             .append(self.transpile_expr(subject))

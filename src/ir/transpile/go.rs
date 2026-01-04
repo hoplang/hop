@@ -1,12 +1,11 @@
 use pretty::BoxDoc;
 
 use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
+use crate::dop::VarName;
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::ir::ast::{
-    IrBoolMatchArm, IrComponentDeclaration, IrEnumMatchArm, IrExpr, IrModule, IrStatement,
-};
+use crate::ir::ast::{IrComponentDeclaration, IrEnumMatchArm, IrExpr, IrModule, IrStatement};
 use std::collections::BTreeSet;
 
 pub struct GoTranspiler {
@@ -716,7 +715,8 @@ impl ExpressionTranspiler for GoTranspiler {
     fn transpile_bool_match<'a>(
         &self,
         _subject: &'a IrExpr,
-        _arms: &'a [IrBoolMatchArm],
+        _true_body: &'a IrExpr,
+        _false_body: &'a IrExpr,
     ) -> BoxDoc<'a> {
         panic!("Match expressions are not yet supported in Go transpilation")
     }
@@ -724,7 +724,9 @@ impl ExpressionTranspiler for GoTranspiler {
     fn transpile_option_match<'a>(
         &self,
         _subject: &'a IrExpr,
-        _arms: &'a [crate::ir::ast::IrOptionMatchArm],
+        _some_arm_binding: &'a Option<(VarName, Type)>,
+        _some_arm_body: &'a IrExpr,
+        _none_arm_body: &'a IrExpr,
     ) -> BoxDoc<'a> {
         panic!("Option match expressions are not yet supported in Go transpilation")
     }

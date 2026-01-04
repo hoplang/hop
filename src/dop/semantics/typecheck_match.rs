@@ -2,10 +2,7 @@ use super::pat_match::{Body, Column, Compiler, Decision, Match, Row, Variable};
 use super::r#type::Type;
 use super::type_checker::typecheck_expr;
 use super::type_error::TypeError;
-use super::typed::{
-    TypedBoolMatchArm, TypedBoolPattern, TypedEnumMatchArm, TypedEnumPattern, TypedOptionMatchArm,
-    TypedOptionPattern,
-};
+use super::typed::{TypedEnumMatchArm, TypedEnumPattern};
 use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::TypedExpr;
 use crate::dop::symbols::var_name::VarName;
@@ -288,61 +285,83 @@ fn decision_to_typed_expr(
             // so that bindings to _subject can be resolved correctly
             match &var.typ {
                 Type::Bool => {
-                    let arms = cases
-                        .iter()
-                        .map(|case| {
-                            let pattern = match &case.constructor {
-                                Constructor::BooleanTrue => TypedBoolPattern::Literal(true),
-                                Constructor::BooleanFalse => TypedBoolPattern::Literal(false),
-                                _ => unreachable!("Invalid constructor for Bool type"),
-                            };
-                            let body = decision_to_typed_expr(
-                                &case.body,
-                                typed_bodies,
-                                result_type.clone(),
-                                subject_expr.clone(),
-                            );
-                            TypedBoolMatchArm { pattern, body }
-                        })
-                        .collect();
+                    // Find the true and false cases
+                    let mut true_body = None;
+                    let mut false_body = None;
+
+                    for case in cases {
+                        match &case.constructor {
+                            Constructor::BooleanTrue => {
+                                true_body = Some(decision_to_typed_expr(
+                                    &case.body,
+                                    typed_bodies,
+                                    result_type.clone(),
+                                    subject_expr.clone(),
+                                ));
+                            }
+                            Constructor::BooleanFalse => {
+                                false_body = Some(decision_to_typed_expr(
+                                    &case.body,
+                                    typed_bodies,
+                                    result_type.clone(),
+                                    subject_expr.clone(),
+                                ));
+                            }
+                            _ => unreachable!("Invalid constructor for Bool type"),
+                        }
+                    }
 
                     TypedExpr::BoolMatch {
                         subject,
-                        arms,
+                        true_body: Box::new(true_body.expect("BoolMatch must have a true arm")),
+                        false_body: Box::new(false_body.expect("BoolMatch must have a false arm")),
                         kind: result_type,
                     }
                 }
 
                 Type::Option(_) => {
-                    let arms = cases
-                        .iter()
-                        .map(|case| {
-                            let pattern = match &case.constructor {
-                                Constructor::OptionSome => {
-                                    let binding = case.arguments.first().map(|var| {
-                                        (
-                                            VarName::new(&var.name).expect("invalid variable name"),
-                                            var.typ.clone(),
-                                        )
-                                    });
-                                    TypedOptionPattern::Some { binding }
-                                }
-                                Constructor::OptionNone => TypedOptionPattern::None,
-                                _ => unreachable!("Invalid constructor for Option type"),
-                            };
-                            let body = decision_to_typed_expr(
-                                &case.body,
-                                typed_bodies,
-                                result_type.clone(),
-                                subject_expr.clone(),
-                            );
-                            TypedOptionMatchArm { pattern, body }
-                        })
-                        .collect();
+                    // Find the Some and None cases
+                    let mut some_arm_binding = None;
+                    let mut some_arm_body = None;
+                    let mut none_arm_body = None;
+
+                    for case in cases {
+                        match &case.constructor {
+                            Constructor::OptionSome => {
+                                some_arm_binding = case.arguments.first().map(|var| {
+                                    (
+                                        VarName::new(&var.name).expect("invalid variable name"),
+                                        var.typ.clone(),
+                                    )
+                                });
+                                some_arm_body = Some(decision_to_typed_expr(
+                                    &case.body,
+                                    typed_bodies,
+                                    result_type.clone(),
+                                    subject_expr.clone(),
+                                ));
+                            }
+                            Constructor::OptionNone => {
+                                none_arm_body = Some(decision_to_typed_expr(
+                                    &case.body,
+                                    typed_bodies,
+                                    result_type.clone(),
+                                    subject_expr.clone(),
+                                ));
+                            }
+                            _ => unreachable!("Invalid constructor for Option type"),
+                        }
+                    }
 
                     TypedExpr::OptionMatch {
                         subject,
-                        arms,
+                        some_arm_binding,
+                        some_arm_body: Box::new(
+                            some_arm_body.expect("OptionMatch must have a Some arm"),
+                        ),
+                        none_arm_body: Box::new(
+                            none_arm_body.expect("OptionMatch must have a None arm"),
+                        ),
                         kind: result_type,
                     }
                 }
@@ -1022,8 +1041,8 @@ mod tests {
             "#},
             expect![[r#"
                 match flag {
-                  false => 0,
                   true => 1,
+                  false => 0,
                 }
             "#]],
         );
@@ -1042,8 +1061,8 @@ mod tests {
             "#},
             expect![[r#"
                 match flag {
-                  false => 0,
                   true => 1,
+                  false => 0,
                 }
             "#]],
         );
@@ -1781,8 +1800,8 @@ mod tests {
             "#},
             expect![[r#"
                 match flag {
-                  false => let other = flag in other,
                   true => false,
+                  false => let other = flag in other,
                 }
             "#]],
         );

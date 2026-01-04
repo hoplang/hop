@@ -51,13 +51,6 @@ pub enum IrEnumPattern {
     },
 }
 
-/// A pattern in a boolean match arm
-#[derive(Debug, Clone, PartialEq)]
-pub enum IrBoolPattern {
-    /// A boolean literal pattern, e.g. `true` or `false`
-    Literal(bool),
-}
-
 /// A single arm in an enum match expression, e.g. `Color::Red => "red"`
 #[derive(Debug, Clone, PartialEq)]
 pub struct IrEnumMatchArm {
@@ -67,35 +60,6 @@ pub struct IrEnumMatchArm {
     pub body: IrExpr,
 }
 
-/// A single arm in a boolean match expression, e.g. `true => "yes"`
-#[derive(Debug, Clone, PartialEq)]
-pub struct IrBoolMatchArm {
-    /// The pattern being matched
-    pub pattern: IrBoolPattern,
-    /// The expression to evaluate if this arm matches
-    pub body: IrExpr,
-}
-
-/// A pattern in an option match arm
-#[derive(Debug, Clone, PartialEq)]
-pub enum IrOptionPattern {
-    /// A Some pattern with an optional variable binding, e.g. `Some(x)` or `Some(_)`
-    Some {
-        /// The variable binding for the inner value, if any
-        binding: Option<(VarName, Type)>,
-    },
-    /// A None pattern
-    None,
-}
-
-/// A single arm in an option match expression, e.g. `Some(_) => "value"`
-#[derive(Debug, Clone, PartialEq)]
-pub struct IrOptionMatchArm {
-    /// The pattern being matched
-    pub pattern: IrOptionPattern,
-    /// The expression to evaluate if this arm matches
-    pub body: IrExpr,
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrStatement {
@@ -201,7 +165,8 @@ pub enum IrExpr {
     /// A boolean match expression, e.g. match flag { true => "yes", false => "no" }
     BoolMatch {
         subject: Box<IrExpr>,
-        arms: Vec<IrBoolMatchArm>,
+        true_body: Box<IrExpr>,
+        false_body: Box<IrExpr>,
         kind: Type,
         id: ExprId,
     },
@@ -209,7 +174,9 @@ pub enum IrExpr {
     /// An option match expression, e.g. match opt { Some(_) => "value", None => "empty" }
     OptionMatch {
         subject: Box<IrExpr>,
-        arms: Vec<IrOptionMatchArm>,
+        some_arm_binding: Option<(VarName, Type)>,
+        some_arm_body: Box<IrExpr>,
+        none_arm_body: Box<IrExpr>,
         kind: Type,
         id: ExprId,
     },
@@ -794,74 +761,70 @@ impl IrExpr {
                         .append(BoxDoc::text("}"))
                 }
             }
-            IrExpr::BoolMatch { subject, arms, .. } => {
-                if arms.is_empty() {
-                    BoxDoc::text("match ")
-                        .append(subject.to_doc())
-                        .append(BoxDoc::text(" {}"))
-                } else {
-                    BoxDoc::text("match ")
-                        .append(subject.to_doc())
-                        .append(BoxDoc::text(" {"))
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    arms.iter().map(|arm| {
-                                        let pattern_doc = match &arm.pattern {
-                                            IrBoolPattern::Literal(true) => BoxDoc::text("true"),
-                                            IrBoolPattern::Literal(false) => BoxDoc::text("false"),
-                                        };
-                                        pattern_doc
-                                            .append(BoxDoc::text(" => "))
-                                            .append(arm.body.to_doc())
-                                    }),
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text("}"))
-                }
+            IrExpr::BoolMatch {
+                subject,
+                true_body,
+                false_body,
+                ..
+            } => {
+                let true_arm_doc = BoxDoc::text("true")
+                    .append(BoxDoc::text(" => "))
+                    .append(true_body.to_doc());
+                let false_arm_doc = BoxDoc::text("false")
+                    .append(BoxDoc::text(" => "))
+                    .append(false_body.to_doc());
+
+                BoxDoc::text("match ")
+                    .append(subject.to_doc())
+                    .append(BoxDoc::text(" {"))
+                    .append(
+                        BoxDoc::line_()
+                            .append(BoxDoc::intersperse(
+                                [true_arm_doc, false_arm_doc],
+                                BoxDoc::text(",").append(BoxDoc::line()),
+                            ))
+                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                            .append(BoxDoc::line_())
+                            .nest(2)
+                            .group(),
+                    )
+                    .append(BoxDoc::text("}"))
             }
-            IrExpr::OptionMatch { subject, arms, .. } => {
-                if arms.is_empty() {
-                    BoxDoc::text("match ")
-                        .append(subject.to_doc())
-                        .append(BoxDoc::text(" {}"))
-                } else {
-                    BoxDoc::text("match ")
-                        .append(subject.to_doc())
-                        .append(BoxDoc::text(" {"))
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    arms.iter().map(|arm| {
-                                        let pattern_doc = match &arm.pattern {
-                                            IrOptionPattern::Some { binding } => {
-                                                match binding {
-                                                    Some((name, _)) => BoxDoc::text("Some(")
-                                                        .append(BoxDoc::text(name.as_str()))
-                                                        .append(BoxDoc::text(")")),
-                                                    None => BoxDoc::text("Some(_)"),
-                                                }
-                                            }
-                                            IrOptionPattern::None => BoxDoc::text("None"),
-                                        };
-                                        pattern_doc
-                                            .append(BoxDoc::text(" => "))
-                                            .append(arm.body.to_doc())
-                                    }),
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text("}"))
-                }
+            IrExpr::OptionMatch {
+                subject,
+                some_arm_binding,
+                some_arm_body,
+                none_arm_body,
+                ..
+            } => {
+                let some_pattern_doc = match some_arm_binding {
+                    Some((name, _)) => BoxDoc::text("Some(")
+                        .append(BoxDoc::text(name.as_str()))
+                        .append(BoxDoc::text(")")),
+                    None => BoxDoc::text("Some(_)"),
+                };
+                let some_arm_doc = some_pattern_doc
+                    .append(BoxDoc::text(" => "))
+                    .append(some_arm_body.to_doc());
+                let none_arm_doc = BoxDoc::text("None")
+                    .append(BoxDoc::text(" => "))
+                    .append(none_arm_body.to_doc());
+
+                BoxDoc::text("match ")
+                    .append(subject.to_doc())
+                    .append(BoxDoc::text(" {"))
+                    .append(
+                        BoxDoc::line_()
+                            .append(BoxDoc::intersperse(
+                                [some_arm_doc, none_arm_doc],
+                                BoxDoc::text(",").append(BoxDoc::line()),
+                            ))
+                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                            .append(BoxDoc::line_())
+                            .nest(2)
+                            .group(),
+                    )
+                    .append(BoxDoc::text("}"))
             }
             IrExpr::Let { var, value, body, .. } => BoxDoc::text("let ")
                 .append(BoxDoc::text(var.as_str()))
@@ -919,17 +882,25 @@ impl IrExpr {
                     arm.body.traverse(f);
                 }
             }
-            IrExpr::BoolMatch { subject, arms, .. } => {
+            IrExpr::BoolMatch {
+                subject,
+                true_body,
+                false_body,
+                ..
+            } => {
                 subject.traverse(f);
-                for arm in arms {
-                    arm.body.traverse(f);
-                }
+                true_body.traverse(f);
+                false_body.traverse(f);
             }
-            IrExpr::OptionMatch { subject, arms, .. } => {
+            IrExpr::OptionMatch {
+                subject,
+                some_arm_body,
+                none_arm_body,
+                ..
+            } => {
                 subject.traverse(f);
-                for arm in arms {
-                    arm.body.traverse(f);
-                }
+                some_arm_body.traverse(f);
+                none_arm_body.traverse(f);
             }
             IrExpr::Let { value, body, .. } => {
                 value.traverse(f);
@@ -991,17 +962,25 @@ impl IrExpr {
                     arm.body.traverse_mut(f);
                 }
             }
-            IrExpr::BoolMatch { subject, arms, .. } => {
+            IrExpr::BoolMatch {
+                subject,
+                true_body,
+                false_body,
+                ..
+            } => {
                 subject.traverse_mut(f);
-                for arm in arms {
-                    arm.body.traverse_mut(f);
-                }
+                true_body.traverse_mut(f);
+                false_body.traverse_mut(f);
             }
-            IrExpr::OptionMatch { subject, arms, .. } => {
+            IrExpr::OptionMatch {
+                subject,
+                some_arm_body,
+                none_arm_body,
+                ..
+            } => {
                 subject.traverse_mut(f);
-                for arm in arms {
-                    arm.body.traverse_mut(f);
-                }
+                some_arm_body.traverse_mut(f);
+                none_arm_body.traverse_mut(f);
             }
             IrExpr::Let { value, body, .. } => {
                 value.traverse_mut(f);

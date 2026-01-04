@@ -15,8 +15,7 @@ use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::var_name::VarName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::ir::ast::{
-    IrBoolMatchArm, IrComponentDeclaration, IrEnumMatchArm, IrExpr, IrModule, IrOptionMatchArm,
-    IrStatement,
+    IrComponentDeclaration, IrEnumMatchArm, IrExpr, IrModule, IrStatement,
 };
 
 pub trait Transpiler {
@@ -155,12 +154,15 @@ pub trait ExpressionTranspiler {
     fn transpile_bool_match<'a>(
         &self,
         subject: &'a IrExpr,
-        arms: &'a [IrBoolMatchArm],
+        true_body: &'a IrExpr,
+        false_body: &'a IrExpr,
     ) -> BoxDoc<'a>;
     fn transpile_option_match<'a>(
         &self,
         subject: &'a IrExpr,
-        arms: &'a [IrOptionMatchArm],
+        some_arm_binding: &'a Option<(VarName, Type)>,
+        some_arm_body: &'a IrExpr,
+        none_arm_body: &'a IrExpr,
     ) -> BoxDoc<'a>;
     fn transpile_let<'a>(
         &self,
@@ -263,8 +265,19 @@ pub trait ExpressionTranspiler {
                 ..
             } => self.transpile_enum_literal(enum_name, variant_name),
             IrExpr::EnumMatch { subject, arms, .. } => self.transpile_enum_match(subject, arms),
-            IrExpr::BoolMatch { subject, arms, .. } => self.transpile_bool_match(subject, arms),
-            IrExpr::OptionMatch { subject, arms, .. } => self.transpile_option_match(subject, arms),
+            IrExpr::BoolMatch {
+                subject,
+                true_body,
+                false_body,
+                ..
+            } => self.transpile_bool_match(subject, true_body, false_body),
+            IrExpr::OptionMatch {
+                subject,
+                some_arm_binding,
+                some_arm_body,
+                none_arm_body,
+                ..
+            } => self.transpile_option_match(subject, some_arm_binding, some_arm_body, none_arm_body),
             IrExpr::Let { var, value, body, .. } => self.transpile_let(var, value, body),
         }
     }

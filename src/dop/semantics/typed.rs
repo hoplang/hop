@@ -16,13 +16,6 @@ pub enum TypedEnumPattern {
     },
 }
 
-/// A pattern in a boolean match arm
-#[derive(Debug, Clone, PartialEq)]
-pub enum TypedBoolPattern {
-    /// A boolean literal pattern, e.g. `true` or `false`
-    Literal(bool),
-}
-
 /// A single arm in an enum match expression, e.g. `Color::Red => "red"`
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedEnumMatchArm {
@@ -32,35 +25,6 @@ pub struct TypedEnumMatchArm {
     pub body: TypedExpr,
 }
 
-/// A single arm in a boolean match expression, e.g. `true => "yes"`
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypedBoolMatchArm {
-    /// The pattern being matched
-    pub pattern: TypedBoolPattern,
-    /// The expression to evaluate if this arm matches
-    pub body: TypedExpr,
-}
-
-/// A pattern in an option match arm
-#[derive(Debug, Clone, PartialEq)]
-pub enum TypedOptionPattern {
-    /// A Some pattern with an optional variable binding, e.g. `Some(x)` or `Some(_)`
-    Some {
-        /// The variable binding for the inner value, if any
-        binding: Option<(VarName, Type)>,
-    },
-    /// A None pattern
-    None,
-}
-
-/// A single arm in an option match expression, e.g. `Some(_) => "value"`
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypedOptionMatchArm {
-    /// The pattern being matched
-    pub pattern: TypedOptionPattern,
-    /// The expression to evaluate if this arm matches
-    pub body: TypedExpr,
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedExpr {
@@ -120,14 +84,17 @@ pub enum TypedExpr {
     /// A boolean match expression, e.g. match flag { true => "yes", false => "no" }
     BoolMatch {
         subject: Box<Self>,
-        arms: Vec<TypedBoolMatchArm>,
+        true_body: Box<Self>,
+        false_body: Box<Self>,
         kind: Type,
     },
 
     /// An option match expression, e.g. match opt { Some(_) => "value", None => "empty" }
     OptionMatch {
         subject: Box<Self>,
-        arms: Vec<TypedOptionMatchArm>,
+        some_arm_binding: Option<(VarName, Type)>,
+        some_arm_body: Box<Self>,
+        none_arm_body: Box<Self>,
         kind: Type,
     },
 
@@ -446,76 +413,70 @@ impl TypedExpr {
                         .append(BoxDoc::text("}"))
                 }
             }
-            TypedExpr::BoolMatch { subject, arms, .. } => {
-                if arms.is_empty() {
-                    BoxDoc::text("match ")
-                        .append(subject.to_doc())
-                        .append(BoxDoc::text(" {}"))
-                } else {
-                    BoxDoc::text("match ")
-                        .append(subject.to_doc())
-                        .append(BoxDoc::text(" {"))
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    arms.iter().map(|arm| {
-                                        let pattern_doc = match &arm.pattern {
-                                            TypedBoolPattern::Literal(true) => BoxDoc::text("true"),
-                                            TypedBoolPattern::Literal(false) => {
-                                                BoxDoc::text("false")
-                                            }
-                                        };
-                                        pattern_doc
-                                            .append(BoxDoc::text(" => "))
-                                            .append(arm.body.to_doc())
-                                    }),
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text("}"))
-                }
+            TypedExpr::BoolMatch {
+                subject,
+                true_body,
+                false_body,
+                ..
+            } => {
+                let true_arm_doc = BoxDoc::text("true")
+                    .append(BoxDoc::text(" => "))
+                    .append(true_body.to_doc());
+                let false_arm_doc = BoxDoc::text("false")
+                    .append(BoxDoc::text(" => "))
+                    .append(false_body.to_doc());
+
+                BoxDoc::text("match ")
+                    .append(subject.to_doc())
+                    .append(BoxDoc::text(" {"))
+                    .append(
+                        BoxDoc::line_()
+                            .append(BoxDoc::intersperse(
+                                [true_arm_doc, false_arm_doc],
+                                BoxDoc::text(",").append(BoxDoc::line()),
+                            ))
+                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                            .append(BoxDoc::line_())
+                            .nest(2)
+                            .group(),
+                    )
+                    .append(BoxDoc::text("}"))
             }
-            TypedExpr::OptionMatch { subject, arms, .. } => {
-                if arms.is_empty() {
-                    BoxDoc::text("match ")
-                        .append(subject.to_doc())
-                        .append(BoxDoc::text(" {}"))
-                } else {
-                    BoxDoc::text("match ")
-                        .append(subject.to_doc())
-                        .append(BoxDoc::text(" {"))
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    arms.iter().map(|arm| {
-                                        let pattern_doc = match &arm.pattern {
-                                            TypedOptionPattern::Some { binding } => {
-                                                match binding {
-                                                    Some((name, _)) => BoxDoc::text("Some(")
-                                                        .append(BoxDoc::text(name.as_str()))
-                                                        .append(BoxDoc::text(")")),
-                                                    None => BoxDoc::text("Some(_)"),
-                                                }
-                                            }
-                                            TypedOptionPattern::None => BoxDoc::text("None"),
-                                        };
-                                        pattern_doc
-                                            .append(BoxDoc::text(" => "))
-                                            .append(arm.body.to_doc())
-                                    }),
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text("}"))
-                }
+            TypedExpr::OptionMatch {
+                subject,
+                some_arm_binding,
+                some_arm_body,
+                none_arm_body,
+                ..
+            } => {
+                let some_pattern_doc = match some_arm_binding {
+                    Some((name, _)) => BoxDoc::text("Some(")
+                        .append(BoxDoc::text(name.as_str()))
+                        .append(BoxDoc::text(")")),
+                    None => BoxDoc::text("Some(_)"),
+                };
+                let some_arm_doc = some_pattern_doc
+                    .append(BoxDoc::text(" => "))
+                    .append(some_arm_body.to_doc());
+                let none_arm_doc = BoxDoc::text("None")
+                    .append(BoxDoc::text(" => "))
+                    .append(none_arm_body.to_doc());
+
+                BoxDoc::text("match ")
+                    .append(subject.to_doc())
+                    .append(BoxDoc::text(" {"))
+                    .append(
+                        BoxDoc::line_()
+                            .append(BoxDoc::intersperse(
+                                [some_arm_doc, none_arm_doc],
+                                BoxDoc::text(",").append(BoxDoc::line()),
+                            ))
+                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                            .append(BoxDoc::line_())
+                            .nest(2)
+                            .group(),
+                    )
+                    .append(BoxDoc::text("}"))
             }
             TypedExpr::Let { var, value, body, .. } => BoxDoc::text("let ")
                 .append(BoxDoc::text(var.as_str()))

@@ -2,7 +2,7 @@ use crate::common::is_void_element;
 use crate::document::document_cursor::StringSpan;
 use crate::dop::TypedExpr;
 use crate::dop::semantics::r#type::EquatableType;
-use crate::dop::semantics::typed::{TypedBoolPattern, TypedEnumPattern, TypedOptionPattern};
+use crate::dop::semantics::typed::TypedEnumPattern;
 use crate::dop::{Type, VarName};
 use crate::inlined::{
     InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
@@ -10,8 +10,7 @@ use crate::inlined::{
 use std::collections::BTreeMap;
 
 use super::ast::{
-    ExprId, IrBoolMatchArm, IrBoolPattern, IrComponentDeclaration, IrEnumMatchArm, IrEnumPattern,
-    IrExpr, IrOptionMatchArm, IrOptionPattern, IrStatement, StatementId,
+    ExprId, IrComponentDeclaration, IrEnumMatchArm, IrEnumPattern, IrExpr, IrStatement, StatementId,
 };
 
 pub struct Compiler {
@@ -574,40 +573,27 @@ impl Compiler {
             },
             TypedExpr::BoolMatch {
                 subject,
-                arms,
+                true_body,
+                false_body,
                 kind,
             } => IrExpr::BoolMatch {
                 subject: Box::new(self.compile_expr(*subject)),
-                arms: arms
-                    .into_iter()
-                    .map(|arm| IrBoolMatchArm {
-                        pattern: match arm.pattern {
-                            TypedBoolPattern::Literal(value) => IrBoolPattern::Literal(value),
-                        },
-                        body: self.compile_expr(arm.body),
-                    })
-                    .collect(),
+                true_body: Box::new(self.compile_expr(*true_body)),
+                false_body: Box::new(self.compile_expr(*false_body)),
                 kind,
                 id: expr_id,
             },
             TypedExpr::OptionMatch {
                 subject,
-                arms,
+                some_arm_binding,
+                some_arm_body,
+                none_arm_body,
                 kind,
             } => IrExpr::OptionMatch {
                 subject: Box::new(self.compile_expr(*subject)),
-                arms: arms
-                    .into_iter()
-                    .map(|arm| IrOptionMatchArm {
-                        pattern: match arm.pattern {
-                            TypedOptionPattern::Some { binding } => {
-                                IrOptionPattern::Some { binding }
-                            }
-                            TypedOptionPattern::None => IrOptionPattern::None,
-                        },
-                        body: self.compile_expr(arm.body),
-                    })
-                    .collect(),
+                some_arm_binding,
+                some_arm_body: Box::new(self.compile_expr(*some_arm_body)),
+                none_arm_body: Box::new(self.compile_expr(*none_arm_body)),
                 kind,
                 id: expr_id,
             },

@@ -456,24 +456,12 @@ impl IrBuilder {
         true_body: IrExpr,
         false_body: IrExpr,
     ) -> IrExpr {
-        use crate::ir::ast::{IrBoolMatchArm, IrBoolPattern};
-
         let result_type = true_body.as_type().clone();
-
-        let ir_arms = vec![
-            IrBoolMatchArm {
-                pattern: IrBoolPattern::Literal(true),
-                body: true_body,
-            },
-            IrBoolMatchArm {
-                pattern: IrBoolPattern::Literal(false),
-                body: false_body,
-            },
-        ];
 
         IrExpr::BoolMatch {
             subject: Box::new(subject),
-            arms: ir_arms,
+            true_body: Box::new(true_body),
+            false_body: Box::new(false_body),
             kind: result_type,
             id: self.next_expr_id(),
         }
@@ -486,24 +474,13 @@ impl IrBuilder {
         some_body: IrExpr,
         none_body: IrExpr,
     ) -> IrExpr {
-        use crate::ir::ast::{IrOptionMatchArm, IrOptionPattern};
-
         let result_type = some_body.as_type().clone();
-
-        let ir_arms = vec![
-            IrOptionMatchArm {
-                pattern: IrOptionPattern::Some { binding: None },
-                body: some_body,
-            },
-            IrOptionMatchArm {
-                pattern: IrOptionPattern::None,
-                body: none_body,
-            },
-        ];
 
         IrExpr::OptionMatch {
             subject: Box::new(subject),
-            arms: ir_arms,
+            some_arm_binding: None,
+            some_arm_body: Box::new(some_body),
+            none_arm_body: Box::new(none_body),
             kind: result_type,
             id: self.next_expr_id(),
         }
@@ -522,8 +499,6 @@ impl IrBuilder {
     where
         F: FnOnce(&Self) -> IrExpr,
     {
-        use crate::ir::ast::{IrOptionMatchArm, IrOptionPattern};
-
         // Push the binding onto the variable stack
         self.var_stack
             .borrow_mut()
@@ -535,22 +510,12 @@ impl IrBuilder {
         self.var_stack.borrow_mut().pop();
 
         let result_type = some_body.as_type().clone();
-        let binding = Some((VarName::new(binding_name).unwrap(), inner_type));
-
-        let ir_arms = vec![
-            IrOptionMatchArm {
-                pattern: IrOptionPattern::Some { binding },
-                body: some_body,
-            },
-            IrOptionMatchArm {
-                pattern: IrOptionPattern::None,
-                body: none_body,
-            },
-        ];
 
         IrExpr::OptionMatch {
             subject: Box::new(subject),
-            arms: ir_arms,
+            some_arm_binding: Some((VarName::new(binding_name).unwrap(), inner_type)),
+            some_arm_body: Box::new(some_body),
+            none_arm_body: Box::new(none_body),
             kind: result_type,
             id: self.next_expr_id(),
         }

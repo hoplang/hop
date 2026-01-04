@@ -2,9 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::dop::VarName;
 
-use crate::ir::ast::{
-    IrBoolMatchArm, IrComponentDeclaration, IrEnumMatchArm, IrExpr, IrOptionMatchArm, IrStatement,
-};
+use crate::ir::ast::{IrComponentDeclaration, IrEnumMatchArm, IrExpr, IrStatement};
 
 use super::Pass;
 
@@ -231,35 +229,29 @@ impl AlphaRenamingPass {
             },
             IrExpr::BoolMatch {
                 subject,
-                arms,
+                true_body,
+                false_body,
                 kind,
                 id,
             } => IrExpr::BoolMatch {
                 subject: Box::new(self.rename_expr(*subject)),
-                arms: arms
-                    .into_iter()
-                    .map(|arm| IrBoolMatchArm {
-                        pattern: arm.pattern,
-                        body: self.rename_expr(arm.body),
-                    })
-                    .collect(),
+                true_body: Box::new(self.rename_expr(*true_body)),
+                false_body: Box::new(self.rename_expr(*false_body)),
                 kind,
                 id,
             },
             IrExpr::OptionMatch {
                 subject,
-                arms,
+                some_arm_binding,
+                some_arm_body,
+                none_arm_body,
                 kind,
                 id,
             } => IrExpr::OptionMatch {
                 subject: Box::new(self.rename_expr(*subject)),
-                arms: arms
-                    .into_iter()
-                    .map(|arm| IrOptionMatchArm {
-                        pattern: arm.pattern,
-                        body: self.rename_expr(arm.body),
-                    })
-                    .collect(),
+                some_arm_binding,
+                some_arm_body: Box::new(self.rename_expr(*some_arm_body)),
+                none_arm_body: Box::new(self.rename_expr(*none_arm_body)),
                 kind,
                 id,
             },
