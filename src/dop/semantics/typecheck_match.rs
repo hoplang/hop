@@ -100,6 +100,42 @@ fn validate_pattern_type(
     }
 }
 
+/// Typecheck all arm bodies and verify they all have the same type.
+/// Returns the typed bodies and the common result type.
+fn typecheck_arm_bodies(
+    arms: &[ParsedMatchArm],
+    env: &mut Environment<Type>,
+    type_env: &mut Environment<Type>,
+    annotations: &mut Vec<TypeAnnotation>,
+) -> Result<(Vec<TypedExpr>, Type), TypeError> {
+    let mut typed_bodies = Vec::new();
+    let mut result_type: Option<Type> = None;
+
+    for arm in arms {
+        let typed_body = typecheck_expr(&arm.body, env, type_env, annotations, None)?;
+        let body_type = typed_body.as_type().clone();
+
+        match &result_type {
+            None => {
+                result_type = Some(body_type);
+            }
+            Some(expected) => {
+                if body_type != *expected {
+                    return Err(TypeError::MatchArmTypeMismatch {
+                        expected: expected.to_string(),
+                        found: body_type.to_string(),
+                        range: arm.body.range().clone(),
+                    });
+                }
+            }
+        }
+
+        typed_bodies.push(typed_body);
+    }
+
+    Ok((typed_bodies, result_type.unwrap()))
+}
+
 /// Compile patterns using pat_match and check for exhaustiveness and redundancy.
 fn compile_and_check_patterns(
     arms: &[ParsedMatchArm],
@@ -213,57 +249,40 @@ fn typecheck_enum_match(
     // Use pat_match to check exhaustiveness and redundancy
     compile_and_check_patterns(arms, subject_type, range, type_env)?;
 
-    // Now typecheck arm bodies and build typed output
-    let mut typed_arms: Vec<TypedEnumMatchArm> = Vec::new();
-    let mut result_type: Option<Type> = None;
+    // Typecheck arm bodies
+    let (typed_bodies, result_type) = typecheck_arm_bodies(arms, env, type_env, annotations)?;
 
-    for arm in arms {
-        let typed_pattern = match &arm.pattern {
-            ParsedMatchPattern::Constructor {
-                constructor:
-                    Constructor::EnumVariant {
-                        enum_name: pattern_enum_name,
-                        variant_name: pattern_variant_name,
-                    },
-                ..
-            } => TypedEnumPattern::Variant {
-                enum_name: pattern_enum_name.to_string(),
-                variant_name: pattern_variant_name.clone(),
-            },
-            ParsedMatchPattern::Wildcard { .. } => TypedEnumPattern::Wildcard,
-            _ => unreachable!("Pattern type already validated"),
-        };
-
-        // Type check the arm body
-        let typed_body = typecheck_expr(&arm.body, env, type_env, annotations, None)?;
-        let body_type = typed_body.as_type().clone();
-
-        // Check that all arms have the same type
-        match &result_type {
-            None => {
-                result_type = Some(body_type);
+    // Build typed output
+    let typed_arms = arms
+        .iter()
+        .zip(typed_bodies)
+        .map(|(arm, typed_body)| {
+            let typed_pattern = match &arm.pattern {
+                ParsedMatchPattern::Constructor {
+                    constructor:
+                        Constructor::EnumVariant {
+                            enum_name: pattern_enum_name,
+                            variant_name: pattern_variant_name,
+                        },
+                    ..
+                } => TypedEnumPattern::Variant {
+                    enum_name: pattern_enum_name.to_string(),
+                    variant_name: pattern_variant_name.clone(),
+                },
+                ParsedMatchPattern::Wildcard { .. } => TypedEnumPattern::Wildcard,
+                _ => unreachable!("Pattern type already validated"),
+            };
+            TypedEnumMatchArm {
+                pattern: typed_pattern,
+                body: typed_body,
             }
-            Some(expected) => {
-                if body_type != *expected {
-                    return Err(TypeError::MatchArmTypeMismatch {
-                        expected: expected.to_string(),
-                        found: body_type.to_string(),
-                        range: arm.body.range().clone(),
-                    });
-                }
-            }
-        }
-
-        typed_arms.push(TypedEnumMatchArm {
-            pattern: typed_pattern,
-            body: typed_body,
-        });
-    }
+        })
+        .collect();
 
     Ok(TypedExpr::EnumMatch {
         subject: Box::new(typed_subject.clone()),
         arms: typed_arms,
-        kind: result_type.unwrap(),
+        kind: result_type,
     })
 }
 
@@ -280,54 +299,37 @@ fn typecheck_bool_match(
     // Use pat_match to check exhaustiveness and redundancy
     compile_and_check_patterns(arms, subject_type, range, type_env)?;
 
-    // Now typecheck arm bodies and build typed output
-    let mut typed_arms: Vec<TypedBoolMatchArm> = Vec::new();
-    let mut result_type: Option<Type> = None;
+    // Typecheck arm bodies
+    let (typed_bodies, result_type) = typecheck_arm_bodies(arms, env, type_env, annotations)?;
 
-    for arm in arms {
-        let typed_pattern = match &arm.pattern {
-            ParsedMatchPattern::Constructor {
-                constructor: Constructor::BooleanTrue,
-                ..
-            } => TypedBoolPattern::Literal(true),
-            ParsedMatchPattern::Constructor {
-                constructor: Constructor::BooleanFalse,
-                ..
-            } => TypedBoolPattern::Literal(false),
-            ParsedMatchPattern::Wildcard { .. } => TypedBoolPattern::Wildcard,
-            _ => unreachable!("Pattern type already validated"),
-        };
-
-        // Type check the arm body
-        let typed_body = typecheck_expr(&arm.body, env, type_env, annotations, None)?;
-        let body_type = typed_body.as_type().clone();
-
-        // Check that all arms have the same type
-        match &result_type {
-            None => {
-                result_type = Some(body_type);
+    // Build typed output
+    let typed_arms = arms
+        .iter()
+        .zip(typed_bodies)
+        .map(|(arm, typed_body)| {
+            let typed_pattern = match &arm.pattern {
+                ParsedMatchPattern::Constructor {
+                    constructor: Constructor::BooleanTrue,
+                    ..
+                } => TypedBoolPattern::Literal(true),
+                ParsedMatchPattern::Constructor {
+                    constructor: Constructor::BooleanFalse,
+                    ..
+                } => TypedBoolPattern::Literal(false),
+                ParsedMatchPattern::Wildcard { .. } => TypedBoolPattern::Wildcard,
+                _ => unreachable!("Pattern type already validated"),
+            };
+            TypedBoolMatchArm {
+                pattern: typed_pattern,
+                body: typed_body,
             }
-            Some(expected) => {
-                if body_type != *expected {
-                    return Err(TypeError::MatchArmTypeMismatch {
-                        expected: expected.to_string(),
-                        found: body_type.to_string(),
-                        range: arm.body.range().clone(),
-                    });
-                }
-            }
-        }
-
-        typed_arms.push(TypedBoolMatchArm {
-            pattern: typed_pattern,
-            body: typed_body,
-        });
-    }
+        })
+        .collect();
 
     Ok(TypedExpr::BoolMatch {
         subject: Box::new(typed_subject.clone()),
         arms: typed_arms,
-        kind: result_type.unwrap(),
+        kind: result_type,
     })
 }
 
@@ -344,54 +346,37 @@ fn typecheck_option_match(
     // Use pat_match to check exhaustiveness and redundancy
     compile_and_check_patterns(arms, subject_type, range, type_env)?;
 
-    // Now typecheck arm bodies and build typed output
-    let mut typed_arms: Vec<TypedOptionMatchArm> = Vec::new();
-    let mut result_type: Option<Type> = None;
+    // Typecheck arm bodies
+    let (typed_bodies, result_type) = typecheck_arm_bodies(arms, env, type_env, annotations)?;
 
-    for arm in arms {
-        let typed_pattern = match &arm.pattern {
-            ParsedMatchPattern::Constructor {
-                constructor: Constructor::OptionSome,
-                ..
-            } => TypedOptionPattern::Some,
-            ParsedMatchPattern::Constructor {
-                constructor: Constructor::OptionNone,
-                ..
-            } => TypedOptionPattern::None,
-            ParsedMatchPattern::Wildcard { .. } => TypedOptionPattern::Wildcard,
-            _ => unreachable!("Pattern type already validated"),
-        };
-
-        // Type check the arm body
-        let typed_body = typecheck_expr(&arm.body, env, type_env, annotations, None)?;
-        let body_type = typed_body.as_type().clone();
-
-        // Check that all arms have the same type
-        match &result_type {
-            None => {
-                result_type = Some(body_type);
+    // Build typed output
+    let typed_arms = arms
+        .iter()
+        .zip(typed_bodies)
+        .map(|(arm, typed_body)| {
+            let typed_pattern = match &arm.pattern {
+                ParsedMatchPattern::Constructor {
+                    constructor: Constructor::OptionSome,
+                    ..
+                } => TypedOptionPattern::Some,
+                ParsedMatchPattern::Constructor {
+                    constructor: Constructor::OptionNone,
+                    ..
+                } => TypedOptionPattern::None,
+                ParsedMatchPattern::Wildcard { .. } => TypedOptionPattern::Wildcard,
+                _ => unreachable!("Pattern type already validated"),
+            };
+            TypedOptionMatchArm {
+                pattern: typed_pattern,
+                body: typed_body,
             }
-            Some(expected) => {
-                if body_type != *expected {
-                    return Err(TypeError::MatchArmTypeMismatch {
-                        expected: expected.to_string(),
-                        found: body_type.to_string(),
-                        range: arm.body.range().clone(),
-                    });
-                }
-            }
-        }
-
-        typed_arms.push(TypedOptionMatchArm {
-            pattern: typed_pattern,
-            body: typed_body,
-        });
-    }
+        })
+        .collect();
 
     Ok(TypedExpr::OptionMatch {
         subject: Box::new(typed_subject.clone()),
         arms: typed_arms,
-        kind: result_type.unwrap(),
+        kind: result_type,
     })
 }
 
