@@ -109,7 +109,7 @@ impl Constructor {
                 .append(BoxDoc::text(variant_name.as_str())),
             Constructor::BooleanTrue => BoxDoc::text("true"),
             Constructor::BooleanFalse => BoxDoc::text("false"),
-            Constructor::OptionSome => BoxDoc::text("Some(_)"),
+            Constructor::OptionSome => BoxDoc::text("Some"),
             Constructor::OptionNone => BoxDoc::text("None"),
         }
     }

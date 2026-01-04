@@ -1317,7 +1317,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unreachable match arm for variant 'Some(_)'
+                error: Unreachable match arm for variant 'Some'
                     Some(_) => 1,
                     ^^^^^^^
             "#]],
@@ -1423,7 +1423,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern type mismatch: expected enum, found Some(_)(_)
+                error: Match pattern type mismatch: expected enum, found Some(_)
                     Some(_)      => 0,
                     ^^^^^^^
             "#]],
@@ -1442,7 +1442,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern type mismatch: expected boolean, found Some(_)(_)
+                error: Match pattern type mismatch: expected boolean, found Some(_)
                     Some(_) => 0,
                     ^^^^^^^
             "#]],
@@ -1546,7 +1546,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match pattern type mismatch: expected boolean, found Some(_)(_)
+                error: Match pattern type mismatch: expected boolean, found Some(_)
                     Some(Some(_)) => 0,
                          ^^^^^^^
             "#]],

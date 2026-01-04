@@ -765,11 +765,11 @@ mod tests {
             expect![[r#"
                 -- input --
                 match in {
-                  Some(_)(true) => 0
+                  Some(true) => 0
                 }
                 -- output --
                 switch in {
-                  Some(_)(v0) => {
+                  Some(v0) => {
                     switch v0 {
                       false => {
                         fail
@@ -805,13 +805,13 @@ mod tests {
             expect![[r#"
                 -- input --
                 match in {
-                  Some(_)(true) => 0
-                  Some(_)(_) => 1
+                  Some(true) => 0
+                  Some(_) => 1
                   None => 2
                 }
                 -- output --
                 switch in {
-                  Some(_)(v0) => {
+                  Some(v0) => {
                     switch v0 {
                       false => {
                         body(1)
@@ -850,14 +850,14 @@ mod tests {
             expect![[r#"
                 -- input --
                 match in {
-                  Some(_)(true) => 0
-                  Some(_)(true) => 1
-                  Some(_)(_) => 2
+                  Some(true) => 0
+                  Some(true) => 1
+                  Some(_) => 2
                   None => 3
                 }
                 -- output --
                 switch in {
-                  Some(_)(v0) => {
+                  Some(v0) => {
                     switch v0 {
                       false => {
                         body(2)
@@ -891,12 +891,12 @@ mod tests {
             expect![[r#"
                 -- input --
                 match in {
-                  Some(_)(true) => 0
+                  Some(true) => 0
                   _ => 1
                 }
                 -- output --
                 switch in {
-                  Some(_)(v0) => {
+                  Some(v0) => {
                     switch v0 {
                       false => {
                         body(1)
@@ -1048,15 +1048,15 @@ mod tests {
             expect![[r#"
                 -- input --
                 match in {
-                  Some(_)(Some(_)(true)) => 0
-                  Some(_)(None) => 1
+                  Some(Some(true)) => 0
+                  Some(None) => 1
                   None => 2
                 }
                 -- output --
                 switch in {
-                  Some(_)(v0) => {
+                  Some(v0) => {
                     switch v0 {
-                      Some(_)(v1) => {
+                      Some(v1) => {
                         switch v1 {
                           false => {
                             fail
@@ -1153,12 +1153,12 @@ mod tests {
             expect![[r#"
                 -- input --
                 match in {
-                  Some(_)(_) => 0
+                  Some(_) => 0
                   None => 1
                 }
                 -- output --
                 switch in {
-                  Some(_)(v0) => {
+                  Some(v0) => {
                     body(0)
                   }
                   None => {
