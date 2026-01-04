@@ -492,7 +492,7 @@ impl IrBuilder {
 
         let ir_arms = vec![
             IrOptionMatchArm {
-                pattern: IrOptionPattern::Some,
+                pattern: IrOptionPattern::Some { binding: None },
                 body: some_body,
             },
             IrOptionMatchArm {

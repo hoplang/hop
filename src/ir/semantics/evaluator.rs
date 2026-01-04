@@ -465,8 +465,15 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             // Find the matching arm
             for arm in arms {
                 match &arm.pattern {
-                    IrOptionPattern::Some => {
+                    IrOptionPattern::Some { binding } => {
                         if is_some {
+                            // If there's a binding, add the inner value to the environment
+                            if let Some((var_name, _)) = binding {
+                                let _ = env.push(var_name.to_string(), subject_val.clone());
+                                let result = evaluate_expr(&arm.body, env);
+                                env.pop();
+                                return result;
+                            }
                             return evaluate_expr(&arm.body, env);
                         }
                     }

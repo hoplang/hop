@@ -600,7 +600,9 @@ impl Compiler {
                     .into_iter()
                     .map(|arm| IrOptionMatchArm {
                         pattern: match arm.pattern {
-                            TypedOptionPattern::Some => IrOptionPattern::Some,
+                            TypedOptionPattern::Some { binding } => {
+                                IrOptionPattern::Some { binding }
+                            }
                             TypedOptionPattern::None => IrOptionPattern::None,
                         },
                         body: self.compile_expr(arm.body),

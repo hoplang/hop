@@ -211,7 +211,16 @@ pub fn decision_to_typed_expr(
                         .iter()
                         .map(|case| {
                             let pattern = match &case.constructor {
-                                Constructor::OptionSome => TypedOptionPattern::Some,
+                                Constructor::OptionSome => {
+                                    // Extract the binding from case.arguments if present
+                                    let binding = case.arguments.first().map(|var| {
+                                        (
+                                            VarName::new(&var.name).expect("invalid variable name"),
+                                            var.typ.clone(),
+                                        )
+                                    });
+                                    TypedOptionPattern::Some { binding }
+                                }
                                 Constructor::OptionNone => TypedOptionPattern::None,
                                 _ => unreachable!("Invalid constructor for Option type"),
                             };
@@ -444,7 +453,7 @@ mod tests {
         let mut annotations = Vec::new();
 
         let actual = match typecheck_expr(&expr, &mut env, &mut type_env, &mut annotations, None) {
-            Ok(typed_expr) => typed_expr.as_type().to_string(),
+            Ok(typed_expr) => format!("{}\n", typed_expr.to_doc().pretty(20)),
             Err(e) => DocumentAnnotator::new()
                 .with_label("error")
                 .without_location()
@@ -477,7 +486,13 @@ mod tests {
                     Color::Blue => "blue",
                 }
             "#},
-            expect!["String"],
+            expect![[r#"
+                match color {
+                  Color::Red => "red",
+                  Color::Green => "green",
+                  Color::Blue => "blue",
+                }
+            "#]],
         );
     }
 
@@ -499,7 +514,13 @@ mod tests {
                     Size::Large => 3,
                 }
             "},
-            expect!["Int"],
+            expect![[r#"
+                match size {
+                  Size::Small => 1,
+                  Size::Medium => 2,
+                  Size::Large => 3,
+                }
+            "#]],
         );
     }
 
@@ -519,7 +540,12 @@ mod tests {
                     Status::Inactive => false,
                 }
             "},
-            expect!["Bool"],
+            expect![[r#"
+                match status {
+                  Status::Active => true,
+                  Status::Inactive => false,
+                }
+            "#]],
         );
     }
 
@@ -608,14 +634,14 @@ mod tests {
             &[("color", "Color")],
             indoc! {r#"
                 match color {
-                    Color::Red => "red",
-                    Color::Red => "also red",
-                    Color::Green => "green",
+                    Color::Red => 0,
+                    Color::Red => 1,
+                    Color::Green => 2,
                 }
             "#},
             expect![[r#"
                 error: Redundant match arm for variant 'Color::Red'
-                    Color::Red => "also red",
+                    Color::Red => 1,
                     ^^^^^^^^^^
             "#]],
         );
@@ -637,13 +663,13 @@ mod tests {
             &[("color", "Color")],
             indoc! {r#"
                 match color {
-                    Color::Red => "red",
-                    Size::Small => "small",
+                    Color::Red => 0,
+                    Size::Small => 1,
                 }
             "#},
             expect![[r#"
                 error: Match pattern enum 'Size' does not match subject enum 'Color'
-                    Size::Small => "small",
+                    Size::Small => 1,
                     ^^^^^^^^^^^
             "#]],
         );
@@ -661,13 +687,13 @@ mod tests {
             &[("color", "Color")],
             indoc! {r#"
                 match color {
-                    Color::Red => "red",
-                    Color::Yellow => "yellow",
+                    Color::Red => 0,
+                    Color::Yellow => 1,
                 }
             "#},
             expect![[r#"
                 error: Variant 'Yellow' is not defined in enum 'Color'
-                    Color::Yellow => "yellow",
+                    Color::Yellow => 1,
                     ^^^^^^^^^^^^^
             "#]],
         );
@@ -692,7 +718,12 @@ mod tests {
                     Status::Inactive => "inactive",
                 }
             "#},
-            expect!["String"],
+            expect![[r#"
+                match user.status {
+                  Status::Active => "active",
+                  Status::Inactive => "inactive",
+                }
+            "#]],
         );
     }
 
@@ -712,11 +743,16 @@ mod tests {
             &[("user", "User")],
             indoc! {"
                 match user.status {
-                    Status::Active => user.name,
-                    Status::Inactive => user.name,
+                    Status::Active => user.name + user.name,
+                    Status::Inactive => user.name + user.name,
                 }
             "},
-            expect!["String"],
+            expect![[r#"
+                match user.status {
+                  Status::Active => (user.name + user.name),
+                  Status::Inactive => (user.name + user.name),
+                }
+            "#]],
         );
     }
 
@@ -734,7 +770,11 @@ mod tests {
                     Unit::Value => "value",
                 }
             "#},
-            expect!["String"],
+            expect![[r#"
+                match unit {
+                  Unit::Value => "value",
+                }
+            "#]],
         );
     }
 
@@ -751,11 +791,17 @@ mod tests {
             &[("color", "Color")],
             indoc! {r#"
                 match color {
-                    Color::Red => "red",
-                    _ => "other",
+                    Color::Red => 0,
+                    _ => 1,
                 }
             "#},
-            expect!["String"],
+            expect![[r#"
+                match color {
+                  Color::Red => 0,
+                  Color::Green => 1,
+                  Color::Blue => 1,
+                }
+            "#]],
         );
     }
 
@@ -775,7 +821,9 @@ mod tests {
                     _ => "any color",
                 }
             "#},
-            expect!["String"],
+            expect![[r#"
+                "any color"
+            "#]],
         );
     }
 
@@ -798,7 +846,14 @@ mod tests {
                     _ => 0,
                 }
             "},
-            expect!["Int"],
+            expect![[r#"
+                match status {
+                  Status::Active => 1,
+                  Status::Inactive => 2,
+                  Status::Pending => 0,
+                  Status::Archived => 0,
+                }
+            "#]],
         );
     }
 
@@ -839,11 +894,16 @@ mod tests {
             &[("flag", "Bool")],
             indoc! {r#"
                 match flag {
-                    true => "yes",
-                    false => "no",
+                    true => 1,
+                    false => 0,
                 }
             "#},
-            expect!["String"],
+            expect![[r#"
+                match flag {
+                  false => 0,
+                  true => 1,
+                }
+            "#]],
         );
     }
 
@@ -854,11 +914,16 @@ mod tests {
             &[("flag", "Bool")],
             indoc! {r#"
                 match flag {
-                    true => "yes",
-                    _ => "no",
+                    true => 1,
+                    _ => 0,
                 }
             "#},
-            expect!["String"],
+            expect![[r#"
+                match flag {
+                  false => 0,
+                  true => 1,
+                }
+            "#]],
         );
     }
 
@@ -872,7 +937,9 @@ mod tests {
                     _ => "always",
                 }
             "#},
-            expect!["String"],
+            expect![[r#"
+                "always"
+            "#]],
         );
     }
 
@@ -883,15 +950,15 @@ mod tests {
             &[("flag", "Bool")],
             indoc! {r#"
                 match flag {
-                    true => "yes",
+                    true => 1,
                 }
             "#},
             expect![[r#"
                 error: Match expression is missing arm for variant 'false'
                 match flag {
                 ^^^^^^^^^^^^
-                    true => "yes",
-                ^^^^^^^^^^^^^^^^^^
+                    true => 1,
+                ^^^^^^^^^^^^^^
                 }
                 ^
             "#]],
@@ -927,14 +994,14 @@ mod tests {
             &[("flag", "Bool")],
             indoc! {r#"
                 match flag {
-                    true => "yes",
-                    true => "also yes",
-                    false => "no",
+                    true => 0,
+                    true => 1,
+                    false => 2,
                 }
             "#},
             expect![[r#"
                 error: Redundant match arm for variant 'true'
-                    true => "also yes",
+                    true => 1,
                     ^^^^
             "#]],
         );
@@ -975,13 +1042,13 @@ mod tests {
             &[("color", "Color")],
             indoc! {r#"
                 match color {
-                    true => "yes",
-                    Color::Green => "green",
+                    true => 0,
+                    Color::Green => 1,
                 }
             "#},
             expect![[r#"
                 error: Match pattern type mismatch: expected enum, found true
-                    true => "yes",
+                    true => 0,
                     ^^^^
             "#]],
         );
@@ -998,11 +1065,16 @@ mod tests {
             &[("opt", "Option[Int]")],
             indoc! {r#"
                 match opt {
-                    Some(_) => "has value",
-                    None    => "empty",
+                    Some(_) => 0,
+                    None    => 1,
                 }
             "#},
-            expect!["String"],
+            expect![[r#"
+                match opt {
+                  Some(v0) => 0,
+                  None => 1,
+                }
+            "#]],
         );
     }
 
@@ -1017,7 +1089,12 @@ mod tests {
                     None    => 0,
                 }
             "},
-            expect!["Int"],
+            expect![[r#"
+                match opt {
+                  Some(v0) => 1,
+                  None => 0,
+                }
+            "#]],
         );
     }
 
@@ -1028,11 +1105,16 @@ mod tests {
             &[("opt", "Option[Bool]")],
             indoc! {r#"
                 match opt {
-                    Some(_) => "has value",
-                    _       => "fallback",
+                    Some(_) => 0,
+                    _       => 1,
                 }
             "#},
-            expect!["String"],
+            expect![[r#"
+                match opt {
+                  Some(v0) => 0,
+                  None => 1,
+                }
+            "#]],
         );
     }
 
@@ -1046,7 +1128,9 @@ mod tests {
                     _ => "always this",
                 }
             "#},
-            expect!["String"],
+            expect![[r#"
+                "always this"
+            "#]],
         );
     }
 
@@ -1079,15 +1163,15 @@ mod tests {
             &[("opt", "Option[Int]")],
             indoc! {r#"
                 match opt {
-                    Some(_) => "has value",
+                    Some(_) => 1,
                 }
             "#},
             expect![[r#"
                 error: Match expression is missing arm for variant 'None'
                 match opt {
                 ^^^^^^^^^^^
-                    Some(_) => "has value",
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    Some(_) => 1,
+                ^^^^^^^^^^^^^^^^^
                 }
                 ^
             "#]],
@@ -1101,18 +1185,18 @@ mod tests {
             &[("opt", "Option[Option[Int]]")],
             indoc! {r#"
                 match opt {
-                    Some(Some(_)) => "",
-                    None          => "empty",
+                    Some(Some(_)) => 0,
+                    None          => 1,
                 }
             "#},
             expect![[r#"
                 error: Match expression is missing arm for variant 'Some(None)'
                 match opt {
                 ^^^^^^^^^^^
-                    Some(Some(_)) => "",
-                ^^^^^^^^^^^^^^^^^^^^^^^^
-                    None          => "empty",
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    Some(Some(_)) => 0,
+                ^^^^^^^^^^^^^^^^^^^^^^^
+                    None          => 1,
+                ^^^^^^^^^^^^^^^^^^^^^^^
                 }
                 ^
             "#]],
@@ -1126,21 +1210,21 @@ mod tests {
             &[("opt", "Option[Option[Bool]]")],
             indoc! {r#"
                 match opt {
-                    Some(Some(false)) => "",
-                    Some(None)        => "",
-                    None              => "empty",
+                    Some(Some(false)) => 0,
+                    Some(None)        => 1,
+                    None              => 2,
                 }
             "#},
             expect![[r#"
                 error: Match expression is missing arm for variant 'Some(Some(true))'
                 match opt {
                 ^^^^^^^^^^^
-                    Some(Some(false)) => "",
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                    Some(None)        => "",
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                    None              => "empty",
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    Some(Some(false)) => 0,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    Some(None)        => 1,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    None              => 2,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 }
                 ^
             "#]],
@@ -1154,12 +1238,20 @@ mod tests {
             &[("opt", "Option[Option[Int]]")],
             indoc! {r#"
                 match opt {
-                    Some(Some(_)) => "",
-                    Some(None)    => "",
-                    None          => "empty",
+                    Some(Some(_)) => 0,
+                    Some(None)    => 1,
+                    None          => 2,
                 }
             "#},
-            expect!["String"],
+            expect![[r#"
+                match opt {
+                  Some(v0) => match v0 {
+                    Some(v1) => 0,
+                    None => 1,
+                  },
+                  None => 2,
+                }
+            "#]],
         );
     }
 
@@ -1170,14 +1262,14 @@ mod tests {
             &[("opt", "Option[Int]")],
             indoc! {r#"
                 match opt {
-                    Some(_) => "first",
-                    Some(_) => "second",
-                    None    => "empty",
+                    Some(_) => 0,
+                    Some(_) => 1,
+                    None    => 2,
                 }
             "#},
             expect![[r#"
                 error: Redundant match arm for variant 'Some(_)'
-                    Some(_) => "second",
+                    Some(_) => 1,
                     ^^^^^^^
             "#]],
         );
@@ -1190,14 +1282,14 @@ mod tests {
             &[("opt", "Option[Int]")],
             indoc! {r#"
                 match opt {
-                    Some(_) => "has value",
-                    None    => "first",
-                    None    => "second",
+                    Some(_) => 0,
+                    None    => 1,
+                    None    => 2,
                 }
             "#},
             expect![[r#"
                 error: Redundant match arm for variant 'None'
-                    None    => "second",
+                    None    => 2,
                     ^^^^
             "#]],
         );
@@ -1234,13 +1326,13 @@ mod tests {
             &[("opt", "Option[Int]")],
             indoc! {r#"
                 match opt {
-                    Color::Red => "red",
-                    None       => "empty",
+                    Color::Red => 0,
+                    None       => 1,
                 }
             "#},
             expect![[r#"
                 error: Match pattern type mismatch: expected option, found Color::Red
-                    Color::Red => "red",
+                    Color::Red => 0,
                     ^^^^^^^^^^
             "#]],
         );
@@ -1253,13 +1345,13 @@ mod tests {
             &[("opt", "Option[Int]")],
             indoc! {r#"
                 match opt {
-                    true => "yes",
-                    None => "empty",
+                    true => 0,
+                    None => 1,
                 }
             "#},
             expect![[r#"
                 error: Match pattern type mismatch: expected option, found true
-                    true => "yes",
+                    true => 0,
                     ^^^^
             "#]],
         );
@@ -1277,13 +1369,13 @@ mod tests {
             &[("color", "Color")],
             indoc! {r#"
                 match color {
-                    Some(_)      => "has value",
-                    Color::Green => "green",
+                    Some(_)      => 0,
+                    Color::Green => 1,
                 }
             "#},
             expect![[r#"
                 error: Match pattern type mismatch: expected enum, found Some(_)(_)
-                    Some(_)      => "has value",
+                    Some(_)      => 0,
                     ^^^^^^^
             "#]],
         );
@@ -1296,13 +1388,13 @@ mod tests {
             &[("flag", "Bool")],
             indoc! {r#"
                 match flag {
-                    Some(_) => "has value",
-                    false   => "no",
+                    Some(_) => 0,
+                    false   => 1,
                 }
             "#},
             expect![[r#"
                 error: Match pattern type mismatch: expected boolean, found Some(_)(_)
-                    Some(_) => "has value",
+                    Some(_) => 0,
                     ^^^^^^^
             "#]],
         );
@@ -1315,13 +1407,13 @@ mod tests {
             &[("opt", "Option[Bool]")],
             indoc! {r#"
                 match opt {
-                    Some(None) => "nested none",
-                    None       => "empty",
+                    Some(None) => 0,
+                    None       => 1,
                 }
             "#},
             expect![[r#"
                 error: Match pattern type mismatch: expected boolean, found None
-                    Some(None) => "nested none",
+                    Some(None) => 0,
                          ^^^^
             "#]],
         );
@@ -1334,13 +1426,13 @@ mod tests {
             &[("opt", "Option[Bool]")],
             indoc! {r#"
                 match opt {
-                    Some(Some(_)) => "nested some",
-                    None          => "empty",
+                    Some(Some(_)) => 0,
+                    None          => 1,
                 }
             "#},
             expect![[r#"
                 error: Match pattern type mismatch: expected boolean, found Some(_)(_)
-                    Some(Some(_)) => "nested some",
+                    Some(Some(_)) => 0,
                          ^^^^^^^
             "#]],
         );

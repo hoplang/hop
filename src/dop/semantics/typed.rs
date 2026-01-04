@@ -44,8 +44,11 @@ pub struct TypedBoolMatchArm {
 /// A pattern in an option match arm
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedOptionPattern {
-    /// A Some pattern, e.g. `Some(_)`
-    Some,
+    /// A Some pattern with an optional variable binding, e.g. `Some(x)` or `Some(_)`
+    Some {
+        /// The variable binding for the inner value, if any
+        binding: Option<(VarName, Type)>,
+    },
     /// A None pattern
     None,
 }
@@ -481,7 +484,14 @@ impl TypedExpr {
                                 .append(BoxDoc::intersperse(
                                     arms.iter().map(|arm| {
                                         let pattern_doc = match &arm.pattern {
-                                            TypedOptionPattern::Some => BoxDoc::text("Some(_)"),
+                                            TypedOptionPattern::Some { binding } => {
+                                                match binding {
+                                                    Some((name, _)) => BoxDoc::text("Some(")
+                                                        .append(BoxDoc::text(name.as_str()))
+                                                        .append(BoxDoc::text(")")),
+                                                    None => BoxDoc::text("Some(_)"),
+                                                }
+                                            }
                                             TypedOptionPattern::None => BoxDoc::text("None"),
                                         };
                                         pattern_doc
