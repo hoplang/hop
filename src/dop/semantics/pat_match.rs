@@ -14,7 +14,7 @@ use crate::environment::Environment;
 use super::r#type::Type;
 
 /// The body of code to evaluate in case of a match.
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Debug)]
 pub struct Body {
     /// Any variables to bind before running the code.
     /// The tuples are in the form `(name, source)` (i.e `x = source`).
@@ -45,20 +45,6 @@ impl Variable {
     }
 }
 
-// Hash and Eq only consider the name, not the type
-impl std::hash::Hash for Variable {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
-    }
-}
-
-impl PartialEq for Variable {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-    }
-}
-
-impl Eq for Variable {}
 
 /// A single case (or row) in a match expression/table.
 #[derive(Clone, Debug)]
@@ -75,7 +61,7 @@ impl Row {
     fn remove_column(&mut self, variable: &Variable) -> Option<Column> {
         self.columns
             .iter()
-            .position(|c| &c.variable == variable)
+            .position(|c| c.variable.name == variable.name)
             .map(|idx| self.columns.remove(idx))
     }
 }
@@ -98,7 +84,7 @@ impl Column {
 }
 
 /// A case in a decision tree to test against a variable.
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Debug)]
 pub struct Case {
     /// The constructor to test against an input variable.
     pub constructor: Constructor,
@@ -121,7 +107,7 @@ impl Case {
 }
 
 /// A decision tree compiled from a list of match cases.
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Debug)]
 pub enum Decision {
     /// A pattern is matched and the right-hand value is to be returned.
     Success(Body),
@@ -188,7 +174,7 @@ impl Term {
         }
     }
 
-    fn pattern_name(&self, terms: &[Term], mapping: &HashMap<&Variable, usize>) -> String {
+    fn pattern_name(&self, terms: &[Term], mapping: &HashMap<&str, usize>) -> String {
         if self.arguments.is_empty() {
             self.name.to_string()
         } else {
@@ -197,7 +183,7 @@ impl Term {
                 .iter()
                 .map(|arg| {
                     mapping
-                        .get(arg)
+                        .get(arg.name.as_str())
                         .map(|&idx| terms[idx].pattern_name(terms, mapping))
                         .unwrap_or_else(|| "_".to_string())
                 })
@@ -232,7 +218,7 @@ impl Match {
         match node {
             Decision::Success(_) => {}
             Decision::Failure => {
-                let mut mapping = HashMap::new();
+                let mut mapping: HashMap<&str, usize> = HashMap::new();
 
                 // At this point the terms stack looks something like this:
                 // `[term, term + arguments, term, ...]`. To construct a pattern
@@ -248,7 +234,7 @@ impl Match {
                 // you're reading this and happen to know of a way, please
                 // submit a merge request :)
                 for (index, step) in terms.iter().enumerate() {
-                    mapping.insert(&step.variable, index);
+                    mapping.insert(&step.variable.name, index);
                 }
 
                 let name = terms
@@ -475,11 +461,11 @@ impl Compiler {
     /// Given a row, returns the variable in that row that's referred to the
     /// most across all rows.
     fn find_branch_variable(&self, rows: &[Row]) -> Variable {
-        let mut counts = HashMap::new();
+        let mut counts: HashMap<&str, usize> = HashMap::new();
 
         for row in rows {
             for col in &row.columns {
-                *counts.entry(&col.variable).or_insert(0_usize) += 1
+                *counts.entry(&col.variable.name).or_insert(0_usize) += 1
             }
         }
 
@@ -487,7 +473,7 @@ impl Compiler {
             .columns
             .iter()
             .map(|col| col.variable.clone())
-            .max_by_key(|var| counts[var])
+            .max_by_key(|var| counts[var.name.as_str()])
             .unwrap()
     }
 
