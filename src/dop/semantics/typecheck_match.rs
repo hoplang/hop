@@ -12,6 +12,94 @@ use crate::dop::syntax::parsed::{Constructor, ParsedExpr, ParsedMatchArm, Parsed
 use crate::environment::Environment;
 use crate::hop::semantics::type_checker::TypeAnnotation;
 
+/// Recursively validate that a pattern is compatible with the expected type.
+fn validate_pattern_type(
+    pattern: &ParsedMatchPattern,
+    expected_type: &Type,
+) -> Result<(), TypeError> {
+    match pattern {
+        ParsedMatchPattern::Wildcard { .. } => Ok(()),
+        ParsedMatchPattern::Constructor {
+            constructor,
+            args,
+            range,
+        } => match (constructor, expected_type) {
+            // Enum variant pattern
+            (
+                Constructor::EnumVariant {
+                    enum_name: pattern_enum_name,
+                    variant_name: pattern_variant_name,
+                },
+                Type::Enum {
+                    name: subject_enum_name,
+                    variants,
+                    ..
+                },
+            ) => {
+                // Pattern enum must match subject enum
+                if pattern_enum_name != subject_enum_name {
+                    return Err(TypeError::MatchPatternEnumMismatch {
+                        pattern_enum: pattern_enum_name.to_string(),
+                        subject_enum: subject_enum_name.to_string(),
+                        range: range.clone(),
+                    });
+                }
+
+                // Variant must exist in the enum
+                let variant_exists = variants.iter().any(|v| v.as_str() == pattern_variant_name);
+                if !variant_exists {
+                    return Err(TypeError::UndefinedEnumVariant {
+                        enum_name: pattern_enum_name.to_string(),
+                        variant_name: pattern_variant_name.clone(),
+                        range: range.clone(),
+                    });
+                }
+
+                Ok(())
+            }
+
+            // Boolean patterns
+            (Constructor::BooleanTrue | Constructor::BooleanFalse, Type::Bool) => Ok(()),
+
+            // Option Some pattern - recursively validate the inner pattern
+            (Constructor::OptionSome, Type::Option(inner_type)) => {
+                if let Some(inner_pattern) = args.first() {
+                    validate_pattern_type(inner_pattern, inner_type)?;
+                }
+                Ok(())
+            }
+
+            // Option None pattern
+            (Constructor::OptionNone, Type::Option(_)) => Ok(()),
+
+            // Type mismatches
+            (_, Type::Enum { .. }) => Err(TypeError::MatchPatternTypeMismatch {
+                expected: "enum".to_string(),
+                found: pattern.to_string(),
+                range: range.clone(),
+            }),
+
+            (_, Type::Bool) => Err(TypeError::MatchPatternTypeMismatch {
+                expected: "boolean".to_string(),
+                found: pattern.to_string(),
+                range: range.clone(),
+            }),
+
+            (_, Type::Option(_)) => Err(TypeError::MatchPatternTypeMismatch {
+                expected: "option".to_string(),
+                found: pattern.to_string(),
+                range: range.clone(),
+            }),
+
+            // Unsupported type for pattern matching
+            _ => Err(TypeError::MatchNotImplementedForType {
+                found: expected_type.to_string(),
+                range: range.clone(),
+            }),
+        },
+    }
+}
+
 /// Compile patterns using pat_match and check for exhaustiveness and redundancy.
 fn compile_and_check_patterns(
     arms: &[ParsedMatchArm],
@@ -83,16 +171,9 @@ pub fn typecheck_match(
 
     // Subject must be an enum, boolean, or option type
     match &subject_type {
-        Type::Enum { name, variants, .. } => typecheck_enum_match(
-            &typed_subject,
-            name,
-            variants,
-            arms,
-            range,
-            var_env,
-            type_env,
-            annotations,
-        ),
+        Type::Enum { .. } => {
+            typecheck_enum_match(&typed_subject, arms, range, var_env, type_env, annotations)
+        }
         Type::Bool => {
             typecheck_bool_match(&typed_subject, arms, range, var_env, type_env, annotations)
         }
@@ -108,8 +189,6 @@ pub fn typecheck_match(
 
 fn typecheck_enum_match(
     typed_subject: &TypedExpr,
-    enum_name: &crate::dop::symbols::type_name::TypeName,
-    enum_variants: &[crate::dop::symbols::type_name::TypeName],
     arms: &[ParsedMatchArm],
     range: &DocumentRange,
     env: &mut Environment<Type>,
@@ -118,50 +197,9 @@ fn typecheck_enum_match(
 ) -> Result<TypedExpr, TypeError> {
     let subject_type = typed_subject.as_type();
 
-    // First validate pattern types (must be enum variants or wildcards)
+    // Validate pattern types (must be enum variants or wildcards)
     for arm in arms {
-        match &arm.pattern {
-            ParsedMatchPattern::Constructor {
-                constructor:
-                    Constructor::EnumVariant {
-                        enum_name: pattern_enum_name,
-                        variant_name: pattern_variant_name,
-                    },
-                range: pattern_range,
-                ..
-            } => {
-                // Pattern enum must match subject enum
-                if pattern_enum_name != enum_name {
-                    return Err(TypeError::MatchPatternEnumMismatch {
-                        pattern_enum: pattern_enum_name.to_string(),
-                        subject_enum: enum_name.to_string(),
-                        range: pattern_range.clone(),
-                    });
-                }
-
-                // Variant must exist in the enum
-                let variant_exists = enum_variants
-                    .iter()
-                    .any(|v| v.as_str() == pattern_variant_name);
-                if !variant_exists {
-                    return Err(TypeError::UndefinedEnumVariant {
-                        enum_name: pattern_enum_name.to_string(),
-                        variant_name: pattern_variant_name.clone(),
-                        range: pattern_range.clone(),
-                    });
-                }
-            }
-            ParsedMatchPattern::Wildcard { .. } => {
-                // Wildcard is always valid
-            }
-            ParsedMatchPattern::Constructor { range, .. } => {
-                return Err(TypeError::MatchPatternTypeMismatch {
-                    expected: "enum".to_string(),
-                    found: arm.pattern.to_string(),
-                    range: range.clone(),
-                });
-            }
-        }
+        validate_pattern_type(&arm.pattern, subject_type)?;
     }
 
     // Use pat_match to check exhaustiveness and redundancy
@@ -231,26 +269,9 @@ fn typecheck_bool_match(
 ) -> Result<TypedExpr, TypeError> {
     let subject_type = typed_subject.as_type();
 
-    // First validate pattern types (must be boolean literals or wildcards)
+    // Validate pattern types (must be boolean literals or wildcards)
     for arm in arms {
-        match &arm.pattern {
-            ParsedMatchPattern::Constructor {
-                constructor: Constructor::BooleanTrue | Constructor::BooleanFalse,
-                ..
-            } => {
-                // Valid boolean pattern
-            }
-            ParsedMatchPattern::Wildcard { .. } => {
-                // Wildcard is always valid
-            }
-            ParsedMatchPattern::Constructor { range, .. } => {
-                return Err(TypeError::MatchPatternTypeMismatch {
-                    expected: "boolean".to_string(),
-                    found: arm.pattern.to_string(),
-                    range: range.clone(),
-                });
-            }
-        }
+        validate_pattern_type(&arm.pattern, subject_type)?;
     }
 
     // Use pat_match to check exhaustiveness and redundancy
@@ -317,26 +338,9 @@ fn typecheck_option_match(
 ) -> Result<TypedExpr, TypeError> {
     let subject_type = typed_subject.as_type();
 
-    // First validate pattern types (must be option patterns or wildcards)
+    // Validate pattern types (must be option patterns or wildcards)
     for arm in arms {
-        match &arm.pattern {
-            ParsedMatchPattern::Constructor {
-                constructor: Constructor::OptionSome | Constructor::OptionNone,
-                ..
-            } => {
-                // Valid option pattern
-            }
-            ParsedMatchPattern::Wildcard { .. } => {
-                // Wildcard is always valid
-            }
-            ParsedMatchPattern::Constructor { range, .. } => {
-                return Err(TypeError::MatchPatternTypeMismatch {
-                    expected: "option".to_string(),
-                    found: arm.pattern.to_string(),
-                    range: range.clone(),
-                });
-            }
-        }
+        validate_pattern_type(&arm.pattern, subject_type)?;
     }
 
     // Use pat_match to check exhaustiveness and redundancy
@@ -1328,6 +1332,44 @@ mod tests {
                 error: Match pattern type mismatch: expected boolean, found Some(_)(_)
                     Some(_) => "has value",
                     ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_nested_option_pattern_when_inner_type_is_bool() {
+        check(
+            "",
+            &[("opt", "Option[Bool]")],
+            indoc! {r#"
+                match opt {
+                    Some(None) => "nested none",
+                    None       => "empty",
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern type mismatch: expected boolean, found None
+                    Some(None) => "nested none",
+                         ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_deeply_nested_option_pattern_when_inner_type_is_bool() {
+        check(
+            "",
+            &[("opt", "Option[Bool]")],
+            indoc! {r#"
+                match opt {
+                    Some(Some(_)) => "nested some",
+                    None          => "empty",
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern type mismatch: expected boolean, found Some(_)(_)
+                    Some(Some(_)) => "nested some",
+                         ^^^^^^^
             "#]],
         );
     }
