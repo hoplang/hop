@@ -705,7 +705,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_match_enum<'a>(
+    fn transpile_enum_match<'a>(
         &self,
         _subject: &'a IrExpr,
         _arms: &'a [IrEnumMatchArm],
@@ -713,7 +713,7 @@ impl ExpressionTranspiler for GoTranspiler {
         panic!("Match expressions are not yet supported in Go transpilation")
     }
 
-    fn transpile_match_bool<'a>(
+    fn transpile_bool_match<'a>(
         &self,
         _subject: &'a IrExpr,
         _arms: &'a [IrBoolMatchArm],
@@ -721,7 +721,7 @@ impl ExpressionTranspiler for GoTranspiler {
         panic!("Match expressions are not yet supported in Go transpilation")
     }
 
-    fn transpile_match_option<'a>(
+    fn transpile_option_match<'a>(
         &self,
         _subject: &'a IrExpr,
         _arms: &'a [crate::ir::ast::IrOptionMatchArm],

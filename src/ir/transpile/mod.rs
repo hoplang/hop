@@ -146,17 +146,17 @@ pub trait ExpressionTranspiler {
         fields: &'a [(FieldName, IrExpr)],
     ) -> BoxDoc<'a>;
     fn transpile_enum_literal<'a>(&self, enum_name: &'a str, variant_name: &'a str) -> BoxDoc<'a>;
-    fn transpile_match_enum<'a>(
+    fn transpile_enum_match<'a>(
         &self,
         subject: &'a IrExpr,
         arms: &'a [IrEnumMatchArm],
     ) -> BoxDoc<'a>;
-    fn transpile_match_bool<'a>(
+    fn transpile_bool_match<'a>(
         &self,
         subject: &'a IrExpr,
         arms: &'a [IrBoolMatchArm],
     ) -> BoxDoc<'a>;
-    fn transpile_match_option<'a>(
+    fn transpile_option_match<'a>(
         &self,
         subject: &'a IrExpr,
         arms: &'a [IrOptionMatchArm],
@@ -255,9 +255,9 @@ pub trait ExpressionTranspiler {
                 variant_name,
                 ..
             } => self.transpile_enum_literal(enum_name, variant_name),
-            IrExpr::EnumMatch { subject, arms, .. } => self.transpile_match_enum(subject, arms),
-            IrExpr::BoolMatch { subject, arms, .. } => self.transpile_match_bool(subject, arms),
-            IrExpr::OptionMatch { subject, arms, .. } => self.transpile_match_option(subject, arms),
+            IrExpr::EnumMatch { subject, arms, .. } => self.transpile_enum_match(subject, arms),
+            IrExpr::BoolMatch { subject, arms, .. } => self.transpile_bool_match(subject, arms),
+            IrExpr::OptionMatch { subject, arms, .. } => self.transpile_option_match(subject, arms),
         }
     }
 }

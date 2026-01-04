@@ -5,8 +5,8 @@ use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::ir::ast::{
-    IrBoolPattern, IrComponentDeclaration, IrEnumPattern, IrExpr, IrModule, IrOptionPattern,
-    IrStatement,
+    IrBoolPattern, IrComponentDeclaration, IrEnumPattern, IrExpr, IrModule, IrOptionMatchArm,
+    IrOptionPattern, IrStatement,
 };
 
 pub struct TsTranspiler {
@@ -680,7 +680,7 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_match_enum<'a>(
+    fn transpile_enum_match<'a>(
         &self,
         subject: &'a IrExpr,
         arms: &'a [crate::ir::ast::IrEnumMatchArm],
@@ -724,7 +724,7 @@ impl ExpressionTranspiler for TsTranspiler {
             .group()
     }
 
-    fn transpile_match_bool<'a>(
+    fn transpile_bool_match<'a>(
         &self,
         subject: &'a IrExpr,
         arms: &'a [crate::ir::ast::IrBoolMatchArm],
@@ -761,10 +761,10 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_match_option<'a>(
+    fn transpile_option_match<'a>(
         &self,
         subject: &'a IrExpr,
-        arms: &'a [crate::ir::ast::IrOptionMatchArm],
+        arms: &'a [IrOptionMatchArm],
     ) -> BoxDoc<'a> {
         let cases = BoxDoc::intersperse(
             arms.iter().map(|arm| match &arm.pattern {
