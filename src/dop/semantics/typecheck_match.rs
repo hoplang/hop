@@ -1,4 +1,4 @@
-use super::pat_match::{Compiler, Decision, SUBJECT_VAR_NAME};
+use super::pat_match::{Compiler, Decision, Variable};
 use super::r#type::Type;
 use super::type_checker::typecheck_expr;
 use super::type_error::TypeError;
@@ -42,17 +42,38 @@ pub fn typecheck_match(
         validate_pattern_type(&arm.pattern, &subject_type)?;
     }
 
-    let tree = Compiler::new().compile(arms, &subject_type, range, type_env)?;
+    // If subject is already a variable, use it directly; otherwise wrap in a let
+    let (subject_var, initial_var_counter, needs_wrapper) = match &typed_subject {
+        TypedExpr::Var { value, kind } => (
+            Variable::new(value.as_str().to_string(), kind.clone()),
+            0,
+            false,
+        ),
+        _ => (
+            Variable::new("v0".to_string(), subject_type.clone()),
+            1,
+            true,
+        ),
+    };
+
+    let tree = Compiler::new(initial_var_counter).compile(arms, &subject_var, range, type_env)?;
 
     let (typed_bodies, result_type) =
         typecheck_arm_bodies(arms, &subject_type, var_env, type_env, annotations)?;
 
-    Ok(decision_to_typed_expr(
-        &tree,
-        &typed_bodies,
-        result_type,
-        Some(typed_subject),
-    ))
+    let mut result = decision_to_typed_expr(&tree, &typed_bodies, result_type.clone());
+
+    // Wrap in let if subject was not a simple variable reference
+    if needs_wrapper {
+        result = TypedExpr::Let {
+            var: VarName::new("v0").unwrap(),
+            value: Box::new(typed_subject),
+            body: Box::new(result),
+            kind: result_type,
+        };
+    }
+
+    Ok(result)
 }
 
 /// Recursively validate that a pattern is compatible with the subject type,
@@ -301,7 +322,6 @@ fn decision_to_typed_expr(
     decision: &Decision,
     typed_bodies: &[TypedExpr],
     result_type: Type,
-    subject_expr: Option<TypedExpr>,
 ) -> TypedExpr {
     match decision {
         Decision::Success(body) => {
@@ -309,20 +329,10 @@ fn decision_to_typed_expr(
             // Wrap with Let expressions for each binding (in reverse order so first binding is outermost)
             for (name, source_var) in body.bindings.iter().rev() {
                 let var_name = VarName::new(name).expect("invalid variable name");
-                // If the source is the original subject, use the subject expression
-                // Otherwise, create a variable reference
-                let value = if source_var.name == SUBJECT_VAR_NAME {
-                    Box::new(
-                        subject_expr
-                            .clone()
-                            .expect("subject_expr required for subject binding"),
-                    )
-                } else {
-                    Box::new(TypedExpr::Var {
-                        value: VarName::new(&source_var.name).expect("invalid variable name"),
-                        kind: source_var.typ.clone(),
-                    })
-                };
+                let value = Box::new(TypedExpr::Var {
+                    value: VarName::new(&source_var.name).expect("invalid variable name"),
+                    kind: source_var.typ.clone(),
+                });
                 let kind = result.as_type().clone();
                 result = TypedExpr::Let {
                     var: var_name,
@@ -335,23 +345,11 @@ fn decision_to_typed_expr(
         }
 
         Decision::Switch(var, cases) => {
-            // Determine the subject expression for this switch
-            // If subject_expr is None, this is a nested match on an extracted variable
-            let is_outer_match = var.name == SUBJECT_VAR_NAME;
-            let subject_typed_expr = if is_outer_match {
-                subject_expr
-                    .clone()
-                    .expect("subject_expr required for outer match")
-            } else {
-                TypedExpr::Var {
-                    value: VarName::new(&var.name).expect("invalid variable name"),
-                    kind: var.typ.clone(),
-                }
-            };
-            let subject = Box::new(subject_typed_expr);
+            let subject = Box::new(TypedExpr::Var {
+                value: VarName::new(&var.name).expect("invalid variable name"),
+                kind: var.typ.clone(),
+            });
 
-            // For recursive calls, we always pass the original subject_expr
-            // so that bindings to _subject can be resolved correctly
             match &var.typ {
                 Type::Bool => {
                     // Find the true and false cases
@@ -365,7 +363,6 @@ fn decision_to_typed_expr(
                                     &case.body,
                                     typed_bodies,
                                     result_type.clone(),
-                                    subject_expr.clone(),
                                 ));
                             }
                             Constructor::BooleanFalse => {
@@ -373,7 +370,6 @@ fn decision_to_typed_expr(
                                     &case.body,
                                     typed_bodies,
                                     result_type.clone(),
-                                    subject_expr.clone(),
                                 ));
                             }
                             _ => unreachable!("Invalid constructor for Bool type"),
@@ -407,7 +403,6 @@ fn decision_to_typed_expr(
                                     &case.body,
                                     typed_bodies,
                                     result_type.clone(),
-                                    subject_expr.clone(),
                                 ));
                             }
                             Constructor::OptionNone => {
@@ -415,7 +410,6 @@ fn decision_to_typed_expr(
                                     &case.body,
                                     typed_bodies,
                                     result_type.clone(),
-                                    subject_expr.clone(),
                                 ));
                             }
                             _ => unreachable!("Invalid constructor for Option type"),
@@ -453,7 +447,6 @@ fn decision_to_typed_expr(
                                 &case.body,
                                 typed_bodies,
                                 result_type.clone(),
-                                subject_expr.clone(),
                             );
                             TypedEnumMatchArm { pattern, body }
                         })
@@ -474,12 +467,8 @@ fn decision_to_typed_expr(
                     let case = &cases[0];
 
                     // Build the body with Let bindings for each field
-                    let mut body = decision_to_typed_expr(
-                        &case.body,
-                        typed_bodies,
-                        result_type.clone(),
-                        subject_expr.clone(),
-                    );
+                    let mut body =
+                        decision_to_typed_expr(&case.body, typed_bodies, result_type.clone());
 
                     // Wrap with Let expressions for each field (using FieldAccess)
                     // Iterate in reverse so bindings are in the correct order
@@ -892,7 +881,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                match user.status {
+                let v0 = user.status in match v0 {
                   Status::Active => "active",
                   Status::Inactive => "inactive",
                 }
@@ -921,7 +910,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                match user.status {
+                let v0 = user.status in match v0 {
                   Status::Active => (user.name + user.name),
                   Status::Inactive => (user.name + user.name),
                 }
@@ -1489,9 +1478,9 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                match Some(Some(10)) {
-                  Some(v0) => match v0 {
-                    Some(v1) => 0,
+                let v0 = Some(Some(10)) in match v0 {
+                  Some(v1) => match v1 {
+                    Some(v2) => 0,
                     None => 1,
                   },
                   None => 2,

@@ -14,9 +14,6 @@ use crate::environment::Environment;
 use super::r#type::Type;
 use super::type_error::TypeError;
 
-/// The name used for the subject variable in pattern matching.
-pub const SUBJECT_VAR_NAME: &str = "_subject";
-
 /// The body of code to evaluate in case of a match.
 #[derive(Clone, Debug)]
 pub struct Body {
@@ -219,9 +216,9 @@ pub struct Compiler {
 }
 
 impl Compiler {
-    pub fn new() -> Self {
+    pub fn new(initial_var_counter: usize) -> Self {
         Self {
-            var_counter: 0,
+            var_counter: initial_var_counter,
             reachable: Vec::new(),
             missing_patterns: HashSet::new(),
         }
@@ -256,12 +253,10 @@ impl Compiler {
     pub fn compile(
         mut self,
         arms: &[ParsedMatchArm],
-        subject_type: &Type,
+        subject_var: &Variable,
         match_range: &DocumentRange,
         type_env: &mut Environment<Type>,
     ) -> Result<Decision, TypeError> {
-        let subject_var = Variable::new(SUBJECT_VAR_NAME.to_string(), subject_type.clone());
-
         let rows: Vec<Row> = arms
             .iter()
             .enumerate()
@@ -274,7 +269,7 @@ impl Compiler {
             .collect();
 
         let mut var_env: Environment<Type> = Environment::new();
-        let _ = var_env.push(subject_var.name.clone(), subject_type.clone());
+        let _ = var_env.push(subject_var.name.clone(), subject_var.typ.clone());
 
         let tree = self.compile_rows(rows, type_env, &mut var_env, Vec::new());
 
