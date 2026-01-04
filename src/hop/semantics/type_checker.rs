@@ -2873,7 +2873,7 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                error: Match expression is missing arm for variant 'Blue'
+                error: Match expression is missing arms for: Blue
                   --> main.hop (line 8, col 11)
                  7 | <Main {color: Color}>
                  8 |     <div>{match color {

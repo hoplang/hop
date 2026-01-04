@@ -24,7 +24,7 @@ pub fn typecheck_match(
 
     if !matches!(
         &subject_type,
-        Type::Enum { .. } | Type::Bool | Type::Option(_)
+        Type::Enum { .. } | Type::Bool | Type::Option(_) | Type::Record { .. }
     ) {
         return Err(TypeError::MatchNotImplementedForType {
             found: subject_type.to_string(),
@@ -67,6 +67,7 @@ fn validate_pattern_type(
         ParsedMatchPattern::Constructor {
             constructor,
             args,
+            fields,
             range,
         } => match (constructor, subject_type) {
             (
@@ -111,11 +112,63 @@ fn validate_pattern_type(
 
             (Constructor::OptionNone, Type::Option(_)) => Ok(()),
 
+            (
+                Constructor::Record {
+                    type_name: pattern_type_name,
+                },
+                Type::Record {
+                    name: subject_type_name,
+                    fields: subject_fields,
+                    ..
+                },
+            ) => {
+                // Check record type matches
+                if pattern_type_name != subject_type_name {
+                    return Err(TypeError::MatchPatternRecordMismatch {
+                        pattern_record: pattern_type_name.to_string(),
+                        subject_record: subject_type_name.to_string(),
+                        range: range.clone(),
+                    });
+                }
+
+                // Check all fields are specified (no partial matching)
+                if fields.len() != subject_fields.len() {
+                    return Err(TypeError::MatchRecordPatternFieldCount {
+                        record_name: pattern_type_name.to_string(),
+                        expected: subject_fields.len(),
+                        found: fields.len(),
+                        range: range.clone(),
+                    });
+                }
+
+                // Validate each field pattern against the field type
+                for (field_name, field_pattern) in fields {
+                    let field_type = subject_fields
+                        .iter()
+                        .find(|(name, _)| name == field_name)
+                        .map(|(_, typ)| typ);
+
+                    match field_type {
+                        Some(typ) => validate_pattern_type(field_pattern, typ)?,
+                        None => {
+                            return Err(TypeError::MatchRecordPatternUnknownField {
+                                field_name: field_name.to_string(),
+                                record_name: pattern_type_name.to_string(),
+                                range: field_pattern.range().clone(),
+                            });
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+
             _ => {
                 let expected = match subject_type {
                     Type::Enum { .. } => "enum",
                     Type::Bool => "boolean",
                     Type::Option(_) => "option",
+                    Type::Record { .. } => "record",
                     _ => {
                         return Err(TypeError::MatchNotImplementedForType {
                             found: subject_type.to_string(),
@@ -145,7 +198,10 @@ fn extract_bindings_from_pattern(
         }
         ParsedMatchPattern::Wildcard { .. } => vec![],
         ParsedMatchPattern::Constructor {
-            constructor, args, ..
+            constructor,
+            args,
+            fields,
+            ..
         } => match constructor {
             Constructor::OptionSome => {
                 let Type::Option(inner_type) = subject_type else {
@@ -155,6 +211,26 @@ fn extract_bindings_from_pattern(
                     unreachable!("OptionSome pattern requires an argument")
                 };
                 extract_bindings_from_pattern(inner_pattern, inner_type)
+            }
+            Constructor::Record { .. } => {
+                let Type::Record {
+                    fields: type_fields,
+                    ..
+                } = subject_type
+                else {
+                    unreachable!("Record pattern requires Record type")
+                };
+
+                let mut bindings = Vec::new();
+                for (field_name, field_pattern) in fields {
+                    let field_type = type_fields
+                        .iter()
+                        .find(|(name, _)| name == field_name)
+                        .map(|(_, typ)| typ)
+                        .expect("field type not found");
+                    bindings.extend(extract_bindings_from_pattern(field_pattern, field_type));
+                }
+                bindings
             }
             Constructor::OptionNone
             | Constructor::BooleanTrue
@@ -397,6 +473,46 @@ fn decision_to_typed_expr(
                     }
                 }
 
+                Type::Record {
+                    fields: type_fields,
+                    ..
+                } => {
+                    // Records have only one case (the record itself)
+                    let case = &cases[0];
+
+                    // Build the body with Let bindings for each field
+                    let mut body = decision_to_typed_expr(
+                        &case.body,
+                        typed_bodies,
+                        result_type.clone(),
+                        subject_expr.clone(),
+                    );
+
+                    // Wrap with Let expressions for each field (using FieldAccess)
+                    // Iterate in reverse so bindings are in the correct order
+                    for (i, (field_name, _field_type)) in type_fields.iter().enumerate().rev() {
+                        let var = &case.arguments[i];
+                        let var_name = VarName::new(&var.name).expect("invalid variable name");
+
+                        // Create field access: subject.field_name
+                        let field_access = TypedExpr::FieldAccess {
+                            record: subject.clone(),
+                            field: field_name.clone(),
+                            kind: var.typ.clone(),
+                        };
+
+                        let kind = body.as_type().clone();
+                        body = TypedExpr::Let {
+                            var: var_name,
+                            value: Box::new(field_access),
+                            body: Box::new(body),
+                            kind,
+                        };
+                    }
+
+                    body
+                }
+
                 _ => panic!("Unsupported type for pattern matching: {:?}", var.typ),
             }
         }
@@ -444,9 +560,9 @@ fn compile_and_check_patterns(
 
     if result.diagnostics.is_missing() {
         let missing = result.missing_patterns();
-        if let Some(first_missing) = missing.first() {
-            return Err(TypeError::MatchMissingVariant {
-                variant: first_missing.clone(),
+        if !missing.is_empty() {
+            return Err(TypeError::MatchMissingVariants {
+                variants: missing,
                 range: match_range.clone(),
             });
         }
@@ -725,7 +841,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match expression is missing arm for variant 'Blue'
+                error: Match expression is missing arms for: Blue
                 match color {
                 ^^^^^^^^^^^^^
                     Color::Red => "red",
@@ -1095,7 +1211,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match expression is missing arm for variant 'false'
+                error: Match expression is missing arms for: false
                 match flag {
                 ^^^^^^^^^^^^
                     true => 1,
@@ -1117,7 +1233,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match expression is missing arm for variant 'true'
+                error: Match expression is missing arms for: true
                 match flag {
                 ^^^^^^^^^^^^
                     false => "no",
@@ -1309,7 +1425,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match expression is missing arm for variant 'Some(_)'
+                error: Match expression is missing arms for: Some(_)
                 match opt {
                 ^^^^^^^^^^^
                     None => "empty",
@@ -1331,7 +1447,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match expression is missing arm for variant 'None'
+                error: Match expression is missing arms for: None
                 match opt {
                 ^^^^^^^^^^^
                     Some(_) => 1,
@@ -1354,7 +1470,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match expression is missing arm for variant 'Some(None)'
+                error: Match expression is missing arms for: Some(None)
                 match opt {
                 ^^^^^^^^^^^
                     Some(Some(_)) => 0,
@@ -1380,7 +1496,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match expression is missing arm for variant 'Some(Some(true))'
+                error: Match expression is missing arms for: Some(Some(true))
                 match opt {
                 ^^^^^^^^^^^
                     Some(Some(false)) => 0,
@@ -1658,7 +1774,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match expression is missing arm for variant 'Some(Blue)'
+                error: Match expression is missing arms for: Some(Blue)
                 match opt {
                 ^^^^^^^^^^^
                     Some(Color::Red)   => "red",
@@ -1945,6 +2061,304 @@ mod tests {
                 error: Unused binding 'x' in match arm
                     Some(Some(x)) => 0,
                               ^
+            "#]],
+        );
+    }
+
+    // =========================================================================
+    // Record matching tests
+    // =========================================================================
+
+    #[test]
+    fn should_accept_record_match_with_all_fields() {
+        check(
+            indoc! {"
+                record User {
+                    name: String,
+                    age: Int,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    User(name: n, age: _) => n,
+                }
+            "#},
+            expect![[r#"
+                let v0 = user.name in let v1 = user.age in let n = v0 in n
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_record_match_with_wildcard_fields() {
+        check(
+            indoc! {"
+                record User {
+                    name: String,
+                    age: Int,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    User(name: _, age: _) => "matched",
+                }
+            "#},
+            expect![[r#"
+                let v0 = user.name in let v1 = user.age in "matched"
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_record_match_with_nested_enum_pattern() {
+        check(
+            indoc! {"
+                enum Status {
+                    Active,
+                    Inactive,
+                }
+                record User {
+                    name: String,
+                    status: Status,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    User(name: n, status: Status::Active)   => n,
+                    User(name: _, status: Status::Inactive) => "inactive",
+                }
+            "#},
+            expect![[r#"
+                let v0 = user.name in let v1 = user.status in match v1 {
+                  Status::Active => let n = v0 in n,
+                  Status::Inactive => "inactive",
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_record_match_with_missing_fields() {
+        check(
+            indoc! {"
+                record User {
+                    name: String,
+                    age: Int,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    User(name: n) => n,
+                }
+            "#},
+            expect![[r#"
+                error: Record pattern for 'User' must specify all 2 fields, but only 1 were provided
+                    User(name: n) => n,
+                    ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_record_match_with_unknown_field() {
+        check(
+            indoc! {"
+                record User {
+                    name: String,
+                    age: Int,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    User(name: n, email: e) => n,
+                }
+            "#},
+            expect![[r#"
+                error: Unknown field 'email' in record pattern for 'User'
+                    User(name: n, email: e) => n,
+                                         ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_record_match_with_wrong_record_type() {
+        check(
+            indoc! {"
+                record User {
+                    name: String,
+                }
+                record Admin {
+                    name: String,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    Admin(name: n) => n,
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern record 'Admin' does not match subject record 'User'
+                    Admin(name: n) => n,
+                    ^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_unused_binding_in_record_pattern() {
+        check(
+            indoc! {"
+                record User {
+                    name: String,
+                    age: Int,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    User(name: n, age: a) => "hello",
+                }
+            "#},
+            expect![[r#"
+                error: Unused binding 'a' in match arm
+                    User(name: n, age: a) => "hello",
+                                       ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_record_match_with_nested_option_pattern() {
+        check(
+            indoc! {"
+                record User {
+                    name: String,
+                    email: Option[String],
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    User(name: _, email: Some(e)) => e,
+                    User(name: n, email: None)    => n,
+                }
+            "#},
+            expect![[r#"
+                let v0 = user.name in let v1 = user.email in match v1 {
+                  Some(v2) => let e = v2 in e,
+                  None => let n = v0 in n,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_match_with_nested_record_pattern() {
+        check(
+            indoc! {"
+                record User {
+                    name: String,
+                    age: Int,
+                }
+            "},
+            &[("maybe_user", "Option[User]")],
+            indoc! {r#"
+                match maybe_user {
+                    Some(User(name: n, age: _)) => n,
+                    None                        => "Default User",
+                }
+            "#},
+            expect![[r#"
+                match maybe_user {
+                  Some(v0) => let v1 = v0.name in let v2 = v0.age in let n = v1 in n,
+                  None => "Default User",
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_non_exhaustive_record_match_with_option_field() {
+        check(
+            indoc! {"
+                record User {
+                    name: Option[String],
+                    age: Int,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    User(name: Some(n), age: _) => n,
+                }
+            "#},
+            expect![[r#"
+                error: Match expression is missing arms for: User(name: None, age: _)
+                match user {
+                ^^^^^^^^^^^^
+                    User(name: Some(n), age: _) => n,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_non_exhaustive_record_match_with_bool_fields() {
+        check(
+            indoc! {"
+                record Foo {
+                    a: Bool,
+                    b: Bool,
+                }
+            "},
+            &[("foo", "Foo")],
+            indoc! {r#"
+                match foo {
+                    Foo(a: true, b: false) => "matched",
+                }
+            "#},
+            expect![[r#"
+                error: Match expression is missing arms for: Foo(a: _, b: true), Foo(a: false, b: false)
+                match foo {
+                ^^^^^^^^^^^
+                    Foo(a: true, b: false) => "matched",
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_of_record_match_with_some_and_none() {
+        check(
+            indoc! {"
+                record User {
+                    name: String,
+                    age: Int,
+                }
+            "},
+            &[("maybe_user", "Option[User]")],
+            indoc! {r#"
+                match maybe_user {
+                    Some(_) => "has user",
+                    None    => "no user",
+                }
+            "#},
+            expect![[r#"
+                match maybe_user {
+                  Some(v0) => "has user",
+                  None => "no user",
+                }
             "#]],
         );
     }

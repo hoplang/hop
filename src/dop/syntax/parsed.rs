@@ -96,6 +96,8 @@ pub enum Constructor {
         enum_name: TypeName,
         variant_name: String,
     },
+    /// A record pattern, e.g. `User(name: x, age: y)`
+    Record { type_name: TypeName },
 }
 
 impl Constructor {
@@ -111,6 +113,7 @@ impl Constructor {
             Constructor::BooleanFalse => BoxDoc::text("false"),
             Constructor::OptionSome => BoxDoc::text("Some"),
             Constructor::OptionNone => BoxDoc::text("None"),
+            Constructor::Record { type_name } => BoxDoc::text(type_name.as_str().to_string()),
         }
     }
 }
@@ -127,7 +130,10 @@ pub enum ParsedMatchPattern {
     /// A constructor pattern that matches a specific value
     Constructor {
         constructor: Constructor,
+        /// Positional arguments (e.g., the inner pattern in `Some(x)`)
         args: Vec<ParsedMatchPattern>,
+        /// Named field patterns for record matching (e.g., `User(name: x, age: y)`)
+        fields: Vec<(FieldName, ParsedMatchPattern)>,
         range: DocumentRange,
     },
     /// A wildcard pattern that matches anything, written as `_`
@@ -150,12 +156,29 @@ impl ParsedMatchPattern {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
             ParsedMatchPattern::Constructor {
-                constructor, args, ..
+                constructor,
+                args,
+                fields,
+                ..
             } => {
                 let base = constructor.to_doc();
-                if args.is_empty() {
+                if !fields.is_empty() {
+                    // Record pattern: User(name: x, age: y)
+                    let fields_doc = BoxDoc::intersperse(
+                        fields.iter().map(|(name, pat)| {
+                            BoxDoc::text(name.as_str())
+                                .append(BoxDoc::text(": "))
+                                .append(pat.to_doc())
+                        }),
+                        BoxDoc::text(", "),
+                    );
+                    base.append(BoxDoc::text("("))
+                        .append(fields_doc)
+                        .append(BoxDoc::text(")"))
+                } else if args.is_empty() {
                     base
                 } else {
+                    // Positional args (Option Some, etc.)
                     let args_doc = BoxDoc::intersperse(
                         args.iter().map(|a| a.to_doc()),
                         BoxDoc::text(", "),

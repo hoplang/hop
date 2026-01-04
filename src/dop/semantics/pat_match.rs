@@ -161,6 +161,8 @@ struct Term {
     variable: Variable,
     name: String,
     arguments: Vec<Variable>,
+    /// Field names for record constructors (None for non-record constructors)
+    field_names: Option<Vec<String>>,
 }
 
 impl Term {
@@ -169,13 +171,46 @@ impl Term {
             variable,
             name,
             arguments,
+            field_names: None,
+        }
+    }
+
+    fn new_record(
+        variable: Variable,
+        name: String,
+        arguments: Vec<Variable>,
+        field_names: Vec<String>,
+    ) -> Self {
+        Self {
+            variable,
+            name,
+            arguments,
+            field_names: Some(field_names),
         }
     }
 
     fn pattern_name(&self, terms: &[Term], mapping: &HashMap<&str, usize>) -> String {
         if self.arguments.is_empty() {
             self.name.to_string()
+        } else if let Some(field_names) = &self.field_names {
+            // Record pattern with named fields: User(name: x, age: y)
+            let args = self
+                .arguments
+                .iter()
+                .zip(field_names.iter())
+                .map(|(arg, field_name)| {
+                    let pattern = mapping
+                        .get(arg.name.as_str())
+                        .map(|&idx| terms[idx].pattern_name(terms, mapping))
+                        .unwrap_or_else(|| "_".to_string());
+                    format!("{}: {}", field_name, pattern)
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            format!("{}({})", self.name, args)
         } else {
+            // Positional pattern: Some(x)
             let args = self
                 .arguments
                 .iter()
@@ -266,6 +301,21 @@ impl Match {
                             let args = case.arguments.clone();
                             terms.push(Term::new(var.clone(), variant_name.clone(), args));
                         }
+                        Constructor::Record { type_name } => {
+                            let args = case.arguments.clone();
+                            // Extract field names from the variable's type
+                            let field_names = if let Type::Record { fields, .. } = &var.typ {
+                                fields.iter().map(|(name, _)| name.to_string()).collect()
+                            } else {
+                                Vec::new()
+                            };
+                            terms.push(Term::new_record(
+                                var.clone(),
+                                type_name.as_str().to_string(),
+                                args,
+                                field_names,
+                            ));
+                        }
                     }
 
                     Self::collect_missing_patterns(&case.body, terms, missing);
@@ -316,6 +366,8 @@ impl Compiler {
                     panic!("type is not an enum")
                 }
             }
+            // Records have only one constructor, so index is always 0
+            Constructor::Record { .. } => 0,
         }
     }
 
@@ -395,12 +447,21 @@ impl Compiler {
                     )
                 })
                 .collect(),
-            Type::String
-            | Type::Int
-            | Type::Float
-            | Type::TrustedHTML
-            | Type::Array(_)
-            | Type::Record { .. } => {
+            Type::Record { name, fields, .. } => {
+                // Records have a single constructor with fresh variables for each field
+                let field_vars: Vec<Variable> = fields
+                    .iter()
+                    .map(|(_, field_type)| self.fresh_var(field_type.clone(), var_env))
+                    .collect();
+                vec![(
+                    Constructor::Record {
+                        type_name: name.clone(),
+                    },
+                    field_vars,
+                    Vec::new(),
+                )]
+            }
+            Type::String | Type::Int | Type::Float | Type::TrustedHTML | Type::Array(_) => {
                 panic!("pattern matching not supported for this type")
             }
         };
@@ -426,14 +487,35 @@ impl Compiler {
                 if let ParsedMatchPattern::Constructor {
                     constructor: cons,
                     args,
+                    fields,
                     ..
                 } = col.pattern
                 {
                     let idx = self.constructor_index(&cons, type_env);
                     let mut cols = row.columns;
 
-                    for (var, pat) in cases[idx].1.iter().zip(args.into_iter()) {
-                        cols.push(Column::new(var.clone(), pat));
+                    if !fields.is_empty() {
+                        // Record pattern: match fields by name
+                        if let Type::Record {
+                            fields: type_fields,
+                            ..
+                        } = &branch_var.typ
+                        {
+                            for (field_name, field_pattern) in fields {
+                                // Find the index of this field in the record type
+                                let field_idx = type_fields
+                                    .iter()
+                                    .position(|(name, _)| name == &field_name)
+                                    .expect("field not found in record type");
+                                let var = &cases[idx].1[field_idx];
+                                cols.push(Column::new(var.clone(), field_pattern));
+                            }
+                        }
+                    } else {
+                        // Positional args (Option Some, etc.)
+                        for (var, pat) in cases[idx].1.iter().zip(args.into_iter()) {
+                            cols.push(Column::new(var.clone(), pat));
+                        }
                     }
 
                     cases[idx].2.push(Row::new(cols, row.body));

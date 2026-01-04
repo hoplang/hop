@@ -129,6 +129,28 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
+    #[error("Match pattern record '{pattern_record}' does not match subject record '{subject_record}'")]
+    MatchPatternRecordMismatch {
+        pattern_record: String,
+        subject_record: String,
+        range: DocumentRange,
+    },
+
+    #[error("Record pattern for '{record_name}' must specify all {expected} fields, but only {found} were provided")]
+    MatchRecordPatternFieldCount {
+        record_name: String,
+        expected: usize,
+        found: usize,
+        range: DocumentRange,
+    },
+
+    #[error("Unknown field '{field_name}' in record pattern for '{record_name}'")]
+    MatchRecordPatternUnknownField {
+        field_name: String,
+        record_name: String,
+        range: DocumentRange,
+    },
+
     #[error("Match arms must all have the same type, expected {expected} but found {found}")]
     MatchArmTypeMismatch {
         expected: String,
@@ -136,9 +158,9 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Match expression is missing arm for variant '{variant}'")]
-    MatchMissingVariant {
-        variant: String,
+    #[error("Match expression is missing arms for: {}", variants.join(", "))]
+    MatchMissingVariants {
+        variants: Vec<String>,
         range: DocumentRange,
     },
 
@@ -188,8 +210,11 @@ impl Ranged for TypeError {
             | TypeError::UndefinedEnumVariant { range, .. }
             | TypeError::MatchNotImplementedForType { range, .. }
             | TypeError::MatchPatternEnumMismatch { range, .. }
+            | TypeError::MatchPatternRecordMismatch { range, .. }
+            | TypeError::MatchRecordPatternFieldCount { range, .. }
+            | TypeError::MatchRecordPatternUnknownField { range, .. }
             | TypeError::MatchArmTypeMismatch { range, .. }
-            | TypeError::MatchMissingVariant { range, .. }
+            | TypeError::MatchMissingVariants { range, .. }
             | TypeError::MatchUnreachableArm { range, .. }
             | TypeError::MatchPatternTypeMismatch { range, .. }
             | TypeError::MatchNoArms { range, .. }

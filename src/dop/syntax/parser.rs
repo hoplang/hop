@@ -666,6 +666,7 @@ impl Parser {
             return Ok(ParsedMatchPattern::Constructor {
                 constructor: Constructor::BooleanTrue,
                 args: Vec::new(),
+                fields: Vec::new(),
                 range,
             });
         }
@@ -673,6 +674,7 @@ impl Parser {
             return Ok(ParsedMatchPattern::Constructor {
                 constructor: Constructor::BooleanFalse,
                 args: Vec::new(),
+                fields: Vec::new(),
                 range,
             });
         }
@@ -685,6 +687,7 @@ impl Parser {
             return Ok(ParsedMatchPattern::Constructor {
                 constructor: Constructor::OptionSome,
                 args: vec![inner_pattern],
+                fields: Vec::new(),
                 range: some_range.to(right_paren),
             });
         }
@@ -692,30 +695,54 @@ impl Parser {
             return Ok(ParsedMatchPattern::Constructor {
                 constructor: Constructor::OptionNone,
                 args: Vec::new(),
+                fields: Vec::new(),
                 range,
             });
         }
 
-        // Check for enum pattern (TypeName::Variant)
-        if let Some(Ok((Token::TypeName(enum_name_str), enum_name_range))) = self
+        // Check for TypeName patterns: either enum (TypeName::Variant) or record (TypeName(...))
+        if let Some(Ok((Token::TypeName(type_name_str), type_name_range))) = self
             .iter
             .next_if(|res| matches!(res, Ok((Token::TypeName(_), _))))
         {
-            let enum_name =
-                TypeName::new(&enum_name_str).map_err(|error| ParseError::InvalidTypeName {
+            let type_name =
+                TypeName::new(&type_name_str).map_err(|error| ParseError::InvalidTypeName {
                     error,
-                    range: enum_name_range.clone(),
+                    range: type_name_range.clone(),
                 })?;
-            self.expect_token(&Token::ColonColon)?;
-            let (variant_name, variant_range) = self.expect_type_name()?;
-            return Ok(ParsedMatchPattern::Constructor {
-                constructor: Constructor::EnumVariant {
-                    enum_name,
-                    variant_name: variant_name.as_str().to_string(),
-                },
-                args: Vec::new(),
-                range: enum_name_range.to(variant_range),
-            });
+
+            // Check if this is an enum pattern (::) or record pattern (()
+            if self.advance_if(Token::ColonColon).is_some() {
+                // Enum pattern: TypeName::Variant
+                let (variant_name, variant_range) = self.expect_type_name()?;
+                return Ok(ParsedMatchPattern::Constructor {
+                    constructor: Constructor::EnumVariant {
+                        enum_name: type_name,
+                        variant_name: variant_name.as_str().to_string(),
+                    },
+                    args: Vec::new(),
+                    fields: Vec::new(),
+                    range: type_name_range.to(variant_range),
+                });
+            } else {
+                // Record pattern: TypeName(field: pattern, ...)
+                let left_paren = self.expect_token(&Token::LeftParen)?;
+                let mut fields = Vec::new();
+                let right_paren =
+                    self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
+                        let (field_name, _) = this.expect_field_name()?;
+                        this.expect_token(&Token::Colon)?;
+                        let pattern = this.parse_match_pattern()?;
+                        fields.push((field_name, pattern));
+                        Ok(())
+                    })?;
+                return Ok(ParsedMatchPattern::Constructor {
+                    constructor: Constructor::Record { type_name },
+                    args: Vec::new(),
+                    fields,
+                    range: type_name_range.to(right_paren),
+                });
+            }
         }
 
         // Otherwise, parse a binding pattern (lowercase identifier)
