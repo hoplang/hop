@@ -8,8 +8,8 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-use crate::dop::symbols::type_name::TypeName;
 use crate::dop::syntax::parsed::{Constructor, ParsedMatchPattern};
+use crate::environment::Environment;
 
 use super::r#type::Type;
 
@@ -290,7 +290,7 @@ impl Compiler {
     fn constructor_index(
         &self,
         cons: &Constructor,
-        type_env: &HashMap<TypeName, Type>,
+        type_env: &mut Environment<Type>,
     ) -> usize {
         match cons {
             Constructor::BooleanFalse => 0,
@@ -301,7 +301,7 @@ impl Compiler {
                 enum_name,
                 variant_name,
             } => {
-                let typ = type_env.get(enum_name).expect("unknown enum");
+                let typ = type_env.lookup(enum_name.as_str()).expect("unknown enum");
                 if let Type::Enum { variants, .. } = typ {
                     variants
                         .iter()
@@ -317,8 +317,8 @@ impl Compiler {
     pub fn compile(
         mut self,
         rows: Vec<Row>,
-        type_env: &HashMap<TypeName, Type>,
-        var_env: &mut HashMap<Variable, Type>,
+        type_env: &mut Environment<Type>,
+        var_env: &mut Environment<Type>,
     ) -> Match {
         Match {
             tree: self.compile_rows(rows, type_env, var_env),
@@ -329,8 +329,8 @@ impl Compiler {
     fn compile_rows(
         &mut self,
         mut rows: Vec<Row>,
-        type_env: &HashMap<TypeName, Type>,
-        var_env: &mut HashMap<Variable, Type>,
+        type_env: &mut Environment<Type>,
+        var_env: &mut Environment<Type>,
     ) -> Decision {
         if rows.is_empty() {
             self.diagnostics.missing = true;
@@ -354,7 +354,7 @@ impl Compiler {
 
         let branch_var = self.find_branch_variable(&rows);
 
-        let mut cases = match var_env.get(&branch_var).expect("unknown variable").clone() {
+        let mut cases = match var_env.lookup(&branch_var.0).expect("unknown variable").clone() {
             Type::Bool => {
                 vec![
                     (Constructor::BooleanFalse, Vec::new(), Vec::new()),
@@ -464,11 +464,11 @@ impl Compiler {
     }
 
     /// Returns a new variable to use in the decision tree.
-    fn fresh_var(&mut self, typ: Type, var_env: &mut HashMap<Variable, Type>) -> Variable {
+    fn fresh_var(&mut self, typ: Type, var_env: &mut Environment<Type>) -> Variable {
         let var = Variable(format!("v{}", self.var_counter));
 
         self.var_counter += 1;
-        var_env.insert(var.clone(), typ);
+        let _ = var_env.push(var.0.clone(), typ);
         var
     }
 }
@@ -532,6 +532,7 @@ impl fmt::Display for Body {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dop::symbols::type_name::TypeName;
     use crate::dop::syntax::parser::Parser;
     use crate::hop::symbols::module_name::ModuleName;
     use expect_test::expect;
@@ -547,9 +548,9 @@ mod tests {
             .expect("failed to parse pattern")
     }
 
-    fn new_variable(var_env: &mut HashMap<Variable, Type>, name: &str, typ: Type) -> Variable {
+    fn new_variable(var_env: &mut Environment<Type>, name: &str, typ: Type) -> Variable {
         let var = Variable(name.to_string());
-        var_env.insert(var.clone(), typ);
+        let _ = var_env.push(var.0.clone(), typ);
         var
     }
 
@@ -557,8 +558,8 @@ mod tests {
         compiler: Compiler,
         input: Variable,
         rules: Vec<ParsedMatchPattern>,
-        type_env: &HashMap<TypeName, Type>,
-        var_env: &mut HashMap<Variable, Type>,
+        type_env: &mut Environment<Type>,
+        var_env: &mut Environment<Type>,
     ) -> Match {
         let rows = rules
             .into_iter()
@@ -573,8 +574,8 @@ mod tests {
         compiler: Compiler,
         input: Variable,
         rules: Vec<ParsedMatchPattern>,
-        type_env: &HashMap<TypeName, Type>,
-        var_env: &mut HashMap<Variable, Type>,
+        type_env: &mut Environment<Type>,
+        var_env: &mut Environment<Type>,
         expected: expect_test::Expect,
     ) {
         let mut output = format!("-- input --\nmatch {} {{\n", input.0);
@@ -608,13 +609,13 @@ mod tests {
     #[test]
     fn test_compile_simple_pattern() {
         let compiler = Compiler::new();
-        let mut var_env = HashMap::new();
+        let mut var_env = Environment::new();
         let input = new_variable(&mut var_env, "in", Type::Bool);
         check(
             compiler,
             input,
             vec![pat("true"), pat("false")],
-            &HashMap::new(),
+            &mut Environment::new(),
             &mut var_env,
             expect![[r#"
                 -- input --
@@ -640,13 +641,13 @@ mod tests {
     #[test]
     fn test_compile_nonexhaustive_pattern() {
         let compiler = Compiler::new();
-        let mut var_env = HashMap::new();
+        let mut var_env = Environment::new();
         let input = new_variable(&mut var_env, "in", Type::Bool);
         check(
             compiler,
             input,
             vec![pat("true")],
-            &HashMap::new(),
+            &mut Environment::new(),
             &mut var_env,
             expect![[r#"
                 -- input --
@@ -673,13 +674,13 @@ mod tests {
     #[test]
     fn test_compile_redundant_pattern() {
         let compiler = Compiler::new();
-        let mut var_env = HashMap::new();
+        let mut var_env = Environment::new();
         let input = new_variable(&mut var_env, "in", Type::Bool);
         check(
             compiler,
             input,
             vec![pat("true"), pat("true"), pat("false")],
-            &HashMap::new(),
+            &mut Environment::new(),
             &mut var_env,
             expect![[r#"
                 -- input --
@@ -706,13 +707,13 @@ mod tests {
     #[test]
     fn test_compile_wildcard_pattern() {
         let compiler = Compiler::new();
-        let mut var_env = HashMap::new();
+        let mut var_env = Environment::new();
         let input = new_variable(&mut var_env, "in", Type::Bool);
         check(
             compiler,
             input,
             vec![pat("true"), pat("_")],
-            &HashMap::new(),
+            &mut Environment::new(),
             &mut var_env,
             expect![[r#"
                 -- input --
@@ -738,13 +739,13 @@ mod tests {
     #[test]
     fn test_compile_nonexhaustive_option_type() {
         let compiler = Compiler::new();
-        let mut var_env = HashMap::new();
+        let mut var_env = Environment::new();
         let input = new_variable(&mut var_env, "in", Type::Option(Box::new(Type::Bool)));
         check(
             compiler,
             input,
             vec![pat("Some(true)")],
-            &HashMap::new(),
+            &mut Environment::new(),
             &mut var_env,
             expect![[r#"
                 -- input --
@@ -778,13 +779,13 @@ mod tests {
     #[test]
     fn test_compile_exhaustive_option_type() {
         let compiler = Compiler::new();
-        let mut var_env = HashMap::new();
+        let mut var_env = Environment::new();
         let input = new_variable(&mut var_env, "in", Type::Option(Box::new(Type::Bool)));
         check(
             compiler,
             input,
             vec![pat("Some(true)"), pat("Some(_)"), pat("None")],
-            &HashMap::new(),
+            &mut Environment::new(),
             &mut var_env,
             expect![[r#"
                 -- input --
@@ -818,13 +819,13 @@ mod tests {
     #[test]
     fn test_compile_redundant_option_type_with_bool() {
         let compiler = Compiler::new();
-        let mut var_env = HashMap::new();
+        let mut var_env = Environment::new();
         let input = new_variable(&mut var_env, "in", Type::Option(Box::new(Type::Bool)));
         check(
             compiler,
             input,
             vec![pat("Some(true)"), pat("Some(true)"), pat("Some(_)"), pat("None")],
-            &HashMap::new(),
+            &mut Environment::new(),
             &mut var_env,
             expect![[r#"
                 -- input --
@@ -859,13 +860,13 @@ mod tests {
     #[test]
     fn test_compile_exhaustive_option_type_with_wildcard() {
         let compiler = Compiler::new();
-        let mut var_env = HashMap::new();
+        let mut var_env = Environment::new();
         let input = new_variable(&mut var_env, "in", Type::Option(Box::new(Type::Bool)));
         check(
             compiler,
             input,
             vec![pat("Some(true)"), pat("_")],
-            &HashMap::new(),
+            &mut Environment::new(),
             &mut var_env,
             expect![[r#"
                 -- input --
@@ -898,7 +899,7 @@ mod tests {
     #[test]
     fn test_three_variant_enum() {
         let compiler = Compiler::new();
-        let mut var_env = HashMap::new();
+        let mut var_env = Environment::new();
         let traffic_light = Type::Enum {
             module: test_module(),
             name: TypeName::new("Light").unwrap(),
@@ -908,8 +909,8 @@ mod tests {
                 TypeName::new("Green").unwrap(),
             ],
         };
-        let mut type_env = HashMap::new();
-        type_env.insert(TypeName::new("Light").unwrap(), traffic_light.clone());
+        let mut type_env = Environment::new();
+        let _ = type_env.push("Light".to_string(), traffic_light.clone());
         let input = new_variable(&mut var_env, "in", traffic_light);
         check(
             compiler,
@@ -918,7 +919,7 @@ mod tests {
                 pat("Light::Red"),
                 pat("Light::Green"),
             ],
-            &type_env,
+            &mut type_env,
             &mut var_env,
             expect![[r#"
                 -- input --
@@ -949,13 +950,13 @@ mod tests {
     #[test]
     fn test_first_match_wins() {
         let compiler = Compiler::new();
-        let mut var_env = HashMap::new();
+        let mut var_env = Environment::new();
         let input = new_variable(&mut var_env, "in", Type::Bool);
         check(
             compiler,
             input,
             vec![pat("_"), pat("_"), pat("true"), pat("false")],
-            &HashMap::new(),
+            &mut Environment::new(),
             &mut var_env,
             expect![[r#"
                 -- input --
@@ -976,7 +977,7 @@ mod tests {
     #[test]
     fn test_result_type() {
         let compiler = Compiler::new();
-        let mut var_env = HashMap::new();
+        let mut var_env = Environment::new();
         let result_type = Type::Enum {
             module: test_module(),
             name: TypeName::new("Result").unwrap(),
@@ -985,8 +986,8 @@ mod tests {
                 TypeName::new("Err").unwrap(),
             ],
         };
-        let mut type_env = HashMap::new();
-        type_env.insert(TypeName::new("Result").unwrap(), result_type.clone());
+        let mut type_env = Environment::new();
+        let _ = type_env.push("Result".to_string(), result_type.clone());
         let input = new_variable(&mut var_env, "in", result_type);
         check(
             compiler,
@@ -995,7 +996,7 @@ mod tests {
                 pat("Result::Ok"),
                 pat("Result::Err"),
             ],
-            &type_env,
+            &mut type_env,
             &mut var_env,
             expect![[r#"
                 -- input --
@@ -1021,7 +1022,7 @@ mod tests {
     #[test]
     fn test_nested_option() {
         let compiler = Compiler::new();
-        let mut var_env = HashMap::new();
+        let mut var_env = Environment::new();
         let input = new_variable(
             &mut var_env,
             "in",
@@ -1031,7 +1032,7 @@ mod tests {
             compiler,
             input,
             vec![pat("Some(Some(true))"), pat("Some(None)"), pat("None")],
-            &HashMap::new(),
+            &mut Environment::new(),
             &mut var_env,
             expect![[r#"
                 -- input --
@@ -1074,13 +1075,13 @@ mod tests {
     #[test]
     fn test_all_wildcards() {
         let compiler = Compiler::new();
-        let mut var_env = HashMap::new();
+        let mut var_env = Environment::new();
         let input = new_variable(&mut var_env, "in", Type::Bool);
         check(
             compiler,
             input,
             vec![pat("_")],
-            &HashMap::new(),
+            &mut Environment::new(),
             &mut var_env,
             expect![[r#"
                 -- input --
@@ -1098,13 +1099,13 @@ mod tests {
     #[test]
     fn test_wildcard() {
         let compiler = Compiler::new();
-        let mut var_env = HashMap::new();
+        let mut var_env = Environment::new();
         let input = new_variable(&mut var_env, "in", Type::Bool);
         check(
             compiler,
             input,
             vec![pat("true"), pat("_")],
-            &HashMap::new(),
+            &mut Environment::new(),
             &mut var_env,
             expect![[r#"
                 -- input --
@@ -1130,13 +1131,13 @@ mod tests {
     #[test]
     fn test_wildcard_in_constructor() {
         let compiler = Compiler::new();
-        let mut var_env = HashMap::new();
+        let mut var_env = Environment::new();
         let input = new_variable(&mut var_env, "in", Type::Option(Box::new(Type::Bool)));
         check(
             compiler,
             input,
             vec![pat("Some(_)"), pat("None")],
-            &HashMap::new(),
+            &mut Environment::new(),
             &mut var_env,
             expect![[r#"
                 -- input --

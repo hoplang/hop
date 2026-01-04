@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use super::pat_match::{Body, Column, Compiler, Match, Row, Variable};
 use super::r#type::Type;
 use super::type_checker::typecheck_expr;
@@ -10,7 +8,6 @@ use super::typed::{
 };
 use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::TypedExpr;
-use crate::dop::symbols::type_name::TypeName;
 use crate::dop::syntax::parsed::{Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern};
 use crate::environment::Environment;
 use crate::hop::semantics::type_checker::TypeAnnotation;
@@ -20,6 +17,7 @@ fn compile_and_check_patterns(
     arms: &[ParsedMatchArm],
     subject_type: &Type,
     match_range: &DocumentRange,
+    type_env: &mut Environment<Type>,
 ) -> Result<Match, TypeError> {
     // Create the subject variable
     let subject_var = Variable("$subject".to_string());
@@ -36,18 +34,12 @@ fn compile_and_check_patterns(
         })
         .collect();
 
-    // Set up the type environment for enum types
-    let mut pat_type_env: HashMap<TypeName, Type> = HashMap::new();
-    if let Type::Enum { name, .. } = subject_type {
-        pat_type_env.insert(name.clone(), subject_type.clone());
-    }
-
     // Set up the variable environment
-    let mut pat_var_env: HashMap<Variable, Type> = HashMap::new();
-    pat_var_env.insert(subject_var, subject_type.clone());
+    let mut pat_var_env: Environment<Type> = Environment::new();
+    let _ = pat_var_env.push(subject_var.0.clone(), subject_type.clone());
 
     // Compile the patterns
-    let result = Compiler::new().compile(rows, &pat_type_env, &mut pat_var_env);
+    let result = Compiler::new().compile(rows, type_env, &mut pat_var_env);
 
     // Check for redundant patterns (unreachable arms)
     let unreachable = result.diagnostics.unreachable(arms.len());
@@ -173,7 +165,7 @@ fn typecheck_enum_match(
     }
 
     // Use pat_match to check exhaustiveness and redundancy
-    compile_and_check_patterns(arms, subject_type, range)?;
+    compile_and_check_patterns(arms, subject_type, range, type_env)?;
 
     // Now typecheck arm bodies and build typed output
     let mut typed_arms: Vec<TypedEnumMatchArm> = Vec::new();
@@ -262,7 +254,7 @@ fn typecheck_bool_match(
     }
 
     // Use pat_match to check exhaustiveness and redundancy
-    compile_and_check_patterns(arms, subject_type, range)?;
+    compile_and_check_patterns(arms, subject_type, range, type_env)?;
 
     // Now typecheck arm bodies and build typed output
     let mut typed_arms: Vec<TypedBoolMatchArm> = Vec::new();
@@ -348,7 +340,7 @@ fn typecheck_option_match(
     }
 
     // Use pat_match to check exhaustiveness and redundancy
-    compile_and_check_patterns(arms, subject_type, range)?;
+    compile_and_check_patterns(arms, subject_type, range, type_env)?;
 
     // Now typecheck arm bodies and build typed output
     let mut typed_arms: Vec<TypedOptionMatchArm> = Vec::new();
