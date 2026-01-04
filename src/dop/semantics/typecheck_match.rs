@@ -337,10 +337,6 @@ fn decision_to_typed_expr(
             result
         }
 
-        Decision::Failure => {
-            panic!("Non-exhaustive match reached in decision_to_typed_expr")
-        }
-
         Decision::Switch(var, cases) => {
             // Determine the subject expression for this switch
             // If subject_expr is None, this is a nested match on an extracted variable

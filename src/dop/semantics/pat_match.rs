@@ -195,9 +195,6 @@ pub enum Decision {
     /// A pattern is matched and the right-hand value is to be returned.
     Success(Body),
 
-    /// A pattern is missing.
-    Failure,
-
     /// Checks if a value is any of the given patterns.
     ///
     /// The values are as follows:
@@ -292,7 +289,8 @@ impl Compiler {
             });
         }
 
-        Ok(tree)
+        // Tree is guaranteed to be Some if there are no missing patterns
+        Ok(tree.expect("tree should be Some when there are no missing patterns"))
     }
 
     fn compile_rows(
@@ -301,11 +299,11 @@ impl Compiler {
         type_env: &mut Environment<Type>,
         var_env: &mut Environment<Type>,
         path: Vec<MatchedConstructor>,
-    ) -> Decision {
+    ) -> Option<Decision> {
         if rows.is_empty() {
             self.missing_patterns
                 .insert(path_to_pattern_string(&path));
-            return Decision::Failure;
+            return None;
         }
 
         for row in &mut rows {
@@ -326,7 +324,7 @@ impl Compiler {
         if rows.first().is_some_and(|c| c.columns.is_empty()) {
             let row = rows.remove(0);
             self.reachable.push(row.body.value);
-            return Decision::Success(row.body);
+            return Some(Decision::Success(row.body));
         }
 
         let branch_var = self.find_branch_variable(&rows);
@@ -441,42 +439,55 @@ impl Compiler {
             }
         }
 
-        Decision::Switch(
+        // Compile all case bodies, collecting missing patterns along the way
+        let compiled_cases: Vec<_> = cases
+            .into_iter()
+            .map(|(cons, vars, rows)| {
+                let constructor_name = cons.to_string();
+                let arguments: Vec<String> = vars.iter().map(|v| v.name.clone()).collect();
+
+                let matched = if let Constructor::Record { .. } = &cons {
+                    let field_names: Vec<String> =
+                        if let Type::Record { fields, .. } = &branch_var.typ {
+                            fields.iter().map(|(name, _)| name.to_string()).collect()
+                        } else {
+                            Vec::new()
+                        };
+                    MatchedConstructor::Record {
+                        var_name: branch_var.name.clone(),
+                        constructor_name,
+                        arguments,
+                        field_names,
+                    }
+                } else {
+                    MatchedConstructor::Positional {
+                        var_name: branch_var.name.clone(),
+                        constructor_name,
+                        arguments,
+                    }
+                };
+
+                let mut new_path = path.clone();
+                new_path.push(matched);
+
+                let body = self.compile_rows(rows, type_env, var_env, new_path);
+                (cons, vars, body)
+            })
+            .collect();
+
+        // If any case body is None, return None (missing patterns already collected)
+        if compiled_cases.iter().any(|(_, _, body)| body.is_none()) {
+            return None;
+        }
+
+        // All case bodies are Some, build the Switch
+        Some(Decision::Switch(
             branch_var.clone(),
-            cases
+            compiled_cases
                 .into_iter()
-                .map(|(cons, vars, rows)| {
-                    let constructor_name = cons.to_string();
-                    let arguments: Vec<String> = vars.iter().map(|v| v.name.clone()).collect();
-
-                    let matched = if let Constructor::Record { .. } = &cons {
-                        let field_names: Vec<String> =
-                            if let Type::Record { fields, .. } = &branch_var.typ {
-                                fields.iter().map(|(name, _)| name.to_string()).collect()
-                            } else {
-                                Vec::new()
-                            };
-                        MatchedConstructor::Record {
-                            var_name: branch_var.name.clone(),
-                            constructor_name,
-                            arguments,
-                            field_names,
-                        }
-                    } else {
-                        MatchedConstructor::Positional {
-                            var_name: branch_var.name.clone(),
-                            constructor_name,
-                            arguments,
-                        }
-                    };
-
-                    let mut new_path = path.clone();
-                    new_path.push(matched);
-
-                    Case::new(cons, vars, self.compile_rows(rows, type_env, var_env, new_path))
-                })
+                .map(|(cons, vars, body)| Case::new(cons, vars, body.unwrap()))
                 .collect(),
-        )
+        ))
     }
 
     /// Given a row, returns the variable in that row that's referred to the
