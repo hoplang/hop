@@ -716,13 +716,6 @@ impl Parser {
         let subject = self.parse_primary()?;
         let left_brace = self.expect_token(&Token::LeftBrace)?;
 
-        // Check for empty match
-        if let Some(right_brace) = self.advance_if(Token::RightBrace) {
-            return Err(ParseError::MatchNoArms {
-                range: match_range.to(right_brace),
-            });
-        }
-
         let mut arms = Vec::new();
         let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
             let pattern = this.parse_match_pattern()?;
@@ -2824,13 +2817,11 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_empty_match_expression() {
+    fn should_accept_empty_match_expression() {
         check_parse_expr(
             "match color {}",
             expect![[r#"
-                error: Match expression must have at least one arm
                 match color {}
-                ^^^^^^^^^^^^^^
             "#]],
         );
     }

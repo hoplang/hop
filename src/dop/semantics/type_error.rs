@@ -154,6 +154,9 @@ pub enum TypeError {
         found: String,
         range: DocumentRange,
     },
+
+    #[error("Match expression must have at least one arm")]
+    MatchNoArms { range: DocumentRange },
 }
 
 impl Ranged for TypeError {
@@ -185,7 +188,8 @@ impl Ranged for TypeError {
             | TypeError::MatchArmTypeMismatch { range, .. }
             | TypeError::MatchMissingVariant { range, .. }
             | TypeError::MatchDuplicateVariant { range, .. }
-            | TypeError::MatchPatternTypeMismatch { range, .. } => range,
+            | TypeError::MatchPatternTypeMismatch { range, .. }
+            | TypeError::MatchNoArms { range, .. } => range,
         }
     }
 }

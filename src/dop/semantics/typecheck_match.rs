@@ -25,10 +25,19 @@ pub fn typecheck_match(
     let typed_subject = typecheck_expr(subject, var_env, type_env, annotations, None)?;
     let subject_type = typed_subject.as_type().clone();
 
-    if !matches!(&subject_type, Type::Enum { .. } | Type::Bool | Type::Option(_)) {
+    if !matches!(
+        &subject_type,
+        Type::Enum { .. } | Type::Bool | Type::Option(_)
+    ) {
         return Err(TypeError::MatchNotImplementedForType {
             found: subject_type.to_string(),
             range: subject.range().clone(),
+        });
+    }
+
+    if arms.is_empty() {
+        return Err(TypeError::MatchNoArms {
+            range: range.clone(),
         });
     }
 
@@ -112,7 +121,7 @@ fn validate_pattern_type(
                         return Err(TypeError::MatchNotImplementedForType {
                             found: subject_type.to_string(),
                             range: range.clone(),
-                        })
+                        });
                     }
                 };
                 Err(TypeError::MatchPatternTypeMismatch {
@@ -411,7 +420,14 @@ mod tests {
                 subject,
                 arms,
                 range,
-            } => match typecheck_match(&subject, &arms, &range, &mut env, &mut type_env, &mut annotations) {
+            } => match typecheck_match(
+                &subject,
+                &arms,
+                &range,
+                &mut env,
+                &mut type_env,
+                &mut annotations,
+            ) {
                 Ok(typed_expr) => format!("{}\n", typed_expr.to_doc().pretty(20)),
                 Err(e) => DocumentAnnotator::new()
                     .with_label("error")
@@ -423,6 +439,29 @@ mod tests {
         };
 
         expected.assert_eq(&actual);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// EMPTY MATCH                                                         ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_reject_match_with_no_arms() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                }
+            "#},
+            expect![[r#"
+                error: Match expression must have at least one arm
+                match flag {
+                ^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
     }
 
     ///////////////////////////////////////////////////////////////////////////
