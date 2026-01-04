@@ -509,6 +509,53 @@ impl IrBuilder {
         }
     }
 
+    /// Create a match expression over an option value with a binding for the Some case.
+    /// The `some_body_fn` closure receives the builder with the binding in scope.
+    pub fn option_match_expr_with_binding<F>(
+        &self,
+        subject: IrExpr,
+        binding_name: &str,
+        inner_type: Type,
+        some_body_fn: F,
+        none_body: IrExpr,
+    ) -> IrExpr
+    where
+        F: FnOnce(&Self) -> IrExpr,
+    {
+        use crate::ir::ast::{IrOptionMatchArm, IrOptionPattern};
+
+        // Push the binding onto the variable stack
+        self.var_stack
+            .borrow_mut()
+            .push((binding_name.to_string(), inner_type.clone()));
+
+        let some_body = some_body_fn(self);
+
+        // Pop the binding from the variable stack
+        self.var_stack.borrow_mut().pop();
+
+        let result_type = some_body.as_type().clone();
+        let binding = Some((VarName::new(binding_name).unwrap(), inner_type));
+
+        let ir_arms = vec![
+            IrOptionMatchArm {
+                pattern: IrOptionPattern::Some { binding },
+                body: some_body,
+            },
+            IrOptionMatchArm {
+                pattern: IrOptionPattern::None,
+                body: none_body,
+            },
+        ];
+
+        IrExpr::OptionMatch {
+            subject: Box::new(subject),
+            arms: ir_arms,
+            kind: result_type,
+            id: self.next_expr_id(),
+        }
+    }
+
     pub fn field_access(&self, object: IrExpr, field_str: &str) -> IrExpr {
         let field_name = FieldName::new(field_str).unwrap();
         let field_type = match object.as_type() {

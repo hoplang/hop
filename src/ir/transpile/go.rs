@@ -755,6 +755,10 @@ impl TypeTranspiler for GoTranspiler {
         BoxDoc::text("[]").append(self.transpile_type(element_type))
     }
 
+    fn transpile_option_type<'a>(&self, _inner_type: &'a Type) -> BoxDoc<'a> {
+        todo!("Option type transpilation not yet implemented for Go")
+    }
+
     fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }

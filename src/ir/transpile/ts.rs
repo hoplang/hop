@@ -5,7 +5,8 @@ use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::ir::ast::{
-    IrBoolPattern, IrComponentDeclaration, IrEnumPattern, IrExpr, IrModule, IrStatement,
+    IrBoolPattern, IrComponentDeclaration, IrEnumPattern, IrExpr, IrModule, IrOptionPattern,
+    IrStatement,
 };
 
 pub struct TsTranspiler {
@@ -113,6 +114,20 @@ impl Transpiler for TsTranspiler {
                 .append(BoxDoc::line());
         }
 
+        // Add Option type definitions
+        result = result
+            .append(BoxDoc::text(
+                "export type None = { readonly _tag: \"None\" };",
+            ))
+            .append(BoxDoc::line())
+            .append(BoxDoc::text(
+                "export type Some<T> = { readonly _tag: \"Some\"; readonly value: T };",
+            ))
+            .append(BoxDoc::line())
+            .append(BoxDoc::text("export type Option<T> = None | Some<T>;"))
+            .append(BoxDoc::line())
+            .append(BoxDoc::line());
+
         // Add enum type definitions (class-based)
         for enum_def in &module.enums {
             // Generate union type: export type Foo = FooA | FooB;
@@ -140,7 +155,7 @@ impl Transpiler for TsTranspiler {
                     .append(
                         BoxDoc::nil()
                             .append(BoxDoc::line())
-                            .append(BoxDoc::text("readonly __tag = \""))
+                            .append(BoxDoc::text("readonly _tag = \""))
                             .append(BoxDoc::as_string(class_name.clone()))
                             .append(BoxDoc::text("\";"))
                             .append(BoxDoc::line())
@@ -149,7 +164,7 @@ impl Transpiler for TsTranspiler {
                             .append(BoxDoc::text("): boolean {"))
                             .append(
                                 BoxDoc::line()
-                                    .append(BoxDoc::text("return o.__tag === \""))
+                                    .append(BoxDoc::text("return o._tag === \""))
                                     .append(BoxDoc::as_string(class_name))
                                     .append(BoxDoc::text("\";"))
                                     .nest(4),
@@ -671,8 +686,8 @@ impl ExpressionTranspiler for TsTranspiler {
         arms: &'a [crate::ir::ast::IrEnumMatchArm],
     ) -> BoxDoc<'a> {
         // Transpile enum match to an IIFE with a switch statement:
-        // (() => { switch (subject.__tag) { case "ColorRed": return body; ... } })()
-        // The __tag uses the pattern EnumNameVariantName (e.g., ColorRed)
+        // (() => { switch (subject._tag) { case "ColorRed": return body; ... } })()
+        // The _tag uses the pattern EnumNameVariantName (e.g., ColorRed)
         let cases = BoxDoc::intersperse(
             arms.iter().map(|arm| match &arm.pattern {
                 IrEnumPattern::Variant {
@@ -693,7 +708,7 @@ impl ExpressionTranspiler for TsTranspiler {
 
         let switch_body = BoxDoc::text("switch (")
             .append(self.transpile_expr(subject))
-            .append(BoxDoc::text(".__tag) {"))
+            .append(BoxDoc::text("._tag) {"))
             .append(BoxDoc::line().append(cases).nest(2))
             .append(BoxDoc::line())
             .append(BoxDoc::text("}"));
@@ -748,10 +763,65 @@ impl ExpressionTranspiler for TsTranspiler {
 
     fn transpile_match_option<'a>(
         &self,
-        _subject: &'a IrExpr,
-        _arms: &'a [crate::ir::ast::IrOptionMatchArm],
+        subject: &'a IrExpr,
+        arms: &'a [crate::ir::ast::IrOptionMatchArm],
     ) -> BoxDoc<'a> {
-        panic!("Option match expressions are not yet supported in TypeScript transpilation")
+        let cases = BoxDoc::intersperse(
+            arms.iter().map(|arm| match &arm.pattern {
+                IrOptionPattern::Some { binding } => {
+                    let body_doc = self.transpile_expr(&arm.body);
+                    if let Some((var_name, _)) = binding {
+                        // case "Some": {
+                        //   const v0 = subject.value;
+                        //   return body;
+                        // }
+                        BoxDoc::text("case \"Some\": {")
+                            .append(
+                                BoxDoc::line()
+                                    .append(BoxDoc::text("const "))
+                                    .append(BoxDoc::text(var_name.as_str()))
+                                    .append(BoxDoc::text(" = "))
+                                    .append(self.transpile_expr(subject))
+                                    .append(BoxDoc::text(".value;"))
+                                    .append(BoxDoc::line())
+                                    .append(BoxDoc::text("return "))
+                                    .append(body_doc)
+                                    .append(BoxDoc::text(";"))
+                                    .nest(2),
+                            )
+                            .append(BoxDoc::line())
+                            .append(BoxDoc::text("}"))
+                    } else {
+                        // case "Some": return body;
+                        BoxDoc::text("case \"Some\": return ")
+                            .append(body_doc)
+                            .append(BoxDoc::text(";"))
+                    }
+                }
+                IrOptionPattern::None => {
+                    // case "None": return body;
+                    BoxDoc::text("case \"None\": return ")
+                        .append(self.transpile_expr(&arm.body))
+                        .append(BoxDoc::text(";"))
+                }
+            }),
+            BoxDoc::line(),
+        );
+
+        let switch_body = BoxDoc::text("switch (")
+            .append(self.transpile_expr(subject))
+            .append(BoxDoc::text("._tag) {"))
+            .append(BoxDoc::line().append(cases).nest(2))
+            .append(BoxDoc::line())
+            .append(BoxDoc::text("}"));
+
+        BoxDoc::text("(() => {")
+            .append(BoxDoc::line())
+            .append(switch_body)
+            .nest(2)
+            .append(BoxDoc::line())
+            .append(BoxDoc::text("})()"))
+            .group()
     }
 }
 
@@ -778,6 +848,12 @@ impl TypeTranspiler for TsTranspiler {
 
     fn transpile_array_type<'a>(&self, element_type: &'a Type) -> BoxDoc<'a> {
         self.transpile_type(element_type).append(BoxDoc::text("[]"))
+    }
+
+    fn transpile_option_type<'a>(&self, inner_type: &'a Type) -> BoxDoc<'a> {
+        BoxDoc::text("Option<")
+            .append(self.transpile_type(inner_type))
+            .append(BoxDoc::text(">"))
     }
 
     fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
@@ -827,6 +903,10 @@ mod tests {
                 }
 
                 -- after --
+                export type None = { readonly _tag: "None" };
+                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
+                export type Option<T> = None | Some<T>;
+
                 export default {
                     helloWorld: (): string => {
                         let output: string = "";
@@ -871,6 +951,10 @@ mod tests {
                 }
 
                 -- after --
+                export type None = { readonly _tag: "None" };
+                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
+                export type Option<T> = None | Some<T>;
+
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -925,6 +1009,10 @@ mod tests {
                 }
 
                 -- after --
+                export type None = { readonly _tag: "None" };
+                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
+                export type Option<T> = None | Some<T>;
+
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -980,6 +1068,10 @@ mod tests {
                 }
 
                 -- after --
+                export type None = { readonly _tag: "None" };
+                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
+                export type Option<T> = None | Some<T>;
+
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -1033,6 +1125,10 @@ mod tests {
                 }
 
                 -- after --
+                export type None = { readonly _tag: "None" };
+                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
+                export type Option<T> = None | Some<T>;
+
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -1085,6 +1181,10 @@ mod tests {
                 }
 
                 -- after --
+                export type None = { readonly _tag: "None" };
+                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
+                export type Option<T> = None | Some<T>;
+
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -1143,6 +1243,10 @@ mod tests {
 
                 -- after --
                 type TrustedHTML = string & { readonly __brand: unique symbol };
+
+                export type None = { readonly _tag: "None" };
+                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
+                export type Option<T> = None | Some<T>;
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1221,6 +1325,10 @@ mod tests {
                 }
 
                 -- after --
+                export type None = { readonly _tag: "None" };
+                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
+                export type Option<T> = None | Some<T>;
+
                 export class User {
                     constructor(
                         public readonly name: string,
@@ -1280,6 +1388,10 @@ mod tests {
                 }
 
                 -- after --
+                export type None = { readonly _tag: "None" };
+                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
+                export type Option<T> = None | Some<T>;
+
                 export class User {
                     constructor(
                         public readonly name: string,
@@ -1344,26 +1456,30 @@ mod tests {
                 }
 
                 -- after --
+                export type None = { readonly _tag: "None" };
+                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
+                export type Option<T> = None | Some<T>;
+
                 export type Color = ColorRed | ColorGreen | ColorBlue;
 
                 export class ColorRed {
-                    readonly __tag = "ColorRed";
+                    readonly _tag = "ColorRed";
                     equals(o: Color): boolean {
-                        return o.__tag === "ColorRed";
+                        return o._tag === "ColorRed";
                     }
                 }
 
                 export class ColorGreen {
-                    readonly __tag = "ColorGreen";
+                    readonly _tag = "ColorGreen";
                     equals(o: Color): boolean {
-                        return o.__tag === "ColorGreen";
+                        return o._tag === "ColorGreen";
                     }
                 }
 
                 export class ColorBlue {
-                    readonly __tag = "ColorBlue";
+                    readonly _tag = "ColorBlue";
                     equals(o: Color): boolean {
-                        return o.__tag === "ColorBlue";
+                        return o._tag === "ColorBlue";
                     }
                 }
 
@@ -1424,26 +1540,30 @@ mod tests {
                 }
 
                 -- after --
+                export type None = { readonly _tag: "None" };
+                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
+                export type Option<T> = None | Some<T>;
+
                 export type Color = ColorRed | ColorGreen | ColorBlue;
 
                 export class ColorRed {
-                    readonly __tag = "ColorRed";
+                    readonly _tag = "ColorRed";
                     equals(o: Color): boolean {
-                        return o.__tag === "ColorRed";
+                        return o._tag === "ColorRed";
                     }
                 }
 
                 export class ColorGreen {
-                    readonly __tag = "ColorGreen";
+                    readonly _tag = "ColorGreen";
                     equals(o: Color): boolean {
-                        return o.__tag === "ColorGreen";
+                        return o._tag === "ColorGreen";
                     }
                 }
 
                 export class ColorBlue {
-                    readonly __tag = "ColorBlue";
+                    readonly _tag = "ColorBlue";
                     equals(o: Color): boolean {
-                        return o.__tag === "ColorBlue";
+                        return o._tag === "ColorBlue";
                     }
                 }
 
@@ -1460,7 +1580,7 @@ mod tests {
                     colorName: ({ color }: { color: Color }): string => {
                         let output: string = "";
                         output += escapeHtml((() => {
-                          switch (color.__tag) {
+                          switch (color._tag) {
                             case "ColorRed": return "red";
                             case "ColorGreen": return "green";
                             case "ColorBlue": return "blue";
@@ -1489,6 +1609,10 @@ mod tests {
                 }
 
                 -- after --
+                export type None = { readonly _tag: "None" };
+                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
+                export type Option<T> = None | Some<T>;
+
                 function escapeHtml(str: string): string {
                     return str
                         .replace(/&/g, '&amp;')
@@ -1502,6 +1626,150 @@ mod tests {
                     isActive: ({ active }: { active: boolean }): string => {
                         let output: string = "";
                         output += escapeHtml((active ? "yes" : "no"));
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn option_match_expression() {
+        let module = build_module(
+            "CheckOption",
+            vec![("opt", Type::Option(Box::new(Type::Int)))],
+            |t| {
+                let match_result =
+                    t.option_match_expr(t.var("opt"), t.str("has value"), t.str("empty"));
+                t.write_expr_escaped(match_result);
+            },
+        );
+
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                CheckOption(opt: Option[Int]) {
+                  write_escaped(match opt {
+                    Some(_) => "has value",
+                    None => "empty",
+                  })
+                }
+
+                -- after --
+                export type None = { readonly _tag: "None" };
+                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
+                export type Option<T> = None | Some<T>;
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    checkOption: ({ opt }: { opt: Option<number> }): string => {
+                        let output: string = "";
+                        output += escapeHtml((() => {
+                          switch (opt._tag) {
+                            case "Some": return "has value";
+                            case "None": return "empty";
+                          }
+                        })());
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn nested_option_match_expression() {
+        let outer_option_type = Type::Option(Box::new(Type::Option(Box::new(Type::Bool)).clone()));
+
+        let module = build_module("CheckNestedOption", vec![("opt", outer_option_type)], |t| {
+            // Outer match on opt: Some(v0) => middle_match, None => "none"
+            let outer_match = t.option_match_expr_with_binding(
+                t.var("opt"),
+                "v0",
+                Type::Option(Box::new(Type::Bool)),
+                |t| {
+                    // Middle match on v0 (Option[Bool]): Some(v1) => innermost_match, None => "some-none"
+                    t.option_match_expr_with_binding(
+                        t.var("v0"),
+                        "v1",
+                        Type::Bool,
+                        |t| {
+                            // Inner match on v1 (Bool): true => "true", false => "false"
+                            t.bool_match_expr(
+                                t.var("v1"),
+                                t.str("some-some-true"),
+                                t.str("some-some-false"),
+                            )
+                        },
+                        t.str("some-none"),
+                    )
+                },
+                t.str("none"),
+            );
+
+            t.write_expr_escaped(outer_match);
+        });
+
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                CheckNestedOption(opt: Option[Option[Bool]]) {
+                  write_escaped(match opt {
+                    Some(v0) => match v0 {
+                      Some(v1) => match v1 {
+                        true => "some-some-true",
+                        false => "some-some-false",
+                      },
+                      None => "some-none",
+                    },
+                    None => "none",
+                  })
+                }
+
+                -- after --
+                export type None = { readonly _tag: "None" };
+                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
+                export type Option<T> = None | Some<T>;
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    checkNestedOption: ({ opt }: { opt: Option<Option<boolean>> }): string => {
+                        let output: string = "";
+                        output += escapeHtml((() => {
+                          switch (opt._tag) {
+                            case "Some": {
+                              const v0 = opt.value;
+                              return (() => {
+                                switch (v0._tag) {
+                                  case "Some": {
+                                    const v1 = v0.value;
+                                    return (v1 ? "some-some-true" : "some-some-false");
+                                  }
+                                  case "None": return "some-none";
+                                }
+                              })();
+                            }
+                            case "None": return "none";
+                          }
+                        })());
                         return output;
                     }
                 }

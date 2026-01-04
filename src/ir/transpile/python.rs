@@ -719,6 +719,10 @@ impl TypeTranspiler for PythonTranspiler {
             .append(BoxDoc::text("]"))
     }
 
+    fn transpile_option_type<'a>(&self, _inner_type: &'a Type) -> BoxDoc<'a> {
+        todo!("Option type transpilation not yet implemented for Python")
+    }
+
     fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }

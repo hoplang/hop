@@ -81,6 +81,7 @@ pub trait TypeTranspiler {
     fn transpile_int_type<'a>(&self) -> BoxDoc<'a>;
     fn transpile_trusted_html_type<'a>(&self) -> BoxDoc<'a>;
     fn transpile_array_type<'a>(&self, element_type: &'a Type) -> BoxDoc<'a>;
+    fn transpile_option_type<'a>(&self, inner_type: &'a Type) -> BoxDoc<'a>;
     fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a>;
     fn transpile_type<'a>(&self, t: &'a Type) -> BoxDoc<'a> {
         match t {
@@ -90,7 +91,7 @@ pub trait TypeTranspiler {
             Type::Int => self.transpile_int_type(),
             Type::TrustedHTML => self.transpile_trusted_html_type(),
             Type::Array(elem) => self.transpile_array_type(elem),
-            Type::Option(_) => todo!(),
+            Type::Option(inner) => self.transpile_option_type(inner),
             Type::Record { name, .. } => self.transpile_named_type(name.as_str()),
             Type::Enum { name, .. } => self.transpile_named_type(name.as_str()),
         }
