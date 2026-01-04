@@ -1276,6 +1276,29 @@ mod tests {
     }
 
     #[test]
+    fn should_accept_option_match_with_specific_some_and_wildcard() {
+        check(
+            "",
+            &[("opt", "Option[Bool]")],
+            indoc! {"
+                match opt {
+                    Some(true) => 0,
+                    _          => 1,
+                }
+            "},
+            expect![[r#"
+                match opt {
+                  Some(v0) => match v0 {
+                    true => 0,
+                    false => 1,
+                  },
+                  None => 1,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_reject_option_match_missing_some() {
         check(
             "",
