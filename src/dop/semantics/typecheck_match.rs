@@ -1127,6 +1127,75 @@ mod tests {
     }
 
     #[test]
+    fn should_reject_non_exhaustive_nested_option_match() {
+        check(
+            "",
+            &[("opt", "Option[Option[Int]]")],
+            indoc! {r#"
+                match opt {
+                    Some(Some(_)) => "",
+                    None          => "empty",
+                }
+            "#},
+            expect![[r#"
+                error: Match expression is missing arm for variant 'Some(None)'
+                match opt {
+                ^^^^^^^^^^^
+                    Some(Some(_)) => "",
+                ^^^^^^^^^^^^^^^^^^^^^^^^
+                    None          => "empty",
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_non_exhaustive_nested_option_match_with_bool() {
+        check(
+            "",
+            &[("opt", "Option[Option[Bool]]")],
+            indoc! {r#"
+                match opt {
+                    Some(Some(false)) => "",
+                    Some(None)        => "",
+                    None              => "empty",
+                }
+            "#},
+            expect![[r#"
+                error: Match expression is missing arm for variant 'Some(Some(true))'
+                match opt {
+                ^^^^^^^^^^^
+                    Some(Some(false)) => "",
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    Some(None)        => "",
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    None              => "empty",
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_exhaustive_nested_option_match() {
+        check(
+            "",
+            &[("opt", "Option[Option[Int]]")],
+            indoc! {r#"
+                match opt {
+                    Some(Some(_)) => "",
+                    Some(None)    => "",
+                    None          => "empty",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
     fn should_reject_option_match_duplicate_some() {
         check(
             "",
