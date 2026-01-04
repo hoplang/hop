@@ -171,6 +171,22 @@ pub fn typecheck_match(
 
     // Subject must be an enum, boolean, or option type
     match &subject_type {
+        Type::Enum { .. } | Type::Bool | Type::Option(_) => {}
+        _ => {
+            return Err(TypeError::MatchNotImplementedForType {
+                found: subject_type.to_string(),
+                range: subject.range().clone(),
+            });
+        }
+    }
+
+    // Validate pattern types
+    for arm in arms {
+        validate_pattern_type(&arm.pattern, &subject_type)?;
+    }
+
+    // Dispatch to specific handler
+    match &subject_type {
         Type::Enum { .. } => {
             typecheck_enum_match(&typed_subject, arms, range, var_env, type_env, annotations)
         }
@@ -180,10 +196,7 @@ pub fn typecheck_match(
         Type::Option(_) => {
             typecheck_option_match(&typed_subject, arms, range, var_env, type_env, annotations)
         }
-        _ => Err(TypeError::MatchNotImplementedForType {
-            found: subject_type.to_string(),
-            range: subject.range().clone(),
-        }),
+        _ => unreachable!("Already checked above"),
     }
 }
 
@@ -196,11 +209,6 @@ fn typecheck_enum_match(
     annotations: &mut Vec<TypeAnnotation>,
 ) -> Result<TypedExpr, TypeError> {
     let subject_type = typed_subject.as_type();
-
-    // Validate pattern types (must be enum variants or wildcards)
-    for arm in arms {
-        validate_pattern_type(&arm.pattern, subject_type)?;
-    }
 
     // Use pat_match to check exhaustiveness and redundancy
     compile_and_check_patterns(arms, subject_type, range, type_env)?;
@@ -269,11 +277,6 @@ fn typecheck_bool_match(
 ) -> Result<TypedExpr, TypeError> {
     let subject_type = typed_subject.as_type();
 
-    // Validate pattern types (must be boolean literals or wildcards)
-    for arm in arms {
-        validate_pattern_type(&arm.pattern, subject_type)?;
-    }
-
     // Use pat_match to check exhaustiveness and redundancy
     compile_and_check_patterns(arms, subject_type, range, type_env)?;
 
@@ -337,11 +340,6 @@ fn typecheck_option_match(
     annotations: &mut Vec<TypeAnnotation>,
 ) -> Result<TypedExpr, TypeError> {
     let subject_type = typed_subject.as_type();
-
-    // Validate pattern types (must be option patterns or wildcards)
-    for arm in arms {
-        validate_pattern_type(&arm.pattern, subject_type)?;
-    }
 
     // Use pat_match to check exhaustiveness and redundancy
     compile_and_check_patterns(arms, subject_type, range, type_env)?;
