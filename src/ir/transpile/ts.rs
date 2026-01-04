@@ -687,9 +687,6 @@ impl ExpressionTranspiler for TsTranspiler {
                         .append(self.transpile_expr(&arm.body))
                         .append(BoxDoc::text(";"))
                 }
-                IrEnumPattern::Wildcard => BoxDoc::text("default: return ")
-                    .append(self.transpile_expr(&arm.body))
-                    .append(BoxDoc::text(";")),
             }),
             BoxDoc::line(),
         );
@@ -729,15 +726,6 @@ impl ExpressionTranspiler for TsTranspiler {
                 }
                 IrBoolPattern::Literal(false) => {
                     false_body = Some(&arm.body);
-                }
-                IrBoolPattern::Wildcard => {
-                    // Wildcard fills in any missing patterns
-                    if true_body.is_none() {
-                        true_body = Some(&arm.body);
-                    }
-                    if false_body.is_none() {
-                        false_body = Some(&arm.body);
-                    }
                 }
             }
         }

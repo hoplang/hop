@@ -565,7 +565,6 @@ impl Compiler {
                                 enum_name,
                                 variant_name,
                             },
-                            TypedEnumPattern::Wildcard => IrEnumPattern::Wildcard,
                         },
                         body: self.compile_expr(arm.body),
                     })
@@ -584,7 +583,6 @@ impl Compiler {
                     .map(|arm| IrBoolMatchArm {
                         pattern: match arm.pattern {
                             TypedBoolPattern::Literal(value) => IrBoolPattern::Literal(value),
-                            TypedBoolPattern::Wildcard => IrBoolPattern::Wildcard,
                         },
                         body: self.compile_expr(arm.body),
                     })
@@ -604,7 +602,6 @@ impl Compiler {
                         pattern: match arm.pattern {
                             TypedOptionPattern::Some => IrOptionPattern::Some,
                             TypedOptionPattern::None => IrOptionPattern::None,
-                            TypedOptionPattern::Wildcard => IrOptionPattern::Wildcard,
                         },
                         body: self.compile_expr(arm.body),
                     })

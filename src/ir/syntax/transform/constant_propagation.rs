@@ -2,7 +2,7 @@ use super::Pass;
 use crate::ir::{
     IrExpr,
     ast::ExprId,
-    ast::{IrBoolPattern, IrComponentDeclaration, IrEnumPattern, IrStatement},
+    ast::{IrComponentDeclaration, IrEnumPattern, IrStatement},
 };
 use datafrog::{Iteration, Relation};
 use std::collections::HashMap;
@@ -87,25 +87,11 @@ impl Pass for ConstantPropagationPass {
                                             arm.body.id(),
                                         ));
                                     }
-                                    IrEnumPattern::Wildcard => {
-                                        // Wildcard patterns can't be constant-folded since they match anything
-                                    }
                                 }
                             }
                         }
-                        IrExpr::BoolMatch { arms, .. } => {
+                        IrExpr::BoolMatch { .. } => {
                             // Boolean patterns are not currently constant-folded
-                            // but we still need to handle them to avoid missing the arms
-                            for arm in arms {
-                                match &arm.pattern {
-                                    IrBoolPattern::Literal(_) => {
-                                        // Boolean patterns are not currently constant-folded
-                                    }
-                                    IrBoolPattern::Wildcard => {
-                                        // Wildcard patterns can't be constant-folded since they match anything
-                                    }
-                                }
-                            }
                         }
                         IrExpr::OptionMatch { .. } => {
                             // Option patterns are not currently constant-folded

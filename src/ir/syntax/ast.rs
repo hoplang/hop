@@ -49,8 +49,6 @@ pub enum IrEnumPattern {
         enum_name: String,
         variant_name: String,
     },
-    /// A wildcard pattern that matches anything
-    Wildcard,
 }
 
 /// A pattern in a boolean match arm
@@ -58,8 +56,6 @@ pub enum IrEnumPattern {
 pub enum IrBoolPattern {
     /// A boolean literal pattern, e.g. `true` or `false`
     Literal(bool),
-    /// A wildcard pattern that matches anything
-    Wildcard,
 }
 
 /// A single arm in an enum match expression, e.g. `Color::Red => "red"`
@@ -87,8 +83,6 @@ pub enum IrOptionPattern {
     Some,
     /// A None pattern
     None,
-    /// A wildcard pattern that matches anything
-    Wildcard,
 }
 
 /// A single arm in an option match expression, e.g. `Some(_) => "value"`
@@ -771,7 +765,6 @@ impl IrExpr {
                                             } => BoxDoc::text(enum_name.as_str())
                                                 .append(BoxDoc::text("::"))
                                                 .append(BoxDoc::text(variant_name.as_str())),
-                                            IrEnumPattern::Wildcard => BoxDoc::text("_"),
                                         };
                                         pattern_doc
                                             .append(BoxDoc::text(" => "))
@@ -803,7 +796,6 @@ impl IrExpr {
                                         let pattern_doc = match &arm.pattern {
                                             IrBoolPattern::Literal(true) => BoxDoc::text("true"),
                                             IrBoolPattern::Literal(false) => BoxDoc::text("false"),
-                                            IrBoolPattern::Wildcard => BoxDoc::text("_"),
                                         };
                                         pattern_doc
                                             .append(BoxDoc::text(" => "))
@@ -835,7 +827,6 @@ impl IrExpr {
                                         let pattern_doc = match &arm.pattern {
                                             IrOptionPattern::Some => BoxDoc::text("Some(_)"),
                                             IrOptionPattern::None => BoxDoc::text("None"),
-                                            IrOptionPattern::Wildcard => BoxDoc::text("_"),
                                         };
                                         pattern_doc
                                             .append(BoxDoc::text(" => "))

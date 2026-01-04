@@ -1,4 +1,4 @@
-use super::pat_match::{Body, Column, Compiler, Match, Row, Variable};
+use super::pat_match::{Body, Column, Compiler, Decision, Match, Row, Variable};
 use super::r#type::Type;
 use super::type_checker::typecheck_expr;
 use super::type_error::TypeError;
@@ -8,6 +8,7 @@ use super::typed::{
 };
 use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::TypedExpr;
+use crate::dop::symbols::var_name::VarName;
 use crate::dop::syntax::parsed::{Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern};
 use crate::environment::Environment;
 use crate::hop::semantics::type_checker::TypeAnnotation;
@@ -136,6 +137,138 @@ fn typecheck_arm_bodies(
     Ok((typed_bodies, result_type.unwrap()))
 }
 
+/// Convert a compiled Decision tree into a TypedExpr.
+///
+/// This function recursively transforms the decision tree produced by the pattern
+/// matching compiler into a nested TypedExpr structure. Each `Switch` node becomes
+/// a match expression, and `Success` nodes reference the corresponding typed body.
+///
+/// # Arguments
+/// * `decision` - The compiled decision tree
+/// * `typed_bodies` - The typed arm bodies, indexed by arm number
+/// * `result_type` - The result type of the match expression
+/// * `subject_expr` - Optional expression to use as the subject for the root Switch.
+///   If `None`, a variable reference is created. This is used to substitute the
+///   actual subject expression at the root level while using variable references
+///   for nested switches.
+///
+/// # Panics
+/// Panics if `Decision::Failure` is encountered, which indicates a non-exhaustive
+/// match. This should not happen if exhaustiveness checking passed.
+pub fn decision_to_typed_expr(
+    decision: &Decision,
+    typed_bodies: &[TypedExpr],
+    result_type: Type,
+    subject_expr: Option<TypedExpr>,
+) -> TypedExpr {
+    match decision {
+        Decision::Success(body) => {
+            // Leaf node - return the corresponding typed body
+            typed_bodies[body.value].clone()
+        }
+
+        Decision::Failure => {
+            // Non-exhaustive path - should not happen for well-typed matches
+            panic!("Non-exhaustive match reached in decision_to_typed_expr")
+        }
+
+        Decision::Switch(var, cases) => {
+            // Use provided subject expression or create a variable reference
+            let subject = Box::new(subject_expr.unwrap_or_else(|| TypedExpr::Var {
+                value: VarName::new(&var.name).expect("invalid variable name"),
+                kind: var.typ.clone(),
+            }));
+
+            match &var.typ {
+                Type::Bool => {
+                    let arms = cases
+                        .iter()
+                        .map(|case| {
+                            let pattern = match &case.constructor {
+                                Constructor::BooleanTrue => TypedBoolPattern::Literal(true),
+                                Constructor::BooleanFalse => TypedBoolPattern::Literal(false),
+                                _ => unreachable!("Invalid constructor for Bool type"),
+                            };
+                            let body = decision_to_typed_expr(
+                                &case.body,
+                                typed_bodies,
+                                result_type.clone(),
+                                None,
+                            );
+                            TypedBoolMatchArm { pattern, body }
+                        })
+                        .collect();
+
+                    TypedExpr::BoolMatch {
+                        subject,
+                        arms,
+                        kind: result_type,
+                    }
+                }
+
+                Type::Option(_) => {
+                    let arms = cases
+                        .iter()
+                        .map(|case| {
+                            let pattern = match &case.constructor {
+                                Constructor::OptionSome => TypedOptionPattern::Some,
+                                Constructor::OptionNone => TypedOptionPattern::None,
+                                _ => unreachable!("Invalid constructor for Option type"),
+                            };
+                            let body = decision_to_typed_expr(
+                                &case.body,
+                                typed_bodies,
+                                result_type.clone(),
+                                None,
+                            );
+                            TypedOptionMatchArm { pattern, body }
+                        })
+                        .collect();
+
+                    TypedExpr::OptionMatch {
+                        subject,
+                        arms,
+                        kind: result_type,
+                    }
+                }
+
+                Type::Enum { .. } => {
+                    let arms = cases
+                        .iter()
+                        .map(|case| {
+                            let pattern = match &case.constructor {
+                                Constructor::EnumVariant {
+                                    enum_name,
+                                    variant_name,
+                                } => TypedEnumPattern::Variant {
+                                    enum_name: enum_name.to_string(),
+                                    variant_name: variant_name.clone(),
+                                },
+                                _ => unreachable!("Invalid constructor for Enum type"),
+                            };
+                            let body = decision_to_typed_expr(
+                                &case.body,
+                                typed_bodies,
+                                result_type.clone(),
+                                None,
+                            );
+                            TypedEnumMatchArm { pattern, body }
+                        })
+                        .collect();
+
+                    TypedExpr::EnumMatch {
+                        subject,
+                        arms,
+                        kind: result_type,
+                    }
+                }
+
+                _ => panic!("Unsupported type for pattern matching: {:?}", var.typ),
+            }
+        }
+    }
+}
+
 /// Compile patterns using pat_match and check for exhaustiveness and redundancy.
 fn compile_and_check_patterns(
     arms: &[ParsedMatchArm],
@@ -144,7 +277,7 @@ fn compile_and_check_patterns(
     type_env: &mut Environment<Type>,
 ) -> Result<Match, TypeError> {
     // Create the subject variable
-    let subject_var = Variable("$subject".to_string());
+    let subject_var = Variable::new("$subject".to_string(), subject_type.clone());
 
     // Build rows from the match arms
     let rows: Vec<Row> = arms
@@ -160,7 +293,7 @@ fn compile_and_check_patterns(
 
     // Set up the variable environment
     let mut pat_var_env: Environment<Type> = Environment::new();
-    let _ = pat_var_env.push(subject_var.0.clone(), subject_type.clone());
+    let _ = pat_var_env.push(subject_var.name.clone(), subject_type.clone());
 
     // Compile the patterns
     let result = Compiler::new().compile(rows, type_env, &mut pat_var_env);
@@ -221,109 +354,19 @@ pub fn typecheck_match(
         validate_pattern_type(&arm.pattern, &subject_type)?;
     }
 
-    // Check exhaustiveness and redundancy
-    compile_and_check_patterns(arms, &subject_type, range, type_env)?;
+    // Compile patterns and check exhaustiveness/redundancy
+    let compiled = compile_and_check_patterns(arms, &subject_type, range, type_env)?;
 
     // Typecheck arm bodies
     let (typed_bodies, result_type) = typecheck_arm_bodies(arms, var_env, type_env, annotations)?;
 
-    // Build typed output based on subject type
-    match &subject_type {
-        Type::Enum { .. } => {
-            let typed_arms = arms
-                .iter()
-                .zip(typed_bodies)
-                .map(|(arm, typed_body)| {
-                    let typed_pattern = match &arm.pattern {
-                        ParsedMatchPattern::Constructor {
-                            constructor:
-                                Constructor::EnumVariant {
-                                    enum_name: pattern_enum_name,
-                                    variant_name: pattern_variant_name,
-                                },
-                            ..
-                        } => TypedEnumPattern::Variant {
-                            enum_name: pattern_enum_name.to_string(),
-                            variant_name: pattern_variant_name.clone(),
-                        },
-                        ParsedMatchPattern::Wildcard { .. } => TypedEnumPattern::Wildcard,
-                        _ => unreachable!("Pattern type already validated"),
-                    };
-                    TypedEnumMatchArm {
-                        pattern: typed_pattern,
-                        body: typed_body,
-                    }
-                })
-                .collect();
-
-            Ok(TypedExpr::EnumMatch {
-                subject: Box::new(typed_subject),
-                arms: typed_arms,
-                kind: result_type,
-            })
-        }
-        Type::Bool => {
-            let typed_arms = arms
-                .iter()
-                .zip(typed_bodies)
-                .map(|(arm, typed_body)| {
-                    let typed_pattern = match &arm.pattern {
-                        ParsedMatchPattern::Constructor {
-                            constructor: Constructor::BooleanTrue,
-                            ..
-                        } => TypedBoolPattern::Literal(true),
-                        ParsedMatchPattern::Constructor {
-                            constructor: Constructor::BooleanFalse,
-                            ..
-                        } => TypedBoolPattern::Literal(false),
-                        ParsedMatchPattern::Wildcard { .. } => TypedBoolPattern::Wildcard,
-                        _ => unreachable!("Pattern type already validated"),
-                    };
-                    TypedBoolMatchArm {
-                        pattern: typed_pattern,
-                        body: typed_body,
-                    }
-                })
-                .collect();
-
-            Ok(TypedExpr::BoolMatch {
-                subject: Box::new(typed_subject),
-                arms: typed_arms,
-                kind: result_type,
-            })
-        }
-        Type::Option(_) => {
-            let typed_arms = arms
-                .iter()
-                .zip(typed_bodies)
-                .map(|(arm, typed_body)| {
-                    let typed_pattern = match &arm.pattern {
-                        ParsedMatchPattern::Constructor {
-                            constructor: Constructor::OptionSome,
-                            ..
-                        } => TypedOptionPattern::Some,
-                        ParsedMatchPattern::Constructor {
-                            constructor: Constructor::OptionNone,
-                            ..
-                        } => TypedOptionPattern::None,
-                        ParsedMatchPattern::Wildcard { .. } => TypedOptionPattern::Wildcard,
-                        _ => unreachable!("Pattern type already validated"),
-                    };
-                    TypedOptionMatchArm {
-                        pattern: typed_pattern,
-                        body: typed_body,
-                    }
-                })
-                .collect();
-
-            Ok(TypedExpr::OptionMatch {
-                subject: Box::new(typed_subject),
-                arms: typed_arms,
-                kind: result_type,
-            })
-        }
-        _ => unreachable!("Already checked above"),
-    }
+    // Convert decision tree to typed expression
+    Ok(decision_to_typed_expr(
+        &compiled.tree,
+        &typed_bodies,
+        result_type,
+        Some(typed_subject),
+    ))
 }
 
 #[cfg(test)]

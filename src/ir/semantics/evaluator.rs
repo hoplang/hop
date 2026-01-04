@@ -424,9 +424,6 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                             return evaluate_expr(&arm.body, env);
                         }
                     }
-                    IrEnumPattern::Wildcard => {
-                        return evaluate_expr(&arm.body, env);
-                    }
                 }
             }
 
@@ -449,9 +446,6 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                         if *pattern_value == subject_bool {
                             return evaluate_expr(&arm.body, env);
                         }
-                    }
-                    IrBoolPattern::Wildcard => {
-                        return evaluate_expr(&arm.body, env);
                     }
                 }
             }
@@ -480,9 +474,6 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                         if !is_some {
                             return evaluate_expr(&arm.body, env);
                         }
-                    }
-                    IrOptionPattern::Wildcard => {
-                        return evaluate_expr(&arm.body, env);
                     }
                 }
             }

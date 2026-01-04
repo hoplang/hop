@@ -14,8 +14,6 @@ pub enum TypedEnumPattern {
         enum_name: String,
         variant_name: String,
     },
-    /// A wildcard pattern that matches anything
-    Wildcard,
 }
 
 /// A pattern in a boolean match arm
@@ -23,8 +21,6 @@ pub enum TypedEnumPattern {
 pub enum TypedBoolPattern {
     /// A boolean literal pattern, e.g. `true` or `false`
     Literal(bool),
-    /// A wildcard pattern that matches anything
-    Wildcard,
 }
 
 /// A single arm in an enum match expression, e.g. `Color::Red => "red"`
@@ -52,8 +48,6 @@ pub enum TypedOptionPattern {
     Some,
     /// A None pattern
     None,
-    /// A wildcard pattern that matches anything
-    Wildcard,
 }
 
 /// A single arm in an option match expression, e.g. `Some(_) => "value"`
@@ -425,7 +419,6 @@ impl TypedExpr {
                                             } => BoxDoc::text(enum_name.as_str())
                                                 .append(BoxDoc::text("::"))
                                                 .append(BoxDoc::text(variant_name.as_str())),
-                                            TypedEnumPattern::Wildcard => BoxDoc::text("_"),
                                         };
                                         pattern_doc
                                             .append(BoxDoc::text(" => "))
@@ -459,7 +452,6 @@ impl TypedExpr {
                                             TypedBoolPattern::Literal(false) => {
                                                 BoxDoc::text("false")
                                             }
-                                            TypedBoolPattern::Wildcard => BoxDoc::text("_"),
                                         };
                                         pattern_doc
                                             .append(BoxDoc::text(" => "))
@@ -491,7 +483,6 @@ impl TypedExpr {
                                         let pattern_doc = match &arm.pattern {
                                             TypedOptionPattern::Some => BoxDoc::text("Some(_)"),
                                             TypedOptionPattern::None => BoxDoc::text("None"),
-                                            TypedOptionPattern::Wildcard => BoxDoc::text("_"),
                                         };
                                         pattern_doc
                                             .append(BoxDoc::text(" => "))

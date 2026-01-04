@@ -27,8 +27,32 @@ impl Body {
 }
 
 /// A variable used in a match expression.
-#[derive(Eq, PartialEq, Hash, Clone, Debug)]
-pub struct Variable(pub String);
+#[derive(Clone, Debug)]
+pub struct Variable {
+    pub name: String,
+    pub typ: Type,
+}
+
+impl Variable {
+    pub fn new(name: String, typ: Type) -> Self {
+        Self { name, typ }
+    }
+}
+
+// Hash and Eq only consider the name, not the type
+impl std::hash::Hash for Variable {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
+}
+
+impl PartialEq for Variable {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+impl Eq for Variable {}
 
 /// A single case (or row) in a match expression/table.
 #[derive(Clone, Debug)]
@@ -71,13 +95,13 @@ impl Column {
 #[derive(Eq, PartialEq, Debug)]
 pub struct Case {
     /// The constructor to test against an input variable.
-    constructor: Constructor,
+    pub constructor: Constructor,
 
     /// Variables to introduce to the body of this case.
-    arguments: Vec<Variable>,
+    pub arguments: Vec<Variable>,
 
     /// The sub tree of this case.
-    body: Decision,
+    pub body: Decision,
 }
 
 impl Case {
@@ -354,7 +378,7 @@ impl Compiler {
 
         let branch_var = self.find_branch_variable(&rows);
 
-        let mut cases = match var_env.lookup(&branch_var.0).expect("unknown variable").clone() {
+        let mut cases = match &branch_var.typ {
             Type::Bool => {
                 vec![
                     (Constructor::BooleanFalse, Vec::new(), Vec::new()),
@@ -365,7 +389,7 @@ impl Compiler {
                 vec![
                     (
                         Constructor::OptionSome,
-                        vec![self.fresh_var(*inner, var_env)],
+                        vec![self.fresh_var(inner.as_ref().clone(), var_env)],
                         Vec::new(),
                     ),
                     (Constructor::OptionNone, Vec::new(), Vec::new()),
@@ -465,11 +489,10 @@ impl Compiler {
 
     /// Returns a new variable to use in the decision tree.
     fn fresh_var(&mut self, typ: Type, var_env: &mut Environment<Type>) -> Variable {
-        let var = Variable(format!("v{}", self.var_counter));
-
+        let name = format!("v{}", self.var_counter);
         self.var_counter += 1;
-        let _ = var_env.push(var.0.clone(), typ);
-        var
+        let _ = var_env.push(name.clone(), typ.clone());
+        Variable::new(name, typ)
     }
 }
 
@@ -482,7 +505,7 @@ impl Decision {
             Decision::Success(body) => write!(f, "{pad}{body}"),
             Decision::Failure => write!(f, "{pad}fail"),
             Decision::Switch(var, cases) => {
-                writeln!(f, "{pad}switch {} {{", var.0)?;
+                writeln!(f, "{pad}switch {} {{", var.name)?;
                 for case in cases {
                     case.fmt_indented(f, indent + 1)?;
                 }
@@ -509,7 +532,7 @@ impl Case {
                 "({})",
                 self.arguments
                     .iter()
-                    .map(|v| v.0.as_str())
+                    .map(|v| v.name.as_str())
                     .collect::<Vec<_>>()
                     .join(", ")
             )
@@ -549,8 +572,8 @@ mod tests {
     }
 
     fn new_variable(var_env: &mut Environment<Type>, name: &str, typ: Type) -> Variable {
-        let var = Variable(name.to_string());
-        let _ = var_env.push(var.0.clone(), typ);
+        let var = Variable::new(name.to_string(), typ.clone());
+        let _ = var_env.push(var.name.clone(), typ);
         var
     }
 
@@ -578,7 +601,7 @@ mod tests {
         var_env: &mut Environment<Type>,
         expected: expect_test::Expect,
     ) {
-        let mut output = format!("-- input --\nmatch {} {{\n", input.0);
+        let mut output = format!("-- input --\nmatch {} {{\n", input.name);
         for (idx, rule) in rules.iter().enumerate() {
             output.push_str(&format!("  {rule} => {idx}\n"));
         }
