@@ -221,163 +221,109 @@ pub fn typecheck_match(
         validate_pattern_type(&arm.pattern, &subject_type)?;
     }
 
-    // Dispatch to specific handler
+    // Check exhaustiveness and redundancy
+    compile_and_check_patterns(arms, &subject_type, range, type_env)?;
+
+    // Typecheck arm bodies
+    let (typed_bodies, result_type) = typecheck_arm_bodies(arms, var_env, type_env, annotations)?;
+
+    // Build typed output based on subject type
     match &subject_type {
         Type::Enum { .. } => {
-            typecheck_enum_match(&typed_subject, arms, range, var_env, type_env, annotations)
+            let typed_arms = arms
+                .iter()
+                .zip(typed_bodies)
+                .map(|(arm, typed_body)| {
+                    let typed_pattern = match &arm.pattern {
+                        ParsedMatchPattern::Constructor {
+                            constructor:
+                                Constructor::EnumVariant {
+                                    enum_name: pattern_enum_name,
+                                    variant_name: pattern_variant_name,
+                                },
+                            ..
+                        } => TypedEnumPattern::Variant {
+                            enum_name: pattern_enum_name.to_string(),
+                            variant_name: pattern_variant_name.clone(),
+                        },
+                        ParsedMatchPattern::Wildcard { .. } => TypedEnumPattern::Wildcard,
+                        _ => unreachable!("Pattern type already validated"),
+                    };
+                    TypedEnumMatchArm {
+                        pattern: typed_pattern,
+                        body: typed_body,
+                    }
+                })
+                .collect();
+
+            Ok(TypedExpr::EnumMatch {
+                subject: Box::new(typed_subject),
+                arms: typed_arms,
+                kind: result_type,
+            })
         }
         Type::Bool => {
-            typecheck_bool_match(&typed_subject, arms, range, var_env, type_env, annotations)
+            let typed_arms = arms
+                .iter()
+                .zip(typed_bodies)
+                .map(|(arm, typed_body)| {
+                    let typed_pattern = match &arm.pattern {
+                        ParsedMatchPattern::Constructor {
+                            constructor: Constructor::BooleanTrue,
+                            ..
+                        } => TypedBoolPattern::Literal(true),
+                        ParsedMatchPattern::Constructor {
+                            constructor: Constructor::BooleanFalse,
+                            ..
+                        } => TypedBoolPattern::Literal(false),
+                        ParsedMatchPattern::Wildcard { .. } => TypedBoolPattern::Wildcard,
+                        _ => unreachable!("Pattern type already validated"),
+                    };
+                    TypedBoolMatchArm {
+                        pattern: typed_pattern,
+                        body: typed_body,
+                    }
+                })
+                .collect();
+
+            Ok(TypedExpr::BoolMatch {
+                subject: Box::new(typed_subject),
+                arms: typed_arms,
+                kind: result_type,
+            })
         }
         Type::Option(_) => {
-            typecheck_option_match(&typed_subject, arms, range, var_env, type_env, annotations)
+            let typed_arms = arms
+                .iter()
+                .zip(typed_bodies)
+                .map(|(arm, typed_body)| {
+                    let typed_pattern = match &arm.pattern {
+                        ParsedMatchPattern::Constructor {
+                            constructor: Constructor::OptionSome,
+                            ..
+                        } => TypedOptionPattern::Some,
+                        ParsedMatchPattern::Constructor {
+                            constructor: Constructor::OptionNone,
+                            ..
+                        } => TypedOptionPattern::None,
+                        ParsedMatchPattern::Wildcard { .. } => TypedOptionPattern::Wildcard,
+                        _ => unreachable!("Pattern type already validated"),
+                    };
+                    TypedOptionMatchArm {
+                        pattern: typed_pattern,
+                        body: typed_body,
+                    }
+                })
+                .collect();
+
+            Ok(TypedExpr::OptionMatch {
+                subject: Box::new(typed_subject),
+                arms: typed_arms,
+                kind: result_type,
+            })
         }
         _ => unreachable!("Already checked above"),
     }
-}
-
-fn typecheck_enum_match(
-    typed_subject: &TypedExpr,
-    arms: &[ParsedMatchArm],
-    range: &DocumentRange,
-    env: &mut Environment<Type>,
-    type_env: &mut Environment<Type>,
-    annotations: &mut Vec<TypeAnnotation>,
-) -> Result<TypedExpr, TypeError> {
-    let subject_type = typed_subject.as_type();
-
-    // Use pat_match to check exhaustiveness and redundancy
-    compile_and_check_patterns(arms, subject_type, range, type_env)?;
-
-    // Typecheck arm bodies
-    let (typed_bodies, result_type) = typecheck_arm_bodies(arms, env, type_env, annotations)?;
-
-    // Build typed output
-    let typed_arms = arms
-        .iter()
-        .zip(typed_bodies)
-        .map(|(arm, typed_body)| {
-            let typed_pattern = match &arm.pattern {
-                ParsedMatchPattern::Constructor {
-                    constructor:
-                        Constructor::EnumVariant {
-                            enum_name: pattern_enum_name,
-                            variant_name: pattern_variant_name,
-                        },
-                    ..
-                } => TypedEnumPattern::Variant {
-                    enum_name: pattern_enum_name.to_string(),
-                    variant_name: pattern_variant_name.clone(),
-                },
-                ParsedMatchPattern::Wildcard { .. } => TypedEnumPattern::Wildcard,
-                _ => unreachable!("Pattern type already validated"),
-            };
-            TypedEnumMatchArm {
-                pattern: typed_pattern,
-                body: typed_body,
-            }
-        })
-        .collect();
-
-    Ok(TypedExpr::EnumMatch {
-        subject: Box::new(typed_subject.clone()),
-        arms: typed_arms,
-        kind: result_type,
-    })
-}
-
-fn typecheck_bool_match(
-    typed_subject: &TypedExpr,
-    arms: &[ParsedMatchArm],
-    range: &DocumentRange,
-    env: &mut Environment<Type>,
-    type_env: &mut Environment<Type>,
-    annotations: &mut Vec<TypeAnnotation>,
-) -> Result<TypedExpr, TypeError> {
-    let subject_type = typed_subject.as_type();
-
-    // Use pat_match to check exhaustiveness and redundancy
-    compile_and_check_patterns(arms, subject_type, range, type_env)?;
-
-    // Typecheck arm bodies
-    let (typed_bodies, result_type) = typecheck_arm_bodies(arms, env, type_env, annotations)?;
-
-    // Build typed output
-    let typed_arms = arms
-        .iter()
-        .zip(typed_bodies)
-        .map(|(arm, typed_body)| {
-            let typed_pattern = match &arm.pattern {
-                ParsedMatchPattern::Constructor {
-                    constructor: Constructor::BooleanTrue,
-                    ..
-                } => TypedBoolPattern::Literal(true),
-                ParsedMatchPattern::Constructor {
-                    constructor: Constructor::BooleanFalse,
-                    ..
-                } => TypedBoolPattern::Literal(false),
-                ParsedMatchPattern::Wildcard { .. } => TypedBoolPattern::Wildcard,
-                _ => unreachable!("Pattern type already validated"),
-            };
-            TypedBoolMatchArm {
-                pattern: typed_pattern,
-                body: typed_body,
-            }
-        })
-        .collect();
-
-    Ok(TypedExpr::BoolMatch {
-        subject: Box::new(typed_subject.clone()),
-        arms: typed_arms,
-        kind: result_type,
-    })
-}
-
-fn typecheck_option_match(
-    typed_subject: &TypedExpr,
-    arms: &[ParsedMatchArm],
-    range: &DocumentRange,
-    env: &mut Environment<Type>,
-    type_env: &mut Environment<Type>,
-    annotations: &mut Vec<TypeAnnotation>,
-) -> Result<TypedExpr, TypeError> {
-    let subject_type = typed_subject.as_type();
-
-    // Use pat_match to check exhaustiveness and redundancy
-    compile_and_check_patterns(arms, subject_type, range, type_env)?;
-
-    // Typecheck arm bodies
-    let (typed_bodies, result_type) = typecheck_arm_bodies(arms, env, type_env, annotations)?;
-
-    // Build typed output
-    let typed_arms = arms
-        .iter()
-        .zip(typed_bodies)
-        .map(|(arm, typed_body)| {
-            let typed_pattern = match &arm.pattern {
-                ParsedMatchPattern::Constructor {
-                    constructor: Constructor::OptionSome,
-                    ..
-                } => TypedOptionPattern::Some,
-                ParsedMatchPattern::Constructor {
-                    constructor: Constructor::OptionNone,
-                    ..
-                } => TypedOptionPattern::None,
-                ParsedMatchPattern::Wildcard { .. } => TypedOptionPattern::Wildcard,
-                _ => unreachable!("Pattern type already validated"),
-            };
-            TypedOptionMatchArm {
-                pattern: typed_pattern,
-                body: typed_body,
-            }
-        })
-        .collect();
-
-    Ok(TypedExpr::OptionMatch {
-        subject: Box::new(typed_subject.clone()),
-        arms: typed_arms,
-        kind: result_type,
-    })
 }
 
 #[cfg(test)]
