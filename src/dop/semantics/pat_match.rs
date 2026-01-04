@@ -7,12 +7,15 @@
 //! Thanks to Yorick Peterse for the original implementation.
 use std::collections::{HashMap, HashSet};
 
-use crate::document::document_cursor::DocumentRange;
-use crate::dop::syntax::parsed::{Constructor, ParsedMatchPattern};
+use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::dop::syntax::parsed::{Constructor, ParsedMatchArm, ParsedMatchPattern};
 use crate::environment::Environment;
 
 use super::r#type::Type;
 use super::type_error::TypeError;
+
+/// The name used for the subject variable in pattern matching.
+pub const SUBJECT_VAR_NAME: &str = "_subject";
 
 /// The body of code to evaluate in case of a match.
 #[derive(Clone, Debug)]
@@ -48,13 +51,13 @@ impl Variable {
 
 /// A single case (or row) in a match expression/table.
 #[derive(Clone, Debug)]
-pub struct Row {
+struct Row {
     columns: Vec<Column>,
     body: Body,
 }
 
 impl Row {
-    pub fn new(columns: Vec<Column>, body: Body) -> Self {
+    fn new(columns: Vec<Column>, body: Body) -> Self {
         Self { columns, body }
     }
 
@@ -72,13 +75,13 @@ impl Row {
 /// that variable. A row may contain multiple columns, though this wouldn't be
 /// exposed to the source language.
 #[derive(Clone, Debug)]
-pub struct Column {
+struct Column {
     variable: Variable,
     pattern: ParsedMatchPattern,
 }
 
 impl Column {
-    pub fn new(variable: Variable, pattern: ParsedMatchPattern) -> Self {
+    fn new(variable: Variable, pattern: ParsedMatchPattern) -> Self {
         Self { variable, pattern }
     }
 }
@@ -204,13 +207,6 @@ pub enum Decision {
     Switch(Variable, Vec<Case>),
 }
 
-/// Information about a match arm needed for error reporting.
-pub struct ArmInfo {
-    /// String representation of the pattern (for error messages).
-    pub pattern_string: String,
-    /// Source range of the pattern.
-    pub range: DocumentRange,
-}
 
 /// The `match` compiler itself.
 pub struct Compiler {
@@ -259,13 +255,28 @@ impl Compiler {
 
     pub fn compile(
         mut self,
-        rows: Vec<Row>,
-        type_env: &mut Environment<Type>,
-        var_env: &mut Environment<Type>,
-        arms: &[ArmInfo],
+        arms: &[ParsedMatchArm],
+        subject_type: &Type,
         match_range: &DocumentRange,
+        type_env: &mut Environment<Type>,
     ) -> Result<Decision, TypeError> {
-        let tree = self.compile_rows(rows, type_env, var_env, Vec::new());
+        let subject_var = Variable::new(SUBJECT_VAR_NAME.to_string(), subject_type.clone());
+
+        let rows: Vec<Row> = arms
+            .iter()
+            .enumerate()
+            .map(|(idx, arm)| {
+                Row::new(
+                    vec![Column::new(subject_var.clone(), arm.pattern.clone())],
+                    Body::new(idx),
+                )
+            })
+            .collect();
+
+        let mut var_env: Environment<Type> = Environment::new();
+        let _ = var_env.push(subject_var.name.clone(), subject_type.clone());
+
+        let tree = self.compile_rows(rows, type_env, &mut var_env, Vec::new());
 
         // Check for unreachable arms
         let unreachable: Vec<usize> = (0..arms.len())
@@ -274,8 +285,8 @@ impl Compiler {
         if let Some(&first_unreachable) = unreachable.first() {
             let arm = &arms[first_unreachable];
             return Err(TypeError::MatchUnreachableArm {
-                variant: arm.pattern_string.clone(),
-                range: arm.range.clone(),
+                variant: arm.pattern.to_string(),
+                range: arm.pattern.range().clone(),
             });
         }
 

@@ -1,4 +1,4 @@
-use super::pat_match::{ArmInfo, Body, Column, Compiler, Decision, Row, Variable};
+use super::pat_match::{Compiler, Decision, SUBJECT_VAR_NAME};
 use super::r#type::Type;
 use super::type_checker::typecheck_expr;
 use super::type_error::TypeError;
@@ -42,7 +42,7 @@ pub fn typecheck_match(
         validate_pattern_type(&arm.pattern, &subject_type)?;
     }
 
-    let tree = compile_and_check_patterns(arms, &subject_type, range, type_env)?;
+    let tree = Compiler::new().compile(arms, &subject_type, range, type_env)?;
 
     let (typed_bodies, result_type) =
         typecheck_arm_bodies(arms, &subject_type, var_env, type_env, annotations)?;
@@ -296,9 +296,6 @@ fn typecheck_arm_bodies(
     Ok((typed_bodies, result_type.unwrap()))
 }
 
-/// The name used for the subject variable in pattern compilation.
-const SUBJECT_VAR_NAME: &str = "_subject";
-
 /// Convert a compiled Decision tree into a TypedExpr.
 fn decision_to_typed_expr(
     decision: &Decision,
@@ -513,40 +510,6 @@ fn decision_to_typed_expr(
             }
         }
     }
-}
-
-/// Compile patterns using pat_match and check for exhaustiveness and redundancy.
-fn compile_and_check_patterns(
-    arms: &[ParsedMatchArm],
-    subject_type: &Type,
-    match_range: &DocumentRange,
-    type_env: &mut Environment<Type>,
-) -> Result<Decision, TypeError> {
-    let subject_var = Variable::new(SUBJECT_VAR_NAME.to_string(), subject_type.clone());
-
-    let rows: Vec<Row> = arms
-        .iter()
-        .enumerate()
-        .map(|(idx, arm)| {
-            Row::new(
-                vec![Column::new(subject_var.clone(), arm.pattern.clone())],
-                Body::new(idx),
-            )
-        })
-        .collect();
-
-    let arm_infos: Vec<ArmInfo> = arms
-        .iter()
-        .map(|arm| ArmInfo {
-            pattern_string: arm.pattern.to_string(),
-            range: arm.pattern.range().clone(),
-        })
-        .collect();
-
-    let mut pat_var_env: Environment<Type> = Environment::new();
-    let _ = pat_var_env.push(subject_var.name.clone(), subject_type.clone());
-
-    Compiler::new().compile(rows, type_env, &mut pat_var_env, &arm_infos, match_range)
 }
 
 #[cfg(test)]
