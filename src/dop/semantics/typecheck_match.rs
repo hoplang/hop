@@ -47,7 +47,8 @@ pub fn typecheck_match(
 
     let compiled = compile_and_check_patterns(arms, &subject_type, range, type_env)?;
 
-    let (typed_bodies, result_type) = typecheck_arm_bodies(arms, var_env, type_env, annotations)?;
+    let (typed_bodies, result_type) =
+        typecheck_arm_bodies(arms, &subject_type, var_env, type_env, annotations)?;
 
     Ok(decision_to_typed_expr(
         &compiled.tree,
@@ -65,6 +66,7 @@ fn validate_pattern_type(
 ) -> Result<(), TypeError> {
     match pattern {
         ParsedMatchPattern::Wildcard { .. } => Ok(()),
+        ParsedMatchPattern::Binding { .. } => Ok(()),
         ParsedMatchPattern::Constructor {
             constructor,
             args,
@@ -134,10 +136,42 @@ fn validate_pattern_type(
     }
 }
 
+/// Extract binding variables from a pattern and return them with their types and ranges.
+/// The type is derived from the subject type and the position in the pattern.
+fn extract_bindings_from_pattern(
+    pattern: &ParsedMatchPattern,
+    subject_type: &Type,
+) -> Vec<(String, Type, DocumentRange)> {
+    match pattern {
+        ParsedMatchPattern::Binding { name, range } => {
+            vec![(name.clone(), subject_type.clone(), range.clone())]
+        }
+        ParsedMatchPattern::Wildcard { .. } => vec![],
+        ParsedMatchPattern::Constructor {
+            constructor, args, ..
+        } => match constructor {
+            Constructor::OptionSome => {
+                let Type::Option(inner_type) = subject_type else {
+                    unreachable!("OptionSome pattern requires Option type")
+                };
+                let Some(inner_pattern) = args.first() else {
+                    unreachable!("OptionSome pattern requires an argument")
+                };
+                extract_bindings_from_pattern(inner_pattern, inner_type)
+            }
+            Constructor::OptionNone
+            | Constructor::BooleanTrue
+            | Constructor::BooleanFalse
+            | Constructor::EnumVariant { .. } => vec![],
+        },
+    }
+}
+
 /// Typecheck all arm bodies and verify they all have the same type.
 /// Returns the typed bodies and the common result type.
 fn typecheck_arm_bodies(
     arms: &[ParsedMatchArm],
+    subject_type: &Type,
     env: &mut Environment<Type>,
     type_env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
@@ -146,8 +180,27 @@ fn typecheck_arm_bodies(
     let mut result_type: Option<Type> = None;
 
     for arm in arms {
-        let typed_body = typecheck_expr(&arm.body, env, type_env, annotations, None)?;
+        // Extract binding variables from the pattern and add them to the environment
+        let bindings = extract_bindings_from_pattern(&arm.pattern, subject_type);
+        for (name, typ, _) in &bindings {
+            let _ = env.push(name.clone(), typ.clone());
+        }
+
+        // Use the first arm's type as context for subsequent arms
+        let typed_body =
+            typecheck_expr(&arm.body, env, type_env, annotations, result_type.as_ref())?;
         let body_type = typed_body.as_type().clone();
+
+        // Remove bindings from environment and check for unused bindings
+        for (_, _, range) in bindings.iter().rev() {
+            let (name, _, accessed) = env.pop();
+            if !accessed {
+                return Err(TypeError::MatchUnusedBinding {
+                    name,
+                    range: range.clone(),
+                });
+            }
+        }
 
         match &result_type {
             None => {
@@ -170,6 +223,9 @@ fn typecheck_arm_bodies(
     Ok((typed_bodies, result_type.unwrap()))
 }
 
+/// The name used for the subject variable in pattern compilation.
+const SUBJECT_VAR_NAME: &str = "_subject";
+
 /// Convert a compiled Decision tree into a TypedExpr.
 fn decision_to_typed_expr(
     decision: &Decision,
@@ -178,18 +234,58 @@ fn decision_to_typed_expr(
     subject_expr: Option<TypedExpr>,
 ) -> TypedExpr {
     match decision {
-        Decision::Success(body) => typed_bodies[body.value].clone(),
+        Decision::Success(body) => {
+            let mut result = typed_bodies[body.value].clone();
+            // Wrap with Let expressions for each binding (in reverse order so first binding is outermost)
+            for (name, source_var) in body.bindings.iter().rev() {
+                let var_name = VarName::new(name).expect("invalid variable name");
+                // If the source is the original subject, use the subject expression
+                // Otherwise, create a variable reference
+                let value = if source_var.name == SUBJECT_VAR_NAME {
+                    Box::new(
+                        subject_expr
+                            .clone()
+                            .expect("subject_expr required for subject binding"),
+                    )
+                } else {
+                    Box::new(TypedExpr::Var {
+                        value: VarName::new(&source_var.name).expect("invalid variable name"),
+                        kind: source_var.typ.clone(),
+                    })
+                };
+                let kind = result.as_type().clone();
+                result = TypedExpr::Let {
+                    var: var_name,
+                    value,
+                    body: Box::new(result),
+                    kind,
+                };
+            }
+            result
+        }
 
         Decision::Failure => {
             panic!("Non-exhaustive match reached in decision_to_typed_expr")
         }
 
         Decision::Switch(var, cases) => {
-            let subject = Box::new(subject_expr.unwrap_or_else(|| TypedExpr::Var {
-                value: VarName::new(&var.name).expect("invalid variable name"),
-                kind: var.typ.clone(),
-            }));
+            // Determine the subject expression for this switch
+            // If subject_expr is None, this is a nested match on an extracted variable
+            let is_outer_match = var.name == SUBJECT_VAR_NAME;
+            let subject_typed_expr = if is_outer_match {
+                subject_expr
+                    .clone()
+                    .expect("subject_expr required for outer match")
+            } else {
+                TypedExpr::Var {
+                    value: VarName::new(&var.name).expect("invalid variable name"),
+                    kind: var.typ.clone(),
+                }
+            };
+            let subject = Box::new(subject_typed_expr);
 
+            // For recursive calls, we always pass the original subject_expr
+            // so that bindings to _subject can be resolved correctly
             match &var.typ {
                 Type::Bool => {
                     let arms = cases
@@ -204,7 +300,7 @@ fn decision_to_typed_expr(
                                 &case.body,
                                 typed_bodies,
                                 result_type.clone(),
-                                None,
+                                subject_expr.clone(),
                             );
                             TypedBoolMatchArm { pattern, body }
                         })
@@ -238,7 +334,7 @@ fn decision_to_typed_expr(
                                 &case.body,
                                 typed_bodies,
                                 result_type.clone(),
-                                None,
+                                subject_expr.clone(),
                             );
                             TypedOptionMatchArm { pattern, body }
                         })
@@ -269,7 +365,7 @@ fn decision_to_typed_expr(
                                 &case.body,
                                 typed_bodies,
                                 result_type.clone(),
-                                None,
+                                subject_expr.clone(),
                             );
                             TypedEnumMatchArm { pattern, body }
                         })
@@ -295,7 +391,7 @@ fn compile_and_check_patterns(
     match_range: &DocumentRange,
     type_env: &mut Environment<Type>,
 ) -> Result<Match, TypeError> {
-    let subject_var = Variable::new("$subject".to_string(), subject_type.clone());
+    let subject_var = Variable::new(SUBJECT_VAR_NAME.to_string(), subject_type.clone());
 
     let rows: Vec<Row> = arms
         .iter()
@@ -319,6 +415,7 @@ fn compile_and_check_patterns(
         let variant_name = match &arm.pattern {
             ParsedMatchPattern::Constructor { constructor, .. } => constructor.to_string(),
             ParsedMatchPattern::Wildcard { .. } => "_".to_string(),
+            ParsedMatchPattern::Binding { name, .. } => name.clone(),
         };
         return Err(TypeError::MatchUnreachableArm {
             variant: variant_name,
@@ -1549,6 +1646,263 @@ mod tests {
                 error: Match pattern type mismatch: expected boolean, found Some(_)
                     Some(Some(_)) => 0,
                          ^^^^^^^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// BINDING PATTERN                                                     ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_binding_pattern_in_bool_match() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    x => x,
+                }
+            "#},
+            expect![[r#"
+                let x = flag in x
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_binding_pattern_in_enum_match() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    x => x,
+                }
+            "#},
+            expect![[r#"
+                let x = color in x
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_binding_pattern_in_option_match() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    x => x,
+                }
+            "#},
+            expect![[r#"
+                let x = opt in x
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_binding_pattern_inside_some() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    Some(x) => x,
+                    None    => 0,
+                }
+            "#},
+            expect![[r#"
+                match opt {
+                  Some(v0) => let x = v0 in x,
+                  None => 0,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_binding_pattern_in_arithmetic() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    Some(x) => x + 1,
+                    None    => 0,
+                }
+            "#},
+            expect![[r#"
+                match opt {
+                  Some(v0) => let x = v0 in (x + 1),
+                  None => 0,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_binding_pattern_returning_option() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    Some(x) => Some(x + 1),
+                    None    => None,
+                }
+            "#},
+            expect![[r#"
+                match opt {
+                  Some(v0) => let x = v0 in Some((x + 1)),
+                  None => None,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_binding_pattern_as_catchall() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    true  => false,
+                    other => other,
+                }
+            "#},
+            expect![[r#"
+                match flag {
+                  false => let other = flag in other,
+                  true => false,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_unreachable_binding_pattern() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    x => x,
+                    y => y,
+                }
+            "#},
+            expect![[r#"
+                error: Unreachable match arm for variant 'y'
+                    y => y,
+                    ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_pattern_after_binding() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    x    => x,
+                    true => true,
+                }
+            "#},
+            expect![[r#"
+                error: Unreachable match arm for variant 'true'
+                    true => true,
+                    ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_unused_binding() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    x => 42,
+                }
+            "#},
+            expect![[r#"
+                error: Unused binding 'x' in match arm
+                    x => 42,
+                    ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_unused_binding_inside_some() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    Some(x) => 0,
+                    None    => 1,
+                }
+            "#},
+            expect![[r#"
+                error: Unused binding 'x' in match arm
+                    Some(x) => 0,
+                         ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_binding_inside_nested_some() {
+        check(
+            "",
+            &[("opt", "Option[Option[Int]]")],
+            indoc! {r#"
+                match opt {
+                    Some(Some(x)) => x,
+                    Some(None)    => 0,
+                    None          => 0,
+                }
+            "#},
+            expect![[r#"
+                match opt {
+                  Some(v0) => match v0 {
+                    Some(v1) => let x = v1 in x,
+                    None => 0,
+                  },
+                  None => 0,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_unused_binding_inside_nested_some() {
+        check(
+            "",
+            &[("opt", "Option[Option[Int]]")],
+            indoc! {r#"
+                match opt {
+                    Some(Some(x)) => 0,
+                    Some(None)    => 1,
+                    None          => 2,
+                }
+            "#},
+            expect![[r#"
+                error: Unused binding 'x' in match arm
+                    Some(Some(x)) => 0,
+                              ^
             "#]],
         );
     }

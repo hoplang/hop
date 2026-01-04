@@ -696,16 +696,33 @@ impl Parser {
             });
         }
 
-        let (enum_name, enum_name_range) = self.expect_type_name()?;
-        self.expect_token(&Token::ColonColon)?;
-        let (variant_name, variant_range) = self.expect_type_name()?;
-        Ok(ParsedMatchPattern::Constructor {
-            constructor: Constructor::EnumVariant {
-                enum_name,
-                variant_name: variant_name.as_str().to_string(),
-            },
-            args: Vec::new(),
-            range: enum_name_range.to(variant_range),
+        // Check for enum pattern (TypeName::Variant)
+        if let Some(Ok((Token::TypeName(enum_name_str), enum_name_range))) = self
+            .iter
+            .next_if(|res| matches!(res, Ok((Token::TypeName(_), _))))
+        {
+            let enum_name =
+                TypeName::new(&enum_name_str).map_err(|error| ParseError::InvalidTypeName {
+                    error,
+                    range: enum_name_range.clone(),
+                })?;
+            self.expect_token(&Token::ColonColon)?;
+            let (variant_name, variant_range) = self.expect_type_name()?;
+            return Ok(ParsedMatchPattern::Constructor {
+                constructor: Constructor::EnumVariant {
+                    enum_name,
+                    variant_name: variant_name.as_str().to_string(),
+                },
+                args: Vec::new(),
+                range: enum_name_range.to(variant_range),
+            });
+        }
+
+        // Otherwise, parse a binding pattern (lowercase identifier)
+        let (var_name, range) = self.expect_variable_name()?;
+        Ok(ParsedMatchPattern::Binding {
+            name: var_name.to_string(),
+            range,
         })
     }
 

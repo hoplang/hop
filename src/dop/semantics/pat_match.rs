@@ -16,13 +16,19 @@ use super::r#type::Type;
 /// The body of code to evaluate in case of a match.
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct Body {
+    /// Any variables to bind before running the code.
+    /// The tuples are in the form `(name, source)` (i.e `x = source`).
+    pub bindings: Vec<(String, Variable)>,
     /// The branch to run in case of a match.
     pub value: usize,
 }
 
 impl Body {
     pub fn new(value: usize) -> Self {
-        Self { value }
+        Self {
+            bindings: Vec::new(),
+            value,
+        }
     }
 }
 
@@ -353,9 +359,15 @@ impl Compiler {
         }
 
         for row in &mut rows {
-            // Remove columns that contain wildcards
-            row.columns
-                .retain(|col| !matches!(&col.pattern, ParsedMatchPattern::Wildcard { .. }));
+            // Remove wildcards and move binding patterns into the body
+            row.columns.retain(|col| match &col.pattern {
+                ParsedMatchPattern::Wildcard { .. } => false,
+                ParsedMatchPattern::Binding { name, .. } => {
+                    row.body.bindings.push((name.clone(), col.variable.clone()));
+                    false
+                }
+                ParsedMatchPattern::Constructor { .. } => true,
+            });
         }
 
         // There may be multiple rows, but if the first one has no patterns
@@ -538,7 +550,16 @@ impl Case {
 
 impl fmt::Display for Body {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "body({})", self.value)
+        if self.bindings.is_empty() {
+            write!(f, "body({})", self.value)
+        } else {
+            let bindings: Vec<_> = self
+                .bindings
+                .iter()
+                .map(|(name, var)| format!("{} = {}", name, var.name))
+                .collect();
+            write!(f, "body({}, [{}])", self.value, bindings.join(", "))
+        }
     }
 }
 
@@ -579,7 +600,7 @@ mod tests {
         let rows = rules
             .into_iter()
             .enumerate()
-            .map(|(idx, pat)| Row::new(vec![Column::new(input.clone(), pat)], Body { value: idx }))
+            .map(|(idx, pat)| Row::new(vec![Column::new(input.clone(), pat)], Body::new(idx)))
             .collect();
 
         compiler.compile(rows, type_env, var_env)

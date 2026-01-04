@@ -487,6 +487,13 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
 
             Err(anyhow!("No matching arm found for option value"))
         }
+        IrExpr::Let { var, value, body, .. } => {
+            let val = evaluate_expr(value, env)?;
+            let _ = env.push(var.to_string(), val);
+            let result = evaluate_expr(body, env)?;
+            let _ = env.pop();
+            Ok(result)
+        }
     }
 }
 

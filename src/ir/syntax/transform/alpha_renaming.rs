@@ -306,6 +306,26 @@ impl AlphaRenamingPass {
                 operand_types,
                 id,
             },
+            IrExpr::Let {
+                var,
+                value,
+                body,
+                kind,
+                id,
+            } => {
+                let renamed_value = self.rename_expr(*value);
+                self.push_scope();
+                let new_var = self.bind_var(&var);
+                let renamed_body = self.rename_expr(*body);
+                self.pop_scope();
+                IrExpr::Let {
+                    var: new_var,
+                    value: Box::new(renamed_value),
+                    body: Box::new(renamed_body),
+                    kind,
+                    id,
+                }
+            }
         }
     }
 

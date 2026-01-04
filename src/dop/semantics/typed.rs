@@ -205,6 +205,14 @@ pub enum TypedExpr {
         right: Box<Self>,
         operand_types: ComparableType,
     },
+
+    /// A let binding expression
+    Let {
+        var: VarName,
+        value: Box<Self>,
+        body: Box<Self>,
+        kind: Type,
+    },
 }
 
 impl TypedExpr {
@@ -223,7 +231,8 @@ impl TypedExpr {
             | TypedExpr::OptionLiteral { kind, .. }
             | TypedExpr::EnumMatch { kind, .. }
             | TypedExpr::BoolMatch { kind, .. }
-            | TypedExpr::OptionMatch { kind, .. } => kind,
+            | TypedExpr::OptionMatch { kind, .. }
+            | TypedExpr::Let { kind, .. } => kind,
 
             TypedExpr::FloatLiteral { .. } => &FLOAT_TYPE,
             TypedExpr::IntLiteral { .. } => &INT_TYPE,
@@ -508,6 +517,12 @@ impl TypedExpr {
                         .append(BoxDoc::text("}"))
                 }
             }
+            TypedExpr::Let { var, value, body, .. } => BoxDoc::text("let ")
+                .append(BoxDoc::text(var.as_str()))
+                .append(BoxDoc::text(" = "))
+                .append(value.to_doc())
+                .append(BoxDoc::text(" in "))
+                .append(body.to_doc()),
         }
     }
 }

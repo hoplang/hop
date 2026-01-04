@@ -823,6 +823,30 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text("})()"))
             .group()
     }
+
+    fn transpile_let<'a>(
+        &self,
+        var: &'a crate::dop::symbols::var_name::VarName,
+        value: &'a IrExpr,
+        body: &'a IrExpr,
+    ) -> BoxDoc<'a> {
+        // Generate an IIFE: (() => { const var = value; return body; })()
+        BoxDoc::text("(() => {")
+            .append(
+                BoxDoc::line()
+                    .append(BoxDoc::text("const "))
+                    .append(BoxDoc::text(var.as_str()))
+                    .append(BoxDoc::text(" = "))
+                    .append(self.transpile_expr(value))
+                    .append(BoxDoc::text(";"))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("return "))
+                    .append(self.transpile_expr(body))
+                    .append(BoxDoc::text(";"))
+                    .nest(2),
+            )
+            .append(BoxDoc::line())
+            .append(BoxDoc::text("})()"))}
 }
 
 impl TypeTranspiler for TsTranspiler {
@@ -1769,6 +1793,50 @@ mod tests {
                             }
                             case "None": return "none";
                           }
+                        })());
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_expression() {
+        let module = build_module("LetExpr", vec![("name", Type::String)], |t| {
+            // let x = name in x
+            let result = t.let_expr("x", t.var("name"), |t| t.var("x"));
+            t.write_expr_escaped(result);
+        });
+
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                LetExpr(name: String) {
+                  write_escaped(let x = name in x)
+                }
+
+                -- after --
+                export type None = { readonly _tag: "None" };
+                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
+                export type Option<T> = None | Some<T>;
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    letExpr: ({ name }: { name: string }): string => {
+                        let output: string = "";
+                        output += escapeHtml((() => {
+                          const x = name;
+                          return x;
                         })());
                         return output;
                     }

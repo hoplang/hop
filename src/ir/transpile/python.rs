@@ -690,6 +690,15 @@ impl ExpressionTranspiler for PythonTranspiler {
     ) -> BoxDoc<'a> {
         panic!("Option match expressions are not yet supported in Python transpilation")
     }
+
+    fn transpile_let<'a>(
+        &self,
+        _var: &'a crate::dop::symbols::var_name::VarName,
+        _value: &'a IrExpr,
+        _body: &'a IrExpr,
+    ) -> BoxDoc<'a> {
+        panic!("Let expressions are not yet supported in Python transpilation")
+    }
 }
 
 impl TypeTranspiler for PythonTranspiler {

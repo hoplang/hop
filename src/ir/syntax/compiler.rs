@@ -614,6 +614,18 @@ impl Compiler {
             TypedExpr::OptionLiteral { .. } => {
                 todo!()
             }
+            TypedExpr::Let {
+                var,
+                value,
+                body,
+                kind,
+            } => IrExpr::Let {
+                var,
+                value: Box::new(self.compile_expr(*value)),
+                body: Box::new(self.compile_expr(*body)),
+                kind,
+                id: expr_id,
+            },
         }
     }
 }

@@ -157,6 +157,9 @@ pub enum TypeError {
 
     #[error("Match expression must have at least one arm")]
     MatchNoArms { range: DocumentRange },
+
+    #[error("Unused binding '{name}' in match arm")]
+    MatchUnusedBinding { name: String, range: DocumentRange },
 }
 
 impl Ranged for TypeError {
@@ -189,7 +192,8 @@ impl Ranged for TypeError {
             | TypeError::MatchMissingVariant { range, .. }
             | TypeError::MatchUnreachableArm { range, .. }
             | TypeError::MatchPatternTypeMismatch { range, .. }
-            | TypeError::MatchNoArms { range, .. } => range,
+            | TypeError::MatchNoArms { range, .. }
+            | TypeError::MatchUnusedBinding { range, .. } => range,
         }
     }
 }

@@ -591,6 +591,34 @@ impl IrBuilder {
         }
     }
 
+    /// Create a let expression that binds a variable to a value and evaluates a body expression.
+    pub fn let_expr<F>(&self, var_name: &str, value: IrExpr, body_fn: F) -> IrExpr
+    where
+        F: FnOnce(&Self) -> IrExpr,
+    {
+        let value_type = value.as_type().clone();
+
+        // Push the binding onto the variable stack
+        self.var_stack
+            .borrow_mut()
+            .push((var_name.to_string(), value_type));
+
+        let body = body_fn(self);
+
+        // Pop the binding from the variable stack
+        self.var_stack.borrow_mut().pop();
+
+        let kind = body.as_type().clone();
+
+        IrExpr::Let {
+            var: VarName::new(var_name).unwrap(),
+            value: Box::new(value),
+            body: Box::new(body),
+            kind,
+            id: self.next_expr_id(),
+        }
+    }
+
     pub fn string_concat(&self, left: IrExpr, right: IrExpr) -> IrExpr {
         IrExpr::StringConcat {
             left: Box::new(left),

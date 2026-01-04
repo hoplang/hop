@@ -291,6 +291,15 @@ pub enum IrExpr {
         operand_types: ComparableType,
         id: ExprId,
     },
+
+    /// A let binding expression
+    Let {
+        var: VarName,
+        value: Box<IrExpr>,
+        body: Box<IrExpr>,
+        kind: Type,
+        id: ExprId,
+    },
 }
 
 impl IrStatement {
@@ -569,7 +578,8 @@ impl IrExpr {
             | IrExpr::BooleanLogicalOr { id, .. }
             | IrExpr::Equals { id, .. }
             | IrExpr::LessThan { id, .. }
-            | IrExpr::LessThanOrEqual { id, .. } => *id,
+            | IrExpr::LessThanOrEqual { id, .. }
+            | IrExpr::Let { id, .. } => *id,
         }
     }
 
@@ -588,7 +598,8 @@ impl IrExpr {
             | IrExpr::EnumLiteral { kind, .. }
             | IrExpr::EnumMatch { kind, .. }
             | IrExpr::BoolMatch { kind, .. }
-            | IrExpr::OptionMatch { kind, .. } => kind,
+            | IrExpr::OptionMatch { kind, .. }
+            | IrExpr::Let { kind, .. } => kind,
 
             IrExpr::FloatLiteral { .. } => &FLOAT_TYPE,
             IrExpr::IntLiteral { .. } => &INT_TYPE,
@@ -852,6 +863,12 @@ impl IrExpr {
                         .append(BoxDoc::text("}"))
                 }
             }
+            IrExpr::Let { var, value, body, .. } => BoxDoc::text("let ")
+                .append(BoxDoc::text(var.as_str()))
+                .append(BoxDoc::text(" = "))
+                .append(value.to_doc())
+                .append(BoxDoc::text(" in "))
+                .append(body.to_doc()),
         }
     }
 
@@ -913,6 +930,10 @@ impl IrExpr {
                 for arm in arms {
                     arm.body.traverse(f);
                 }
+            }
+            IrExpr::Let { value, body, .. } => {
+                value.traverse(f);
+                body.traverse(f);
             }
             IrExpr::Var { .. }
             | IrExpr::StringLiteral { .. }
@@ -981,6 +1002,10 @@ impl IrExpr {
                 for arm in arms {
                     arm.body.traverse_mut(f);
                 }
+            }
+            IrExpr::Let { value, body, .. } => {
+                value.traverse_mut(f);
+                body.traverse_mut(f);
             }
             IrExpr::Var { .. }
             | IrExpr::StringLiteral { .. }
