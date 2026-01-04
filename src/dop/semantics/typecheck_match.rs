@@ -1,4 +1,4 @@
-use super::pat_match::{Body, Column, Compiler, Decision, Match, Row, Variable};
+use super::pat_match::{ArmInfo, Body, Column, Compiler, Decision, Row, Variable};
 use super::r#type::Type;
 use super::type_checker::typecheck_expr;
 use super::type_error::TypeError;
@@ -42,13 +42,13 @@ pub fn typecheck_match(
         validate_pattern_type(&arm.pattern, &subject_type)?;
     }
 
-    let compiled = compile_and_check_patterns(arms, &subject_type, range, type_env)?;
+    let tree = compile_and_check_patterns(arms, &subject_type, range, type_env)?;
 
     let (typed_bodies, result_type) =
         typecheck_arm_bodies(arms, &subject_type, var_env, type_env, annotations)?;
 
     Ok(decision_to_typed_expr(
-        &compiled.tree,
+        &tree,
         &typed_bodies,
         result_type,
         Some(typed_subject),
@@ -525,7 +525,7 @@ fn compile_and_check_patterns(
     subject_type: &Type,
     match_range: &DocumentRange,
     type_env: &mut Environment<Type>,
-) -> Result<Match, TypeError> {
+) -> Result<Decision, TypeError> {
     let subject_var = Variable::new(SUBJECT_VAR_NAME.to_string(), subject_type.clone());
 
     let rows: Vec<Row> = arms
@@ -539,36 +539,18 @@ fn compile_and_check_patterns(
         })
         .collect();
 
+    let arm_infos: Vec<ArmInfo> = arms
+        .iter()
+        .map(|arm| ArmInfo {
+            pattern_string: arm.pattern.to_string(),
+            range: arm.pattern.range().clone(),
+        })
+        .collect();
+
     let mut pat_var_env: Environment<Type> = Environment::new();
     let _ = pat_var_env.push(subject_var.name.clone(), subject_type.clone());
 
-    let result = Compiler::new().compile(rows, type_env, &mut pat_var_env);
-
-    let unreachable = result.diagnostics.unreachable(arms.len());
-    if let Some(&first_unreachable) = unreachable.first() {
-        let arm = &arms[first_unreachable];
-        let variant_name = match &arm.pattern {
-            ParsedMatchPattern::Constructor { constructor, .. } => constructor.to_string(),
-            ParsedMatchPattern::Wildcard { .. } => "_".to_string(),
-            ParsedMatchPattern::Binding { name, .. } => name.clone(),
-        };
-        return Err(TypeError::MatchUnreachableArm {
-            variant: variant_name,
-            range: arm.pattern.range().clone(),
-        });
-    }
-
-    if result.diagnostics.is_missing() {
-        let missing = result.missing_patterns();
-        if !missing.is_empty() {
-            return Err(TypeError::MatchMissingVariants {
-                variants: missing,
-                range: match_range.clone(),
-            });
-        }
-    }
-
-    Ok(result)
+    Compiler::new().compile(rows, type_env, &mut pat_var_env, &arm_infos, match_range)
 }
 
 #[cfg(test)]
@@ -841,7 +823,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match expression is missing arms for: Blue
+                error: Match expression is missing arms for: Color::Blue
                 match color {
                 ^^^^^^^^^^^^^
                     Color::Red => "red",
@@ -1572,7 +1554,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unreachable match arm for variant 'Some'
+                error: Unreachable match arm for variant 'Some(_)'
                     Some(_) => 1,
                     ^^^^^^^
             "#]],
@@ -1774,7 +1756,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Match expression is missing arms for: Some(Blue)
+                error: Match expression is missing arms for: Some(Color::Blue)
                 match opt {
                 ^^^^^^^^^^^
                     Some(Color::Red)   => "red",

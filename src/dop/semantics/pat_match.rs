@@ -7,10 +7,12 @@
 //! Thanks to Yorick Peterse for the original implementation.
 use std::collections::{HashMap, HashSet};
 
+use crate::document::document_cursor::DocumentRange;
 use crate::dop::syntax::parsed::{Constructor, ParsedMatchPattern};
 use crate::environment::Environment;
 
 use super::r#type::Type;
+use super::type_error::TypeError;
 
 /// The body of code to evaluate in case of a match.
 #[derive(Clone, Debug)]
@@ -104,6 +106,89 @@ impl Case {
     }
 }
 
+/// A step in the path to a missing pattern, representing a constructor that was matched.
+#[derive(Debug, Clone)]
+enum MatchedConstructor {
+    /// A constructor with positional arguments (e.g., Some(x), None, true, Color::Red)
+    Positional {
+        var_name: String,
+        constructor_name: String,
+        arguments: Vec<String>,
+    },
+    /// A record constructor with named fields (e.g., User(name: x, age: y))
+    Record {
+        var_name: String,
+        constructor_name: String,
+        arguments: Vec<String>,
+        field_names: Vec<String>,
+    },
+}
+
+impl MatchedConstructor {
+    fn var_name(&self) -> &str {
+        match self {
+            MatchedConstructor::Positional { var_name, .. } => var_name,
+            MatchedConstructor::Record { var_name, .. } => var_name,
+        }
+    }
+
+    /// Build a pattern string from this constructor and the full path.
+    fn pattern_string(&self, all_steps: &[MatchedConstructor]) -> String {
+        match self {
+            MatchedConstructor::Positional {
+                constructor_name,
+                arguments,
+                ..
+            } => {
+                if arguments.is_empty() {
+                    constructor_name.clone()
+                } else {
+                    let args = arguments
+                        .iter()
+                        .map(|arg_var| {
+                            all_steps
+                                .iter()
+                                .find(|s| s.var_name() == arg_var)
+                                .map(|s| s.pattern_string(all_steps))
+                                .unwrap_or_else(|| "_".to_string())
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!("{}({})", constructor_name, args)
+                }
+            }
+            MatchedConstructor::Record {
+                constructor_name,
+                arguments,
+                field_names,
+                ..
+            } => {
+                let args = arguments
+                    .iter()
+                    .zip(field_names.iter())
+                    .map(|(arg_var, field_name)| {
+                        let pattern = all_steps
+                            .iter()
+                            .find(|s| s.var_name() == arg_var)
+                            .map(|s| s.pattern_string(all_steps))
+                            .unwrap_or_else(|| "_".to_string());
+                        format!("{}: {}", field_name, pattern)
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{}({})", constructor_name, args)
+            }
+        }
+    }
+}
+
+/// Convert a path of matched constructors to a pattern string.
+fn path_to_pattern_string(path: &[MatchedConstructor]) -> String {
+    path.first()
+        .map(|first| first.pattern_string(path))
+        .unwrap_or_else(|| "_".to_string())
+}
+
 /// A decision tree compiled from a list of match cases.
 #[derive(Debug)]
 pub enum Decision {
@@ -122,226 +207,30 @@ pub enum Decision {
     Switch(Variable, Vec<Case>),
 }
 
-/// A type for storing diagnostics produced by the decision tree compiler.
-pub struct Diagnostics {
-    /// A flag indicating the match is missing one or more pattern.
-    missing: bool,
-
-    /// The right-hand sides that are reachable.
-    ///
-    /// If a right-hand side isn't in this list it means its pattern is
-    /// redundant.
-    reachable: Vec<usize>,
-}
-
-impl Diagnostics {
-    /// Returns true if the match is missing one or more patterns.
-    pub fn is_missing(&self) -> bool {
-        self.missing
-    }
-
-    /// Returns the indices of unreachable (redundant) arms.
-    pub fn unreachable(&self, total_arms: usize) -> Vec<usize> {
-        (0..total_arms)
-            .filter(|i| !self.reachable.contains(i))
-            .collect()
-    }
-}
-
-/// The result of compiling a pattern match expression.
-pub struct Match {
-    pub tree: Decision,
-    pub diagnostics: Diagnostics,
-}
-
-/// Information about a single constructor/value (aka term) being tested, used
-/// to build a list of names of missing patterns.
-#[derive(Debug)]
-struct Term {
-    variable: Variable,
-    name: String,
-    arguments: Vec<Variable>,
-    /// Field names for record constructors (None for non-record constructors)
-    field_names: Option<Vec<String>>,
-}
-
-impl Term {
-    fn new(variable: Variable, name: String, arguments: Vec<Variable>) -> Self {
-        Self {
-            variable,
-            name,
-            arguments,
-            field_names: None,
-        }
-    }
-
-    fn new_record(
-        variable: Variable,
-        name: String,
-        arguments: Vec<Variable>,
-        field_names: Vec<String>,
-    ) -> Self {
-        Self {
-            variable,
-            name,
-            arguments,
-            field_names: Some(field_names),
-        }
-    }
-
-    fn pattern_name(&self, terms: &[Term], mapping: &HashMap<&str, usize>) -> String {
-        if self.arguments.is_empty() {
-            self.name.to_string()
-        } else if let Some(field_names) = &self.field_names {
-            // Record pattern with named fields: User(name: x, age: y)
-            let args = self
-                .arguments
-                .iter()
-                .zip(field_names.iter())
-                .map(|(arg, field_name)| {
-                    let pattern = mapping
-                        .get(arg.name.as_str())
-                        .map(|&idx| terms[idx].pattern_name(terms, mapping))
-                        .unwrap_or_else(|| "_".to_string());
-                    format!("{}: {}", field_name, pattern)
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-
-            format!("{}({})", self.name, args)
-        } else {
-            // Positional pattern: Some(x)
-            let args = self
-                .arguments
-                .iter()
-                .map(|arg| {
-                    mapping
-                        .get(arg.name.as_str())
-                        .map(|&idx| terms[idx].pattern_name(terms, mapping))
-                        .unwrap_or_else(|| "_".to_string())
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-
-            format!("{}({})", self.name, args)
-        }
-    }
-}
-
-impl Match {
-    /// Returns a list of patterns not covered by the match expression.
-    pub fn missing_patterns(&self) -> Vec<String> {
-        let mut names = HashSet::new();
-        let mut steps = Vec::new();
-
-        Self::collect_missing_patterns(&self.tree, &mut steps, &mut names);
-
-        let mut missing: Vec<String> = names.into_iter().collect();
-
-        // Sorting isn't necessary, but it makes it a bit easier to write tests.
-        missing.sort();
-        missing
-    }
-
-    fn collect_missing_patterns(
-        node: &Decision,
-        terms: &mut Vec<Term>,
-        missing: &mut HashSet<String>,
-    ) {
-        match node {
-            Decision::Success(_) => {}
-            Decision::Failure => {
-                let mut mapping: HashMap<&str, usize> = HashMap::new();
-
-                // At this point the terms stack looks something like this:
-                // `[term, term + arguments, term, ...]`. To construct a pattern
-                // name from this stack, we first map all variables to their
-                // term indexes. This is needed because when a term defines
-                // arguments, the terms for those arguments don't necessarily
-                // appear in order in the term stack.
-                //
-                // This mapping is then used when (recursively) generating a
-                // pattern name.
-                //
-                // This approach could probably be done more efficiently, so if
-                // you're reading this and happen to know of a way, please
-                // submit a merge request :)
-                for (index, step) in terms.iter().enumerate() {
-                    mapping.insert(&step.variable.name, index);
-                }
-
-                let name = terms
-                    .first()
-                    .map(|term| term.pattern_name(terms, &mapping))
-                    .unwrap_or_else(|| "_".to_string());
-
-                missing.insert(name);
-            }
-            Decision::Switch(var, cases) => {
-                for case in cases {
-                    match &case.constructor {
-                        Constructor::BooleanTrue => {
-                            let name = "true".to_string();
-
-                            terms.push(Term::new(var.clone(), name, Vec::new()));
-                        }
-                        Constructor::BooleanFalse => {
-                            let name = "false".to_string();
-
-                            terms.push(Term::new(var.clone(), name, Vec::new()));
-                        }
-                        Constructor::OptionSome => {
-                            let args = case.arguments.clone();
-                            terms.push(Term::new(var.clone(), "Some".to_string(), args));
-                        }
-                        Constructor::OptionNone => {
-                            terms.push(Term::new(var.clone(), "None".to_string(), Vec::new()));
-                        }
-                        Constructor::EnumVariant { variant_name, .. } => {
-                            let args = case.arguments.clone();
-                            terms.push(Term::new(var.clone(), variant_name.clone(), args));
-                        }
-                        Constructor::Record { type_name } => {
-                            let args = case.arguments.clone();
-                            // Extract field names from the variable's type
-                            let field_names = if let Type::Record { fields, .. } = &var.typ {
-                                fields.iter().map(|(name, _)| name.to_string()).collect()
-                            } else {
-                                Vec::new()
-                            };
-                            terms.push(Term::new_record(
-                                var.clone(),
-                                type_name.as_str().to_string(),
-                                args,
-                                field_names,
-                            ));
-                        }
-                    }
-
-                    Self::collect_missing_patterns(&case.body, terms, missing);
-                    terms.pop();
-                }
-            }
-        }
-    }
+/// Information about a match arm needed for error reporting.
+pub struct ArmInfo {
+    /// String representation of the pattern (for error messages).
+    pub pattern_string: String,
+    /// Source range of the pattern.
+    pub range: DocumentRange,
 }
 
 /// The `match` compiler itself.
 pub struct Compiler {
-    // A counter used to construct unused variable names.
+    /// A counter used to construct unused variable names.
     var_counter: usize,
-    // The diagnostics collected during compilation.
-    diagnostics: Diagnostics,
+    /// The arm indices that are reachable.
+    reachable: Vec<usize>,
+    /// Missing pattern strings collected during compilation.
+    missing_patterns: HashSet<String>,
 }
 
 impl Compiler {
     pub fn new() -> Self {
         Self {
             var_counter: 0,
-            diagnostics: Diagnostics {
-                missing: false,
-                reachable: Vec::new(),
-            },
+            reachable: Vec::new(),
+            missing_patterns: HashSet::new(),
         }
     }
 
@@ -376,11 +265,34 @@ impl Compiler {
         rows: Vec<Row>,
         type_env: &mut Environment<Type>,
         var_env: &mut Environment<Type>,
-    ) -> Match {
-        Match {
-            tree: self.compile_rows(rows, type_env, var_env),
-            diagnostics: self.diagnostics,
+        arms: &[ArmInfo],
+        match_range: &DocumentRange,
+    ) -> Result<Decision, TypeError> {
+        let tree = self.compile_rows(rows, type_env, var_env, Vec::new());
+
+        // Check for unreachable arms
+        let unreachable: Vec<usize> = (0..arms.len())
+            .filter(|i| !self.reachable.contains(i))
+            .collect();
+        if let Some(&first_unreachable) = unreachable.first() {
+            let arm = &arms[first_unreachable];
+            return Err(TypeError::MatchUnreachableArm {
+                variant: arm.pattern_string.clone(),
+                range: arm.range.clone(),
+            });
         }
+
+        // Check for missing patterns
+        if !self.missing_patterns.is_empty() {
+            let mut missing: Vec<String> = self.missing_patterns.into_iter().collect();
+            missing.sort();
+            return Err(TypeError::MatchMissingVariants {
+                variants: missing,
+                range: match_range.clone(),
+            });
+        }
+
+        Ok(tree)
     }
 
     fn compile_rows(
@@ -388,9 +300,11 @@ impl Compiler {
         mut rows: Vec<Row>,
         type_env: &mut Environment<Type>,
         var_env: &mut Environment<Type>,
+        path: Vec<MatchedConstructor>,
     ) -> Decision {
         if rows.is_empty() {
-            self.diagnostics.missing = true;
+            self.missing_patterns
+                .insert(path_to_pattern_string(&path));
             return Decision::Failure;
         }
 
@@ -411,7 +325,7 @@ impl Compiler {
         // always matches.
         if rows.first().is_some_and(|c| c.columns.is_empty()) {
             let row = rows.remove(0);
-            self.diagnostics.reachable.push(row.body.value);
+            self.reachable.push(row.body.value);
             return Decision::Success(row.body);
         }
 
@@ -528,11 +442,38 @@ impl Compiler {
         }
 
         Decision::Switch(
-            branch_var,
+            branch_var.clone(),
             cases
                 .into_iter()
                 .map(|(cons, vars, rows)| {
-                    Case::new(cons, vars, self.compile_rows(rows, type_env, var_env))
+                    let constructor_name = cons.to_string();
+                    let arguments: Vec<String> = vars.iter().map(|v| v.name.clone()).collect();
+
+                    let matched = if let Constructor::Record { .. } = &cons {
+                        let field_names: Vec<String> =
+                            if let Type::Record { fields, .. } = &branch_var.typ {
+                                fields.iter().map(|(name, _)| name.to_string()).collect()
+                            } else {
+                                Vec::new()
+                            };
+                        MatchedConstructor::Record {
+                            var_name: branch_var.name.clone(),
+                            constructor_name,
+                            arguments,
+                            field_names,
+                        }
+                    } else {
+                        MatchedConstructor::Positional {
+                            var_name: branch_var.name.clone(),
+                            constructor_name,
+                            arguments,
+                        }
+                    };
+
+                    let mut new_path = path.clone();
+                    new_path.push(matched);
+
+                    Case::new(cons, vars, self.compile_rows(rows, type_env, var_env, new_path))
                 })
                 .collect(),
         )
