@@ -2,7 +2,7 @@ use super::r#type::{NumericType, Type};
 use super::type_error::TypeError;
 use crate::document::document_cursor::DocumentRange;
 use crate::dop::TypedExpr;
-use crate::dop::patterns::compiler::{Compiler, Decision, Variable};
+use crate::dop::patterns::compiler::{Compiler, Decision};
 use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::dop::symbols::var_name::VarName;
 use crate::dop::syntax::parsed::{Constructor, ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedMatchPattern, ParsedType};
@@ -807,22 +807,19 @@ fn typecheck_match(
     let subject_type = typed_subject.as_type().clone();
 
     // If subject is already a variable, use it directly; otherwise wrap in a let
-    let (subject_var, initial_var_counter, needs_wrapper) = match &typed_subject {
-        TypedExpr::Var { value, kind } => (
-            Variable::new(value.as_str().to_string(), kind.clone()),
-            0,
-            false,
-        ),
-        _ => (
-            Variable::new("v0".to_string(), subject_type.clone()),
-            1,
-            true,
-        ),
+    let (subject_name, initial_var_counter, needs_wrapper) = match &typed_subject {
+        TypedExpr::Var { value, .. } => (value.as_str().to_string(), 0, false),
+        _ => ("v0".to_string(), 1, true),
     };
 
     let patterns: Vec<_> = arms.iter().map(|arm| arm.pattern.clone()).collect();
-    let tree =
-        Compiler::new(initial_var_counter).compile(&patterns, &subject_var, subject.range(), range)?;
+    let tree = Compiler::new(initial_var_counter).compile(
+        &patterns,
+        &subject_name,
+        &subject_type,
+        subject.range(),
+        range,
+    )?;
 
     let (typed_bodies, result_type) =
         typecheck_arm_bodies(arms, &subject_type, var_env, type_env, annotations)?;

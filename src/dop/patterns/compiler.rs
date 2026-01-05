@@ -245,17 +245,18 @@ impl Compiler {
     pub fn compile(
         mut self,
         patterns: &[ParsedMatchPattern],
-        subject_var: &Variable,
+        subject_name: &str,
+        subject_type: &Type,
         subject_range: &DocumentRange,
         match_range: &DocumentRange,
     ) -> Result<Decision, TypeError> {
         // Validate subject type is matchable
         if !matches!(
-            &subject_var.typ,
+            subject_type,
             Type::Enum { .. } | Type::Bool | Type::Option(_) | Type::Record { .. }
         ) {
             return Err(TypeError::MatchNotImplementedForType {
-                found: subject_var.typ.to_string(),
+                found: subject_type.to_string(),
                 range: subject_range.clone(),
             });
         }
@@ -269,9 +270,10 @@ impl Compiler {
 
         // Validate all patterns against the subject type
         for pattern in patterns {
-            Self::validate_pattern(pattern, &subject_var.typ)?;
+            Self::validate_pattern(pattern, subject_type)?;
         }
 
+        let subject_var = Variable::new(subject_name.to_string(), subject_type.clone());
         let rows: Vec<Row> = patterns
             .iter()
             .enumerate()
@@ -702,9 +704,8 @@ mod tests {
             _ => panic!("Expected match expression"),
         };
 
-        let subject_var = Variable::new(subject_name, subject_type);
         let result =
-            Compiler::new(0).compile(&patterns, &subject_var, &subject_range, &match_range);
+            Compiler::new(0).compile(&patterns, &subject_name, &subject_type, &subject_range, &match_range);
 
         let actual = match result {
             Ok(decision) => format_decision(&decision, 0),

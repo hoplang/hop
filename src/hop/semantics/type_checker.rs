@@ -1,6 +1,6 @@
 use super::type_error::TypeError;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::patterns::compiler::{Compiler as PatMatchCompiler, Variable as PatMatchVariable};
+use crate::dop::patterns::compiler::Compiler as PatMatchCompiler;
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{self, Type, TypedExpr, VarName, resolve_type};
@@ -783,12 +783,10 @@ fn typecheck_node(
                 .map(|case| case.pattern.clone())
                 .collect::<Vec<_>>();
 
-            let subject_var =
-                PatMatchVariable::new("match_subject".to_string(), subject_type.clone());
-
             let decision = match PatMatchCompiler::new(0).compile(
                 &patterns,
-                &subject_var,
+                "match_subject",
+                &subject_type,
                 subject.range(),
                 range,
             ) {
