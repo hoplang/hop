@@ -15,7 +15,10 @@ use std::fmt::{self, Display};
 use crate::hop::semantics::typed_ast::{
     TypedAst, TypedComponentDeclaration, TypedEnumDeclaration, TypedRecordDeclaration,
 };
-use crate::hop::semantics::typed_node::{TypedAttribute, TypedAttributeValue, TypedMatchCase, TypedNode};
+use crate::dop::patterns::pat_match::Decision;
+use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
+use crate::dop::syntax::parsed::Constructor;
+use crate::hop::semantics::typed_node::{TypedAttribute, TypedAttributeValue, TypedNode};
 use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::syntax::parsed_ast::{ParsedAst, ParsedAttributeValue};
 use crate::hop::syntax::parsed_node::ParsedNode;
@@ -792,107 +795,118 @@ fn typecheck_node(
                     }
                     .into(),
                 );
+                return None;
             }
 
-            // Validate all patterns against subject type (only if type supports matching)
-            let mut all_patterns_valid = supports_pattern_matching;
-            if supports_pattern_matching {
-                for case in cases {
-                    if let Err(err) = dop::validate_pattern_type(&case.pattern, &subject_type) {
-                        errors.push(err.into());
-                        all_patterns_valid = false;
-                    }
-                }
-            }
-
-            // Run exhaustiveness check only if the type supports pattern matching
-            // and all patterns are valid (to avoid spurious errors)
-            if supports_pattern_matching && all_patterns_valid {
-                // Create ParsedMatchArm instances from the cases (with dummy expressions for the pattern matching algorithm)
-                let arms: Vec<ParsedMatchArm> = cases
-                    .iter()
-                    .map(|case| ParsedMatchArm {
-                        pattern: case.pattern.clone(),
-                        // We use a dummy expression since we only care about pattern exhaustiveness
-                        body: ParsedExpr::BooleanLiteral {
-                            value: true,
-                            range: case.range.clone(),
-                        },
-                    })
-                    .collect();
-
-                let subject_var = PatMatchVariable::new("__match_subject".to_string(), subject_type.clone());
-
-                // Run the pattern matching compiler to check exhaustiveness
-                if let Err(err) = PatMatchCompiler::new(0).compile(&arms, &subject_var, range, type_env) {
-                    errors.push(err.into());
-                }
-            }
-
-            // Typecheck case children
-            let mut typed_cases = Vec::new();
+            // Validate all patterns against subject type
+            let mut all_patterns_valid = true;
             for case in cases {
-                // Skip cases with invalid patterns (already reported above)
-                if dop::validate_pattern_type(&case.pattern, &subject_type).is_err() {
-                    continue;
+                if let Err(err) = dop::validate_pattern_type(&case.pattern, &subject_type) {
+                    errors.push(err.into());
+                    all_patterns_valid = false;
                 }
-
-                // Extract bindings from pattern
-                let bindings = dop::extract_bindings_from_pattern(&case.pattern, &subject_type);
-
-                // Push bindings into scope
-                let mut pushed_count = 0;
-                for (name, typ, range) in &bindings {
-                    match env.push(name.clone(), typ.clone()) {
-                        Ok(_) => {
-                            annotations.push(TypeAnnotation {
-                                range: range.clone(),
-                                typ: typ.clone(),
-                                name: name.clone(),
-                            });
-                            pushed_count += 1;
-                        }
-                        Err(_) => {
-                            errors.push(TypeError::VariableIsAlreadyDefined {
-                                var: name.clone(),
-                                range: range.clone(),
-                            });
-                        }
-                    }
-                }
-
-                // Typecheck case children
-                let typed_children: Vec<_> = case
-                    .children
-                    .iter()
-                    .filter_map(|child| {
-                        typecheck_node(child, state, env, annotations, errors, type_env)
-                    })
-                    .collect();
-
-                // Pop bindings and check for unused
-                for _ in 0..pushed_count {
-                    let (name, _, accessed) = env.pop();
-                    if !accessed {
-                        // Find the range for this binding
-                        if let Some((_, _, range)) = bindings.iter().find(|(n, _, _)| *n == name) {
-                            errors.push(TypeError::UnusedVariable {
-                                var_name: range.clone(),
-                            });
-                        }
-                    }
-                }
-
-                typed_cases.push(TypedMatchCase {
-                    pattern: case.pattern.clone(),
-                    children: typed_children,
-                });
             }
 
-            Some(TypedNode::Match {
-                subject: typed_subject,
-                cases: typed_cases,
-            })
+            if !all_patterns_valid {
+                return None;
+            }
+
+            // Create ParsedMatchArm instances for the pattern matching compiler
+            let arms: Vec<ParsedMatchArm> = cases
+                .iter()
+                .map(|case| ParsedMatchArm {
+                    pattern: case.pattern.clone(),
+                    // We use a dummy expression since we only care about pattern compilation
+                    body: ParsedExpr::BooleanLiteral {
+                        value: true,
+                        range: case.range.clone(),
+                    },
+                })
+                .collect();
+
+            let subject_var =
+                PatMatchVariable::new("match_subject".to_string(), subject_type.clone());
+
+            // Run the pattern matching compiler
+            let decision = match PatMatchCompiler::new(0).compile(&arms, &subject_var, range, type_env)
+            {
+                Ok(decision) => decision,
+                Err(err) => {
+                    errors.push(err.into());
+                    return None;
+                }
+            };
+
+            // Typecheck all case bodies with their bindings in scope
+            let typed_bodies: Vec<Vec<TypedNode>> = cases
+                .iter()
+                .map(|case| {
+                    // Extract bindings from pattern
+                    let bindings =
+                        dop::extract_bindings_from_pattern(&case.pattern, &subject_type);
+
+                    // Push bindings into scope
+                    let mut pushed_count = 0;
+                    for (name, typ, bind_range) in &bindings {
+                        match env.push(name.clone(), typ.clone()) {
+                            Ok(_) => {
+                                annotations.push(TypeAnnotation {
+                                    range: bind_range.clone(),
+                                    typ: typ.clone(),
+                                    name: name.clone(),
+                                });
+                                pushed_count += 1;
+                            }
+                            Err(_) => {
+                                errors.push(TypeError::VariableIsAlreadyDefined {
+                                    var: name.clone(),
+                                    range: bind_range.clone(),
+                                });
+                            }
+                        }
+                    }
+
+                    // Typecheck case children
+                    let typed_children: Vec<_> = case
+                        .children
+                        .iter()
+                        .filter_map(|child| {
+                            typecheck_node(child, state, env, annotations, errors, type_env)
+                        })
+                        .collect();
+
+                    // Pop bindings and check for unused
+                    for _ in 0..pushed_count {
+                        let (name, _, accessed) = env.pop();
+                        if !accessed {
+                            if let Some((_, _, bind_range)) =
+                                bindings.iter().find(|(n, _, _)| *n == name)
+                            {
+                                errors.push(TypeError::UnusedVariable {
+                                    var_name: bind_range.clone(),
+                                });
+                            }
+                        }
+                    }
+
+                    typed_children
+                })
+                .collect();
+
+            // Convert decision tree to typed nodes
+            // The result includes a Let binding for the subject variable
+            let mut result = decision_to_typed_nodes(&decision, &typed_bodies);
+
+            // Wrap with a Let to bind the subject expression to the subject variable
+            result = vec![TypedNode::Let {
+                var: VarName::new("match_subject").expect("invalid variable name"),
+                var_type: subject_type,
+                value: typed_subject,
+                children: result,
+            }];
+
+            // Return the single match node (unwrap the vec since we know it's a single Let)
+            result.into_iter().next()
         }
 
         ParsedNode::Placeholder { .. } => Some(TypedNode::Placeholder),
@@ -958,6 +972,174 @@ fn typecheck_attributes(
     }
 
     typed_attributes
+}
+
+/// Convert a compiled Decision tree into a Vec<TypedNode>.
+/// This is used for node-level match statements (as opposed to expression-level matches).
+fn decision_to_typed_nodes(
+    decision: &Decision,
+    typed_bodies: &[Vec<TypedNode>],
+) -> Vec<TypedNode> {
+    match decision {
+        Decision::Success(body) => {
+            let mut result = typed_bodies[body.value].clone();
+            // Wrap with Let nodes for each binding (in reverse order so first binding is outermost)
+            for (name, source_var) in body.bindings.iter().rev() {
+                let var_name = VarName::new(name).expect("invalid variable name");
+                let value = TypedExpr::Var {
+                    value: VarName::new(&source_var.name).expect("invalid variable name"),
+                    kind: source_var.typ.clone(),
+                };
+                result = vec![TypedNode::Let {
+                    var: var_name,
+                    var_type: source_var.typ.clone(),
+                    value,
+                    children: result,
+                }];
+            }
+            result
+        }
+
+        Decision::Switch(var, cases) => {
+            let subject = Box::new(TypedExpr::Var {
+                value: VarName::new(&var.name).expect("invalid variable name"),
+                kind: var.typ.clone(),
+            });
+
+            match &var.typ {
+                Type::Bool => {
+                    // Find the true and false cases
+                    let mut true_body = None;
+                    let mut false_body = None;
+
+                    for case in cases {
+                        match &case.constructor {
+                            Constructor::BooleanTrue => {
+                                true_body = Some(decision_to_typed_nodes(&case.body, typed_bodies));
+                            }
+                            Constructor::BooleanFalse => {
+                                false_body =
+                                    Some(decision_to_typed_nodes(&case.body, typed_bodies));
+                            }
+                            _ => unreachable!("Invalid constructor for Bool type"),
+                        }
+                    }
+
+                    vec![TypedNode::Match {
+                        match_: Match::Bool {
+                            subject,
+                            true_body: Box::new(
+                                true_body.expect("BoolMatch must have a true arm"),
+                            ),
+                            false_body: Box::new(
+                                false_body.expect("BoolMatch must have a false arm"),
+                            ),
+                        },
+                    }]
+                }
+
+                Type::Option(_) => {
+                    // Find the Some and None cases
+                    let mut some_arm_binding = None;
+                    let mut some_arm_body = None;
+                    let mut none_arm_body = None;
+
+                    for case in cases {
+                        match &case.constructor {
+                            Constructor::OptionSome => {
+                                some_arm_binding = case.arguments.first().map(|var| {
+                                    (
+                                        VarName::new(&var.name).expect("invalid variable name"),
+                                        var.typ.clone(),
+                                    )
+                                });
+                                some_arm_body =
+                                    Some(decision_to_typed_nodes(&case.body, typed_bodies));
+                            }
+                            Constructor::OptionNone => {
+                                none_arm_body =
+                                    Some(decision_to_typed_nodes(&case.body, typed_bodies));
+                            }
+                            _ => unreachable!("Invalid constructor for Option type"),
+                        }
+                    }
+
+                    vec![TypedNode::Match {
+                        match_: Match::Option {
+                            subject,
+                            some_arm_binding,
+                            some_arm_body: Box::new(
+                                some_arm_body.expect("OptionMatch must have a Some arm"),
+                            ),
+                            none_arm_body: Box::new(
+                                none_arm_body.expect("OptionMatch must have a None arm"),
+                            ),
+                        },
+                    }]
+                }
+
+                Type::Enum { .. } => {
+                    let arms = cases
+                        .iter()
+                        .map(|case| {
+                            let pattern = match &case.constructor {
+                                Constructor::EnumVariant {
+                                    enum_name,
+                                    variant_name,
+                                } => EnumPattern::Variant {
+                                    enum_name: enum_name.to_string(),
+                                    variant_name: variant_name.clone(),
+                                },
+                                _ => unreachable!("Invalid constructor for Enum type"),
+                            };
+                            let body = decision_to_typed_nodes(&case.body, typed_bodies);
+                            EnumMatchArm { pattern, body }
+                        })
+                        .collect();
+
+                    vec![TypedNode::Match {
+                        match_: Match::Enum { subject, arms },
+                    }]
+                }
+
+                Type::Record {
+                    fields: type_fields,
+                    ..
+                } => {
+                    // Records have only one case (the record itself)
+                    let case = &cases[0];
+
+                    // Build the body with Let bindings for each field
+                    let mut body = decision_to_typed_nodes(&case.body, typed_bodies);
+
+                    // Wrap with Let nodes for each field (using FieldAccess)
+                    // Iterate in reverse so bindings are in the correct order
+                    for (i, (field_name, _field_type)) in type_fields.iter().enumerate().rev() {
+                        let var = &case.arguments[i];
+                        let var_name = VarName::new(&var.name).expect("invalid variable name");
+
+                        // Create field access: subject.field_name
+                        let field_access = TypedExpr::FieldAccess {
+                            record: subject.clone(),
+                            field: field_name.clone(),
+                            kind: var.typ.clone(),
+                        };
+
+                        body = vec![TypedNode::Let {
+                            var: var_name,
+                            var_type: var.typ.clone(),
+                            value: field_access,
+                            children: body,
+                        }];
+                    }
+
+                    body
+                }
+
+                _ => panic!("Unsupported type for pattern matching: {:?}", var.typ),
+            }
+        }
+    }
 }
 
 #[cfg(test)]

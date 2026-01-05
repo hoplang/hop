@@ -5,9 +5,10 @@ use crate::hop::semantics::typed_ast::{TypedAst, TypedComponentDeclaration};
 use crate::hop::semantics::typed_node::{TypedAttribute, TypedAttributeValue, TypedNode};
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
+use crate::dop::patterns::{EnumMatchArm, Match};
 use crate::inlined::inlined_ast::{
-    InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedMatchCase,
-    InlinedNode, InlinedParameter,
+    InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
+    InlinedParameter,
 };
 use anyhow::Result;
 use std::collections::{BTreeMap, HashMap};
@@ -268,15 +269,61 @@ impl Inliner {
                 value: value.clone(),
             }],
 
-            TypedNode::Match { subject, cases } => vec![InlinedNode::Match {
-                subject: subject.clone(),
-                cases: cases
-                    .iter()
-                    .map(|case| InlinedMatchCase {
-                        pattern: case.pattern.clone(),
-                        children: Self::inline_nodes(&case.children, slot_content, asts),
-                    })
-                    .collect(),
+            TypedNode::Match { match_ } => {
+                let inlined_match = match match_ {
+                    Match::Bool {
+                        subject,
+                        true_body,
+                        false_body,
+                    } => Match::Bool {
+                        subject: subject.clone(),
+                        true_body: Box::new(Self::inline_nodes(true_body, slot_content, asts)),
+                        false_body: Box::new(Self::inline_nodes(false_body, slot_content, asts)),
+                    },
+                    Match::Option {
+                        subject,
+                        some_arm_binding,
+                        some_arm_body,
+                        none_arm_body,
+                    } => Match::Option {
+                        subject: subject.clone(),
+                        some_arm_binding: some_arm_binding.clone(),
+                        some_arm_body: Box::new(Self::inline_nodes(
+                            some_arm_body,
+                            slot_content,
+                            asts,
+                        )),
+                        none_arm_body: Box::new(Self::inline_nodes(
+                            none_arm_body,
+                            slot_content,
+                            asts,
+                        )),
+                    },
+                    Match::Enum { subject, arms } => Match::Enum {
+                        subject: subject.clone(),
+                        arms: arms
+                            .iter()
+                            .map(|arm| EnumMatchArm {
+                                pattern: arm.pattern.clone(),
+                                body: Self::inline_nodes(&arm.body, slot_content, asts),
+                            })
+                            .collect(),
+                    },
+                };
+                vec![InlinedNode::Match {
+                    match_: inlined_match,
+                }]
+            }
+
+            TypedNode::Let {
+                var,
+                var_type: _,
+                value,
+                children,
+            } => vec![InlinedNode::Let {
+                var: var.clone(),
+                value: value.clone(),
+                children: Self::inline_nodes(children, slot_content, asts),
             }],
 
             TypedNode::Placeholder => panic!(),

@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use crate::document::document_cursor::StringSpan;
-use crate::dop::syntax::parsed::ParsedMatchPattern;
-use crate::dop::{TypedExpr, VarName};
+use crate::dop::patterns::Match;
+use crate::dop::{Type, TypedExpr, VarName};
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 
@@ -16,13 +16,6 @@ pub enum TypedAttributeValue {
 pub struct TypedAttribute {
     pub name: String,
     pub value: Option<TypedAttributeValue>,
-}
-
-/// A case in a typed match node.
-#[derive(Debug, Clone)]
-pub struct TypedMatchCase {
-    pub pattern: ParsedMatchPattern,
-    pub children: Vec<TypedNode>,
 }
 
 #[derive(Debug, Clone)]
@@ -54,8 +47,14 @@ pub enum TypedNode {
     },
 
     Match {
-        subject: TypedExpr,
-        cases: Vec<TypedMatchCase>,
+        match_: Match<TypedExpr, Vec<TypedNode>>,
+    },
+
+    Let {
+        var: VarName,
+        var_type: Type,
+        value: TypedExpr,
+        children: Vec<TypedNode>,
     },
 
     Doctype {

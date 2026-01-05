@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fmt};
 
 use crate::document::document_cursor::StringSpan;
-use crate::dop::syntax::parsed::ParsedMatchPattern;
+use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::Type;
 use crate::dop::TypedExpr;
 use crate::dop::VarName;
@@ -36,13 +36,6 @@ pub struct InlinedComponentDeclaration {
     pub children: Vec<InlinedNode>,
 }
 
-/// A case in an inlined match node.
-#[derive(Debug, Clone)]
-pub struct InlinedMatchCase {
-    pub pattern: ParsedMatchPattern,
-    pub children: Vec<InlinedNode>,
-}
-
 #[derive(Debug, Clone)]
 pub enum InlinedNode {
     Text {
@@ -74,8 +67,7 @@ pub enum InlinedNode {
         children: Vec<Self>,
     },
     Match {
-        subject: TypedExpr,
-        cases: Vec<InlinedMatchCase>,
+        match_: Match<TypedExpr, Vec<InlinedNode>>,
     },
 }
 
@@ -252,37 +244,94 @@ impl InlinedNode {
                         .nest(2)
                 })
                 .append(BoxDoc::text("</let>")),
-            InlinedNode::Match { subject, cases } => BoxDoc::text("<match {")
-                .append(subject.to_doc())
-                .append(BoxDoc::text("}>"))
-                .append(if cases.is_empty() {
-                    BoxDoc::nil()
-                } else {
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            cases.iter().map(|c| {
-                                BoxDoc::text("<case {")
-                                    .append(BoxDoc::text(c.pattern.to_string()))
-                                    .append(BoxDoc::text("}>"))
-                                    .append(if c.children.is_empty() {
-                                        BoxDoc::nil()
-                                    } else {
-                                        BoxDoc::line()
-                                            .append(BoxDoc::intersperse(
-                                                c.children.iter().map(|child| child.to_doc()),
-                                                BoxDoc::line(),
-                                            ))
-                                            .nest(2)
-                                            .append(BoxDoc::line())
-                                    })
-                                    .append(BoxDoc::text("</case>"))
-                            }),
-                            BoxDoc::line(),
-                        ))
-                        .nest(2)
-                        .append(BoxDoc::line())
-                })
-                .append(BoxDoc::text("</match>")),
+            InlinedNode::Match { match_ } => {
+                fn children_to_doc<'a>(children: &'a [InlinedNode]) -> BoxDoc<'a> {
+                    if children.is_empty() {
+                        BoxDoc::nil()
+                    } else {
+                        BoxDoc::line()
+                            .append(BoxDoc::intersperse(
+                                children.iter().map(|child| child.to_doc()),
+                                BoxDoc::line(),
+                            ))
+                            .nest(2)
+                            .append(BoxDoc::line())
+                    }
+                }
+
+                fn case_doc<'a>(pattern: &str, children: &'a [InlinedNode]) -> BoxDoc<'a> {
+                    BoxDoc::text("<case {")
+                        .append(BoxDoc::text(pattern.to_string()))
+                        .append(BoxDoc::text("}>"))
+                        .append(children_to_doc(children))
+                        .append(BoxDoc::text("</case>"))
+                }
+
+                match match_ {
+                    Match::Bool {
+                        subject,
+                        true_body,
+                        false_body,
+                    } => BoxDoc::text("<match {")
+                        .append(subject.to_doc())
+                        .append(BoxDoc::text("}>"))
+                        .append(
+                            BoxDoc::line()
+                                .append(case_doc("true", true_body))
+                                .append(BoxDoc::line())
+                                .append(case_doc("false", false_body))
+                                .nest(2)
+                                .append(BoxDoc::line()),
+                        )
+                        .append(BoxDoc::text("</match>")),
+                    Match::Option {
+                        subject,
+                        some_arm_binding,
+                        some_arm_body,
+                        none_arm_body,
+                    } => {
+                        let some_pattern = match some_arm_binding {
+                            Some((name, _)) => format!("Some({})", name.as_str()),
+                            None => "Some(_)".to_string(),
+                        };
+                        BoxDoc::text("<match {")
+                            .append(subject.to_doc())
+                            .append(BoxDoc::text("}>"))
+                            .append(
+                                BoxDoc::line()
+                                    .append(case_doc(&some_pattern, some_arm_body))
+                                    .append(BoxDoc::line())
+                                    .append(case_doc("None", none_arm_body))
+                                    .nest(2)
+                                    .append(BoxDoc::line()),
+                            )
+                            .append(BoxDoc::text("</match>"))
+                    }
+                    Match::Enum { subject, arms } => BoxDoc::text("<match {")
+                        .append(subject.to_doc())
+                        .append(BoxDoc::text("}>"))
+                        .append(if arms.is_empty() {
+                            BoxDoc::nil()
+                        } else {
+                            BoxDoc::line()
+                                .append(BoxDoc::intersperse(
+                                    arms.iter().map(|arm| {
+                                        let pattern = match &arm.pattern {
+                                            EnumPattern::Variant {
+                                                enum_name,
+                                                variant_name,
+                                            } => format!("{}::{}", enum_name, variant_name),
+                                        };
+                                        case_doc(&pattern, &arm.body)
+                                    }),
+                                    BoxDoc::line(),
+                                ))
+                                .nest(2)
+                                .append(BoxDoc::line())
+                        })
+                        .append(BoxDoc::text("</match>")),
+                }
+            }
         }
     }
 }
