@@ -1,6 +1,6 @@
 use super::type_error::TypeError;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::semantics::pat_match::{Compiler as PatMatchCompiler, Variable as PatMatchVariable};
+use crate::dop::patterns::pat_match::{Compiler as PatMatchCompiler, Variable as PatMatchVariable};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::syntax::parsed::{ParsedExpr, ParsedMatchArm};

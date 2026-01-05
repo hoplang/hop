@@ -1,4 +1,3 @@
-pub mod pat_match;
 pub mod r#type;
 pub mod type_checker;
 pub mod type_error;

@@ -1,4 +1,4 @@
-use super::pat_match::{Compiler, Decision, Variable};
+use crate::dop::patterns::pat_match::{Compiler, Decision, Variable};
 use super::r#type::Type;
 use super::type_checker::typecheck_expr;
 use super::type_error::TypeError;

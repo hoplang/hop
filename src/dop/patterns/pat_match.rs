@@ -1,5 +1,3 @@
-#![allow(clippy::new_without_default)]
-
 //! An implementation of the algorithm described at
 //! https://julesjacobs.com/notes/patternmatching/patternmatching.pdf.
 //!
@@ -11,8 +9,8 @@ use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::syntax::parsed::{Constructor, ParsedMatchArm, ParsedMatchPattern};
 use crate::environment::Environment;
 
-use super::r#type::Type;
-use super::type_error::TypeError;
+use crate::dop::semantics::r#type::Type;
+use crate::dop::semantics::type_error::TypeError;
 
 /// The body of code to evaluate in case of a match.
 #[derive(Clone, Debug)]
