@@ -6,7 +6,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::document::document_cursor::{DocumentRange, Ranged};
-use crate::dop::syntax::parsed::{Constructor, ParsedMatchArm, ParsedMatchPattern};
+use crate::dop::syntax::parsed::{Constructor, ParsedMatchPattern};
 use crate::environment::Environment;
 
 use crate::dop::semantics::r#type::Type;
@@ -249,17 +249,17 @@ impl Compiler {
 
     pub fn compile(
         mut self,
-        arms: &[ParsedMatchArm],
+        patterns: &[ParsedMatchPattern],
         subject_var: &Variable,
         match_range: &DocumentRange,
         type_env: &mut Environment<Type>,
     ) -> Result<Decision, TypeError> {
-        let rows: Vec<Row> = arms
+        let rows: Vec<Row> = patterns
             .iter()
             .enumerate()
-            .map(|(idx, arm)| {
+            .map(|(idx, pattern)| {
                 Row::new(
-                    vec![Column::new(subject_var.clone(), arm.pattern.clone())],
+                    vec![Column::new(subject_var.clone(), pattern.clone())],
                     Body::new(idx),
                 )
             })
@@ -268,14 +268,14 @@ impl Compiler {
         let tree = self.compile_rows(rows, type_env, Vec::new());
 
         // Check for unreachable arms
-        let unreachable: Vec<usize> = (0..arms.len())
+        let unreachable: Vec<usize> = (0..patterns.len())
             .filter(|i| !self.reachable.contains(i))
             .collect();
         if let Some(&first_unreachable) = unreachable.first() {
-            let arm = &arms[first_unreachable];
+            let pattern = &patterns[first_unreachable];
             return Err(TypeError::MatchUnreachableArm {
-                variant: arm.pattern.to_string(),
-                range: arm.pattern.range().clone(),
+                variant: pattern.to_string(),
+                range: pattern.range().clone(),
             });
         }
 

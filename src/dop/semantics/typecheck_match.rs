@@ -56,7 +56,8 @@ pub fn typecheck_match(
         ),
     };
 
-    let tree = Compiler::new(initial_var_counter).compile(arms, &subject_var, range, type_env)?;
+    let patterns: Vec<_> = arms.iter().map(|arm| arm.pattern.clone()).collect();
+    let tree = Compiler::new(initial_var_counter).compile(&patterns, &subject_var, range, type_env)?;
 
     let (typed_bodies, result_type) =
         typecheck_arm_bodies(arms, &subject_type, var_env, type_env, annotations)?;

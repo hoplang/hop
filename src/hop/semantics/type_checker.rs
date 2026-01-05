@@ -3,7 +3,6 @@ use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::patterns::compiler::{Compiler as PatMatchCompiler, Variable as PatMatchVariable};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
-use crate::dop::syntax::parsed::{ParsedExpr, ParsedMatchArm};
 use crate::dop::{self, Type, TypedExpr, VarName, resolve_type};
 use crate::environment::Environment;
 use crate::error_collector::ErrorCollector;
@@ -811,24 +810,14 @@ fn typecheck_node(
                 return None;
             }
 
-            // Create ParsedMatchArm instances for the pattern matching compiler
-            let arms: Vec<ParsedMatchArm> = cases
-                .iter()
-                .map(|case| ParsedMatchArm {
-                    pattern: case.pattern.clone(),
-                    // We use a dummy expression since we only care about pattern compilation
-                    body: ParsedExpr::BooleanLiteral {
-                        value: true,
-                        range: case.range.clone(),
-                    },
-                })
-                .collect();
+            // Extract patterns for the pattern matching compiler
+            let patterns: Vec<_> = cases.iter().map(|case| case.pattern.clone()).collect();
 
             let subject_var =
                 PatMatchVariable::new("match_subject".to_string(), subject_type.clone());
 
             // Run the pattern matching compiler
-            let decision = match PatMatchCompiler::new(0).compile(&arms, &subject_var, range, type_env)
+            let decision = match PatMatchCompiler::new(0).compile(&patterns, &subject_var, range, type_env)
             {
                 Ok(decision) => decision,
                 Err(err) => {
