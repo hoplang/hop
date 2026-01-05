@@ -246,8 +246,27 @@ impl Compiler {
         mut self,
         patterns: &[ParsedMatchPattern],
         subject_var: &Variable,
+        subject_range: &DocumentRange,
         match_range: &DocumentRange,
     ) -> Result<Decision, TypeError> {
+        // Validate subject type is matchable
+        if !matches!(
+            &subject_var.typ,
+            Type::Enum { .. } | Type::Bool | Type::Option(_) | Type::Record { .. }
+        ) {
+            return Err(TypeError::MatchNotImplementedForType {
+                found: subject_var.typ.to_string(),
+                range: subject_range.clone(),
+            });
+        }
+
+        // Check for empty arms
+        if patterns.is_empty() {
+            return Err(TypeError::MatchNoArms {
+                range: match_range.clone(),
+            });
+        }
+
         // Validate all patterns against the subject type
         for pattern in patterns {
             Self::validate_pattern(pattern, &subject_var.typ)?;
@@ -660,19 +679,22 @@ mod tests {
         let mut parser = Parser::from(expr_str);
         let expr = parser.parse_expr().expect("Failed to parse expression");
 
-        let (subject_name, patterns, match_range) = match expr {
+        let (subject_name, subject_range, patterns, match_range) = match expr {
             ParsedExpr::Match {
                 subject,
                 arms,
                 range,
                 ..
             } => {
-                let name = match subject.as_ref() {
-                    ParsedExpr::Var { value, .. } => value.as_str().to_string(),
+                let (name, subject_range) = match subject.as_ref() {
+                    ParsedExpr::Var { value, range, .. } => {
+                        (value.as_str().to_string(), range.clone())
+                    }
                     _ => panic!("Expected variable as match subject"),
                 };
                 (
                     name,
+                    subject_range,
                     arms.into_iter().map(|a| a.pattern).collect::<Vec<_>>(),
                     range,
                 )
@@ -681,7 +703,8 @@ mod tests {
         };
 
         let subject_var = Variable::new(subject_name, subject_type);
-        let result = Compiler::new(0).compile(&patterns, &subject_var, &match_range);
+        let result =
+            Compiler::new(0).compile(&patterns, &subject_var, &subject_range, &match_range);
 
         let actual = match result {
             Ok(decision) => format_decision(&decision, 0),
@@ -1742,6 +1765,72 @@ mod tests {
                 error: Match pattern type mismatch: expected boolean, found Some(v)
                     Some(Some(v)) => 0,
                          ^^^^^^^
+            "#]],
+        );
+    }
+
+    // Subject type validation tests
+
+    #[test]
+    fn match_not_implemented_for_int() {
+        check(
+            Type::Int,
+            indoc! {"
+                match x {
+                    _ => 0,
+                }
+            "},
+            expect![[r#"
+                error: Match is not implemented for type Int
+                match x {
+                      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn match_not_implemented_for_string() {
+        check(
+            Type::String,
+            indoc! {"
+                match x {
+                    _ => 0,
+                }
+            "},
+            expect![[r#"
+                error: Match is not implemented for type String
+                match x {
+                      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn match_not_implemented_for_float() {
+        check(
+            Type::Float,
+            indoc! {"
+                match x {
+                    _ => 0,
+                }
+            "},
+            expect![[r#"
+                error: Match is not implemented for type Float
+                match x {
+                      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn match_no_arms() {
+        check(
+            Type::Bool,
+            "match x {}",
+            expect![[r#"
+                error: Match expression must have at least one arm
+                match x {}
+                ^^^^^^^^^^
             "#]],
         );
     }

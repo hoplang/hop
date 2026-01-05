@@ -806,22 +806,6 @@ fn typecheck_match(
     let typed_subject = typecheck_expr(subject, var_env, type_env, annotations, None)?;
     let subject_type = typed_subject.as_type().clone();
 
-    if !matches!(
-        &subject_type,
-        Type::Enum { .. } | Type::Bool | Type::Option(_) | Type::Record { .. }
-    ) {
-        return Err(TypeError::MatchNotImplementedForType {
-            found: subject_type.to_string(),
-            range: subject.range().clone(),
-        });
-    }
-
-    if arms.is_empty() {
-        return Err(TypeError::MatchNoArms {
-            range: range.clone(),
-        });
-    }
-
     // If subject is already a variable, use it directly; otherwise wrap in a let
     let (subject_var, initial_var_counter, needs_wrapper) = match &typed_subject {
         TypedExpr::Var { value, kind } => (
@@ -837,7 +821,8 @@ fn typecheck_match(
     };
 
     let patterns: Vec<_> = arms.iter().map(|arm| arm.pattern.clone()).collect();
-    let tree = Compiler::new(initial_var_counter).compile(&patterns, &subject_var, range)?;
+    let tree =
+        Compiler::new(initial_var_counter).compile(&patterns, &subject_var, subject.range(), range)?;
 
     let (typed_bodies, result_type) =
         typecheck_arm_bodies(arms, &subject_type, var_env, type_env, annotations)?;

@@ -11,12 +11,12 @@ use crate::hop::syntax::parsed_ast::{ParsedAttribute, ParsedComponentDeclaration
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
-use crate::hop::semantics::typed_ast::{
-    TypedAst, TypedComponentDeclaration, TypedEnumDeclaration, TypedRecordDeclaration,
-};
 use crate::dop::patterns::compiler::Decision;
 use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::dop::syntax::parsed::Constructor;
+use crate::hop::semantics::typed_ast::{
+    TypedAst, TypedComponentDeclaration, TypedEnumDeclaration, TypedRecordDeclaration,
+};
 use crate::hop::semantics::typed_node::{TypedAttribute, TypedAttributeValue, TypedNode};
 use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::syntax::parsed_ast::{ParsedAst, ParsedAttributeValue};
@@ -773,38 +773,25 @@ fn typecheck_node(
             cases,
             range,
         } => {
-            // Typecheck the subject expression
             let typed_subject = errors.ok_or_add(
                 dop::typecheck_expr(subject, env, type_env, annotations, None).map_err(Into::into),
             )?;
             let subject_type = typed_subject.as_type().clone();
 
-            // Check if the subject type supports pattern matching
-            let supports_pattern_matching = matches!(
-                &subject_type,
-                Type::Enum { .. } | Type::Bool | Type::Option(_) | Type::Record { .. }
-            );
-
-            // Report error if type doesn't support pattern matching
-            if !supports_pattern_matching {
-                errors.push(
-                    dop::semantics::type_error::TypeError::MatchNotImplementedForType {
-                        found: subject_type.to_string(),
-                        range: subject.range().clone(),
-                    }
-                    .into(),
-                );
-                return None;
-            }
-
-            // Extract patterns for the pattern matching compiler
-            let patterns: Vec<_> = cases.iter().map(|case| case.pattern.clone()).collect();
+            let patterns = cases
+                .iter()
+                .map(|case| case.pattern.clone())
+                .collect::<Vec<_>>();
 
             let subject_var =
                 PatMatchVariable::new("match_subject".to_string(), subject_type.clone());
 
-            // Run the pattern matching compiler
-            let decision = match PatMatchCompiler::new(0).compile(&patterns, &subject_var, range) {
+            let decision = match PatMatchCompiler::new(0).compile(
+                &patterns,
+                &subject_var,
+                subject.range(),
+                range,
+            ) {
                 Ok(decision) => decision,
                 Err(err) => {
                     errors.push(err.into());
@@ -812,13 +799,11 @@ fn typecheck_node(
                 }
             };
 
-            // Typecheck all case bodies with their bindings in scope
-            let typed_bodies: Vec<Vec<TypedNode>> = cases
+            let typed_bodies = cases
                 .iter()
                 .map(|case| {
                     // Extract bindings from pattern
-                    let bindings =
-                        dop::extract_bindings_from_pattern(&case.pattern, &subject_type);
+                    let bindings = dop::extract_bindings_from_pattern(&case.pattern, &subject_type);
 
                     // Push bindings into scope
                     let mut pushed_count = 0;
@@ -842,13 +827,13 @@ fn typecheck_node(
                     }
 
                     // Typecheck case children
-                    let typed_children: Vec<_> = case
+                    let typed_children = case
                         .children
                         .iter()
                         .filter_map(|child| {
                             typecheck_node(child, state, env, annotations, errors, type_env)
                         })
-                        .collect();
+                        .collect::<Vec<_>>();
 
                     // Pop bindings and check for unused
                     for _ in 0..pushed_count {
@@ -866,10 +851,8 @@ fn typecheck_node(
 
                     typed_children
                 })
-                .collect();
+                .collect::<Vec<_>>();
 
-            // Convert decision tree to typed nodes
-            // The result includes a Let binding for the subject variable
             let mut result = decision_to_typed_nodes(&decision, &typed_bodies);
 
             // Wrap with a Let to bind the subject expression to the subject variable
@@ -950,10 +933,7 @@ fn typecheck_attributes(
 
 /// Convert a compiled Decision tree into a Vec<TypedNode>.
 /// This is used for node-level match statements (as opposed to expression-level matches).
-fn decision_to_typed_nodes(
-    decision: &Decision,
-    typed_bodies: &[Vec<TypedNode>],
-) -> Vec<TypedNode> {
+fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>]) -> Vec<TypedNode> {
     match decision {
         Decision::Success(body) => {
             let mut result = typed_bodies[body.value].clone();
@@ -1001,9 +981,7 @@ fn decision_to_typed_nodes(
                     vec![TypedNode::Match {
                         match_: Match::Bool {
                             subject,
-                            true_body: Box::new(
-                                true_body.expect("BoolMatch must have a true arm"),
-                            ),
+                            true_body: Box::new(true_body.expect("BoolMatch must have a true arm")),
                             false_body: Box::new(
                                 false_body.expect("BoolMatch must have a false arm"),
                             ),
