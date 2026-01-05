@@ -1,6 +1,6 @@
 use super::r#type::{NumericType, Type};
 use super::type_error::TypeError;
-use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::document::document_cursor::DocumentRange;
 use crate::dop::TypedExpr;
 use crate::dop::patterns::compiler::{Compiler, Decision, Variable};
 use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
@@ -822,10 +822,6 @@ fn typecheck_match(
         });
     }
 
-    for arm in arms {
-        validate_pattern_type(&arm.pattern, &subject_type)?;
-    }
-
     // If subject is already a variable, use it directly; otherwise wrap in a let
     let (subject_var, initial_var_counter, needs_wrapper) = match &typed_subject {
         TypedExpr::Var { value, kind } => (
@@ -859,137 +855,6 @@ fn typecheck_match(
     }
 
     Ok(result)
-}
-
-/// Recursively validate that a pattern is compatible with the subject type,
-/// i.e. the type of the expression that is being matched.
-pub fn validate_pattern_type(
-    pattern: &ParsedMatchPattern,
-    subject_type: &Type,
-) -> Result<(), TypeError> {
-    match pattern {
-        ParsedMatchPattern::Wildcard { .. } => Ok(()),
-        ParsedMatchPattern::Binding { .. } => Ok(()),
-        ParsedMatchPattern::Constructor {
-            constructor,
-            args,
-            fields,
-            range,
-        } => match (constructor, subject_type) {
-            (
-                Constructor::EnumVariant {
-                    enum_name: pattern_enum_name,
-                    variant_name: pattern_variant_name,
-                },
-                Type::Enum {
-                    name: subject_enum_name,
-                    variants,
-                    ..
-                },
-            ) => {
-                if pattern_enum_name != subject_enum_name {
-                    return Err(TypeError::MatchPatternEnumMismatch {
-                        pattern_enum: pattern_enum_name.to_string(),
-                        subject_enum: subject_enum_name.to_string(),
-                        range: range.clone(),
-                    });
-                }
-
-                let variant_exists = variants.iter().any(|v| v.as_str() == pattern_variant_name);
-                if !variant_exists {
-                    return Err(TypeError::UndefinedEnumVariant {
-                        enum_name: pattern_enum_name.to_string(),
-                        variant_name: pattern_variant_name.clone(),
-                        range: range.clone(),
-                    });
-                }
-
-                Ok(())
-            }
-
-            (Constructor::BooleanTrue | Constructor::BooleanFalse, Type::Bool) => Ok(()),
-
-            (Constructor::OptionSome, Type::Option(inner_type)) => {
-                if let Some(inner_pattern) = args.first() {
-                    validate_pattern_type(inner_pattern, inner_type)?;
-                }
-                Ok(())
-            }
-
-            (Constructor::OptionNone, Type::Option(_)) => Ok(()),
-
-            (
-                Constructor::Record {
-                    type_name: pattern_type_name,
-                },
-                Type::Record {
-                    name: subject_type_name,
-                    fields: subject_fields,
-                    ..
-                },
-            ) => {
-                // Check record type matches
-                if pattern_type_name != subject_type_name {
-                    return Err(TypeError::MatchPatternRecordMismatch {
-                        pattern_record: pattern_type_name.to_string(),
-                        subject_record: subject_type_name.to_string(),
-                        range: range.clone(),
-                    });
-                }
-
-                // Check all fields are specified (no partial matching)
-                if fields.len() != subject_fields.len() {
-                    return Err(TypeError::MatchRecordPatternFieldCount {
-                        record_name: pattern_type_name.to_string(),
-                        expected: subject_fields.len(),
-                        found: fields.len(),
-                        range: range.clone(),
-                    });
-                }
-
-                // Validate each field pattern against the field type
-                for (field_name, field_pattern) in fields {
-                    let field_type = subject_fields
-                        .iter()
-                        .find(|(name, _)| name == field_name)
-                        .map(|(_, typ)| typ);
-
-                    match field_type {
-                        Some(typ) => validate_pattern_type(field_pattern, typ)?,
-                        None => {
-                            return Err(TypeError::MatchRecordPatternUnknownField {
-                                field_name: field_name.to_string(),
-                                record_name: pattern_type_name.to_string(),
-                                range: field_pattern.range().clone(),
-                            });
-                        }
-                    }
-                }
-
-                Ok(())
-            }
-
-            _ => {
-                let expected = match subject_type {
-                    Type::Enum { .. } => "enum",
-                    Type::Bool => "boolean",
-                    Type::Option(_) => "option",
-                    Type::Record { .. } => "record",
-                    _ => {
-                        return Err(TypeError::MatchNotImplementedForType {
-                            found: subject_type.to_string(),
-                            range: range.clone(),
-                        });
-                    }
-                };
-                Err(TypeError::MatchPatternTypeMismatch {
-                    expected: expected.to_string(),
-                    found: pattern.to_string(),
-                    range: range.clone(),
-                })
-            }
-        },
-    }
 }
 
 /// Extract binding variables from a pattern and return them with their types and ranges.

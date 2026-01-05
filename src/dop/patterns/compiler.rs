@@ -254,6 +254,11 @@ impl Compiler {
         match_range: &DocumentRange,
         type_env: &mut Environment<Type>,
     ) -> Result<Decision, TypeError> {
+        // Validate all patterns against the subject type
+        for pattern in patterns {
+            self.validate_pattern(pattern, &subject_var.typ, type_env)?;
+        }
+
         let rows: Vec<Row> = patterns
             .iter()
             .enumerate()
@@ -512,6 +517,139 @@ impl Compiler {
         let name = format!("v{}", self.var_counter);
         self.var_counter += 1;
         Variable::new(name, typ)
+    }
+
+    /// Validates that a pattern is compatible with the subject type.
+    fn validate_pattern(
+        &self,
+        pattern: &ParsedMatchPattern,
+        subject_type: &Type,
+        type_env: &Environment<Type>,
+    ) -> Result<(), TypeError> {
+        match pattern {
+            ParsedMatchPattern::Wildcard { .. } => Ok(()),
+            ParsedMatchPattern::Binding { .. } => Ok(()),
+            ParsedMatchPattern::Constructor {
+                constructor,
+                args,
+                fields,
+                range,
+            } => match (constructor, subject_type) {
+                (
+                    Constructor::EnumVariant {
+                        enum_name: pattern_enum_name,
+                        variant_name: pattern_variant_name,
+                    },
+                    Type::Enum {
+                        name: subject_enum_name,
+                        variants,
+                        ..
+                    },
+                ) => {
+                    if pattern_enum_name != subject_enum_name {
+                        return Err(TypeError::MatchPatternEnumMismatch {
+                            pattern_enum: pattern_enum_name.to_string(),
+                            subject_enum: subject_enum_name.to_string(),
+                            range: range.clone(),
+                        });
+                    }
+
+                    let variant_exists =
+                        variants.iter().any(|v| v.as_str() == pattern_variant_name);
+                    if !variant_exists {
+                        return Err(TypeError::UndefinedEnumVariant {
+                            enum_name: pattern_enum_name.to_string(),
+                            variant_name: pattern_variant_name.clone(),
+                            range: range.clone(),
+                        });
+                    }
+
+                    Ok(())
+                }
+
+                (Constructor::BooleanTrue | Constructor::BooleanFalse, Type::Bool) => Ok(()),
+
+                (Constructor::OptionSome, Type::Option(inner_type)) => {
+                    if let Some(inner_pattern) = args.first() {
+                        self.validate_pattern(inner_pattern, inner_type, type_env)?;
+                    }
+                    Ok(())
+                }
+
+                (Constructor::OptionNone, Type::Option(_)) => Ok(()),
+
+                (
+                    Constructor::Record {
+                        type_name: pattern_type_name,
+                    },
+                    Type::Record {
+                        name: subject_type_name,
+                        fields: subject_fields,
+                        ..
+                    },
+                ) => {
+                    // Check record type matches
+                    if pattern_type_name != subject_type_name {
+                        return Err(TypeError::MatchPatternRecordMismatch {
+                            pattern_record: pattern_type_name.to_string(),
+                            subject_record: subject_type_name.to_string(),
+                            range: range.clone(),
+                        });
+                    }
+
+                    // Check all fields are specified (no partial matching)
+                    if fields.len() != subject_fields.len() {
+                        return Err(TypeError::MatchRecordPatternFieldCount {
+                            record_name: pattern_type_name.to_string(),
+                            expected: subject_fields.len(),
+                            found: fields.len(),
+                            range: range.clone(),
+                        });
+                    }
+
+                    // Validate each field pattern against the field type
+                    for (field_name, field_pattern) in fields {
+                        let field_type = subject_fields
+                            .iter()
+                            .find(|(name, _)| name == field_name)
+                            .map(|(_, typ)| typ);
+
+                        match field_type {
+                            Some(typ) => self.validate_pattern(field_pattern, typ, type_env)?,
+                            None => {
+                                return Err(TypeError::MatchRecordPatternUnknownField {
+                                    field_name: field_name.to_string(),
+                                    record_name: pattern_type_name.to_string(),
+                                    range: field_pattern.range().clone(),
+                                });
+                            }
+                        }
+                    }
+
+                    Ok(())
+                }
+
+                _ => {
+                    let expected = match subject_type {
+                        Type::Enum { .. } => "enum",
+                        Type::Bool => "boolean",
+                        Type::Option(_) => "option",
+                        Type::Record { .. } => "record",
+                        _ => {
+                            return Err(TypeError::MatchNotImplementedForType {
+                                found: subject_type.to_string(),
+                                range: range.clone(),
+                            });
+                        }
+                    };
+                    Err(TypeError::MatchPatternTypeMismatch {
+                        expected: expected.to_string(),
+                        found: pattern.to_string(),
+                        range: range.clone(),
+                    })
+                }
+            },
+        }
     }
 }
 
@@ -1466,6 +1604,148 @@ mod tests {
                     branch 0
                 x is None
                   branch 1
+            "#]],
+        );
+    }
+
+    // Pattern validation tests
+
+    #[test]
+    fn validation_undefined_enum_variant() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Color").unwrap(),
+                variants: vec![
+                    TypeName::new("Red").unwrap(),
+                    TypeName::new("Green").unwrap(),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Color::Blue => 0,
+                    _ => 1,
+                }
+            "},
+            expect![[r#"
+                error: Variant 'Blue' is not defined in enum 'Color'
+                    Color::Blue => 0,
+                    ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn validation_record_missing_fields() {
+        check(
+            Type::Record {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("User").unwrap(),
+                fields: vec![
+                    (FieldName::new("name").unwrap(), Type::String),
+                    (FieldName::new("age").unwrap(), Type::Int),
+                ],
+            },
+            indoc! {"
+                match x {
+                    User(name: n) => 0,
+                }
+            "},
+            expect![[r#"
+                error: Record pattern for 'User' must specify all 2 fields, but only 1 were provided
+                    User(name: n) => 0,
+                    ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn validation_record_unknown_field() {
+        check(
+            Type::Record {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("User").unwrap(),
+                fields: vec![
+                    (FieldName::new("name").unwrap(), Type::String),
+                ],
+            },
+            indoc! {"
+                match x {
+                    User(email: e) => 0,
+                }
+            "},
+            expect![[r#"
+                error: Unknown field 'email' in record pattern for 'User'
+                    User(email: e) => 0,
+                                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn validation_boolean_pattern_on_enum() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Color").unwrap(),
+                variants: vec![
+                    TypeName::new("Red").unwrap(),
+                    TypeName::new("Green").unwrap(),
+                ],
+            },
+            indoc! {"
+                match x {
+                    true => 0,
+                    _ => 1,
+                }
+            "},
+            expect![[r#"
+                error: Match pattern type mismatch: expected enum, found true
+                    true => 0,
+                    ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn validation_option_pattern_on_enum() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Color").unwrap(),
+                variants: vec![
+                    TypeName::new("Red").unwrap(),
+                    TypeName::new("Green").unwrap(),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Some(v) => 0,
+                    None => 1,
+                }
+            "},
+            expect![[r#"
+                error: Match pattern type mismatch: expected enum, found Some(v)
+                    Some(v) => 0,
+                    ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn validation_nested_option_wrong_inner_type() {
+        check(
+            Type::Option(Box::new(Type::Bool)),
+            indoc! {"
+                match x {
+                    Some(Some(v)) => 0,
+                    _ => 1,
+                }
+            "},
+            expect![[r#"
+                error: Match pattern type mismatch: expected boolean, found Some(v)
+                    Some(Some(v)) => 0,
+                         ^^^^^^^
             "#]],
         );
     }

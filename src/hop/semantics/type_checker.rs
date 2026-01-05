@@ -797,19 +797,6 @@ fn typecheck_node(
                 return None;
             }
 
-            // Validate all patterns against subject type
-            let mut all_patterns_valid = true;
-            for case in cases {
-                if let Err(err) = dop::validate_pattern_type(&case.pattern, &subject_type) {
-                    errors.push(err.into());
-                    all_patterns_valid = false;
-                }
-            }
-
-            if !all_patterns_valid {
-                return None;
-            }
-
             // Extract patterns for the pattern matching compiler
             let patterns: Vec<_> = cases.iter().map(|case| case.pattern.clone()).collect();
 
