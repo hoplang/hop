@@ -959,11 +959,11 @@ fn decision_to_typed_expr(
         Decision::Success(body) => {
             let mut result = typed_bodies[body.value].clone();
             // Wrap with Let expressions for each binding (in reverse order so first binding is outermost)
-            for (name, source_var) in body.bindings.iter().rev() {
-                let var_name = VarName::new(name).expect("invalid variable name");
+            for binding in body.bindings.iter().rev() {
+                let var_name = VarName::new(&binding.name).expect("invalid variable name");
                 let value = Box::new(TypedExpr::Var {
-                    value: VarName::new(&source_var.name).expect("invalid variable name"),
-                    kind: source_var.typ.clone(),
+                    value: VarName::new(&binding.source_name).expect("invalid variable name"),
+                    kind: binding.typ.clone(),
                 });
                 let kind = result.as_type().clone();
                 result = TypedExpr::Let {

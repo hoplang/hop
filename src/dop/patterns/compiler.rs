@@ -11,12 +11,28 @@ use crate::dop::syntax::parsed::{Constructor, ParsedMatchPattern};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::semantics::type_error::TypeError;
 
+/// A binding introduced by a pattern match (i.e. `name = source_name`).
+#[derive(Clone, Debug)]
+pub struct Binding {
+    /// The name of the variable to bind.
+    pub name: String,
+    /// The name of the source variable to bind from.
+    pub source_name: String,
+    /// The type of the binding.
+    pub typ: Type,
+}
+
+impl Binding {
+    pub fn new(name: String, source_name: String, typ: Type) -> Self {
+        Self { name, source_name, typ }
+    }
+}
+
 /// The body of code to evaluate in case of a match.
 #[derive(Clone, Debug)]
 pub struct Body {
     /// Any variables to bind before running the code.
-    /// The tuples are in the form `(name, source)` (i.e `x = source`).
-    pub bindings: Vec<(String, Variable)>,
+    pub bindings: Vec<Binding>,
     /// The branch to run in case of a match.
     pub value: usize,
 }
@@ -328,7 +344,11 @@ impl Compiler {
             row.columns.retain(|col| match &col.pattern {
                 ParsedMatchPattern::Wildcard { .. } => false,
                 ParsedMatchPattern::Binding { name, .. } => {
-                    row.body.bindings.push((name.clone(), col.variable.clone()));
+                    row.body.bindings.push(Binding::new(
+                        name.clone(),
+                        col.variable.name.clone(),
+                        col.variable.typ.clone(),
+                    ));
                     false
                 }
                 ParsedMatchPattern::Constructor { .. } => true,
@@ -724,8 +744,8 @@ mod tests {
         match decision {
             Decision::Success(body) => {
                 let mut out = String::new();
-                for (name, var) in &body.bindings {
-                    out.push_str(&format!("{}let {} = {}\n", pad, name, var.name));
+                for binding in &body.bindings {
+                    out.push_str(&format!("{}let {} = {}\n", pad, binding.name, binding.source_name));
                 }
                 out.push_str(&format!("{}branch {}\n", pad, body.value));
                 out
