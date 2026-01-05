@@ -24,7 +24,11 @@ pub struct Binding {
 
 impl Binding {
     pub fn new(name: String, source_name: String, typ: Type) -> Self {
-        Self { name, source_name, typ }
+        Self {
+            name,
+            source_name,
+            typ,
+        }
     }
 }
 
@@ -119,89 +123,6 @@ impl Case {
     }
 }
 
-/// A step in the path to a missing pattern, representing a constructor that was matched.
-#[derive(Debug, Clone)]
-enum MatchedConstructor {
-    /// A constructor with positional arguments (e.g., Some(x), None, true, Color::Red)
-    Positional {
-        var_name: String,
-        constructor_name: String,
-        arguments: Vec<String>,
-    },
-    /// A record constructor with named fields (e.g., User(name: x, age: y))
-    Record {
-        var_name: String,
-        constructor_name: String,
-        arguments: Vec<String>,
-        field_names: Vec<String>,
-    },
-}
-
-impl MatchedConstructor {
-    fn var_name(&self) -> &str {
-        match self {
-            MatchedConstructor::Positional { var_name, .. } => var_name,
-            MatchedConstructor::Record { var_name, .. } => var_name,
-        }
-    }
-
-    /// Build a pattern string from this constructor and the full path.
-    fn pattern_string(&self, all_steps: &[MatchedConstructor]) -> String {
-        match self {
-            MatchedConstructor::Positional {
-                constructor_name,
-                arguments,
-                ..
-            } => {
-                if arguments.is_empty() {
-                    constructor_name.clone()
-                } else {
-                    let args = arguments
-                        .iter()
-                        .map(|arg_var| {
-                            all_steps
-                                .iter()
-                                .find(|s| s.var_name() == arg_var)
-                                .map(|s| s.pattern_string(all_steps))
-                                .unwrap_or_else(|| "_".to_string())
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    format!("{}({})", constructor_name, args)
-                }
-            }
-            MatchedConstructor::Record {
-                constructor_name,
-                arguments,
-                field_names,
-                ..
-            } => {
-                let args = arguments
-                    .iter()
-                    .zip(field_names.iter())
-                    .map(|(arg_var, field_name)| {
-                        let pattern = all_steps
-                            .iter()
-                            .find(|s| s.var_name() == arg_var)
-                            .map(|s| s.pattern_string(all_steps))
-                            .unwrap_or_else(|| "_".to_string());
-                        format!("{}: {}", field_name, pattern)
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!("{}({})", constructor_name, args)
-            }
-        }
-    }
-}
-
-/// Convert a path of matched constructors to a pattern string.
-fn path_to_pattern_string(path: &[MatchedConstructor]) -> String {
-    path.first()
-        .map(|first| first.pattern_string(path))
-        .unwrap_or_else(|| "_".to_string())
-}
-
 /// A decision tree compiled from a list of match cases.
 #[derive(Debug)]
 pub enum Decision {
@@ -217,6 +138,17 @@ pub enum Decision {
     Switch(Variable, Vec<Case>),
 }
 
+/// Information about a matched constructor for a variable.
+struct VarInfo {
+    /// The constructor name (e.g., "Some", "None", "Color::Red", "User").
+    constructor: String,
+    /// Constructor arguments: (sub_var_name, optional_field_name).
+    /// - `Some(v0)` → `[("v0", None)]`
+    /// - `None` → `[]`
+    /// - `Foo(a: v0, b: v1)` → `[("v0", Some("a")), ("v1", Some("b"))]`
+    args: Vec<(String, Option<String>)>,
+}
+
 /// The `match` compiler itself.
 pub struct Compiler {
     /// A counter used to construct unused variable names.
@@ -225,8 +157,10 @@ pub struct Compiler {
     reachable: Vec<usize>,
     /// Missing pattern strings collected during compilation.
     missing_patterns: HashSet<String>,
-    /// The current path of matched constructors (used for error messages).
-    path: Vec<MatchedConstructor>,
+    /// The root variable being matched.
+    root_var: String,
+    /// Maps variable names to their matched constructor info.
+    var_info: HashMap<String, VarInfo>,
 }
 
 impl Compiler {
@@ -235,7 +169,8 @@ impl Compiler {
             var_counter: initial_var_counter,
             reachable: Vec::new(),
             missing_patterns: HashSet::new(),
-            path: Vec::new(),
+            root_var: String::new(),
+            var_info: HashMap::new(),
         }
     }
 
@@ -293,6 +228,8 @@ impl Compiler {
         }
 
         let subject_var = Variable::new(subject_name.to_string(), subject_type.clone());
+        self.root_var = subject_var.name.clone();
+
         let rows: Vec<Row> = patterns
             .iter()
             .enumerate()
@@ -335,7 +272,7 @@ impl Compiler {
     fn compile_rows(&mut self, mut rows: Vec<Row>) -> Option<Decision> {
         if rows.is_empty() {
             self.missing_patterns
-                .insert(path_to_pattern_string(&self.path));
+                .insert(self.build_pattern_for_var(&self.root_var));
             return None;
         }
 
@@ -481,33 +418,28 @@ impl Compiler {
             Vec::with_capacity(cases.len());
 
         for (cons, vars, rows) in cases {
-            let constructor_name = cons.to_string();
-            let arguments: Vec<String> = vars.iter().map(|v| v.name.clone()).collect();
-
-            let matched = if let Constructor::Record { .. } = &cons {
-                let field_names: Vec<String> =
-                    if let Type::Record { fields, .. } = &branch_var.typ {
-                        fields.iter().map(|(name, _)| name.to_string()).collect()
-                    } else {
-                        Vec::new()
-                    };
-                MatchedConstructor::Record {
-                    var_name: branch_var.name.clone(),
-                    constructor_name,
-                    arguments,
-                    field_names,
+            let args = if let Constructor::Record { .. } = &cons {
+                if let Type::Record { fields, .. } = &branch_var.typ {
+                    vars.iter()
+                        .zip(fields.iter())
+                        .map(|(v, (field_name, _))| (v.name.clone(), Some(field_name.to_string())))
+                        .collect()
+                } else {
+                    Vec::new()
                 }
             } else {
-                MatchedConstructor::Positional {
-                    var_name: branch_var.name.clone(),
-                    constructor_name,
-                    arguments,
-                }
+                vars.iter().map(|v| (v.name.clone(), None)).collect()
             };
+            self.var_info.insert(
+                branch_var.name.clone(),
+                VarInfo {
+                    constructor: cons.to_string(),
+                    args,
+                },
+            );
 
-            self.path.push(matched);
             let body = self.compile_rows(rows);
-            self.path.pop();
+            self.var_info.remove(&branch_var.name);
 
             compiled_cases.push((cons, vars, body));
         }
@@ -531,13 +463,11 @@ impl Compiler {
     /// most across all rows.
     fn find_branch_variable(&self, rows: &[Row]) -> Variable {
         let mut counts: HashMap<&str, usize> = HashMap::new();
-
         for row in rows {
             for col in &row.columns {
                 *counts.entry(&col.variable.name).or_insert(0_usize) += 1
             }
         }
-
         rows[0]
             .columns
             .iter()
@@ -551,6 +481,34 @@ impl Compiler {
         let name = format!("v{}", self.var_counter);
         self.var_counter += 1;
         Variable::new(name, typ)
+    }
+
+    /// Builds a pattern string for a variable by recursively looking up constructor info.
+    ///
+    /// This is used to generate human-readable missing pattern messages. Starting from
+    /// the root variable, it traverses `var_info` to reconstruct the pattern that would
+    /// be needed to make the match exhaustive.
+    fn build_pattern_for_var(&self, var_name: &str) -> String {
+        let Some(info) = self.var_info.get(var_name) else {
+            return "_".to_string();
+        };
+        if info.args.is_empty() {
+            return info.constructor.clone();
+        }
+        let args = info
+            .args
+            .iter()
+            .map(|(sub_var, field_name)| {
+                let pattern = self.build_pattern_for_var(sub_var);
+                match field_name {
+                    Some(name) => format!("{}: {}", name, pattern),
+                    None => pattern,
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        format!("{}({})", info.constructor, args)
     }
 
     /// Validates that a pattern is compatible with the subject type.
@@ -724,8 +682,13 @@ mod tests {
             _ => panic!("Expected match expression"),
         };
 
-        let result =
-            Compiler::new(0).compile(&patterns, &subject_name, &subject_type, &subject_range, &match_range);
+        let result = Compiler::new(0).compile(
+            &patterns,
+            &subject_name,
+            &subject_type,
+            &subject_range,
+            &match_range,
+        );
 
         let actual = match result {
             Ok(decision) => format_decision(&decision, 0),
@@ -745,7 +708,10 @@ mod tests {
             Decision::Success(body) => {
                 let mut out = String::new();
                 for binding in &body.bindings {
-                    out.push_str(&format!("{}let {} = {}\n", pad, binding.name, binding.source_name));
+                    out.push_str(&format!(
+                        "{}let {} = {}\n",
+                        pad, binding.name, binding.source_name
+                    ));
                 }
                 out.push_str(&format!("{}branch {}\n", pad, body.value));
                 out
@@ -1392,6 +1358,30 @@ mod tests {
         );
     }
 
+    #[test]
+    fn nested_option_with_bool_missing_multiple() {
+        check(
+            Type::Option(Box::new(Type::Option(Box::new(Type::Bool)))),
+            indoc! {"
+                match x {
+                    Some(None) => 1,
+                    None => 2,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: Some(Some(_))
+                match x {
+                ^^^^^^^^^
+                    Some(None) => 1,
+                ^^^^^^^^^^^^^^^^^^^^
+                    None => 2,
+                ^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
     // Additional Enum tests
 
     #[test]
@@ -1615,6 +1605,37 @@ mod tests {
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                     Foo(a: false, b: true) => 2,
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn record_with_bool_fields_missing_multiple() {
+        check(
+            Type::Record {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Foo").unwrap(),
+                fields: vec![
+                    (FieldName::new("a").unwrap(), Type::Bool),
+                    (FieldName::new("b").unwrap(), Type::Bool),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Foo(a: true, b: true) => 0,
+                    Foo(a: false, b: false) => 1,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: Foo(a: false, b: true), Foo(a: true, b: false)
+                match x {
+                ^^^^^^^^^
+                    Foo(a: true, b: true) => 0,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    Foo(a: false, b: false) => 1,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 }
                 ^
             "#]],
