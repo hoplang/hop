@@ -988,4 +988,485 @@ mod tests {
             "#]],
         );
     }
+
+    // Additional Bool tests
+
+    #[test]
+    fn bool_true_with_wildcard() {
+        check(
+            Type::Bool,
+            indoc! {"
+                match x {
+                    true => 0,
+                    _ => 1,
+                }
+            "},
+            expect![[r#"
+                x is false
+                  branch 1
+                x is true
+                  branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn bool_duplicate_false() {
+        check(
+            Type::Bool,
+            indoc! {"
+                match x {
+                    true => 0,
+                    false => 1,
+                    false => 2,
+                }
+            "},
+            expect![[r#"
+                error: Unreachable match arm for variant 'false'
+                    false => 2,
+                    ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn bool_unreachable_after_wildcard() {
+        check(
+            Type::Bool,
+            indoc! {"
+                match x {
+                    _ => 0,
+                    true => 1,
+                }
+            "},
+            expect![[r#"
+                error: Unreachable match arm for variant 'true'
+                    true => 1,
+                    ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn bool_unreachable_after_binding() {
+        check(
+            Type::Bool,
+            indoc! {"
+                match x {
+                    b => 0,
+                    true => 1,
+                }
+            "},
+            expect![[r#"
+                error: Unreachable match arm for variant 'true'
+                    true => 1,
+                    ^^^^
+            "#]],
+        );
+    }
+
+    // Additional Option tests
+
+    #[test]
+    fn option_wildcard_covers_all() {
+        check(
+            Type::Option(Box::new(Type::String)),
+            indoc! {"
+                match x {
+                    _ => 0,
+                }
+            "},
+            expect![[r#"
+                branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn option_some_with_wildcard() {
+        check(
+            Type::Option(Box::new(Type::String)),
+            indoc! {"
+                match x {
+                    Some(v) => 0,
+                    _ => 1,
+                }
+            "},
+            expect![[r#"
+                x is Some(v0)
+                  let v = v0
+                  branch 0
+                x is None
+                  branch 1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn option_duplicate_some() {
+        check(
+            Type::Option(Box::new(Type::String)),
+            indoc! {"
+                match x {
+                    Some(_) => 0,
+                    Some(_) => 1,
+                    None => 2,
+                }
+            "},
+            expect![[r#"
+                error: Unreachable match arm for variant 'Some(_)'
+                    Some(_) => 1,
+                    ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn option_duplicate_none() {
+        check(
+            Type::Option(Box::new(Type::String)),
+            indoc! {"
+                match x {
+                    Some(_) => 0,
+                    None => 1,
+                    None => 2,
+                }
+            "},
+            expect![[r#"
+                error: Unreachable match arm for variant 'None'
+                    None => 2,
+                    ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn nested_option_missing_some_none() {
+        check(
+            Type::Option(Box::new(Type::Option(Box::new(Type::Int)))),
+            indoc! {"
+                match x {
+                    Some(Some(_)) => 0,
+                    None => 1,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: Some(None)
+                match x {
+                ^^^^^^^^^
+                    Some(Some(_)) => 0,
+                ^^^^^^^^^^^^^^^^^^^^^^^
+                    None => 1,
+                ^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn nested_option_with_bool_missing() {
+        check(
+            Type::Option(Box::new(Type::Option(Box::new(Type::Bool)))),
+            indoc! {"
+                match x {
+                    Some(Some(false)) => 0,
+                    Some(None) => 1,
+                    None => 2,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: Some(Some(true))
+                match x {
+                ^^^^^^^^^
+                    Some(Some(false)) => 0,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    Some(None) => 1,
+                ^^^^^^^^^^^^^^^^^^^^
+                    None => 2,
+                ^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn nested_option_with_bool_exhaustive() {
+        check(
+            Type::Option(Box::new(Type::Option(Box::new(Type::Bool)))),
+            indoc! {"
+                match x {
+                    Some(Some(true)) => 0,
+                    Some(Some(false)) => 1,
+                    Some(None) => 2,
+                    None => 3,
+                }
+            "},
+            expect![[r#"
+                x is Some(v0)
+                  v0 is Some(v1)
+                    v1 is false
+                      branch 1
+                    v1 is true
+                      branch 0
+                  v0 is None
+                    branch 2
+                x is None
+                  branch 3
+            "#]],
+        );
+    }
+
+    // Additional Enum tests
+
+    #[test]
+    fn enum_binding_covers_all() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Color").unwrap(),
+                variants: vec![
+                    TypeName::new("Red").unwrap(),
+                    TypeName::new("Green").unwrap(),
+                    TypeName::new("Blue").unwrap(),
+                ],
+            },
+            indoc! {"
+                match x {
+                    c => 0,
+                }
+            "},
+            expect![[r#"
+                let c = x
+                branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_duplicate_variant() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Color").unwrap(),
+                variants: vec![
+                    TypeName::new("Red").unwrap(),
+                    TypeName::new("Green").unwrap(),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Color::Red => 0,
+                    Color::Red => 1,
+                    Color::Green => 2,
+                }
+            "},
+            expect![[r#"
+                error: Unreachable match arm for variant 'Color::Red'
+                    Color::Red => 1,
+                    ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_multiple_wildcards() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Color").unwrap(),
+                variants: vec![
+                    TypeName::new("Red").unwrap(),
+                    TypeName::new("Green").unwrap(),
+                ],
+            },
+            indoc! {"
+                match x {
+                    _ => 0,
+                    _ => 1,
+                }
+            "},
+            expect![[r#"
+                error: Unreachable match arm for variant '_'
+                    _ => 1,
+                    ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_missing_multiple_variants() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Color").unwrap(),
+                variants: vec![
+                    TypeName::new("Red").unwrap(),
+                    TypeName::new("Green").unwrap(),
+                    TypeName::new("Blue").unwrap(),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Color::Red => 0,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: Color::Blue, Color::Green
+                match x {
+                ^^^^^^^^^
+                    Color::Red => 0,
+                ^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    // Additional Record tests
+
+    #[test]
+    fn record_with_wildcard_fields() {
+        check(
+            Type::Record {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("User").unwrap(),
+                fields: vec![
+                    (FieldName::new("name").unwrap(), Type::String),
+                    (FieldName::new("age").unwrap(), Type::Int),
+                ],
+            },
+            indoc! {"
+                match x {
+                    User(name: _, age: _) => 0,
+                }
+            "},
+            expect![[r#"
+                x is User(name: v0, age: v1)
+                  branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn record_with_nested_option() {
+        check(
+            Type::Record {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("User").unwrap(),
+                fields: vec![
+                    (FieldName::new("name").unwrap(), Type::String),
+                    (FieldName::new("email").unwrap(), Type::Option(Box::new(Type::String))),
+                ],
+            },
+            indoc! {"
+                match x {
+                    User(name: n, email: Some(e)) => 0,
+                    User(name: n, email: None) => 1,
+                }
+            "},
+            expect![[r#"
+                x is User(name: v0, email: v1)
+                  v1 is Some(v2)
+                    let n = v0
+                    let e = v2
+                    branch 0
+                  v1 is None
+                    let n = v0
+                    branch 1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn record_with_option_field_missing_none() {
+        check(
+            Type::Record {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("User").unwrap(),
+                fields: vec![
+                    (FieldName::new("name").unwrap(), Type::String),
+                    (FieldName::new("email").unwrap(), Type::Option(Box::new(Type::String))),
+                ],
+            },
+            indoc! {"
+                match x {
+                    User(name: n, email: Some(e)) => 0,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: User(name: _, email: None)
+                match x {
+                ^^^^^^^^^
+                    User(name: n, email: Some(e)) => 0,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn record_with_bool_fields_missing() {
+        check(
+            Type::Record {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Foo").unwrap(),
+                fields: vec![
+                    (FieldName::new("a").unwrap(), Type::Bool),
+                    (FieldName::new("b").unwrap(), Type::Bool),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Foo(a: true, b: true) => 0,
+                    Foo(a: true, b: false) => 1,
+                    Foo(a: false, b: true) => 2,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: Foo(a: false, b: false)
+                match x {
+                ^^^^^^^^^
+                    Foo(a: true, b: true) => 0,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    Foo(a: true, b: false) => 1,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    Foo(a: false, b: true) => 2,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn option_of_record_exhaustive() {
+        check(
+            Type::Option(Box::new(Type::Record {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("User").unwrap(),
+                fields: vec![
+                    (FieldName::new("name").unwrap(), Type::String),
+                    (FieldName::new("age").unwrap(), Type::Int),
+                ],
+            })),
+            indoc! {"
+                match x {
+                    Some(User(name: n, age: a)) => 0,
+                    None => 1,
+                }
+            "},
+            expect![[r#"
+                x is Some(v0)
+                  v0 is User(name: v1, age: v2)
+                    let n = v1
+                    let a = v2
+                    branch 0
+                x is None
+                  branch 1
+            "#]],
+        );
+    }
 }

@@ -758,62 +758,6 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_match_with_missing_variant() {
-        check(
-            indoc! {"
-                enum Color {
-                    Red,
-                    Green,
-                    Blue,
-                }
-            "},
-            &[("color", "Color")],
-            indoc! {r#"
-                match color {
-                    Color::Red => "red",
-                    Color::Green => "green",
-                }
-            "#},
-            expect![[r#"
-                error: Match expression is missing arms for: Color::Blue
-                match color {
-                ^^^^^^^^^^^^^
-                    Color::Red => "red",
-                ^^^^^^^^^^^^^^^^^^^^^^^^
-                    Color::Green => "green",
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_match_with_duplicate_variant() {
-        check(
-            indoc! {"
-                enum Color {
-                    Red,
-                    Green,
-                }
-            "},
-            &[("color", "Color")],
-            indoc! {r#"
-                match color {
-                    Color::Red => 0,
-                    Color::Red => 1,
-                    Color::Green => 2,
-                }
-            "#},
-            expect![[r#"
-                error: Unreachable match arm for variant 'Color::Red'
-                    Color::Red => 1,
-                    ^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
     fn should_reject_match_with_wrong_enum_in_pattern() {
         check(
             indoc! {"
@@ -1023,57 +967,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn should_reject_match_with_pattern_after_wildcard() {
-        check(
-            indoc! {"
-                enum Color {
-                    Red,
-                    Green,
-                    Blue,
-                }
-            "},
-            &[("color", "Color")],
-            indoc! {r#"
-                match color {
-                    Color::Red => "red",
-                    _ => "other",
-                    Color::Blue => "blue",
-                }
-            "#},
-            expect![[r#"
-                error: Unreachable match arm for variant 'Color::Blue'
-                    Color::Blue => "blue",
-                    ^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_match_with_multiple_wildcards() {
-        check(
-            indoc! {"
-                enum Color {
-                    Red,
-                    Green,
-                    Blue,
-                }
-            "},
-            &[("color", "Color")],
-            indoc! {r#"
-                match color {
-                    _ => "first",
-                    _ => "second",
-                }
-            "#},
-            expect![[r#"
-                error: Unreachable match arm for variant '_'
-                    _ => "second",
-                    ^
-            "#]],
-        );
-    }
-
     ///////////////////////////////////////////////////////////////////////////
     /// BOOLEAN MATCH                                                       ///
     ///////////////////////////////////////////////////////////////////////////
@@ -1130,70 +1023,6 @@ mod tests {
             "#},
             expect![[r#"
                 "always"
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_boolean_match_missing_false() {
-        check(
-            "",
-            &[("flag", "Bool")],
-            indoc! {r#"
-                match flag {
-                    true => 1,
-                }
-            "#},
-            expect![[r#"
-                error: Match expression is missing arms for: false
-                match flag {
-                ^^^^^^^^^^^^
-                    true => 1,
-                ^^^^^^^^^^^^^^
-                }
-                ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_boolean_match_missing_true() {
-        check(
-            "",
-            &[("flag", "Bool")],
-            indoc! {r#"
-                match flag {
-                    false => "no",
-                }
-            "#},
-            expect![[r#"
-                error: Match expression is missing arms for: true
-                match flag {
-                ^^^^^^^^^^^^
-                    false => "no",
-                ^^^^^^^^^^^^^^^^^^
-                }
-                ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_boolean_match_duplicate_true() {
-        check(
-            "",
-            &[("flag", "Bool")],
-            indoc! {r#"
-                match flag {
-                    true => 0,
-                    true => 1,
-                    false => 2,
-                }
-            "#},
-            expect![[r#"
-                error: Unreachable match arm for variant 'true'
-                    true => 1,
-                    ^^^^
             "#]],
         );
     }
@@ -1349,103 +1178,6 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_option_match_missing_some() {
-        check(
-            "",
-            &[("opt", "Option[Int]")],
-            indoc! {r#"
-                match opt {
-                    None => "empty",
-                }
-            "#},
-            expect![[r#"
-                error: Match expression is missing arms for: Some(_)
-                match opt {
-                ^^^^^^^^^^^
-                    None => "empty",
-                ^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_option_match_missing_none() {
-        check(
-            "",
-            &[("opt", "Option[Int]")],
-            indoc! {r#"
-                match opt {
-                    Some(_) => 1,
-                }
-            "#},
-            expect![[r#"
-                error: Match expression is missing arms for: None
-                match opt {
-                ^^^^^^^^^^^
-                    Some(_) => 1,
-                ^^^^^^^^^^^^^^^^^
-                }
-                ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_non_exhaustive_nested_option_match() {
-        check(
-            "",
-            &[("opt", "Option[Option[Int]]")],
-            indoc! {r#"
-                match opt {
-                    Some(Some(_)) => 0,
-                    None          => 1,
-                }
-            "#},
-            expect![[r#"
-                error: Match expression is missing arms for: Some(None)
-                match opt {
-                ^^^^^^^^^^^
-                    Some(Some(_)) => 0,
-                ^^^^^^^^^^^^^^^^^^^^^^^
-                    None          => 1,
-                ^^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_non_exhaustive_nested_option_match_with_bool() {
-        check(
-            "",
-            &[("opt", "Option[Option[Bool]]")],
-            indoc! {r#"
-                match opt {
-                    Some(Some(false)) => 0,
-                    Some(None)        => 1,
-                    None              => 2,
-                }
-            "#},
-            expect![[r#"
-                error: Match expression is missing arms for: Some(Some(true))
-                match opt {
-                ^^^^^^^^^^^
-                    Some(Some(false)) => 0,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                    Some(None)        => 1,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                    None              => 2,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
-            "#]],
-        );
-    }
-
-    #[test]
     fn should_accept_exhaustive_nested_option_match() {
         check(
             "",
@@ -1489,46 +1221,6 @@ mod tests {
                   },
                   None => 2,
                 }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_option_match_duplicate_some() {
-        check(
-            "",
-            &[("opt", "Option[Int]")],
-            indoc! {r#"
-                match opt {
-                    Some(_) => 0,
-                    Some(_) => 1,
-                    None    => 2,
-                }
-            "#},
-            expect![[r#"
-                error: Unreachable match arm for variant 'Some(_)'
-                    Some(_) => 1,
-                    ^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_option_match_duplicate_none() {
-        check(
-            "",
-            &[("opt", "Option[Int]")],
-            indoc! {r#"
-                match opt {
-                    Some(_) => 0,
-                    None    => 1,
-                    None    => 2,
-                }
-            "#},
-            expect![[r#"
-                error: Unreachable match arm for variant 'None'
-                    None    => 2,
-                    ^^^^
             "#]],
         );
     }
@@ -1690,40 +1382,6 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_non_exhaustive_option_match_with_nested_enum() {
-        check(
-            indoc! {"
-                enum Color {
-                    Red,
-                    Green,
-                    Blue,
-                }
-            "},
-            &[("opt", "Option[Color]")],
-            indoc! {r#"
-                match opt {
-                    Some(Color::Red)   => "red",
-                    Some(Color::Green) => "green",
-                    None               => "none",
-                }
-            "#},
-            expect![[r#"
-                error: Match expression is missing arms for: Some(Color::Blue)
-                match opt {
-                ^^^^^^^^^^^
-                    Some(Color::Red)   => "red",
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                    Some(Color::Green) => "green",
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                    None               => "none",
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
-            "#]],
-        );
-    }
-
-    #[test]
     fn should_reject_deeply_nested_option_pattern_when_inner_type_is_bool() {
         check(
             "",
@@ -1876,44 +1534,6 @@ mod tests {
                   true => false,
                   false => let other = flag in other,
                 }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_unreachable_binding_pattern() {
-        check(
-            "",
-            &[("flag", "Bool")],
-            indoc! {r#"
-                match flag {
-                    x => x,
-                    y => y,
-                }
-            "#},
-            expect![[r#"
-                error: Unreachable match arm for variant 'y'
-                    y => y,
-                    ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_pattern_after_binding() {
-        check(
-            "",
-            &[("flag", "Bool")],
-            indoc! {r#"
-                match flag {
-                    x    => x,
-                    true => true,
-                }
-            "#},
-            expect![[r#"
-                error: Unreachable match arm for variant 'true'
-                    true => true,
-                    ^^^^
             "#]],
         );
     }
@@ -2214,60 +1834,6 @@ mod tests {
                   Some(v0) => let v1 = v0.name in let v2 = v0.age in let n = v1 in n,
                   None => "Default User",
                 }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_non_exhaustive_record_match_with_option_field() {
-        check(
-            indoc! {"
-                record User {
-                    name: Option[String],
-                    age: Int,
-                }
-            "},
-            &[("user", "User")],
-            indoc! {r#"
-                match user {
-                    User(name: Some(n), age: _) => n,
-                }
-            "#},
-            expect![[r#"
-                error: Match expression is missing arms for: User(name: None, age: _)
-                match user {
-                ^^^^^^^^^^^^
-                    User(name: Some(n), age: _) => n,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_non_exhaustive_record_match_with_bool_fields() {
-        check(
-            indoc! {"
-                record Foo {
-                    a: Bool,
-                    b: Bool,
-                }
-            "},
-            &[("foo", "Foo")],
-            indoc! {r#"
-                match foo {
-                    Foo(a: true, b: false) => "matched",
-                }
-            "#},
-            expect![[r#"
-                error: Match expression is missing arms for: Foo(a: _, b: true), Foo(a: false, b: false)
-                match foo {
-                ^^^^^^^^^^^
-                    Foo(a: true, b: false) => "matched",
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                }
-                ^
             "#]],
         );
     }
