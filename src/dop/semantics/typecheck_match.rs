@@ -78,7 +78,7 @@ pub fn typecheck_match(
 
 /// Recursively validate that a pattern is compatible with the subject type,
 /// i.e. the type of the expression that is being matched.
-fn validate_pattern_type(
+pub fn validate_pattern_type(
     pattern: &ParsedMatchPattern,
     subject_type: &Type,
 ) -> Result<(), TypeError> {
@@ -209,7 +209,7 @@ fn validate_pattern_type(
 
 /// Extract binding variables from a pattern and return them with their types and ranges.
 /// The type is derived from the subject type and the position in the pattern.
-fn extract_bindings_from_pattern(
+pub fn extract_bindings_from_pattern(
     pattern: &ParsedMatchPattern,
     subject_type: &Type,
 ) -> Vec<(String, Type, DocumentRange)> {

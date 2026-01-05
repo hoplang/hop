@@ -6,8 +6,8 @@ use crate::hop::semantics::typed_node::{TypedAttribute, TypedAttributeValue, Typ
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use crate::inlined::inlined_ast::{
-    InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
-    InlinedParameter,
+    InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedMatchCase,
+    InlinedNode, InlinedParameter,
 };
 use anyhow::Result;
 use std::collections::{BTreeMap, HashMap};
@@ -266,6 +266,17 @@ impl Inliner {
 
             TypedNode::Doctype { value } => vec![InlinedNode::Doctype {
                 value: value.clone(),
+            }],
+
+            TypedNode::Match { subject, cases } => vec![InlinedNode::Match {
+                subject: subject.clone(),
+                cases: cases
+                    .iter()
+                    .map(|case| InlinedMatchCase {
+                        pattern: case.pattern.clone(),
+                        children: Self::inline_nodes(&case.children, slot_content, asts),
+                    })
+                    .collect(),
             }],
 
             TypedNode::Placeholder => panic!(),

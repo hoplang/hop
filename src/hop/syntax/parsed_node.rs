@@ -4,6 +4,7 @@ use std::fmt::{self, Display};
 use pretty::BoxDoc;
 
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::dop::syntax::parsed::ParsedMatchPattern;
 use crate::dop::ParsedExpr;
 use crate::dop::VarName;
 
@@ -33,6 +34,39 @@ impl ParsedArgument {
         BoxDoc::text(self.var_name.as_str())
             .append(BoxDoc::text(": "))
             .append(self.var_expr.to_doc())
+    }
+}
+
+/// A case in a match node.
+/// E.g. <match {x}>
+///        <case {Some(y)}>...</case>
+///        ^^^^^^^^^^^^^^^^^^^^^^^
+///      </match>
+#[derive(Debug, Clone)]
+pub struct ParsedMatchCase {
+    pub pattern: ParsedMatchPattern,
+    pub pattern_range: DocumentRange,
+    pub children: Vec<ParsedNode>,
+    pub range: DocumentRange,
+}
+
+impl ParsedMatchCase {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        BoxDoc::text("<case {")
+            .append(BoxDoc::text(self.pattern.to_string()))
+            .append(BoxDoc::text("}>"))
+            .append(if self.children.is_empty() {
+                BoxDoc::nil()
+            } else {
+                BoxDoc::line()
+                    .append(BoxDoc::intersperse(
+                        self.children.iter().map(|c| c.to_doc()),
+                        BoxDoc::line(),
+                    ))
+                    .nest(2)
+                    .append(BoxDoc::line())
+            })
+            .append(BoxDoc::text("</case>"))
     }
 }
 
@@ -88,6 +122,17 @@ pub enum ParsedNode {
         range: DocumentRange,
     },
 
+    /// A Match node contains pattern matching over a subject expression.
+    /// E.g. <match {x}>
+    ///        <case {Some(y)}>found {y}!</case>
+    ///        <case {None}>not found</case>
+    ///      </match>
+    Match {
+        subject: ParsedExpr,
+        cases: Vec<ParsedMatchCase>,
+        range: DocumentRange,
+    },
+
     /// A Doctype node represents a doctype, e.g. a <!DOCTYPE html>
     Doctype {
         value: StringSpan,
@@ -125,6 +170,7 @@ impl ParsedNode {
             ParsedNode::For { children, .. } => children,
             ParsedNode::Html { children, .. } => children,
             ParsedNode::Placeholder { children, .. } => children,
+            ParsedNode::Match { .. } => &[], // children are inside cases
             ParsedNode::Doctype { .. } => &[],
             ParsedNode::Text { .. } => &[],
             ParsedNode::TextExpression { .. } => &[],
@@ -268,6 +314,25 @@ impl ParsedNode {
                 })
                 .append(BoxDoc::text("</for>")),
             ParsedNode::Doctype { value, .. } => BoxDoc::text(value.as_str()),
+            ParsedNode::Match {
+                subject,
+                cases,
+                ..
+            } => BoxDoc::text("<match {")
+                .append(subject.to_doc())
+                .append(BoxDoc::text("}>"))
+                .append(if cases.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            cases.iter().map(|c| c.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .nest(2)
+                        .append(BoxDoc::line())
+                })
+                .append(BoxDoc::text("</match>")),
             ParsedNode::Html {
                 tag_name,
                 attributes,
@@ -331,6 +396,7 @@ impl Ranged for ParsedNode {
             | ParsedNode::ComponentReference { range, .. }
             | ParsedNode::If { range, .. }
             | ParsedNode::For { range, .. }
+            | ParsedNode::Match { range, .. }
             | ParsedNode::Html { range, .. }
             | ParsedNode::Placeholder { range, .. }
             | ParsedNode::Doctype { range, .. } => range,

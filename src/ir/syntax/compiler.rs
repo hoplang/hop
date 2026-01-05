@@ -259,6 +259,10 @@ impl Compiler {
                     body: self.compile_nodes(children, slot_content.cloned()),
                 });
             }
+
+            InlinedNode::Match { .. } => {
+                todo!("IR compilation for match statements")
+            }
         }
     }
 

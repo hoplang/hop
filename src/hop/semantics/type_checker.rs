@@ -1,7 +1,9 @@
 use super::type_error::TypeError;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::dop::semantics::pat_match::{Compiler as PatMatchCompiler, Variable as PatMatchVariable};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
+use crate::dop::syntax::parsed::{ParsedExpr, ParsedMatchArm};
 use crate::dop::{self, Type, TypedExpr, VarName, resolve_type};
 use crate::environment::Environment;
 use crate::error_collector::ErrorCollector;
@@ -13,7 +15,7 @@ use std::fmt::{self, Display};
 use crate::hop::semantics::typed_ast::{
     TypedAst, TypedComponentDeclaration, TypedEnumDeclaration, TypedRecordDeclaration,
 };
-use crate::hop::semantics::typed_node::{TypedAttribute, TypedAttributeValue, TypedNode};
+use crate::hop::semantics::typed_node::{TypedAttribute, TypedAttributeValue, TypedMatchCase, TypedNode};
 use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::syntax::parsed_ast::{ParsedAst, ParsedAttributeValue};
 use crate::hop::syntax::parsed_node::ParsedNode;
@@ -762,6 +764,135 @@ fn typecheck_node(
             } else {
                 None
             }
+        }
+
+        ParsedNode::Match {
+            subject,
+            cases,
+            range,
+        } => {
+            // Typecheck the subject expression
+            let typed_subject = errors.ok_or_add(
+                dop::typecheck_expr(subject, env, type_env, annotations, None).map_err(Into::into),
+            )?;
+            let subject_type = typed_subject.as_type().clone();
+
+            // Check if the subject type supports pattern matching
+            let supports_pattern_matching = matches!(
+                &subject_type,
+                Type::Enum { .. } | Type::Bool | Type::Option(_) | Type::Record { .. }
+            );
+
+            // Report error if type doesn't support pattern matching
+            if !supports_pattern_matching {
+                errors.push(
+                    dop::semantics::type_error::TypeError::MatchNotImplementedForType {
+                        found: subject_type.to_string(),
+                        range: subject.range().clone(),
+                    }
+                    .into(),
+                );
+            }
+
+            // Validate all patterns against subject type (only if type supports matching)
+            let mut all_patterns_valid = supports_pattern_matching;
+            if supports_pattern_matching {
+                for case in cases {
+                    if let Err(err) = dop::validate_pattern_type(&case.pattern, &subject_type) {
+                        errors.push(err.into());
+                        all_patterns_valid = false;
+                    }
+                }
+            }
+
+            // Run exhaustiveness check only if the type supports pattern matching
+            // and all patterns are valid (to avoid spurious errors)
+            if supports_pattern_matching && all_patterns_valid {
+                // Create ParsedMatchArm instances from the cases (with dummy expressions for the pattern matching algorithm)
+                let arms: Vec<ParsedMatchArm> = cases
+                    .iter()
+                    .map(|case| ParsedMatchArm {
+                        pattern: case.pattern.clone(),
+                        // We use a dummy expression since we only care about pattern exhaustiveness
+                        body: ParsedExpr::BooleanLiteral {
+                            value: true,
+                            range: case.range.clone(),
+                        },
+                    })
+                    .collect();
+
+                let subject_var = PatMatchVariable::new("__match_subject".to_string(), subject_type.clone());
+
+                // Run the pattern matching compiler to check exhaustiveness
+                if let Err(err) = PatMatchCompiler::new(0).compile(&arms, &subject_var, range, type_env) {
+                    errors.push(err.into());
+                }
+            }
+
+            // Typecheck case children
+            let mut typed_cases = Vec::new();
+            for case in cases {
+                // Skip cases with invalid patterns (already reported above)
+                if dop::validate_pattern_type(&case.pattern, &subject_type).is_err() {
+                    continue;
+                }
+
+                // Extract bindings from pattern
+                let bindings = dop::extract_bindings_from_pattern(&case.pattern, &subject_type);
+
+                // Push bindings into scope
+                let mut pushed_count = 0;
+                for (name, typ, range) in &bindings {
+                    match env.push(name.clone(), typ.clone()) {
+                        Ok(_) => {
+                            annotations.push(TypeAnnotation {
+                                range: range.clone(),
+                                typ: typ.clone(),
+                                name: name.clone(),
+                            });
+                            pushed_count += 1;
+                        }
+                        Err(_) => {
+                            errors.push(TypeError::VariableIsAlreadyDefined {
+                                var: name.clone(),
+                                range: range.clone(),
+                            });
+                        }
+                    }
+                }
+
+                // Typecheck case children
+                let typed_children: Vec<_> = case
+                    .children
+                    .iter()
+                    .filter_map(|child| {
+                        typecheck_node(child, state, env, annotations, errors, type_env)
+                    })
+                    .collect();
+
+                // Pop bindings and check for unused
+                for _ in 0..pushed_count {
+                    let (name, _, accessed) = env.pop();
+                    if !accessed {
+                        // Find the range for this binding
+                        if let Some((_, _, range)) = bindings.iter().find(|(n, _, _)| *n == name) {
+                            errors.push(TypeError::UnusedVariable {
+                                var_name: range.clone(),
+                            });
+                        }
+                    }
+                }
+
+                typed_cases.push(TypedMatchCase {
+                    pattern: case.pattern.clone(),
+                    children: typed_children,
+                });
+            }
+
+            Some(TypedNode::Match {
+                subject: typed_subject,
+                cases: typed_cases,
+            })
         }
 
         ParsedNode::Placeholder { .. } => Some(TypedNode::Placeholder),
@@ -3441,6 +3572,713 @@ mod tests {
                 4 | <Main>
                 5 |   <Greeting {name: "World"} />
                   |                    ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_node_with_option() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {x: Option[String]}>
+                    <match {x}>
+                        <case {Some(y)}>
+                            found {y}
+                        </case>
+                        <case {None}>
+                            nothing
+                        </case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                x: Option[String]
+                  --> main.hop (line 1, col 8)
+                 1 | <Main {x: Option[String]}>
+                   |        ^
+
+                x: Option[String]
+                  --> main.hop (line 2, col 13)
+                 1 | <Main {x: Option[String]}>
+                 2 |     <match {x}>
+                   |             ^
+
+                y: String
+                  --> main.hop (line 3, col 21)
+                 2 |     <match {x}>
+                 3 |         <case {Some(y)}>
+                   |                     ^
+
+                y: String
+                  --> main.hop (line 4, col 20)
+                 3 |         <case {Some(y)}>
+                 4 |             found {y}
+                   |                    ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_node_with_enum() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Color { Red, Green, Blue }
+                <Main {c: Color}>
+                    <match {c}>
+                        <case {Color::Red}>red</case>
+                        <case {Color::Green}>green</case>
+                        <case {Color::Blue}>blue</case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                c: main::Color
+                  --> main.hop (line 2, col 8)
+                1 | enum Color { Red, Green, Blue }
+                2 | <Main {c: Color}>
+                  |        ^
+
+                c: main::Color
+                  --> main.hop (line 3, col 13)
+                2 | <Main {c: Color}>
+                3 |     <match {c}>
+                  |             ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_node_with_bool() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {flag: Bool}>
+                    <match {flag}>
+                        <case {true}>yes</case>
+                        <case {false}>no</case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                flag: Bool
+                  --> main.hop (line 1, col 8)
+                1 | <Main {flag: Bool}>
+                  |        ^^^^
+
+                flag: Bool
+                  --> main.hop (line 2, col 13)
+                1 | <Main {flag: Bool}>
+                2 |     <match {flag}>
+                  |             ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_node_with_pattern_type_mismatch() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {flag: Bool}>
+                    <match {flag}>
+                        <case {Some(x)}>yes</case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Match pattern type mismatch: expected boolean, found Some(x)
+                  --> main.hop (line 3, col 16)
+                2 |     <match {flag}>
+                3 |         <case {Some(x)}>yes</case>
+                  |                ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_allow_binding_in_match_case_children() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {x: Option[String]}>
+                    <match {x}>
+                        <case {Some(name)}>
+                            <div class={name}></div>
+                        </case>
+                        <case {None}>
+                            nothing
+                        </case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                x: Option[String]
+                  --> main.hop (line 1, col 8)
+                 1 | <Main {x: Option[String]}>
+                   |        ^
+
+                x: Option[String]
+                  --> main.hop (line 2, col 13)
+                 1 | <Main {x: Option[String]}>
+                 2 |     <match {x}>
+                   |             ^
+
+                name: String
+                  --> main.hop (line 3, col 21)
+                 2 |     <match {x}>
+                 3 |         <case {Some(name)}>
+                   |                     ^^^^
+
+                name: String
+                  --> main.hop (line 4, col 25)
+                 3 |         <case {Some(name)}>
+                 4 |             <div class={name}></div>
+                   |                         ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_node_with_non_matchable_type() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {name: String}>
+                    <match {name}>
+                        <case {Some(x)}>yes</case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Match is not implemented for type String
+                  --> main.hop (line 2, col 13)
+                1 | <Main {name: String}>
+                2 |     <match {name}>
+                  |             ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_node_with_missing_enum_variants() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Color { Red, Green, Blue }
+                <Main {c: Color}>
+                    <match {c}>
+                        <case {Color::Red}>red</case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Match expression is missing arms for: Color::Blue, Color::Green
+                  --> main.hop (line 3, col 5)
+                2 | <Main {c: Color}>
+                3 |     <match {c}>
+                  |     ^^^^^^^^^^^
+                4 |         <case {Color::Red}>red</case>
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                5 |     </match>
+                  | ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_node_with_missing_option_arm() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {x: Option[String]}>
+                    <match {x}>
+                        <case {Some(y)}>{y}</case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Match expression is missing arms for: None
+                  --> main.hop (line 2, col 5)
+                1 | <Main {x: Option[String]}>
+                2 |     <match {x}>
+                  |     ^^^^^^^^^^^
+                3 |         <case {Some(y)}>{y}</case>
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                4 |     </match>
+                  | ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_node_with_missing_bool_arm() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {flag: Bool}>
+                    <match {flag}>
+                        <case {true}>yes</case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Match expression is missing arms for: false
+                  --> main.hop (line 2, col 5)
+                1 | <Main {flag: Bool}>
+                2 |     <match {flag}>
+                  |     ^^^^^^^^^^^^^^
+                3 |         <case {true}>yes</case>
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                4 |     </match>
+                  | ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_node_with_wrong_enum_pattern() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Color { Red, Green }
+                enum Size { Small, Large }
+                <Main {c: Color}>
+                    <match {c}>
+                        <case {Color::Red}>red</case>
+                        <case {Size::Small}>small</case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Match pattern enum 'Size' does not match subject enum 'Color'
+                  --> main.hop (line 6, col 16)
+                5 |         <case {Color::Red}>red</case>
+                6 |         <case {Size::Small}>small</case>
+                  |                ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_unused_binding_in_match_case() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {x: Option[String]}>
+                    <match {x}>
+                        <case {Some(unused)}>
+                            found something
+                        </case>
+                        <case {None}>
+                            nothing
+                        </case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Unused variable unused
+                  --> main.hop (line 3, col 21)
+                 2 |     <match {x}>
+                 3 |         <case {Some(unused)}>
+                   |                     ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_binding_that_shadows_parameter() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {x: Option[String]}>
+                    <match {x}>
+                        <case {Some(x)}>
+                            {x}
+                        </case>
+                        <case {None}>
+                            nothing
+                        </case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Variable x is already defined
+                  --> main.hop (line 3, col 21)
+                 2 |     <match {x}>
+                 3 |         <case {Some(x)}>
+                   |                     ^
+
+                error: Expected string for text expression, got Option[String]
+                  --> main.hop (line 4, col 14)
+                 3 |         <case {Some(x)}>
+                 4 |             {x}
+                   |              ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_nested_match_nodes() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {x: Option[Option[String]]}>
+                    <match {x}>
+                        <case {Some(inner)}>
+                            <match {inner}>
+                                <case {Some(val)}>{val}</case>
+                                <case {None}>inner none</case>
+                            </match>
+                        </case>
+                        <case {None}>
+                            outer none
+                        </case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                x: Option[Option[String]]
+                  --> main.hop (line 1, col 8)
+                 1 | <Main {x: Option[Option[String]]}>
+                   |        ^
+
+                x: Option[Option[String]]
+                  --> main.hop (line 2, col 13)
+                 1 | <Main {x: Option[Option[String]]}>
+                 2 |     <match {x}>
+                   |             ^
+
+                inner: Option[String]
+                  --> main.hop (line 3, col 21)
+                 2 |     <match {x}>
+                 3 |         <case {Some(inner)}>
+                   |                     ^^^^^
+
+                inner: Option[String]
+                  --> main.hop (line 4, col 21)
+                 3 |         <case {Some(inner)}>
+                 4 |             <match {inner}>
+                   |                     ^^^^^
+
+                val: String
+                  --> main.hop (line 5, col 29)
+                 4 |             <match {inner}>
+                 5 |                 <case {Some(val)}>{val}</case>
+                   |                             ^^^
+
+                val: String
+                  --> main.hop (line 5, col 36)
+                 4 |             <match {inner}>
+                 5 |                 <case {Some(val)}>{val}</case>
+                   |                                    ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_node_inside_for_loop() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {items: Array[Option[String]]}>
+                    <for {item in items}>
+                        <match {item}>
+                            <case {Some(val)}>{val}</case>
+                            <case {None}>-</case>
+                        </match>
+                    </for>
+                </Main>
+            "#},
+            expect![[r#"
+                items: Array[Option[String]]
+                  --> main.hop (line 1, col 8)
+                1 | <Main {items: Array[Option[String]]}>
+                  |        ^^^^^
+
+                items: Array[Option[String]]
+                  --> main.hop (line 2, col 19)
+                1 | <Main {items: Array[Option[String]]}>
+                2 |     <for {item in items}>
+                  |                   ^^^^^
+
+                item: Option[String]
+                  --> main.hop (line 2, col 11)
+                1 | <Main {items: Array[Option[String]]}>
+                2 |     <for {item in items}>
+                  |           ^^^^
+
+                item: Option[String]
+                  --> main.hop (line 3, col 17)
+                2 |     <for {item in items}>
+                3 |         <match {item}>
+                  |                 ^^^^
+
+                val: String
+                  --> main.hop (line 4, col 25)
+                3 |         <match {item}>
+                4 |             <case {Some(val)}>{val}</case>
+                  |                         ^^^
+
+                val: String
+                  --> main.hop (line 4, col 32)
+                3 |         <match {item}>
+                4 |             <case {Some(val)}>{val}</case>
+                  |                                ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_node_with_wildcard_binding() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {x: Option[String]}>
+                    <match {x}>
+                        <case {Some(_)}>
+                            found something
+                        </case>
+                        <case {None}>
+                            nothing
+                        </case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                x: Option[String]
+                  --> main.hop (line 1, col 8)
+                 1 | <Main {x: Option[String]}>
+                   |        ^
+
+                x: Option[String]
+                  --> main.hop (line 2, col 13)
+                 1 | <Main {x: Option[String]}>
+                 2 |     <match {x}>
+                   |             ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_multiple_bindings_with_same_name_in_different_cases() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {r1: Option[String], r2: Option[Bool]}>
+                    <match {r1}>
+                        <case {Some(val)}>{val}</case>
+                        <case {None}>
+                            <match {r2}>
+                                <case {Some(val)}><if {val}>yes</if></case>
+                                <case {None}>both none</case>
+                            </match>
+                        </case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                r1: Option[String]
+                  --> main.hop (line 1, col 8)
+                 1 | <Main {r1: Option[String], r2: Option[Bool]}>
+                   |        ^^
+
+                r2: Option[Bool]
+                  --> main.hop (line 1, col 28)
+                 1 | <Main {r1: Option[String], r2: Option[Bool]}>
+                   |                            ^^
+
+                r1: Option[String]
+                  --> main.hop (line 2, col 13)
+                 1 | <Main {r1: Option[String], r2: Option[Bool]}>
+                 2 |     <match {r1}>
+                   |             ^^
+
+                val: String
+                  --> main.hop (line 3, col 21)
+                 2 |     <match {r1}>
+                 3 |         <case {Some(val)}>{val}</case>
+                   |                     ^^^
+
+                val: String
+                  --> main.hop (line 3, col 28)
+                 2 |     <match {r1}>
+                 3 |         <case {Some(val)}>{val}</case>
+                   |                            ^^^
+
+                r2: Option[Bool]
+                  --> main.hop (line 5, col 21)
+                 4 |         <case {None}>
+                 5 |             <match {r2}>
+                   |                     ^^
+
+                val: Bool
+                  --> main.hop (line 6, col 29)
+                 5 |             <match {r2}>
+                 6 |                 <case {Some(val)}><if {val}>yes</if></case>
+                   |                             ^^^
+
+                val: Bool
+                  --> main.hop (line 6, col 40)
+                 5 |             <match {r2}>
+                 6 |                 <case {Some(val)}><if {val}>yes</if></case>
+                   |                                        ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_node_with_record_field_subject() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record User { name: Option[String] }
+                <Main {user: User}>
+                    <match {user.name}>
+                        <case {Some(n)}>{n}</case>
+                        <case {None}>anonymous</case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                user: main::User
+                  --> main.hop (line 2, col 8)
+                1 | record User { name: Option[String] }
+                2 | <Main {user: User}>
+                  |        ^^^^
+
+                user: main::User
+                  --> main.hop (line 3, col 13)
+                2 | <Main {user: User}>
+                3 |     <match {user.name}>
+                  |             ^^^^
+
+                n: String
+                  --> main.hop (line 4, col 21)
+                3 |     <match {user.name}>
+                4 |         <case {Some(n)}>{n}</case>
+                  |                     ^
+
+                n: String
+                  --> main.hop (line 4, col 26)
+                3 |     <match {user.name}>
+                4 |         <case {Some(n)}>{n}</case>
+                  |                          ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_node_with_int_type() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {count: Int}>
+                    <match {count}>
+                        <case {Some(x)}>{x}</case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Match is not implemented for type Int
+                  --> main.hop (line 2, col 13)
+                1 | <Main {count: Int}>
+                2 |     <match {count}>
+                  |             ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_node_inside_if_condition() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {show: Bool, x: Option[String]}>
+                    <if {show}>
+                        <match {x}>
+                            <case {Some(v)}>{v}</case>
+                            <case {None}>none</case>
+                        </match>
+                    </if>
+                </Main>
+            "#},
+            expect![[r#"
+                show: Bool
+                  --> main.hop (line 1, col 8)
+                1 | <Main {show: Bool, x: Option[String]}>
+                  |        ^^^^
+
+                x: Option[String]
+                  --> main.hop (line 1, col 20)
+                1 | <Main {show: Bool, x: Option[String]}>
+                  |                    ^
+
+                x: Option[String]
+                  --> main.hop (line 3, col 17)
+                2 |     <if {show}>
+                3 |         <match {x}>
+                  |                 ^
+
+                v: String
+                  --> main.hop (line 4, col 25)
+                3 |         <match {x}>
+                4 |             <case {Some(v)}>{v}</case>
+                  |                         ^
+
+                v: String
+                  --> main.hop (line 4, col 30)
+                3 |         <match {x}>
+                4 |             <case {Some(v)}>{v}</case>
+                  |                              ^
+
+                show: Bool
+                  --> main.hop (line 2, col 10)
+                1 | <Main {show: Bool, x: Option[String]}>
+                2 |     <if {show}>
+                  |          ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_node_in_html_element() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {x: Option[String]}>
+                    <div>
+                        <match {x}>
+                            <case {Some(v)}><span>{v}</span></case>
+                            <case {None}><span>none</span></case>
+                        </match>
+                    </div>
+                </Main>
+            "#},
+            expect![[r#"
+                x: Option[String]
+                  --> main.hop (line 1, col 8)
+                1 | <Main {x: Option[String]}>
+                  |        ^
+
+                x: Option[String]
+                  --> main.hop (line 3, col 17)
+                2 |     <div>
+                3 |         <match {x}>
+                  |                 ^
+
+                v: String
+                  --> main.hop (line 4, col 25)
+                3 |         <match {x}>
+                4 |             <case {Some(v)}><span>{v}</span></case>
+                  |                         ^
+
+                v: String
+                  --> main.hop (line 4, col 36)
+                3 |         <match {x}>
+                4 |             <case {Some(v)}><span>{v}</span></case>
+                  |                                    ^
             "#]],
         );
     }

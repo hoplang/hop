@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, fmt};
 
 use crate::document::document_cursor::StringSpan;
+use crate::dop::syntax::parsed::ParsedMatchPattern;
 use crate::dop::Type;
 use crate::dop::TypedExpr;
 use crate::dop::VarName;
@@ -35,6 +36,13 @@ pub struct InlinedComponentDeclaration {
     pub children: Vec<InlinedNode>,
 }
 
+/// A case in an inlined match node.
+#[derive(Debug, Clone)]
+pub struct InlinedMatchCase {
+    pub pattern: ParsedMatchPattern,
+    pub children: Vec<InlinedNode>,
+}
+
 #[derive(Debug, Clone)]
 pub enum InlinedNode {
     Text {
@@ -64,6 +72,10 @@ pub enum InlinedNode {
         var: VarName,
         value: TypedExpr,
         children: Vec<Self>,
+    },
+    Match {
+        subject: TypedExpr,
+        cases: Vec<InlinedMatchCase>,
     },
 }
 
@@ -240,6 +252,37 @@ impl InlinedNode {
                         .nest(2)
                 })
                 .append(BoxDoc::text("</let>")),
+            InlinedNode::Match { subject, cases } => BoxDoc::text("<match {")
+                .append(subject.to_doc())
+                .append(BoxDoc::text("}>"))
+                .append(if cases.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            cases.iter().map(|c| {
+                                BoxDoc::text("<case {")
+                                    .append(BoxDoc::text(c.pattern.to_string()))
+                                    .append(BoxDoc::text("}>"))
+                                    .append(if c.children.is_empty() {
+                                        BoxDoc::nil()
+                                    } else {
+                                        BoxDoc::line()
+                                            .append(BoxDoc::intersperse(
+                                                c.children.iter().map(|child| child.to_doc()),
+                                                BoxDoc::line(),
+                                            ))
+                                            .nest(2)
+                                            .append(BoxDoc::line())
+                                    })
+                                    .append(BoxDoc::text("</case>"))
+                            }),
+                            BoxDoc::line(),
+                        ))
+                        .nest(2)
+                        .append(BoxDoc::line())
+                })
+                .append(BoxDoc::text("</match>")),
         }
     }
 }

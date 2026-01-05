@@ -1,7 +1,7 @@
 use crate::document::document_cursor::{DocumentRange, StringSpan};
 
 use crate::hop::syntax::parsed_ast::{ParsedAst, ParsedComponentDeclaration, ParsedDeclaration};
-use crate::hop::syntax::parsed_node::ParsedNode;
+use crate::hop::syntax::parsed_node::{ParsedMatchCase, ParsedNode};
 
 /// Removes leading and trailing whitespace from text nodes in a ParsedAst.
 ///
@@ -96,6 +96,23 @@ fn transform_node(node: ParsedNode) -> Vec<ParsedNode> {
         }],
         ParsedNode::Placeholder { children, range } => vec![ParsedNode::Placeholder {
             children: transform_nodes(children),
+            range,
+        }],
+        ParsedNode::Match {
+            subject,
+            cases,
+            range,
+        } => vec![ParsedNode::Match {
+            subject,
+            cases: cases
+                .into_iter()
+                .map(|case| ParsedMatchCase {
+                    pattern: case.pattern,
+                    pattern_range: case.pattern_range,
+                    children: transform_nodes(case.children),
+                    range: case.range,
+                })
+                .collect(),
             range,
         }],
         other => vec![other],

@@ -6,7 +6,7 @@ use super::parsed_ast::{
     ParsedEnumDeclarationVariant, ParsedImportDeclaration, ParsedRecordDeclaration,
     ParsedRecordDeclarationField,
 };
-use super::parsed_node::{ParsedArgument, ParsedNode};
+use super::parsed_node::{ParsedArgument, ParsedMatchCase, ParsedNode};
 use super::token_tree::{TokenTree, build_tree};
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, StringSpan};
 use crate::dop;
@@ -476,6 +476,105 @@ fn construct_nodes(
         } => {
             let validator = AttributeValidator::new(attributes, tag_name.clone());
 
+            // Handle <match> specially - process children as <case> tags
+            if tag_name.as_str() == "match" {
+                errors.extend(validator.disallow_unrecognized());
+                let expr = expression.ok_or_else(|| {
+                    ParseError::new(
+                        "Missing expression in <match> tag".to_string(),
+                        opening_tag_range.clone(),
+                    )
+                });
+                let Some(subject) = errors.ok_or_add(
+                    expr.and_then(|e| Parser::from(e).parse_expr().map_err(|err| err.into())),
+                ) else {
+                    // Parse children normally for error recovery
+                    let children: Vec<_> = tree
+                        .children
+                        .into_iter()
+                        .flat_map(|child| {
+                            construct_nodes(
+                                child,
+                                errors,
+                                module_name,
+                                defined_components,
+                                imported_components,
+                            )
+                        })
+                        .collect();
+                    return vec![ParsedNode::Placeholder {
+                        range: tree.range.clone(),
+                        children,
+                    }];
+                };
+
+                // Process children as <case> tags
+                let mut cases = Vec::new();
+                for child_tree in tree.children {
+                    match &child_tree.token {
+                        // Ignore whitespace text
+                        Token::Text { range, .. } if range.as_str().trim().is_empty() => {
+                            continue;
+                        }
+                        // Process <case> tags
+                        Token::OpeningTag {
+                            tag_name: case_tag_name,
+                            expression: case_expression,
+                            range: case_opening_range,
+                            ..
+                        } if case_tag_name.as_str() == "case" => {
+                            let Some(pattern_range) = case_expression.clone() else {
+                                errors.push(ParseError::new(
+                                    "Missing pattern in <case> tag".to_string(),
+                                    case_opening_range.clone(),
+                                ));
+                                continue;
+                            };
+                            let Some(pattern) = errors.ok_or_add(
+                                Parser::from(pattern_range.clone())
+                                    .parse_match_pattern()
+                                    .map_err(|err| err.into()),
+                            ) else {
+                                continue;
+                            };
+                            // Parse case children normally
+                            let case_children: Vec<_> = child_tree
+                                .children
+                                .into_iter()
+                                .flat_map(|c| {
+                                    construct_nodes(
+                                        c,
+                                        errors,
+                                        module_name,
+                                        defined_components,
+                                        imported_components,
+                                    )
+                                })
+                                .collect();
+                            cases.push(ParsedMatchCase {
+                                pattern,
+                                pattern_range,
+                                children: case_children,
+                                range: child_tree.range,
+                            });
+                        }
+                        // Error on other nodes
+                        _ => {
+                            errors.push(ParseError::new(
+                                "Only <case> tags are allowed inside <match>".to_string(),
+                                child_tree.range.clone(),
+                            ));
+                        }
+                    }
+                }
+
+                return vec![ParsedNode::Match {
+                    subject,
+                    cases,
+                    range: tree.range,
+                }];
+            }
+
             // Process children - raw text elements (script/style) don't parse expressions
             let children: Vec<_> = if is_raw_text_element(tag_name.as_str()) {
                 tree.children
@@ -649,6 +748,7 @@ mod tests {
             ParsedNode::ComponentReference { .. } => "component_reference",
             ParsedNode::If { .. } => "if",
             ParsedNode::For { .. } => "for",
+            ParsedNode::Match { .. } => "match",
             ParsedNode::Html { tag_name, .. } => tag_name.as_str(),
             ParsedNode::Text { .. } => "text",
             ParsedNode::TextExpression { .. } => "text_expression",
@@ -1874,6 +1974,134 @@ mod tests {
             "#},
             expect![[r#"
                 div                                               1:4-1:15
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_match_with_option_cases() {
+        check(
+            indoc! {r#"
+                <Main {x: Option[String]}>
+                    <match {x}>
+                        <case {Some(y)}>
+                            found {y}
+                        </case>
+                        <case {None}>
+                            nothing
+                        </case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                match                                             1:4-8:12
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_match_with_enum_cases() {
+        check(
+            indoc! {r#"
+                enum Color { Red, Green, Blue }
+                <Main {c: Color}>
+                    <match {c}>
+                        <case {Color::Red}>red</case>
+                        <case {Color::Green}>green</case>
+                        <case {Color::Blue}>blue</case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                match                                             2:4-6:12
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_match_with_boolean_cases() {
+        check(
+            indoc! {r#"
+                <Main {flag: Bool}>
+                    <match {flag}>
+                        <case {true}>yes</case>
+                        <case {false}>no</case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                match                                             1:4-4:12
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_error_on_match_without_expression() {
+        check(
+            indoc! {r#"
+                <Main>
+                    <match>
+                        <case {true}>yes</case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Missing expression in <match> tag
+                1 | <Main>
+                2 |     <match>
+                  |     ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_error_on_case_without_pattern() {
+        check(
+            indoc! {r#"
+                <Main {flag: Bool}>
+                    <match {flag}>
+                        <case>yes</case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Missing pattern in <case> tag
+                2 |     <match {flag}>
+                3 |         <case>yes</case>
+                  |         ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_error_on_non_case_children_in_match() {
+        check(
+            indoc! {r#"
+                <Main {flag: Bool}>
+                    <match {flag}>
+                        <div>not allowed</div>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Only <case> tags are allowed inside <match>
+                2 |     <match {flag}>
+                3 |         <div>not allowed</div>
+                  |         ^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_treat_case_outside_match_as_html() {
+        check(
+            indoc! {r#"
+                <Main>
+                    <case {true}>standalone case</case>
+                </Main>
+            "#},
+            expect![[r#"
+                case                                              1:4-1:39
             "#]],
         );
     }

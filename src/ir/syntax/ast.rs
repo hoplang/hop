@@ -60,6 +60,14 @@ pub struct IrEnumMatchArm {
     pub body: IrExpr,
 }
 
+/// A single arm in an enum match statement, e.g. `Color::Red => { ... }`
+#[derive(Debug, Clone, PartialEq)]
+pub struct IrEnumMatchArmStatement {
+    /// The pattern being matched
+    pub pattern: IrEnumPattern,
+    /// The statements to execute if this arm matches
+    pub body: Vec<IrStatement>,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrStatement {

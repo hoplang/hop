@@ -1078,4 +1078,50 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn component_with_match_node_to_doc() {
+        check(
+            indoc! {"
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
+
+                <Main {
+                  c: Option[String],
+                }>
+                  <match {c}>
+                    <case {Some(x)}>
+                      {x}
+                    </case>
+                    <case {None}>
+                      green
+                    </case>
+                  </match>
+                </Main>
+            "},
+            expect![[r#"
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
+
+                <Main {
+                  c: Option[String],
+                }>
+                  <match {c}>
+                    <case {Some(x)}>
+                      {x}
+                    </case>
+                    <case {None}>
+                      green
+                    </case>
+                  </match>
+                </Main>
+            "#]],
+        );
+    }
 }
