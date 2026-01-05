@@ -1,10 +1,10 @@
 use pretty::BoxDoc;
 
 use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
+use crate::dop::patterns::{EnumMatchArm, Match};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::dop::patterns::EnumMatchArm;
 use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrModule, IrStatement};
 
 pub struct PythonTranspiler {}
@@ -423,6 +423,42 @@ impl StatementTranspiler for PythonTranspiler {
             .append(BoxDoc::line())
             .append(self.transpile_statements(body))
     }
+
+    fn transpile_match_statement<'a>(
+        &self,
+        match_: &'a Match<IrExpr, Vec<IrStatement>>,
+    ) -> BoxDoc<'a> {
+        match match_ {
+            Match::Bool {
+                subject,
+                true_body,
+                false_body,
+            } => {
+                // Transpile as: if subject: true_body else: false_body
+                BoxDoc::text("if ")
+                    .append(self.transpile_expr(subject))
+                    .append(BoxDoc::text(":"))
+                    .append(
+                        BoxDoc::line()
+                            .append(self.transpile_statements(true_body))
+                            .nest(4),
+                    )
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("else:"))
+                    .append(
+                        BoxDoc::line()
+                            .append(self.transpile_statements(false_body))
+                            .nest(4),
+                    )
+            }
+            Match::Option { .. } => {
+                todo!()
+            }
+            Match::Enum { .. } => {
+                todo!()
+            }
+        }
+    }
 }
 
 impl ExpressionTranspiler for PythonTranspiler {
@@ -686,7 +722,10 @@ impl ExpressionTranspiler for PythonTranspiler {
     fn transpile_option_match<'a>(
         &self,
         _subject: &'a IrExpr,
-        _some_arm_binding: &'a Option<(crate::dop::symbols::var_name::VarName, crate::dop::semantics::r#type::Type)>,
+        _some_arm_binding: &'a Option<(
+            crate::dop::symbols::var_name::VarName,
+            crate::dop::semantics::r#type::Type,
+        )>,
         _some_arm_body: &'a IrExpr,
         _none_arm_body: &'a IrExpr,
     ) -> BoxDoc<'a> {
@@ -1281,6 +1320,51 @@ mod tests {
                     output = []
                     if color.equals(ColorRed()):
                         output.append("<div>Red!</div>")
+                    return ''.join(output)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn bool_match_statement() {
+        let module = build_module("DisplayStatus", vec![("active", Type::Bool)], |t| {
+            t.bool_match_stmt(
+                t.var("active"),
+                |t| {
+                    t.write("<span class=\"active\">Active</span>");
+                },
+                |t| {
+                    t.write("<span class=\"inactive\">Inactive</span>");
+                },
+            );
+        });
+
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                DisplayStatus(active: Bool) {
+                  match active { true => {
+                    write("<span class=\"active\">Active</span>")
+                  }, false => {
+                    write("<span class=\"inactive\">Inactive</span>")
+                  } }
+                }
+
+                -- after --
+                from dataclasses import dataclass
+
+                @dataclass
+                class DisplayStatusParams:
+                    active: bool
+
+                def display_status(params: DisplayStatusParams) -> str:
+                    active = params.active
+                    output = []
+                    if active:
+                        output.append("<span class=\"active\">Active</span>")
+                    else:
+                        output.append("<span class=\"inactive\">Inactive</span>")
                     return ''.join(output)
             "#]],
         );

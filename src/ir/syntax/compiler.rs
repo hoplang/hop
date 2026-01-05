@@ -258,8 +258,47 @@ impl Compiler {
                 });
             }
 
-            InlinedNode::Match { .. } => {
-                todo!("IR compilation for match statements")
+            InlinedNode::Match { match_ } => {
+                let compiled_match = match match_ {
+                    Match::Bool {
+                        subject,
+                        true_body,
+                        false_body,
+                    } => Match::Bool {
+                        subject: Box::new(self.compile_expr(*subject)),
+                        true_body: Box::new(self.compile_nodes(*true_body, slot_content.cloned())),
+                        false_body: Box::new(self.compile_nodes(*false_body, slot_content.cloned())),
+                    },
+                    Match::Option {
+                        subject,
+                        some_arm_binding,
+                        some_arm_body,
+                        none_arm_body,
+                    } => Match::Option {
+                        subject: Box::new(self.compile_expr(*subject)),
+                        some_arm_binding,
+                        some_arm_body: Box::new(
+                            self.compile_nodes(*some_arm_body, slot_content.cloned()),
+                        ),
+                        none_arm_body: Box::new(
+                            self.compile_nodes(*none_arm_body, slot_content.cloned()),
+                        ),
+                    },
+                    Match::Enum { subject, arms } => Match::Enum {
+                        subject: Box::new(self.compile_expr(*subject)),
+                        arms: arms
+                            .into_iter()
+                            .map(|arm| EnumMatchArm {
+                                pattern: arm.pattern,
+                                body: self.compile_nodes(arm.body, slot_content.cloned()),
+                            })
+                            .collect(),
+                    },
+                };
+                output.push(IrStatement::Match {
+                    id: self.next_node_id(),
+                    match_: compiled_match,
+                });
             }
         }
     }
@@ -1038,6 +1077,57 @@ mod tests {
                     write(", count: ")
                     write_escaped(count)
                     write("</div>")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_bool_match_node() {
+        check(
+            build_inlined("TestComp", vec![("flag", Type::Bool)], |t| {
+                t.bool_match_node(
+                    t.var_expr("flag"),
+                    |t| {
+                        t.text("yes");
+                    },
+                    |t| {
+                        t.text("no");
+                    },
+                );
+            }),
+            expect![[r#"
+                -- before --
+                <TestComp {flag: Bool}>
+                  <match {flag}>
+                    <case {true}>
+                      "yes"
+                    </case>
+                    <case {false}>
+                      "no"
+                    </case>
+                  </match>
+                </TestComp>
+
+                -- after --
+                TestComp(flag: Bool) {
+                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
+                    write("<!DOCTYPE html>\n")
+                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"TestComp\", \"params\": ")
+                    write("{")
+                    write("\"flag\":")
+                    write_expr(JsonEncode(flag))
+                    write("}")
+                    write("}</script>\n<script src=\"http://localhost:")
+                    write_expr(EnvLookup("HOP_DEV_PORT"))
+                    write("/development_mode.js\"></script>")
+                  } else {
+                    match flag { true => {
+                      write("yes")
+                    }, false => {
+                      write("no")
+                    } }
                   }
                 }
             "#]],

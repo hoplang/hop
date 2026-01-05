@@ -42,15 +42,6 @@ pub struct IrModule {
     pub enums: Vec<IrEnumDeclaration>,
 }
 
-/// A single arm in an enum match statement, e.g. `Color::Red => { ... }`
-#[derive(Debug, Clone, PartialEq)]
-pub struct IrEnumMatchArmStatement {
-    /// The pattern being matched
-    pub pattern: EnumPattern,
-    /// The statements to execute if this arm matches
-    pub body: Vec<IrStatement>,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrStatement {
     /// Write literal string to the output stream.
@@ -88,6 +79,12 @@ pub enum IrStatement {
         var: VarName,
         value: IrExpr,
         body: Vec<IrStatement>,
+    },
+
+    /// Match on a value and execute the corresponding branch.
+    Match {
+        id: StatementId,
+        match_: Match<IrExpr, Vec<IrStatement>>,
     },
 }
 
@@ -248,6 +245,7 @@ impl IrStatement {
             IrStatement::If { condition, .. } => Some(condition),
             IrStatement::For { array, .. } => Some(array),
             IrStatement::Let { value, .. } => Some(value),
+            IrStatement::Match { match_, .. } => Some(match_.subject()),
         }
     }
 
@@ -259,6 +257,7 @@ impl IrStatement {
             IrStatement::If { condition, .. } => Some(condition),
             IrStatement::For { array, .. } => Some(array),
             IrStatement::Let { value, .. } => Some(value),
+            IrStatement::Match { match_, .. } => Some(match_.subject_mut()),
         }
     }
 
@@ -290,6 +289,11 @@ impl IrStatement {
             }
             IrStatement::Let { body, .. } => {
                 for stmt in body {
+                    stmt.traverse(f);
+                }
+            }
+            IrStatement::Match { match_, .. } => {
+                for stmt in match_.bodies().into_iter().flatten() {
                     stmt.traverse(f);
                 }
             }
@@ -351,6 +355,55 @@ impl IrStatement {
                     scope.remove(&var.to_string());
                 }
             }
+            IrStatement::Match { match_, .. } => {
+                // For Match::Option with a binding, we need to add it to scope
+                match match_ {
+                    Match::Bool {
+                        true_body,
+                        false_body,
+                        ..
+                    } => {
+                        for stmt in true_body.iter() {
+                            stmt.traverse_with_scope_impl(scope, f);
+                        }
+                        for stmt in false_body.iter() {
+                            stmt.traverse_with_scope_impl(scope, f);
+                        }
+                    }
+                    Match::Option {
+                        some_arm_binding,
+                        some_arm_body,
+                        none_arm_body,
+                        ..
+                    } => {
+                        if let Some((var, _)) = some_arm_binding {
+                            let prev_value = scope.insert(var.to_string(), self);
+                            for stmt in some_arm_body.iter() {
+                                stmt.traverse_with_scope_impl(scope, f);
+                            }
+                            if let Some(prev) = prev_value {
+                                scope.insert(var.to_string(), prev);
+                            } else {
+                                scope.remove(&var.to_string());
+                            }
+                        } else {
+                            for stmt in some_arm_body.iter() {
+                                stmt.traverse_with_scope_impl(scope, f);
+                            }
+                        }
+                        for stmt in none_arm_body.iter() {
+                            stmt.traverse_with_scope_impl(scope, f);
+                        }
+                    }
+                    Match::Enum { arms, .. } => {
+                        for arm in arms {
+                            for stmt in &arm.body {
+                                stmt.traverse_with_scope_impl(scope, f);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -382,6 +435,11 @@ impl IrStatement {
             }
             IrStatement::Let { body, .. } => {
                 for stmt in body {
+                    stmt.traverse_mut(f);
+                }
+            }
+            IrStatement::Match { match_, .. } => {
+                for stmt in match_.bodies_mut().into_iter().flatten() {
                     stmt.traverse_mut(f);
                 }
             }
@@ -484,6 +542,77 @@ impl IrStatement {
                         .nest(2)
                 })
                 .append(BoxDoc::text("}")),
+            IrStatement::Match { match_, .. } => {
+                fn body_to_doc(body: &[IrStatement]) -> BoxDoc<'_> {
+                    if body.is_empty() {
+                        BoxDoc::nil()
+                    } else {
+                        BoxDoc::line()
+                            .append(BoxDoc::intersperse(
+                                body.iter().map(|stmt| stmt.to_doc()),
+                                BoxDoc::line(),
+                            ))
+                            .append(BoxDoc::line())
+                            .nest(2)
+                    }
+                }
+
+                match match_ {
+                    Match::Bool {
+                        subject,
+                        true_body,
+                        false_body,
+                    } => BoxDoc::text("match ")
+                        .append(subject.to_doc())
+                        .append(BoxDoc::text(" { true => {"))
+                        .append(body_to_doc(true_body))
+                        .append(BoxDoc::text("}, false => {"))
+                        .append(body_to_doc(false_body))
+                        .append(BoxDoc::text("} }")),
+                    Match::Option {
+                        subject,
+                        some_arm_binding,
+                        some_arm_body,
+                        none_arm_body,
+                    } => {
+                        let some_pattern = match some_arm_binding {
+                            Some((var, _)) => format!("Some({})", var.as_str()),
+                            None => "Some(_)".to_string(),
+                        };
+                        BoxDoc::text("match ")
+                            .append(subject.to_doc())
+                            .append(BoxDoc::text(" { "))
+                            .append(BoxDoc::text(some_pattern))
+                            .append(BoxDoc::text(" => {"))
+                            .append(body_to_doc(some_arm_body))
+                            .append(BoxDoc::text("}, None => {"))
+                            .append(body_to_doc(none_arm_body))
+                            .append(BoxDoc::text("} }"))
+                    }
+                    Match::Enum { subject, arms } => {
+                        let arms_doc = BoxDoc::intersperse(
+                            arms.iter().map(|arm| {
+                                let pattern = match &arm.pattern {
+                                    EnumPattern::Variant {
+                                        enum_name,
+                                        variant_name,
+                                    } => format!("{}::{}", enum_name, variant_name),
+                                };
+                                BoxDoc::text(pattern)
+                                    .append(BoxDoc::text(" => {"))
+                                    .append(body_to_doc(&arm.body))
+                                    .append(BoxDoc::text("}"))
+                            }),
+                            BoxDoc::text(", "),
+                        );
+                        BoxDoc::text("match ")
+                            .append(subject.to_doc())
+                            .append(BoxDoc::text(" { "))
+                            .append(arms_doc)
+                            .append(BoxDoc::text(" }"))
+                    }
+                }
+            }
         }
     }
 }

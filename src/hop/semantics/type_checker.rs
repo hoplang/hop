@@ -1,6 +1,6 @@
 use super::type_error::TypeError;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::patterns::pat_match::{Compiler as PatMatchCompiler, Variable as PatMatchVariable};
+use crate::dop::patterns::compiler::{Compiler as PatMatchCompiler, Variable as PatMatchVariable};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::syntax::parsed::{ParsedExpr, ParsedMatchArm};
@@ -15,7 +15,7 @@ use std::fmt::{self, Display};
 use crate::hop::semantics::typed_ast::{
     TypedAst, TypedComponentDeclaration, TypedEnumDeclaration, TypedRecordDeclaration,
 };
-use crate::dop::patterns::pat_match::Decision;
+use crate::dop::patterns::compiler::Decision;
 use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::dop::syntax::parsed::Constructor;
 use crate::hop::semantics::typed_node::{TypedAttribute, TypedAttributeValue, TypedNode};
@@ -900,7 +900,6 @@ fn typecheck_node(
             // Wrap with a Let to bind the subject expression to the subject variable
             result = vec![TypedNode::Let {
                 var: VarName::new("match_subject").expect("invalid variable name"),
-                var_type: subject_type,
                 value: typed_subject,
                 children: result,
             }];
@@ -992,7 +991,6 @@ fn decision_to_typed_nodes(
                 };
                 result = vec![TypedNode::Let {
                     var: var_name,
-                    var_type: source_var.typ.clone(),
                     value,
                     children: result,
                 }];
@@ -1127,7 +1125,6 @@ fn decision_to_typed_nodes(
 
                         body = vec![TypedNode::Let {
                             var: var_name,
-                            var_type: var.typ.clone(),
                             value: field_access,
                             children: body,
                         }];

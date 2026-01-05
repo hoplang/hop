@@ -673,4 +673,50 @@ mod tests {
 
         run_integration_test(test_case).expect("Integration test failed");
     }
+
+    #[test]
+    #[ignore]
+    fn bool_match_true() {
+        let test_case = TestCase::new(
+            build_ir("Test", [], |t| {
+                t.let_stmt("flag", t.bool(true), |t| {
+                    t.bool_match_stmt(
+                        t.var("flag"),
+                        |t| {
+                            t.write("yes");
+                        },
+                        |t| {
+                            t.write("no");
+                        },
+                    );
+                });
+            }),
+            "yes",
+        );
+
+        run_integration_test(test_case).expect("Integration test failed");
+    }
+
+    #[test]
+    #[ignore]
+    fn bool_match_false() {
+        let test_case = TestCase::new(
+            build_ir("Test", [], |t| {
+                t.let_stmt("flag", t.bool(false), |t| {
+                    t.bool_match_stmt(
+                        t.var("flag"),
+                        |t| {
+                            t.write("yes");
+                        },
+                        |t| {
+                            t.write("no");
+                        },
+                    );
+                });
+            }),
+            "no",
+        );
+
+        run_integration_test(test_case).expect("Integration test failed");
+    }
 }

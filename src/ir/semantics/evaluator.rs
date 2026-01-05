@@ -114,6 +114,60 @@ fn eval_statement(
             let _ = env.pop();
             Ok(())
         }
+
+        IrStatement::Match { id: _, match_ } => match match_ {
+            Match::Bool {
+                subject,
+                true_body,
+                false_body,
+            } => {
+                let subject_value = evaluate_expr(subject, env)?;
+                if subject_value.as_bool().unwrap_or(false) {
+                    eval_statements(true_body, env, output)?;
+                } else {
+                    eval_statements(false_body, env, output)?;
+                }
+                Ok(())
+            }
+            Match::Option {
+                subject,
+                some_arm_binding,
+                some_arm_body,
+                none_arm_body,
+            } => {
+                let subject_value = evaluate_expr(subject, env)?;
+                if subject_value.is_null() {
+                    eval_statements(none_arm_body, env, output)?;
+                } else {
+                    if let Some((var, _)) = some_arm_binding {
+                        let _ = env.push(var.to_string(), subject_value);
+                        eval_statements(some_arm_body, env, output)?;
+                        let _ = env.pop();
+                    } else {
+                        eval_statements(some_arm_body, env, output)?;
+                    }
+                }
+                Ok(())
+            }
+            Match::Enum {
+                subject,
+                arms,
+            } => {
+                let subject_value = evaluate_expr(subject, env)?;
+                let variant = subject_value
+                    .as_str()
+                    .ok_or_else(|| anyhow!("Expected enum variant string"))?;
+
+                for arm in arms {
+                    let EnumPattern::Variant { variant_name, .. } = &arm.pattern;
+                    if variant == variant_name {
+                        eval_statements(&arm.body, env, output)?;
+                        return Ok(());
+                    }
+                }
+                Err(anyhow!("No matching arm for enum variant: {}", variant))
+            }
+        },
     }
 }
 

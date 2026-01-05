@@ -1,10 +1,10 @@
 use pretty::BoxDoc;
 
 use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
+use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::dop::patterns::{EnumMatchArm, EnumPattern};
 use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrModule, IrStatement};
 
 pub struct TsTranspiler {
@@ -416,6 +416,137 @@ impl StatementTranspiler for TsTranspiler {
             .append(BoxDoc::hardline())
             .append(self.transpile_statements(body))
     }
+
+    fn transpile_match_statement<'a>(
+        &self,
+        match_: &'a Match<IrExpr, Vec<IrStatement>>,
+    ) -> BoxDoc<'a> {
+        match match_ {
+            Match::Bool {
+                subject,
+                true_body,
+                false_body,
+            } => {
+                // Transpile as: if (subject) { true_body } else { false_body }
+                BoxDoc::text("if (")
+                    .append(self.transpile_expr(subject))
+                    .append(BoxDoc::text(") {"))
+                    .append(
+                        BoxDoc::nil()
+                            .append(BoxDoc::hardline())
+                            .append(self.transpile_statements(true_body))
+                            .append(BoxDoc::hardline())
+                            .nest(4),
+                    )
+                    .append(BoxDoc::text("} else {"))
+                    .append(
+                        BoxDoc::nil()
+                            .append(BoxDoc::hardline())
+                            .append(self.transpile_statements(false_body))
+                            .append(BoxDoc::hardline())
+                            .nest(4),
+                    )
+                    .append(BoxDoc::text("}"))
+            }
+            Match::Option {
+                subject,
+                some_arm_binding,
+                some_arm_body,
+                none_arm_body,
+            } => {
+                // Transpile as: switch (subject._tag) { case "Some": ...; case "None": ...; }
+                let some_case = {
+                    let body_doc = self.transpile_statements(some_arm_body);
+                    if let Some((var_name, _)) = some_arm_binding {
+                        BoxDoc::text("case \"Some\": {")
+                            .append(
+                                BoxDoc::hardline()
+                                    .append(BoxDoc::text("const "))
+                                    .append(BoxDoc::text(var_name.as_str()))
+                                    .append(BoxDoc::text(" = "))
+                                    .append(self.transpile_expr(subject))
+                                    .append(BoxDoc::text(".value;"))
+                                    .append(BoxDoc::hardline())
+                                    .append(body_doc)
+                                    .append(BoxDoc::hardline())
+                                    .append(BoxDoc::text("break;"))
+                                    .nest(4),
+                            )
+                            .append(BoxDoc::hardline())
+                            .append(BoxDoc::text("}"))
+                    } else {
+                        BoxDoc::text("case \"Some\": {")
+                            .append(
+                                BoxDoc::hardline()
+                                    .append(body_doc)
+                                    .append(BoxDoc::hardline())
+                                    .append(BoxDoc::text("break;"))
+                                    .nest(4),
+                            )
+                            .append(BoxDoc::hardline())
+                            .append(BoxDoc::text("}"))
+                    }
+                };
+
+                let none_case = BoxDoc::text("case \"None\": {")
+                    .append(
+                        BoxDoc::hardline()
+                            .append(self.transpile_statements(none_arm_body))
+                            .append(BoxDoc::hardline())
+                            .append(BoxDoc::text("break;"))
+                            .nest(4),
+                    )
+                    .append(BoxDoc::hardline())
+                    .append(BoxDoc::text("}"));
+
+                BoxDoc::text("switch (")
+                    .append(self.transpile_expr(subject))
+                    .append(BoxDoc::text("._tag) {"))
+                    .append(
+                        BoxDoc::hardline()
+                            .append(some_case)
+                            .append(BoxDoc::hardline())
+                            .append(none_case)
+                            .nest(4),
+                    )
+                    .append(BoxDoc::hardline())
+                    .append(BoxDoc::text("}"))
+            }
+            Match::Enum { subject, arms } => {
+                // Transpile as: switch (subject._tag) { case "EnumNameVariant": ...; ... }
+                let cases = BoxDoc::intersperse(
+                    arms.iter().map(|arm| match &arm.pattern {
+                        EnumPattern::Variant {
+                            enum_name,
+                            variant_name,
+                        } => {
+                            let class_name = format!("{}{}", enum_name, variant_name);
+                            BoxDoc::text("case \"")
+                                .append(BoxDoc::text(class_name))
+                                .append(BoxDoc::text("\": {"))
+                                .append(
+                                    BoxDoc::hardline()
+                                        .append(self.transpile_statements(&arm.body))
+                                        .append(BoxDoc::hardline())
+                                        .append(BoxDoc::text("break;"))
+                                        .nest(4),
+                                )
+                                .append(BoxDoc::hardline())
+                                .append(BoxDoc::text("}"))
+                        }
+                    }),
+                    BoxDoc::hardline(),
+                );
+
+                BoxDoc::text("switch (")
+                    .append(self.transpile_expr(subject))
+                    .append(BoxDoc::text("._tag) {"))
+                    .append(BoxDoc::hardline().append(cases).nest(4))
+                    .append(BoxDoc::hardline())
+                    .append(BoxDoc::text("}"))
+            }
+        }
+    }
 }
 
 impl ExpressionTranspiler for TsTranspiler {
@@ -741,7 +872,10 @@ impl ExpressionTranspiler for TsTranspiler {
     fn transpile_option_match<'a>(
         &self,
         subject: &'a IrExpr,
-        some_arm_binding: &'a Option<(crate::dop::symbols::var_name::VarName, crate::dop::semantics::r#type::Type)>,
+        some_arm_binding: &'a Option<(
+            crate::dop::symbols::var_name::VarName,
+            crate::dop::semantics::r#type::Type,
+        )>,
         some_arm_body: &'a IrExpr,
         none_arm_body: &'a IrExpr,
     ) -> BoxDoc<'a> {
@@ -820,7 +954,8 @@ impl ExpressionTranspiler for TsTranspiler {
                     .nest(2),
             )
             .append(BoxDoc::line())
-            .append(BoxDoc::text("})()"))}
+            .append(BoxDoc::text("})()"))
+    }
 }
 
 impl TypeTranspiler for TsTranspiler {
@@ -1812,6 +1947,78 @@ mod tests {
                           const x = name;
                           return x;
                         })());
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn option_match_statement() {
+        let module = build_module(
+            "DisplayOption",
+            vec![("opt", Type::Option(Box::new(Type::String)))],
+            |t| {
+                t.option_match_stmt(
+                    t.var("opt"),
+                    Some("value"),
+                    |t| {
+                        t.write("<span>Found: ");
+                        t.write_expr_escaped(t.var("value"));
+                        t.write("</span>");
+                    },
+                    |t| {
+                        t.write("<span>Nothing</span>");
+                    },
+                );
+            },
+        );
+
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                DisplayOption(opt: Option[String]) {
+                  match opt { Some(value) => {
+                    write("<span>Found: ")
+                    write_escaped(value)
+                    write("</span>")
+                  }, None => {
+                    write("<span>Nothing</span>")
+                  } }
+                }
+
+                -- after --
+                export type None = { readonly _tag: "None" };
+                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
+                export type Option<T> = None | Some<T>;
+
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    displayOption: ({ opt }: { opt: Option<string> }): string => {
+                        let output: string = "";
+                        switch (opt._tag) {
+                            case "Some": {
+                                const value = opt.value;
+                                output += "<span>Found: ";
+                                output += escapeHtml(value);
+                                output += "</span>";
+                                break;
+                            }
+                            case "None": {
+                                output += "<span>Nothing</span>";
+                                break;
+                            }
+                        }
                         return output;
                     }
                 }

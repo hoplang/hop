@@ -111,6 +111,76 @@ impl AlphaRenamingPass {
                     body: renamed_body,
                 }
             }
+
+            IrStatement::Match { id, match_ } => {
+                let renamed_match = match match_ {
+                    Match::Bool {
+                        subject,
+                        true_body,
+                        false_body,
+                    } => {
+                        let renamed_subject = Box::new(self.rename_expr(*subject));
+                        self.push_scope();
+                        let renamed_true_body = self.rename_statements(*true_body);
+                        self.pop_scope();
+                        self.push_scope();
+                        let renamed_false_body = self.rename_statements(*false_body);
+                        self.pop_scope();
+                        Match::Bool {
+                            subject: renamed_subject,
+                            true_body: Box::new(renamed_true_body),
+                            false_body: Box::new(renamed_false_body),
+                        }
+                    }
+                    Match::Option {
+                        subject,
+                        some_arm_binding,
+                        some_arm_body,
+                        none_arm_body,
+                    } => {
+                        let renamed_subject = Box::new(self.rename_expr(*subject));
+                        self.push_scope();
+                        let renamed_binding = some_arm_binding.map(|(var, typ)| {
+                            let renamed_var = self.bind_var(&var);
+                            (renamed_var, typ)
+                        });
+                        let renamed_some_body = self.rename_statements(*some_arm_body);
+                        self.pop_scope();
+                        self.push_scope();
+                        let renamed_none_body = self.rename_statements(*none_arm_body);
+                        self.pop_scope();
+                        Match::Option {
+                            subject: renamed_subject,
+                            some_arm_binding: renamed_binding,
+                            some_arm_body: Box::new(renamed_some_body),
+                            none_arm_body: Box::new(renamed_none_body),
+                        }
+                    }
+                    Match::Enum { subject, arms } => {
+                        let renamed_subject = Box::new(self.rename_expr(*subject));
+                        let renamed_arms = arms
+                            .into_iter()
+                            .map(|arm| {
+                                self.push_scope();
+                                let renamed_body = self.rename_statements(arm.body);
+                                self.pop_scope();
+                                EnumMatchArm {
+                                    pattern: arm.pattern,
+                                    body: renamed_body,
+                                }
+                            })
+                            .collect();
+                        Match::Enum {
+                            subject: renamed_subject,
+                            arms: renamed_arms,
+                        }
+                    }
+                };
+                IrStatement::Match {
+                    id,
+                    match_: renamed_match,
+                }
+            }
         }
     }
 

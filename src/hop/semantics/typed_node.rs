@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::document::document_cursor::StringSpan;
 use crate::dop::patterns::Match;
-use crate::dop::{Type, TypedExpr, VarName};
+use crate::dop::{TypedExpr, VarName};
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 
@@ -52,7 +52,6 @@ pub enum TypedNode {
 
     Let {
         var: VarName,
-        var_type: Type,
         value: TypedExpr,
         children: Vec<TypedNode>,
     },

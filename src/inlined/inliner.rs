@@ -317,7 +317,6 @@ impl Inliner {
 
             TypedNode::Let {
                 var,
-                var_type: _,
                 value,
                 children,
             } => vec![InlinedNode::Let {

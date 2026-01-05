@@ -100,6 +100,54 @@ impl WriteCoalescingPass {
                     }
                     result.push(statement);
                 }
+                IrStatement::Match { id, match_ } => {
+                    // Flush any pending write before a control flow statement
+                    if let Some((write_id, text)) = pending_write.take() {
+                        result.push(IrStatement::Write {
+                            id: write_id,
+                            content: text,
+                        });
+                    }
+                    // Recursively transform all match bodies
+                    let transformed_match = match match_ {
+                        crate::dop::patterns::Match::Bool {
+                            subject,
+                            true_body,
+                            false_body,
+                        } => crate::dop::patterns::Match::Bool {
+                            subject,
+                            true_body: Box::new(Self::transform_statements(*true_body)),
+                            false_body: Box::new(Self::transform_statements(*false_body)),
+                        },
+                        crate::dop::patterns::Match::Option {
+                            subject,
+                            some_arm_binding,
+                            some_arm_body,
+                            none_arm_body,
+                        } => crate::dop::patterns::Match::Option {
+                            subject,
+                            some_arm_binding,
+                            some_arm_body: Box::new(Self::transform_statements(*some_arm_body)),
+                            none_arm_body: Box::new(Self::transform_statements(*none_arm_body)),
+                        },
+                        crate::dop::patterns::Match::Enum { subject, arms } => {
+                            crate::dop::patterns::Match::Enum {
+                                subject,
+                                arms: arms
+                                    .into_iter()
+                                    .map(|arm| crate::dop::patterns::EnumMatchArm {
+                                        pattern: arm.pattern,
+                                        body: Self::transform_statements(arm.body),
+                                    })
+                                    .collect(),
+                            }
+                        }
+                    };
+                    result.push(IrStatement::Match {
+                        id,
+                        match_: transformed_match,
+                    });
+                }
             }
         }
 

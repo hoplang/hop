@@ -208,6 +208,31 @@ impl InlinedBuilder {
             value: Some(InlinedAttributeValue::Expressions(exprs)),
         }
     }
+
+    pub fn bool_match_node<FTrue, FFalse>(
+        &mut self,
+        subject: TypedExpr,
+        true_children_fn: FTrue,
+        false_children_fn: FFalse,
+    ) where
+        FTrue: FnOnce(&mut Self),
+        FFalse: FnOnce(&mut Self),
+    {
+        use crate::dop::patterns::Match;
+
+        let mut true_builder = self.new_scoped();
+        true_children_fn(&mut true_builder);
+        let mut false_builder = self.new_scoped();
+        false_children_fn(&mut false_builder);
+
+        self.children.push(InlinedNode::Match {
+            match_: Match::Bool {
+                subject: Box::new(subject),
+                true_body: Box::new(true_builder.children),
+                false_body: Box::new(false_builder.children),
+            },
+        });
+    }
 }
 
 #[cfg(test)]

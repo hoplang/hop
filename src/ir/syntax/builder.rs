@@ -715,4 +715,80 @@ impl IrBuilder {
             body: inner_builder.statements,
         });
     }
+
+    pub fn bool_match_stmt<FTrue, FFalse>(
+        &mut self,
+        subject: IrExpr,
+        true_body_fn: FTrue,
+        false_body_fn: FFalse,
+    ) where
+        FTrue: FnOnce(&mut Self),
+        FFalse: FnOnce(&mut Self),
+    {
+        use crate::dop::patterns::Match;
+
+        assert_eq!(*subject.as_type(), Type::Bool);
+
+        let mut true_builder = self.new_scoped();
+        true_body_fn(&mut true_builder);
+
+        let mut false_builder = self.new_scoped();
+        false_body_fn(&mut false_builder);
+
+        self.statements.push(IrStatement::Match {
+            id: self.next_node_id(),
+            match_: Match::Bool {
+                subject: Box::new(subject),
+                true_body: Box::new(true_builder.statements),
+                false_body: Box::new(false_builder.statements),
+            },
+        });
+    }
+
+    pub fn option_match_stmt<FSome, FNone>(
+        &mut self,
+        subject: IrExpr,
+        binding_var: Option<&str>,
+        some_body_fn: FSome,
+        none_body_fn: FNone,
+    ) where
+        FSome: FnOnce(&mut Self),
+        FNone: FnOnce(&mut Self),
+    {
+        use crate::dop::patterns::Match;
+
+        let inner_type = match subject.as_type() {
+            Type::Option(inner) => (**inner).clone(),
+            _ => panic!("Cannot match on non-option type"),
+        };
+
+        // Build some body with optional binding
+        let some_arm_binding = binding_var.map(|var| {
+            self.var_stack
+                .borrow_mut()
+                .push((var.to_string(), inner_type.clone()));
+            (VarName::try_from(var.to_string()).unwrap(), inner_type)
+        });
+
+        let mut some_builder = self.new_scoped();
+        some_body_fn(&mut some_builder);
+
+        if binding_var.is_some() {
+            self.var_stack.borrow_mut().pop();
+        }
+
+        // Build none body
+        let mut none_builder = self.new_scoped();
+        none_body_fn(&mut none_builder);
+
+        self.statements.push(IrStatement::Match {
+            id: self.next_node_id(),
+            match_: Match::Option {
+                subject: Box::new(subject),
+                some_arm_binding,
+                some_arm_body: Box::new(some_builder.statements),
+                none_arm_body: Box::new(none_builder.statements),
+            },
+        });
+    }
 }
