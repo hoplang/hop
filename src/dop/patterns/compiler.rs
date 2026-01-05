@@ -514,3 +514,478 @@ impl Compiler {
         Variable::new(name, typ)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::DocumentAnnotator;
+    use crate::dop::symbols::field_name::FieldName;
+    use crate::dop::symbols::type_name::TypeName;
+    use crate::dop::syntax::parsed::ParsedExpr;
+    use crate::dop::Parser;
+    use crate::hop::symbols::module_name::ModuleName;
+    use expect_test::{expect, Expect};
+    use indoc::indoc;
+
+    fn check(subject_type: Type, expr_str: &str, expected: Expect) {
+        let mut type_env: Environment<Type> = Environment::new();
+
+        // Register types if needed
+        match &subject_type {
+            Type::Enum { name, .. } | Type::Record { name, .. } => {
+                let _ = type_env.push(name.to_string(), subject_type.clone());
+            }
+            _ => {}
+        }
+
+        let mut parser = Parser::from(expr_str);
+        let expr = parser.parse_expr().expect("Failed to parse expression");
+
+        let (subject_name, patterns, match_range) = match expr {
+            ParsedExpr::Match { subject, arms, range, .. } => {
+                let name = match subject.as_ref() {
+                    ParsedExpr::Var { value, .. } => value.as_str().to_string(),
+                    _ => panic!("Expected variable as match subject"),
+                };
+                (name, arms.into_iter().map(|a| a.pattern).collect::<Vec<_>>(), range)
+            }
+            _ => panic!("Expected match expression"),
+        };
+
+        let subject_var = Variable::new(subject_name, subject_type);
+        let result = Compiler::new(0).compile(&patterns, &subject_var, &match_range, &mut type_env);
+
+        let actual = match result {
+            Ok(decision) => format_decision(&decision, 0),
+            Err(e) => DocumentAnnotator::new()
+                .with_label("error")
+                .without_location()
+                .without_line_numbers()
+                .annotate(None, [e]),
+        };
+
+        expected.assert_eq(&actual);
+    }
+
+    fn format_decision(decision: &Decision, indent: usize) -> String {
+        let pad = "  ".repeat(indent);
+        match decision {
+            Decision::Success(body) => {
+                let mut out = String::new();
+                for (name, var) in &body.bindings {
+                    out.push_str(&format!("{}let {} = {}\n", pad, name, var.name));
+                }
+                out.push_str(&format!("{}branch {}\n", pad, body.value));
+                out
+            }
+            Decision::Switch(var, cases) => {
+                let mut out = String::new();
+                for case in cases {
+                    let args = if case.arguments.is_empty() {
+                        String::new()
+                    } else if let (
+                        Constructor::Record { .. },
+                        Type::Record { fields, .. },
+                    ) = (&case.constructor, &var.typ)
+                    {
+                        // For records, show field names
+                        let named: Vec<_> = fields
+                            .iter()
+                            .zip(case.arguments.iter())
+                            .map(|((field_name, _), v)| format!("{}: {}", field_name, v.name))
+                            .collect();
+                        format!("({})", named.join(", "))
+                    } else {
+                        let names: Vec<_> = case.arguments.iter().map(|v| v.name.as_str()).collect();
+                        format!("({})", names.join(", "))
+                    };
+                    out.push_str(&format!("{}{} is {}{}\n", pad, var.name, case.constructor, args));
+                    out.push_str(&format_decision(&case.body, indent + 1));
+                }
+                out
+            }
+        }
+    }
+
+    // Bool tests
+
+    #[test]
+    fn bool_exhaustive() {
+        check(
+            Type::Bool,
+            indoc! {"
+                match x {
+                    true => 0,
+                    false => 1,
+                }
+            "},
+            expect![[r#"
+                x is false
+                  branch 1
+                x is true
+                  branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn bool_missing_false() {
+        check(
+            Type::Bool,
+            indoc! {"
+                match x {
+                    true => 0,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: false
+                match x {
+                ^^^^^^^^^
+                    true => 0,
+                ^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn bool_missing_true() {
+        check(
+            Type::Bool,
+            indoc! {"
+                match x {
+                    false => 0,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: true
+                match x {
+                ^^^^^^^^^
+                    false => 0,
+                ^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn bool_unreachable_arm() {
+        check(
+            Type::Bool,
+            indoc! {"
+                match x {
+                    true => 0,
+                    false => 1,
+                    true => 2,
+                }
+            "},
+            expect![[r#"
+                error: Unreachable match arm for variant 'true'
+                    true => 2,
+                    ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn bool_wildcard_covers_all() {
+        check(
+            Type::Bool,
+            indoc! {"
+                match x {
+                    _ => 0,
+                }
+            "},
+            expect![[r#"
+                branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn bool_binding_covers_all() {
+        check(
+            Type::Bool,
+            indoc! {"
+                match x {
+                    b => 0,
+                }
+            "},
+            expect![[r#"
+                let b = x
+                branch 0
+            "#]],
+        );
+    }
+
+    // Option tests
+
+    #[test]
+    fn option_exhaustive() {
+        check(
+            Type::Option(Box::new(Type::String)),
+            indoc! {"
+                match x {
+                    Some(val) => 0,
+                    None => 1,
+                }
+            "},
+            expect![[r#"
+                x is Some(v0)
+                  let val = v0
+                  branch 0
+                x is None
+                  branch 1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn option_missing_none() {
+        check(
+            Type::Option(Box::new(Type::String)),
+            indoc! {"
+                match x {
+                    Some(val) => 0,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: None
+                match x {
+                ^^^^^^^^^
+                    Some(val) => 0,
+                ^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn option_missing_some() {
+        check(
+            Type::Option(Box::new(Type::String)),
+            indoc! {"
+                match x {
+                    None => 0,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: Some(_)
+                match x {
+                ^^^^^^^^^
+                    None => 0,
+                ^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn nested_option_exhaustive() {
+        check(
+            Type::Option(Box::new(Type::Option(Box::new(Type::String)))),
+            indoc! {"
+                match x {
+                    Some(Some(val)) => 0,
+                    Some(None) => 1,
+                    None => 2,
+                }
+            "},
+            expect![[r#"
+                x is Some(v0)
+                  v0 is Some(v1)
+                    let val = v1
+                    branch 0
+                  v0 is None
+                    branch 1
+                x is None
+                  branch 2
+            "#]],
+        );
+    }
+
+    // Enum tests
+
+    #[test]
+    fn enum_exhaustive() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Color").unwrap(),
+                variants: vec![
+                    TypeName::new("Red").unwrap(),
+                    TypeName::new("Green").unwrap(),
+                    TypeName::new("Blue").unwrap(),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Color::Red => 0,
+                    Color::Green => 1,
+                    Color::Blue => 2,
+                }
+            "},
+            expect![[r#"
+                x is Color::Red
+                  branch 0
+                x is Color::Green
+                  branch 1
+                x is Color::Blue
+                  branch 2
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_missing_variant() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Color").unwrap(),
+                variants: vec![
+                    TypeName::new("Red").unwrap(),
+                    TypeName::new("Green").unwrap(),
+                    TypeName::new("Blue").unwrap(),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Color::Red => 0,
+                    Color::Green => 1,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: Color::Blue
+                match x {
+                ^^^^^^^^^
+                    Color::Red => 0,
+                ^^^^^^^^^^^^^^^^^^^^
+                    Color::Green => 1,
+                ^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_wildcard_covers_remaining() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Color").unwrap(),
+                variants: vec![
+                    TypeName::new("Red").unwrap(),
+                    TypeName::new("Green").unwrap(),
+                    TypeName::new("Blue").unwrap(),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Color::Red => 0,
+                    _ => 1,
+                }
+            "},
+            expect![[r#"
+                x is Color::Red
+                  branch 0
+                x is Color::Green
+                  branch 1
+                x is Color::Blue
+                  branch 1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_unreachable_after_wildcard() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Color").unwrap(),
+                variants: vec![
+                    TypeName::new("Red").unwrap(),
+                    TypeName::new("Green").unwrap(),
+                    TypeName::new("Blue").unwrap(),
+                ],
+            },
+            indoc! {"
+                match x {
+                    _ => 0,
+                    Color::Red => 1,
+                }
+            "},
+            expect![[r#"
+                error: Unreachable match arm for variant 'Color::Red'
+                    Color::Red => 1,
+                    ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    // Record tests
+
+    #[test]
+    fn record_match() {
+        check(
+            Type::Record {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("User").unwrap(),
+                fields: vec![
+                    (FieldName::new("name").unwrap(), Type::String),
+                    (FieldName::new("age").unwrap(), Type::Int),
+                ],
+            },
+            indoc! {"
+                match x {
+                    User(name: n, age: a) => 0,
+                }
+            "},
+            expect![[r#"
+                x is User(name: v0, age: v1)
+                  let n = v0
+                  let a = v1
+                  branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn record_with_bool_fields_exhaustive() {
+        check(
+            Type::Record {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Foo").unwrap(),
+                fields: vec![
+                    (FieldName::new("a").unwrap(), Type::Bool),
+                    (FieldName::new("b").unwrap(), Type::Bool),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Foo(a: true, b: true) => 0,
+                    Foo(a: true, b: false) => 1,
+                    Foo(a: false, b: true) => 2,
+                    Foo(a: false, b: false) => 3,
+                }
+            "},
+            expect![[r#"
+                x is Foo(a: v0, b: v1)
+                  v1 is false
+                    v0 is false
+                      branch 3
+                    v0 is true
+                      branch 1
+                  v1 is true
+                    v0 is false
+                      branch 2
+                    v0 is true
+                      branch 0
+            "#]],
+        );
+    }
+}
