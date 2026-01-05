@@ -2409,4 +2409,1094 @@ mod tests {
             "#]],
         );
     }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// MATCH EXPRESSION - EMPTY                                            ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_reject_match_with_no_arms() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                }
+            "#},
+            expect![[r#"
+                error: Match expression must have at least one arm
+                match flag {
+                ^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// MATCH EXPRESSION - ENUM                                             ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_match_expression_with_all_variants() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    Color::Red => "red",
+                    Color::Green => "green",
+                    Color::Blue => "blue",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_expression_returning_int() {
+        check(
+            indoc! {"
+                enum Size {
+                    Small,
+                    Medium,
+                    Large,
+                }
+            "},
+            &[("size", "Size")],
+            indoc! {"
+                match size {
+                    Size::Small => 1,
+                    Size::Medium => 2,
+                    Size::Large => 3,
+                }
+            "},
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_expression_returning_bool() {
+        check(
+            indoc! {"
+                enum Status {
+                    Active,
+                    Inactive,
+                }
+            "},
+            &[("status", "Status")],
+            indoc! {"
+                match status {
+                    Status::Active => true,
+                    Status::Inactive => false,
+                }
+            "},
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_on_non_enum() {
+        check(
+            "",
+            &[("name", "String")],
+            indoc! {r#"
+                match name {
+                    Color::Red => "red",
+                }
+            "#},
+            expect![[r#"
+                error: Match is not implemented for type String
+                match name {
+                      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_with_mismatched_arm_types() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    Color::Red => "red",
+                    Color::Green => 42,
+                }
+            "#},
+            expect![[r#"
+                error: Match arms must all have the same type, expected String but found Int
+                    Color::Green => 42,
+                                    ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_with_wrong_enum_in_pattern() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                }
+                enum Size {
+                    Small,
+                    Large,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    Color::Red => 0,
+                    Size::Small => 1,
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern enum 'Size' does not match subject enum 'Color'
+                    Size::Small => 1,
+                    ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_with_undefined_variant_in_pattern() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    Color::Red => 0,
+                    Color::Yellow => 1,
+                }
+            "#},
+            expect![[r#"
+                error: Variant 'Yellow' is not defined in enum 'Color'
+                    Color::Yellow => 1,
+                    ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_with_field_access_subject() {
+        check(
+            indoc! {"
+                enum Status {
+                    Active,
+                    Inactive,
+                }
+                record User {
+                    status: Status,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user.status {
+                    Status::Active => "active",
+                    Status::Inactive => "inactive",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_with_complex_arm_bodies() {
+        check(
+            indoc! {"
+                enum Status {
+                    Active,
+                    Inactive,
+                }
+                record User {
+                    name: String,
+                    status: Status,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {"
+                match user.status {
+                    Status::Active => user.name + user.name,
+                    Status::Inactive => user.name + user.name,
+                }
+            "},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_with_single_variant_enum() {
+        check(
+            indoc! {"
+                enum Unit {
+                    Value,
+                }
+            "},
+            &[("unit", "Unit")],
+            indoc! {r#"
+                match unit {
+                    Unit::Value => "value",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_with_wildcard_pattern() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    Color::Red => 0,
+                    _ => 1,
+                }
+            "#},
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_with_only_wildcard() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    _ => "any color",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_with_wildcard_at_end() {
+        check(
+            indoc! {"
+                enum Status {
+                    Active,
+                    Inactive,
+                    Pending,
+                    Archived,
+                }
+            "},
+            &[("status", "Status")],
+            indoc! {"
+                match status {
+                    Status::Active => 1,
+                    Status::Inactive => 2,
+                    _ => 0,
+                }
+            "},
+            expect!["Int"],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// MATCH EXPRESSION - BOOLEAN                                          ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_boolean_match_with_both_values() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    true => 1,
+                    false => 0,
+                }
+            "#},
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_accept_boolean_match_with_wildcard() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    true => 1,
+                    _ => 0,
+                }
+            "#},
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_accept_boolean_match_with_only_wildcard() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    _ => "always",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_reject_enum_pattern_in_boolean_match() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                }
+            "},
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    Color::Red => "red",
+                    false => "no",
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern type mismatch: expected boolean, found Color::Red
+                    Color::Red => "red",
+                    ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_boolean_pattern_in_enum_match() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    true => 0,
+                    Color::Green => 1,
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern type mismatch: expected enum, found true
+                    true => 0,
+                    ^^^^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// MATCH EXPRESSION - OPTION                                           ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_option_match_with_some_and_none() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    Some(_) => 0,
+                    None    => 1,
+                }
+            "#},
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_match_returning_int() {
+        check(
+            "",
+            &[("opt", "Option[String]")],
+            indoc! {"
+                match opt {
+                    Some(_) => 1,
+                    None    => 0,
+                }
+            "},
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_match_with_wildcard() {
+        check(
+            "",
+            &[("opt", "Option[Bool]")],
+            indoc! {r#"
+                match opt {
+                    Some(_) => 0,
+                    _       => 1,
+                }
+            "#},
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_match_with_only_wildcard() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    _ => "always this",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_match_with_specific_some_and_wildcard() {
+        check(
+            "",
+            &[("opt", "Option[Bool]")],
+            indoc! {"
+                match opt {
+                    Some(true) => 0,
+                    _          => 1,
+                }
+            "},
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_accept_exhaustive_nested_option_match() {
+        check(
+            "",
+            &[("opt", "Option[Option[Int]]")],
+            indoc! {r#"
+                match opt {
+                    Some(Some(_)) => 0,
+                    Some(None)    => 1,
+                    None          => 2,
+                }
+            "#},
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_accept_exhaustive_nested_option_match_with_literal_subject() {
+        check(
+            "",
+            &[],
+            indoc! {r#"
+                match Some(Some(10)) {
+                    Some(Some(_)) => 0,
+                    Some(None)    => 1,
+                    None          => 2,
+                }
+            "#},
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_reject_option_match_with_mismatched_arm_types() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {"
+                match opt {
+                    Some(_) => 42,
+                    None    => true,
+                }
+            "},
+            expect![[r#"
+                error: Match arms must all have the same type, expected Int but found Bool
+                    None    => true,
+                               ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_enum_pattern_in_option_match() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                }
+            "},
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    Color::Red => 0,
+                    None       => 1,
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern type mismatch: expected option, found Color::Red
+                    Color::Red => 0,
+                    ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_boolean_pattern_in_option_match() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    true => 0,
+                    None => 1,
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern type mismatch: expected option, found true
+                    true => 0,
+                    ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_option_pattern_in_enum_match() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    Some(_)      => 0,
+                    Color::Green => 1,
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern type mismatch: expected enum, found Some(_)
+                    Some(_)      => 0,
+                    ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_option_pattern_in_bool_match() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    Some(_) => 0,
+                    false   => 1,
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern type mismatch: expected boolean, found Some(_)
+                    Some(_) => 0,
+                    ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_nested_option_pattern_when_inner_type_is_bool() {
+        check(
+            "",
+            &[("opt", "Option[Bool]")],
+            indoc! {r#"
+                match opt {
+                    Some(None) => 0,
+                    None       => 1,
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern type mismatch: expected boolean, found None
+                    Some(None) => 0,
+                         ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_match_with_nested_enum() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("opt", "Option[Color]")],
+            indoc! {r#"
+                match opt {
+                    Some(Color::Red)   => "red",
+                    Some(Color::Green) => "green",
+                    Some(Color::Blue)  => "blue",
+                    None               => "none",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_reject_deeply_nested_option_pattern_when_inner_type_is_bool() {
+        check(
+            "",
+            &[("opt", "Option[Bool]")],
+            indoc! {r#"
+                match opt {
+                    Some(Some(_)) => 0,
+                    None          => 1,
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern type mismatch: expected boolean, found Some(_)
+                    Some(Some(_)) => 0,
+                         ^^^^^^^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// MATCH EXPRESSION - BINDING PATTERN                                  ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_binding_pattern_in_bool_match() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    x => x,
+                }
+            "#},
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_accept_binding_pattern_in_enum_match() {
+        check(
+            indoc! {"
+                enum Color {
+                    Red,
+                    Green,
+                    Blue,
+                }
+            "},
+            &[("color", "Color")],
+            indoc! {r#"
+                match color {
+                    x => x,
+                }
+            "#},
+            expect!["test::Color"],
+        );
+    }
+
+    #[test]
+    fn should_accept_binding_pattern_in_option_match() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    x => x,
+                }
+            "#},
+            expect!["Option[Int]"],
+        );
+    }
+
+    #[test]
+    fn should_accept_binding_pattern_inside_some() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    Some(x) => x,
+                    None    => 0,
+                }
+            "#},
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_accept_binding_pattern_in_arithmetic() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    Some(x) => x + 1,
+                    None    => 0,
+                }
+            "#},
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_accept_binding_pattern_returning_option() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    Some(x) => Some(x + 1),
+                    None    => None,
+                }
+            "#},
+            expect!["Option[Int]"],
+        );
+    }
+
+    #[test]
+    fn should_accept_binding_pattern_as_catchall() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    true  => false,
+                    other => other,
+                }
+            "#},
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_reject_unused_binding() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            indoc! {r#"
+                match flag {
+                    x => 42,
+                }
+            "#},
+            expect![[r#"
+                error: Unused binding 'x' in match arm
+                    x => 42,
+                    ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_unused_binding_inside_some() {
+        check(
+            "",
+            &[("opt", "Option[Int]")],
+            indoc! {r#"
+                match opt {
+                    Some(x) => 0,
+                    None    => 1,
+                }
+            "#},
+            expect![[r#"
+                error: Unused binding 'x' in match arm
+                    Some(x) => 0,
+                         ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_binding_inside_nested_some() {
+        check(
+            "",
+            &[("opt", "Option[Option[Int]]")],
+            indoc! {r#"
+                match opt {
+                    Some(Some(x)) => x,
+                    Some(None)    => 0,
+                    None          => 0,
+                }
+            "#},
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_reject_unused_binding_inside_nested_some() {
+        check(
+            "",
+            &[("opt", "Option[Option[Int]]")],
+            indoc! {r#"
+                match opt {
+                    Some(Some(x)) => 0,
+                    Some(None)    => 1,
+                    None          => 2,
+                }
+            "#},
+            expect![[r#"
+                error: Unused binding 'x' in match arm
+                    Some(Some(x)) => 0,
+                              ^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// MATCH EXPRESSION - RECORD                                           ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_record_match_with_all_fields() {
+        check(
+            indoc! {"
+                record User {
+                    name: String,
+                    age: Int,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    User(name: n, age: _) => n,
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_record_match_with_wildcard_fields() {
+        check(
+            indoc! {"
+                record User {
+                    name: String,
+                    age: Int,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    User(name: _, age: _) => "matched",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_record_match_with_nested_enum_pattern() {
+        check(
+            indoc! {"
+                enum Status {
+                    Active,
+                    Inactive,
+                }
+                record User {
+                    name: String,
+                    status: Status,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    User(name: n, status: Status::Active)   => n,
+                    User(name: _, status: Status::Inactive) => "inactive",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_reject_record_match_with_missing_fields() {
+        check(
+            indoc! {"
+                record User {
+                    name: String,
+                    age: Int,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    User(name: n) => n,
+                }
+            "#},
+            expect![[r#"
+                error: Record pattern for 'User' must specify all 2 fields, but only 1 were provided
+                    User(name: n) => n,
+                    ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_record_match_with_unknown_field() {
+        check(
+            indoc! {"
+                record User {
+                    name: String,
+                    age: Int,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    User(name: n, email: e) => n,
+                }
+            "#},
+            expect![[r#"
+                error: Unknown field 'email' in record pattern for 'User'
+                    User(name: n, email: e) => n,
+                                         ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_record_match_with_wrong_record_type() {
+        check(
+            indoc! {"
+                record User {
+                    name: String,
+                }
+                record Admin {
+                    name: String,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    Admin(name: n) => n,
+                }
+            "#},
+            expect![[r#"
+                error: Match pattern record 'Admin' does not match subject record 'User'
+                    Admin(name: n) => n,
+                    ^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_unused_binding_in_record_pattern() {
+        check(
+            indoc! {"
+                record User {
+                    name: String,
+                    age: Int,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    User(name: n, age: a) => "hello",
+                }
+            "#},
+            expect![[r#"
+                error: Unused binding 'a' in match arm
+                    User(name: n, age: a) => "hello",
+                                       ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_record_match_with_nested_option_pattern() {
+        check(
+            indoc! {"
+                record User {
+                    name: String,
+                    email: Option[String],
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    User(name: _, email: Some(e)) => e,
+                    User(name: n, email: None)    => n,
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_match_with_nested_record_pattern() {
+        check(
+            indoc! {"
+                record User {
+                    name: String,
+                    age: Int,
+                }
+            "},
+            &[("maybe_user", "Option[User]")],
+            indoc! {r#"
+                match maybe_user {
+                    Some(User(name: n, age: _)) => n,
+                    None                        => "Default User",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_option_of_record_match_with_some_and_none() {
+        check(
+            indoc! {"
+                record User {
+                    name: String,
+                    age: Int,
+                }
+            "},
+            &[("maybe_user", "Option[User]")],
+            indoc! {r#"
+                match maybe_user {
+                    Some(_) => "has user",
+                    None    => "no user",
+                }
+            "#},
+            expect!["String"],
+        );
+    }
 }
