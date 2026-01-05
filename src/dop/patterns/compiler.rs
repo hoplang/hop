@@ -225,6 +225,8 @@ pub struct Compiler {
     reachable: Vec<usize>,
     /// Missing pattern strings collected during compilation.
     missing_patterns: HashSet<String>,
+    /// The current path of matched constructors (used for error messages).
+    path: Vec<MatchedConstructor>,
 }
 
 impl Compiler {
@@ -233,6 +235,7 @@ impl Compiler {
             var_counter: initial_var_counter,
             reachable: Vec::new(),
             missing_patterns: HashSet::new(),
+            path: Vec::new(),
         }
     }
 
@@ -301,7 +304,7 @@ impl Compiler {
             })
             .collect();
 
-        let tree = self.compile_rows(rows, Vec::new());
+        let tree = self.compile_rows(rows);
 
         // Check for unreachable arms
         let unreachable: Vec<usize> = (0..patterns.len())
@@ -329,13 +332,10 @@ impl Compiler {
         Ok(tree.expect("tree should be Some when there are no missing patterns"))
     }
 
-    fn compile_rows(
-        &mut self,
-        mut rows: Vec<Row>,
-        path: Vec<MatchedConstructor>,
-    ) -> Option<Decision> {
+    fn compile_rows(&mut self, mut rows: Vec<Row>) -> Option<Decision> {
         if rows.is_empty() {
-            self.missing_patterns.insert(path_to_pattern_string(&path));
+            self.missing_patterns
+                .insert(path_to_pattern_string(&self.path));
             return None;
         }
 
@@ -477,40 +477,40 @@ impl Compiler {
         }
 
         // Compile all case bodies, collecting missing patterns along the way
-        let compiled_cases: Vec<_> = cases
-            .into_iter()
-            .map(|(cons, vars, rows)| {
-                let constructor_name = cons.to_string();
-                let arguments: Vec<String> = vars.iter().map(|v| v.name.clone()).collect();
+        let mut compiled_cases: Vec<(Constructor, Vec<Variable>, Option<Decision>)> =
+            Vec::with_capacity(cases.len());
 
-                let matched = if let Constructor::Record { .. } = &cons {
-                    let field_names: Vec<String> =
-                        if let Type::Record { fields, .. } = &branch_var.typ {
-                            fields.iter().map(|(name, _)| name.to_string()).collect()
-                        } else {
-                            Vec::new()
-                        };
-                    MatchedConstructor::Record {
-                        var_name: branch_var.name.clone(),
-                        constructor_name,
-                        arguments,
-                        field_names,
-                    }
-                } else {
-                    MatchedConstructor::Positional {
-                        var_name: branch_var.name.clone(),
-                        constructor_name,
-                        arguments,
-                    }
-                };
+        for (cons, vars, rows) in cases {
+            let constructor_name = cons.to_string();
+            let arguments: Vec<String> = vars.iter().map(|v| v.name.clone()).collect();
 
-                let mut new_path = path.clone();
-                new_path.push(matched);
+            let matched = if let Constructor::Record { .. } = &cons {
+                let field_names: Vec<String> =
+                    if let Type::Record { fields, .. } = &branch_var.typ {
+                        fields.iter().map(|(name, _)| name.to_string()).collect()
+                    } else {
+                        Vec::new()
+                    };
+                MatchedConstructor::Record {
+                    var_name: branch_var.name.clone(),
+                    constructor_name,
+                    arguments,
+                    field_names,
+                }
+            } else {
+                MatchedConstructor::Positional {
+                    var_name: branch_var.name.clone(),
+                    constructor_name,
+                    arguments,
+                }
+            };
 
-                let body = self.compile_rows(rows, new_path);
-                (cons, vars, body)
-            })
-            .collect();
+            self.path.push(matched);
+            let body = self.compile_rows(rows);
+            self.path.pop();
+
+            compiled_cases.push((cons, vars, body));
+        }
 
         // If any case body is None, return None (missing patterns already collected)
         if compiled_cases.iter().any(|(_, _, body)| body.is_none()) {
