@@ -804,8 +804,7 @@ fn typecheck_node(
                 PatMatchVariable::new("match_subject".to_string(), subject_type.clone());
 
             // Run the pattern matching compiler
-            let decision = match PatMatchCompiler::new(0).compile(&patterns, &subject_var, range, type_env)
-            {
+            let decision = match PatMatchCompiler::new(0).compile(&patterns, &subject_var, range) {
                 Ok(decision) => decision,
                 Err(err) => {
                     errors.push(err.into());

@@ -7,7 +7,6 @@ use std::collections::{HashMap, HashSet};
 
 use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::syntax::parsed::{Constructor, ParsedMatchPattern};
-use crate::environment::Environment;
 
 use crate::dop::semantics::r#type::Type;
 use crate::dop::semantics::type_error::TypeError;
@@ -221,18 +220,14 @@ impl Compiler {
         }
     }
 
-    /// Returns the index of a constructor.
-    fn constructor_index(&self, cons: &Constructor, type_env: &mut Environment<Type>) -> usize {
+    /// Returns the index of a constructor within the given type.
+    fn constructor_index(&self, cons: &Constructor, typ: &Type) -> usize {
         match cons {
             Constructor::BooleanFalse => 0,
             Constructor::BooleanTrue => 1,
             Constructor::OptionSome => 0,
             Constructor::OptionNone => 1,
-            Constructor::EnumVariant {
-                enum_name,
-                variant_name,
-            } => {
-                let typ = type_env.lookup(enum_name.as_str()).expect("unknown enum");
+            Constructor::EnumVariant { variant_name, .. } => {
                 if let Type::Enum { variants, .. } = typ {
                     variants
                         .iter()
@@ -252,11 +247,10 @@ impl Compiler {
         patterns: &[ParsedMatchPattern],
         subject_var: &Variable,
         match_range: &DocumentRange,
-        type_env: &mut Environment<Type>,
     ) -> Result<Decision, TypeError> {
         // Validate all patterns against the subject type
         for pattern in patterns {
-            self.validate_pattern(pattern, &subject_var.typ, type_env)?;
+            Self::validate_pattern(pattern, &subject_var.typ)?;
         }
 
         let rows: Vec<Row> = patterns
@@ -270,7 +264,7 @@ impl Compiler {
             })
             .collect();
 
-        let tree = self.compile_rows(rows, type_env, Vec::new());
+        let tree = self.compile_rows(rows, Vec::new());
 
         // Check for unreachable arms
         let unreachable: Vec<usize> = (0..patterns.len())
@@ -301,7 +295,6 @@ impl Compiler {
     fn compile_rows(
         &mut self,
         mut rows: Vec<Row>,
-        type_env: &mut Environment<Type>,
         path: Vec<MatchedConstructor>,
     ) -> Option<Decision> {
         if rows.is_empty() {
@@ -406,7 +399,7 @@ impl Compiler {
                     ..
                 } = col.pattern
                 {
-                    let idx = self.constructor_index(&cons, type_env);
+                    let idx = self.constructor_index(&cons, &branch_var.typ);
                     let mut cols = row.columns;
 
                     if !fields.is_empty() {
@@ -473,7 +466,7 @@ impl Compiler {
                 let mut new_path = path.clone();
                 new_path.push(matched);
 
-                let body = self.compile_rows(rows, type_env, new_path);
+                let body = self.compile_rows(rows, new_path);
                 (cons, vars, body)
             })
             .collect();
@@ -521,10 +514,8 @@ impl Compiler {
 
     /// Validates that a pattern is compatible with the subject type.
     fn validate_pattern(
-        &self,
         pattern: &ParsedMatchPattern,
         subject_type: &Type,
-        type_env: &Environment<Type>,
     ) -> Result<(), TypeError> {
         match pattern {
             ParsedMatchPattern::Wildcard { .. } => Ok(()),
@@ -571,7 +562,7 @@ impl Compiler {
 
                 (Constructor::OptionSome, Type::Option(inner_type)) => {
                     if let Some(inner_pattern) = args.first() {
-                        self.validate_pattern(inner_pattern, inner_type, type_env)?;
+                        Self::validate_pattern(inner_pattern, inner_type)?;
                     }
                     Ok(())
                 }
@@ -615,7 +606,7 @@ impl Compiler {
                             .map(|(_, typ)| typ);
 
                         match field_type {
-                            Some(typ) => self.validate_pattern(field_pattern, typ, type_env)?,
+                            Some(typ) => Self::validate_pattern(field_pattern, typ)?,
                             None => {
                                 return Err(TypeError::MatchRecordPatternUnknownField {
                                     field_name: field_name.to_string(),
@@ -657,41 +648,40 @@ impl Compiler {
 mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
+    use crate::dop::Parser;
     use crate::dop::symbols::field_name::FieldName;
     use crate::dop::symbols::type_name::TypeName;
     use crate::dop::syntax::parsed::ParsedExpr;
-    use crate::dop::Parser;
     use crate::hop::symbols::module_name::ModuleName;
-    use expect_test::{expect, Expect};
+    use expect_test::{Expect, expect};
     use indoc::indoc;
 
     fn check(subject_type: Type, expr_str: &str, expected: Expect) {
-        let mut type_env: Environment<Type> = Environment::new();
-
-        // Register types if needed
-        match &subject_type {
-            Type::Enum { name, .. } | Type::Record { name, .. } => {
-                let _ = type_env.push(name.to_string(), subject_type.clone());
-            }
-            _ => {}
-        }
-
         let mut parser = Parser::from(expr_str);
         let expr = parser.parse_expr().expect("Failed to parse expression");
 
         let (subject_name, patterns, match_range) = match expr {
-            ParsedExpr::Match { subject, arms, range, .. } => {
+            ParsedExpr::Match {
+                subject,
+                arms,
+                range,
+                ..
+            } => {
                 let name = match subject.as_ref() {
                     ParsedExpr::Var { value, .. } => value.as_str().to_string(),
                     _ => panic!("Expected variable as match subject"),
                 };
-                (name, arms.into_iter().map(|a| a.pattern).collect::<Vec<_>>(), range)
+                (
+                    name,
+                    arms.into_iter().map(|a| a.pattern).collect::<Vec<_>>(),
+                    range,
+                )
             }
             _ => panic!("Expected match expression"),
         };
 
         let subject_var = Variable::new(subject_name, subject_type);
-        let result = Compiler::new(0).compile(&patterns, &subject_var, &match_range, &mut type_env);
+        let result = Compiler::new(0).compile(&patterns, &subject_var, &match_range);
 
         let actual = match result {
             Ok(decision) => format_decision(&decision, 0),
@@ -721,10 +711,8 @@ mod tests {
                 for case in cases {
                     let args = if case.arguments.is_empty() {
                         String::new()
-                    } else if let (
-                        Constructor::Record { .. },
-                        Type::Record { fields, .. },
-                    ) = (&case.constructor, &var.typ)
+                    } else if let (Constructor::Record { .. }, Type::Record { fields, .. }) =
+                        (&case.constructor, &var.typ)
                     {
                         // For records, show field names
                         let named: Vec<_> = fields
@@ -734,10 +722,14 @@ mod tests {
                             .collect();
                         format!("({})", named.join(", "))
                     } else {
-                        let names: Vec<_> = case.arguments.iter().map(|v| v.name.as_str()).collect();
+                        let names: Vec<_> =
+                            case.arguments.iter().map(|v| v.name.as_str()).collect();
                         format!("({})", names.join(", "))
                     };
-                    out.push_str(&format!("{}{} is {}{}\n", pad, var.name, case.constructor, args));
+                    out.push_str(&format!(
+                        "{}{} is {}{}\n",
+                        pad, var.name, case.constructor, args
+                    ));
                     out.push_str(&format_decision(&case.body, indent + 1));
                 }
                 out
@@ -1495,7 +1487,10 @@ mod tests {
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
                     (FieldName::new("name").unwrap(), Type::String),
-                    (FieldName::new("email").unwrap(), Type::Option(Box::new(Type::String))),
+                    (
+                        FieldName::new("email").unwrap(),
+                        Type::Option(Box::new(Type::String)),
+                    ),
                 ],
             },
             indoc! {"
@@ -1525,7 +1520,10 @@ mod tests {
                 name: TypeName::new("User").unwrap(),
                 fields: vec![
                     (FieldName::new("name").unwrap(), Type::String),
-                    (FieldName::new("email").unwrap(), Type::Option(Box::new(Type::String))),
+                    (
+                        FieldName::new("email").unwrap(),
+                        Type::Option(Box::new(Type::String)),
+                    ),
                 ],
             },
             indoc! {"
@@ -1665,9 +1663,7 @@ mod tests {
             Type::Record {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("User").unwrap(),
-                fields: vec![
-                    (FieldName::new("name").unwrap(), Type::String),
-                ],
+                fields: vec![(FieldName::new("name").unwrap(), Type::String)],
             },
             indoc! {"
                 match x {
