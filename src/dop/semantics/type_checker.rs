@@ -908,8 +908,19 @@ fn typecheck_arm_bodies(
     for arm in arms {
         // Extract binding variables from the pattern and add them to the environment
         let bindings = extract_bindings_from_pattern(&arm.pattern, subject_type);
-        for (name, typ, _) in &bindings {
-            let _ = env.push(name.clone(), typ.clone());
+        let mut pushed_count = 0;
+        for (name, typ, range) in &bindings {
+            match env.push(name.clone(), typ.clone()) {
+                Ok(_) => {
+                    pushed_count += 1;
+                }
+                Err(_) => {
+                    return Err(TypeError::VariableAlreadyDefined {
+                        name: name.clone(),
+                        range: range.clone(),
+                    });
+                }
+            }
         }
 
         // Use the first arm's type as context for subsequent arms
@@ -918,7 +929,7 @@ fn typecheck_arm_bodies(
         let body_type = typed_body.as_type().clone();
 
         // Remove bindings from environment and check for unused bindings
-        for (_, _, range) in bindings.iter().rev() {
+        for (_, _, range) in bindings.iter().rev().take(pushed_count) {
             let (name, _, accessed) = env.pop();
             if !accessed {
                 return Err(TypeError::MatchUnusedBinding {

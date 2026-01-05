@@ -182,6 +182,9 @@ pub enum TypeError {
 
     #[error("Unused binding '{name}' in match arm")]
     MatchUnusedBinding { name: String, range: DocumentRange },
+
+    #[error("Variable '{name}' is already defined")]
+    VariableAlreadyDefined { name: String, range: DocumentRange },
 }
 
 impl Ranged for TypeError {
@@ -218,7 +221,8 @@ impl Ranged for TypeError {
             | TypeError::MatchUnreachableArm { range, .. }
             | TypeError::MatchPatternTypeMismatch { range, .. }
             | TypeError::MatchNoArms { range, .. }
-            | TypeError::MatchUnusedBinding { range, .. } => range,
+            | TypeError::MatchUnusedBinding { range, .. }
+            | TypeError::VariableAlreadyDefined { range, .. } => range,
         }
     }
 }

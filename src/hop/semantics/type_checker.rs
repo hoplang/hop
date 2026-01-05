@@ -4412,4 +4412,32 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn should_reject_shadowed_variable_in_nested_match_expression() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {c: Option[String]}>
+                  <match {c}>
+                    <case {Some(x)}>
+                      {match Some("foo") {
+                        None    => x,
+                        Some(x) => x,
+                      }}
+                    </case>
+                    <case {None}>
+                    </case>
+                  </match>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Variable 'x' is already defined
+                  --> main.hop (line 6, col 14)
+                 5 |         None    => x,
+                 6 |         Some(x) => x,
+                   |              ^
+            "#]],
+        );
+    }
 }
