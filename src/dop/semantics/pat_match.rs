@@ -204,7 +204,6 @@ pub enum Decision {
     Switch(Variable, Vec<Case>),
 }
 
-
 /// The `match` compiler itself.
 pub struct Compiler {
     /// A counter used to construct unused variable names.
@@ -268,10 +267,7 @@ impl Compiler {
             })
             .collect();
 
-        let mut var_env: Environment<Type> = Environment::new();
-        let _ = var_env.push(subject_var.name.clone(), subject_var.typ.clone());
-
-        let tree = self.compile_rows(rows, type_env, &mut var_env, Vec::new());
+        let tree = self.compile_rows(rows, type_env, Vec::new());
 
         // Check for unreachable arms
         let unreachable: Vec<usize> = (0..arms.len())
@@ -303,12 +299,10 @@ impl Compiler {
         &mut self,
         mut rows: Vec<Row>,
         type_env: &mut Environment<Type>,
-        var_env: &mut Environment<Type>,
         path: Vec<MatchedConstructor>,
     ) -> Option<Decision> {
         if rows.is_empty() {
-            self.missing_patterns
-                .insert(path_to_pattern_string(&path));
+            self.missing_patterns.insert(path_to_pattern_string(&path));
             return None;
         }
 
@@ -346,7 +340,7 @@ impl Compiler {
                 vec![
                     (
                         Constructor::OptionSome,
-                        vec![self.fresh_var(inner.as_ref().clone(), var_env)],
+                        vec![self.fresh_var(inner.as_ref().clone())],
                         Vec::new(),
                     ),
                     (Constructor::OptionNone, Vec::new(), Vec::new()),
@@ -369,7 +363,7 @@ impl Compiler {
                 // Records have a single constructor with fresh variables for each field
                 let field_vars: Vec<Variable> = fields
                     .iter()
-                    .map(|(_, field_type)| self.fresh_var(field_type.clone(), var_env))
+                    .map(|(_, field_type)| self.fresh_var(field_type.clone()))
                     .collect();
                 vec![(
                     Constructor::Record {
@@ -476,7 +470,7 @@ impl Compiler {
                 let mut new_path = path.clone();
                 new_path.push(matched);
 
-                let body = self.compile_rows(rows, type_env, var_env, new_path);
+                let body = self.compile_rows(rows, type_env, new_path);
                 (cons, vars, body)
             })
             .collect();
@@ -516,10 +510,9 @@ impl Compiler {
     }
 
     /// Returns a new variable to use in the decision tree.
-    fn fresh_var(&mut self, typ: Type, var_env: &mut Environment<Type>) -> Variable {
+    fn fresh_var(&mut self, typ: Type) -> Variable {
         let name = format!("v{}", self.var_counter);
         self.var_counter += 1;
-        let _ = var_env.push(name.clone(), typ.clone());
         Variable::new(name, typ)
     }
 }
