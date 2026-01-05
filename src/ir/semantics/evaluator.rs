@@ -8,7 +8,8 @@ use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use crate::ir::syntax::ast::{IrComponentDeclaration, IrEnumPattern, IrStatement};
+use crate::dop::patterns::{EnumPattern, Match};
+use crate::ir::syntax::ast::{IrComponentDeclaration, IrStatement};
 
 /// Evaluate an IR entrypoint with the given arguments
 pub fn evaluate_entrypoint(
@@ -404,74 +405,74 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             // Enum variants evaluate to their string name
             Ok(Value::String(variant_name.clone()))
         }
-        IrExpr::EnumMatch { subject, arms, .. } => {
-            // Evaluate the subject to get the variant name
-            let subject_val = evaluate_expr(subject, env)?;
-            let variant_name = subject_val
-                .as_str()
-                .ok_or_else(|| anyhow!("Match subject must evaluate to a string (enum variant)"))?;
+        IrExpr::Match { match_, .. } => match match_ {
+            Match::Enum { subject, arms } => {
+                // Evaluate the subject to get the variant name
+                let subject_val = evaluate_expr(subject, env)?;
+                let variant_name = subject_val
+                    .as_str()
+                    .ok_or_else(|| anyhow!("Match subject must evaluate to a string (enum variant)"))?;
 
-            // Find the matching arm
-            for arm in arms {
-                match &arm.pattern {
-                    IrEnumPattern::Variant {
-                        variant_name: pattern_variant,
-                        ..
-                    } => {
-                        if pattern_variant == variant_name {
-                            return evaluate_expr(&arm.body, env);
+                // Find the matching arm
+                for arm in arms {
+                    match &arm.pattern {
+                        EnumPattern::Variant {
+                            variant_name: pattern_variant,
+                            ..
+                        } => {
+                            if pattern_variant == variant_name {
+                                return evaluate_expr(&arm.body, env);
+                            }
                         }
                     }
                 }
+
+                Err(anyhow!(
+                    "No matching arm found for variant '{}'",
+                    variant_name
+                ))
             }
+            Match::Bool {
+                subject,
+                true_body,
+                false_body,
+            } => {
+                // Evaluate the subject to get the boolean value
+                let subject_val = evaluate_expr(subject, env)?;
+                let subject_bool = subject_val
+                    .as_bool()
+                    .ok_or_else(|| anyhow!("Match subject must evaluate to a boolean"))?;
 
-            Err(anyhow!(
-                "No matching arm found for variant '{}'",
-                variant_name
-            ))
-        }
-        IrExpr::BoolMatch {
-            subject,
-            true_body,
-            false_body,
-            ..
-        } => {
-            // Evaluate the subject to get the boolean value
-            let subject_val = evaluate_expr(subject, env)?;
-            let subject_bool = subject_val
-                .as_bool()
-                .ok_or_else(|| anyhow!("Match subject must evaluate to a boolean"))?;
-
-            if subject_bool {
-                evaluate_expr(true_body, env)
-            } else {
-                evaluate_expr(false_body, env)
-            }
-        }
-        IrExpr::OptionMatch {
-            subject,
-            some_arm_binding,
-            some_arm_body,
-            none_arm_body,
-            ..
-        } => {
-            // Evaluate the subject to get the option value
-            let subject_val = evaluate_expr(subject, env)?;
-
-            // Check if it's Some or None
-            let is_some = !subject_val.is_null();
-
-            if is_some {
-                // If there's a binding, add the inner value to the environment
-                if let Some((var_name, _)) = some_arm_binding {
-                    let _ = env.push(var_name.to_string(), subject_val.clone());
-                    let result = evaluate_expr(some_arm_body, env);
-                    env.pop();
-                    return result;
+                if subject_bool {
+                    evaluate_expr(true_body, env)
+                } else {
+                    evaluate_expr(false_body, env)
                 }
-                evaluate_expr(some_arm_body, env)
-            } else {
-                evaluate_expr(none_arm_body, env)
+            }
+            Match::Option {
+                subject,
+                some_arm_binding,
+                some_arm_body,
+                none_arm_body,
+            } => {
+                // Evaluate the subject to get the option value
+                let subject_val = evaluate_expr(subject, env)?;
+
+                // Check if it's Some or None
+                let is_some = !subject_val.is_null();
+
+                if is_some {
+                    // If there's a binding, add the inner value to the environment
+                    if let Some((var_name, _)) = some_arm_binding {
+                        let _ = env.push(var_name.to_string(), subject_val.clone());
+                        let result = evaluate_expr(some_arm_body, env);
+                        env.pop();
+                        return result;
+                    }
+                    evaluate_expr(some_arm_body, env)
+                } else {
+                    evaluate_expr(none_arm_body, env)
+                }
             }
         }
         IrExpr::Let { var, value, body, .. } => {

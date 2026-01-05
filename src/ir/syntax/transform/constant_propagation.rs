@@ -1,8 +1,9 @@
 use super::Pass;
+use crate::dop::patterns::{EnumPattern, Match};
 use crate::ir::{
     IrExpr,
     ast::ExprId,
-    ast::{IrComponentDeclaration, IrEnumPattern, IrStatement},
+    ast::{IrComponentDeclaration, IrStatement},
 };
 use datafrog::{Iteration, Relation};
 use std::collections::HashMap;
@@ -74,27 +75,29 @@ impl Pass for ConstantPropagationPass {
                             initial_enum_constants
                                 .push((expr.id(), (enum_name.clone(), variant_name.clone())));
                         }
-                        IrExpr::EnumMatch { subject, arms, .. } => {
-                            match_subjects.push((subject.id(), expr.id()));
-                            for arm in arms {
-                                match &arm.pattern {
-                                    IrEnumPattern::Variant {
-                                        enum_name,
-                                        variant_name,
-                                    } => {
-                                        match_arms_relations.push((
-                                            (expr.id(), enum_name.clone(), variant_name.clone()),
-                                            arm.body.id(),
-                                        ));
+                        IrExpr::Match { match_, .. } => match match_ {
+                            Match::Enum { subject, arms } => {
+                                match_subjects.push((subject.id(), expr.id()));
+                                for arm in arms {
+                                    match &arm.pattern {
+                                        EnumPattern::Variant {
+                                            enum_name,
+                                            variant_name,
+                                        } => {
+                                            match_arms_relations.push((
+                                                (expr.id(), enum_name.clone(), variant_name.clone()),
+                                                arm.body.id(),
+                                            ));
+                                        }
                                     }
                                 }
                             }
-                        }
-                        IrExpr::BoolMatch { .. } => {
-                            // Boolean patterns are not currently constant-folded
-                        }
-                        IrExpr::OptionMatch { .. } => {
-                            // Option patterns are not currently constant-folded
+                            Match::Bool { .. } => {
+                                // Boolean patterns are not currently constant-folded
+                            }
+                            Match::Option { .. } => {
+                                // Option patterns are not currently constant-folded
+                            }
                         }
                         IrExpr::Var { value: name, .. } => {
                             // Check if this variable is defined by a Let or For statement

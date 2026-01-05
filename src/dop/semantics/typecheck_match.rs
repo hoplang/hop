@@ -2,7 +2,7 @@ use crate::dop::patterns::pat_match::{Compiler, Decision, Variable};
 use super::r#type::Type;
 use super::type_checker::typecheck_expr;
 use super::type_error::TypeError;
-use super::typed::{TypedEnumMatchArm, TypedEnumPattern};
+use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::TypedExpr;
 use crate::dop::symbols::var_name::VarName;
@@ -376,10 +376,12 @@ fn decision_to_typed_expr(
                         }
                     }
 
-                    TypedExpr::BoolMatch {
-                        subject,
-                        true_body: Box::new(true_body.expect("BoolMatch must have a true arm")),
-                        false_body: Box::new(false_body.expect("BoolMatch must have a false arm")),
+                    TypedExpr::Match {
+                        match_: Match::Bool {
+                            subject,
+                            true_body: Box::new(true_body.expect("BoolMatch must have a true arm")),
+                            false_body: Box::new(false_body.expect("BoolMatch must have a false arm")),
+                        },
                         kind: result_type,
                     }
                 }
@@ -416,15 +418,17 @@ fn decision_to_typed_expr(
                         }
                     }
 
-                    TypedExpr::OptionMatch {
-                        subject,
-                        some_arm_binding,
-                        some_arm_body: Box::new(
-                            some_arm_body.expect("OptionMatch must have a Some arm"),
-                        ),
-                        none_arm_body: Box::new(
-                            none_arm_body.expect("OptionMatch must have a None arm"),
-                        ),
+                    TypedExpr::Match {
+                        match_: Match::Option {
+                            subject,
+                            some_arm_binding,
+                            some_arm_body: Box::new(
+                                some_arm_body.expect("OptionMatch must have a Some arm"),
+                            ),
+                            none_arm_body: Box::new(
+                                none_arm_body.expect("OptionMatch must have a None arm"),
+                            ),
+                        },
                         kind: result_type,
                     }
                 }
@@ -437,7 +441,7 @@ fn decision_to_typed_expr(
                                 Constructor::EnumVariant {
                                     enum_name,
                                     variant_name,
-                                } => TypedEnumPattern::Variant {
+                                } => EnumPattern::Variant {
                                     enum_name: enum_name.to_string(),
                                     variant_name: variant_name.clone(),
                                 },
@@ -448,13 +452,12 @@ fn decision_to_typed_expr(
                                 typed_bodies,
                                 result_type.clone(),
                             );
-                            TypedEnumMatchArm { pattern, body }
+                            EnumMatchArm { pattern, body }
                         })
                         .collect();
 
-                    TypedExpr::EnumMatch {
-                        subject,
-                        arms,
+                    TypedExpr::Match {
+                        match_: Match::Enum { subject, arms },
                         kind: result_type,
                     }
                 }

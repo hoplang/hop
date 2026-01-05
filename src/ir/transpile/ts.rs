@@ -4,7 +4,8 @@ use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspile
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::ir::ast::{IrComponentDeclaration, IrEnumPattern, IrExpr, IrModule, IrStatement};
+use crate::dop::patterns::{EnumMatchArm, EnumPattern};
+use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrModule, IrStatement};
 
 pub struct TsTranspiler {
     /// Internal flag to use template literals instead of double quotes
@@ -680,14 +681,14 @@ impl ExpressionTranspiler for TsTranspiler {
     fn transpile_enum_match<'a>(
         &self,
         subject: &'a IrExpr,
-        arms: &'a [crate::ir::ast::IrEnumMatchArm],
+        arms: &'a [EnumMatchArm<IrExpr>],
     ) -> BoxDoc<'a> {
         // Transpile enum match to an IIFE with a switch statement:
         // (() => { switch (subject._tag) { case "ColorRed": return body; ... } })()
         // The _tag uses the pattern EnumNameVariantName (e.g., ColorRed)
         let cases = BoxDoc::intersperse(
             arms.iter().map(|arm| match &arm.pattern {
-                IrEnumPattern::Variant {
+                EnumPattern::Variant {
                     enum_name,
                     variant_name,
                 } => {

@@ -5,7 +5,8 @@ use crate::dop::VarName;
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::ir::ast::{IrComponentDeclaration, IrEnumMatchArm, IrExpr, IrModule, IrStatement};
+use crate::dop::patterns::EnumMatchArm;
+use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrModule, IrStatement};
 use std::collections::BTreeSet;
 
 pub struct GoTranspiler {
@@ -707,7 +708,7 @@ impl ExpressionTranspiler for GoTranspiler {
     fn transpile_enum_match<'a>(
         &self,
         _subject: &'a IrExpr,
-        _arms: &'a [IrEnumMatchArm],
+        _arms: &'a [EnumMatchArm<IrExpr>],
     ) -> BoxDoc<'a> {
         panic!("Match expressions are not yet supported in Go transpilation")
     }

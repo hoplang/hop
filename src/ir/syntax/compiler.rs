@@ -2,16 +2,14 @@ use crate::common::is_void_element;
 use crate::document::document_cursor::StringSpan;
 use crate::dop::TypedExpr;
 use crate::dop::semantics::r#type::EquatableType;
-use crate::dop::semantics::typed::TypedEnumPattern;
+use crate::dop::patterns::{EnumMatchArm, Match};
 use crate::dop::{Type, VarName};
 use crate::inlined::{
     InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
 };
 use std::collections::BTreeMap;
 
-use super::ast::{
-    ExprId, IrComponentDeclaration, IrEnumMatchArm, IrEnumPattern, IrExpr, IrStatement, StatementId,
-};
+use super::ast::{ExprId, IrComponentDeclaration, IrExpr, IrStatement, StatementId};
 
 pub struct Compiler {
     // Expression ID generation
@@ -551,56 +549,45 @@ impl Compiler {
                 kind,
                 id: expr_id,
             },
-            TypedExpr::EnumMatch {
-                subject,
-                arms,
-                kind,
-            } => IrExpr::EnumMatch {
-                subject: Box::new(self.compile_expr(*subject)),
-                arms: arms
-                    .into_iter()
-                    .map(|arm| IrEnumMatchArm {
-                        pattern: match arm.pattern {
-                            TypedEnumPattern::Variant {
-                                enum_name,
-                                variant_name,
-                            } => IrEnumPattern::Variant {
-                                enum_name,
-                                variant_name,
-                            },
-                        },
-                        body: self.compile_expr(arm.body),
-                    })
-                    .collect(),
-                kind,
-                id: expr_id,
-            },
-            TypedExpr::BoolMatch {
-                subject,
-                true_body,
-                false_body,
-                kind,
-            } => IrExpr::BoolMatch {
-                subject: Box::new(self.compile_expr(*subject)),
-                true_body: Box::new(self.compile_expr(*true_body)),
-                false_body: Box::new(self.compile_expr(*false_body)),
-                kind,
-                id: expr_id,
-            },
-            TypedExpr::OptionMatch {
-                subject,
-                some_arm_binding,
-                some_arm_body,
-                none_arm_body,
-                kind,
-            } => IrExpr::OptionMatch {
-                subject: Box::new(self.compile_expr(*subject)),
-                some_arm_binding,
-                some_arm_body: Box::new(self.compile_expr(*some_arm_body)),
-                none_arm_body: Box::new(self.compile_expr(*none_arm_body)),
-                kind,
-                id: expr_id,
-            },
+            TypedExpr::Match { match_, kind } => {
+                let compiled_match = match match_ {
+                    Match::Enum { subject, arms } => Match::Enum {
+                        subject: Box::new(self.compile_expr(*subject)),
+                        arms: arms
+                            .into_iter()
+                            .map(|arm| EnumMatchArm {
+                                pattern: arm.pattern,
+                                body: self.compile_expr(arm.body),
+                            })
+                            .collect(),
+                    },
+                    Match::Bool {
+                        subject,
+                        true_body,
+                        false_body,
+                    } => Match::Bool {
+                        subject: Box::new(self.compile_expr(*subject)),
+                        true_body: Box::new(self.compile_expr(*true_body)),
+                        false_body: Box::new(self.compile_expr(*false_body)),
+                    },
+                    Match::Option {
+                        subject,
+                        some_arm_binding,
+                        some_arm_body,
+                        none_arm_body,
+                    } => Match::Option {
+                        subject: Box::new(self.compile_expr(*subject)),
+                        some_arm_binding,
+                        some_arm_body: Box::new(self.compile_expr(*some_arm_body)),
+                        none_arm_body: Box::new(self.compile_expr(*none_arm_body)),
+                    },
+                };
+                IrExpr::Match {
+                    match_: compiled_match,
+                    kind,
+                    id: expr_id,
+                }
+            }
             TypedExpr::OptionLiteral { .. } => {
                 todo!()
             }

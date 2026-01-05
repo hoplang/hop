@@ -2,7 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::dop::VarName;
 
-use crate::ir::ast::{IrComponentDeclaration, IrEnumMatchArm, IrExpr, IrStatement};
+use crate::dop::patterns::{EnumMatchArm, Match};
+use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrStatement};
 
 use super::Pass;
 
@@ -210,51 +211,45 @@ impl AlphaRenamingPass {
             IrExpr::FloatLiteral { .. } => expr,
             IrExpr::IntLiteral { .. } => expr,
             IrExpr::EnumLiteral { .. } => expr,
-            IrExpr::EnumMatch {
-                subject,
-                arms,
-                kind,
-                id,
-            } => IrExpr::EnumMatch {
-                subject: Box::new(self.rename_expr(*subject)),
-                arms: arms
-                    .into_iter()
-                    .map(|arm| IrEnumMatchArm {
-                        pattern: arm.pattern,
-                        body: self.rename_expr(arm.body),
-                    })
-                    .collect(),
-                kind,
-                id,
-            },
-            IrExpr::BoolMatch {
-                subject,
-                true_body,
-                false_body,
-                kind,
-                id,
-            } => IrExpr::BoolMatch {
-                subject: Box::new(self.rename_expr(*subject)),
-                true_body: Box::new(self.rename_expr(*true_body)),
-                false_body: Box::new(self.rename_expr(*false_body)),
-                kind,
-                id,
-            },
-            IrExpr::OptionMatch {
-                subject,
-                some_arm_binding,
-                some_arm_body,
-                none_arm_body,
-                kind,
-                id,
-            } => IrExpr::OptionMatch {
-                subject: Box::new(self.rename_expr(*subject)),
-                some_arm_binding,
-                some_arm_body: Box::new(self.rename_expr(*some_arm_body)),
-                none_arm_body: Box::new(self.rename_expr(*none_arm_body)),
-                kind,
-                id,
-            },
+            IrExpr::Match { match_, kind, id } => {
+                let renamed_match = match match_ {
+                    Match::Enum { subject, arms } => Match::Enum {
+                        subject: Box::new(self.rename_expr(*subject)),
+                        arms: arms
+                            .into_iter()
+                            .map(|arm| EnumMatchArm {
+                                pattern: arm.pattern,
+                                body: self.rename_expr(arm.body),
+                            })
+                            .collect(),
+                    },
+                    Match::Bool {
+                        subject,
+                        true_body,
+                        false_body,
+                    } => Match::Bool {
+                        subject: Box::new(self.rename_expr(*subject)),
+                        true_body: Box::new(self.rename_expr(*true_body)),
+                        false_body: Box::new(self.rename_expr(*false_body)),
+                    },
+                    Match::Option {
+                        subject,
+                        some_arm_binding,
+                        some_arm_body,
+                        none_arm_body,
+                    } => Match::Option {
+                        subject: Box::new(self.rename_expr(*subject)),
+                        some_arm_binding,
+                        some_arm_body: Box::new(self.rename_expr(*some_arm_body)),
+                        none_arm_body: Box::new(self.rename_expr(*none_arm_body)),
+                    },
+                };
+                IrExpr::Match {
+                    match_: renamed_match,
+                    kind,
+                    id,
+                }
+            }
             IrExpr::BooleanLogicalAnd { left, right, id } => IrExpr::BooleanLogicalAnd {
                 left: Box::new(self.rename_expr(*left)),
                 right: Box::new(self.rename_expr(*right)),

@@ -1,3 +1,4 @@
+use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::dop::semantics::r#type::{ComparableType, EquatableType};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
@@ -415,8 +416,6 @@ impl IrBuilder {
     /// Create a match expression over an enum value
     /// arms is a list of (variant_name, body_expr) tuples
     pub fn match_expr(&self, subject: IrExpr, arms: Vec<(&str, IrExpr)>) -> IrExpr {
-        use crate::ir::ast::{IrEnumMatchArm, IrEnumPattern};
-
         // Get the enum type from the subject
         let (enum_name, result_type) = match subject.as_type() {
             Type::Enum { name, .. } => {
@@ -430,10 +429,10 @@ impl IrBuilder {
             _ => panic!("Match subject must be an enum type"),
         };
 
-        let ir_arms: Vec<IrEnumMatchArm> = arms
+        let ir_arms: Vec<EnumMatchArm<IrExpr>> = arms
             .into_iter()
-            .map(|(variant_name, body)| IrEnumMatchArm {
-                pattern: IrEnumPattern::Variant {
+            .map(|(variant_name, body)| EnumMatchArm {
+                pattern: EnumPattern::Variant {
                     enum_name: enum_name.clone(),
                     variant_name: variant_name.to_string(),
                 },
@@ -441,9 +440,11 @@ impl IrBuilder {
             })
             .collect();
 
-        IrExpr::EnumMatch {
-            subject: Box::new(subject),
-            arms: ir_arms,
+        IrExpr::Match {
+            match_: Match::Enum {
+                subject: Box::new(subject),
+                arms: ir_arms,
+            },
             kind: result_type,
             id: self.next_expr_id(),
         }
@@ -458,10 +459,12 @@ impl IrBuilder {
     ) -> IrExpr {
         let result_type = true_body.as_type().clone();
 
-        IrExpr::BoolMatch {
-            subject: Box::new(subject),
-            true_body: Box::new(true_body),
-            false_body: Box::new(false_body),
+        IrExpr::Match {
+            match_: Match::Bool {
+                subject: Box::new(subject),
+                true_body: Box::new(true_body),
+                false_body: Box::new(false_body),
+            },
             kind: result_type,
             id: self.next_expr_id(),
         }
@@ -476,11 +479,13 @@ impl IrBuilder {
     ) -> IrExpr {
         let result_type = some_body.as_type().clone();
 
-        IrExpr::OptionMatch {
-            subject: Box::new(subject),
-            some_arm_binding: None,
-            some_arm_body: Box::new(some_body),
-            none_arm_body: Box::new(none_body),
+        IrExpr::Match {
+            match_: Match::Option {
+                subject: Box::new(subject),
+                some_arm_binding: None,
+                some_arm_body: Box::new(some_body),
+                none_arm_body: Box::new(none_body),
+            },
             kind: result_type,
             id: self.next_expr_id(),
         }
@@ -511,11 +516,13 @@ impl IrBuilder {
 
         let result_type = some_body.as_type().clone();
 
-        IrExpr::OptionMatch {
-            subject: Box::new(subject),
-            some_arm_binding: Some((VarName::new(binding_name).unwrap(), inner_type)),
-            some_arm_body: Box::new(some_body),
-            none_arm_body: Box::new(none_body),
+        IrExpr::Match {
+            match_: Match::Option {
+                subject: Box::new(subject),
+                some_arm_binding: Some((VarName::new(binding_name).unwrap(), inner_type)),
+                some_arm_body: Box::new(some_body),
+                none_arm_body: Box::new(none_body),
+            },
             kind: result_type,
             id: self.next_expr_id(),
         }

@@ -14,9 +14,8 @@ use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, 
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::var_name::VarName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::ir::ast::{
-    IrComponentDeclaration, IrEnumMatchArm, IrExpr, IrModule, IrStatement,
-};
+use crate::dop::patterns::{EnumMatchArm, Match};
+use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrModule, IrStatement};
 
 pub trait Transpiler {
     fn transpile_entrypoint<'a>(
@@ -149,7 +148,7 @@ pub trait ExpressionTranspiler {
     fn transpile_enum_match<'a>(
         &self,
         subject: &'a IrExpr,
-        arms: &'a [IrEnumMatchArm],
+        arms: &'a [EnumMatchArm<IrExpr>],
     ) -> BoxDoc<'a>;
     fn transpile_bool_match<'a>(
         &self,
@@ -264,20 +263,20 @@ pub trait ExpressionTranspiler {
                 variant_name,
                 ..
             } => self.transpile_enum_literal(enum_name, variant_name),
-            IrExpr::EnumMatch { subject, arms, .. } => self.transpile_enum_match(subject, arms),
-            IrExpr::BoolMatch {
-                subject,
-                true_body,
-                false_body,
-                ..
-            } => self.transpile_bool_match(subject, true_body, false_body),
-            IrExpr::OptionMatch {
-                subject,
-                some_arm_binding,
-                some_arm_body,
-                none_arm_body,
-                ..
-            } => self.transpile_option_match(subject, some_arm_binding, some_arm_body, none_arm_body),
+            IrExpr::Match { match_, .. } => match match_ {
+                Match::Enum { subject, arms } => self.transpile_enum_match(subject, arms),
+                Match::Bool {
+                    subject,
+                    true_body,
+                    false_body,
+                } => self.transpile_bool_match(subject, true_body, false_body),
+                Match::Option {
+                    subject,
+                    some_arm_binding,
+                    some_arm_body,
+                    none_arm_body,
+                } => self.transpile_option_match(subject, some_arm_binding, some_arm_body, none_arm_body),
+            },
             IrExpr::Let { var, value, body, .. } => self.transpile_let(var, value, body),
         }
     }
