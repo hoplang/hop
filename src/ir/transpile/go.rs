@@ -751,11 +751,27 @@ impl ExpressionTranspiler for GoTranspiler {
 
     fn transpile_let<'a>(
         &self,
-        _var: &'a crate::dop::symbols::var_name::VarName,
-        _value: &'a IrExpr,
-        _body: &'a IrExpr,
+        var: &'a crate::dop::symbols::var_name::VarName,
+        value: &'a IrExpr,
+        body: &'a IrExpr,
     ) -> BoxDoc<'a> {
-        panic!("Let expressions are not yet supported in Go transpilation")
+        // func() returnType { var := value; return body }()
+        let return_type = self.transpile_type(body.as_type());
+        BoxDoc::text("func() ")
+            .append(return_type)
+            .append(BoxDoc::text(" {"))
+            .append(
+                BoxDoc::line()
+                    .append(BoxDoc::text(var.as_str()))
+                    .append(BoxDoc::text(" := "))
+                    .append(self.transpile_expr(value))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("return "))
+                    .append(self.transpile_expr(body))
+                    .nest(2),
+            )
+            .append(BoxDoc::line())
+            .append(BoxDoc::text("}()"))
     }
 }
 

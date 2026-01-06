@@ -708,11 +708,18 @@ impl ExpressionTranspiler for PythonTranspiler {
 
     fn transpile_let<'a>(
         &self,
-        _var: &'a crate::dop::symbols::var_name::VarName,
-        _value: &'a IrExpr,
-        _body: &'a IrExpr,
+        var: &'a crate::dop::symbols::var_name::VarName,
+        value: &'a IrExpr,
+        body: &'a IrExpr,
     ) -> BoxDoc<'a> {
-        panic!("Let expressions are not yet supported in Python transpilation")
+        // (lambda var: body)(value)
+        BoxDoc::text("(lambda ")
+            .append(BoxDoc::text(var.as_str()))
+            .append(BoxDoc::text(": "))
+            .append(self.transpile_expr(body))
+            .append(BoxDoc::text(")("))
+            .append(self.transpile_expr(value))
+            .append(BoxDoc::text(")"))
     }
 }
 

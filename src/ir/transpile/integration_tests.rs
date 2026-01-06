@@ -1376,4 +1376,34 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn let_expression() {
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    let result = t.let_expr("x", t.str("Hello"), |t| {
+                        t.string_concat(t.var("x"), t.str(" World"))
+                    });
+                    t.write_expr(result, false);
+                }),
+                "Hello World",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  write_expr(let x = "Hello" in (x + " World"))
+                }
+                -- expected output --
+                Hello World
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
 }
