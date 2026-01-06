@@ -535,38 +535,43 @@ impl StatementTranspiler for PythonTranspiler {
                 none_arm_body,
             } => {
                 // Transpile as:
-                // if isinstance(subject, Some):
-                //     binding = subject.value  (if binding exists)
-                //     some_body
-                // else:
-                //     none_body
+                // match subject:
+                //     case Some(value=binding):  (or case Some() if no binding)
+                //         some_body
+                //     case Nothing():
+                //         none_body
                 let subject_name = subject.0.as_str();
-                let mut doc = BoxDoc::text("if isinstance(")
-                    .append(BoxDoc::text(subject_name))
-                    .append(BoxDoc::text(", Some):"));
 
-                let mut some_body_doc = BoxDoc::nil();
-                if let Some((binding, _)) = some_arm_binding {
-                    some_body_doc = some_body_doc
+                // Some case
+                let some_pattern = match some_arm_binding {
+                    Some((binding, _)) => BoxDoc::text("case Some(value=")
                         .append(BoxDoc::text(binding.as_str()))
-                        .append(BoxDoc::text(" = "))
-                        .append(BoxDoc::text(subject_name))
-                        .append(BoxDoc::text(".value"))
-                        .append(BoxDoc::line());
-                }
-                some_body_doc = some_body_doc.append(self.transpile_statements(some_arm_body));
+                        .append(BoxDoc::text("):")),
+                    None => BoxDoc::text("case Some():"),
+                };
 
-                doc = doc
-                    .append(BoxDoc::line().append(some_body_doc).nest(4))
+                let some_case = some_pattern.append(
+                    BoxDoc::line()
+                        .append(self.transpile_statements(some_arm_body))
+                        .nest(4),
+                );
+
+                // Nothing case
+                let nothing_case = BoxDoc::text("case Nothing():").append(
+                    BoxDoc::line()
+                        .append(self.transpile_statements(none_arm_body))
+                        .nest(4),
+                );
+
+                // Build the cases block
+                let cases = some_case
                     .append(BoxDoc::line())
-                    .append(BoxDoc::text("else:"))
-                    .append(
-                        BoxDoc::line()
-                            .append(self.transpile_statements(none_arm_body))
-                            .nest(4),
-                    );
+                    .append(nothing_case);
 
-                doc
+                BoxDoc::text("match ")
+                    .append(BoxDoc::text(subject_name))
+                    .append(BoxDoc::text(":"))
+                    .append(BoxDoc::line().append(cases).nest(4))
             }
             Match::Enum { .. } => {
                 todo!()
@@ -1609,19 +1614,19 @@ mod tests {
                 def test_option() -> str:
                     output = []
                     some_val = Some("hello")
-                    if isinstance(some_val, Some):
-                        val = some_val.value
-                        output.append("Some:")
-                        output.append(val)
-                    else:
-                        output.append("None")
+                    match some_val:
+                        case Some(value=val):
+                            output.append("Some:")
+                            output.append(val)
+                        case Nothing():
+                            output.append("None")
                     none_val = Nothing()
-                    if isinstance(none_val, Some):
-                        val = none_val.value
-                        output.append(",Some:")
-                        output.append(val)
-                    else:
-                        output.append(",None")
+                    match none_val:
+                        case Some(value=val):
+                            output.append(",Some:")
+                            output.append(val)
+                        case Nothing():
+                            output.append(",None")
                     return ''.join(output)
             "#]],
         );

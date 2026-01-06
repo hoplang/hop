@@ -1678,6 +1678,81 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn option_match_stmt_without_binding() {
+        use crate::dop::Type;
+
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    // Match statement on Some without extracting the value
+                    t.let_stmt("opt1", t.some(t.str("hello")), |t| {
+                        t.option_match_stmt(
+                            t.var("opt1"),
+                            None, // No binding
+                            |t| {
+                                t.write("is-some");
+                            },
+                            |t| {
+                                t.write("is-none");
+                            },
+                        );
+                    });
+                    t.write(",");
+                    // Match statement on None without extracting the value
+                    t.let_stmt("opt2", t.none(Type::String), |t| {
+                        t.option_match_stmt(
+                            t.var("opt2"),
+                            None, // No binding
+                            |t| {
+                                t.write("IS-SOME");
+                            },
+                            |t| {
+                                t.write("IS-NONE");
+                            },
+                        );
+                    });
+                }),
+                "is-some,IS-NONE",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let opt1 = Some("hello") in {
+                    match opt1 {
+                      Some(_) => {
+                        write("is-some")
+                      }
+                      None => {
+                        write("is-none")
+                      }
+                    }
+                  }
+                  write(",")
+                  let opt2 = None in {
+                    match opt2 {
+                      Some(_) => {
+                        write("IS-SOME")
+                      }
+                      None => {
+                        write("IS-NONE")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                is-some,IS-NONE
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn option_match_returning_options() {
         use crate::dop::Type;
 
