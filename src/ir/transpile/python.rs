@@ -1,6 +1,7 @@
 use pretty::BoxDoc;
 
 use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
+use crate::dop::VarName;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
@@ -205,7 +206,12 @@ impl Transpiler for PythonTranspiler {
                 .append(BoxDoc::line());
         }
 
-        if needs_dataclasses || needs_json || needs_html_escape || needs_trusted_html || needs_optional {
+        if needs_dataclasses
+            || needs_json
+            || needs_html_escape
+            || needs_trusted_html
+            || needs_optional
+        {
             result = result.append(BoxDoc::line());
         }
 
@@ -492,16 +498,14 @@ impl StatementTranspiler for PythonTranspiler {
         value: &'a IrExpr,
         body: &'a [IrStatement],
     ) -> BoxDoc<'a> {
-        BoxDoc::text(var).append(BoxDoc::text(" = "))
+        BoxDoc::text(var)
+            .append(BoxDoc::text(" = "))
             .append(self.transpile_expr(value))
             .append(BoxDoc::line())
             .append(self.transpile_statements(body))
     }
 
-    fn transpile_match_statement<'a>(
-        &self,
-        match_: &'a Match<Vec<IrStatement>>,
-    ) -> BoxDoc<'a> {
+    fn transpile_match_statement<'a>(&self, match_: &'a Match<Vec<IrStatement>>) -> BoxDoc<'a> {
         match match_ {
             Match::Bool {
                 subject,
@@ -531,12 +535,11 @@ impl StatementTranspiler for PythonTranspiler {
                 some_arm_body,
                 none_arm_body,
             } => {
-                // Transpile as:
-                // match subject:
-                //     case Some(value=binding):  (or case Some() if no binding)
-                //         some_body
+                // match [[subject]]:
+                //     case Some(value=[[binding]]):
+                //         [[some_body]]
                 //     case Nothing():
-                //         none_body
+                //         [[none_body]]
                 let subject_name = subject.0.as_str();
 
                 // Some case
@@ -546,35 +549,26 @@ impl StatementTranspiler for PythonTranspiler {
                         .append(BoxDoc::text("):")),
                     None => BoxDoc::text("case Some():"),
                 };
-
                 let some_case = some_pattern.append(
                     BoxDoc::line()
                         .append(self.transpile_statements(some_arm_body))
                         .nest(4),
                 );
-
-                // Nothing case
                 let nothing_case = BoxDoc::text("case Nothing():").append(
                     BoxDoc::line()
                         .append(self.transpile_statements(none_arm_body))
                         .nest(4),
                 );
-
-                // Build the cases block
-                let cases = some_case
-                    .append(BoxDoc::line())
-                    .append(nothing_case);
-
+                let cases = some_case.append(BoxDoc::line()).append(nothing_case);
                 BoxDoc::text("match ")
                     .append(BoxDoc::text(subject_name))
                     .append(BoxDoc::text(":"))
                     .append(BoxDoc::line().append(cases).nest(4))
             }
             Match::Enum { subject, arms } => {
-                // Transpile as:
-                // match subject:
-                //     case EnumNameVariantName():
-                //         body
+                // match [[subject]]:
+                //     case [[EnumNameVariantName]]():
+                //         [[body]]
                 //     ...
                 let subject_name = subject.0.as_str();
 
@@ -599,7 +593,7 @@ impl StatementTranspiler for PythonTranspiler {
                     })
                     .collect();
 
-                let cases_doc = BoxDoc::intersperse(cases.into_iter(), BoxDoc::line());
+                let cases_doc = BoxDoc::intersperse(cases, BoxDoc::line());
 
                 BoxDoc::text("match ")
                     .append(BoxDoc::text(subject_name))
@@ -871,7 +865,7 @@ impl ExpressionTranspiler for PythonTranspiler {
                 true_body,
                 false_body,
             } => {
-                // (true_body if subject else false_body)
+                // ([[true_body]] if [[subject]] else [[false_body]])
                 BoxDoc::text("(")
                     .append(self.transpile_expr(true_body))
                     .append(BoxDoc::text(" if "))
@@ -886,12 +880,9 @@ impl ExpressionTranspiler for PythonTranspiler {
                 some_arm_body,
                 none_arm_body,
             } => {
-                // Transpile as:
-                // ((lambda binding: some_body)(subject.value) if isinstance(subject, Some) else none_body)
-                // If no binding, simplify to:
-                // (some_body if isinstance(subject, Some) else none_body)
                 let subject_name = subject.0.as_str();
                 match some_arm_binding {
+                    // ((lambda [[binding]]: [[some_body]])([[subject]].value) if isinstance([[subject]], Some) else [[none_body]])
                     Some((binding, _)) => BoxDoc::text("((lambda ")
                         .append(BoxDoc::text(binding.as_str()))
                         .append(BoxDoc::text(": "))
@@ -903,6 +894,7 @@ impl ExpressionTranspiler for PythonTranspiler {
                         .append(BoxDoc::text(", Some) else "))
                         .append(self.transpile_expr(none_arm_body))
                         .append(BoxDoc::text(")")),
+                    // ([[some_body]] if isinstance([[subject]], Some) else [[none_body]])
                     None => BoxDoc::text("(")
                         .append(self.transpile_expr(some_arm_body))
                         .append(BoxDoc::text(" if isinstance("))
@@ -913,8 +905,7 @@ impl ExpressionTranspiler for PythonTranspiler {
                 }
             }
             Match::Enum { subject, arms } => {
-                // Transpile as chained ternary:
-                // (body1 if isinstance(subject, Variant1) else body2 if isinstance(subject, Variant2) else body3)
+                // ([[body1]] if isinstance([[subject]], Variant1) else [[body2]] if isinstance([[subject]], Variant2) else [[body3]])
                 let subject_name = subject.0.as_str();
 
                 if arms.is_empty() {
@@ -953,11 +944,11 @@ impl ExpressionTranspiler for PythonTranspiler {
 
     fn transpile_let<'a>(
         &self,
-        var: &'a crate::dop::symbols::var_name::VarName,
+        var: &'a VarName,
         value: &'a IrExpr,
         body: &'a IrExpr,
     ) -> BoxDoc<'a> {
-        // (lambda var: body)(value)
+        // (lambda [[var]]: [[body]])([[value]])
         BoxDoc::text("(lambda ")
             .append(BoxDoc::text(var.as_str()))
             .append(BoxDoc::text(": "))
