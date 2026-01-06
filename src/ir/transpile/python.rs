@@ -65,6 +65,52 @@ impl PythonTranspiler {
         }
     }
 
+    fn scan_for_options(&self, entrypoint: &IrComponentDeclaration) -> bool {
+        // Check parameters for Option types
+        for (_, param_type) in &entrypoint.parameters {
+            if Self::type_contains_option(param_type) {
+                return true;
+            }
+        }
+
+        // Check statements for Option literals or Option matches
+        for stmt in &entrypoint.body {
+            let mut has_option = false;
+            stmt.traverse(&mut |s| {
+                if let IrStatement::Match { match_, .. } = s {
+                    if matches!(match_, Match::Option { .. }) {
+                        has_option = true;
+                    }
+                }
+                if let Some(primary_expr) = s.expr() {
+                    primary_expr.traverse(&mut |expr| {
+                        if let IrExpr::OptionLiteral { .. } = expr {
+                            has_option = true;
+                        }
+                        if let IrExpr::Match { match_, .. } = expr {
+                            if matches!(match_, Match::Option { .. }) {
+                                has_option = true;
+                            }
+                        }
+                    });
+                }
+            });
+            if has_option {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn type_contains_option(t: &Type) -> bool {
+        match t {
+            Type::Option(_) => true,
+            Type::Array(elem) => Self::type_contains_option(elem),
+            _ => false,
+        }
+    }
+
     // Helper method to escape strings for Python string literals
     fn escape_string(&self, s: &str) -> String {
         s.replace('\\', "\\\\")
@@ -84,6 +130,7 @@ impl Transpiler for PythonTranspiler {
         let mut needs_json = false;
         let mut needs_dataclasses = false;
         let mut needs_os = false;
+        let mut needs_optional = false;
 
         // First pass: scan all entrypoints to determine imports
         for entrypoint in entrypoints {
@@ -91,6 +138,7 @@ impl Transpiler for PythonTranspiler {
             needs_html_escape |= has_escape;
             needs_json |= has_json;
             needs_os |= has_os;
+            needs_optional |= self.scan_for_options(entrypoint);
             if !entrypoint.parameters.is_empty() {
                 needs_dataclasses = true;
             }
@@ -124,17 +172,21 @@ impl Transpiler for PythonTranspiler {
                 .append(BoxDoc::line());
         }
 
-        if needs_trusted_html && needs_protocol {
+        // Build typing imports list
+        let mut typing_imports = Vec::new();
+        if needs_trusted_html {
+            typing_imports.push("NewType");
+        }
+        if needs_optional {
+            typing_imports.push("Optional");
+        }
+        if needs_protocol {
+            typing_imports.push("Protocol");
+        }
+        if !typing_imports.is_empty() {
             result = result
-                .append(BoxDoc::text("from typing import NewType, Protocol"))
-                .append(BoxDoc::line());
-        } else if needs_trusted_html {
-            result = result
-                .append(BoxDoc::text("from typing import NewType"))
-                .append(BoxDoc::line());
-        } else if needs_protocol {
-            result = result
-                .append(BoxDoc::text("from typing import Protocol"))
+                .append(BoxDoc::text("from typing import "))
+                .append(BoxDoc::text(typing_imports.join(", ")))
                 .append(BoxDoc::line());
         }
 
@@ -150,7 +202,7 @@ impl Transpiler for PythonTranspiler {
                 .append(BoxDoc::line());
         }
 
-        if needs_dataclasses || needs_json || needs_html_escape || needs_trusted_html {
+        if needs_dataclasses || needs_json || needs_html_escape || needs_trusted_html || needs_optional {
             result = result.append(BoxDoc::line());
         }
 
@@ -417,8 +469,16 @@ impl StatementTranspiler for PythonTranspiler {
         value: &'a IrExpr,
         body: &'a [IrStatement],
     ) -> BoxDoc<'a> {
-        BoxDoc::text(var)
-            .append(BoxDoc::text(" = "))
+        let mut doc = BoxDoc::text(var);
+
+        // Add type annotation for Option types to help mypy
+        if let Type::Option(_) = value.as_type() {
+            doc = doc
+                .append(BoxDoc::text(": "))
+                .append(self.transpile_type(value.as_type()));
+        }
+
+        doc.append(BoxDoc::text(" = "))
             .append(self.transpile_expr(value))
             .append(BoxDoc::line())
             .append(self.transpile_statements(body))
@@ -451,8 +511,45 @@ impl StatementTranspiler for PythonTranspiler {
                             .nest(4),
                     )
             }
-            Match::Option { .. } => {
-                todo!()
+            Match::Option {
+                subject,
+                some_arm_binding,
+                some_arm_body,
+                none_arm_body,
+            } => {
+                // Transpile as:
+                // _opt = subject
+                // if _opt is not None:
+                //     binding = _opt  (if binding exists)
+                //     some_body
+                // else:
+                //     none_body
+                // Note: The subject should have a type annotation via the let statement
+                let mut doc = BoxDoc::text("_opt = ")
+                    .append(self.transpile_expr(subject))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("if _opt is not None:"));
+
+                let mut some_body_doc = BoxDoc::nil();
+                if let Some((binding, _)) = some_arm_binding {
+                    some_body_doc = some_body_doc
+                        .append(BoxDoc::text(binding.as_str()))
+                        .append(BoxDoc::text(" = _opt"))
+                        .append(BoxDoc::line());
+                }
+                some_body_doc = some_body_doc.append(self.transpile_statements(some_arm_body));
+
+                doc = doc
+                    .append(BoxDoc::line().append(some_body_doc).nest(4))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("else:"))
+                    .append(
+                        BoxDoc::line()
+                            .append(self.transpile_statements(none_arm_body))
+                            .nest(4),
+                    );
+
+                doc
             }
             Match::Enum { .. } => {
                 todo!()
@@ -704,10 +801,13 @@ impl ExpressionTranspiler for PythonTranspiler {
 
     fn transpile_option_literal<'a>(
         &self,
-        _value: Option<&'a IrExpr>,
+        value: Option<&'a IrExpr>,
         _inner_type: &'a Type,
     ) -> BoxDoc<'a> {
-        panic!("Option literals are not yet supported in Python transpilation")
+        match value {
+            Some(inner) => self.transpile_expr(inner),
+            None => BoxDoc::text("None"),
+        }
     }
 
     fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr, IrExpr>) -> BoxDoc<'a> {
@@ -726,8 +826,34 @@ impl ExpressionTranspiler for PythonTranspiler {
                     .append(self.transpile_expr(false_body))
                     .append(BoxDoc::text(")"))
             }
-            Match::Option { .. } => {
-                panic!("Option match expressions are not yet supported in Python transpilation")
+            Match::Option {
+                subject,
+                some_arm_binding,
+                some_arm_body,
+                none_arm_body,
+            } => {
+                // Transpile as:
+                // (lambda _opt: (lambda binding: some_body)(_opt) if _opt is not None else none_body)(subject)
+                // If no binding, simplify to:
+                // (lambda _opt: some_body if _opt is not None else none_body)(subject)
+                match some_arm_binding {
+                    Some((binding, _)) => BoxDoc::text("(lambda _opt: (lambda ")
+                        .append(BoxDoc::text(binding.as_str()))
+                        .append(BoxDoc::text(": "))
+                        .append(self.transpile_expr(some_arm_body))
+                        .append(BoxDoc::text(")(_opt) if _opt is not None else "))
+                        .append(self.transpile_expr(none_arm_body))
+                        .append(BoxDoc::text(")("))
+                        .append(self.transpile_expr(subject))
+                        .append(BoxDoc::text(")")),
+                    None => BoxDoc::text("(lambda _opt: ")
+                        .append(self.transpile_expr(some_arm_body))
+                        .append(BoxDoc::text(" if _opt is not None else "))
+                        .append(self.transpile_expr(none_arm_body))
+                        .append(BoxDoc::text(")("))
+                        .append(self.transpile_expr(subject))
+                        .append(BoxDoc::text(")")),
+                }
             }
             Match::Enum { .. } => {
                 panic!("Enum match expressions are not yet supported in Python transpilation")
@@ -779,8 +905,10 @@ impl TypeTranspiler for PythonTranspiler {
             .append(BoxDoc::text("]"))
     }
 
-    fn transpile_option_type<'a>(&self, _inner_type: &'a Type) -> BoxDoc<'a> {
-        todo!("Option type transpilation not yet implemented for Python")
+    fn transpile_option_type<'a>(&self, inner_type: &'a Type) -> BoxDoc<'a> {
+        BoxDoc::text("Optional[")
+            .append(self.transpile_type(inner_type))
+            .append(BoxDoc::text("]"))
     }
 
     fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
@@ -1378,6 +1506,92 @@ mod tests {
                         output.append("<span class=\"active\">Active</span>")
                     else:
                         output.append("<span class=\"inactive\">Inactive</span>")
+                    return ''.join(output)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn option_match_statement() {
+        let module = build_module("TestOption", [], |t| {
+            t.let_stmt("some_val", t.some(t.str("hello")), |t| {
+                t.option_match_stmt(
+                    t.var("some_val"),
+                    Some("val"),
+                    |t| {
+                        t.write("Some:");
+                        t.write_expr(t.var("val"), false);
+                    },
+                    |t| {
+                        t.write("None");
+                    },
+                );
+            });
+            t.let_stmt("none_val", t.none(Type::String), |t| {
+                t.option_match_stmt(
+                    t.var("none_val"),
+                    Some("val"),
+                    |t| {
+                        t.write(",Some:");
+                        t.write_expr(t.var("val"), false);
+                    },
+                    |t| {
+                        t.write(",None");
+                    },
+                );
+            });
+        });
+
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                TestOption() {
+                  let some_val = Some("hello") in {
+                    match some_val {
+                      Some(val) => {
+                        write("Some:")
+                        write_expr(val)
+                      }
+                      None => {
+                        write("None")
+                      }
+                    }
+                  }
+                  let none_val = None in {
+                    match none_val {
+                      Some(val) => {
+                        write(",Some:")
+                        write_expr(val)
+                      }
+                      None => {
+                        write(",None")
+                      }
+                    }
+                  }
+                }
+
+                -- after --
+                from typing import Optional
+
+                def test_option() -> str:
+                    output = []
+                    some_val: Optional[str] = "hello"
+                    _opt = some_val
+                    if _opt is not None:
+                        val = _opt
+                        output.append("Some:")
+                        output.append(val)
+                    else:
+                        output.append("None")
+                    none_val: Optional[str] = None
+                    _opt = none_val
+                    if _opt is not None:
+                        val = _opt
+                        output.append(",Some:")
+                        output.append(val)
+                    else:
+                        output.append(",None")
                     return ''.join(output)
             "#]],
         );

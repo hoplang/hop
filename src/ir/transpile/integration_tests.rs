@@ -1505,8 +1505,7 @@ mod tests {
                     });
                 }),
                 "Some:hello,None",
-            )
-            .only_languages(&[Language::TypeScript, Language::Go]),
+            ),
             expect![[r#"
                 -- input --
                 Test() {
@@ -1538,6 +1537,8 @@ mod tests {
                 -- ts --
                 OK
                 -- go --
+                OK
+                -- python --
                 OK
             "#]],
         );
@@ -1797,8 +1798,7 @@ mod tests {
                     });
                 }),
                 "[a][_][b]",
-            )
-            .only_languages(&[Language::TypeScript, Language::Go]),
+            ),
             expect![[r#"
                 -- input --
                 Test() {
@@ -1820,6 +1820,8 @@ mod tests {
                 -- ts --
                 OK
                 -- go --
+                OK
+                -- python --
                 OK
             "#]],
         );
