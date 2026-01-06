@@ -1406,4 +1406,45 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn bool_match_expr() {
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.let_stmt("flag", t.bool(true), |t| {
+                        let result =
+                            t.bool_match_expr(t.var("flag"), t.str("yes"), t.str("no"));
+                        t.write_expr(result, false);
+                    });
+                    t.let_stmt("other", t.bool(false), |t| {
+                        let result =
+                            t.bool_match_expr(t.var("other"), t.str("YES"), t.str("NO"));
+                        t.write_expr(result, false);
+                    });
+                }),
+                "yesNO",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let flag = true in {
+                    write_expr(match flag {true => "yes", false => "no"})
+                  }
+                  let other = false in {
+                    write_expr(match other {true => "YES", false => "NO"})
+                  }
+                }
+                -- expected output --
+                yesNO
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
 }

@@ -745,8 +745,51 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_match_expr<'a>(&self, _match_: &'a Match<IrExpr, IrExpr>) -> BoxDoc<'a> {
-        panic!("Match expressions are not yet supported in Go transpilation")
+    fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr, IrExpr>) -> BoxDoc<'a> {
+        match match_ {
+            Match::Bool {
+                subject,
+                true_body,
+                false_body,
+            } => {
+                // func() returnType { if subject { return true_body } else { return false_body } }()
+                let return_type = self.transpile_type(true_body.as_type());
+                BoxDoc::text("func() ")
+                    .append(return_type)
+                    .append(BoxDoc::text(" {"))
+                    .append(
+                        BoxDoc::line()
+                            .append(BoxDoc::text("if "))
+                            .append(self.transpile_expr(subject))
+                            .append(BoxDoc::text(" {"))
+                            .append(
+                                BoxDoc::line()
+                                    .append(BoxDoc::text("return "))
+                                    .append(self.transpile_expr(true_body))
+                                    .nest(2),
+                            )
+                            .append(BoxDoc::line())
+                            .append(BoxDoc::text("} else {"))
+                            .append(
+                                BoxDoc::line()
+                                    .append(BoxDoc::text("return "))
+                                    .append(self.transpile_expr(false_body))
+                                    .nest(2),
+                            )
+                            .append(BoxDoc::line())
+                            .append(BoxDoc::text("}"))
+                            .nest(2),
+                    )
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("}()"))
+            }
+            Match::Option { .. } => {
+                panic!("Option match expressions are not yet supported in Go transpilation")
+            }
+            Match::Enum { .. } => {
+                panic!("Enum match expressions are not yet supported in Go transpilation")
+            }
+        }
     }
 
     fn transpile_let<'a>(

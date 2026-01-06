@@ -702,8 +702,29 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_match_expr<'a>(&self, _match_: &'a Match<IrExpr, IrExpr>) -> BoxDoc<'a> {
-        panic!("Match expressions are not yet supported in Python transpilation")
+    fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr, IrExpr>) -> BoxDoc<'a> {
+        match match_ {
+            Match::Bool {
+                subject,
+                true_body,
+                false_body,
+            } => {
+                // (true_body if subject else false_body)
+                BoxDoc::text("(")
+                    .append(self.transpile_expr(true_body))
+                    .append(BoxDoc::text(" if "))
+                    .append(self.transpile_expr(subject))
+                    .append(BoxDoc::text(" else "))
+                    .append(self.transpile_expr(false_body))
+                    .append(BoxDoc::text(")"))
+            }
+            Match::Option { .. } => {
+                panic!("Option match expressions are not yet supported in Python transpilation")
+            }
+            Match::Enum { .. } => {
+                panic!("Enum match expressions are not yet supported in Python transpilation")
+            }
+        }
     }
 
     fn transpile_let<'a>(
