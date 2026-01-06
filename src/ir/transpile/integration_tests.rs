@@ -1,6 +1,6 @@
 use super::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
 use crate::ir::ast::{IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration};
-use crate::ir::syntax::builder::{build_ir, build_ir_with_enums};
+use crate::ir::syntax::builder::{build_ir, build_ir_with_enums, IrBuilder};
 use expect_test::Expect;
 use std::collections::HashSet;
 use std::fs;
@@ -32,6 +32,11 @@ impl TestCase {
             records: vec![],
             languages: HashSet::from([Language::TypeScript, Language::Go, Language::Python]),
         }
+    }
+
+    fn only_languages(mut self, languages: &[Language]) -> Self {
+        self.languages = languages.iter().copied().collect();
+        self
     }
 
     fn with_enums(mut self, enums: Vec<IrEnumDeclaration>) -> Self {
@@ -1978,6 +1983,169 @@ mod tests {
                 -- go --
                 OK
                 -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn enum_match_expression() {
+        use crate::dop::symbols::type_name::TypeName;
+
+        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
+
+        let enum_declarations = vec![IrEnumDeclaration {
+            name: "Color".to_string(),
+            variants: vec![
+                TypeName::new("Red").unwrap(),
+                TypeName::new("Green").unwrap(),
+                TypeName::new("Blue").unwrap(),
+            ],
+        }];
+
+        check(
+            TestCase::new(
+                build_ir_with_enums("Test", [], enums.clone(), |t| {
+                    t.let_stmt("color", t.enum_variant("Color", "Green"), |t| {
+                        let result = t.match_expr(
+                            t.var("color"),
+                            vec![
+                                ("Red", t.str("red")),
+                                ("Green", t.str("green")),
+                                ("Blue", t.str("blue")),
+                            ],
+                        );
+                        t.write_expr(result, false);
+                    });
+                }),
+                "green",
+            )
+            .with_enums(enum_declarations)
+            .only_languages(&[Language::TypeScript]),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let color = Color::Green in {
+                    write_expr(match color {
+                      Color::Red => "red",
+                      Color::Green => "green",
+                      Color::Blue => "blue",
+                    })
+                  }
+                }
+                -- expected output --
+                green
+                -- ts --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn enum_equality_in_let_expr() {
+        use crate::dop::symbols::type_name::TypeName;
+
+        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
+
+        let enum_declarations = vec![IrEnumDeclaration {
+            name: "Color".to_string(),
+            variants: vec![
+                TypeName::new("Red").unwrap(),
+                TypeName::new("Green").unwrap(),
+                TypeName::new("Blue").unwrap(),
+            ],
+        }];
+
+        check(
+            TestCase::new(
+                build_ir_with_enums("Test", [], enums.clone(), |t| {
+                    // write_expr(let color = Color::Green in let is_red = color == Color::Red in if is_red then "eq" else "not eq")
+                    let color_expr = t.enum_variant("Color", "Green");
+                    let result = t.let_expr("color", color_expr, |t| {
+                        t.let_expr(
+                            "is_red",
+                            t.eq(t.var("color"), t.enum_variant("Color", "Red")),
+                            |t| t.bool_match_expr(t.var("is_red"), t.str("eq"), t.str("not eq")),
+                        )
+                    });
+                    t.write_expr(result, false);
+                }),
+                "not eq",
+            )
+            .with_enums(enum_declarations)
+            .only_languages(&[Language::TypeScript]),
+            expect![[r#"
+                -- input --
+                Test() {
+                  write_expr(let color = Color::Green in let is_red = (color == Color::Red) in match is_red {
+                    true => "eq",
+                    false => "not eq",
+                  })
+                }
+                -- expected output --
+                not eq
+                -- ts --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn enum_match_statement() {
+        use crate::dop::symbols::type_name::TypeName;
+
+        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
+
+        let enum_declarations = vec![IrEnumDeclaration {
+            name: "Color".to_string(),
+            variants: vec![
+                TypeName::new("Red").unwrap(),
+                TypeName::new("Green").unwrap(),
+                TypeName::new("Blue").unwrap(),
+            ],
+        }];
+
+        check(
+            TestCase::new(
+                build_ir_with_enums("Test", [], enums.clone(), |t| {
+                    t.let_stmt("color", t.enum_variant("Color", "Blue"), |t| {
+                        t.enum_match_stmt(
+                            t.var("color"),
+                            vec![
+                                ("Red", Box::new(|t: &mut IrBuilder| t.write("red"))),
+                                ("Green", Box::new(|t: &mut IrBuilder| t.write("green"))),
+                                ("Blue", Box::new(|t: &mut IrBuilder| t.write("blue"))),
+                            ],
+                        );
+                    });
+                }),
+                "blue",
+            )
+            .with_enums(enum_declarations)
+            .only_languages(&[Language::TypeScript]),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let color = Color::Blue in {
+                    match color {
+                      Color::Red => {
+                        write("red")
+                      }
+                      Color::Green => {
+                        write("green")
+                      }
+                      Color::Blue => {
+                        write("blue")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                blue
+                -- ts --
                 OK
             "#]],
         );

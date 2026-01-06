@@ -641,10 +641,13 @@ impl ExpressionTranspiler for TsTranspiler {
     }
 
     fn transpile_enum_literal<'a>(&self, enum_name: &'a str, variant_name: &'a str) -> BoxDoc<'a> {
-        BoxDoc::text("new ")
+        // Cast to the enum type to prevent TypeScript from narrowing to the specific variant
+        BoxDoc::text("(new ")
             .append(BoxDoc::text(enum_name))
             .append(BoxDoc::text(variant_name))
-            .append(BoxDoc::text("()"))
+            .append(BoxDoc::text("() as "))
+            .append(BoxDoc::text(enum_name))
+            .append(BoxDoc::text(")"))
     }
 
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
@@ -1690,7 +1693,7 @@ mod tests {
                 export default {
                     colorDisplay: ({ color }: { color: Color }): string => {
                         let output: string = "";
-                        if (color.equals(new ColorRed())) {
+                        if (color.equals((new ColorRed() as Color))) {
                             output += "<div>Red!</div>";
                         }
                         return output;

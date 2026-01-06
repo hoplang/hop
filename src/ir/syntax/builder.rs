@@ -913,4 +913,42 @@ impl IrBuilder {
             },
         });
     }
+
+    /// Create a match statement over an enum value
+    /// arms is a list of (variant_name, body_fn) tuples
+    pub fn enum_match_stmt(
+        &mut self,
+        subject: IrExpr,
+        arms: Vec<(&str, Box<dyn FnOnce(&mut Self)>)>,
+    ) {
+        use crate::dop::patterns::Match;
+
+        let enum_name = match subject.as_type() {
+            Type::Enum { name, .. } => name.as_str().to_string(),
+            _ => panic!("Match subject must be an enum type"),
+        };
+
+        let ir_arms: Vec<EnumMatchArm<Vec<IrStatement>>> = arms
+            .into_iter()
+            .map(|(variant_name, body_fn)| {
+                let mut arm_builder = self.new_scoped();
+                body_fn(&mut arm_builder);
+                EnumMatchArm {
+                    pattern: EnumPattern::Variant {
+                        enum_name: enum_name.clone(),
+                        variant_name: variant_name.to_string(),
+                    },
+                    body: arm_builder.statements,
+                }
+            })
+            .collect();
+
+        self.statements.push(IrStatement::Match {
+            id: self.next_node_id(),
+            match_: Match::Enum {
+                subject: extract_var_subject(&subject),
+                arms: ir_arms,
+            },
+        });
+    }
 }
