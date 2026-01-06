@@ -1,7 +1,7 @@
 use pretty::BoxDoc;
 
 use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
-use crate::dop::patterns::Match;
+use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
@@ -150,8 +150,8 @@ impl Transpiler for PythonTranspiler {
         }
 
         // Check if we have enums to generate
-        let needs_protocol = !module.enums.is_empty();
-        if needs_protocol {
+        let has_enums = !module.enums.is_empty();
+        if has_enums {
             needs_dataclasses = true;
         }
 
@@ -185,9 +185,6 @@ impl Transpiler for PythonTranspiler {
         if needs_optional {
             typing_imports.push("Generic");
             typing_imports.push("TypeVar");
-        }
-        if needs_protocol {
-            typing_imports.push("Protocol");
         }
         if !typing_imports.is_empty() {
             result = result
@@ -240,23 +237,8 @@ impl Transpiler for PythonTranspiler {
                 .append(BoxDoc::line());
         }
 
-        // Generate enum type definitions (Protocol + dataclasses)
+        // Generate enum type definitions (dataclasses + Union type alias)
         for enum_def in &module.enums {
-            // Generate: class EnumName(Protocol): def equals(self, o: "EnumName") -> bool: ...
-            result = result
-                .append(BoxDoc::text("class "))
-                .append(BoxDoc::text(enum_def.name.as_str()))
-                .append(BoxDoc::text("(Protocol):"))
-                .append(
-                    BoxDoc::line()
-                        .append(BoxDoc::text("def equals(self, o: \""))
-                        .append(BoxDoc::text(enum_def.name.as_str()))
-                        .append(BoxDoc::text("\") -> bool: ..."))
-                        .nest(4),
-                )
-                .append(BoxDoc::line())
-                .append(BoxDoc::line());
-
             // Generate a dataclass for each variant
             for variant in &enum_def.variants {
                 let class_name = format!("{}{}", enum_def.name, variant.as_str());
@@ -269,9 +251,9 @@ impl Transpiler for PythonTranspiler {
                     .append(BoxDoc::text(":"))
                     .append(
                         BoxDoc::line()
-                            .append(BoxDoc::text("def equals(self, o: "))
+                            .append(BoxDoc::text("def equals(self, o: \""))
                             .append(BoxDoc::text(enum_def.name.as_str()))
-                            .append(BoxDoc::text(") -> bool:"))
+                            .append(BoxDoc::text("\") -> bool:"))
                             .append(
                                 BoxDoc::line()
                                     .append(BoxDoc::text("return isinstance(o, "))
@@ -284,6 +266,21 @@ impl Transpiler for PythonTranspiler {
                     .append(BoxDoc::line())
                     .append(BoxDoc::line());
             }
+
+            // Generate Union type alias: EnumName = Variant1 | Variant2 | ...
+            let variants: Vec<String> = enum_def
+                .variants
+                .iter()
+                .map(|v| format!("{}{}", enum_def.name, v.as_str()))
+                .collect();
+            let union_rhs = variants.join(" | ");
+
+            result = result
+                .append(BoxDoc::text(enum_def.name.as_str()))
+                .append(BoxDoc::text(" = "))
+                .append(BoxDoc::as_string(union_rhs))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line());
         }
 
         // Generate record type dataclasses
@@ -573,8 +570,41 @@ impl StatementTranspiler for PythonTranspiler {
                     .append(BoxDoc::text(":"))
                     .append(BoxDoc::line().append(cases).nest(4))
             }
-            Match::Enum { .. } => {
-                todo!()
+            Match::Enum { subject, arms } => {
+                // Transpile as:
+                // match subject:
+                //     case EnumNameVariantName():
+                //         body
+                //     ...
+                let subject_name = subject.0.as_str();
+
+                // Build all cases
+                let cases: Vec<_> = arms
+                    .iter()
+                    .map(|arm| match &arm.pattern {
+                        EnumPattern::Variant {
+                            enum_name,
+                            variant_name,
+                        } => {
+                            let class_name = format!("{}{}", enum_name, variant_name);
+                            BoxDoc::text("case ")
+                                .append(BoxDoc::as_string(class_name))
+                                .append(BoxDoc::text("():"))
+                                .append(
+                                    BoxDoc::line()
+                                        .append(self.transpile_statements(&arm.body))
+                                        .nest(4),
+                                )
+                        }
+                    })
+                    .collect();
+
+                let cases_doc = BoxDoc::intersperse(cases.into_iter(), BoxDoc::line());
+
+                BoxDoc::text("match ")
+                    .append(BoxDoc::text(subject_name))
+                    .append(BoxDoc::text(":"))
+                    .append(BoxDoc::line().append(cases_doc).nest(4))
             }
         }
     }
@@ -680,7 +710,7 @@ impl ExpressionTranspiler for PythonTranspiler {
     }
 
     fn transpile_enum_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
-        // Use the equals method on the Protocol-based enum
+        // Use the equals method defined on each enum variant dataclass
         self.transpile_expr(left)
             .append(BoxDoc::text(".equals("))
             .append(self.transpile_expr(right))
@@ -882,8 +912,41 @@ impl ExpressionTranspiler for PythonTranspiler {
                         .append(BoxDoc::text(")")),
                 }
             }
-            Match::Enum { .. } => {
-                panic!("Enum match expressions are not yet supported in Python transpilation")
+            Match::Enum { subject, arms } => {
+                // Transpile as chained ternary:
+                // (body1 if isinstance(subject, Variant1) else body2 if isinstance(subject, Variant2) else body3)
+                let subject_name = subject.0.as_str();
+
+                if arms.is_empty() {
+                    return BoxDoc::text("None");
+                }
+
+                let mut result = BoxDoc::text("(");
+                for (i, arm) in arms.iter().enumerate() {
+                    match &arm.pattern {
+                        EnumPattern::Variant {
+                            enum_name,
+                            variant_name,
+                        } => {
+                            let class_name = format!("{}{}", enum_name, variant_name);
+
+                            if i == arms.len() - 1 {
+                                // Last arm: just the body (as the final else)
+                                result = result.append(self.transpile_expr(&arm.body));
+                            } else {
+                                // Not last: body if isinstance(...) else
+                                result = result
+                                    .append(self.transpile_expr(&arm.body))
+                                    .append(BoxDoc::text(" if isinstance("))
+                                    .append(BoxDoc::text(subject_name))
+                                    .append(BoxDoc::text(", "))
+                                    .append(BoxDoc::as_string(class_name))
+                                    .append(BoxDoc::text(") else "));
+                            }
+                        }
+                    }
+                }
+                result.append(BoxDoc::text(")"))
             }
         }
     }
@@ -1456,25 +1519,23 @@ mod tests {
 
                 -- after --
                 from dataclasses import dataclass
-                from typing import Protocol
-
-                class Color(Protocol):
-                    def equals(self, o: "Color") -> bool: ...
 
                 @dataclass
                 class ColorRed:
-                    def equals(self, o: Color) -> bool:
+                    def equals(self, o: "Color") -> bool:
                         return isinstance(o, ColorRed)
 
                 @dataclass
                 class ColorGreen:
-                    def equals(self, o: Color) -> bool:
+                    def equals(self, o: "Color") -> bool:
                         return isinstance(o, ColorGreen)
 
                 @dataclass
                 class ColorBlue:
-                    def equals(self, o: Color) -> bool:
+                    def equals(self, o: "Color") -> bool:
                         return isinstance(o, ColorBlue)
+
+                Color = ColorRed | ColorGreen | ColorBlue
 
                 @dataclass
                 class ColorDisplayParams:

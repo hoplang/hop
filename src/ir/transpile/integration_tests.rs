@@ -2097,7 +2097,7 @@ mod tests {
                 "green",
             )
             .with_enums(enum_declarations)
-            .only_languages(&[Language::TypeScript]),
+            .only_languages(&[Language::TypeScript, Language::Python]),
             expect![[r#"
                 -- input --
                 Test() {
@@ -2112,6 +2112,8 @@ mod tests {
                 -- expected output --
                 green
                 -- ts --
+                OK
+                -- python --
                 OK
             "#]],
         );
@@ -2150,7 +2152,7 @@ mod tests {
                 "not eq",
             )
             .with_enums(enum_declarations)
-            .only_languages(&[Language::TypeScript]),
+            .only_languages(&[Language::TypeScript, Language::Python]),
             expect![[r#"
                 -- input --
                 Test() {
@@ -2162,6 +2164,8 @@ mod tests {
                 -- expected output --
                 not eq
                 -- ts --
+                OK
+                -- python --
                 OK
             "#]],
         );
@@ -2200,7 +2204,7 @@ mod tests {
                 "blue",
             )
             .with_enums(enum_declarations)
-            .only_languages(&[Language::TypeScript]),
+            .only_languages(&[Language::TypeScript, Language::Python]),
             expect![[r#"
                 -- input --
                 Test() {
@@ -2221,6 +2225,8 @@ mod tests {
                 -- expected output --
                 blue
                 -- ts --
+                OK
+                -- python --
                 OK
             "#]],
         );
