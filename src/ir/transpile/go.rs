@@ -173,7 +173,7 @@ impl Transpiler for GoTranspiler {
             for variant in &enum_def.variants {
                 let struct_name = format!("{}{}", enum_def.name, variant.as_str());
 
-                // Generate: type EnumNameVariant struct{}
+                // type [[EnumNameVariant]] struct{}
                 result = result
                     .append(BoxDoc::text("type "))
                     .append(BoxDoc::as_string(struct_name.clone()))
@@ -181,7 +181,10 @@ impl Transpiler for GoTranspiler {
                     .append(BoxDoc::line())
                     .append(BoxDoc::line());
 
-                // Generate: func (e EnumNameVariant) Equals(o EnumName) bool { _, ok := o.(EnumNameVariant); return ok }
+                // func (e [[EnumNameVariant]]) Equals(o [[EnumName]]) bool {
+                //   _, ok := o.([[EnumNameVariant]])
+                //   return ok
+                // }
                 result = result
                     .append(BoxDoc::text("func (e "))
                     .append(BoxDoc::as_string(struct_name.clone()))
@@ -438,7 +441,7 @@ impl StatementTranspiler for GoTranspiler {
             .append(BoxDoc::text("}"))
     }
 
-    fn transpile_let<'a>(
+    fn transpile_let_statement<'a>(
         &self,
         var: &'a str,
         value: &'a IrExpr,
@@ -742,10 +745,7 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_match_expr<'a>(
-        &self,
-        _match_: &'a Match<IrExpr, IrExpr>,
-    ) -> BoxDoc<'a> {
+    fn transpile_match_expr<'a>(&self, _match_: &'a Match<IrExpr, IrExpr>) -> BoxDoc<'a> {
         panic!("Match expressions are not yet supported in Go transpilation")
     }
 
@@ -1626,11 +1626,14 @@ mod tests {
             expect![[r#"
                 -- before --
                 DisplayStatus(active: Bool) {
-                  match active { true => {
-                    write("<span class=\"active\">Active</span>")
-                  }, false => {
-                    write("<span class=\"inactive\">Inactive</span>")
-                  } }
+                  match active {
+                    true => {
+                      write("<span class=\"active\">Active</span>")
+                    }
+                    false => {
+                      write("<span class=\"inactive\">Inactive</span>")
+                    }
+                  }
                 }
 
                 -- after --

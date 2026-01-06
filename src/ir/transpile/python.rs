@@ -411,7 +411,7 @@ impl StatementTranspiler for PythonTranspiler {
             )
     }
 
-    fn transpile_let<'a>(
+    fn transpile_let_statement<'a>(
         &self,
         var: &'a str,
         value: &'a IrExpr,
@@ -702,10 +702,7 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_match_expr<'a>(
-        &self,
-        _match_: &'a Match<IrExpr, IrExpr>,
-    ) -> BoxDoc<'a> {
+    fn transpile_match_expr<'a>(&self, _match_: &'a Match<IrExpr, IrExpr>) -> BoxDoc<'a> {
         panic!("Match expressions are not yet supported in Python transpilation")
     }
 
@@ -1321,11 +1318,14 @@ mod tests {
             expect![[r#"
                 -- before --
                 DisplayStatus(active: Bool) {
-                  match active { true => {
-                    write("<span class=\"active\">Active</span>")
-                  }, false => {
-                    write("<span class=\"inactive\">Inactive</span>")
-                  } }
+                  match active {
+                    true => {
+                      write("<span class=\"active\">Active</span>")
+                    }
+                    false => {
+                      write("<span class=\"inactive\">Inactive</span>")
+                    }
+                  }
                 }
 
                 -- after --

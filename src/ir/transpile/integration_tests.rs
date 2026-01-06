@@ -1,7 +1,7 @@
 use super::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
-use crate::dop::semantics::r#type::Type;
 use crate::ir::ast::{IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration};
 use crate::ir::syntax::builder::{build_ir, build_ir_with_enums};
+use expect_test::Expect;
 use std::fs;
 use std::process::Command;
 use tempfile::TempDir;
@@ -27,23 +27,6 @@ impl TestCase {
     fn with_enums(mut self, enums: Vec<IrEnumDeclaration>) -> Self {
         self.enums = enums;
         self
-    }
-}
-
-#[derive(Debug)]
-struct TypeCheckTestCase {
-    entrypoints: Vec<IrComponentDeclaration>,
-    enums: Vec<IrEnumDeclaration>,
-    records: Vec<IrRecordDeclaration>,
-}
-
-impl TypeCheckTestCase {
-    fn new(entrypoints: Vec<IrComponentDeclaration>) -> Self {
-        Self {
-            entrypoints,
-            enums: vec![],
-            records: vec![],
-        }
     }
 }
 
@@ -160,11 +143,11 @@ go 1.24
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-fn run_integration_test(test_case: TestCase) -> Result<(), String> {
+fn run_integration_test(test_case: &TestCase) -> String {
     let module = IrModule {
-        components: vec![test_case.entrypoint],
-        records: test_case.records,
-        enums: test_case.enums,
+        components: vec![test_case.entrypoint.clone()],
+        records: test_case.records.clone(),
+        enums: test_case.enums.clone(),
     };
 
     let ts_transpiler = TsTranspiler::new();
@@ -176,36 +159,36 @@ fn run_integration_test(test_case: TestCase) -> Result<(), String> {
     let python_transpiler = PythonTranspiler::new();
     let python_code = python_transpiler.transpile_module(&module);
 
-    let ts_output =
-        execute_typescript(&ts_code).map_err(|e| format!("TypeScript execution failed: {}", e))?;
+    // Run typecheckers first, then execute
+    typecheck_typescript(&ts_code).expect("TypeScript typecheck failed");
+    let ts_output = execute_typescript(&ts_code).expect("TypeScript execution failed");
+    assert_eq!(
+        ts_output, test_case.expected_output,
+        "TypeScript output mismatch"
+    );
 
-    let go_output = execute_go(&go_code).map_err(|e| format!("Go execution failed: {}", e))?;
+    typecheck_go(&go_code).expect("Go typecheck failed");
+    let go_output = execute_go(&go_code).expect("Go execution failed");
+    assert_eq!(go_output, test_case.expected_output, "Go output mismatch");
 
-    let python_output =
-        execute_python(&python_code).map_err(|e| format!("Python execution failed: {}", e))?;
+    typecheck_python(&python_code).expect("Python typecheck failed");
+    let python_output = execute_python(&python_code).expect("Python execution failed");
+    assert_eq!(
+        python_output, test_case.expected_output,
+        "Python output mismatch"
+    );
 
-    if ts_output != test_case.expected_output {
-        return Err(format!(
-            "TypeScript output mismatch:\nExpected: {}\nGot: {}",
-            test_case.expected_output, ts_output
-        ));
-    }
+    let input = test_case.entrypoint.to_string();
 
-    if go_output != test_case.expected_output {
-        return Err(format!(
-            "Go output mismatch:\nExpected: {}\nGot: {}",
-            test_case.expected_output, go_output
-        ));
-    }
+    format!(
+        "-- input --\n{}-- expected output --\n{}\n-- ts --\nOK\n-- go --\nOK\n-- python --\nOK\n",
+        input, test_case.expected_output
+    )
+}
 
-    if python_output != test_case.expected_output {
-        return Err(format!(
-            "Python output mismatch:\nExpected: {}\nGot: {}",
-            test_case.expected_output, python_output
-        ));
-    }
-
-    Ok(())
+fn check(test_case: TestCase, expected: Expect) {
+    let output = run_integration_test(&test_case);
+    expected.assert_eq(&output);
 }
 
 fn typecheck_typescript(code: &str) -> Result<(), String> {
@@ -294,308 +277,484 @@ fn typecheck_go(code: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn run_type_check_test(test_case: TypeCheckTestCase) -> Result<(), String> {
-    let module = IrModule {
-        components: test_case.entrypoints,
-        records: test_case.records,
-        enums: test_case.enums,
-    };
-
-    let ts_transpiler = TsTranspiler::new();
-    let ts_code = ts_transpiler.transpile_module(&module);
-    typecheck_typescript(&ts_code)?;
-
-    let go_transpiler = GoTranspiler::new("components".to_string());
-    let go_code = go_transpiler.transpile_module(&module);
-    typecheck_go(&go_code)?;
-
-    let python_transpiler = PythonTranspiler::new();
-    let python_code = python_transpiler.transpile_module(&module);
-    typecheck_python(&python_code)?;
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use expect_test::expect;
 
     #[test]
     #[ignore]
     fn simple_html() {
-        let test_case = TestCase::new(
-            build_ir("Test", [], |t| {
-                t.write("<h1>Hello, World!</h1>");
-            }),
-            "<h1>Hello, World!</h1>",
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.write("<h1>Hello, World!</h1>");
+                }),
+                "<h1>Hello, World!</h1>",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  write("<h1>Hello, World!</h1>")
+                }
+                -- expected output --
+                <h1>Hello, World!</h1>
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
         );
-
-        run_integration_test(test_case).expect("Integration test failed");
     }
 
     #[test]
     #[ignore]
     fn with_let_binding() {
-        let test_case = TestCase::new(
-            build_ir("Test", [], |t| {
-                t.let_stmt("name", t.str("Alice"), |t| {
-                    t.write("Hello, ");
-                    t.write_expr(t.var("name"), false);
-                    t.write("!");
-                });
-            }),
-            "Hello, Alice!",
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.let_stmt("name", t.str("Alice"), |t| {
+                        t.write("Hello, ");
+                        t.write_expr(t.var("name"), false);
+                        t.write("!");
+                    });
+                }),
+                "Hello, Alice!",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let name = "Alice" in {
+                    write("Hello, ")
+                    write_expr(name)
+                    write("!")
+                  }
+                }
+                -- expected output --
+                Hello, Alice!
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
         );
-
-        run_integration_test(test_case).expect("Integration test failed");
     }
 
     #[test]
     #[ignore]
     fn conditional() {
-        let test_case = TestCase::new(
-            build_ir("Test", [], |t| {
-                t.let_stmt("show", t.bool(true), |t| {
-                    t.if_stmt(t.var("show"), |t| {
-                        t.write("Visible");
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.let_stmt("show", t.bool(true), |t| {
+                        t.if_stmt(t.var("show"), |t| {
+                            t.write("Visible");
+                        });
+                        t.if_stmt(t.not(t.var("show")), |t| {
+                            t.write("Hidden");
+                        });
                     });
-                    t.if_stmt(t.not(t.var("show")), |t| {
-                        t.write("Hidden");
-                    });
-                });
-            }),
-            "Visible",
+                }),
+                "Visible",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let show = true in {
+                    if show {
+                      write("Visible")
+                    }
+                    if (!show) {
+                      write("Hidden")
+                    }
+                  }
+                }
+                -- expected output --
+                Visible
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
         );
-
-        run_integration_test(test_case).expect("Integration test failed");
     }
 
     #[test]
     #[ignore]
     fn if_else() {
-        let test_case = TestCase::new(
-            build_ir("Test", [], |t| {
-                t.let_stmt("show", t.bool(true), |t| {
-                    t.if_else_stmt(
-                        t.var("show"),
-                        |t| {
-                            t.write("True branch");
-                        },
-                        |t| {
-                            t.write("False branch");
-                        },
-                    );
-                });
-                t.let_stmt("hide", t.bool(false), |t| {
-                    t.if_else_stmt(
-                        t.var("hide"),
-                        |t| {
-                            t.write("Should not appear");
-                        },
-                        |t| {
-                            t.write("False branch");
-                        },
-                    );
-                });
-            }),
-            "True branchFalse branch",
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.let_stmt("show", t.bool(true), |t| {
+                        t.if_else_stmt(
+                            t.var("show"),
+                            |t| {
+                                t.write("True branch");
+                            },
+                            |t| {
+                                t.write("False branch");
+                            },
+                        );
+                    });
+                    t.let_stmt("hide", t.bool(false), |t| {
+                        t.if_else_stmt(
+                            t.var("hide"),
+                            |t| {
+                                t.write("Should not appear");
+                            },
+                            |t| {
+                                t.write("False branch");
+                            },
+                        );
+                    });
+                }),
+                "True branchFalse branch",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let show = true in {
+                    if show {
+                      write("True branch")
+                    } else {
+                      write("False branch")
+                    }
+                  }
+                  let hide = false in {
+                    if hide {
+                      write("Should not appear")
+                    } else {
+                      write("False branch")
+                    }
+                  }
+                }
+                -- expected output --
+                True branchFalse branch
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
         );
-
-        run_integration_test(test_case).expect("Integration test failed");
     }
 
     #[test]
     #[ignore]
     fn for_loop() {
-        let test_case = TestCase::new(
-            build_ir("Test", [], |t| {
-                t.for_loop(
-                    "item",
-                    t.array(vec![t.str("a"), t.str("b"), t.str("c")]),
-                    |t| {
-                        t.write_expr(t.var("item"), false);
-                        t.write(",");
-                    },
-                );
-            }),
-            "a,b,c,",
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.for_loop(
+                        "item",
+                        t.array(vec![t.str("a"), t.str("b"), t.str("c")]),
+                        |t| {
+                            t.write_expr(t.var("item"), false);
+                            t.write(",");
+                        },
+                    );
+                }),
+                "a,b,c,",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  for item in ["a", "b", "c"] {
+                    write_expr(item)
+                    write(",")
+                  }
+                }
+                -- expected output --
+                a,b,c,
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
         );
-
-        run_integration_test(test_case).expect("Integration test failed");
     }
 
     #[test]
     #[ignore]
     fn html_escaping() {
-        let test_case = TestCase::new(
-            build_ir("Test", [], |t| {
-                t.let_stmt("text", t.str("<div>Hello & world</div>"), |t| {
-                    t.write_expr_escaped(t.var("text"));
-                });
-            }),
-            "&lt;div&gt;Hello &amp; world&lt;/div&gt;",
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.let_stmt("text", t.str("<div>Hello & world</div>"), |t| {
+                        t.write_expr_escaped(t.var("text"));
+                    });
+                }),
+                "&lt;div&gt;Hello &amp; world&lt;/div&gt;",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let text = "<div>Hello & world</div>" in {
+                    write_escaped(text)
+                  }
+                }
+                -- expected output --
+                &lt;div&gt;Hello &amp; world&lt;/div&gt;
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
         );
-
-        run_integration_test(test_case).expect("Integration test failed");
     }
 
     #[test]
     #[ignore]
     fn let_binding() {
-        let test_case = TestCase::new(
-            build_ir("Test", [], |t| {
-                t.let_stmt("message", t.str("Hello from let"), |t| {
-                    t.write_expr(t.var("message"), false);
-                });
-            }),
-            "Hello from let",
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.let_stmt("message", t.str("Hello from let"), |t| {
+                        t.write_expr(t.var("message"), false);
+                    });
+                }),
+                "Hello from let",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let message = "Hello from let" in {
+                    write_expr(message)
+                  }
+                }
+                -- expected output --
+                Hello from let
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
         );
-
-        run_integration_test(test_case).expect("Integration test failed");
     }
 
     #[test]
     #[ignore]
     fn string_concatenation() {
-        let test_case = TestCase::new(
-            build_ir("Test", [], |t| {
-                t.let_stmt("first", t.str("Hello"), |t| {
-                    t.let_stmt("second", t.str(" World"), |t| {
-                        t.write_expr(t.string_concat(t.var("first"), t.var("second")), false);
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.let_stmt("first", t.str("Hello"), |t| {
+                        t.let_stmt("second", t.str(" World"), |t| {
+                            t.write_expr(t.string_concat(t.var("first"), t.var("second")), false);
+                        });
                     });
-                });
-            }),
-            "Hello World",
+                }),
+                "Hello World",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let first = "Hello" in {
+                    let second = " World" in {
+                      write_expr((first + second))
+                    }
+                  }
+                }
+                -- expected output --
+                Hello World
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
         );
-
-        run_integration_test(test_case).expect("Integration test failed");
     }
 
     #[test]
     #[ignore]
     fn json_encode() {
-        let test_case = TestCase::new(
-            build_ir("Test", [], |t| {
-                t.write_expr(
-                    t.json_encode(t.array(vec![t.str("Hello"), t.str("World")])),
-                    false,
-                );
-            }),
-            r#"["Hello","World"]"#,
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.write_expr(
+                        t.json_encode(t.array(vec![t.str("Hello"), t.str("World")])),
+                        false,
+                    );
+                }),
+                r#"["Hello","World"]"#,
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  write_expr(JsonEncode(["Hello", "World"]))
+                }
+                -- expected output --
+                ["Hello","World"]
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
         );
-
-        run_integration_test(test_case).expect("Integration test failed");
     }
 
     #[test]
     #[ignore]
     fn complex_nested_structure() {
-        let test_case = TestCase::new(
-            build_ir("Test", [], |t| {
-                t.for_loop("item", t.array(vec![t.str("A"), t.str("B")]), |t| {
-                    t.let_stmt("prefix", t.str("["), |t| {
-                        t.write_expr(t.var("prefix"), false);
-                        t.write_expr(t.var("item"), false);
-                        t.write("]");
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.for_loop("item", t.array(vec![t.str("A"), t.str("B")]), |t| {
+                        t.let_stmt("prefix", t.str("["), |t| {
+                            t.write_expr(t.var("prefix"), false);
+                            t.write_expr(t.var("item"), false);
+                            t.write("]");
+                        });
                     });
-                });
-            }),
-            "[A][B]",
+                }),
+                "[A][B]",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  for item in ["A", "B"] {
+                    let prefix = "[" in {
+                      write_expr(prefix)
+                      write_expr(item)
+                      write("]")
+                    }
+                  }
+                }
+                -- expected output --
+                [A][B]
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
         );
-
-        run_integration_test(test_case).expect("Integration test failed");
     }
 
     #[test]
     #[ignore]
     fn string_concat_equality() {
-        let test_case = TestCase::new(
-            build_ir("Test", [], |t| {
-                t.if_stmt(
-                    t.eq(t.string_concat(t.str("foo"), t.str("bar")), t.str("foobar")),
-                    |t| {
-                        t.write("equals");
-                    },
-                );
-            }),
-            "equals",
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.if_stmt(
+                        t.eq(t.string_concat(t.str("foo"), t.str("bar")), t.str("foobar")),
+                        |t| {
+                            t.write("equals");
+                        },
+                    );
+                }),
+                "equals",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  if (("foo" + "bar") == "foobar") {
+                    write("equals")
+                  }
+                }
+                -- expected output --
+                equals
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
         );
-
-        run_integration_test(test_case).expect("Integration test failed");
     }
 
     #[test]
     #[ignore]
     fn less_than_comparison() {
-        let test_case = TestCase::new(
-            build_ir("Test", [], |t| {
-                t.if_stmt(t.less_than(t.int(3), t.int(5)), |t| {
-                    t.write("3 < 5");
-                });
-                t.if_stmt(t.less_than(t.int(10), t.int(2)), |t| {
-                    t.write("10 < 2");
-                });
-            }),
-            "3 < 5",
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.if_stmt(t.less_than(t.int(3), t.int(5)), |t| {
+                        t.write("3 < 5");
+                    });
+                    t.if_stmt(t.less_than(t.int(10), t.int(2)), |t| {
+                        t.write("10 < 2");
+                    });
+                }),
+                "3 < 5",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  if (3 < 5) {
+                    write("3 < 5")
+                  }
+                  if (10 < 2) {
+                    write("10 < 2")
+                  }
+                }
+                -- expected output --
+                3 < 5
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
         );
-
-        run_integration_test(test_case).expect("Integration test failed");
     }
 
     #[test]
     #[ignore]
     fn less_than_float_comparison() {
-        let test_case = TestCase::new(
-            build_ir("Test", [], |t| {
-                t.if_stmt(t.less_than(t.float(1.5), t.float(2.5)), |t| {
-                    t.write("1.5 < 2.5");
-                });
-                t.if_stmt(t.less_than(t.float(3.0), t.float(1.0)), |t| {
-                    t.write("3.0 < 1.0");
-                });
-            }),
-            "1.5 < 2.5",
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.if_stmt(t.less_than(t.float(1.5), t.float(2.5)), |t| {
+                        t.write("1.5 < 2.5");
+                    });
+                    t.if_stmt(t.less_than(t.float(3.0), t.float(1.0)), |t| {
+                        t.write("3.0 < 1.0");
+                    });
+                }),
+                "1.5 < 2.5",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  if (1.5 < 2.5) {
+                    write("1.5 < 2.5")
+                  }
+                  if (3 < 1) {
+                    write("3.0 < 1.0")
+                  }
+                }
+                -- expected output --
+                1.5 < 2.5
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
         );
-
-        run_integration_test(test_case).expect("Integration test failed");
-    }
-
-    #[test]
-    #[ignore]
-    fn float_equality() {
-        let test_case = TestCase::new(
-            build_ir("Test", [], |t| {
-                t.if_stmt(t.eq(t.float(1.5), t.float(1.5)), |t| {
-                    t.write("1.5 == 1.5");
-                });
-                t.if_stmt(t.eq(t.float(1.5), t.float(2.5)), |t| {
-                    t.write("1.5 == 2.5");
-                });
-            }),
-            "1.5 == 1.5",
-        );
-
-        run_integration_test(test_case).expect("Integration test failed");
-    }
-
-    #[test]
-    #[ignore]
-    fn typecheck_trusted_html() {
-        // Test that TrustedHTML type is properly emitted and type-checks
-        let parameters = vec![
-            ("safe_html", Type::TrustedHTML),
-            ("unsafe_text", Type::String),
-        ];
-
-        let test_case =
-            TypeCheckTestCase::new(vec![build_ir("TestTrustedHtml", parameters, |t| {
-                // TrustedHTML should not be escaped
-                t.write_expr(t.var("safe_html"), false);
-                // Regular strings should be escaped
-                t.write_expr_escaped(t.var("unsafe_text"));
-            })]);
-
-        run_type_check_test(test_case).expect("Type check test failed");
     }
 
     #[test]
@@ -614,26 +773,45 @@ mod tests {
             ],
         }];
 
-        // Test that a color variable equals Color::Red
-        let test_case = TestCase::new(
-            build_ir_with_enums("Test", [], enums.clone(), |t| {
-                t.let_stmt("color", t.enum_variant("Color", "Red"), |t| {
-                    t.if_else_stmt(
-                        t.eq(t.var("color"), t.enum_variant("Color", "Red")),
-                        |t| {
-                            t.write("equal");
-                        },
-                        |t| {
-                            t.write("not equal");
-                        },
-                    );
-                });
-            }),
-            "equal",
-        )
-        .with_enums(enum_declarations);
-
-        run_integration_test(test_case).expect("Integration test failed");
+        check(
+            TestCase::new(
+                build_ir_with_enums("Test", [], enums.clone(), |t| {
+                    t.let_stmt("color", t.enum_variant("Color", "Red"), |t| {
+                        t.if_else_stmt(
+                            t.eq(t.var("color"), t.enum_variant("Color", "Red")),
+                            |t| {
+                                t.write("equal");
+                            },
+                            |t| {
+                                t.write("not equal");
+                            },
+                        );
+                    });
+                }),
+                "equal",
+            )
+            .with_enums(enum_declarations),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let color = Color::Red in {
+                    if (color == Color::Red) {
+                      write("equal")
+                    } else {
+                      write("not equal")
+                    }
+                  }
+                }
+                -- expected output --
+                equal
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
     }
 
     #[test]
@@ -652,71 +830,136 @@ mod tests {
             ],
         }];
 
-        // Test that a color variable does not equal a different variant
-        let test_case = TestCase::new(
-            build_ir_with_enums("Test", [], enums.clone(), |t| {
-                t.let_stmt("color", t.enum_variant("Color", "Red"), |t| {
-                    t.if_else_stmt(
-                        t.eq(t.var("color"), t.enum_variant("Color", "Green")),
-                        |t| {
-                            t.write("equal");
-                        },
-                        |t| {
-                            t.write("not equal");
-                        },
-                    );
-                });
-            }),
-            "not equal",
-        )
-        .with_enums(enum_declarations);
-
-        run_integration_test(test_case).expect("Integration test failed");
+        check(
+            TestCase::new(
+                build_ir_with_enums("Test", [], enums.clone(), |t| {
+                    t.let_stmt("color", t.enum_variant("Color", "Red"), |t| {
+                        t.if_else_stmt(
+                            t.eq(t.var("color"), t.enum_variant("Color", "Green")),
+                            |t| {
+                                t.write("equal");
+                            },
+                            |t| {
+                                t.write("not equal");
+                            },
+                        );
+                    });
+                }),
+                "not equal",
+            )
+            .with_enums(enum_declarations),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let color = Color::Red in {
+                    if (color == Color::Green) {
+                      write("equal")
+                    } else {
+                      write("not equal")
+                    }
+                  }
+                }
+                -- expected output --
+                not equal
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
     }
 
     #[test]
     #[ignore]
     fn bool_match_true() {
-        let test_case = TestCase::new(
-            build_ir("Test", [], |t| {
-                t.let_stmt("flag", t.bool(true), |t| {
-                    t.bool_match_stmt(
-                        t.var("flag"),
-                        |t| {
-                            t.write("yes");
-                        },
-                        |t| {
-                            t.write("no");
-                        },
-                    );
-                });
-            }),
-            "yes",
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.let_stmt("flag", t.bool(true), |t| {
+                        t.bool_match_stmt(
+                            t.var("flag"),
+                            |t| {
+                                t.write("yes");
+                            },
+                            |t| {
+                                t.write("no");
+                            },
+                        );
+                    });
+                }),
+                "yes",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let flag = true in {
+                    match flag {
+                      true => {
+                        write("yes")
+                      }
+                      false => {
+                        write("no")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                yes
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
         );
-
-        run_integration_test(test_case).expect("Integration test failed");
     }
 
     #[test]
     #[ignore]
     fn bool_match_false() {
-        let test_case = TestCase::new(
-            build_ir("Test", [], |t| {
-                t.let_stmt("flag", t.bool(false), |t| {
-                    t.bool_match_stmt(
-                        t.var("flag"),
-                        |t| {
-                            t.write("yes");
-                        },
-                        |t| {
-                            t.write("no");
-                        },
-                    );
-                });
-            }),
-            "no",
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.let_stmt("flag", t.bool(false), |t| {
+                        t.bool_match_stmt(
+                            t.var("flag"),
+                            |t| {
+                                t.write("yes");
+                            },
+                            |t| {
+                                t.write("no");
+                            },
+                        );
+                    });
+                }),
+                "no",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let flag = false in {
+                    match flag {
+                      true => {
+                        write("yes")
+                      }
+                      false => {
+                        write("no")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                no
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
         );
-
-        run_integration_test(test_case).expect("Integration test failed");
     }
 }

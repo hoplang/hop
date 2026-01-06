@@ -1123,11 +1123,14 @@ mod tests {
                     write_expr(EnvLookup("HOP_DEV_PORT"))
                     write("/development_mode.js\"></script>")
                   } else {
-                    match flag { true => {
-                      write("yes")
-                    }, false => {
-                      write("no")
-                    } }
+                    match flag {
+                      true => {
+                        write("yes")
+                      }
+                      false => {
+                        write("no")
+                      }
+                    }
                   }
                 }
             "#]],

@@ -402,12 +402,13 @@ impl StatementTranspiler for TsTranspiler {
             .append(BoxDoc::text("}"))
     }
 
-    fn transpile_let<'a>(
+    fn transpile_let_statement<'a>(
         &self,
         var: &'a str,
         value: &'a IrExpr,
         body: &'a [IrStatement],
     ) -> BoxDoc<'a> {
+        // const [[var]] = [[expr]];
         BoxDoc::text("const ")
             .append(BoxDoc::text(var))
             .append(BoxDoc::text(" = "))
@@ -427,7 +428,11 @@ impl StatementTranspiler for TsTranspiler {
                 true_body,
                 false_body,
             } => {
-                // Transpile as: if (subject) { true_body } else { false_body }
+                // if ([[subject]]) {
+                //   [[true_body_statements]]
+                // } else {
+                //   [[false_body_statements]]
+                // }
                 BoxDoc::text("if (")
                     .append(self.transpile_expr(subject))
                     .append(BoxDoc::text(") {"))
@@ -454,9 +459,18 @@ impl StatementTranspiler for TsTranspiler {
                 some_arm_body,
                 none_arm_body,
             } => {
-                // Transpile as: switch (subject._tag) { case "Some": ...; case "None": ...; }
+                // switch ([[subject]]._tag) {
+                //   case "Some": {
+                //     const [[var_name]] = [[subject]].value;
+                //     [[statements]]
+                //     break;
+                //   }
+                //   case "None": {
+                //     [[...]]
+                //     break;
+                //   }
+                // }
                 let some_case = {
-                    let body_doc = self.transpile_statements(some_arm_body);
                     if let Some((var_name, _)) = some_arm_binding {
                         BoxDoc::text("case \"Some\": {")
                             .append(
@@ -467,7 +481,7 @@ impl StatementTranspiler for TsTranspiler {
                                     .append(self.transpile_expr(subject))
                                     .append(BoxDoc::text(".value;"))
                                     .append(BoxDoc::hardline())
-                                    .append(body_doc)
+                                    .append(self.transpile_statements(some_arm_body))
                                     .append(BoxDoc::hardline())
                                     .append(BoxDoc::text("break;"))
                                     .nest(4),
@@ -478,7 +492,7 @@ impl StatementTranspiler for TsTranspiler {
                         BoxDoc::text("case \"Some\": {")
                             .append(
                                 BoxDoc::hardline()
-                                    .append(body_doc)
+                                    .append(self.transpile_statements(some_arm_body))
                                     .append(BoxDoc::hardline())
                                     .append(BoxDoc::text("break;"))
                                     .nest(4),
@@ -513,7 +527,13 @@ impl StatementTranspiler for TsTranspiler {
                     .append(BoxDoc::text("}"))
             }
             Match::Enum { subject, arms } => {
-                // Transpile as: switch (subject._tag) { case "EnumNameVariant": ...; ... }
+                // switch ([[subject]]._tag) {
+                //   case "[[class_name]]": {
+                //     [[statements]]
+                //     break;
+                //   }
+                //   [[...]]
+                // }
                 let cases = BoxDoc::intersperse(
                     arms.iter().map(|arm| match &arm.pattern {
                         EnumPattern::Variant {
@@ -612,7 +632,6 @@ impl ExpressionTranspiler for TsTranspiler {
     }
 
     fn transpile_enum_literal<'a>(&self, enum_name: &'a str, variant_name: &'a str) -> BoxDoc<'a> {
-        // Generate: new EnumNameVariantName()
         BoxDoc::text("new ")
             .append(BoxDoc::text(enum_name))
             .append(BoxDoc::text(variant_name))
@@ -812,9 +831,12 @@ impl ExpressionTranspiler for TsTranspiler {
     fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr, IrExpr>) -> BoxDoc<'a> {
         match match_ {
             Match::Enum { subject, arms } => {
-                // Transpile enum match to an IIFE with a switch statement:
-                // (() => { switch (subject._tag) { case "ColorRed": return body; ... } })()
-                // The _tag uses the pattern EnumNameVariantName (e.g., ColorRed)
+                // (() => {
+                //   switch ([[subject]]._tag) {
+                //     case "[[class_name]]": return [[body]];
+                //     [[...]]
+                //   }
+                // })()
                 let cases = BoxDoc::intersperse(
                     arms.iter().map(|arm| match &arm.pattern {
                         EnumPattern::Variant {
@@ -855,7 +877,7 @@ impl ExpressionTranspiler for TsTranspiler {
                 true_body,
                 false_body,
             } => {
-                // Transpile boolean match to a ternary expression: subject ? trueBody : falseBody
+                // subject ? [[true_body]] : [[false_body]]
                 BoxDoc::text("(")
                     .append(self.transpile_expr(subject))
                     .append(BoxDoc::text(" ? "))
@@ -870,13 +892,15 @@ impl ExpressionTranspiler for TsTranspiler {
                 some_arm_body,
                 none_arm_body,
             } => {
+                // (() => {
+                //   switch ([[subject]]._tag) {
+                //     case "Some": return [[some_arm]];
+                //     case "None": return [[none_arm]];
+                //   }
+                // })()
                 let some_case = {
                     let body_doc = self.transpile_expr(some_arm_body);
                     if let Some((var_name, _)) = some_arm_binding {
-                        // case "Some": {
-                        //   const v0 = subject.value;
-                        //   return body;
-                        // }
                         BoxDoc::text("case \"Some\": {")
                             .append(
                                 BoxDoc::line()
@@ -931,7 +955,7 @@ impl ExpressionTranspiler for TsTranspiler {
         value: &'a IrExpr,
         body: &'a IrExpr,
     ) -> BoxDoc<'a> {
-        // Generate an IIFE: (() => { const var = value; return body; })()
+        // (() => { const [[var]] = [[value]]; return [[body]]; })()
         BoxDoc::text("(() => {")
             .append(
                 BoxDoc::line()
@@ -1973,13 +1997,16 @@ mod tests {
             expect![[r#"
                 -- before --
                 DisplayOption(opt: Option[String]) {
-                  match opt { Some(value) => {
-                    write("<span>Found: ")
-                    write_escaped(value)
-                    write("</span>")
-                  }, None => {
-                    write("<span>Nothing</span>")
-                  } }
+                  match opt {
+                    Some(value) => {
+                      write("<span>Found: ")
+                      write_escaped(value)
+                      write("</span>")
+                    }
+                    None => {
+                      write("<span>Nothing</span>")
+                    }
+                  }
                 }
 
                 -- after --

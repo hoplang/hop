@@ -10,11 +10,11 @@ use pretty::BoxDoc;
 pub use python::PythonTranspiler;
 pub use ts::TsTranspiler;
 
+use crate::dop::patterns::Match;
 use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, Type};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::var_name::VarName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::dop::patterns::Match;
 use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrModule, IrStatement};
 
 pub trait Transpiler {
@@ -41,7 +41,7 @@ pub trait StatementTranspiler {
         array: &'a IrExpr,
         body: &'a [IrStatement],
     ) -> BoxDoc<'a>;
-    fn transpile_let<'a>(
+    fn transpile_let_statement<'a>(
         &self,
         var: &'a str,
         value: &'a IrExpr,
@@ -66,7 +66,7 @@ pub trait StatementTranspiler {
             } => self.transpile_for(var.as_str(), array, body),
             IrStatement::Let {
                 var, value, body, ..
-            } => self.transpile_let(var.as_str(), value, body),
+            } => self.transpile_let_statement(var.as_str(), value, body),
             IrStatement::Match { match_, .. } => self.transpile_match_statement(match_),
         }
     }
@@ -252,7 +252,9 @@ pub trait ExpressionTranspiler {
                 ..
             } => self.transpile_enum_literal(enum_name, variant_name),
             IrExpr::Match { match_, .. } => self.transpile_match_expr(match_),
-            IrExpr::Let { var, value, body, .. } => self.transpile_let(var, value, body),
+            IrExpr::Let {
+                var, value, body, ..
+            } => self.transpile_let(var, value, body),
         }
     }
 }

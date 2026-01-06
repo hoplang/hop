@@ -552,9 +552,16 @@ impl IrStatement {
                                 body.iter().map(|stmt| stmt.to_doc()),
                                 BoxDoc::line(),
                             ))
-                            .append(BoxDoc::line())
                             .nest(2)
                     }
+                }
+
+                fn arm_to_doc<'a>(pattern: BoxDoc<'a>, body: &'a [IrStatement]) -> BoxDoc<'a> {
+                    pattern
+                        .append(BoxDoc::text(" => {"))
+                        .append(body_to_doc(body))
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("}"))
                 }
 
                 match match_ {
@@ -564,11 +571,16 @@ impl IrStatement {
                         false_body,
                     } => BoxDoc::text("match ")
                         .append(subject.to_doc())
-                        .append(BoxDoc::text(" { true => {"))
-                        .append(body_to_doc(true_body))
-                        .append(BoxDoc::text("}, false => {"))
-                        .append(body_to_doc(false_body))
-                        .append(BoxDoc::text("} }")),
+                        .append(BoxDoc::text(" {"))
+                        .append(
+                            BoxDoc::line()
+                                .append(arm_to_doc(BoxDoc::text("true"), true_body))
+                                .append(BoxDoc::line())
+                                .append(arm_to_doc(BoxDoc::text("false"), false_body))
+                                .nest(2),
+                        )
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("}")),
                     Match::Option {
                         subject,
                         some_arm_binding,
@@ -581,35 +593,42 @@ impl IrStatement {
                         };
                         BoxDoc::text("match ")
                             .append(subject.to_doc())
-                            .append(BoxDoc::text(" { "))
-                            .append(BoxDoc::text(some_pattern))
-                            .append(BoxDoc::text(" => {"))
-                            .append(body_to_doc(some_arm_body))
-                            .append(BoxDoc::text("}, None => {"))
-                            .append(body_to_doc(none_arm_body))
-                            .append(BoxDoc::text("} }"))
+                            .append(BoxDoc::text(" {"))
+                            .append(
+                                BoxDoc::line()
+                                    .append(arm_to_doc(BoxDoc::as_string(some_pattern), some_arm_body))
+                                    .append(BoxDoc::line())
+                                    .append(arm_to_doc(BoxDoc::text("None"), none_arm_body))
+                                    .nest(2),
+                            )
+                            .append(BoxDoc::line())
+                            .append(BoxDoc::text("}"))
                     }
                     Match::Enum { subject, arms } => {
-                        let arms_doc = BoxDoc::intersperse(
-                            arms.iter().map(|arm| {
+                        let arms_doc: Vec<_> = arms
+                            .iter()
+                            .map(|arm| {
                                 let pattern = match &arm.pattern {
                                     EnumPattern::Variant {
                                         enum_name,
                                         variant_name,
                                     } => format!("{}::{}", enum_name, variant_name),
                                 };
-                                BoxDoc::text(pattern)
-                                    .append(BoxDoc::text(" => {"))
-                                    .append(body_to_doc(&arm.body))
-                                    .append(BoxDoc::text("}"))
-                            }),
-                            BoxDoc::text(", "),
+                                (pattern, &arm.body)
+                            })
+                            .collect();
+                        let arms_doc = BoxDoc::intersperse(
+                            arms_doc
+                                .into_iter()
+                                .map(|(pattern, body)| arm_to_doc(BoxDoc::as_string(pattern), body)),
+                            BoxDoc::line(),
                         );
                         BoxDoc::text("match ")
                             .append(subject.to_doc())
-                            .append(BoxDoc::text(" { "))
-                            .append(arms_doc)
-                            .append(BoxDoc::text(" }"))
+                            .append(BoxDoc::text(" {"))
+                            .append(BoxDoc::line().append(arms_doc).nest(2))
+                            .append(BoxDoc::line())
+                            .append(BoxDoc::text("}"))
                     }
                 }
             }
