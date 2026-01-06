@@ -1506,7 +1506,7 @@ mod tests {
                 }),
                 "Some:hello,None",
             )
-            .only_languages(&[Language::TypeScript]),
+            .only_languages(&[Language::TypeScript, Language::Go]),
             expect![[r#"
                 -- input --
                 Test() {
@@ -1536,6 +1536,8 @@ mod tests {
                 -- expected output --
                 Some:hello,None
                 -- ts --
+                OK
+                -- go --
                 OK
             "#]],
         );
@@ -1577,7 +1579,7 @@ mod tests {
                 }),
                 "Got:world,Empty",
             )
-            .only_languages(&[Language::TypeScript]),
+            .only_languages(&[Language::TypeScript, Language::Go]),
             expect![[r#"
                 -- input --
                 Test() {
@@ -1605,6 +1607,8 @@ mod tests {
                 Got:world,Empty
                 -- ts --
                 OK
+                -- go --
+                OK
             "#]],
         );
     }
@@ -1627,7 +1631,7 @@ mod tests {
                 }),
                 "some,NONE",
             )
-            .only_languages(&[Language::TypeScript]),
+            .only_languages(&[Language::TypeScript, Language::Go]),
             expect![[r#"
                 -- input --
                 Test() {
@@ -1641,6 +1645,8 @@ mod tests {
                 -- expected output --
                 some,NONE
                 -- ts --
+                OK
+                -- go --
                 OK
             "#]],
         );
@@ -1678,7 +1684,7 @@ mod tests {
                 }),
                 "mapped:hello",
             )
-            .only_languages(&[Language::TypeScript]),
+            .only_languages(&[Language::TypeScript, Language::Go]),
             expect![[r#"
                 -- input --
                 Test() {
@@ -1698,6 +1704,8 @@ mod tests {
                 -- expected output --
                 mapped:hello
                 -- ts --
+                OK
+                -- go --
                 OK
             "#]],
         );
@@ -1734,7 +1742,7 @@ mod tests {
                 }),
                 "inner",
             )
-            .only_languages(&[Language::TypeScript]),
+            .only_languages(&[Language::TypeScript, Language::Go]),
             expect![[r#"
                 -- input --
                 Test() {
@@ -1753,6 +1761,8 @@ mod tests {
                 -- expected output --
                 inner
                 -- ts --
+                OK
+                -- go --
                 OK
             "#]],
         );
@@ -1788,7 +1798,7 @@ mod tests {
                 }),
                 "[a][_][b]",
             )
-            .only_languages(&[Language::TypeScript]),
+            .only_languages(&[Language::TypeScript, Language::Go]),
             expect![[r#"
                 -- input --
                 Test() {
@@ -1808,6 +1818,8 @@ mod tests {
                 -- expected output --
                 [a][_][b]
                 -- ts --
+                OK
+                -- go --
                 OK
             "#]],
         );
@@ -1882,7 +1894,7 @@ mod tests {
                 }),
                 "deep,inner-none,outer-none",
             )
-            .only_languages(&[Language::TypeScript]),
+            .only_languages(&[Language::TypeScript, Language::Go]),
             expect![[r#"
                 -- input --
                 Test() {
@@ -1913,6 +1925,8 @@ mod tests {
                 -- expected output --
                 deep,inner-none,outer-none
                 -- ts --
+                OK
+                -- go --
                 OK
             "#]],
         );

@@ -63,6 +63,52 @@ impl GoTranspiler {
         }
     }
 
+    fn scan_for_options(&self, module: &IrModule) -> bool {
+        for entrypoint in &module.components {
+            // Check parameters
+            for (_, param_type) in &entrypoint.parameters {
+                if Self::type_contains_option(param_type) {
+                    return true;
+                }
+            }
+            // Check statements for option expressions
+            for stmt in &entrypoint.body {
+                let mut found = false;
+                stmt.traverse(&mut |s| {
+                    if let Some(expr) = s.expr() {
+                        expr.traverse(&mut |e| {
+                            if matches!(e, IrExpr::OptionLiteral { .. }) {
+                                found = true;
+                            }
+                            if let IrExpr::Match { match_, .. } = e {
+                                if matches!(match_, Match::Option { .. }) {
+                                    found = true;
+                                }
+                            }
+                        });
+                    }
+                    if let IrStatement::Match { match_, .. } = s {
+                        if matches!(match_, Match::Option { .. }) {
+                            found = true;
+                        }
+                    }
+                });
+                if found {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn type_contains_option(t: &Type) -> bool {
+        match t {
+            Type::Option(_) => true,
+            Type::Array(elem) => Self::type_contains_option(elem),
+            _ => false,
+        }
+    }
+
     // Helper method to escape strings for Go string literals
     fn escape_string(&self, s: &str) -> String {
         s.replace('\\', "\\\\")
@@ -90,6 +136,9 @@ impl Transpiler for GoTranspiler {
 
         // Check if we need TrustedHTML type
         let needs_trusted_html = self.scan_for_trusted_html(entrypoints);
+
+        // Check if we need Option type
+        let needs_option = self.scan_for_options(module);
 
         // Build the module content using BoxDoc
         let mut result = BoxDoc::nil();
@@ -129,6 +178,20 @@ impl Transpiler for GoTranspiler {
         if needs_trusted_html {
             result = result
                 .append(BoxDoc::text("type TrustedHTML string"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line());
+        }
+
+        // Add Option type definition if needed
+        if needs_option {
+            result = result
+                .append(BoxDoc::text("type Option[T any] struct {"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("\tvalue T"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("\tsome  bool"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("}"))
                 .append(BoxDoc::line())
                 .append(BoxDoc::line());
         }
@@ -483,8 +546,51 @@ impl StatementTranspiler for GoTranspiler {
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("}"))
             }
-            Match::Option { .. } => {
-                todo!()
+            Match::Option {
+                subject,
+                some_arm_binding,
+                some_arm_body,
+                none_arm_body,
+            } => {
+                // {
+                //     _opt := subject
+                //     if _opt.some {
+                //         val := _opt.value
+                //         ...
+                //     } else {
+                //         ...
+                //     }
+                // }
+                let some_body = if let Some((var_name, _)) = some_arm_binding {
+                    BoxDoc::text(var_name.as_str())
+                        .append(BoxDoc::text(" := _opt.value"))
+                        .append(BoxDoc::line())
+                        .append(self.transpile_statements(some_arm_body))
+                } else {
+                    self.transpile_statements(some_arm_body)
+                };
+
+                BoxDoc::text("{")
+                    .append(
+                        BoxDoc::line()
+                            .append(BoxDoc::text("_opt := "))
+                            .append(self.transpile_expr(subject))
+                            .append(BoxDoc::line())
+                            .append(BoxDoc::text("if _opt.some {"))
+                            .append(BoxDoc::line().append(some_body).nest(1))
+                            .append(BoxDoc::line())
+                            .append(BoxDoc::text("} else {"))
+                            .append(
+                                BoxDoc::line()
+                                    .append(self.transpile_statements(none_arm_body))
+                                    .nest(1),
+                            )
+                            .append(BoxDoc::line())
+                            .append(BoxDoc::text("}"))
+                            .nest(1),
+                    )
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("}"))
             }
             Match::Enum { .. } => {
                 todo!()
@@ -747,10 +853,25 @@ impl ExpressionTranspiler for GoTranspiler {
 
     fn transpile_option_literal<'a>(
         &self,
-        _value: Option<&'a IrExpr>,
-        _inner_type: &'a Type,
+        value: Option<&'a IrExpr>,
+        inner_type: &'a Type,
     ) -> BoxDoc<'a> {
-        panic!("Option literals are not yet supported in Go transpilation")
+        match value {
+            Some(inner) => {
+                // Option[T]{value: x, some: true}
+                BoxDoc::text("Option[")
+                    .append(self.transpile_type(inner_type))
+                    .append(BoxDoc::text("]{value: "))
+                    .append(self.transpile_expr(inner))
+                    .append(BoxDoc::text(", some: true}"))
+            }
+            None => {
+                // Option[T]{some: false}
+                BoxDoc::text("Option[")
+                    .append(self.transpile_type(inner_type))
+                    .append(BoxDoc::text("]{some: false}"))
+            }
+        }
     }
 
     fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr, IrExpr>) -> BoxDoc<'a> {
@@ -791,8 +912,57 @@ impl ExpressionTranspiler for GoTranspiler {
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("}()"))
             }
-            Match::Option { .. } => {
-                panic!("Option match expressions are not yet supported in Go transpilation")
+            Match::Option {
+                subject,
+                some_arm_binding,
+                some_arm_body,
+                none_arm_body,
+            } => {
+                // func() ReturnType {
+                //     _opt := subject
+                //     if _opt.some {
+                //         val := _opt.value
+                //         return some_body
+                //     } else {
+                //         return none_body
+                //     }
+                // }()
+                let return_type = self.transpile_type(some_arm_body.as_type());
+
+                let some_body = if let Some((var_name, _)) = some_arm_binding {
+                    BoxDoc::text(var_name.as_str())
+                        .append(BoxDoc::text(" := _opt.value"))
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("return "))
+                        .append(self.transpile_expr(some_arm_body))
+                } else {
+                    BoxDoc::text("return ").append(self.transpile_expr(some_arm_body))
+                };
+
+                BoxDoc::text("func() ")
+                    .append(return_type)
+                    .append(BoxDoc::text(" {"))
+                    .append(
+                        BoxDoc::line()
+                            .append(BoxDoc::text("_opt := "))
+                            .append(self.transpile_expr(subject))
+                            .append(BoxDoc::line())
+                            .append(BoxDoc::text("if _opt.some {"))
+                            .append(BoxDoc::line().append(some_body).nest(2))
+                            .append(BoxDoc::line())
+                            .append(BoxDoc::text("} else {"))
+                            .append(
+                                BoxDoc::line()
+                                    .append(BoxDoc::text("return "))
+                                    .append(self.transpile_expr(none_arm_body))
+                                    .nest(2),
+                            )
+                            .append(BoxDoc::line())
+                            .append(BoxDoc::text("}"))
+                            .nest(2),
+                    )
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("}()"))
             }
             Match::Enum { .. } => {
                 panic!("Enum match expressions are not yet supported in Go transpilation")
@@ -851,8 +1021,10 @@ impl TypeTranspiler for GoTranspiler {
         BoxDoc::text("[]").append(self.transpile_type(element_type))
     }
 
-    fn transpile_option_type<'a>(&self, _inner_type: &'a Type) -> BoxDoc<'a> {
-        todo!("Option type transpilation not yet implemented for Go")
+    fn transpile_option_type<'a>(&self, inner_type: &'a Type) -> BoxDoc<'a> {
+        BoxDoc::text("Option[")
+            .append(self.transpile_type(inner_type))
+            .append(BoxDoc::text("]"))
     }
 
     fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
@@ -1668,6 +1840,98 @@ mod tests {
                 	color := params.Color
                 	if color.Equals(ColorRed{}) {
                 		io.WriteString(w, "<div>Red!</div>")
+                	}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn option_literal() {
+        use crate::dop::Type;
+
+        let module = build_module("TestOption", vec![], |t| {
+            t.option_match_stmt(
+                t.some(t.str("hello")),
+                Some("val"),
+                |t| {
+                    t.write("Got:");
+                    t.write_expr(t.var("val"), false);
+                },
+                |t| {
+                    t.write("None");
+                },
+            );
+            t.option_match_stmt(
+                t.none(Type::String),
+                Some("val"),
+                |t| {
+                    t.write("Got:");
+                    t.write_expr(t.var("val"), false);
+                },
+                |t| {
+                    t.write(",None");
+                },
+            );
+        });
+
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                TestOption() {
+                  match Some("hello") {
+                    Some(val) => {
+                      write("Got:")
+                      write_expr(val)
+                    }
+                    None => {
+                      write("None")
+                    }
+                  }
+                  match None {
+                    Some(val) => {
+                      write("Got:")
+                      write_expr(val)
+                    }
+                    None => {
+                      write(",None")
+                    }
+                  }
+                }
+
+                -- after --
+                package components
+
+                import (
+                	"io"
+                )
+
+                type Option[T any] struct {
+                	value T
+                	some  bool
+                }
+
+                func TestOption(w io.Writer) {
+                	{
+                		_opt := Option[string]{value: "hello", some: true}
+                		if _opt.some {
+                			val := _opt.value
+                			io.WriteString(w, "Got:")
+                			io.WriteString(w, val)
+                		} else {
+                			io.WriteString(w, "None")
+                		}
+                	}
+                	{
+                		_opt := Option[string]{some: false}
+                		if _opt.some {
+                			val := _opt.value
+                			io.WriteString(w, "Got:")
+                			io.WriteString(w, val)
+                		} else {
+                			io.WriteString(w, ",None")
+                		}
                 	}
                 }
             "#]],
