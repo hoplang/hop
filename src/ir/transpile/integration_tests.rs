@@ -2,9 +2,17 @@ use super::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
 use crate::ir::ast::{IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration};
 use crate::ir::syntax::builder::{build_ir, build_ir_with_enums};
 use expect_test::Expect;
+use std::collections::HashSet;
 use std::fs;
 use std::process::Command;
 use tempfile::TempDir;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Language {
+    TypeScript,
+    Go,
+    Python,
+}
 
 #[derive(Debug)]
 struct TestCase {
@@ -12,6 +20,7 @@ struct TestCase {
     expected_output: &'static str,
     enums: Vec<IrEnumDeclaration>,
     records: Vec<IrRecordDeclaration>,
+    languages: HashSet<Language>,
 }
 
 impl TestCase {
@@ -21,7 +30,13 @@ impl TestCase {
             expected_output,
             enums: vec![],
             records: vec![],
+            languages: HashSet::from([Language::TypeScript, Language::Go, Language::Python]),
         }
+    }
+
+    fn only_languages(mut self, languages: &[Language]) -> Self {
+        self.languages = languages.iter().copied().collect();
+        self
     }
 
     fn with_enums(mut self, enums: Vec<IrEnumDeclaration>) -> Self {
@@ -165,40 +180,46 @@ fn run_integration_test(test_case: &TestCase) -> String {
         enums: test_case.enums.clone(),
     };
 
-    let ts_transpiler = TsTranspiler::new();
-    let ts_code = ts_transpiler.transpile_module(&module);
-
-    let go_transpiler = GoTranspiler::new("components".to_string());
-    let go_code = go_transpiler.transpile_module(&module);
-
-    let python_transpiler = PythonTranspiler::new();
-    let python_code = python_transpiler.transpile_module(&module);
-
-    // Run typecheckers first, then execute
-    typecheck_typescript(&ts_code).expect("TypeScript typecheck failed");
-    let ts_output = execute_typescript(&ts_code).expect("TypeScript execution failed");
-    assert_eq!(
-        ts_output, test_case.expected_output,
-        "TypeScript output mismatch"
-    );
-
-    typecheck_go(&go_code).expect("Go typecheck failed");
-    let go_output = execute_go(&go_code).expect("Go execution failed");
-    assert_eq!(go_output, test_case.expected_output, "Go output mismatch");
-
-    typecheck_python(&python_code).expect("Python typecheck failed");
-    let python_output = execute_python(&python_code).expect("Python execution failed");
-    assert_eq!(
-        python_output, test_case.expected_output,
-        "Python output mismatch"
-    );
-
     let input = test_case.entrypoint.to_string();
-
-    format!(
-        "-- input --\n{}-- expected output --\n{}\n-- ts --\nOK\n-- go --\nOK\n-- python --\nOK\n",
+    let mut output = format!(
+        "-- input --\n{}-- expected output --\n{}\n",
         input, test_case.expected_output
-    )
+    );
+
+    if test_case.languages.contains(&Language::TypeScript) {
+        let ts_transpiler = TsTranspiler::new();
+        let ts_code = ts_transpiler.transpile_module(&module);
+        typecheck_typescript(&ts_code).expect("TypeScript typecheck failed");
+        let ts_output = execute_typescript(&ts_code).expect("TypeScript execution failed");
+        assert_eq!(
+            ts_output, test_case.expected_output,
+            "TypeScript output mismatch"
+        );
+        output.push_str("-- ts --\nOK\n");
+    }
+
+    if test_case.languages.contains(&Language::Go) {
+        let go_transpiler = GoTranspiler::new("components".to_string());
+        let go_code = go_transpiler.transpile_module(&module);
+        typecheck_go(&go_code).expect("Go typecheck failed");
+        let go_output = execute_go(&go_code).expect("Go execution failed");
+        assert_eq!(go_output, test_case.expected_output, "Go output mismatch");
+        output.push_str("-- go --\nOK\n");
+    }
+
+    if test_case.languages.contains(&Language::Python) {
+        let python_transpiler = PythonTranspiler::new();
+        let python_code = python_transpiler.transpile_module(&module);
+        typecheck_python(&python_code).expect("Python typecheck failed");
+        let python_output = execute_python(&python_code).expect("Python execution failed");
+        assert_eq!(
+            python_output, test_case.expected_output,
+            "Python output mismatch"
+        );
+        output.push_str("-- python --\nOK\n");
+    }
+
+    output
 }
 
 fn check(test_case: TestCase, expected: Expect) {
@@ -1443,6 +1464,455 @@ mod tests {
                 -- go --
                 OK
                 -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn option_literal() {
+        use crate::dop::Type;
+
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.let_stmt("some_val", t.some(t.str("hello")), |t| {
+                        t.option_match_stmt(
+                            t.var("some_val"),
+                            Some("val"),
+                            |t| {
+                                t.write("Some:");
+                                t.write_expr(t.var("val"), false);
+                            },
+                            |t| {
+                                t.write("None");
+                            },
+                        );
+                    });
+                    t.let_stmt("none_val", t.none(Type::String), |t| {
+                        t.option_match_stmt(
+                            t.var("none_val"),
+                            Some("val"),
+                            |t| {
+                                t.write("Some:");
+                                t.write_expr(t.var("val"), false);
+                            },
+                            |t| {
+                                t.write(",None");
+                            },
+                        );
+                    });
+                }),
+                "Some:hello,None",
+            )
+            .only_languages(&[Language::TypeScript]),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let some_val = Some("hello") in {
+                    match some_val {
+                      Some(val) => {
+                        write("Some:")
+                        write_expr(val)
+                      }
+                      None => {
+                        write("None")
+                      }
+                    }
+                  }
+                  let none_val = None in {
+                    match none_val {
+                      Some(val) => {
+                        write("Some:")
+                        write_expr(val)
+                      }
+                      None => {
+                        write(",None")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                Some:hello,None
+                -- ts --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn option_literal_inline_match() {
+        use crate::dop::Type;
+
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    // Match directly on Some literal
+                    t.option_match_stmt(
+                        t.some(t.str("world")),
+                        Some("val"),
+                        |t| {
+                            t.write("Got:");
+                            t.write_expr(t.var("val"), false);
+                        },
+                        |t| {
+                            t.write("Empty");
+                        },
+                    );
+                    t.write(",");
+                    // Match directly on None literal
+                    t.option_match_stmt(
+                        t.none(Type::String),
+                        Some("val"),
+                        |t| {
+                            t.write("Got:");
+                            t.write_expr(t.var("val"), false);
+                        },
+                        |t| {
+                            t.write("Empty");
+                        },
+                    );
+                }),
+                "Got:world,Empty",
+            )
+            .only_languages(&[Language::TypeScript]),
+            expect![[r#"
+                -- input --
+                Test() {
+                  match Some("world") {
+                    Some(val) => {
+                      write("Got:")
+                      write_expr(val)
+                    }
+                    None => {
+                      write("Empty")
+                    }
+                  }
+                  write(",")
+                  match None {
+                    Some(val) => {
+                      write("Got:")
+                      write_expr(val)
+                    }
+                    None => {
+                      write("Empty")
+                    }
+                  }
+                }
+                -- expected output --
+                Got:world,Empty
+                -- ts --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn option_literal_inline_match_expr() {
+        use crate::dop::Type;
+
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    // Match expression directly on Some literal
+                    let result = t.option_match_expr(t.some(t.str("hi")), t.str("some"), t.str("none"));
+                    t.write_expr(result, false);
+                    t.write(",");
+                    // Match expression directly on None literal
+                    let result2 = t.option_match_expr(t.none(Type::String), t.str("SOME"), t.str("NONE"));
+                    t.write_expr(result2, false);
+                }),
+                "some,NONE",
+            )
+            .only_languages(&[Language::TypeScript]),
+            expect![[r#"
+                -- input --
+                Test() {
+                  write_expr(match Some("hi") {
+                    Some(_) => "some",
+                    None => "none",
+                  })
+                  write(",")
+                  write_expr(match None {Some(_) => "SOME", None => "NONE"})
+                }
+                -- expected output --
+                some,NONE
+                -- ts --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn option_match_returning_options() {
+        use crate::dop::Type;
+
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    // match Some("val") { Some(x) => Some(x), None => None }
+                    // Then match on the result
+                    let inner = t.some(t.str("hello"));
+                    let mapped = t.option_match_expr_with_binding(
+                        inner,
+                        "x",
+                        Type::String,
+                        |t| t.some(t.var("x")),  // Return Some(x)
+                        t.none(Type::String),    // Return None
+                    );
+                    t.option_match_stmt(
+                        mapped,
+                        Some("result"),
+                        |t| {
+                            t.write("mapped:");
+                            t.write_expr(t.var("result"), false);
+                        },
+                        |t| {
+                            t.write("was-none");
+                        },
+                    );
+                }),
+                "mapped:hello",
+            )
+            .only_languages(&[Language::TypeScript]),
+            expect![[r#"
+                -- input --
+                Test() {
+                  match match Some("hello") {
+                    Some(x) => Some(x),
+                    None => None,
+                  } {
+                    Some(result) => {
+                      write("mapped:")
+                      write_expr(result)
+                    }
+                    None => {
+                      write("was-none")
+                    }
+                  }
+                }
+                -- expected output --
+                mapped:hello
+                -- ts --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn option_match_as_some_value() {
+        use crate::dop::Type;
+
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    // Some(match innerOpt { Some(x) => x, None => "default" })
+                    let inner_opt = t.some(t.str("inner"));
+                    let match_result = t.option_match_expr_with_binding(
+                        inner_opt,
+                        "x",
+                        Type::String,
+                        |t| t.var("x"),
+                        t.str("default"),
+                    );
+                    let outer = t.some(match_result);
+                    t.option_match_stmt(
+                        outer,
+                        Some("val"),
+                        |t| {
+                            t.write_expr(t.var("val"), false);
+                        },
+                        |t| {
+                            t.write("none");
+                        },
+                    );
+                }),
+                "inner",
+            )
+            .only_languages(&[Language::TypeScript]),
+            expect![[r#"
+                -- input --
+                Test() {
+                  match Some(match Some("inner") {
+                    Some(x) => x,
+                    None => "default",
+                  }) {
+                    Some(val) => {
+                      write_expr(val)
+                    }
+                    None => {
+                      write("none")
+                    }
+                  }
+                }
+                -- expected output --
+                inner
+                -- ts --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn option_array_for_loop() {
+        use crate::dop::Type;
+
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    let items = t.array(vec![
+                        t.some(t.str("a")),
+                        t.none(Type::String),
+                        t.some(t.str("b")),
+                    ]);
+                    t.for_loop("item", items, |t| {
+                        t.option_match_stmt(
+                            t.var("item"),
+                            Some("val"),
+                            |t| {
+                                t.write("[");
+                                t.write_expr(t.var("val"), false);
+                                t.write("]");
+                            },
+                            |t| {
+                                t.write("[_]");
+                            },
+                        );
+                    });
+                }),
+                "[a][_][b]",
+            )
+            .only_languages(&[Language::TypeScript]),
+            expect![[r#"
+                -- input --
+                Test() {
+                  for item in [Some("a"), None, Some("b")] {
+                    match item {
+                      Some(val) => {
+                        write("[")
+                        write_expr(val)
+                        write("]")
+                      }
+                      None => {
+                        write("[_]")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                [a][_][b]
+                -- ts --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn nested_option_literal_match() {
+        use crate::dop::Type;
+
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    // Some(Some("deep"))
+                    let nested_some = t.some(t.some(t.str("deep")));
+                    let result = t.option_match_expr_with_binding(
+                        nested_some,
+                        "outer",
+                        Type::Option(Box::new(Type::String)),
+                        |t| {
+                            t.option_match_expr_with_binding(
+                                t.var("outer"),
+                                "inner",
+                                Type::String,
+                                |t| t.var("inner"),
+                                t.str("inner-none"),
+                            )
+                        },
+                        t.str("outer-none"),
+                    );
+                    t.write_expr(result, false);
+                    t.write(",");
+
+                    // Some(None)
+                    let some_none = t.some(t.none(Type::String));
+                    let result2 = t.option_match_expr_with_binding(
+                        some_none,
+                        "outer",
+                        Type::Option(Box::new(Type::String)),
+                        |t| {
+                            t.option_match_expr_with_binding(
+                                t.var("outer"),
+                                "inner",
+                                Type::String,
+                                |t| t.var("inner"),
+                                t.str("inner-none"),
+                            )
+                        },
+                        t.str("outer-none"),
+                    );
+                    t.write_expr(result2, false);
+                    t.write(",");
+
+                    // None (outer)
+                    let outer_none = t.none(Type::Option(Box::new(Type::String)));
+                    let result3 = t.option_match_expr_with_binding(
+                        outer_none,
+                        "outer",
+                        Type::Option(Box::new(Type::String)),
+                        |t| {
+                            t.option_match_expr_with_binding(
+                                t.var("outer"),
+                                "inner",
+                                Type::String,
+                                |t| t.var("inner"),
+                                t.str("inner-none"),
+                            )
+                        },
+                        t.str("outer-none"),
+                    );
+                    t.write_expr(result3, false);
+                }),
+                "deep,inner-none,outer-none",
+            )
+            .only_languages(&[Language::TypeScript]),
+            expect![[r#"
+                -- input --
+                Test() {
+                  write_expr(match Some(Some("deep")) {
+                    Some(outer) => match outer {
+                      Some(inner) => inner,
+                      None => "inner-none",
+                    },
+                    None => "outer-none",
+                  })
+                  write(",")
+                  write_expr(match Some(None) {
+                    Some(outer) => match outer {
+                      Some(inner) => inner,
+                      None => "inner-none",
+                    },
+                    None => "outer-none",
+                  })
+                  write(",")
+                  write_expr(match None {
+                    Some(outer) => match outer {
+                      Some(inner) => inner,
+                      None => "inner-none",
+                    },
+                    None => "outer-none",
+                  })
+                }
+                -- expected output --
+                deep,inner-none,outer-none
+                -- ts --
                 OK
             "#]],
         );

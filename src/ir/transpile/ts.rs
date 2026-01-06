@@ -112,7 +112,7 @@ impl Transpiler for TsTranspiler {
                 .append(BoxDoc::line());
         }
 
-        // Add Option type definitions
+        // Add Option type definitions and constructors
         result = result
             .append(BoxDoc::text(
                 "export type None = { readonly _tag: \"None\" };",
@@ -123,6 +123,14 @@ impl Transpiler for TsTranspiler {
             ))
             .append(BoxDoc::line())
             .append(BoxDoc::text("export type Option<T> = None | Some<T>;"))
+            .append(BoxDoc::line())
+            .append(BoxDoc::text(
+                "function optionSome<T>(value: T): Option<T> { return { _tag: \"Some\", value }; }",
+            ))
+            .append(BoxDoc::line())
+            .append(BoxDoc::text(
+                "function optionNone<T>(): Option<T> { return { _tag: \"None\" }; }",
+            ))
             .append(BoxDoc::line())
             .append(BoxDoc::line());
 
@@ -459,15 +467,25 @@ impl StatementTranspiler for TsTranspiler {
                 some_arm_body,
                 none_arm_body,
             } => {
-                // switch ([[subject]]._tag) {
-                //   case "Some": {
-                //     const [[var_name]] = [[subject]].value;
-                //     [[statements]]
-                //     break;
-                //   }
-                //   case "None": {
-                //     [[...]]
-                //     break;
+                // TODO: We need to assign the subject to a variable
+                // to allow both narrowing the expression as well as being
+                // able to use it after narrowing.
+                //
+                // We should solve this by restricting Match::Option to only
+                // hold a variable instead of an expression as the subject.
+                //
+                // {
+                //   const _opt = [[subject]];
+                //   switch (_opt._tag) {
+                //     case "Some": {
+                //       const [[var_name]] = _opt.value;
+                //       [[statements]]
+                //       break;
+                //     }
+                //     case "None": {
+                //       [[...]]
+                //       break;
+                //     }
                 //   }
                 // }
                 let some_case = {
@@ -477,9 +495,7 @@ impl StatementTranspiler for TsTranspiler {
                                 BoxDoc::hardline()
                                     .append(BoxDoc::text("const "))
                                     .append(BoxDoc::text(var_name.as_str()))
-                                    .append(BoxDoc::text(" = "))
-                                    .append(self.transpile_expr(subject))
-                                    .append(BoxDoc::text(".value;"))
+                                    .append(BoxDoc::text(" = _opt.value;"))
                                     .append(BoxDoc::hardline())
                                     .append(self.transpile_statements(some_arm_body))
                                     .append(BoxDoc::hardline())
@@ -513,14 +529,25 @@ impl StatementTranspiler for TsTranspiler {
                     .append(BoxDoc::hardline())
                     .append(BoxDoc::text("}"));
 
-                BoxDoc::text("switch (")
-                    .append(self.transpile_expr(subject))
-                    .append(BoxDoc::text("._tag) {"))
+                let switch_stmt = BoxDoc::text("switch (_opt._tag) {")
                     .append(
                         BoxDoc::hardline()
                             .append(some_case)
                             .append(BoxDoc::hardline())
                             .append(none_case)
+                            .nest(4),
+                    )
+                    .append(BoxDoc::hardline())
+                    .append(BoxDoc::text("}"));
+
+                BoxDoc::text("{")
+                    .append(
+                        BoxDoc::hardline()
+                            .append(BoxDoc::text("const _opt = "))
+                            .append(self.transpile_expr(subject))
+                            .append(BoxDoc::text(";"))
+                            .append(BoxDoc::hardline())
+                            .append(switch_stmt)
                             .nest(4),
                     )
                     .append(BoxDoc::hardline())
@@ -828,6 +855,29 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
+    fn transpile_option_literal<'a>(
+        &self,
+        value: Option<&'a IrExpr>,
+        inner_type: &'a Type,
+    ) -> BoxDoc<'a> {
+        match value {
+            Some(inner) => {
+                // optionSome<T>(value)
+                BoxDoc::text("optionSome<")
+                    .append(self.transpile_type(inner_type))
+                    .append(BoxDoc::text(">("))
+                    .append(self.transpile_expr(inner))
+                    .append(BoxDoc::text(")"))
+            }
+            None => {
+                // optionNone<T>()
+                BoxDoc::text("optionNone<")
+                    .append(self.transpile_type(inner_type))
+                    .append(BoxDoc::text(">()"))
+            }
+        }
+    }
+
     fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr, IrExpr>) -> BoxDoc<'a> {
         match match_ {
             Match::Enum { subject, arms } => {
@@ -892,9 +942,20 @@ impl ExpressionTranspiler for TsTranspiler {
                 some_arm_body,
                 none_arm_body,
             } => {
+                // TODO: We need to assign the subject to a variable
+                // to allow both narrowing the expression as well as being
+                // able to use it after narrowing.
+                //
+                // We should solve this by restricting Match::Option to only
+                // hold a variable instead of an expression as the subject.
+                //
                 // (() => {
-                //   switch ([[subject]]._tag) {
-                //     case "Some": return [[some_arm]];
+                //   const _opt = [[subject]];
+                //   switch (_opt._tag) {
+                //     case "Some": {
+                //       const [[var]] = _opt.value;
+                //       return [[some_arm]];
+                //     }
                 //     case "None": return [[none_arm]];
                 //   }
                 // })()
@@ -906,9 +967,7 @@ impl ExpressionTranspiler for TsTranspiler {
                                 BoxDoc::line()
                                     .append(BoxDoc::text("const "))
                                     .append(BoxDoc::text(var_name.as_str()))
-                                    .append(BoxDoc::text(" = "))
-                                    .append(self.transpile_expr(subject))
-                                    .append(BoxDoc::text(".value;"))
+                                    .append(BoxDoc::text(" = _opt.value;"))
                                     .append(BoxDoc::line())
                                     .append(BoxDoc::text("return "))
                                     .append(body_doc)
@@ -931,17 +990,21 @@ impl ExpressionTranspiler for TsTranspiler {
 
                 let cases = BoxDoc::intersperse([some_case, none_case], BoxDoc::line());
 
-                let switch_body = BoxDoc::text("switch (")
-                    .append(self.transpile_expr(subject))
-                    .append(BoxDoc::text("._tag) {"))
+                let switch_body = BoxDoc::text("switch (_opt._tag) {")
                     .append(BoxDoc::line().append(cases).nest(2))
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("}"));
 
                 BoxDoc::text("(() => {")
-                    .append(BoxDoc::line())
-                    .append(switch_body)
-                    .nest(2)
+                    .append(
+                        BoxDoc::line()
+                            .append(BoxDoc::text("const _opt = "))
+                            .append(self.transpile_expr(subject))
+                            .append(BoxDoc::text(";"))
+                            .append(BoxDoc::line())
+                            .append(switch_body)
+                            .nest(2),
+                    )
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("})()"))
                     .group()
@@ -1056,6 +1119,8 @@ mod tests {
                 export type None = { readonly _tag: "None" };
                 export type Some<T> = { readonly _tag: "Some"; readonly value: T };
                 export type Option<T> = None | Some<T>;
+                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
+                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
 
                 export default {
                     helloWorld: (): string => {
@@ -1104,6 +1169,8 @@ mod tests {
                 export type None = { readonly _tag: "None" };
                 export type Some<T> = { readonly _tag: "Some"; readonly value: T };
                 export type Option<T> = None | Some<T>;
+                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
+                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1162,6 +1229,8 @@ mod tests {
                 export type None = { readonly _tag: "None" };
                 export type Some<T> = { readonly _tag: "Some"; readonly value: T };
                 export type Option<T> = None | Some<T>;
+                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
+                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1221,6 +1290,8 @@ mod tests {
                 export type None = { readonly _tag: "None" };
                 export type Some<T> = { readonly _tag: "Some"; readonly value: T };
                 export type Option<T> = None | Some<T>;
+                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
+                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1278,6 +1349,8 @@ mod tests {
                 export type None = { readonly _tag: "None" };
                 export type Some<T> = { readonly _tag: "Some"; readonly value: T };
                 export type Option<T> = None | Some<T>;
+                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
+                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1334,6 +1407,8 @@ mod tests {
                 export type None = { readonly _tag: "None" };
                 export type Some<T> = { readonly _tag: "Some"; readonly value: T };
                 export type Option<T> = None | Some<T>;
+                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
+                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1397,6 +1472,8 @@ mod tests {
                 export type None = { readonly _tag: "None" };
                 export type Some<T> = { readonly _tag: "Some"; readonly value: T };
                 export type Option<T> = None | Some<T>;
+                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
+                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1478,6 +1555,8 @@ mod tests {
                 export type None = { readonly _tag: "None" };
                 export type Some<T> = { readonly _tag: "Some"; readonly value: T };
                 export type Option<T> = None | Some<T>;
+                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
+                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
 
                 export class User {
                     constructor(
@@ -1541,6 +1620,8 @@ mod tests {
                 export type None = { readonly _tag: "None" };
                 export type Some<T> = { readonly _tag: "Some"; readonly value: T };
                 export type Option<T> = None | Some<T>;
+                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
+                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
 
                 export class User {
                     constructor(
@@ -1609,6 +1690,8 @@ mod tests {
                 export type None = { readonly _tag: "None" };
                 export type Some<T> = { readonly _tag: "Some"; readonly value: T };
                 export type Option<T> = None | Some<T>;
+                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
+                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
 
                 export type Color = ColorRed | ColorGreen | ColorBlue;
 
@@ -1693,6 +1776,8 @@ mod tests {
                 export type None = { readonly _tag: "None" };
                 export type Some<T> = { readonly _tag: "Some"; readonly value: T };
                 export type Option<T> = None | Some<T>;
+                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
+                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
 
                 export type Color = ColorRed | ColorGreen | ColorBlue;
 
@@ -1762,6 +1847,8 @@ mod tests {
                 export type None = { readonly _tag: "None" };
                 export type Some<T> = { readonly _tag: "Some"; readonly value: T };
                 export type Option<T> = None | Some<T>;
+                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
+                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1810,6 +1897,8 @@ mod tests {
                 export type None = { readonly _tag: "None" };
                 export type Some<T> = { readonly _tag: "Some"; readonly value: T };
                 export type Option<T> = None | Some<T>;
+                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
+                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1824,7 +1913,8 @@ mod tests {
                     checkOption: ({ opt }: { opt: Option<number> }): string => {
                         let output: string = "";
                         output += escapeHtml((() => {
-                          switch (opt._tag) {
+                          const _opt = opt;
+                          switch (_opt._tag) {
                             case "Some": return "has value";
                             case "None": return "empty";
                           }
@@ -1890,6 +1980,8 @@ mod tests {
                 export type None = { readonly _tag: "None" };
                 export type Some<T> = { readonly _tag: "Some"; readonly value: T };
                 export type Option<T> = None | Some<T>;
+                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
+                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1904,13 +1996,15 @@ mod tests {
                     checkNestedOption: ({ opt }: { opt: Option<Option<boolean>> }): string => {
                         let output: string = "";
                         output += escapeHtml((() => {
-                          switch (opt._tag) {
+                          const _opt = opt;
+                          switch (_opt._tag) {
                             case "Some": {
-                              const v0 = opt.value;
+                              const v0 = _opt.value;
                               return (() => {
-                                switch (v0._tag) {
+                                const _opt = v0;
+                                switch (_opt._tag) {
                                   case "Some": {
-                                    const v1 = v0.value;
+                                    const v1 = _opt.value;
                                     return (v1 ? "some-some-true" : "some-some-false");
                                   }
                                   case "None": return "some-none";
@@ -1947,6 +2041,8 @@ mod tests {
                 export type None = { readonly _tag: "None" };
                 export type Some<T> = { readonly _tag: "Some"; readonly value: T };
                 export type Option<T> = None | Some<T>;
+                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
+                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -2013,6 +2109,8 @@ mod tests {
                 export type None = { readonly _tag: "None" };
                 export type Some<T> = { readonly _tag: "Some"; readonly value: T };
                 export type Option<T> = None | Some<T>;
+                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
+                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -2026,17 +2124,141 @@ mod tests {
                 export default {
                     displayOption: ({ opt }: { opt: Option<string> }): string => {
                         let output: string = "";
-                        switch (opt._tag) {
-                            case "Some": {
-                                const value = opt.value;
-                                output += "<span>Found: ";
-                                output += escapeHtml(value);
-                                output += "</span>";
-                                break;
+                        {
+                            const _opt = opt;
+                            switch (_opt._tag) {
+                                case "Some": {
+                                    const value = _opt.value;
+                                    output += "<span>Found: ";
+                                    output += escapeHtml(value);
+                                    output += "</span>";
+                                    break;
+                                }
+                                case "None": {
+                                    output += "<span>Nothing</span>";
+                                    break;
+                                }
                             }
-                            case "None": {
-                                output += "<span>Nothing</span>";
-                                break;
+                        }
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn option_literal() {
+        let module = build_module("TestOptionLiteral", vec![], |t| {
+            // Test Some literal
+            let some_val = t.some(t.str("hello"));
+            let match_result = t.option_match_expr(some_val, t.str("has value"), t.str("empty"));
+            t.write_expr(match_result, false);
+
+            // Test None literal
+            let none_val = t.none(Type::String);
+            let match_result2 = t.option_match_expr(none_val, t.str("HAS"), t.str("EMPTY"));
+            t.write_expr(match_result2, false);
+        });
+
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                TestOptionLiteral() {
+                  write_expr(match Some("hello") {
+                    Some(_) => "has value",
+                    None => "empty",
+                  })
+                  write_expr(match None {Some(_) => "HAS", None => "EMPTY"})
+                }
+
+                -- after --
+                export type None = { readonly _tag: "None" };
+                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
+                export type Option<T> = None | Some<T>;
+                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
+                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+
+                export default {
+                    testOptionLiteral: (): string => {
+                        let output: string = "";
+                        output += (() => {
+                          const _opt = optionSome<string>("hello");
+                          switch (_opt._tag) {
+                            case "Some": return "has value";
+                            case "None": return "empty";
+                          }
+                        })();
+                        output += (() => {
+                          const _opt = optionNone<string>();
+                          switch (_opt._tag) {
+                            case "Some": return "HAS";
+                            case "None": return "EMPTY";
+                          }
+                        })();
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn option_literal_inline_match_stmt() {
+        let module = build_module("TestInlineMatch", vec![], |t| {
+            t.option_match_stmt(
+                t.some(t.str("world")),
+                Some("val"),
+                |t| {
+                    t.write("Got:");
+                    t.write_expr(t.var("val"), false);
+                },
+                |t| {
+                    t.write("Empty");
+                },
+            );
+        });
+
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                TestInlineMatch() {
+                  match Some("world") {
+                    Some(val) => {
+                      write("Got:")
+                      write_expr(val)
+                    }
+                    None => {
+                      write("Empty")
+                    }
+                  }
+                }
+
+                -- after --
+                export type None = { readonly _tag: "None" };
+                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
+                export type Option<T> = None | Some<T>;
+                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
+                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+
+                export default {
+                    testInlineMatch: (): string => {
+                        let output: string = "";
+                        {
+                            const _opt = optionSome<string>("world");
+                            switch (_opt._tag) {
+                                case "Some": {
+                                    const val = _opt.value;
+                                    output += "Got:";
+                                    output += val;
+                                    break;
+                                }
+                                case "None": {
+                                    output += "Empty";
+                                    break;
+                                }
                             }
                         }
                         return output;

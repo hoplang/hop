@@ -383,6 +383,11 @@ impl AlphaRenamingPass {
                     id,
                 }
             }
+            IrExpr::OptionLiteral { value, kind, id } => IrExpr::OptionLiteral {
+                value: value.map(|v| Box::new(self.rename_expr(*v))),
+                kind,
+                id,
+            },
         }
     }
 

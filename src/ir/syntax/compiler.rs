@@ -627,9 +627,11 @@ impl Compiler {
                     id: expr_id,
                 }
             }
-            TypedExpr::OptionLiteral { .. } => {
-                todo!()
-            }
+            TypedExpr::OptionLiteral { value, kind } => IrExpr::OptionLiteral {
+                value: value.map(|v| Box::new(self.compile_expr(*v))),
+                kind,
+                id: expr_id,
+            },
             TypedExpr::Let {
                 var,
                 value,

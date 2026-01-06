@@ -141,6 +141,13 @@ pub enum IrExpr {
         id: ExprId,
     },
 
+    /// An option literal expression, e.g. Some(42) or None
+    OptionLiteral {
+        value: Option<Box<IrExpr>>,
+        kind: Type,
+        id: ExprId,
+    },
+
     /// A match expression (enum, bool, or option)
     Match {
         match_: Match<Self, Self>,
@@ -649,6 +656,7 @@ impl IrExpr {
             | IrExpr::ArrayLiteral { id, .. }
             | IrExpr::RecordLiteral { id, .. }
             | IrExpr::EnumLiteral { id, .. }
+            | IrExpr::OptionLiteral { id, .. }
             | IrExpr::Match { id, .. }
             | IrExpr::JsonEncode { id, .. }
             | IrExpr::EnvLookup { id, .. }
@@ -679,6 +687,7 @@ impl IrExpr {
             | IrExpr::ArrayLiteral { kind, .. }
             | IrExpr::RecordLiteral { kind, .. }
             | IrExpr::EnumLiteral { kind, .. }
+            | IrExpr::OptionLiteral { kind, .. }
             | IrExpr::Match { kind, .. }
             | IrExpr::Let { kind, .. } => kind,
 
@@ -840,6 +849,12 @@ impl IrExpr {
             } => BoxDoc::text(enum_name.as_str())
                 .append(BoxDoc::text("::"))
                 .append(BoxDoc::text(variant_name.as_str())),
+            IrExpr::OptionLiteral { value, .. } => match value {
+                Some(inner) => BoxDoc::text("Some(")
+                    .append(inner.to_doc())
+                    .append(BoxDoc::text(")")),
+                None => BoxDoc::text("None"),
+            },
             IrExpr::Match { match_, .. } => match match_ {
                 Match::Enum { subject, arms } => {
                     if arms.is_empty() {
@@ -1021,6 +1036,11 @@ impl IrExpr {
                 value.traverse(f);
                 body.traverse(f);
             }
+            IrExpr::OptionLiteral { value, .. } => {
+                if let Some(inner) = value {
+                    inner.traverse(f);
+                }
+            }
             IrExpr::Var { .. }
             | IrExpr::StringLiteral { .. }
             | IrExpr::BooleanLiteral { .. }
@@ -1101,6 +1121,11 @@ impl IrExpr {
             IrExpr::Let { value, body, .. } => {
                 value.traverse_mut(f);
                 body.traverse_mut(f);
+            }
+            IrExpr::OptionLiteral { value, .. } => {
+                if let Some(inner) = value {
+                    inner.traverse_mut(f);
+                }
             }
             IrExpr::Var { .. }
             | IrExpr::StringLiteral { .. }

@@ -150,6 +150,11 @@ pub trait ExpressionTranspiler {
         fields: &'a [(FieldName, IrExpr)],
     ) -> BoxDoc<'a>;
     fn transpile_enum_literal<'a>(&self, enum_name: &'a str, variant_name: &'a str) -> BoxDoc<'a>;
+    fn transpile_option_literal<'a>(
+        &self,
+        value: Option<&'a IrExpr>,
+        inner_type: &'a Type,
+    ) -> BoxDoc<'a>;
     fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr, IrExpr>) -> BoxDoc<'a>;
     fn transpile_let<'a>(
         &self,
@@ -251,6 +256,13 @@ pub trait ExpressionTranspiler {
                 variant_name,
                 ..
             } => self.transpile_enum_literal(enum_name, variant_name),
+            IrExpr::OptionLiteral { value, kind, .. } => {
+                let inner_type = match kind {
+                    Type::Option(inner) => inner.as_ref(),
+                    _ => unreachable!("OptionLiteral must have Option type"),
+                };
+                self.transpile_option_literal(value.as_ref().map(|v| v.as_ref()), inner_type)
+            }
             IrExpr::Match { match_, .. } => self.transpile_match_expr(match_),
             IrExpr::Let {
                 var, value, body, ..

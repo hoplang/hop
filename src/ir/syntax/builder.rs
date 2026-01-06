@@ -450,6 +450,25 @@ impl IrBuilder {
         }
     }
 
+    /// Create a Some option literal
+    pub fn some(&self, inner: IrExpr) -> IrExpr {
+        let inner_type = inner.as_type().clone();
+        IrExpr::OptionLiteral {
+            value: Some(Box::new(inner)),
+            kind: Type::Option(Box::new(inner_type)),
+            id: self.next_expr_id(),
+        }
+    }
+
+    /// Create a None option literal
+    pub fn none(&self, inner_type: Type) -> IrExpr {
+        IrExpr::OptionLiteral {
+            value: None,
+            kind: Type::Option(Box::new(inner_type)),
+            id: self.next_expr_id(),
+        }
+    }
+
     /// Create a match expression over an enum value
     /// arms is a list of (variant_name, body_expr) tuples
     pub fn match_expr(&self, subject: IrExpr, arms: Vec<(&str, IrExpr)>) -> IrExpr {

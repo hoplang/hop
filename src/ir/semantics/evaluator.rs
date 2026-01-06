@@ -459,6 +459,9 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             // Enum variants evaluate to their string name
             Ok(Value::String(variant_name.clone()))
         }
+        IrExpr::OptionLiteral { .. } => {
+            todo!("Option literal evaluation not yet implemented")
+        }
         IrExpr::Match { match_, .. } => match match_ {
             Match::Enum { subject, arms } => {
                 // Evaluate the subject to get the variant name

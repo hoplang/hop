@@ -702,6 +702,14 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(BoxDoc::text(")"))
     }
 
+    fn transpile_option_literal<'a>(
+        &self,
+        _value: Option<&'a IrExpr>,
+        _inner_type: &'a Type,
+    ) -> BoxDoc<'a> {
+        panic!("Option literals are not yet supported in Python transpilation")
+    }
+
     fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr, IrExpr>) -> BoxDoc<'a> {
         match match_ {
             Match::Bool {
