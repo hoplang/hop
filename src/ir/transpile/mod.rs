@@ -49,7 +49,7 @@ pub trait StatementTranspiler {
     ) -> BoxDoc<'a>;
     fn transpile_match_statement<'a>(
         &self,
-        match_: &'a Match<IrExpr, Vec<IrStatement>>,
+        match_: &'a Match<Vec<IrStatement>>,
     ) -> BoxDoc<'a>;
     fn transpile_statement<'a>(&self, statement: &'a IrStatement) -> BoxDoc<'a> {
         match statement {
@@ -155,7 +155,7 @@ pub trait ExpressionTranspiler {
         value: Option<&'a IrExpr>,
         inner_type: &'a Type,
     ) -> BoxDoc<'a>;
-    fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr, IrExpr>) -> BoxDoc<'a>;
+    fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr>) -> BoxDoc<'a>;
     fn transpile_let<'a>(
         &self,
         var: &'a VarName,

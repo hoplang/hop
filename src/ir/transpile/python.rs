@@ -155,6 +155,11 @@ impl Transpiler for PythonTranspiler {
             needs_dataclasses = true;
         }
 
+        // Options need dataclasses for the Some wrapper
+        if needs_optional {
+            needs_dataclasses = true;
+        }
+
         let needs_trusted_html = self.scan_for_trusted_html(entrypoints);
 
         let mut result = BoxDoc::nil();
@@ -178,7 +183,8 @@ impl Transpiler for PythonTranspiler {
             typing_imports.push("NewType");
         }
         if needs_optional {
-            typing_imports.push("Optional");
+            typing_imports.push("Generic");
+            typing_imports.push("TypeVar");
         }
         if needs_protocol {
             typing_imports.push("Protocol");
@@ -210,6 +216,26 @@ impl Transpiler for PythonTranspiler {
         if needs_trusted_html {
             result = result
                 .append(BoxDoc::text("TrustedHTML = NewType('TrustedHTML', str)"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line());
+        }
+
+        // Add Option type definitions (Some/Nothing) if needed
+        if needs_optional {
+            result = result
+                .append(BoxDoc::text("T = TypeVar('T')"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("@dataclass"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("class Some(Generic[T]):"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("    value: T"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("class Nothing:"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("    pass"))
                 .append(BoxDoc::line())
                 .append(BoxDoc::line());
         }
@@ -469,16 +495,7 @@ impl StatementTranspiler for PythonTranspiler {
         value: &'a IrExpr,
         body: &'a [IrStatement],
     ) -> BoxDoc<'a> {
-        let mut doc = BoxDoc::text(var);
-
-        // Add type annotation for Option types to help mypy
-        if let Type::Option(_) = value.as_type() {
-            doc = doc
-                .append(BoxDoc::text(": "))
-                .append(self.transpile_type(value.as_type()));
-        }
-
-        doc.append(BoxDoc::text(" = "))
+        BoxDoc::text(var).append(BoxDoc::text(" = "))
             .append(self.transpile_expr(value))
             .append(BoxDoc::line())
             .append(self.transpile_statements(body))
@@ -486,7 +503,7 @@ impl StatementTranspiler for PythonTranspiler {
 
     fn transpile_match_statement<'a>(
         &self,
-        match_: &'a Match<IrExpr, Vec<IrStatement>>,
+        match_: &'a Match<Vec<IrStatement>>,
     ) -> BoxDoc<'a> {
         match match_ {
             Match::Bool {
@@ -496,7 +513,7 @@ impl StatementTranspiler for PythonTranspiler {
             } => {
                 // Transpile as: if subject: true_body else: false_body
                 BoxDoc::text("if ")
-                    .append(self.transpile_expr(subject))
+                    .append(BoxDoc::text(subject.0.as_str()))
                     .append(BoxDoc::text(":"))
                     .append(
                         BoxDoc::line()
@@ -518,23 +535,23 @@ impl StatementTranspiler for PythonTranspiler {
                 none_arm_body,
             } => {
                 // Transpile as:
-                // _opt = subject
-                // if _opt is not None:
-                //     binding = _opt  (if binding exists)
+                // if isinstance(subject, Some):
+                //     binding = subject.value  (if binding exists)
                 //     some_body
                 // else:
                 //     none_body
-                // Note: The subject should have a type annotation via the let statement
-                let mut doc = BoxDoc::text("_opt = ")
-                    .append(self.transpile_expr(subject))
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("if _opt is not None:"));
+                let subject_name = subject.0.as_str();
+                let mut doc = BoxDoc::text("if isinstance(")
+                    .append(BoxDoc::text(subject_name))
+                    .append(BoxDoc::text(", Some):"));
 
                 let mut some_body_doc = BoxDoc::nil();
                 if let Some((binding, _)) = some_arm_binding {
                     some_body_doc = some_body_doc
                         .append(BoxDoc::text(binding.as_str()))
-                        .append(BoxDoc::text(" = _opt"))
+                        .append(BoxDoc::text(" = "))
+                        .append(BoxDoc::text(subject_name))
+                        .append(BoxDoc::text(".value"))
                         .append(BoxDoc::line());
                 }
                 some_body_doc = some_body_doc.append(self.transpile_statements(some_arm_body));
@@ -805,12 +822,14 @@ impl ExpressionTranspiler for PythonTranspiler {
         _inner_type: &'a Type,
     ) -> BoxDoc<'a> {
         match value {
-            Some(inner) => self.transpile_expr(inner),
-            None => BoxDoc::text("None"),
+            Some(inner) => BoxDoc::text("Some(")
+                .append(self.transpile_expr(inner))
+                .append(BoxDoc::text(")")),
+            None => BoxDoc::text("Nothing()"),
         }
     }
 
-    fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr, IrExpr>) -> BoxDoc<'a> {
+    fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr>) -> BoxDoc<'a> {
         match match_ {
             Match::Bool {
                 subject,
@@ -821,7 +840,7 @@ impl ExpressionTranspiler for PythonTranspiler {
                 BoxDoc::text("(")
                     .append(self.transpile_expr(true_body))
                     .append(BoxDoc::text(" if "))
-                    .append(self.transpile_expr(subject))
+                    .append(BoxDoc::text(subject.0.as_str()))
                     .append(BoxDoc::text(" else "))
                     .append(self.transpile_expr(false_body))
                     .append(BoxDoc::text(")"))
@@ -833,25 +852,28 @@ impl ExpressionTranspiler for PythonTranspiler {
                 none_arm_body,
             } => {
                 // Transpile as:
-                // (lambda _opt: (lambda binding: some_body)(_opt) if _opt is not None else none_body)(subject)
+                // ((lambda binding: some_body)(subject.value) if isinstance(subject, Some) else none_body)
                 // If no binding, simplify to:
-                // (lambda _opt: some_body if _opt is not None else none_body)(subject)
+                // (some_body if isinstance(subject, Some) else none_body)
+                let subject_name = subject.0.as_str();
                 match some_arm_binding {
-                    Some((binding, _)) => BoxDoc::text("(lambda _opt: (lambda ")
+                    Some((binding, _)) => BoxDoc::text("((lambda ")
                         .append(BoxDoc::text(binding.as_str()))
                         .append(BoxDoc::text(": "))
                         .append(self.transpile_expr(some_arm_body))
-                        .append(BoxDoc::text(")(_opt) if _opt is not None else "))
-                        .append(self.transpile_expr(none_arm_body))
                         .append(BoxDoc::text(")("))
-                        .append(self.transpile_expr(subject))
+                        .append(BoxDoc::text(subject_name))
+                        .append(BoxDoc::text(".value) if isinstance("))
+                        .append(BoxDoc::text(subject_name))
+                        .append(BoxDoc::text(", Some) else "))
+                        .append(self.transpile_expr(none_arm_body))
                         .append(BoxDoc::text(")")),
-                    None => BoxDoc::text("(lambda _opt: ")
+                    None => BoxDoc::text("(")
                         .append(self.transpile_expr(some_arm_body))
-                        .append(BoxDoc::text(" if _opt is not None else "))
+                        .append(BoxDoc::text(" if isinstance("))
+                        .append(BoxDoc::text(subject_name))
+                        .append(BoxDoc::text(", Some) else "))
                         .append(self.transpile_expr(none_arm_body))
-                        .append(BoxDoc::text(")("))
-                        .append(self.transpile_expr(subject))
                         .append(BoxDoc::text(")")),
                 }
             }
@@ -906,9 +928,9 @@ impl TypeTranspiler for PythonTranspiler {
     }
 
     fn transpile_option_type<'a>(&self, inner_type: &'a Type) -> BoxDoc<'a> {
-        BoxDoc::text("Optional[")
+        BoxDoc::text("Some[")
             .append(self.transpile_type(inner_type))
-            .append(BoxDoc::text("]"))
+            .append(BoxDoc::text("] | Nothing"))
     }
 
     fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
@@ -1572,22 +1594,30 @@ mod tests {
                 }
 
                 -- after --
-                from typing import Optional
+                from dataclasses import dataclass
+                from typing import Generic, TypeVar
+
+                T = TypeVar('T')
+
+                @dataclass
+                class Some(Generic[T]):
+                    value: T
+
+                class Nothing:
+                    pass
 
                 def test_option() -> str:
                     output = []
-                    some_val: Optional[str] = "hello"
-                    _opt = some_val
-                    if _opt is not None:
-                        val = _opt
+                    some_val = Some("hello")
+                    if isinstance(some_val, Some):
+                        val = some_val.value
                         output.append("Some:")
                         output.append(val)
                     else:
                         output.append("None")
-                    none_val: Optional[str] = None
-                    _opt = none_val
-                    if _opt is not None:
-                        val = _opt
+                    none_val = Nothing()
+                    if isinstance(none_val, Some):
+                        val = none_val.value
                         output.append(",Some:")
                         output.append(val)
                     else:

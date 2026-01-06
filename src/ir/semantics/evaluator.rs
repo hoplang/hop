@@ -121,7 +121,10 @@ fn eval_statement(
                 true_body,
                 false_body,
             } => {
-                let subject_value = evaluate_expr(subject, env)?;
+                let subject_value = env
+                    .lookup(subject.0.as_str())
+                    .cloned()
+                    .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
                 if subject_value.as_bool().unwrap_or(false) {
                     eval_statements(true_body, env, output)?;
                 } else {
@@ -135,7 +138,10 @@ fn eval_statement(
                 some_arm_body,
                 none_arm_body,
             } => {
-                let subject_value = evaluate_expr(subject, env)?;
+                let subject_value = env
+                    .lookup(subject.0.as_str())
+                    .cloned()
+                    .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
                 if subject_value.is_null() {
                     eval_statements(none_arm_body, env, output)?;
                 } else {
@@ -149,11 +155,11 @@ fn eval_statement(
                 }
                 Ok(())
             }
-            Match::Enum {
-                subject,
-                arms,
-            } => {
-                let subject_value = evaluate_expr(subject, env)?;
+            Match::Enum { subject, arms } => {
+                let subject_value = env
+                    .lookup(subject.0.as_str())
+                    .cloned()
+                    .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
                 let variant = subject_value
                     .as_str()
                     .ok_or_else(|| anyhow!("Expected enum variant string"))?;
@@ -464,8 +470,11 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
         }
         IrExpr::Match { match_, .. } => match match_ {
             Match::Enum { subject, arms } => {
-                // Evaluate the subject to get the variant name
-                let subject_val = evaluate_expr(subject, env)?;
+                // Look up the subject variable to get the variant name
+                let subject_val = env
+                    .lookup(subject.0.as_str())
+                    .cloned()
+                    .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
                 let variant_name = subject_val
                     .as_str()
                     .ok_or_else(|| anyhow!("Match subject must evaluate to a string (enum variant)"))?;
@@ -494,8 +503,11 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 true_body,
                 false_body,
             } => {
-                // Evaluate the subject to get the boolean value
-                let subject_val = evaluate_expr(subject, env)?;
+                // Look up the subject variable to get the boolean value
+                let subject_val = env
+                    .lookup(subject.0.as_str())
+                    .cloned()
+                    .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
                 let subject_bool = subject_val
                     .as_bool()
                     .ok_or_else(|| anyhow!("Match subject must evaluate to a boolean"))?;
@@ -512,8 +524,11 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 some_arm_body,
                 none_arm_body,
             } => {
-                // Evaluate the subject to get the option value
-                let subject_val = evaluate_expr(subject, env)?;
+                // Look up the subject variable to get the option value
+                let subject_val = env
+                    .lookup(subject.0.as_str())
+                    .cloned()
+                    .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
 
                 // Check if it's Some or None
                 let is_some = !subject_val.is_null();

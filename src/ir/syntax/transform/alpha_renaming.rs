@@ -119,7 +119,7 @@ impl AlphaRenamingPass {
                         true_body,
                         false_body,
                     } => {
-                        let renamed_subject = Box::new(self.rename_expr(*subject));
+                        let renamed_subject = (self.lookup_var(&subject.0), subject.1.clone());
                         self.push_scope();
                         let renamed_true_body = self.rename_statements(*true_body);
                         self.pop_scope();
@@ -138,7 +138,7 @@ impl AlphaRenamingPass {
                         some_arm_body,
                         none_arm_body,
                     } => {
-                        let renamed_subject = Box::new(self.rename_expr(*subject));
+                        let renamed_subject = (self.lookup_var(&subject.0), subject.1.clone());
                         self.push_scope();
                         let renamed_binding = some_arm_binding.map(|(var, typ)| {
                             let renamed_var = self.bind_var(&var);
@@ -157,7 +157,7 @@ impl AlphaRenamingPass {
                         }
                     }
                     Match::Enum { subject, arms } => {
-                        let renamed_subject = Box::new(self.rename_expr(*subject));
+                        let renamed_subject = (self.lookup_var(&subject.0), subject.1.clone());
                         let renamed_arms = arms
                             .into_iter()
                             .map(|arm| {
@@ -284,7 +284,7 @@ impl AlphaRenamingPass {
             IrExpr::Match { match_, kind, id } => {
                 let renamed_match = match match_ {
                     Match::Enum { subject, arms } => Match::Enum {
-                        subject: Box::new(self.rename_expr(*subject)),
+                        subject: (self.lookup_var(&subject.0), subject.1.clone()),
                         arms: arms
                             .into_iter()
                             .map(|arm| EnumMatchArm {
@@ -298,7 +298,7 @@ impl AlphaRenamingPass {
                         true_body,
                         false_body,
                     } => Match::Bool {
-                        subject: Box::new(self.rename_expr(*subject)),
+                        subject: (self.lookup_var(&subject.0), subject.1.clone()),
                         true_body: Box::new(self.rename_expr(*true_body)),
                         false_body: Box::new(self.rename_expr(*false_body)),
                     },
@@ -308,7 +308,7 @@ impl AlphaRenamingPass {
                         some_arm_body,
                         none_arm_body,
                     } => Match::Option {
-                        subject: Box::new(self.rename_expr(*subject)),
+                        subject: (self.lookup_var(&subject.0), subject.1.clone()),
                         some_arm_binding,
                         some_arm_body: Box::new(self.rename_expr(*some_arm_body)),
                         none_arm_body: Box::new(self.rename_expr(*none_arm_body)),

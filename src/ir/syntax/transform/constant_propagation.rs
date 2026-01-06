@@ -77,7 +77,15 @@ impl Pass for ConstantPropagationPass {
                         }
                         IrExpr::Match { match_, .. } => match match_ {
                             Match::Enum { subject, arms } => {
-                                match_subjects.push((subject.id(), expr.id()));
+                                // Look up the defining statement for the subject variable
+                                if let Some(defining_stmt) = scope.get(subject.0.as_str()) {
+                                    let def_expr_id = match defining_stmt {
+                                        IrStatement::Let { value, .. } => value.id(),
+                                        IrStatement::For { array, .. } => array.id(),
+                                        _ => 0,
+                                    };
+                                    match_subjects.push((def_expr_id, expr.id()));
+                                }
                                 for arm in arms {
                                     match &arm.pattern {
                                         EnumPattern::Variant {
@@ -844,23 +852,29 @@ mod tests {
     fn should_fold_simple_match_expression() {
         check(
             build_ir_with_enums("Test", [], vec![("Color", vec!["Red", "Blue"])], |t| {
-                t.write_expr_escaped(t.match_expr(
-                    t.enum_variant("Color", "Red"),
-                    vec![("Red", t.str("red")), ("Blue", t.str("blue"))],
-                ));
+                t.let_stmt("color", t.enum_variant("Color", "Red"), |t| {
+                    t.write_expr_escaped(t.match_expr(
+                        t.var("color"),
+                        vec![("Red", t.str("red")), ("Blue", t.str("blue"))],
+                    ));
+                });
             }),
             expect![[r#"
                 -- before --
                 Test() {
-                  write_escaped(match Color::Red {
-                    Color::Red => "red",
-                    Color::Blue => "blue",
-                  })
+                  let color = Color::Red in {
+                    write_escaped(match color {
+                      Color::Red => "red",
+                      Color::Blue => "blue",
+                    })
+                  }
                 }
 
                 -- after --
                 Test() {
-                  write_escaped("red")
+                  let color = Color::Red in {
+                    write_escaped("red")
+                  }
                 }
             "#]],
         );
@@ -902,31 +916,37 @@ mod tests {
     fn should_fold_match_with_constant_arm_body() {
         check(
             build_ir_with_enums("Test", [], vec![("Color", vec!["Red", "Blue"])], |t| {
-                t.if_stmt(
-                    t.match_expr(
-                        t.enum_variant("Color", "Red"),
-                        vec![("Red", t.not(t.bool(false))), ("Blue", t.bool(false))],
-                    ),
-                    |t| {
-                        t.write("Match evaluated to true");
-                    },
-                );
+                t.let_stmt("color", t.enum_variant("Color", "Red"), |t| {
+                    t.if_stmt(
+                        t.match_expr(
+                            t.var("color"),
+                            vec![("Red", t.not(t.bool(false))), ("Blue", t.bool(false))],
+                        ),
+                        |t| {
+                            t.write("Match evaluated to true");
+                        },
+                    );
+                });
             }),
             expect![[r#"
                 -- before --
                 Test() {
-                  if match Color::Red {
-                    Color::Red => (!false),
-                    Color::Blue => false,
-                  } {
-                    write("Match evaluated to true")
+                  let color = Color::Red in {
+                    if match color {
+                      Color::Red => (!false),
+                      Color::Blue => false,
+                    } {
+                      write("Match evaluated to true")
+                    }
                   }
                 }
 
                 -- after --
                 Test() {
-                  if true {
-                    write("Match evaluated to true")
+                  let color = Color::Red in {
+                    if true {
+                      write("Match evaluated to true")
+                    }
                   }
                 }
             "#]],
@@ -941,35 +961,41 @@ mod tests {
                 [],
                 vec![("Status", vec!["Active", "Inactive"])],
                 |t| {
-                    t.if_stmt(
-                        t.eq(
-                            t.match_expr(
-                                t.enum_variant("Status", "Active"),
-                                vec![("Active", t.str("on")), ("Inactive", t.str("off"))],
+                    t.let_stmt("status", t.enum_variant("Status", "Active"), |t| {
+                        t.if_stmt(
+                            t.eq(
+                                t.match_expr(
+                                    t.var("status"),
+                                    vec![("Active", t.str("on")), ("Inactive", t.str("off"))],
+                                ),
+                                t.str("on"),
                             ),
-                            t.str("on"),
-                        ),
-                        |t| {
-                            t.write("Status is active");
-                        },
-                    );
+                            |t| {
+                                t.write("Status is active");
+                            },
+                        );
+                    });
                 },
             ),
             expect![[r#"
                 -- before --
                 Test() {
-                  if (match Status::Active {
-                    Status::Active => "on",
-                    Status::Inactive => "off",
-                  } == "on") {
-                    write("Status is active")
+                  let status = Status::Active in {
+                    if (match status {
+                      Status::Active => "on",
+                      Status::Inactive => "off",
+                    } == "on") {
+                      write("Status is active")
+                    }
                   }
                 }
 
                 -- after --
                 Test() {
-                  if true {
-                    write("Status is active")
+                  let status = Status::Active in {
+                    if true {
+                      write("Status is active")
+                    }
                   }
                 }
             "#]],

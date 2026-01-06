@@ -84,7 +84,7 @@ pub enum IrStatement {
     /// Match on a value and execute the corresponding branch.
     Match {
         id: StatementId,
-        match_: Match<IrExpr, Vec<IrStatement>>,
+        match_: Match<Vec<IrStatement>>,
     },
 }
 
@@ -150,7 +150,7 @@ pub enum IrExpr {
 
     /// A match expression (enum, bool, or option)
     Match {
-        match_: Match<Self, Self>,
+        match_: Match<Self>,
         kind: Type,
         id: ExprId,
     },
@@ -252,7 +252,7 @@ impl IrStatement {
             IrStatement::If { condition, .. } => Some(condition),
             IrStatement::For { array, .. } => Some(array),
             IrStatement::Let { value, .. } => Some(value),
-            IrStatement::Match { match_, .. } => Some(match_.subject()),
+            IrStatement::Match { .. } => None, // subject is a variable reference, not an expression
         }
     }
 
@@ -264,7 +264,7 @@ impl IrStatement {
             IrStatement::If { condition, .. } => Some(condition),
             IrStatement::For { array, .. } => Some(array),
             IrStatement::Let { value, .. } => Some(value),
-            IrStatement::Match { match_, .. } => Some(match_.subject_mut()),
+            IrStatement::Match { .. } => None, // subject is a variable reference, not an expression
         }
     }
 
@@ -577,7 +577,7 @@ impl IrStatement {
                         true_body,
                         false_body,
                     } => BoxDoc::text("match ")
-                        .append(subject.to_doc())
+                        .append(BoxDoc::text(subject.0.as_str()))
                         .append(BoxDoc::text(" {"))
                         .append(
                             BoxDoc::line()
@@ -599,7 +599,7 @@ impl IrStatement {
                             None => "Some(_)".to_string(),
                         };
                         BoxDoc::text("match ")
-                            .append(subject.to_doc())
+                            .append(BoxDoc::text(subject.0.as_str()))
                             .append(BoxDoc::text(" {"))
                             .append(
                                 BoxDoc::line()
@@ -631,7 +631,7 @@ impl IrStatement {
                             BoxDoc::line(),
                         );
                         BoxDoc::text("match ")
-                            .append(subject.to_doc())
+                            .append(BoxDoc::text(subject.0.as_str()))
                             .append(BoxDoc::text(" {"))
                             .append(BoxDoc::line().append(arms_doc).nest(2))
                             .append(BoxDoc::line())
@@ -859,11 +859,11 @@ impl IrExpr {
                 Match::Enum { subject, arms } => {
                     if arms.is_empty() {
                         BoxDoc::text("match ")
-                            .append(subject.to_doc())
+                            .append(BoxDoc::text(subject.0.as_str()))
                             .append(BoxDoc::text(" {}"))
                     } else {
                         BoxDoc::text("match ")
-                            .append(subject.to_doc())
+                            .append(BoxDoc::text(subject.0.as_str()))
                             .append(BoxDoc::text(" {"))
                             .append(
                                 BoxDoc::line_()
@@ -904,7 +904,7 @@ impl IrExpr {
                         .append(false_body.to_doc());
 
                     BoxDoc::text("match ")
-                        .append(subject.to_doc())
+                        .append(BoxDoc::text(subject.0.as_str()))
                         .append(BoxDoc::text(" {"))
                         .append(
                             BoxDoc::line_()
@@ -939,7 +939,7 @@ impl IrExpr {
                         .append(none_arm_body.to_doc());
 
                     BoxDoc::text("match ")
-                        .append(subject.to_doc())
+                        .append(BoxDoc::text(subject.0.as_str()))
                         .append(BoxDoc::text(" {"))
                         .append(
                             BoxDoc::line_()
@@ -1006,28 +1006,24 @@ impl IrExpr {
                 right.traverse(f);
             }
             IrExpr::Match { match_, .. } => match match_ {
-                Match::Enum { subject, arms } => {
-                    subject.traverse(f);
+                Match::Enum { arms, .. } => {
                     for arm in arms {
                         arm.body.traverse(f);
                     }
                 }
                 Match::Bool {
-                    subject,
                     true_body,
                     false_body,
+                    ..
                 } => {
-                    subject.traverse(f);
                     true_body.traverse(f);
                     false_body.traverse(f);
                 }
                 Match::Option {
-                    subject,
                     some_arm_body,
                     none_arm_body,
                     ..
                 } => {
-                    subject.traverse(f);
                     some_arm_body.traverse(f);
                     none_arm_body.traverse(f);
                 }
@@ -1092,28 +1088,24 @@ impl IrExpr {
                 right.traverse_mut(f);
             }
             IrExpr::Match { match_, .. } => match match_ {
-                Match::Enum { subject, arms } => {
-                    subject.traverse_mut(f);
+                Match::Enum { arms, .. } => {
                     for arm in arms {
                         arm.body.traverse_mut(f);
                     }
                 }
                 Match::Bool {
-                    subject,
                     true_body,
                     false_body,
+                    ..
                 } => {
-                    subject.traverse_mut(f);
                     true_body.traverse_mut(f);
                     false_body.traverse_mut(f);
                 }
                 Match::Option {
-                    subject,
                     some_arm_body,
                     none_arm_body,
                     ..
                 } => {
-                    subject.traverse_mut(f);
                     some_arm_body.traverse_mut(f);
                     none_arm_body.traverse_mut(f);
                 }

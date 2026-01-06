@@ -67,7 +67,7 @@ pub enum InlinedNode {
         children: Vec<Self>,
     },
     Match {
-        match_: Match<TypedExpr, Vec<InlinedNode>>,
+        match_: Match<Vec<InlinedNode>>,
     },
 }
 
@@ -273,7 +273,7 @@ impl InlinedNode {
                         true_body,
                         false_body,
                     } => BoxDoc::text("<match {")
-                        .append(subject.to_doc())
+                        .append(BoxDoc::text(subject.0.as_str()))
                         .append(BoxDoc::text("}>"))
                         .append(
                             BoxDoc::line()
@@ -295,7 +295,7 @@ impl InlinedNode {
                             None => "Some(_)".to_string(),
                         };
                         BoxDoc::text("<match {")
-                            .append(subject.to_doc())
+                            .append(BoxDoc::text(subject.0.as_str()))
                             .append(BoxDoc::text("}>"))
                             .append(
                                 BoxDoc::line()
@@ -308,7 +308,7 @@ impl InlinedNode {
                             .append(BoxDoc::text("</match>"))
                     }
                     Match::Enum { subject, arms } => BoxDoc::text("<match {")
-                        .append(subject.to_doc())
+                        .append(BoxDoc::text(subject.0.as_str()))
                         .append(BoxDoc::text("}>"))
                         .append(if arms.is_empty() {
                             BoxDoc::nil()

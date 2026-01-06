@@ -519,7 +519,7 @@ impl StatementTranspiler for GoTranspiler {
 
     fn transpile_match_statement<'a>(
         &self,
-        match_: &'a Match<IrExpr, Vec<IrStatement>>,
+        match_: &'a Match<Vec<IrStatement>>,
     ) -> BoxDoc<'a> {
         match match_ {
             Match::Bool {
@@ -529,7 +529,7 @@ impl StatementTranspiler for GoTranspiler {
             } => {
                 // Transpile as: if subject { true_body } else { false_body }
                 BoxDoc::text("if ")
-                    .append(self.transpile_expr(subject))
+                    .append(BoxDoc::text(subject.0.as_str()))
                     .append(BoxDoc::text(" {"))
                     .append(
                         BoxDoc::line()
@@ -552,41 +552,33 @@ impl StatementTranspiler for GoTranspiler {
                 some_arm_body,
                 none_arm_body,
             } => {
-                // {
-                //     _opt := subject
-                //     if _opt.some {
-                //         val := _opt.value
-                //         ...
-                //     } else {
-                //         ...
-                //     }
+                // if subject.some {
+                //     val := subject.value
+                //     ...
+                // } else {
+                //     ...
                 // }
+                let subject_name = subject.0.as_str();
                 let some_body = if let Some((var_name, _)) = some_arm_binding {
                     BoxDoc::text(var_name.as_str())
-                        .append(BoxDoc::text(" := _opt.value"))
+                        .append(BoxDoc::text(" := "))
+                        .append(BoxDoc::text(subject_name))
+                        .append(BoxDoc::text(".value"))
                         .append(BoxDoc::line())
                         .append(self.transpile_statements(some_arm_body))
                 } else {
                     self.transpile_statements(some_arm_body)
                 };
 
-                BoxDoc::text("{")
+                BoxDoc::text("if ")
+                    .append(BoxDoc::text(subject_name))
+                    .append(BoxDoc::text(".some {"))
+                    .append(BoxDoc::line().append(some_body).nest(1))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("} else {"))
                     .append(
                         BoxDoc::line()
-                            .append(BoxDoc::text("_opt := "))
-                            .append(self.transpile_expr(subject))
-                            .append(BoxDoc::line())
-                            .append(BoxDoc::text("if _opt.some {"))
-                            .append(BoxDoc::line().append(some_body).nest(1))
-                            .append(BoxDoc::line())
-                            .append(BoxDoc::text("} else {"))
-                            .append(
-                                BoxDoc::line()
-                                    .append(self.transpile_statements(none_arm_body))
-                                    .nest(1),
-                            )
-                            .append(BoxDoc::line())
-                            .append(BoxDoc::text("}"))
+                            .append(self.transpile_statements(none_arm_body))
                             .nest(1),
                     )
                     .append(BoxDoc::line())
@@ -874,7 +866,7 @@ impl ExpressionTranspiler for GoTranspiler {
         }
     }
 
-    fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr, IrExpr>) -> BoxDoc<'a> {
+    fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr>) -> BoxDoc<'a> {
         match match_ {
             Match::Bool {
                 subject,
@@ -889,7 +881,7 @@ impl ExpressionTranspiler for GoTranspiler {
                     .append(
                         BoxDoc::line()
                             .append(BoxDoc::text("if "))
-                            .append(self.transpile_expr(subject))
+                            .append(BoxDoc::text(subject.0.as_str()))
                             .append(BoxDoc::text(" {"))
                             .append(
                                 BoxDoc::line()
@@ -919,19 +911,21 @@ impl ExpressionTranspiler for GoTranspiler {
                 none_arm_body,
             } => {
                 // func() ReturnType {
-                //     _opt := subject
-                //     if _opt.some {
-                //         val := _opt.value
+                //     if subject.some {
+                //         val := subject.value
                 //         return some_body
                 //     } else {
                 //         return none_body
                 //     }
                 // }()
+                let subject_name = subject.0.as_str();
                 let return_type = self.transpile_type(some_arm_body.as_type());
 
                 let some_body = if let Some((var_name, _)) = some_arm_binding {
                     BoxDoc::text(var_name.as_str())
-                        .append(BoxDoc::text(" := _opt.value"))
+                        .append(BoxDoc::text(" := "))
+                        .append(BoxDoc::text(subject_name))
+                        .append(BoxDoc::text(".value"))
                         .append(BoxDoc::line())
                         .append(BoxDoc::text("return "))
                         .append(self.transpile_expr(some_arm_body))
@@ -944,10 +938,9 @@ impl ExpressionTranspiler for GoTranspiler {
                     .append(BoxDoc::text(" {"))
                     .append(
                         BoxDoc::line()
-                            .append(BoxDoc::text("_opt := "))
-                            .append(self.transpile_expr(subject))
-                            .append(BoxDoc::line())
-                            .append(BoxDoc::text("if _opt.some {"))
+                            .append(BoxDoc::text("if "))
+                            .append(BoxDoc::text(subject_name))
+                            .append(BoxDoc::text(".some {"))
                             .append(BoxDoc::line().append(some_body).nest(2))
                             .append(BoxDoc::line())
                             .append(BoxDoc::text("} else {"))
@@ -1851,28 +1844,32 @@ mod tests {
         use crate::dop::Type;
 
         let module = build_module("TestOption", vec![], |t| {
-            t.option_match_stmt(
-                t.some(t.str("hello")),
-                Some("val"),
-                |t| {
-                    t.write("Got:");
-                    t.write_expr(t.var("val"), false);
-                },
-                |t| {
-                    t.write("None");
-                },
-            );
-            t.option_match_stmt(
-                t.none(Type::String),
-                Some("val"),
-                |t| {
-                    t.write("Got:");
-                    t.write_expr(t.var("val"), false);
-                },
-                |t| {
-                    t.write(",None");
-                },
-            );
+            t.let_stmt("opt1", t.some(t.str("hello")), |t| {
+                t.option_match_stmt(
+                    t.var("opt1"),
+                    Some("val"),
+                    |t| {
+                        t.write("Got:");
+                        t.write_expr(t.var("val"), false);
+                    },
+                    |t| {
+                        t.write("None");
+                    },
+                );
+            });
+            t.let_stmt("opt2", t.none(Type::String), |t| {
+                t.option_match_stmt(
+                    t.var("opt2"),
+                    Some("val"),
+                    |t| {
+                        t.write("Got:");
+                        t.write_expr(t.var("val"), false);
+                    },
+                    |t| {
+                        t.write(",None");
+                    },
+                );
+            });
         });
 
         check(
@@ -1880,22 +1877,26 @@ mod tests {
             expect![[r#"
                 -- before --
                 TestOption() {
-                  match Some("hello") {
-                    Some(val) => {
-                      write("Got:")
-                      write_expr(val)
-                    }
-                    None => {
-                      write("None")
+                  let opt1 = Some("hello") in {
+                    match opt1 {
+                      Some(val) => {
+                        write("Got:")
+                        write_expr(val)
+                      }
+                      None => {
+                        write("None")
+                      }
                     }
                   }
-                  match None {
-                    Some(val) => {
-                      write("Got:")
-                      write_expr(val)
-                    }
-                    None => {
-                      write(",None")
+                  let opt2 = None in {
+                    match opt2 {
+                      Some(val) => {
+                        write("Got:")
+                        write_expr(val)
+                      }
+                      None => {
+                        write(",None")
+                      }
                     }
                   }
                 }
@@ -1913,25 +1914,21 @@ mod tests {
                 }
 
                 func TestOption(w io.Writer) {
-                	{
-                		_opt := Option[string]{value: "hello", some: true}
-                		if _opt.some {
-                			val := _opt.value
-                			io.WriteString(w, "Got:")
-                			io.WriteString(w, val)
-                		} else {
-                			io.WriteString(w, "None")
-                		}
+                	opt1 := Option[string]{value: "hello", some: true}
+                	if opt1.some {
+                		val := opt1.value
+                		io.WriteString(w, "Got:")
+                		io.WriteString(w, val)
+                	} else {
+                		io.WriteString(w, "None")
                 	}
-                	{
-                		_opt := Option[string]{some: false}
-                		if _opt.some {
-                			val := _opt.value
-                			io.WriteString(w, "Got:")
-                			io.WriteString(w, val)
-                		} else {
-                			io.WriteString(w, ",None")
-                		}
+                	opt2 := Option[string]{some: false}
+                	if opt2.some {
+                		val := opt2.value
+                		io.WriteString(w, "Got:")
+                		io.WriteString(w, val)
+                	} else {
+                		io.WriteString(w, ",None")
                 	}
                 }
             "#]],

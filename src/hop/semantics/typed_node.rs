@@ -47,7 +47,7 @@ pub enum TypedNode {
     },
 
     Match {
-        match_: Match<TypedExpr, Vec<TypedNode>>,
+        match_: Match<Vec<TypedNode>>,
     },
 
     Let {

@@ -988,10 +988,10 @@ fn decision_to_typed_expr(
         }
 
         Decision::Switch(var, cases) => {
-            let subject = Box::new(TypedExpr::Var {
-                value: VarName::new(&var.name).expect("invalid variable name"),
-                kind: var.typ.clone(),
-            });
+            let subject = (
+                VarName::new(&var.name).expect("invalid variable name"),
+                var.typ.clone(),
+            );
 
             match &var.typ {
                 Type::Bool => {
@@ -1124,7 +1124,10 @@ fn decision_to_typed_expr(
 
                         // Create field access: subject.field_name
                         let field_access = TypedExpr::FieldAccess {
-                            record: subject.clone(),
+                            record: Box::new(TypedExpr::Var {
+                                value: subject.0.clone(),
+                                kind: subject.1.clone(),
+                            }),
                             field: field_name.clone(),
                             kind: var.typ.clone(),
                         };

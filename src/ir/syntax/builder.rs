@@ -10,6 +10,15 @@ use crate::ir::ast::{IrComponentDeclaration, IrEnumDeclaration, IrModule, IrReco
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
+/// Helper function to extract (VarName, Type) from an IrExpr.
+/// Panics if the expression is not a variable reference.
+fn extract_var_subject(expr: &IrExpr) -> (VarName, Type) {
+    match expr {
+        IrExpr::Var { value, kind, .. } => (value.clone(), kind.clone()),
+        _ => panic!("Match subject must be a variable reference, got {:?}", expr),
+    }
+}
+
 pub fn build_ir<F, P>(name: &str, params: P, body_fn: F) -> IrComponentDeclaration
 where
     F: FnOnce(&mut IrBuilder),
@@ -498,7 +507,7 @@ impl IrBuilder {
 
         IrExpr::Match {
             match_: Match::Enum {
-                subject: Box::new(subject),
+                subject: extract_var_subject(&subject),
                 arms: ir_arms,
             },
             kind: result_type,
@@ -517,7 +526,7 @@ impl IrBuilder {
 
         IrExpr::Match {
             match_: Match::Bool {
-                subject: Box::new(subject),
+                subject: extract_var_subject(&subject),
                 true_body: Box::new(true_body),
                 false_body: Box::new(false_body),
             },
@@ -537,7 +546,7 @@ impl IrBuilder {
 
         IrExpr::Match {
             match_: Match::Option {
-                subject: Box::new(subject),
+                subject: extract_var_subject(&subject),
                 some_arm_binding: None,
                 some_arm_body: Box::new(some_body),
                 none_arm_body: Box::new(none_body),
@@ -574,7 +583,7 @@ impl IrBuilder {
 
         IrExpr::Match {
             match_: Match::Option {
-                subject: Box::new(subject),
+                subject: extract_var_subject(&subject),
                 some_arm_binding: Some((VarName::new(binding_name).unwrap(), inner_type)),
                 some_arm_body: Box::new(some_body),
                 none_arm_body: Box::new(none_body),
@@ -851,7 +860,7 @@ impl IrBuilder {
         self.statements.push(IrStatement::Match {
             id: self.next_node_id(),
             match_: Match::Bool {
-                subject: Box::new(subject),
+                subject: extract_var_subject(&subject),
                 true_body: Box::new(true_builder.statements),
                 false_body: Box::new(false_builder.statements),
             },
@@ -897,7 +906,7 @@ impl IrBuilder {
         self.statements.push(IrStatement::Match {
             id: self.next_node_id(),
             match_: Match::Option {
-                subject: Box::new(subject),
+                subject: extract_var_subject(&subject),
                 some_arm_binding,
                 some_arm_body: Box::new(some_builder.statements),
                 none_arm_body: Box::new(none_builder.statements),

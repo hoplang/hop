@@ -265,7 +265,7 @@ impl Compiler {
                         true_body,
                         false_body,
                     } => Match::Bool {
-                        subject: Box::new(self.compile_expr(*subject)),
+                        subject,
                         true_body: Box::new(self.compile_nodes(*true_body, slot_content.cloned())),
                         false_body: Box::new(self.compile_nodes(*false_body, slot_content.cloned())),
                     },
@@ -275,7 +275,7 @@ impl Compiler {
                         some_arm_body,
                         none_arm_body,
                     } => Match::Option {
-                        subject: Box::new(self.compile_expr(*subject)),
+                        subject,
                         some_arm_binding,
                         some_arm_body: Box::new(
                             self.compile_nodes(*some_arm_body, slot_content.cloned()),
@@ -285,7 +285,7 @@ impl Compiler {
                         ),
                     },
                     Match::Enum { subject, arms } => Match::Enum {
-                        subject: Box::new(self.compile_expr(*subject)),
+                        subject,
                         arms: arms
                             .into_iter()
                             .map(|arm| EnumMatchArm {
@@ -591,7 +591,7 @@ impl Compiler {
             TypedExpr::Match { match_, kind } => {
                 let compiled_match = match match_ {
                     Match::Enum { subject, arms } => Match::Enum {
-                        subject: Box::new(self.compile_expr(*subject)),
+                        subject,
                         arms: arms
                             .into_iter()
                             .map(|arm| EnumMatchArm {
@@ -605,7 +605,7 @@ impl Compiler {
                         true_body,
                         false_body,
                     } => Match::Bool {
-                        subject: Box::new(self.compile_expr(*subject)),
+                        subject,
                         true_body: Box::new(self.compile_expr(*true_body)),
                         false_body: Box::new(self.compile_expr(*false_body)),
                     },
@@ -615,7 +615,7 @@ impl Compiler {
                         some_arm_body,
                         none_arm_body,
                     } => Match::Option {
-                        subject: Box::new(self.compile_expr(*subject)),
+                        subject,
                         some_arm_binding,
                         some_arm_body: Box::new(self.compile_expr(*some_arm_body)),
                         none_arm_body: Box::new(self.compile_expr(*none_arm_body)),

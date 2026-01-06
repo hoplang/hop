@@ -428,7 +428,7 @@ impl StatementTranspiler for TsTranspiler {
 
     fn transpile_match_statement<'a>(
         &self,
-        match_: &'a Match<IrExpr, Vec<IrStatement>>,
+        match_: &'a Match<Vec<IrStatement>>,
     ) -> BoxDoc<'a> {
         match match_ {
             Match::Bool {
@@ -442,7 +442,7 @@ impl StatementTranspiler for TsTranspiler {
                 //   [[false_body_statements]]
                 // }
                 BoxDoc::text("if (")
-                    .append(self.transpile_expr(subject))
+                    .append(BoxDoc::text(subject.0.as_str()))
                     .append(BoxDoc::text(") {"))
                     .append(
                         BoxDoc::nil()
@@ -467,27 +467,18 @@ impl StatementTranspiler for TsTranspiler {
                 some_arm_body,
                 none_arm_body,
             } => {
-                // TODO: We need to assign the subject to a variable
-                // to allow both narrowing the expression as well as being
-                // able to use it after narrowing.
-                //
-                // We should solve this by restricting Match::Option to only
-                // hold a variable instead of an expression as the subject.
-                //
-                // {
-                //   const _opt = [[subject]];
-                //   switch (_opt._tag) {
-                //     case "Some": {
-                //       const [[var_name]] = _opt.value;
-                //       [[statements]]
-                //       break;
-                //     }
-                //     case "None": {
-                //       [[...]]
-                //       break;
-                //     }
+                // switch (subject._tag) {
+                //   case "Some": {
+                //     const [[var_name]] = subject.value;
+                //     [[statements]]
+                //     break;
+                //   }
+                //   case "None": {
+                //     [[...]]
+                //     break;
                 //   }
                 // }
+                let subject_name = subject.0.as_str();
                 let some_case = {
                     if let Some((var_name, _)) = some_arm_binding {
                         BoxDoc::text("case \"Some\": {")
@@ -495,7 +486,9 @@ impl StatementTranspiler for TsTranspiler {
                                 BoxDoc::hardline()
                                     .append(BoxDoc::text("const "))
                                     .append(BoxDoc::text(var_name.as_str()))
-                                    .append(BoxDoc::text(" = _opt.value;"))
+                                    .append(BoxDoc::text(" = "))
+                                    .append(BoxDoc::text(subject_name))
+                                    .append(BoxDoc::text(".value;"))
                                     .append(BoxDoc::hardline())
                                     .append(self.transpile_statements(some_arm_body))
                                     .append(BoxDoc::hardline())
@@ -529,25 +522,14 @@ impl StatementTranspiler for TsTranspiler {
                     .append(BoxDoc::hardline())
                     .append(BoxDoc::text("}"));
 
-                let switch_stmt = BoxDoc::text("switch (_opt._tag) {")
+                BoxDoc::text("switch (")
+                    .append(BoxDoc::text(subject_name))
+                    .append(BoxDoc::text("._tag) {"))
                     .append(
                         BoxDoc::hardline()
                             .append(some_case)
                             .append(BoxDoc::hardline())
                             .append(none_case)
-                            .nest(4),
-                    )
-                    .append(BoxDoc::hardline())
-                    .append(BoxDoc::text("}"));
-
-                BoxDoc::text("{")
-                    .append(
-                        BoxDoc::hardline()
-                            .append(BoxDoc::text("const _opt = "))
-                            .append(self.transpile_expr(subject))
-                            .append(BoxDoc::text(";"))
-                            .append(BoxDoc::hardline())
-                            .append(switch_stmt)
                             .nest(4),
                     )
                     .append(BoxDoc::hardline())
@@ -586,7 +568,7 @@ impl StatementTranspiler for TsTranspiler {
                 );
 
                 BoxDoc::text("switch (")
-                    .append(self.transpile_expr(subject))
+                    .append(BoxDoc::text(subject.0.as_str()))
                     .append(BoxDoc::text("._tag) {"))
                     .append(BoxDoc::hardline().append(cases).nest(4))
                     .append(BoxDoc::hardline())
@@ -878,7 +860,7 @@ impl ExpressionTranspiler for TsTranspiler {
         }
     }
 
-    fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr, IrExpr>) -> BoxDoc<'a> {
+    fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr>) -> BoxDoc<'a> {
         match match_ {
             Match::Enum { subject, arms } => {
                 // (() => {
@@ -906,7 +888,7 @@ impl ExpressionTranspiler for TsTranspiler {
                 );
 
                 let switch_body = BoxDoc::text("switch (")
-                    .append(self.transpile_expr(subject))
+                    .append(BoxDoc::text(subject.0.as_str()))
                     .append(BoxDoc::text("._tag) {"))
                     .append(BoxDoc::line().append(cases).nest(2))
                     .append(BoxDoc::line())
@@ -929,7 +911,7 @@ impl ExpressionTranspiler for TsTranspiler {
             } => {
                 // subject ? [[true_body]] : [[false_body]]
                 BoxDoc::text("(")
-                    .append(self.transpile_expr(subject))
+                    .append(BoxDoc::text(subject.0.as_str()))
                     .append(BoxDoc::text(" ? "))
                     .append(self.transpile_expr(true_body))
                     .append(BoxDoc::text(" : "))
@@ -942,23 +924,16 @@ impl ExpressionTranspiler for TsTranspiler {
                 some_arm_body,
                 none_arm_body,
             } => {
-                // TODO: We need to assign the subject to a variable
-                // to allow both narrowing the expression as well as being
-                // able to use it after narrowing.
-                //
-                // We should solve this by restricting Match::Option to only
-                // hold a variable instead of an expression as the subject.
-                //
                 // (() => {
-                //   const _opt = [[subject]];
-                //   switch (_opt._tag) {
+                //   switch (subject._tag) {
                 //     case "Some": {
-                //       const [[var]] = _opt.value;
+                //       const [[var]] = subject.value;
                 //       return [[some_arm]];
                 //     }
                 //     case "None": return [[none_arm]];
                 //   }
                 // })()
+                let subject_name = subject.0.as_str();
                 let some_case = {
                     let body_doc = self.transpile_expr(some_arm_body);
                     if let Some((var_name, _)) = some_arm_binding {
@@ -967,7 +942,9 @@ impl ExpressionTranspiler for TsTranspiler {
                                 BoxDoc::line()
                                     .append(BoxDoc::text("const "))
                                     .append(BoxDoc::text(var_name.as_str()))
-                                    .append(BoxDoc::text(" = _opt.value;"))
+                                    .append(BoxDoc::text(" = "))
+                                    .append(BoxDoc::text(subject_name))
+                                    .append(BoxDoc::text(".value;"))
                                     .append(BoxDoc::line())
                                     .append(BoxDoc::text("return "))
                                     .append(body_doc)
@@ -990,21 +967,15 @@ impl ExpressionTranspiler for TsTranspiler {
 
                 let cases = BoxDoc::intersperse([some_case, none_case], BoxDoc::line());
 
-                let switch_body = BoxDoc::text("switch (_opt._tag) {")
+                let switch_body = BoxDoc::text("switch (")
+                    .append(BoxDoc::text(subject_name))
+                    .append(BoxDoc::text("._tag) {"))
                     .append(BoxDoc::line().append(cases).nest(2))
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("}"));
 
                 BoxDoc::text("(() => {")
-                    .append(
-                        BoxDoc::line()
-                            .append(BoxDoc::text("const _opt = "))
-                            .append(self.transpile_expr(subject))
-                            .append(BoxDoc::text(";"))
-                            .append(BoxDoc::line())
-                            .append(switch_body)
-                            .nest(2),
-                    )
+                    .append(BoxDoc::line().append(switch_body).nest(2))
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("})()"))
                     .group()
@@ -1913,8 +1884,7 @@ mod tests {
                     checkOption: ({ opt }: { opt: Option<number> }): string => {
                         let output: string = "";
                         output += escapeHtml((() => {
-                          const _opt = opt;
-                          switch (_opt._tag) {
+                          switch (opt._tag) {
                             case "Some": return "has value";
                             case "None": return "empty";
                           }
@@ -1996,15 +1966,13 @@ mod tests {
                     checkNestedOption: ({ opt }: { opt: Option<Option<boolean>> }): string => {
                         let output: string = "";
                         output += escapeHtml((() => {
-                          const _opt = opt;
-                          switch (_opt._tag) {
+                          switch (opt._tag) {
                             case "Some": {
-                              const v0 = _opt.value;
+                              const v0 = opt.value;
                               return (() => {
-                                const _opt = v0;
-                                switch (_opt._tag) {
+                                switch (v0._tag) {
                                   case "Some": {
-                                    const v1 = _opt.value;
+                                    const v1 = v0.value;
                                     return (v1 ? "some-some-true" : "some-some-false");
                                   }
                                   case "None": return "some-none";
@@ -2124,20 +2092,17 @@ mod tests {
                 export default {
                     displayOption: ({ opt }: { opt: Option<string> }): string => {
                         let output: string = "";
-                        {
-                            const _opt = opt;
-                            switch (_opt._tag) {
-                                case "Some": {
-                                    const value = _opt.value;
-                                    output += "<span>Found: ";
-                                    output += escapeHtml(value);
-                                    output += "</span>";
-                                    break;
-                                }
-                                case "None": {
-                                    output += "<span>Nothing</span>";
-                                    break;
-                                }
+                        switch (opt._tag) {
+                            case "Some": {
+                                const value = opt.value;
+                                output += "<span>Found: ";
+                                output += escapeHtml(value);
+                                output += "</span>";
+                                break;
+                            }
+                            case "None": {
+                                output += "<span>Nothing</span>";
+                                break;
                             }
                         }
                         return output;
@@ -2149,28 +2114,38 @@ mod tests {
 
     #[test]
     fn option_literal() {
-        let module = build_module("TestOptionLiteral", vec![], |t| {
-            // Test Some literal
-            let some_val = t.some(t.str("hello"));
-            let match_result = t.option_match_expr(some_val, t.str("has value"), t.str("empty"));
-            t.write_expr(match_result, false);
+        let module = build_module(
+            "TestOptionLiteral",
+            vec![
+                ("opt1", Type::Option(Box::new(Type::String))),
+                ("opt2", Type::Option(Box::new(Type::String))),
+            ],
+            |t| {
+                // Test Some literal
+                let match_result =
+                    t.option_match_expr(t.var("opt1"), t.str("has value"), t.str("empty"));
+                t.write_expr(match_result, false);
 
-            // Test None literal
-            let none_val = t.none(Type::String);
-            let match_result2 = t.option_match_expr(none_val, t.str("HAS"), t.str("EMPTY"));
-            t.write_expr(match_result2, false);
-        });
+                // Test None literal
+                let match_result2 =
+                    t.option_match_expr(t.var("opt2"), t.str("HAS"), t.str("EMPTY"));
+                t.write_expr(match_result2, false);
+            },
+        );
 
         check(
             &module,
             expect![[r#"
                 -- before --
-                TestOptionLiteral() {
-                  write_expr(match Some("hello") {
+                TestOptionLiteral(
+                  opt1: Option[String],
+                  opt2: Option[String],
+                ) {
+                  write_expr(match opt1 {
                     Some(_) => "has value",
                     None => "empty",
                   })
-                  write_expr(match None {Some(_) => "HAS", None => "EMPTY"})
+                  write_expr(match opt2 {Some(_) => "HAS", None => "EMPTY"})
                 }
 
                 -- after --
@@ -2181,18 +2156,16 @@ mod tests {
                 function optionNone<T>(): Option<T> { return { _tag: "None" }; }
 
                 export default {
-                    testOptionLiteral: (): string => {
+                    testOptionLiteral: ({ opt1, opt2 }: { opt1: Option<string>, opt2: Option<string> }): string => {
                         let output: string = "";
                         output += (() => {
-                          const _opt = optionSome<string>("hello");
-                          switch (_opt._tag) {
+                          switch (opt1._tag) {
                             case "Some": return "has value";
                             case "None": return "empty";
                           }
                         })();
                         output += (() => {
-                          const _opt = optionNone<string>();
-                          switch (_opt._tag) {
+                          switch (opt2._tag) {
                             case "Some": return "HAS";
                             case "None": return "EMPTY";
                           }
@@ -2207,17 +2180,19 @@ mod tests {
     #[test]
     fn option_literal_inline_match_stmt() {
         let module = build_module("TestInlineMatch", vec![], |t| {
-            t.option_match_stmt(
-                t.some(t.str("world")),
-                Some("val"),
-                |t| {
-                    t.write("Got:");
-                    t.write_expr(t.var("val"), false);
-                },
-                |t| {
-                    t.write("Empty");
-                },
-            );
+            t.let_stmt("opt", t.some(t.str("world")), |t| {
+                t.option_match_stmt(
+                    t.var("opt"),
+                    Some("val"),
+                    |t| {
+                        t.write("Got:");
+                        t.write_expr(t.var("val"), false);
+                    },
+                    |t| {
+                        t.write("Empty");
+                    },
+                );
+            });
         });
 
         check(
@@ -2225,13 +2200,15 @@ mod tests {
             expect![[r#"
                 -- before --
                 TestInlineMatch() {
-                  match Some("world") {
-                    Some(val) => {
-                      write("Got:")
-                      write_expr(val)
-                    }
-                    None => {
-                      write("Empty")
+                  let opt = Some("world") in {
+                    match opt {
+                      Some(val) => {
+                        write("Got:")
+                        write_expr(val)
+                      }
+                      None => {
+                        write("Empty")
+                      }
                     }
                   }
                 }
@@ -2246,19 +2223,17 @@ mod tests {
                 export default {
                     testInlineMatch: (): string => {
                         let output: string = "";
-                        {
-                            const _opt = optionSome<string>("world");
-                            switch (_opt._tag) {
-                                case "Some": {
-                                    const val = _opt.value;
-                                    output += "Got:";
-                                    output += val;
-                                    break;
-                                }
-                                case "None": {
-                                    output += "Empty";
-                                    break;
-                                }
+                        const opt = optionSome<string>("world");
+                        switch (opt._tag) {
+                            case "Some": {
+                                const val = opt.value;
+                                output += "Got:";
+                                output += val;
+                                break;
+                            }
+                            case "None": {
+                                output += "Empty";
+                                break;
                             }
                         }
                         return output;

@@ -34,11 +34,6 @@ impl TestCase {
         }
     }
 
-    fn only_languages(mut self, languages: &[Language]) -> Self {
-        self.languages = languages.iter().copied().collect();
-        self
-    }
-
     fn with_enums(mut self, enums: Vec<IrEnumDeclaration>) -> Self {
         self.enums = enums;
         self
@@ -1552,55 +1547,62 @@ mod tests {
         check(
             TestCase::new(
                 build_ir("Test", [], |t| {
-                    // Match directly on Some literal
-                    t.option_match_stmt(
-                        t.some(t.str("world")),
-                        Some("val"),
-                        |t| {
-                            t.write("Got:");
-                            t.write_expr(t.var("val"), false);
-                        },
-                        |t| {
-                            t.write("Empty");
-                        },
-                    );
+                    // Match on Some literal via let binding
+                    t.let_stmt("opt1", t.some(t.str("world")), |t| {
+                        t.option_match_stmt(
+                            t.var("opt1"),
+                            Some("val"),
+                            |t| {
+                                t.write("Got:");
+                                t.write_expr(t.var("val"), false);
+                            },
+                            |t| {
+                                t.write("Empty");
+                            },
+                        );
+                    });
                     t.write(",");
-                    // Match directly on None literal
-                    t.option_match_stmt(
-                        t.none(Type::String),
-                        Some("val"),
-                        |t| {
-                            t.write("Got:");
-                            t.write_expr(t.var("val"), false);
-                        },
-                        |t| {
-                            t.write("Empty");
-                        },
-                    );
+                    // Match on None literal via let binding
+                    t.let_stmt("opt2", t.none(Type::String), |t| {
+                        t.option_match_stmt(
+                            t.var("opt2"),
+                            Some("val"),
+                            |t| {
+                                t.write("Got:");
+                                t.write_expr(t.var("val"), false);
+                            },
+                            |t| {
+                                t.write("Empty");
+                            },
+                        );
+                    });
                 }),
                 "Got:world,Empty",
-            )
-            .only_languages(&[Language::TypeScript, Language::Go]),
+            ),
             expect![[r#"
                 -- input --
                 Test() {
-                  match Some("world") {
-                    Some(val) => {
-                      write("Got:")
-                      write_expr(val)
-                    }
-                    None => {
-                      write("Empty")
+                  let opt1 = Some("world") in {
+                    match opt1 {
+                      Some(val) => {
+                        write("Got:")
+                        write_expr(val)
+                      }
+                      None => {
+                        write("Empty")
+                      }
                     }
                   }
                   write(",")
-                  match None {
-                    Some(val) => {
-                      write("Got:")
-                      write_expr(val)
-                    }
-                    None => {
-                      write("Empty")
+                  let opt2 = None in {
+                    match opt2 {
+                      Some(val) => {
+                        write("Got:")
+                        write_expr(val)
+                      }
+                      None => {
+                        write("Empty")
+                      }
                     }
                   }
                 }
@@ -1609,6 +1611,8 @@ mod tests {
                 -- ts --
                 OK
                 -- go --
+                OK
+                -- python --
                 OK
             "#]],
         );
@@ -1622,32 +1626,46 @@ mod tests {
         check(
             TestCase::new(
                 build_ir("Test", [], |t| {
-                    // Match expression directly on Some literal
-                    let result = t.option_match_expr(t.some(t.str("hi")), t.str("some"), t.str("none"));
-                    t.write_expr(result, false);
+                    // Match expression on Some variable
+                    t.let_stmt("opt1", t.some(t.str("hi")), |t| {
+                        let result =
+                            t.option_match_expr(t.var("opt1"), t.str("some"), t.str("none"));
+                        t.write_expr(result, false);
+                    });
                     t.write(",");
-                    // Match expression directly on None literal
-                    let result2 = t.option_match_expr(t.none(Type::String), t.str("SOME"), t.str("NONE"));
-                    t.write_expr(result2, false);
+                    // Match expression on None variable
+                    t.let_stmt("opt2", t.none(Type::String), |t| {
+                        let result2 =
+                            t.option_match_expr(t.var("opt2"), t.str("SOME"), t.str("NONE"));
+                        t.write_expr(result2, false);
+                    });
                 }),
                 "some,NONE",
-            )
-            .only_languages(&[Language::TypeScript, Language::Go]),
+            ),
             expect![[r#"
                 -- input --
                 Test() {
-                  write_expr(match Some("hi") {
-                    Some(_) => "some",
-                    None => "none",
-                  })
+                  let opt1 = Some("hi") in {
+                    write_expr(match opt1 {
+                      Some(_) => "some",
+                      None => "none",
+                    })
+                  }
                   write(",")
-                  write_expr(match None {Some(_) => "SOME", None => "NONE"})
+                  let opt2 = None in {
+                    write_expr(match opt2 {
+                      Some(_) => "SOME",
+                      None => "NONE",
+                    })
+                  }
                 }
                 -- expected output --
                 some,NONE
                 -- ts --
                 OK
                 -- go --
+                OK
+                -- python --
                 OK
             "#]],
         );
@@ -1661,44 +1679,53 @@ mod tests {
         check(
             TestCase::new(
                 build_ir("Test", [], |t| {
-                    // match Some("val") { Some(x) => Some(x), None => None }
+                    // match inner { Some(x) => Some(x), None => None }
                     // Then match on the result
-                    let inner = t.some(t.str("hello"));
-                    let mapped = t.option_match_expr_with_binding(
-                        inner,
-                        "x",
-                        Type::String,
-                        |t| t.some(t.var("x")),  // Return Some(x)
-                        t.none(Type::String),    // Return None
-                    );
-                    t.option_match_stmt(
-                        mapped,
-                        Some("result"),
-                        |t| {
-                            t.write("mapped:");
-                            t.write_expr(t.var("result"), false);
-                        },
-                        |t| {
-                            t.write("was-none");
-                        },
-                    );
+                    t.let_stmt("inner", t.some(t.str("hello")), |t| {
+                        t.let_stmt(
+                            "mapped",
+                            t.option_match_expr_with_binding(
+                                t.var("inner"),
+                                "x",
+                                Type::String,
+                                |t| t.some(t.var("x")), // Return Some(x)
+                                t.none(Type::String),   // Return None
+                            ),
+                            |t| {
+                                t.option_match_stmt(
+                                    t.var("mapped"),
+                                    Some("result"),
+                                    |t| {
+                                        t.write("mapped:");
+                                        t.write_expr(t.var("result"), false);
+                                    },
+                                    |t| {
+                                        t.write("was-none");
+                                    },
+                                );
+                            },
+                        );
+                    });
                 }),
                 "mapped:hello",
-            )
-            .only_languages(&[Language::TypeScript, Language::Go]),
+            ),
             expect![[r#"
                 -- input --
                 Test() {
-                  match match Some("hello") {
-                    Some(x) => Some(x),
-                    None => None,
-                  } {
-                    Some(result) => {
-                      write("mapped:")
-                      write_expr(result)
-                    }
-                    None => {
-                      write("was-none")
+                  let inner = Some("hello") in {
+                    let mapped = match inner {
+                      Some(x) => Some(x),
+                      None => None,
+                    } in {
+                      match mapped {
+                        Some(result) => {
+                          write("mapped:")
+                          write_expr(result)
+                        }
+                        None => {
+                          write("was-none")
+                        }
+                      }
                     }
                   }
                 }
@@ -1707,6 +1734,8 @@ mod tests {
                 -- ts --
                 OK
                 -- go --
+                OK
+                -- python --
                 OK
             "#]],
         );
@@ -1721,41 +1750,46 @@ mod tests {
             TestCase::new(
                 build_ir("Test", [], |t| {
                     // Some(match innerOpt { Some(x) => x, None => "default" })
-                    let inner_opt = t.some(t.str("inner"));
-                    let match_result = t.option_match_expr_with_binding(
-                        inner_opt,
-                        "x",
-                        Type::String,
-                        |t| t.var("x"),
-                        t.str("default"),
-                    );
-                    let outer = t.some(match_result);
-                    t.option_match_stmt(
-                        outer,
-                        Some("val"),
-                        |t| {
-                            t.write_expr(t.var("val"), false);
-                        },
-                        |t| {
-                            t.write("none");
-                        },
-                    );
+                    t.let_stmt("inner_opt", t.some(t.str("inner")), |t| {
+                        let match_result = t.option_match_expr_with_binding(
+                            t.var("inner_opt"),
+                            "x",
+                            Type::String,
+                            |t| t.var("x"),
+                            t.str("default"),
+                        );
+                        t.let_stmt("outer", t.some(match_result), |t| {
+                            t.option_match_stmt(
+                                t.var("outer"),
+                                Some("val"),
+                                |t| {
+                                    t.write_expr(t.var("val"), false);
+                                },
+                                |t| {
+                                    t.write("none");
+                                },
+                            );
+                        });
+                    });
                 }),
                 "inner",
-            )
-            .only_languages(&[Language::TypeScript, Language::Go]),
+            ),
             expect![[r#"
                 -- input --
                 Test() {
-                  match Some(match Some("inner") {
-                    Some(x) => x,
-                    None => "default",
-                  }) {
-                    Some(val) => {
-                      write_expr(val)
-                    }
-                    None => {
-                      write("none")
+                  let inner_opt = Some("inner") in {
+                    let outer = Some(match inner_opt {
+                      Some(x) => x,
+                      None => "default",
+                    }) in {
+                      match outer {
+                        Some(val) => {
+                          write_expr(val)
+                        }
+                        None => {
+                          write("none")
+                        }
+                      }
                     }
                   }
                 }
@@ -1764,6 +1798,8 @@ mod tests {
                 -- ts --
                 OK
                 -- go --
+                OK
+                -- python --
                 OK
             "#]],
         );
@@ -1837,98 +1873,111 @@ mod tests {
                 build_ir("Test", [], |t| {
                     // Some(Some("deep"))
                     let nested_some = t.some(t.some(t.str("deep")));
-                    let result = t.option_match_expr_with_binding(
-                        nested_some,
-                        "outer",
-                        Type::Option(Box::new(Type::String)),
-                        |t| {
-                            t.option_match_expr_with_binding(
-                                t.var("outer"),
-                                "inner",
-                                Type::String,
-                                |t| t.var("inner"),
-                                t.str("inner-none"),
-                            )
-                        },
-                        t.str("outer-none"),
-                    );
-                    t.write_expr(result, false);
-                    t.write(",");
+                    t.let_stmt("nested1", nested_some, |t| {
+                        let result = t.option_match_expr_with_binding(
+                            t.var("nested1"),
+                            "outer",
+                            Type::Option(Box::new(Type::String)),
+                            |t| {
+                                t.option_match_expr_with_binding(
+                                    t.var("outer"),
+                                    "inner",
+                                    Type::String,
+                                    |t| t.var("inner"),
+                                    t.str("inner-none"),
+                                )
+                            },
+                            t.str("outer-none"),
+                        );
+                        t.write_expr(result, false);
+                        t.write(",");
 
-                    // Some(None)
-                    let some_none = t.some(t.none(Type::String));
-                    let result2 = t.option_match_expr_with_binding(
-                        some_none,
-                        "outer",
-                        Type::Option(Box::new(Type::String)),
-                        |t| {
-                            t.option_match_expr_with_binding(
-                                t.var("outer"),
-                                "inner",
-                                Type::String,
-                                |t| t.var("inner"),
-                                t.str("inner-none"),
-                            )
-                        },
-                        t.str("outer-none"),
-                    );
-                    t.write_expr(result2, false);
-                    t.write(",");
+                        // Some(None)
+                        let some_none = t.some(t.none(Type::String));
+                        t.let_stmt("nested2", some_none, |t| {
+                            let result2 = t.option_match_expr_with_binding(
+                                t.var("nested2"),
+                                "outer",
+                                Type::Option(Box::new(Type::String)),
+                                |t| {
+                                    t.option_match_expr_with_binding(
+                                        t.var("outer"),
+                                        "inner",
+                                        Type::String,
+                                        |t| t.var("inner"),
+                                        t.str("inner-none"),
+                                    )
+                                },
+                                t.str("outer-none"),
+                            );
+                            t.write_expr(result2, false);
+                            t.write(",");
 
-                    // None (outer)
-                    let outer_none = t.none(Type::Option(Box::new(Type::String)));
-                    let result3 = t.option_match_expr_with_binding(
-                        outer_none,
-                        "outer",
-                        Type::Option(Box::new(Type::String)),
-                        |t| {
-                            t.option_match_expr_with_binding(
-                                t.var("outer"),
-                                "inner",
-                                Type::String,
-                                |t| t.var("inner"),
-                                t.str("inner-none"),
-                            )
-                        },
-                        t.str("outer-none"),
-                    );
-                    t.write_expr(result3, false);
+                            // None (outer)
+                            let outer_none = t.none(Type::Option(Box::new(Type::String)));
+                            t.let_stmt("nested3", outer_none, |t| {
+                                let result3 = t.option_match_expr_with_binding(
+                                    t.var("nested3"),
+                                    "outer",
+                                    Type::Option(Box::new(Type::String)),
+                                    |t| {
+                                        t.option_match_expr_with_binding(
+                                            t.var("outer"),
+                                            "inner",
+                                            Type::String,
+                                            |t| t.var("inner"),
+                                            t.str("inner-none"),
+                                        )
+                                    },
+                                    t.str("outer-none"),
+                                );
+                                t.write_expr(result3, false);
+                            });
+                        });
+                    });
                 }),
                 "deep,inner-none,outer-none",
-            )
-            .only_languages(&[Language::TypeScript, Language::Go]),
+            ),
             expect![[r#"
                 -- input --
                 Test() {
-                  write_expr(match Some(Some("deep")) {
-                    Some(outer) => match outer {
-                      Some(inner) => inner,
-                      None => "inner-none",
-                    },
-                    None => "outer-none",
-                  })
-                  write(",")
-                  write_expr(match Some(None) {
-                    Some(outer) => match outer {
-                      Some(inner) => inner,
-                      None => "inner-none",
-                    },
-                    None => "outer-none",
-                  })
-                  write(",")
-                  write_expr(match None {
-                    Some(outer) => match outer {
-                      Some(inner) => inner,
-                      None => "inner-none",
-                    },
-                    None => "outer-none",
-                  })
+                  let nested1 = Some(Some("deep")) in {
+                    write_expr(match nested1 {
+                      Some(outer) => match outer {
+                        Some(inner) => inner,
+                        None => "inner-none",
+                      },
+                      None => "outer-none",
+                    })
+                    write(",")
+                    let nested2 = Some(None) in {
+                      write_expr(match nested2 {
+                        Some(outer) => match outer {
+                          Some(inner) => inner,
+                          None => "inner-none",
+                        },
+                        None => "outer-none",
+                      })
+                      write(",")
+                      let nested3 = None in {
+                        write_expr(match nested3 {
+                          Some(outer) => match outer {
+                            Some(inner) => inner,
+                            None => "inner-none",
+                          },
+                          None => "outer-none",
+                        })
+                      }
+                    }
+                  }
                 }
                 -- expected output --
                 deep,inner-none,outer-none
                 -- ts --
                 OK
                 -- go --
+                OK
+                -- python --
                 OK
             "#]],
         );

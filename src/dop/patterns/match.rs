@@ -18,51 +18,35 @@ pub struct EnumMatchArm<Body> {
 
 /// A match that can be used for different expression and statement types.
 ///
-/// - `Subject`: The type of the expression being matched on
+/// The subject must be a variable reference (VarName, Type), not an arbitrary expression.
+/// If matching on an expression, create a let binding first.
+///
 /// - `Body`: The type of the arm bodies (expressions or statements)
 #[derive(Debug, Clone, PartialEq)]
-pub enum Match<Subject, Body> {
+pub enum Match<Body> {
     /// An enum match, e.g. `match color { Color::Red => "red", ... }`
     Enum {
-        subject: Box<Subject>,
+        subject: (VarName, Type),
         arms: Vec<EnumMatchArm<Body>>,
     },
 
     /// A boolean match, e.g. `match flag { true => "yes", false => "no" }`
     Bool {
-        subject: Box<Subject>,
+        subject: (VarName, Type),
         true_body: Box<Body>,
         false_body: Box<Body>,
     },
 
     /// An option match, e.g. `match opt { Some(x) => x, None => "empty" }`
     Option {
-        subject: Box<Subject>,
+        subject: (VarName, Type),
         some_arm_binding: Option<(VarName, Type)>,
         some_arm_body: Box<Body>,
         none_arm_body: Box<Body>,
     },
 }
 
-impl<Subject, Body> Match<Subject, Body> {
-    /// Get a reference to the subject expression
-    pub fn subject(&self) -> &Subject {
-        match self {
-            Match::Enum { subject, .. }
-            | Match::Bool { subject, .. }
-            | Match::Option { subject, .. } => subject,
-        }
-    }
-
-    /// Get a mutable reference to the subject expression
-    pub fn subject_mut(&mut self) -> &mut Subject {
-        match self {
-            Match::Enum { subject, .. }
-            | Match::Bool { subject, .. }
-            | Match::Option { subject, .. } => subject,
-        }
-    }
-
+impl<Body> Match<Body> {
     /// Get references to all body branches
     pub fn bodies(&self) -> Vec<&Body> {
         match self {

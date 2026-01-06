@@ -10,6 +10,15 @@ use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use std::cell::RefCell;
 
+/// Helper function to extract (VarName, Type) from a TypedExpr.
+/// Panics if the expression is not a variable reference.
+fn extract_var_subject(expr: &TypedExpr) -> (VarName, Type) {
+    match expr {
+        TypedExpr::Var { value, kind, .. } => (value.clone(), kind.clone()),
+        _ => panic!("Match subject must be a variable reference, got {:?}", expr),
+    }
+}
+
 pub fn build_inlined<F, P>(tag_name: &str, params: P, children_fn: F) -> InlinedComponentDeclaration
 where
     F: FnOnce(&mut InlinedBuilder),
@@ -227,7 +236,7 @@ impl InlinedBuilder {
 
         self.children.push(InlinedNode::Match {
             match_: Match::Bool {
-                subject: Box::new(subject),
+                subject: extract_var_subject(&subject),
                 true_body: Box::new(true_builder.children),
                 false_body: Box::new(false_builder.children),
             },
