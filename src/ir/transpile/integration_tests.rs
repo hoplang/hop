@@ -34,11 +34,6 @@ impl TestCase {
         }
     }
 
-    fn only_languages(mut self, languages: &[Language]) -> Self {
-        self.languages = languages.iter().copied().collect();
-        self
-    }
-
     fn with_enums(mut self, enums: Vec<IrEnumDeclaration>) -> Self {
         self.enums = enums;
         self
@@ -2096,8 +2091,7 @@ mod tests {
                 }),
                 "green",
             )
-            .with_enums(enum_declarations)
-            .only_languages(&[Language::TypeScript, Language::Python]),
+            .with_enums(enum_declarations),
             expect![[r#"
                 -- input --
                 Test() {
@@ -2112,6 +2106,8 @@ mod tests {
                 -- expected output --
                 green
                 -- ts --
+                OK
+                -- go --
                 OK
                 -- python --
                 OK
@@ -2151,8 +2147,7 @@ mod tests {
                 }),
                 "not eq",
             )
-            .with_enums(enum_declarations)
-            .only_languages(&[Language::TypeScript, Language::Python]),
+            .with_enums(enum_declarations),
             expect![[r#"
                 -- input --
                 Test() {
@@ -2164,6 +2159,8 @@ mod tests {
                 -- expected output --
                 not eq
                 -- ts --
+                OK
+                -- go --
                 OK
                 -- python --
                 OK
@@ -2203,8 +2200,7 @@ mod tests {
                 }),
                 "blue",
             )
-            .with_enums(enum_declarations)
-            .only_languages(&[Language::TypeScript, Language::Python]),
+            .with_enums(enum_declarations),
             expect![[r#"
                 -- input --
                 Test() {
@@ -2225,6 +2221,8 @@ mod tests {
                 -- expected output --
                 blue
                 -- ts --
+                OK
+                -- go --
                 OK
                 -- python --
                 OK

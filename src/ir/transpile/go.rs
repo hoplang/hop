@@ -510,10 +510,22 @@ impl StatementTranspiler for GoTranspiler {
         value: &'a IrExpr,
         body: &'a [IrStatement],
     ) -> BoxDoc<'a> {
-        BoxDoc::text(var)
-            .append(BoxDoc::text(" := "))
-            .append(self.transpile_expr(value))
-            .append(BoxDoc::line())
+        // For enum types, use `var x EnumType = value` to ensure interface type
+        // This is needed for type switches to work properly
+        let decl = if let Type::Enum { name, .. } = value.as_type() {
+            BoxDoc::text("var ")
+                .append(BoxDoc::text(var))
+                .append(BoxDoc::text(" "))
+                .append(BoxDoc::text(name.as_str()))
+                .append(BoxDoc::text(" = "))
+                .append(self.transpile_expr(value))
+        } else {
+            BoxDoc::text(var)
+                .append(BoxDoc::text(" := "))
+                .append(self.transpile_expr(value))
+        };
+
+        decl.append(BoxDoc::line())
             .append(self.transpile_statements(body))
     }
 
@@ -584,8 +596,38 @@ impl StatementTranspiler for GoTranspiler {
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("}"))
             }
-            Match::Enum { .. } => {
-                todo!()
+            Match::Enum { subject, arms } => {
+                // switch subject.(type) {
+                // case EnumNameVariantName:
+                //     [[statements]]
+                // [[...]]
+                // }
+                let cases = BoxDoc::intersperse(
+                    arms.iter().map(|arm| match &arm.pattern {
+                        crate::dop::patterns::EnumPattern::Variant {
+                            enum_name,
+                            variant_name,
+                        } => {
+                            let struct_name = format!("{}{}", enum_name, variant_name);
+                            BoxDoc::text("case ")
+                                .append(BoxDoc::text(struct_name))
+                                .append(BoxDoc::text(":"))
+                                .append(
+                                    BoxDoc::line()
+                                        .append(self.transpile_statements(&arm.body))
+                                        .nest(1),
+                                )
+                        }
+                    }),
+                    BoxDoc::line(),
+                );
+
+                BoxDoc::text("switch ")
+                    .append(BoxDoc::text(subject.0.as_str()))
+                    .append(BoxDoc::text(".(type) {"))
+                    .append(BoxDoc::line().append(cases).nest(1))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("}"))
             }
         }
     }
@@ -957,8 +999,53 @@ impl ExpressionTranspiler for GoTranspiler {
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("}()"))
             }
-            Match::Enum { .. } => {
-                panic!("Enum match expressions are not yet supported in Go transpilation")
+            Match::Enum { subject, arms } => {
+                // func() ReturnType {
+                //     switch subject.(type) {
+                //     case EnumNameVariantName:
+                //         return body
+                //     [[...]]
+                //     }
+                //     panic("unreachable")
+                // }()
+                let return_type = self.transpile_type(arms[0].body.as_type());
+
+                let cases = BoxDoc::intersperse(
+                    arms.iter().map(|arm| match &arm.pattern {
+                        crate::dop::patterns::EnumPattern::Variant {
+                            enum_name,
+                            variant_name,
+                        } => {
+                            let struct_name = format!("{}{}", enum_name, variant_name);
+                            BoxDoc::text("case ")
+                                .append(BoxDoc::text(struct_name))
+                                .append(BoxDoc::text(":"))
+                                .append(
+                                    BoxDoc::line()
+                                        .append(BoxDoc::text("return "))
+                                        .append(self.transpile_expr(&arm.body))
+                                        .nest(2),
+                                )
+                        }
+                    }),
+                    BoxDoc::line(),
+                );
+
+                let switch_body = BoxDoc::text("switch ")
+                    .append(BoxDoc::text(subject.0.as_str()))
+                    .append(BoxDoc::text(".(type) {"))
+                    .append(BoxDoc::line().append(cases).nest(2))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("}"))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("panic(\"unreachable\")"));
+
+                BoxDoc::text("func() ")
+                    .append(return_type)
+                    .append(BoxDoc::text(" {"))
+                    .append(BoxDoc::line().append(switch_body).nest(2))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("}()"))
             }
         }
     }
@@ -971,14 +1058,28 @@ impl ExpressionTranspiler for GoTranspiler {
     ) -> BoxDoc<'a> {
         // func() returnType { var := value; return body }()
         let return_type = self.transpile_type(body.as_type());
+
+        // For enum types, use `var x EnumType = value` to ensure interface type
+        // This is needed for type switches to work properly
+        let decl = if let Type::Enum { name, .. } = value.as_type() {
+            BoxDoc::text("var ")
+                .append(BoxDoc::text(var.as_str()))
+                .append(BoxDoc::text(" "))
+                .append(BoxDoc::text(name.as_str()))
+                .append(BoxDoc::text(" = "))
+                .append(self.transpile_expr(value))
+        } else {
+            BoxDoc::text(var.as_str())
+                .append(BoxDoc::text(" := "))
+                .append(self.transpile_expr(value))
+        };
+
         BoxDoc::text("func() ")
             .append(return_type)
             .append(BoxDoc::text(" {"))
             .append(
                 BoxDoc::line()
-                    .append(BoxDoc::text(var.as_str()))
-                    .append(BoxDoc::text(" := "))
-                    .append(self.transpile_expr(value))
+                    .append(decl)
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("return "))
                     .append(self.transpile_expr(body))
@@ -1982,6 +2083,201 @@ mod tests {
                 	} else {
                 		io.WriteString(w, "<span class=\"inactive\">Inactive</span>")
                 	}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_match_statement() {
+        use crate::dop::symbols::type_name::TypeName;
+        use crate::hop::symbols::module_name::ModuleName;
+
+        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
+
+        let color_type = Type::Enum {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Color").unwrap(),
+            variants: vec![
+                TypeName::new("Red").unwrap(),
+                TypeName::new("Green").unwrap(),
+                TypeName::new("Blue").unwrap(),
+            ],
+        };
+
+        let module =
+            build_module_with_enums("ColorName", vec![("color", color_type)], enums, |t| {
+                t.enum_match_stmt(
+                    t.var("color"),
+                    vec![
+                        ("Red", Box::new(|t: &mut crate::ir::syntax::builder::IrBuilder| t.write("red"))),
+                        ("Green", Box::new(|t: &mut crate::ir::syntax::builder::IrBuilder| t.write("green"))),
+                        ("Blue", Box::new(|t: &mut crate::ir::syntax::builder::IrBuilder| t.write("blue"))),
+                    ],
+                );
+            });
+
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                ColorName(color: test::Color) {
+                  match color {
+                    Color::Red => {
+                      write("red")
+                    }
+                    Color::Green => {
+                      write("green")
+                    }
+                    Color::Blue => {
+                      write("blue")
+                    }
+                  }
+                }
+
+                -- after --
+                package components
+
+                import (
+                	"io"
+                )
+
+                type Color interface {
+                	Equals(o Color) bool
+                }
+
+                type ColorRed struct{}
+
+                func (e ColorRed) Equals(o Color) bool {
+                	_, ok := o.(ColorRed)
+                	return ok
+                }
+
+                type ColorGreen struct{}
+
+                func (e ColorGreen) Equals(o Color) bool {
+                	_, ok := o.(ColorGreen)
+                	return ok
+                }
+
+                type ColorBlue struct{}
+
+                func (e ColorBlue) Equals(o Color) bool {
+                	_, ok := o.(ColorBlue)
+                	return ok
+                }
+
+                type ColorNameParams struct {
+                	Color Color `json:"color"`
+                }
+
+                func ColorName(w io.Writer, params ColorNameParams) {
+                	color := params.Color
+                	switch color.(type) {
+                		case ColorRed:
+                			io.WriteString(w, "red")
+                		case ColorGreen:
+                			io.WriteString(w, "green")
+                		case ColorBlue:
+                			io.WriteString(w, "blue")
+                	}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_match_expression() {
+        use crate::dop::symbols::type_name::TypeName;
+
+        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
+
+        let module = build_module_with_enums("ColorName", vec![], enums, |t| {
+            t.let_stmt("color", t.enum_variant("Color", "Green"), |t| {
+                let result = t.match_expr(
+                    t.var("color"),
+                    vec![
+                        ("Red", t.str("red")),
+                        ("Green", t.str("green")),
+                        ("Blue", t.str("blue")),
+                    ],
+                );
+                t.write_expr(result, false);
+            });
+        });
+
+        // Add enum declarations to module
+        let module = IrModule {
+            enums: vec![crate::ir::ast::IrEnumDeclaration {
+                name: "Color".to_string(),
+                variants: vec![
+                    TypeName::new("Red").unwrap(),
+                    TypeName::new("Green").unwrap(),
+                    TypeName::new("Blue").unwrap(),
+                ],
+            }],
+            ..module
+        };
+
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                ColorName() {
+                  let color = Color::Green in {
+                    write_expr(match color {
+                      Color::Red => "red",
+                      Color::Green => "green",
+                      Color::Blue => "blue",
+                    })
+                  }
+                }
+
+                -- after --
+                package components
+
+                import (
+                	"io"
+                )
+
+                type Color interface {
+                	Equals(o Color) bool
+                }
+
+                type ColorRed struct{}
+
+                func (e ColorRed) Equals(o Color) bool {
+                	_, ok := o.(ColorRed)
+                	return ok
+                }
+
+                type ColorGreen struct{}
+
+                func (e ColorGreen) Equals(o Color) bool {
+                	_, ok := o.(ColorGreen)
+                	return ok
+                }
+
+                type ColorBlue struct{}
+
+                func (e ColorBlue) Equals(o Color) bool {
+                	_, ok := o.(ColorBlue)
+                	return ok
+                }
+
+                func ColorName(w io.Writer) {
+                	var color Color = ColorGreen{}
+                	io.WriteString(w, func() string {
+                			switch color.(type) {
+                					case ColorRed:
+                							return "red"
+                					case ColorGreen:
+                							return "green"
+                					case ColorBlue:
+                							return "blue"
+                			}
+                			panic("unreachable")
+                	}())
                 }
             "#]],
         );
