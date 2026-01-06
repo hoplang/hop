@@ -325,9 +325,46 @@ impl IrBuilder {
         }
     }
 
+    pub fn less_than_or_equal(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        match (left.as_type(), right.as_type()) {
+            (Type::Int, Type::Int) => IrExpr::LessThanOrEqual {
+                left: Box::new(left),
+                right: Box::new(right),
+                operand_types: ComparableType::Int,
+                id: self.next_expr_id(),
+            },
+            (Type::Float, Type::Float) => IrExpr::LessThanOrEqual {
+                left: Box::new(left),
+                right: Box::new(right),
+                operand_types: ComparableType::Float,
+                id: self.next_expr_id(),
+            },
+            _ => panic!(
+                "Unsupported type for less than or equal comparison: {:?}",
+                left.as_type()
+            ),
+        }
+    }
+
     pub fn not(&self, operand: IrExpr) -> IrExpr {
         IrExpr::BooleanNegation {
             operand: Box::new(operand),
+            id: self.next_expr_id(),
+        }
+    }
+
+    pub fn and(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        IrExpr::BooleanLogicalAnd {
+            left: Box::new(left),
+            right: Box::new(right),
+            id: self.next_expr_id(),
+        }
+    }
+
+    pub fn or(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        IrExpr::BooleanLogicalOr {
+            left: Box::new(left),
+            right: Box::new(right),
             id: self.next_expr_id(),
         }
     }
@@ -596,6 +633,63 @@ impl IrBuilder {
             left: Box::new(left),
             right: Box::new(right),
             id: self.next_expr_id(),
+        }
+    }
+
+    pub fn add(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        use crate::dop::semantics::r#type::NumericType;
+        match (left.as_type(), right.as_type()) {
+            (Type::Int, Type::Int) => IrExpr::NumericAdd {
+                left: Box::new(left),
+                right: Box::new(right),
+                operand_types: NumericType::Int,
+                id: self.next_expr_id(),
+            },
+            (Type::Float, Type::Float) => IrExpr::NumericAdd {
+                left: Box::new(left),
+                right: Box::new(right),
+                operand_types: NumericType::Float,
+                id: self.next_expr_id(),
+            },
+            _ => panic!("Unsupported types for addition: {:?}", left.as_type()),
+        }
+    }
+
+    pub fn subtract(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        use crate::dop::semantics::r#type::NumericType;
+        match (left.as_type(), right.as_type()) {
+            (Type::Int, Type::Int) => IrExpr::NumericSubtract {
+                left: Box::new(left),
+                right: Box::new(right),
+                operand_types: NumericType::Int,
+                id: self.next_expr_id(),
+            },
+            (Type::Float, Type::Float) => IrExpr::NumericSubtract {
+                left: Box::new(left),
+                right: Box::new(right),
+                operand_types: NumericType::Float,
+                id: self.next_expr_id(),
+            },
+            _ => panic!("Unsupported types for subtraction: {:?}", left.as_type()),
+        }
+    }
+
+    pub fn multiply(&self, left: IrExpr, right: IrExpr) -> IrExpr {
+        use crate::dop::semantics::r#type::NumericType;
+        match (left.as_type(), right.as_type()) {
+            (Type::Int, Type::Int) => IrExpr::NumericMultiply {
+                left: Box::new(left),
+                right: Box::new(right),
+                operand_types: NumericType::Int,
+                id: self.next_expr_id(),
+            },
+            (Type::Float, Type::Float) => IrExpr::NumericMultiply {
+                left: Box::new(left),
+                right: Box::new(right),
+                operand_types: NumericType::Float,
+                id: self.next_expr_id(),
+            },
+            _ => panic!("Unsupported types for multiplication: {:?}", left.as_type()),
         }
     }
 

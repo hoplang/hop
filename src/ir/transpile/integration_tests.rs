@@ -28,6 +28,21 @@ impl TestCase {
         self.enums = enums;
         self
     }
+
+    fn with_records(mut self, records: Vec<(&str, Vec<(&str, crate::dop::Type)>)>) -> Self {
+        use crate::dop::symbols::field_name::FieldName;
+        self.records = records
+            .into_iter()
+            .map(|(name, fields)| IrRecordDeclaration {
+                name: name.to_string(),
+                fields: fields
+                    .into_iter()
+                    .map(|(k, v)| (FieldName::new(k).unwrap(), v))
+                    .collect(),
+            })
+            .collect();
+        self
+    }
 }
 
 fn execute_typescript(code: &str) -> Result<String, String> {
@@ -953,6 +968,405 @@ mod tests {
                 }
                 -- expected output --
                 no
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn field_access() {
+        use crate::dop::Type;
+        use crate::ir::syntax::builder::build_ir_with_records;
+
+        let records = vec![("Person", vec![("name", Type::String), ("age", Type::Int)])];
+
+        check(
+            TestCase::new(
+                build_ir_with_records("Test", [], records.clone(), |t| {
+                    t.let_stmt(
+                        "person",
+                        t.record("Person", vec![("name", t.str("Alice")), ("age", t.int(30))]),
+                        |t| {
+                            let person = t.var("person");
+                            let name = t.field_access(person, "name");
+                            t.write_expr(name, false);
+                            let person = t.var("person");
+                            let age = t.field_access(person, "age");
+                            t.if_stmt(t.eq(age, t.int(30)), |t| {
+                                t.write(":30");
+                            });
+                        },
+                    );
+                }),
+                "Alice:30",
+            )
+            .with_records(records),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let person = Person(name: "Alice", age: 30) in {
+                    write_expr(person.name)
+                    if (person.age == 30) {
+                      write(":30")
+                    }
+                  }
+                }
+                -- expected output --
+                Alice:30
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn record_literal() {
+        use crate::dop::Type;
+        use crate::ir::syntax::builder::build_ir_with_records;
+
+        let records = vec![(
+            "Item",
+            vec![
+                ("label", Type::String),
+                ("count", Type::Int),
+                ("active", Type::Bool),
+            ],
+        )];
+
+        check(
+            TestCase::new(
+                build_ir_with_records("Test", [], records.clone(), |t| {
+                    t.let_stmt(
+                        "item",
+                        t.record(
+                            "Item",
+                            vec![
+                                ("label", t.str("widget")),
+                                ("count", t.int(5)),
+                                ("active", t.bool(true)),
+                            ],
+                        ),
+                        |t| {
+                            let item = t.var("item");
+                            let label = t.field_access(item, "label");
+                            t.write_expr(label, false);
+                            let item = t.var("item");
+                            let count = t.field_access(item, "count");
+                            t.if_stmt(t.eq(count, t.int(5)), |t| {
+                                t.write(",5");
+                            });
+                            t.write(",");
+                            let item = t.var("item");
+                            let active = t.field_access(item, "active");
+                            t.if_stmt(active, |t| {
+                                t.write("active");
+                            });
+                        },
+                    );
+                }),
+                "widget,5,active",
+            )
+            .with_records(records),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let item = Item(
+                    label: "widget",
+                    count: 5,
+                    active: true,
+                  ) in {
+                    write_expr(item.label)
+                    if (item.count == 5) {
+                      write(",5")
+                    }
+                    write(",")
+                    if item.active {
+                      write("active")
+                    }
+                  }
+                }
+                -- expected output --
+                widget,5,active
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn numeric_add() {
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.let_stmt("a", t.int(3), |t| {
+                        t.let_stmt("b", t.int(7), |t| {
+                            let sum = t.add(t.var("a"), t.var("b"));
+                            t.if_stmt(t.eq(sum, t.int(10)), |t| {
+                                t.write("correct");
+                            });
+                        });
+                    });
+                }),
+                "correct",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let a = 3 in {
+                    let b = 7 in {
+                      if ((a + b) == 10) {
+                        write("correct")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                correct
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn numeric_subtract() {
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.let_stmt("a", t.int(10), |t| {
+                        t.let_stmt("b", t.int(3), |t| {
+                            let diff = t.subtract(t.var("a"), t.var("b"));
+                            t.if_stmt(t.eq(diff, t.int(7)), |t| {
+                                t.write("correct");
+                            });
+                        });
+                    });
+                }),
+                "correct",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let a = 10 in {
+                    let b = 3 in {
+                      if ((a - b) == 7) {
+                        write("correct")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                correct
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn numeric_multiply() {
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.let_stmt("a", t.int(4), |t| {
+                        t.let_stmt("b", t.int(5), |t| {
+                            let product = t.multiply(t.var("a"), t.var("b"));
+                            t.if_stmt(t.eq(product, t.int(20)), |t| {
+                                t.write("correct");
+                            });
+                        });
+                    });
+                }),
+                "correct",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let a = 4 in {
+                    let b = 5 in {
+                      if ((a * b) == 20) {
+                        write("correct")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                correct
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn boolean_logical_and() {
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.let_stmt("a", t.bool(true), |t| {
+                        t.let_stmt("b", t.bool(true), |t| {
+                            t.if_stmt(t.and(t.var("a"), t.var("b")), |t| {
+                                t.write("TT");
+                            });
+                        });
+                    });
+                    t.let_stmt("c", t.bool(true), |t| {
+                        t.let_stmt("d", t.bool(false), |t| {
+                            t.if_stmt(t.and(t.var("c"), t.var("d")), |t| {
+                                t.write("TF");
+                            });
+                        });
+                    });
+                }),
+                "TT",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let a = true in {
+                    let b = true in {
+                      if (a && b) {
+                        write("TT")
+                      }
+                    }
+                  }
+                  let c = true in {
+                    let d = false in {
+                      if (c && d) {
+                        write("TF")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                TT
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn boolean_logical_or() {
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.let_stmt("a", t.bool(false), |t| {
+                        t.let_stmt("b", t.bool(true), |t| {
+                            t.if_stmt(t.or(t.var("a"), t.var("b")), |t| {
+                                t.write("FT");
+                            });
+                        });
+                    });
+                    t.let_stmt("c", t.bool(false), |t| {
+                        t.let_stmt("d", t.bool(false), |t| {
+                            t.if_stmt(t.or(t.var("c"), t.var("d")), |t| {
+                                t.write("FF");
+                            });
+                        });
+                    });
+                }),
+                "FT",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let a = false in {
+                    let b = true in {
+                      if (a || b) {
+                        write("FT")
+                      }
+                    }
+                  }
+                  let c = false in {
+                    let d = false in {
+                      if (c || d) {
+                        write("FF")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                FT
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn less_than_or_equal() {
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.if_stmt(t.less_than_or_equal(t.int(3), t.int(5)), |t| {
+                        t.write("A");
+                    });
+                    t.if_stmt(t.less_than_or_equal(t.int(5), t.int(5)), |t| {
+                        t.write("B");
+                    });
+                    t.if_stmt(t.less_than_or_equal(t.int(7), t.int(5)), |t| {
+                        t.write("C");
+                    });
+                }),
+                "AB",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  if (3 <= 5) {
+                    write("A")
+                  }
+                  if (5 <= 5) {
+                    write("B")
+                  }
+                  if (7 <= 5) {
+                    write("C")
+                  }
+                }
+                -- expected output --
+                AB
                 -- ts --
                 OK
                 -- go --
