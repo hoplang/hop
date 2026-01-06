@@ -1,7 +1,7 @@
 use pretty::BoxDoc;
 
 use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
-use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
+use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
@@ -809,127 +809,120 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_enum_match<'a>(
-        &self,
-        subject: &'a IrExpr,
-        arms: &'a [EnumMatchArm<IrExpr>],
-    ) -> BoxDoc<'a> {
-        // Transpile enum match to an IIFE with a switch statement:
-        // (() => { switch (subject._tag) { case "ColorRed": return body; ... } })()
-        // The _tag uses the pattern EnumNameVariantName (e.g., ColorRed)
-        let cases = BoxDoc::intersperse(
-            arms.iter().map(|arm| match &arm.pattern {
-                EnumPattern::Variant {
-                    enum_name,
-                    variant_name,
-                } => {
-                    // Build the class name: EnumName + VariantName (e.g., ColorRed)
-                    let class_name = format!("{}{}", enum_name, variant_name);
-                    BoxDoc::text("case \"")
-                        .append(BoxDoc::text(class_name))
-                        .append(BoxDoc::text("\": return "))
-                        .append(self.transpile_expr(&arm.body))
-                        .append(BoxDoc::text(";"))
-                }
-            }),
-            BoxDoc::line(),
-        );
+    fn transpile_match_expr<'a>(&self, match_: &'a Match<IrExpr, IrExpr>) -> BoxDoc<'a> {
+        match match_ {
+            Match::Enum { subject, arms } => {
+                // Transpile enum match to an IIFE with a switch statement:
+                // (() => { switch (subject._tag) { case "ColorRed": return body; ... } })()
+                // The _tag uses the pattern EnumNameVariantName (e.g., ColorRed)
+                let cases = BoxDoc::intersperse(
+                    arms.iter().map(|arm| match &arm.pattern {
+                        EnumPattern::Variant {
+                            enum_name,
+                            variant_name,
+                        } => {
+                            // Build the class name: EnumName + VariantName (e.g., ColorRed)
+                            let class_name = format!("{}{}", enum_name, variant_name);
+                            BoxDoc::text("case \"")
+                                .append(BoxDoc::text(class_name))
+                                .append(BoxDoc::text("\": return "))
+                                .append(self.transpile_expr(&arm.body))
+                                .append(BoxDoc::text(";"))
+                        }
+                    }),
+                    BoxDoc::line(),
+                );
 
-        let switch_body = BoxDoc::text("switch (")
-            .append(self.transpile_expr(subject))
-            .append(BoxDoc::text("._tag) {"))
-            .append(BoxDoc::line().append(cases).nest(2))
-            .append(BoxDoc::line())
-            .append(BoxDoc::text("}"));
+                let switch_body = BoxDoc::text("switch (")
+                    .append(self.transpile_expr(subject))
+                    .append(BoxDoc::text("._tag) {"))
+                    .append(BoxDoc::line().append(cases).nest(2))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("}"));
 
-        let iife_close = "})()";
+                let iife_close = "})()";
 
-        BoxDoc::text("(() => {")
-            .append(BoxDoc::line())
-            .append(switch_body)
-            .nest(2)
-            .append(BoxDoc::line())
-            .append(BoxDoc::text(iife_close))
-            .group()
-    }
-
-    fn transpile_bool_match<'a>(
-        &self,
-        subject: &'a IrExpr,
-        true_body: &'a IrExpr,
-        false_body: &'a IrExpr,
-    ) -> BoxDoc<'a> {
-        // Transpile boolean match to a ternary expression: subject ? trueBody : falseBody
-        BoxDoc::text("(")
-            .append(self.transpile_expr(subject))
-            .append(BoxDoc::text(" ? "))
-            .append(self.transpile_expr(true_body))
-            .append(BoxDoc::text(" : "))
-            .append(self.transpile_expr(false_body))
-            .append(BoxDoc::text(")"))
-    }
-
-    fn transpile_option_match<'a>(
-        &self,
-        subject: &'a IrExpr,
-        some_arm_binding: &'a Option<(
-            crate::dop::symbols::var_name::VarName,
-            crate::dop::semantics::r#type::Type,
-        )>,
-        some_arm_body: &'a IrExpr,
-        none_arm_body: &'a IrExpr,
-    ) -> BoxDoc<'a> {
-        let some_case = {
-            let body_doc = self.transpile_expr(some_arm_body);
-            if let Some((var_name, _)) = some_arm_binding {
-                // case "Some": {
-                //   const v0 = subject.value;
-                //   return body;
-                // }
-                BoxDoc::text("case \"Some\": {")
-                    .append(
-                        BoxDoc::line()
-                            .append(BoxDoc::text("const "))
-                            .append(BoxDoc::text(var_name.as_str()))
-                            .append(BoxDoc::text(" = "))
-                            .append(self.transpile_expr(subject))
-                            .append(BoxDoc::text(".value;"))
+                BoxDoc::text("(() => {")
+                    .append(BoxDoc::line())
+                    .append(switch_body)
+                    .nest(2)
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text(iife_close))
+                    .group()
+            }
+            Match::Bool {
+                subject,
+                true_body,
+                false_body,
+            } => {
+                // Transpile boolean match to a ternary expression: subject ? trueBody : falseBody
+                BoxDoc::text("(")
+                    .append(self.transpile_expr(subject))
+                    .append(BoxDoc::text(" ? "))
+                    .append(self.transpile_expr(true_body))
+                    .append(BoxDoc::text(" : "))
+                    .append(self.transpile_expr(false_body))
+                    .append(BoxDoc::text(")"))
+            }
+            Match::Option {
+                subject,
+                some_arm_binding,
+                some_arm_body,
+                none_arm_body,
+            } => {
+                let some_case = {
+                    let body_doc = self.transpile_expr(some_arm_body);
+                    if let Some((var_name, _)) = some_arm_binding {
+                        // case "Some": {
+                        //   const v0 = subject.value;
+                        //   return body;
+                        // }
+                        BoxDoc::text("case \"Some\": {")
+                            .append(
+                                BoxDoc::line()
+                                    .append(BoxDoc::text("const "))
+                                    .append(BoxDoc::text(var_name.as_str()))
+                                    .append(BoxDoc::text(" = "))
+                                    .append(self.transpile_expr(subject))
+                                    .append(BoxDoc::text(".value;"))
+                                    .append(BoxDoc::line())
+                                    .append(BoxDoc::text("return "))
+                                    .append(body_doc)
+                                    .append(BoxDoc::text(";"))
+                                    .nest(2),
+                            )
                             .append(BoxDoc::line())
-                            .append(BoxDoc::text("return "))
+                            .append(BoxDoc::text("}"))
+                    } else {
+                        // case "Some": return body;
+                        BoxDoc::text("case \"Some\": return ")
                             .append(body_doc)
                             .append(BoxDoc::text(";"))
-                            .nest(2),
-                    )
+                    }
+                };
+
+                let none_case = BoxDoc::text("case \"None\": return ")
+                    .append(self.transpile_expr(none_arm_body))
+                    .append(BoxDoc::text(";"));
+
+                let cases = BoxDoc::intersperse([some_case, none_case], BoxDoc::line());
+
+                let switch_body = BoxDoc::text("switch (")
+                    .append(self.transpile_expr(subject))
+                    .append(BoxDoc::text("._tag) {"))
+                    .append(BoxDoc::line().append(cases).nest(2))
                     .append(BoxDoc::line())
-                    .append(BoxDoc::text("}"))
-            } else {
-                // case "Some": return body;
-                BoxDoc::text("case \"Some\": return ")
-                    .append(body_doc)
-                    .append(BoxDoc::text(";"))
+                    .append(BoxDoc::text("}"));
+
+                BoxDoc::text("(() => {")
+                    .append(BoxDoc::line())
+                    .append(switch_body)
+                    .nest(2)
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("})()"))
+                    .group()
             }
-        };
-
-        let none_case = BoxDoc::text("case \"None\": return ")
-            .append(self.transpile_expr(none_arm_body))
-            .append(BoxDoc::text(";"));
-
-        let cases = BoxDoc::intersperse([some_case, none_case], BoxDoc::line());
-
-        let switch_body = BoxDoc::text("switch (")
-            .append(self.transpile_expr(subject))
-            .append(BoxDoc::text("._tag) {"))
-            .append(BoxDoc::line().append(cases).nest(2))
-            .append(BoxDoc::line())
-            .append(BoxDoc::text("}"));
-
-        BoxDoc::text("(() => {")
-            .append(BoxDoc::line())
-            .append(switch_body)
-            .nest(2)
-            .append(BoxDoc::line())
-            .append(BoxDoc::text("})()"))
-            .group()
+        }
     }
 
     fn transpile_let<'a>(

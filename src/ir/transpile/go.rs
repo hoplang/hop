@@ -1,8 +1,7 @@
 use pretty::BoxDoc;
 
 use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
-use crate::dop::VarName;
-use crate::dop::patterns::{EnumMatchArm, Match};
+use crate::dop::patterns::Match;
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
@@ -743,31 +742,11 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_enum_match<'a>(
+    fn transpile_match_expr<'a>(
         &self,
-        _subject: &'a IrExpr,
-        _arms: &'a [EnumMatchArm<IrExpr>],
+        _match_: &'a Match<IrExpr, IrExpr>,
     ) -> BoxDoc<'a> {
         panic!("Match expressions are not yet supported in Go transpilation")
-    }
-
-    fn transpile_bool_match<'a>(
-        &self,
-        _subject: &'a IrExpr,
-        _true_body: &'a IrExpr,
-        _false_body: &'a IrExpr,
-    ) -> BoxDoc<'a> {
-        panic!("Match expressions are not yet supported in Go transpilation")
-    }
-
-    fn transpile_option_match<'a>(
-        &self,
-        _subject: &'a IrExpr,
-        _some_arm_binding: &'a Option<(VarName, Type)>,
-        _some_arm_body: &'a IrExpr,
-        _none_arm_body: &'a IrExpr,
-    ) -> BoxDoc<'a> {
-        panic!("Option match expressions are not yet supported in Go transpilation")
     }
 
     fn transpile_let<'a>(
