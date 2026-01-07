@@ -603,7 +603,10 @@ impl IrStatement {
                             .append(BoxDoc::text(" {"))
                             .append(
                                 BoxDoc::line()
-                                    .append(arm_to_doc(BoxDoc::as_string(some_pattern), some_arm_body))
+                                    .append(arm_to_doc(
+                                        BoxDoc::as_string(some_pattern),
+                                        some_arm_body,
+                                    ))
                                     .append(BoxDoc::line())
                                     .append(arm_to_doc(BoxDoc::text("None"), none_arm_body))
                                     .nest(2),
@@ -625,9 +628,9 @@ impl IrStatement {
                             })
                             .collect();
                         let arms_doc = BoxDoc::intersperse(
-                            arms_doc
-                                .into_iter()
-                                .map(|(pattern, body)| arm_to_doc(BoxDoc::as_string(pattern), body)),
+                            arms_doc.into_iter().map(|(pattern, body)| {
+                                arm_to_doc(BoxDoc::as_string(pattern), body)
+                            }),
                             BoxDoc::line(),
                         );
                         BoxDoc::text("match ")
@@ -954,8 +957,10 @@ impl IrExpr {
                         )
                         .append(BoxDoc::text("}"))
                 }
-            }
-            IrExpr::Let { var, value, body, .. } => BoxDoc::text("let ")
+            },
+            IrExpr::Let {
+                var, value, body, ..
+            } => BoxDoc::text("let ")
                 .append(BoxDoc::text(var.as_str()))
                 .append(BoxDoc::text(" = "))
                 .append(value.to_doc())
@@ -1027,7 +1032,7 @@ impl IrExpr {
                     some_arm_body.traverse(f);
                     none_arm_body.traverse(f);
                 }
-            }
+            },
             IrExpr::Let { value, body, .. } => {
                 value.traverse(f);
                 body.traverse(f);
@@ -1109,7 +1114,7 @@ impl IrExpr {
                     some_arm_body.traverse_mut(f);
                     none_arm_body.traverse_mut(f);
                 }
-            }
+            },
             IrExpr::Let { value, body, .. } => {
                 value.traverse_mut(f);
                 body.traverse_mut(f);

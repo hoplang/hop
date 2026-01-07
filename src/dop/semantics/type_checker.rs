@@ -5,7 +5,9 @@ use crate::dop::TypedExpr;
 use crate::dop::patterns::compiler::{Compiler, Decision};
 use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::dop::symbols::var_name::VarName;
-use crate::dop::syntax::parsed::{Constructor, ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedMatchPattern, ParsedType};
+use crate::dop::syntax::parsed::{
+    Constructor, ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedMatchPattern, ParsedType,
+};
 use crate::environment::Environment;
 use crate::hop::semantics::type_checker::TypeAnnotation;
 
@@ -1023,7 +1025,9 @@ fn decision_to_typed_expr(
                         match_: Match::Bool {
                             subject,
                             true_body: Box::new(true_body.expect("BoolMatch must have a true arm")),
-                            false_body: Box::new(false_body.expect("BoolMatch must have a false arm")),
+                            false_body: Box::new(
+                                false_body.expect("BoolMatch must have a false arm"),
+                            ),
                         },
                         kind: result_type,
                     }

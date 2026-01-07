@@ -7,7 +7,6 @@ use pretty::BoxDoc;
 
 use super::r#type::{ComparableType, EquatableType, NumericType, Type};
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedExpr {
     /// A variable expression, e.g. foo
@@ -57,10 +56,7 @@ pub enum TypedExpr {
     },
 
     /// A match expression (enum, bool, or option)
-    Match {
-        match_: Match<Self>,
-        kind: Type,
-    },
+    Match { match_: Match<Self>, kind: Type },
 
     /// String concatenation expression for joining two string expressions
     StringConcat { left: Box<Self>, right: Box<Self> },
@@ -439,8 +435,10 @@ impl TypedExpr {
                         )
                         .append(BoxDoc::text("}"))
                 }
-            }
-            TypedExpr::Let { var, value, body, .. } => BoxDoc::text("let ")
+            },
+            TypedExpr::Let {
+                var, value, body, ..
+            } => BoxDoc::text("let ")
                 .append(BoxDoc::text(var.as_str()))
                 .append(BoxDoc::text(" = "))
                 .append(value.to_doc())

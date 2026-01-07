@@ -4,16 +4,16 @@ use std::fmt::{self, Display};
 use pretty::BoxDoc;
 
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::syntax::parsed::ParsedMatchPattern;
 use crate::dop::ParsedExpr;
 use crate::dop::VarName;
+use crate::dop::syntax::parsed::ParsedMatchPattern;
 
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 
 use super::parsed_ast::ParsedAttribute;
 
-/// An ParsedArgument represents a parsed argument with a name and a value.
+/// A ParsedArgument represents a parsed argument with a name and a value.
 /// E.g. <my-comp {x: [1,2], y: 2}>
 ///                ^^^^^^^^
 #[derive(Debug, Clone)]
@@ -314,11 +314,7 @@ impl ParsedNode {
                 })
                 .append(BoxDoc::text("</for>")),
             ParsedNode::Doctype { value, .. } => BoxDoc::text(value.as_str()),
-            ParsedNode::Match {
-                subject,
-                cases,
-                ..
-            } => BoxDoc::text("<match {")
+            ParsedNode::Match { subject, cases, .. } => BoxDoc::text("<match {")
                 .append(subject.to_doc())
                 .append(BoxDoc::text("}>"))
                 .append(if cases.is_empty() {

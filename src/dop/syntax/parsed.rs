@@ -179,10 +179,8 @@ impl ParsedMatchPattern {
                     base
                 } else {
                     // Positional args (Option Some, etc.)
-                    let args_doc = BoxDoc::intersperse(
-                        args.iter().map(|a| a.to_doc()),
-                        BoxDoc::text(", "),
-                    );
+                    let args_doc =
+                        BoxDoc::intersperse(args.iter().map(|a| a.to_doc()), BoxDoc::text(", "));
                     base.append(BoxDoc::text("("))
                         .append(args_doc)
                         .append(BoxDoc::text(")"))

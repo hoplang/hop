@@ -1,10 +1,10 @@
 use std::{collections::BTreeMap, fmt};
 
 use crate::document::document_cursor::StringSpan;
-use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::Type;
 use crate::dop::TypedExpr;
 use crate::dop::VarName;
+use crate::dop::patterns::{EnumPattern, Match};
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use pretty::BoxDoc;

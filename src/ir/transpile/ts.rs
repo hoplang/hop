@@ -426,10 +426,7 @@ impl StatementTranspiler for TsTranspiler {
             .append(self.transpile_statements(body))
     }
 
-    fn transpile_match_statement<'a>(
-        &self,
-        match_: &'a Match<Vec<IrStatement>>,
-    ) -> BoxDoc<'a> {
+    fn transpile_match_statement<'a>(&self, match_: &'a Match<Vec<IrStatement>>) -> BoxDoc<'a> {
         match match_ {
             Match::Bool {
                 subject,

@@ -93,7 +93,11 @@ impl Pass for ConstantPropagationPass {
                                             variant_name,
                                         } => {
                                             match_arms_relations.push((
-                                                (expr.id(), enum_name.clone(), variant_name.clone()),
+                                                (
+                                                    expr.id(),
+                                                    enum_name.clone(),
+                                                    variant_name.clone(),
+                                                ),
                                                 arm.body.id(),
                                             ));
                                         }
@@ -106,7 +110,7 @@ impl Pass for ConstantPropagationPass {
                             Match::Option { .. } => {
                                 // Option patterns are not currently constant-folded
                             }
-                        }
+                        },
                         IrExpr::Var { value: name, .. } => {
                             // Check if this variable is defined by a Let or For statement
                             if let Some(defining_stmt) = scope.get(&name.to_string()) {

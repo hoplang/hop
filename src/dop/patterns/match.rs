@@ -6,7 +6,10 @@ use crate::dop::symbols::var_name::VarName;
 /// An enum variant pattern, e.g. `Color::Red`
 #[derive(Debug, Clone, PartialEq)]
 pub enum EnumPattern {
-    Variant { enum_name: String, variant_name: String },
+    Variant {
+        enum_name: String,
+        variant_name: String,
+    },
 }
 
 /// A single arm in an enum match, e.g. `Color::Red => "red"`

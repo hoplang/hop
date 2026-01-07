@@ -144,14 +144,12 @@ fn eval_statement(
                     .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
                 if subject_value.is_null() {
                     eval_statements(none_arm_body, env, output)?;
+                } else if let Some((var, _)) = some_arm_binding {
+                    let _ = env.push(var.to_string(), subject_value);
+                    eval_statements(some_arm_body, env, output)?;
+                    let _ = env.pop();
                 } else {
-                    if let Some((var, _)) = some_arm_binding {
-                        let _ = env.push(var.to_string(), subject_value);
-                        eval_statements(some_arm_body, env, output)?;
-                        let _ = env.pop();
-                    } else {
-                        eval_statements(some_arm_body, env, output)?;
-                    }
+                    eval_statements(some_arm_body, env, output)?;
                 }
                 Ok(())
             }

@@ -1,7 +1,8 @@
 use pretty::BoxDoc;
 
 use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
-use crate::dop::patterns::Match;
+use crate::dop::VarName;
+use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
@@ -529,10 +530,7 @@ impl StatementTranspiler for GoTranspiler {
             .append(self.transpile_statements(body))
     }
 
-    fn transpile_match_statement<'a>(
-        &self,
-        match_: &'a Match<Vec<IrStatement>>,
-    ) -> BoxDoc<'a> {
+    fn transpile_match_statement<'a>(&self, match_: &'a Match<Vec<IrStatement>>) -> BoxDoc<'a> {
         match match_ {
             Match::Bool {
                 subject,
@@ -1012,7 +1010,7 @@ impl ExpressionTranspiler for GoTranspiler {
 
                 let cases = BoxDoc::intersperse(
                     arms.iter().map(|arm| match &arm.pattern {
-                        crate::dop::patterns::EnumPattern::Variant {
+                        EnumPattern::Variant {
                             enum_name,
                             variant_name,
                         } => {
@@ -1052,7 +1050,7 @@ impl ExpressionTranspiler for GoTranspiler {
 
     fn transpile_let<'a>(
         &self,
-        var: &'a crate::dop::symbols::var_name::VarName,
+        var: &'a VarName,
         value: &'a IrExpr,
         body: &'a IrExpr,
     ) -> BoxDoc<'a> {
@@ -1129,8 +1127,15 @@ impl TypeTranspiler for GoTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::syntax::builder::{
-        build_module, build_module_with_enums, build_module_with_records,
+    use crate::{
+        dop::symbols::type_name::TypeName,
+        hop::symbols::module_name::ModuleName,
+        ir::{
+            IrEnumDeclaration,
+            syntax::builder::{
+                IrBuilder, build_module, build_module_with_enums, build_module_with_records,
+            },
+        },
     };
     use expect_test::{Expect, expect};
 
@@ -1942,8 +1947,6 @@ mod tests {
 
     #[test]
     fn option_literal() {
-        use crate::dop::Type;
-
         let module = build_module("TestOption", vec![], |t| {
             t.let_stmt("opt1", t.some(t.str("hello")), |t| {
                 t.option_match_stmt(
@@ -2090,9 +2093,6 @@ mod tests {
 
     #[test]
     fn enum_match_statement() {
-        use crate::dop::symbols::type_name::TypeName;
-        use crate::hop::symbols::module_name::ModuleName;
-
         let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
 
         let color_type = Type::Enum {
@@ -2110,9 +2110,9 @@ mod tests {
                 t.enum_match_stmt(
                     t.var("color"),
                     vec![
-                        ("Red", Box::new(|t: &mut crate::ir::syntax::builder::IrBuilder| t.write("red"))),
-                        ("Green", Box::new(|t: &mut crate::ir::syntax::builder::IrBuilder| t.write("green"))),
-                        ("Blue", Box::new(|t: &mut crate::ir::syntax::builder::IrBuilder| t.write("blue"))),
+                        ("Red", Box::new(|t: &mut IrBuilder| t.write("red"))),
+                        ("Green", Box::new(|t: &mut IrBuilder| t.write("green"))),
+                        ("Blue", Box::new(|t: &mut IrBuilder| t.write("blue"))),
                     ],
                 );
             });
@@ -2188,8 +2188,6 @@ mod tests {
 
     #[test]
     fn enum_match_expression() {
-        use crate::dop::symbols::type_name::TypeName;
-
         let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
 
         let module = build_module_with_enums("ColorName", vec![], enums, |t| {
@@ -2208,7 +2206,7 @@ mod tests {
 
         // Add enum declarations to module
         let module = IrModule {
-            enums: vec![crate::ir::ast::IrEnumDeclaration {
+            enums: vec![IrEnumDeclaration {
                 name: "Color".to_string(),
                 variants: vec![
                     TypeName::new("Red").unwrap(),

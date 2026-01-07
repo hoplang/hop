@@ -1,6 +1,6 @@
 use super::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
 use crate::ir::ast::{IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration};
-use crate::ir::syntax::builder::{build_ir, build_ir_with_enums, IrBuilder};
+use crate::ir::syntax::builder::{IrBuilder, build_ir, build_ir_with_enums};
 use expect_test::Expect;
 use std::collections::HashSet;
 use std::fs;
@@ -1430,13 +1430,11 @@ mod tests {
             TestCase::new(
                 build_ir("Test", [], |t| {
                     t.let_stmt("flag", t.bool(true), |t| {
-                        let result =
-                            t.bool_match_expr(t.var("flag"), t.str("yes"), t.str("no"));
+                        let result = t.bool_match_expr(t.var("flag"), t.str("yes"), t.str("no"));
                         t.write_expr(result, false);
                     });
                     t.let_stmt("other", t.bool(false), |t| {
-                        let result =
-                            t.bool_match_expr(t.var("other"), t.str("YES"), t.str("NO"));
+                        let result = t.bool_match_expr(t.var("other"), t.str("YES"), t.str("NO"));
                         t.write_expr(result, false);
                     });
                 }),

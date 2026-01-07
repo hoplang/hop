@@ -129,14 +129,18 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Match pattern record '{pattern_record}' does not match subject record '{subject_record}'")]
+    #[error(
+        "Match pattern record '{pattern_record}' does not match subject record '{subject_record}'"
+    )]
     MatchPatternRecordMismatch {
         pattern_record: String,
         subject_record: String,
         range: DocumentRange,
     },
 
-    #[error("Record pattern for '{record_name}' must specify all {expected} fields, but only {found} were provided")]
+    #[error(
+        "Record pattern for '{record_name}' must specify all {expected} fields, but only {found} were provided"
+    )]
     MatchRecordPatternFieldCount {
         record_name: String,
         expected: usize,

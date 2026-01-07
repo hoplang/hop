@@ -47,10 +47,7 @@ pub trait StatementTranspiler {
         value: &'a IrExpr,
         body: &'a [IrStatement],
     ) -> BoxDoc<'a>;
-    fn transpile_match_statement<'a>(
-        &self,
-        match_: &'a Match<Vec<IrStatement>>,
-    ) -> BoxDoc<'a>;
+    fn transpile_match_statement<'a>(&self, match_: &'a Match<Vec<IrStatement>>) -> BoxDoc<'a>;
     fn transpile_statement<'a>(&self, statement: &'a IrStatement) -> BoxDoc<'a> {
         match statement {
             IrStatement::Write { content, .. } => self.transpile_write(content),

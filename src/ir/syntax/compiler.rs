@@ -1,8 +1,8 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::StringSpan;
 use crate::dop::TypedExpr;
-use crate::dop::semantics::r#type::EquatableType;
 use crate::dop::patterns::{EnumMatchArm, Match};
+use crate::dop::semantics::r#type::EquatableType;
 use crate::dop::{Type, VarName};
 use crate::inlined::{
     InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
@@ -267,7 +267,9 @@ impl Compiler {
                     } => Match::Bool {
                         subject,
                         true_body: Box::new(self.compile_nodes(*true_body, slot_content.cloned())),
-                        false_body: Box::new(self.compile_nodes(*false_body, slot_content.cloned())),
+                        false_body: Box::new(
+                            self.compile_nodes(*false_body, slot_content.cloned()),
+                        ),
                     },
                     Match::Option {
                         subject,
