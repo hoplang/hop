@@ -84,6 +84,7 @@ pub trait TypeTranspiler {
     fn transpile_array_type<'a>(&self, element_type: &'a Type) -> BoxDoc<'a>;
     fn transpile_option_type<'a>(&self, inner_type: &'a Type) -> BoxDoc<'a>;
     fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a>;
+    fn transpile_enum_type<'a>(&self, name: &'a str) -> BoxDoc<'a>;
     fn transpile_type<'a>(&self, t: &'a Type) -> BoxDoc<'a> {
         match t {
             Type::Bool => self.transpile_bool_type(),
@@ -94,7 +95,7 @@ pub trait TypeTranspiler {
             Type::Array(elem) => self.transpile_array_type(elem),
             Type::Option(inner) => self.transpile_option_type(inner),
             Type::Record { name, .. } => self.transpile_named_type(name.as_str()),
-            Type::Enum { name, .. } => self.transpile_named_type(name.as_str()),
+            Type::Enum { name, .. } => self.transpile_enum_type(name.as_str()),
         }
     }
 }

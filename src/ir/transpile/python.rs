@@ -995,6 +995,10 @@ impl TypeTranspiler for PythonTranspiler {
     fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }
+
+    fn transpile_enum_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
+        BoxDoc::text(name)
+    }
 }
 
 #[cfg(test)]

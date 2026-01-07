@@ -131,7 +131,6 @@ impl Transpiler for TsTranspiler {
             .append(BoxDoc::line())
             .append(BoxDoc::text("    }"))
             .append(BoxDoc::line())
-            .append(BoxDoc::line())
             .append(BoxDoc::text(
                 "    export function none<T>(): Option<T> {",
             ))
@@ -146,56 +145,56 @@ impl Transpiler for TsTranspiler {
             .append(BoxDoc::line())
             .append(BoxDoc::line());
 
-        // Add enum type definitions (class-based)
+        // Add enum type definitions (namespace-based)
         for enum_def in &module.enums {
-            // Generate union type: export type Foo = FooA | FooB;
+            // Generate namespace with tagged union type and constructor functions
+            // export namespace Color {
+            //     export type Color = { readonly tag: "Red" } | { readonly tag: "Green" };
+            //     export function Red(): Color { return { tag: "Red" }; }
+            //     export function Green(): Color { return { tag: "Green" }; }
+            // }
             result = result
-                .append(BoxDoc::text("export type "))
+                .append(BoxDoc::text("export namespace "))
+                .append(BoxDoc::text(enum_def.name.as_str()))
+                .append(BoxDoc::text(" {"))
+                .append(BoxDoc::line())
+                // Type definition
+                .append(BoxDoc::text("    export type "))
                 .append(BoxDoc::text(enum_def.name.as_str()))
                 .append(BoxDoc::text(" = "))
                 .append(BoxDoc::intersperse(
                     enum_def.variants.iter().map(|variant| {
-                        BoxDoc::text(enum_def.name.as_str()).append(BoxDoc::text(variant.as_str()))
+                        BoxDoc::text("{ readonly tag: \"")
+                            .append(BoxDoc::text(variant.as_str()))
+                            .append(BoxDoc::text("\" }"))
                     }),
                     BoxDoc::text(" | "),
                 ))
                 .append(BoxDoc::text(";"))
-                .append(BoxDoc::line())
                 .append(BoxDoc::line());
 
-            // Generate a class for each variant
+            // Generate constructor function for each variant
             for variant in &enum_def.variants {
-                let class_name = format!("{}{}", enum_def.name, variant.as_str());
                 result = result
-                    .append(BoxDoc::text("export class "))
-                    .append(BoxDoc::as_string(class_name.clone()))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("    export function "))
+                    .append(BoxDoc::text(variant.as_str()))
+                    .append(BoxDoc::text("(): "))
+                    .append(BoxDoc::text(enum_def.name.as_str()))
                     .append(BoxDoc::text(" {"))
-                    .append(
-                        BoxDoc::nil()
-                            .append(BoxDoc::line())
-                            .append(BoxDoc::text("readonly _tag = \""))
-                            .append(BoxDoc::as_string(class_name.clone()))
-                            .append(BoxDoc::text("\";"))
-                            .append(BoxDoc::line())
-                            .append(BoxDoc::text("equals(o: "))
-                            .append(BoxDoc::text(enum_def.name.as_str()))
-                            .append(BoxDoc::text("): boolean {"))
-                            .append(
-                                BoxDoc::line()
-                                    .append(BoxDoc::text("return o._tag === \""))
-                                    .append(BoxDoc::as_string(class_name))
-                                    .append(BoxDoc::text("\";"))
-                                    .nest(4),
-                            )
-                            .append(BoxDoc::line())
-                            .append(BoxDoc::text("}"))
-                            .nest(4),
-                    )
                     .append(BoxDoc::line())
-                    .append(BoxDoc::text("}"))
+                    .append(BoxDoc::text("        return { tag: \""))
+                    .append(BoxDoc::text(variant.as_str()))
+                    .append(BoxDoc::text("\" };"))
                     .append(BoxDoc::line())
-                    .append(BoxDoc::line());
+                    .append(BoxDoc::text("    }"));
             }
+
+            result = result
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("}"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line());
         }
 
         // Add record type definitions
@@ -545,8 +544,8 @@ impl StatementTranspiler for TsTranspiler {
                     .append(BoxDoc::text("}"))
             }
             Match::Enum { subject, arms } => {
-                // switch ([[subject]]._tag) {
-                //   case "[[class_name]]": {
+                // switch ([[subject]].tag) {
+                //   case "[[variant_name]]": {
                 //     [[statements]]
                 //     break;
                 //   }
@@ -555,12 +554,11 @@ impl StatementTranspiler for TsTranspiler {
                 let cases = BoxDoc::intersperse(
                     arms.iter().map(|arm| match &arm.pattern {
                         EnumPattern::Variant {
-                            enum_name,
+                            enum_name: _,
                             variant_name,
                         } => {
-                            let class_name = format!("{}{}", enum_name, variant_name);
                             BoxDoc::text("case \"")
-                                .append(BoxDoc::text(class_name))
+                                .append(BoxDoc::text(variant_name.as_str()))
                                 .append(BoxDoc::text("\": {"))
                                 .append(
                                     BoxDoc::hardline()
@@ -578,7 +576,7 @@ impl StatementTranspiler for TsTranspiler {
 
                 BoxDoc::text("switch (")
                     .append(BoxDoc::text(subject.0.as_str()))
-                    .append(BoxDoc::text("._tag) {"))
+                    .append(BoxDoc::text(".tag) {"))
                     .append(BoxDoc::hardline().append(cases).nest(4))
                     .append(BoxDoc::hardline())
                     .append(BoxDoc::text("}"))
@@ -650,13 +648,11 @@ impl ExpressionTranspiler for TsTranspiler {
     }
 
     fn transpile_enum_literal<'a>(&self, enum_name: &'a str, variant_name: &'a str) -> BoxDoc<'a> {
-        // Cast to the enum type to prevent TypeScript from narrowing to the specific variant
-        BoxDoc::text("(new ")
-            .append(BoxDoc::text(enum_name))
+        // Call the namespace constructor function: Color.Red()
+        BoxDoc::text(enum_name)
+            .append(BoxDoc::text("."))
             .append(BoxDoc::text(variant_name))
-            .append(BoxDoc::text("() as "))
-            .append(BoxDoc::text(enum_name))
-            .append(BoxDoc::text(")"))
+            .append(BoxDoc::text("()"))
     }
 
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
@@ -696,11 +692,12 @@ impl ExpressionTranspiler for TsTranspiler {
     }
 
     fn transpile_enum_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
-        // Use the .equals() method on the class-based enum
-        self.transpile_expr(left)
-            .append(BoxDoc::text(".equals("))
+        // Compare tags directly: left.tag === right.tag
+        BoxDoc::text("(")
+            .append(self.transpile_expr(left))
+            .append(BoxDoc::text(".tag === "))
             .append(self.transpile_expr(right))
-            .append(BoxDoc::text(")"))
+            .append(BoxDoc::text(".tag)"))
     }
 
     fn transpile_int_less_than<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
@@ -876,21 +873,19 @@ impl ExpressionTranspiler for TsTranspiler {
         match match_ {
             Match::Enum { subject, arms } => {
                 // (() => {
-                //   switch ([[subject]]._tag) {
-                //     case "[[class_name]]": return [[body]];
+                //   switch ([[subject]].tag) {
+                //     case "[[variant_name]]": return [[body]];
                 //     [[...]]
                 //   }
                 // })()
                 let cases = BoxDoc::intersperse(
                     arms.iter().map(|arm| match &arm.pattern {
                         EnumPattern::Variant {
-                            enum_name,
+                            enum_name: _,
                             variant_name,
                         } => {
-                            // Build the class name: EnumName + VariantName (e.g., ColorRed)
-                            let class_name = format!("{}{}", enum_name, variant_name);
                             BoxDoc::text("case \"")
-                                .append(BoxDoc::text(class_name))
+                                .append(BoxDoc::text(variant_name.as_str()))
                                 .append(BoxDoc::text("\": return "))
                                 .append(self.transpile_expr(&arm.body))
                                 .append(BoxDoc::text(";"))
@@ -901,7 +896,7 @@ impl ExpressionTranspiler for TsTranspiler {
 
                 let switch_body = BoxDoc::text("switch (")
                     .append(BoxDoc::text(subject.0.as_str()))
-                    .append(BoxDoc::text("._tag) {"))
+                    .append(BoxDoc::text(".tag) {"))
                     .append(BoxDoc::line().append(cases).nest(2))
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("}"));
@@ -1055,6 +1050,12 @@ impl TypeTranspiler for TsTranspiler {
     fn transpile_named_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }
+
+    fn transpile_enum_type<'a>(&self, name: &'a str) -> BoxDoc<'a> {
+        BoxDoc::text(name)
+            .append(BoxDoc::text("."))
+            .append(BoxDoc::text(name))
+    }
 }
 
 #[cfg(test)]
@@ -1105,7 +1106,6 @@ mod tests {
                     export function some<T>(value: T): Option<T> {
                         return { tag: "Some", value };
                     }
-
                     export function none<T>(): Option<T> {
                         return { tag: "None" };
                     }
@@ -1161,7 +1161,6 @@ mod tests {
                     export function some<T>(value: T): Option<T> {
                         return { tag: "Some", value };
                     }
-
                     export function none<T>(): Option<T> {
                         return { tag: "None" };
                     }
@@ -1227,7 +1226,6 @@ mod tests {
                     export function some<T>(value: T): Option<T> {
                         return { tag: "Some", value };
                     }
-
                     export function none<T>(): Option<T> {
                         return { tag: "None" };
                     }
@@ -1294,7 +1292,6 @@ mod tests {
                     export function some<T>(value: T): Option<T> {
                         return { tag: "Some", value };
                     }
-
                     export function none<T>(): Option<T> {
                         return { tag: "None" };
                     }
@@ -1359,7 +1356,6 @@ mod tests {
                     export function some<T>(value: T): Option<T> {
                         return { tag: "Some", value };
                     }
-
                     export function none<T>(): Option<T> {
                         return { tag: "None" };
                     }
@@ -1423,7 +1419,6 @@ mod tests {
                     export function some<T>(value: T): Option<T> {
                         return { tag: "Some", value };
                     }
-
                     export function none<T>(): Option<T> {
                         return { tag: "None" };
                     }
@@ -1494,7 +1489,6 @@ mod tests {
                     export function some<T>(value: T): Option<T> {
                         return { tag: "Some", value };
                     }
-
                     export function none<T>(): Option<T> {
                         return { tag: "None" };
                     }
@@ -1583,7 +1577,6 @@ mod tests {
                     export function some<T>(value: T): Option<T> {
                         return { tag: "Some", value };
                     }
-
                     export function none<T>(): Option<T> {
                         return { tag: "None" };
                     }
@@ -1654,7 +1647,6 @@ mod tests {
                     export function some<T>(value: T): Option<T> {
                         return { tag: "Some", value };
                     }
-
                     export function none<T>(): Option<T> {
                         return { tag: "None" };
                     }
@@ -1730,39 +1722,29 @@ mod tests {
                     export function some<T>(value: T): Option<T> {
                         return { tag: "Some", value };
                     }
-
                     export function none<T>(): Option<T> {
                         return { tag: "None" };
                     }
                 }
 
-                export type Color = ColorRed | ColorGreen | ColorBlue;
+                export namespace Color {
+                    export type Color = { readonly tag: "Red" } | { readonly tag: "Green" } | { readonly tag: "Blue" };
 
-                export class ColorRed {
-                    readonly _tag = "ColorRed";
-                    equals(o: Color): boolean {
-                        return o._tag === "ColorRed";
+                    export function Red(): Color {
+                        return { tag: "Red" };
                     }
-                }
-
-                export class ColorGreen {
-                    readonly _tag = "ColorGreen";
-                    equals(o: Color): boolean {
-                        return o._tag === "ColorGreen";
+                    export function Green(): Color {
+                        return { tag: "Green" };
                     }
-                }
-
-                export class ColorBlue {
-                    readonly _tag = "ColorBlue";
-                    equals(o: Color): boolean {
-                        return o._tag === "ColorBlue";
+                    export function Blue(): Color {
+                        return { tag: "Blue" };
                     }
                 }
 
                 export default {
-                    colorDisplay: ({ color }: { color: Color }): string => {
+                    colorDisplay: ({ color }: { color: Color.Color }): string => {
                         let output: string = "";
-                        if (color.equals((new ColorRed() as Color))) {
+                        if ((color.tag === Color.Red().tag)) {
                             output += "<div>Red!</div>";
                         }
                         return output;
@@ -1822,32 +1804,22 @@ mod tests {
                     export function some<T>(value: T): Option<T> {
                         return { tag: "Some", value };
                     }
-
                     export function none<T>(): Option<T> {
                         return { tag: "None" };
                     }
                 }
 
-                export type Color = ColorRed | ColorGreen | ColorBlue;
+                export namespace Color {
+                    export type Color = { readonly tag: "Red" } | { readonly tag: "Green" } | { readonly tag: "Blue" };
 
-                export class ColorRed {
-                    readonly _tag = "ColorRed";
-                    equals(o: Color): boolean {
-                        return o._tag === "ColorRed";
+                    export function Red(): Color {
+                        return { tag: "Red" };
                     }
-                }
-
-                export class ColorGreen {
-                    readonly _tag = "ColorGreen";
-                    equals(o: Color): boolean {
-                        return o._tag === "ColorGreen";
+                    export function Green(): Color {
+                        return { tag: "Green" };
                     }
-                }
-
-                export class ColorBlue {
-                    readonly _tag = "ColorBlue";
-                    equals(o: Color): boolean {
-                        return o._tag === "ColorBlue";
+                    export function Blue(): Color {
+                        return { tag: "Blue" };
                     }
                 }
 
@@ -1861,13 +1833,13 @@ mod tests {
                 }
 
                 export default {
-                    colorName: ({ color }: { color: Color }): string => {
+                    colorName: ({ color }: { color: Color.Color }): string => {
                         let output: string = "";
                         output += escapeHtml((() => {
-                          switch (color._tag) {
-                            case "ColorRed": return "red";
-                            case "ColorGreen": return "green";
-                            case "ColorBlue": return "blue";
+                          switch (color.tag) {
+                            case "Red": return "red";
+                            case "Green": return "green";
+                            case "Blue": return "blue";
                           }
                         })());
                         return output;
@@ -1899,7 +1871,6 @@ mod tests {
                     export function some<T>(value: T): Option<T> {
                         return { tag: "Some", value };
                     }
-
                     export function none<T>(): Option<T> {
                         return { tag: "None" };
                     }
@@ -1955,7 +1926,6 @@ mod tests {
                     export function some<T>(value: T): Option<T> {
                         return { tag: "Some", value };
                     }
-
                     export function none<T>(): Option<T> {
                         return { tag: "None" };
                     }
@@ -2043,7 +2013,6 @@ mod tests {
                     export function some<T>(value: T): Option<T> {
                         return { tag: "Some", value };
                     }
-
                     export function none<T>(): Option<T> {
                         return { tag: "None" };
                     }
@@ -2108,7 +2077,6 @@ mod tests {
                     export function some<T>(value: T): Option<T> {
                         return { tag: "Some", value };
                     }
-
                     export function none<T>(): Option<T> {
                         return { tag: "None" };
                     }
@@ -2182,7 +2150,6 @@ mod tests {
                     export function some<T>(value: T): Option<T> {
                         return { tag: "Some", value };
                     }
-
                     export function none<T>(): Option<T> {
                         return { tag: "None" };
                     }
@@ -2263,7 +2230,6 @@ mod tests {
                     export function some<T>(value: T): Option<T> {
                         return { tag: "Some", value };
                     }
-
                     export function none<T>(): Option<T> {
                         return { tag: "None" };
                     }
@@ -2334,7 +2300,6 @@ mod tests {
                     export function some<T>(value: T): Option<T> {
                         return { tag: "Some", value };
                     }
-
                     export function none<T>(): Option<T> {
                         return { tag: "None" };
                     }
