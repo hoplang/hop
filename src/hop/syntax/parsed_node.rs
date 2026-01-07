@@ -351,7 +351,12 @@ impl ParsedNode {
                 }
 
                 if children.is_empty() {
-                    tag_doc.append(BoxDoc::text(" />"))
+                    tag_doc
+                        .append(BoxDoc::text(">"))
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("</"))
+                        .append(BoxDoc::text(tag_name.as_str()))
+                        .append(BoxDoc::text(">"))
                 } else {
                     tag_doc
                         .append(BoxDoc::text(">"))

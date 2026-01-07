@@ -5,7 +5,7 @@ use super::transform::whitespace_removal::remove_whitespace;
 pub fn format(ast: ParsedAst) -> String {
     let ast = remove_whitespace(ast);
     let ast = sort_imports(ast);
-    ast.to_doc().pretty(80).to_string()
+    ast.to_doc().pretty(60).to_string()
 }
 
 #[cfg(test)]
@@ -173,7 +173,8 @@ mod tests {
                       Color::Green => "green",
                       Color::Blue  => "blue",
                     },
-                  } />
+                  }>
+                  </div>
                 </Main>
             "#]],
         );
@@ -226,7 +227,8 @@ mod tests {
             "#},
             expect![[r#"
                 <Main>
-                  <div class={"p-2"} />
+                  <div class={"p-2"}>
+                  </div>
                 </Main>
             "#]],
         );
@@ -242,7 +244,8 @@ mod tests {
             "#},
             expect![[r#"
                 <Main>
-                  <div class={"foo", "bar", "baz"} />
+                  <div class={"foo", "bar", "baz"}>
+                  </div>
                 </Main>
             "#]],
         );
@@ -296,8 +299,13 @@ mod tests {
                       Color::Green => "green",
                       Color::Blue  => "blue",
                     },
-                    match size {Size::Small => "sm", Size::Medium => "md", Size::Large => "lg"},
-                  } />
+                    match size {
+                      Size::Small  => "sm",
+                      Size::Medium => "md",
+                      Size::Large  => "lg",
+                    },
+                  }>
+                  </div>
                 </Main>
             "#]],
         );
@@ -587,7 +595,11 @@ mod tests {
                 </UserCard>
             "#},
             expect![[r#"
-                <UserCard {name: String, role: String = "user", active: Bool = true}>
+                <UserCard {
+                  name: String,
+                  role: String = "user",
+                  active: Bool = true,
+                }>
                   {name}
                 </UserCard>
             "#]],
@@ -602,7 +614,9 @@ mod tests {
                 </ItemList>
             "#},
             expect![[r#"
-                <ItemList {items: Array[String] = ["one", "two"]}></ItemList>
+                <ItemList {
+                  items: Array[String] = ["one", "two"],
+                }></ItemList>
             "#]],
         );
     }
@@ -634,7 +648,9 @@ mod tests {
                   timeout: Int,
                 }
 
-                <Settings {config: Config = Config(debug: false, timeout: 30)}></Settings>
+                <Settings {
+                  config: Config = Config(debug: false, timeout: 30),
+                }></Settings>
             "#]],
         );
     }
