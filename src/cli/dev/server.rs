@@ -117,7 +117,7 @@ async fn handle_render(
             .unwrap();
     }
 
-    match program.evaluate_ir_entrypoint(&module_name, &component_name, body.params, css_content) {
+    match program.evaluate_component(&module_name, &component_name, body.params, css_content) {
         Ok(html) => Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "text/html")

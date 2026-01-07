@@ -12,13 +12,13 @@ use crate::dop::patterns::{EnumPattern, Match};
 use crate::ir::syntax::ast::{IrComponentDeclaration, IrStatement};
 
 /// Evaluate an IR entrypoint with the given arguments
-pub fn evaluate_entrypoint(
-    entrypoint: &IrComponentDeclaration,
+pub fn evaluate_component(
+    component: &IrComponentDeclaration,
     args: HashMap<String, Value>,
 ) -> Result<String> {
     let mut env = Environment::new();
 
-    for (param_name, _param_type) in &entrypoint.parameters {
+    for (param_name, _param_type) in &component.parameters {
         if let Some(value) = args.get(param_name.as_str()) {
             let _ = env.push(param_name.to_string(), value.clone());
         }
@@ -26,7 +26,7 @@ pub fn evaluate_entrypoint(
 
     // Execute body
     let mut output = String::new();
-    eval_statements(&entrypoint.body, &mut env, &mut output)?;
+    eval_statements(&component.body, &mut env, &mut output)?;
 
     Ok(output)
 }
@@ -475,9 +475,9 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                     .lookup(subject.0.as_str())
                     .cloned()
                     .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
-                let variant_name = subject_val
-                    .as_str()
-                    .ok_or_else(|| anyhow!("Match subject must evaluate to a string (enum variant)"))?;
+                let variant_name = subject_val.as_str().ok_or_else(|| {
+                    anyhow!("Match subject must evaluate to a string (enum variant)")
+                })?;
 
                 // Find the matching arm
                 for arm in arms {
@@ -546,8 +546,10 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                     evaluate_expr(none_arm_body, env)
                 }
             }
-        }
-        IrExpr::Let { var, value, body, .. } => {
+        },
+        IrExpr::Let {
+            var, value, body, ..
+        } => {
             let val = evaluate_expr(value, env)?;
             let _ = env.push(var.to_string(), val);
             let result = evaluate_expr(body, env)?;
@@ -569,7 +571,7 @@ mod tests {
         let before = entrypoint.to_string();
         let args_map: HashMap<String, Value> =
             args.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
-        let after = evaluate_entrypoint(&entrypoint, args_map).expect("Evaluation should succeed");
+        let after = evaluate_component(&entrypoint, args_map).expect("Evaluation should succeed");
 
         let output = format!("-- before --\n{}\n-- after --\n{}\n", before, after);
         expected.assert_eq(&output);

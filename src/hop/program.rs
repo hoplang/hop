@@ -517,14 +517,8 @@ impl Program {
         diagnostics
     }
 
-    /// Evaluate an IR entrypoint by module and component name
-    ///
-    /// # Arguments
-    /// * `module_name` - Module containing the component (e.g., "main")
-    /// * `component_name` - Component name (e.g., "HomePage")
-    /// * `args` - Parameters to pass to the component
-    /// * `generated_tailwind_css` - Optional Tailwind CSS content
-    pub fn evaluate_ir_entrypoint(
+    /// Evaluate a component given module and component name.
+    pub fn evaluate_component(
         &self,
         module_name: &ModuleName,
         component_name: &ComponentName,
@@ -583,7 +577,7 @@ impl Program {
         })?;
 
         // Evaluate the entrypoint
-        ir::semantics::evaluator::evaluate_entrypoint(entrypoint, args)
+        ir::semantics::evaluator::evaluate_component(entrypoint, args)
     }
 
     /// Get all typed modules for compilation
@@ -1617,7 +1611,7 @@ mod tests {
         let main_module = ModuleName::new("main").unwrap();
         let hello_world = ComponentName::new("HelloWorld".to_string()).unwrap();
         let result = program
-            .evaluate_ir_entrypoint(&main_module, &hello_world, args, None)
+            .evaluate_component(&main_module, &hello_world, args, None)
             .expect("Should evaluate successfully");
 
         assert!(result.contains("<h1>Hello Alice!</h1>"));
@@ -1625,15 +1619,14 @@ mod tests {
         // Test evaluating another-comp entrypoint without parameters
         let another_comp = ComponentName::new("AnotherComp".to_string()).unwrap();
         let result = program
-            .evaluate_ir_entrypoint(&main_module, &another_comp, HashMap::new(), None)
+            .evaluate_component(&main_module, &another_comp, HashMap::new(), None)
             .expect("Should evaluate successfully");
 
         assert!(result.contains("<p>Static content</p>"));
 
         // Test error when entrypoint doesn't exist
         let non_existent = ComponentName::new("NonExistent".to_string()).unwrap();
-        let result =
-            program.evaluate_ir_entrypoint(&main_module, &non_existent, HashMap::new(), None);
+        let result = program.evaluate_component(&main_module, &non_existent, HashMap::new(), None);
         assert!(result.is_err());
         assert!(
             result
