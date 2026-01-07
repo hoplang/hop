@@ -1004,38 +1004,24 @@ impl TypeTranspiler for PythonTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::syntax::builder::{
-        build_module, build_module_with_enums, build_module_with_records,
-    };
+    use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
-    fn check(module: &IrModule, expected: Expect) {
-        // Format before (IR)
-        let before = module
-            .components
-            .iter()
-            .map(|ep| ep.to_string())
-            .collect::<Vec<_>>()
-            .join("\n\n");
-
-        // Format after (Python code)
-        let transpiler = PythonTranspiler::new();
-        let after = transpiler.transpile_module(module);
-
-        // Create output with before/after format
+    fn check(module: IrModule, expected: Expect) {
+        let before = module.to_string();
+        let after = PythonTranspiler::new().transpile_module(&module);
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
-
         expected.assert_eq(&output);
     }
 
     #[test]
     fn simple_component() {
-        let module = build_module("TestMainComp", [], |t| {
-            t.write("<div>Hello World</div>\n");
-        });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component("TestMainComp", [], |t| {
+                    t.write("<div>Hello World</div>\n");
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 TestMainComp() {
@@ -1053,20 +1039,20 @@ mod tests {
 
     #[test]
     fn component_with_parameters() {
-        let module = build_module(
-            "TestGreetingComp",
-            vec![("name", Type::String), ("message", Type::String)],
-            |t| {
-                t.write("<h1>Hello ");
-                t.write_expr_escaped(t.var("name"));
-                t.write(", ");
-                t.write_expr_escaped(t.var("message"));
-                t.write("</h1>\n");
-            },
-        );
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component(
+                    "TestGreetingComp",
+                    [("name", Type::String), ("message", Type::String)],
+                    |t| {
+                        t.write("<h1>Hello ");
+                        t.write_expr_escaped(t.var("name"));
+                        t.write(", ");
+                        t.write_expr_escaped(t.var("message"));
+                        t.write("</h1>\n");
+                    },
+                )
+                .build(),
             expect![[r#"
                 -- before --
                 TestGreetingComp(name: String, message: String) {
@@ -1102,14 +1088,14 @@ mod tests {
 
     #[test]
     fn if_condition() {
-        let module = build_module("TestMainComp", [("show", Type::Bool)], |t| {
-            t.if_stmt(t.var("show"), |t| {
-                t.write("<div>Visible</div>\n");
-            });
-        });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component("TestMainComp", [("show", Type::Bool)], |t| {
+                    t.if_stmt(t.var("show"), |t| {
+                        t.write("<div>Visible</div>\n");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 TestMainComp(show: Bool) {
@@ -1137,20 +1123,20 @@ mod tests {
 
     #[test]
     fn for_loop() {
-        let module = build_module(
-            "TestMainComp",
-            vec![("items", Type::Array(Box::new(Type::String)))],
-            |t| {
-                t.for_loop("item", t.var("items"), |t| {
-                    t.write("<li>");
-                    t.write_expr_escaped(t.var("item"));
-                    t.write("</li>\n");
-                });
-            },
-        );
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component(
+                    "TestMainComp",
+                    [("items", Type::Array(Box::new(Type::String)))],
+                    |t| {
+                        t.for_loop("item", t.var("items"), |t| {
+                            t.write("<li>");
+                            t.write_expr_escaped(t.var("item"));
+                            t.write("</li>\n");
+                        });
+                    },
+                )
+                .build(),
             expect![[r#"
                 -- before --
                 TestMainComp(items: Array[String]) {
@@ -1183,16 +1169,16 @@ mod tests {
 
     #[test]
     fn let_binding() {
-        let module = build_module("TestGreeting", [], |t| {
-            t.let_stmt("greeting", t.str("Hello from Python!"), |t| {
-                t.write("<p>");
-                t.write_expr_escaped(t.var("greeting"));
-                t.write("</p>\n");
-            });
-        });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component("TestGreeting", [], |t| {
+                    t.let_stmt("greeting", t.str("Hello from Python!"), |t| {
+                        t.write("<p>");
+                        t.write_expr_escaped(t.var("greeting"));
+                        t.write("</p>\n");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 TestGreeting() {
@@ -1219,21 +1205,21 @@ mod tests {
 
     #[test]
     fn string_comparison() {
-        let module = build_module(
-            "TestAuthCheck",
-            vec![("user_role", Type::String), ("expected_role", Type::String)],
-            |t| {
-                t.if_stmt(t.eq(t.var("user_role"), t.var("expected_role")), |t| {
-                    t.write("<div>Access granted</div>\n");
-                });
-                t.if_stmt(t.eq(t.var("user_role"), t.str("admin")), |t| {
-                    t.write("<div>Admin panel available</div>\n");
-                });
-            },
-        );
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component(
+                    "TestAuthCheck",
+                    [("user_role", Type::String), ("expected_role", Type::String)],
+                    |t| {
+                        t.if_stmt(t.eq(t.var("user_role"), t.var("expected_role")), |t| {
+                            t.write("<div>Access granted</div>\n");
+                        });
+                        t.if_stmt(t.eq(t.var("user_role"), t.str("admin")), |t| {
+                            t.write("<div>Admin panel available</div>\n");
+                        });
+                    },
+                )
+                .build(),
             expect![[r#"
                 -- before --
                 TestAuthCheck(user_role: String, expected_role: String) {
@@ -1268,14 +1254,14 @@ mod tests {
 
     #[test]
     fn not_operator() {
-        let module = build_module("TestNot", [("active", Type::Bool)], |t| {
-            t.if_stmt(t.not(t.var("active")), |t| {
-                t.write("<div>Inactive</div>\n");
-            });
-        });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component("TestNot", [("active", Type::Bool)], |t| {
+                    t.if_stmt(t.not(t.var("active")), |t| {
+                        t.write("<div>Inactive</div>\n");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 TestNot(active: Bool) {
@@ -1303,23 +1289,23 @@ mod tests {
 
     #[test]
     fn trusted_html_type() {
-        let module = build_module(
-            "RenderHtml",
-            vec![
-                ("safe_content", Type::TrustedHTML),
-                ("user_input", Type::String),
-            ],
-            |t| {
-                t.write("<div>");
-                t.write_expr(t.var("safe_content"), false);
-                t.write("</div><div>");
-                t.write_expr_escaped(t.var("user_input"));
-                t.write("</div>");
-            },
-        );
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component(
+                    "RenderHtml",
+                    [
+                        ("safe_content", Type::TrustedHTML),
+                        ("user_input", Type::String),
+                    ],
+                    |t| {
+                        t.write("<div>");
+                        t.write_expr(t.var("safe_content"), false);
+                        t.write("</div><div>");
+                        t.write_expr_escaped(t.var("user_input"));
+                        t.write("</div>");
+                    },
+                )
+                .build(),
             expect![[r#"
                 -- before --
                 RenderHtml(safe_content: TrustedHTML, user_input: String) {
@@ -1361,47 +1347,43 @@ mod tests {
         use crate::dop::symbols::{field_name::FieldName, type_name::TypeName};
         use crate::hop::symbols::module_name::ModuleName;
 
-        let records = vec![
-            (
-                "User",
-                vec![
-                    ("name", Type::String),
-                    ("age", Type::Int),
-                    ("active", Type::Bool),
-                ],
-            ),
-            (
-                "Address",
-                vec![("street", Type::String), ("city", Type::String)],
-            ),
-        ];
-
-        let module = build_module_with_records(
-            "UserProfile",
-            vec![(
-                "user",
-                Type::Record {
-                    module: ModuleName::new("test").unwrap(),
-                    name: TypeName::new("User").unwrap(),
-                    fields: vec![
-                        (FieldName::new("name").unwrap(), Type::String),
-                        (FieldName::new("age").unwrap(), Type::Int),
-                        (FieldName::new("active").unwrap(), Type::Bool),
-                    ],
-                },
-            )],
-            records,
-            |t| {
-                t.write("<div>");
-                t.write_expr_escaped(t.field_access(t.var("user"), "name"));
-                t.write("</div>");
-            },
-        );
+        let user_type = Type::Record {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("User").unwrap(),
+            fields: vec![
+                (FieldName::new("name").unwrap(), Type::String),
+                (FieldName::new("age").unwrap(), Type::Int),
+                (FieldName::new("active").unwrap(), Type::Bool),
+            ],
+        };
 
         check(
-            &module,
+            IrModuleBuilder::new()
+                .record("User", |r| {
+                    r.field("name", Type::String)
+                        .field("age", Type::Int)
+                        .field("active", Type::Bool);
+                })
+                .record("Address", |r| {
+                    r.field("street", Type::String).field("city", Type::String);
+                })
+                .component("UserProfile", [("user", user_type)], |t| {
+                    t.write("<div>");
+                    t.write_expr_escaped(t.field_access(t.var("user"), "name"));
+                    t.write("</div>");
+                })
+                .build(),
             expect![[r#"
                 -- before --
+                record Address {
+                  street: String,
+                  city: String,
+                }
+                record User {
+                  name: String,
+                  age: Int,
+                  active: Bool,
+                }
                 UserProfile(user: test::User) {
                   write("<div>")
                   write_escaped(user.name)
@@ -1413,15 +1395,15 @@ mod tests {
                 from html import escape as html_escape
 
                 @dataclass
+                class Address:
+                    street: str
+                    city: str
+
+                @dataclass
                 class User:
                     name: str
                     age: int
                     active: bool
-
-                @dataclass
-                class Address:
-                    street: str
-                    city: str
 
                 @dataclass
                 class UserProfileParams:
@@ -1440,19 +1422,24 @@ mod tests {
 
     #[test]
     fn record_literal() {
-        let records = vec![("User", vec![("name", Type::String), ("age", Type::Int)])];
-
-        let module = build_module_with_records("CreateUser", vec![], records, |t| {
-            t.write("<div>");
-            let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
-            t.write_expr_escaped(t.field_access(user, "name"));
-            t.write("</div>");
-        });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .record("User", |r| {
+                    r.field("name", Type::String).field("age", Type::Int);
+                })
+                .component("CreateUser", [], |t| {
+                    t.write("<div>");
+                    let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
+                    t.write_expr_escaped(t.field_access(user, "name"));
+                    t.write("</div>");
+                })
+                .build(),
             expect![[r#"
                 -- before --
+                record User {
+                  name: String,
+                  age: Int,
+                }
                 CreateUser() {
                   write("<div>")
                   write_escaped(User(name: "John", age: 30).name)
@@ -1483,8 +1470,6 @@ mod tests {
         use crate::dop::symbols::type_name::TypeName;
         use crate::hop::symbols::module_name::ModuleName;
 
-        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
-
         let color_type = Type::Enum {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("Color").unwrap(),
@@ -1495,17 +1480,22 @@ mod tests {
             ],
         };
 
-        let module =
-            build_module_with_enums("ColorDisplay", vec![("color", color_type)], enums, |t| {
-                t.if_stmt(t.eq(t.var("color"), t.enum_variant("Color", "Red")), |t| {
-                    t.write("<div>Red!</div>");
-                });
-            });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .enum_decl("Color", ["Red", "Green", "Blue"])
+                .component("ColorDisplay", [("color", color_type)], |t| {
+                    t.if_stmt(t.eq(t.var("color"), t.enum_variant("Color", "Red")), |t| {
+                        t.write("<div>Red!</div>");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
                 ColorDisplay(color: test::Color) {
                   if (color == Color::Red) {
                     write("<div>Red!</div>")
@@ -1548,20 +1538,20 @@ mod tests {
 
     #[test]
     fn bool_match_statement() {
-        let module = build_module("DisplayStatus", vec![("active", Type::Bool)], |t| {
-            t.bool_match_stmt(
-                t.var("active"),
-                |t| {
-                    t.write("<span class=\"active\">Active</span>");
-                },
-                |t| {
-                    t.write("<span class=\"inactive\">Inactive</span>");
-                },
-            );
-        });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component("DisplayStatus", [("active", Type::Bool)], |t| {
+                    t.bool_match_stmt(
+                        t.var("active"),
+                        |t| {
+                            t.write("<span class=\"active\">Active</span>");
+                        },
+                        |t| {
+                            t.write("<span class=\"inactive\">Inactive</span>");
+                        },
+                    );
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 DisplayStatus(active: Bool) {
@@ -1596,21 +1586,21 @@ mod tests {
 
     #[test]
     fn nested_bool_match_expr() {
-        let module = build_module("TestNestedBoolMatch", [], |t| {
-            t.let_stmt("outer", t.bool(true), |t| {
-                t.let_stmt("inner", t.bool(false), |t| {
-                    let result = t.bool_match_expr(
-                        t.var("outer"),
-                        t.bool_match_expr(t.var("inner"), t.str("TT"), t.str("TF")),
-                        t.str("F"),
-                    );
-                    t.write_expr(result, false);
-                });
-            });
-        });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component("TestNestedBoolMatch", [], |t| {
+                    t.let_stmt("outer", t.bool(true), |t| {
+                        t.let_stmt("inner", t.bool(false), |t| {
+                            let result = t.bool_match_expr(
+                                t.var("outer"),
+                                t.bool_match_expr(t.var("inner"), t.str("TT"), t.str("TF")),
+                                t.str("F"),
+                            );
+                            t.write_expr(result, false);
+                        });
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 TestNestedBoolMatch() {
@@ -1637,30 +1627,29 @@ mod tests {
 
     #[test]
     fn nested_option_match_expr() {
-        let module = build_module("TestNestedOptionMatch", [], |t| {
-            // Some(Some("deep"))
-            t.let_stmt("nested", t.some(t.some(t.str("deep"))), |t| {
-                let result = t.option_match_expr_with_binding(
-                    t.var("nested"),
-                    "outer",
-                    Type::Option(Box::new(Type::String)),
-                    |t| {
-                        t.option_match_expr_with_binding(
-                            t.var("outer"),
-                            "inner",
-                            Type::String,
-                            |t| t.var("inner"),
-                            t.str("inner-none"),
-                        )
-                    },
-                    t.str("outer-none"),
-                );
-                t.write_expr(result, false);
-            });
-        });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component("TestNestedOptionMatch", [], |t| {
+                    t.let_stmt("nested", t.some(t.some(t.str("deep"))), |t| {
+                        let result = t.option_match_expr_with_binding(
+                            t.var("nested"),
+                            "outer",
+                            Type::Option(Box::new(Type::String)),
+                            |t| {
+                                t.option_match_expr_with_binding(
+                                    t.var("outer"),
+                                    "inner",
+                                    Type::String,
+                                    |t| t.var("inner"),
+                                    t.str("inner-none"),
+                                )
+                            },
+                            t.str("outer-none"),
+                        );
+                        t.write_expr(result, false);
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 TestNestedOptionMatch() {
@@ -1699,37 +1688,37 @@ mod tests {
 
     #[test]
     fn option_match_statement() {
-        let module = build_module("TestOption", [], |t| {
-            t.let_stmt("some_val", t.some(t.str("hello")), |t| {
-                t.option_match_stmt(
-                    t.var("some_val"),
-                    Some("val"),
-                    |t| {
-                        t.write("Some:");
-                        t.write_expr(t.var("val"), false);
-                    },
-                    |t| {
-                        t.write("None");
-                    },
-                );
-            });
-            t.let_stmt("none_val", t.none(Type::String), |t| {
-                t.option_match_stmt(
-                    t.var("none_val"),
-                    Some("val"),
-                    |t| {
-                        t.write(",Some:");
-                        t.write_expr(t.var("val"), false);
-                    },
-                    |t| {
-                        t.write(",None");
-                    },
-                );
-            });
-        });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component("TestOption", [], |t| {
+                    t.let_stmt("some_val", t.some(t.str("hello")), |t| {
+                        t.option_match_stmt(
+                            t.var("some_val"),
+                            Some("val"),
+                            |t| {
+                                t.write("Some:");
+                                t.write_expr(t.var("val"), false);
+                            },
+                            |t| {
+                                t.write("None");
+                            },
+                        );
+                    });
+                    t.let_stmt("none_val", t.none(Type::String), |t| {
+                        t.option_match_stmt(
+                            t.var("none_val"),
+                            Some("val"),
+                            |t| {
+                                t.write(",Some:");
+                                t.write_expr(t.var("val"), false);
+                            },
+                            |t| {
+                                t.write(",None");
+                            },
+                        );
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 TestOption() {

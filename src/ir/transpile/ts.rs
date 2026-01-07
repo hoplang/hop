@@ -1061,38 +1061,24 @@ impl TypeTranspiler for TsTranspiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::syntax::builder::{
-        build_module, build_module_with_enums, build_module_with_records,
-    };
+    use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
 
-    fn check(module: &IrModule, expected: Expect) {
-        // Format before (IR)
-        let before = module
-            .components
-            .iter()
-            .map(|ep| ep.to_string())
-            .collect::<Vec<_>>()
-            .join("\n\n");
-
-        // Format TypeScript output
-        let transpiler = TsTranspiler::new();
-        let ts_output = transpiler.transpile_module(module);
-
-        // Create output with before/after format
-        let output = format!("-- before --\n{}\n-- after --\n{}", before, ts_output);
-
+    fn check(module: IrModule, expected: Expect) {
+        let before = module.to_string();
+        let after = TsTranspiler::new().transpile_module(&module);
+        let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
     }
 
     #[test]
     fn simple_component() {
-        let module = build_module("HelloWorld", [], |t| {
-            t.write("<h1>Hello, World!</h1>\n");
-        });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component("HelloWorld", [], |t| {
+                    t.write("<h1>Hello, World!</h1>\n");
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 HelloWorld() {
@@ -1124,23 +1110,23 @@ mod tests {
 
     #[test]
     fn component_with_params_and_escaping() {
-        let module = build_module(
-            "UserInfo",
-            vec![("name", Type::String), ("age", Type::String)],
-            |t| {
-                t.write("<div>\n");
-                t.write("<h2>Name: ");
-                t.write_expr_escaped(t.var("name"));
-                t.write("</h2>\n");
-                t.write("<p>Age: ");
-                t.write_expr(t.var("age"), false);
-                t.write("</p>\n");
-                t.write("</div>\n");
-            },
-        );
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component(
+                    "UserInfo",
+                    [("name", Type::String), ("age", Type::String)],
+                    |t| {
+                        t.write("<div>\n");
+                        t.write("<h2>Name: ");
+                        t.write_expr_escaped(t.var("name"));
+                        t.write("</h2>\n");
+                        t.write("<p>Age: ");
+                        t.write_expr(t.var("age"), false);
+                        t.write("</p>\n");
+                        t.write("</div>\n");
+                    },
+                )
+                .build(),
             expect![[r#"
                 -- before --
                 UserInfo(name: String, age: String) {
@@ -1195,20 +1181,20 @@ mod tests {
 
     #[test]
     fn conditional_display() {
-        let module = build_module(
-            "ConditionalDisplay",
-            vec![("title", Type::String), ("show", Type::Bool)],
-            |t| {
-                t.if_stmt(t.var("show"), |t| {
-                    t.write("<h1>");
-                    t.write_expr_escaped(t.var("title"));
-                    t.write("</h1>\n");
-                });
-            },
-        );
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component(
+                    "ConditionalDisplay",
+                    [("title", Type::String), ("show", Type::Bool)],
+                    |t| {
+                        t.if_stmt(t.var("show"), |t| {
+                            t.write("<h1>");
+                            t.write_expr_escaped(t.var("title"));
+                            t.write("</h1>\n");
+                        });
+                    },
+                )
+                .build(),
             expect![[r#"
                 -- before --
                 ConditionalDisplay(title: String, show: Bool) {
@@ -1257,22 +1243,22 @@ mod tests {
 
     #[test]
     fn for_loop_with_array() {
-        let module = build_module(
-            "ListItems",
-            vec![("items", Type::Array(Box::new(Type::String)))],
-            |t| {
-                t.write("<ul>\n");
-                t.for_loop("item", t.var("items"), |t| {
-                    t.write("<li>");
-                    t.write_expr_escaped(t.var("item"));
-                    t.write("</li>\n");
-                });
-                t.write("</ul>\n");
-            },
-        );
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component(
+                    "ListItems",
+                    [("items", Type::Array(Box::new(Type::String)))],
+                    |t| {
+                        t.write("<ul>\n");
+                        t.for_loop("item", t.var("items"), |t| {
+                            t.write("<li>");
+                            t.write_expr_escaped(t.var("item"));
+                            t.write("</li>\n");
+                        });
+                        t.write("</ul>\n");
+                    },
+                )
+                .build(),
             expect![[r#"
                 -- before --
                 ListItems(items: Array[String]) {
@@ -1325,18 +1311,18 @@ mod tests {
 
     #[test]
     fn let_binding() {
-        let module = build_module("GreetingCard", [], |t| {
-            t.let_stmt("greeting", t.str("Hello from hop!"), |t| {
-                t.write("<div class=\"card\">\n");
-                t.write("<p>");
-                t.write_expr_escaped(t.var("greeting"));
-                t.write("</p>\n");
-                t.write("</div>\n");
-            });
-        });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component("GreetingCard", [], |t| {
+                    t.let_stmt("greeting", t.str("Hello from hop!"), |t| {
+                        t.write("<div class=\"card\">\n");
+                        t.write("<p>");
+                        t.write_expr_escaped(t.var("greeting"));
+                        t.write("</p>\n");
+                        t.write("</div>\n");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 GreetingCard() {
@@ -1388,18 +1374,18 @@ mod tests {
 
     #[test]
     fn nested_components_with_let_bindings() {
-        let module = build_module("TestMainComp", [], |t| {
-            t.write("<div data-hop-id=\"test/card-comp\">");
-            t.let_stmt("title", t.str("Hello World"), |t| {
-                t.write("<h2>");
-                t.write_expr_escaped(t.var("title"));
-                t.write("</h2>");
-            });
-            t.write("</div>");
-        });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component("TestMainComp", [], |t| {
+                    t.write("<div data-hop-id=\"test/card-comp\">");
+                    t.let_stmt("title", t.str("Hello World"), |t| {
+                        t.write("<h2>");
+                        t.write_expr_escaped(t.var("title"));
+                        t.write("</h2>");
+                    });
+                    t.write("</div>");
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 TestMainComp() {
@@ -1451,25 +1437,25 @@ mod tests {
 
     #[test]
     fn trusted_html_type() {
-        let module = build_module(
-            "RenderHtml",
-            vec![
-                ("safe_content", Type::TrustedHTML),
-                ("user_input", Type::String),
-            ],
-            |t| {
-                t.write("<div>");
-                // TrustedHTML should not be escaped
-                t.write_expr(t.var("safe_content"), false);
-                t.write("</div><div>");
-                // Regular strings should be escaped
-                t.write_expr_escaped(t.var("user_input"));
-                t.write("</div>");
-            },
-        );
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component(
+                    "RenderHtml",
+                    [
+                        ("safe_content", Type::TrustedHTML),
+                        ("user_input", Type::String),
+                    ],
+                    |t| {
+                        t.write("<div>");
+                        // TrustedHTML should not be escaped
+                        t.write_expr(t.var("safe_content"), false);
+                        t.write("</div><div>");
+                        // Regular strings should be escaped
+                        t.write_expr_escaped(t.var("user_input"));
+                        t.write("</div>");
+                    },
+                )
+                .build(),
             expect![[r#"
                 -- before --
                 RenderHtml(safe_content: TrustedHTML, user_input: String) {
@@ -1523,47 +1509,43 @@ mod tests {
         use crate::dop::symbols::{field_name::FieldName, type_name::TypeName};
         use crate::hop::symbols::module_name::ModuleName;
 
-        let records = vec![
-            (
-                "User",
-                vec![
-                    ("name", Type::String),
-                    ("age", Type::Int),
-                    ("active", Type::Bool),
-                ],
-            ),
-            (
-                "Address",
-                vec![("street", Type::String), ("city", Type::String)],
-            ),
-        ];
-
-        let module = build_module_with_records(
-            "UserProfile",
-            vec![(
-                "user",
-                Type::Record {
-                    module: ModuleName::new("test").unwrap(),
-                    name: TypeName::new("User").unwrap(),
-                    fields: vec![
-                        (FieldName::new("name").unwrap(), Type::String),
-                        (FieldName::new("age").unwrap(), Type::Int),
-                        (FieldName::new("active").unwrap(), Type::Bool),
-                    ],
-                },
-            )],
-            records,
-            |t| {
-                t.write("<div>");
-                t.write_expr_escaped(t.field_access(t.var("user"), "name"));
-                t.write("</div>");
-            },
-        );
+        let user_type = Type::Record {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("User").unwrap(),
+            fields: vec![
+                (FieldName::new("name").unwrap(), Type::String),
+                (FieldName::new("age").unwrap(), Type::Int),
+                (FieldName::new("active").unwrap(), Type::Bool),
+            ],
+        };
 
         check(
-            &module,
+            IrModuleBuilder::new()
+                .record("User", |r| {
+                    r.field("name", Type::String)
+                        .field("age", Type::Int)
+                        .field("active", Type::Bool);
+                })
+                .record("Address", |r| {
+                    r.field("street", Type::String).field("city", Type::String);
+                })
+                .component("UserProfile", [("user", user_type)], |t| {
+                    t.write("<div>");
+                    t.write_expr_escaped(t.field_access(t.var("user"), "name"));
+                    t.write("</div>");
+                })
+                .build(),
             expect![[r#"
                 -- before --
+                record Address {
+                  street: String,
+                  city: String,
+                }
+                record User {
+                  name: String,
+                  age: Int,
+                  active: Bool,
+                }
                 UserProfile(user: test::User) {
                   write("<div>")
                   write_escaped(user.name)
@@ -1582,18 +1564,18 @@ mod tests {
                     }
                 }
 
+                export class Address {
+                    constructor(
+                        public readonly street: string,
+                        public readonly city: string,
+                    ) {}
+                }
+
                 export class User {
                     constructor(
                         public readonly name: string,
                         public readonly age: number,
                         public readonly active: boolean,
-                    ) {}
-                }
-
-                export class Address {
-                    constructor(
-                        public readonly street: string,
-                        public readonly city: string,
                     ) {}
                 }
 
@@ -1621,19 +1603,24 @@ mod tests {
 
     #[test]
     fn record_literal() {
-        let records = vec![("User", vec![("name", Type::String), ("age", Type::Int)])];
-
-        let module = build_module_with_records("CreateUser", vec![], records, |t| {
-            t.write("<div>");
-            let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
-            t.write_expr_escaped(t.field_access(user, "name"));
-            t.write("</div>");
-        });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .record("User", |r| {
+                    r.field("name", Type::String).field("age", Type::Int);
+                })
+                .component("CreateUser", [], |t| {
+                    t.write("<div>");
+                    let user = t.record("User", vec![("name", t.str("John")), ("age", t.int(30))]);
+                    t.write_expr_escaped(t.field_access(user, "name"));
+                    t.write("</div>");
+                })
+                .build(),
             expect![[r#"
                 -- before --
+                record User {
+                  name: String,
+                  age: Int,
+                }
                 CreateUser() {
                   write("<div>")
                   write_escaped(User(name: "John", age: 30).name)
@@ -1686,8 +1673,6 @@ mod tests {
         use crate::dop::symbols::type_name::TypeName;
         use crate::hop::symbols::module_name::ModuleName;
 
-        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
-
         let color_type = Type::Enum {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("Color").unwrap(),
@@ -1698,17 +1683,22 @@ mod tests {
             ],
         };
 
-        let module =
-            build_module_with_enums("ColorDisplay", vec![("color", color_type)], enums, |t| {
-                t.if_stmt(t.eq(t.var("color"), t.enum_variant("Color", "Red")), |t| {
-                    t.write("<div>Red!</div>");
-                });
-            });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .enum_decl("Color", ["Red", "Green", "Blue"])
+                .component("ColorDisplay", [("color", color_type)], |t| {
+                    t.if_stmt(t.eq(t.var("color"), t.enum_variant("Color", "Red")), |t| {
+                        t.write("<div>Red!</div>");
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
                 ColorDisplay(color: test::Color) {
                   if (color == Color::Red) {
                     write("<div>Red!</div>")
@@ -1759,8 +1749,6 @@ mod tests {
         use crate::dop::symbols::type_name::TypeName;
         use crate::hop::symbols::module_name::ModuleName;
 
-        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
-
         let color_type = Type::Enum {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("Color").unwrap(),
@@ -1771,24 +1759,29 @@ mod tests {
             ],
         };
 
-        let module =
-            build_module_with_enums("ColorName", vec![("color", color_type)], enums, |t| {
-                // Use match expression to convert color to string
-                let match_result = t.match_expr(
-                    t.var("color"),
-                    vec![
-                        ("Red", t.str("red")),
-                        ("Green", t.str("green")),
-                        ("Blue", t.str("blue")),
-                    ],
-                );
-                t.write_expr_escaped(match_result);
-            });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .enum_decl("Color", ["Red", "Green", "Blue"])
+                .component("ColorName", [("color", color_type)], |t| {
+                    // Use match expression to convert color to string
+                    let match_result = t.match_expr(
+                        t.var("color"),
+                        vec![
+                            ("Red", t.str("red")),
+                            ("Green", t.str("green")),
+                            ("Blue", t.str("blue")),
+                        ],
+                    );
+                    t.write_expr_escaped(match_result);
+                })
+                .build(),
             expect![[r#"
                 -- before --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
                 ColorName(color: test::Color) {
                   write_escaped(match color {
                     Color::Red => "red",
@@ -1851,13 +1844,14 @@ mod tests {
 
     #[test]
     fn bool_match_expression() {
-        let module = build_module("IsActive", vec![("active", Type::Bool)], |t| {
-            let match_result = t.bool_match_expr(t.var("active"), t.str("yes"), t.str("no"));
-            t.write_expr_escaped(match_result);
-        });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component("IsActive", [("active", Type::Bool)], |t| {
+                    let match_result =
+                        t.bool_match_expr(t.var("active"), t.str("yes"), t.str("no"));
+                    t.write_expr_escaped(match_result);
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 IsActive(active: Bool) {
@@ -1898,18 +1892,18 @@ mod tests {
 
     #[test]
     fn option_match_expression() {
-        let module = build_module(
-            "CheckOption",
-            vec![("opt", Type::Option(Box::new(Type::Int)))],
-            |t| {
-                let match_result =
-                    t.option_match_expr(t.var("opt"), t.str("has value"), t.str("empty"));
-                t.write_expr_escaped(match_result);
-            },
-        );
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component(
+                    "CheckOption",
+                    [("opt", Type::Option(Box::new(Type::Int)))],
+                    |t| {
+                        let match_result =
+                            t.option_match_expr(t.var("opt"), t.str("has value"), t.str("empty"));
+                        t.write_expr_escaped(match_result);
+                    },
+                )
+                .build(),
             expect![[r#"
                 -- before --
                 CheckOption(opt: Option[Int]) {
@@ -1960,37 +1954,37 @@ mod tests {
     fn nested_option_match_expression() {
         let outer_option_type = Type::Option(Box::new(Type::Option(Box::new(Type::Bool)).clone()));
 
-        let module = build_module("CheckNestedOption", vec![("opt", outer_option_type)], |t| {
-            // Outer match on opt: Some(v0) => middle_match, None => "none"
-            let outer_match = t.option_match_expr_with_binding(
-                t.var("opt"),
-                "v0",
-                Type::Option(Box::new(Type::Bool)),
-                |t| {
-                    // Middle match on v0 (Option[Bool]): Some(v1) => innermost_match, None => "some-none"
-                    t.option_match_expr_with_binding(
-                        t.var("v0"),
-                        "v1",
-                        Type::Bool,
+        check(
+            IrModuleBuilder::new()
+                .component("CheckNestedOption", [("opt", outer_option_type)], |t| {
+                    // Outer match on opt: Some(v0) => middle_match, None => "none"
+                    let outer_match = t.option_match_expr_with_binding(
+                        t.var("opt"),
+                        "v0",
+                        Type::Option(Box::new(Type::Bool)),
                         |t| {
-                            // Inner match on v1 (Bool): true => "true", false => "false"
-                            t.bool_match_expr(
-                                t.var("v1"),
-                                t.str("some-some-true"),
-                                t.str("some-some-false"),
+                            // Middle match on v0 (Option[Bool]): Some(v1) => innermost_match, None => "some-none"
+                            t.option_match_expr_with_binding(
+                                t.var("v0"),
+                                "v1",
+                                Type::Bool,
+                                |t| {
+                                    // Inner match on v1 (Bool): true => "true", false => "false"
+                                    t.bool_match_expr(
+                                        t.var("v1"),
+                                        t.str("some-some-true"),
+                                        t.str("some-some-false"),
+                                    )
+                                },
+                                t.str("some-none"),
                             )
                         },
-                        t.str("some-none"),
-                    )
-                },
-                t.str("none"),
-            );
+                        t.str("none"),
+                    );
 
-            t.write_expr_escaped(outer_match);
-        });
-
-        check(
-            &module,
+                    t.write_expr_escaped(outer_match);
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 CheckNestedOption(opt: Option[Option[Bool]]) {
@@ -2056,14 +2050,14 @@ mod tests {
 
     #[test]
     fn let_expression() {
-        let module = build_module("LetExpr", vec![("name", Type::String)], |t| {
-            // let x = name in x
-            let result = t.let_expr("x", t.var("name"), |t| t.var("x"));
-            t.write_expr_escaped(result);
-        });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component("LetExpr", [("name", Type::String)], |t| {
+                    // let x = name in x
+                    let result = t.let_expr("x", t.var("name"), |t| t.var("x"));
+                    t.write_expr_escaped(result);
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 LetExpr(name: String) {
@@ -2107,27 +2101,27 @@ mod tests {
 
     #[test]
     fn option_match_statement() {
-        let module = build_module(
-            "DisplayOption",
-            vec![("opt", Type::Option(Box::new(Type::String)))],
-            |t| {
-                t.option_match_stmt(
-                    t.var("opt"),
-                    Some("value"),
-                    |t| {
-                        t.write("<span>Found: ");
-                        t.write_expr_escaped(t.var("value"));
-                        t.write("</span>");
-                    },
-                    |t| {
-                        t.write("<span>Nothing</span>");
-                    },
-                );
-            },
-        );
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component(
+                    "DisplayOption",
+                    [("opt", Type::Option(Box::new(Type::String)))],
+                    |t| {
+                        t.option_match_stmt(
+                            t.var("opt"),
+                            Some("value"),
+                            |t| {
+                                t.write("<span>Found: ");
+                                t.write_expr_escaped(t.var("value"));
+                                t.write("</span>");
+                            },
+                            |t| {
+                                t.write("<span>Nothing</span>");
+                            },
+                        );
+                    },
+                )
+                .build(),
             expect![[r#"
                 -- before --
                 DisplayOption(opt: Option[String]) {
@@ -2189,27 +2183,27 @@ mod tests {
 
     #[test]
     fn option_literal() {
-        let module = build_module(
-            "TestOptionLiteral",
-            vec![
-                ("opt1", Type::Option(Box::new(Type::String))),
-                ("opt2", Type::Option(Box::new(Type::String))),
-            ],
-            |t| {
-                // Test Some literal
-                let match_result =
-                    t.option_match_expr(t.var("opt1"), t.str("has value"), t.str("empty"));
-                t.write_expr(match_result, false);
-
-                // Test None literal
-                let match_result2 =
-                    t.option_match_expr(t.var("opt2"), t.str("HAS"), t.str("EMPTY"));
-                t.write_expr(match_result2, false);
-            },
-        );
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component(
+                    "TestOptionLiteral",
+                    [
+                        ("opt1", Type::Option(Box::new(Type::String))),
+                        ("opt2", Type::Option(Box::new(Type::String))),
+                    ],
+                    |t| {
+                        // Test Some literal
+                        let match_result =
+                            t.option_match_expr(t.var("opt1"), t.str("has value"), t.str("empty"));
+                        t.write_expr(match_result, false);
+
+                        // Test None literal
+                        let match_result2 =
+                            t.option_match_expr(t.var("opt2"), t.str("HAS"), t.str("EMPTY"));
+                        t.write_expr(match_result2, false);
+                    },
+                )
+                .build(),
             expect![[r#"
                 -- before --
                 TestOptionLiteral(
@@ -2259,24 +2253,24 @@ mod tests {
 
     #[test]
     fn option_literal_inline_match_stmt() {
-        let module = build_module("TestInlineMatch", vec![], |t| {
-            t.let_stmt("opt", t.some(t.str("world")), |t| {
-                t.option_match_stmt(
-                    t.var("opt"),
-                    Some("val"),
-                    |t| {
-                        t.write("Got:");
-                        t.write_expr(t.var("val"), false);
-                    },
-                    |t| {
-                        t.write("Empty");
-                    },
-                );
-            });
-        });
-
         check(
-            &module,
+            IrModuleBuilder::new()
+                .component("TestInlineMatch", [], |t| {
+                    t.let_stmt("opt", t.some(t.str("world")), |t| {
+                        t.option_match_stmt(
+                            t.var("opt"),
+                            Some("val"),
+                            |t| {
+                                t.write("Got:");
+                                t.write_expr(t.var("val"), false);
+                            },
+                            |t| {
+                                t.write("Empty");
+                            },
+                        );
+                    });
+                })
+                .build(),
             expect![[r#"
                 -- before --
                 TestInlineMatch() {

@@ -181,37 +181,6 @@ where
     builder.build(name)
 }
 
-pub fn build_ir_with_records<F, P>(
-    name: &str,
-    params: P,
-    records: Vec<(&str, Vec<(&str, Type)>)>,
-    body_fn: F,
-) -> IrComponentDeclaration
-where
-    F: FnOnce(&mut IrBuilder),
-    P: IntoIterator<Item = (&'static str, Type)>,
-{
-    let params_owned: Vec<(String, Type)> = params
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v))
-        .collect();
-
-    let records_map: BTreeMap<String, BTreeMap<String, Type>> = records
-        .into_iter()
-        .map(|(name, fields)| {
-            let fields_map: BTreeMap<String, Type> = fields
-                .into_iter()
-                .map(|(k, v)| (k.to_string(), v))
-                .collect();
-            (name.to_string(), fields_map)
-        })
-        .collect();
-
-    let mut builder = IrBuilder::new(params_owned, records_map, BTreeMap::new());
-    body_fn(&mut builder);
-    builder.build(name)
-}
-
 pub fn build_ir_with_enums<F, P>(
     name: &str,
     params: P,
@@ -240,74 +209,6 @@ where
     let mut builder = IrBuilder::new(params_owned, BTreeMap::new(), enums_map);
     body_fn(&mut builder);
     builder.build(name)
-}
-
-/// Build a simple module with just components (no records or enums)
-pub fn build_module<F, P>(name: &str, params: P, body_fn: F) -> IrModule
-where
-    F: FnOnce(&mut IrBuilder),
-    P: IntoIterator<Item = (&'static str, Type)>,
-{
-    IrModule {
-        components: vec![build_ir(name, params, body_fn)],
-        records: vec![],
-        enums: vec![],
-    }
-}
-
-/// Build a module with records
-pub fn build_module_with_records<F, P>(
-    name: &str,
-    params: P,
-    records: Vec<(&str, Vec<(&str, Type)>)>,
-    body_fn: F,
-) -> IrModule
-where
-    F: FnOnce(&mut IrBuilder),
-    P: IntoIterator<Item = (&'static str, Type)>,
-{
-    let record_declarations: Vec<IrRecordDeclaration> = records
-        .iter()
-        .map(|(name, fields)| IrRecordDeclaration {
-            name: name.to_string(),
-            fields: fields
-                .iter()
-                .map(|(k, v)| (FieldName::new(k).unwrap(), v.clone()))
-                .collect(),
-        })
-        .collect();
-
-    IrModule {
-        components: vec![build_ir_with_records(name, params, records, body_fn)],
-        records: record_declarations,
-        enums: vec![],
-    }
-}
-
-/// Build a module with enums
-pub fn build_module_with_enums<F, P>(
-    name: &str,
-    params: P,
-    enums: Vec<(&str, Vec<&str>)>,
-    body_fn: F,
-) -> IrModule
-where
-    F: FnOnce(&mut IrBuilder),
-    P: IntoIterator<Item = (&'static str, Type)>,
-{
-    let enum_declarations: Vec<IrEnumDeclaration> = enums
-        .iter()
-        .map(|(name, variants)| IrEnumDeclaration {
-            name: name.to_string(),
-            variants: variants.iter().map(|v| TypeName::new(v).unwrap()).collect(),
-        })
-        .collect();
-
-    IrModule {
-        components: vec![build_ir_with_enums(name, params, enums, body_fn)],
-        records: vec![],
-        enums: enum_declarations,
-    }
 }
 
 pub struct IrBuilder {
