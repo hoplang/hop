@@ -9,6 +9,7 @@ use crate::ir::ast::{ExprId, IrExpr, IrStatement, StatementId};
 use crate::ir::ast::{IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::rc::Rc;
 
 pub struct IrModuleBuilder {
     module_name: ModuleName,
@@ -212,8 +213,8 @@ where
 }
 
 pub struct IrBuilder {
-    next_expr_id: RefCell<ExprId>,
-    next_node_id: RefCell<StatementId>,
+    next_expr_id: Rc<RefCell<ExprId>>,
+    next_node_id: Rc<RefCell<StatementId>>,
     var_stack: RefCell<Vec<(String, Type)>>,
     params: Vec<(VarName, Type)>,
     records: BTreeMap<String, BTreeMap<String, Type>>,
@@ -230,8 +231,8 @@ impl IrBuilder {
         let initial_vars = params.clone();
 
         Self {
-            next_expr_id: RefCell::new(1),
-            next_node_id: RefCell::new(1),
+            next_expr_id: Rc::new(RefCell::new(1)),
+            next_node_id: Rc::new(RefCell::new(1)),
             var_stack: RefCell::new(initial_vars),
             params: params
                 .into_iter()

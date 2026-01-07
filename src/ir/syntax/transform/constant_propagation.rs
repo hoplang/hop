@@ -1043,4 +1043,39 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn sibling_let_constant_propagation() {
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("x", t.str("first"), |t| {
+                    t.write_expr_escaped(t.var("x"));
+                });
+                t.let_stmt("y", t.str("second"), |t| {
+                    t.write_expr_escaped(t.var("y"));
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let x = "first" in {
+                    write_escaped(x)
+                  }
+                  let y = "second" in {
+                    write_escaped(y)
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let x = "first" in {
+                    write_escaped("first")
+                  }
+                  let y = "second" in {
+                    write_escaped("second")
+                  }
+                }
+            "#]],
+        );
+    }
 }
