@@ -53,15 +53,17 @@ impl ParsedAttributeValue {
         match self {
             ParsedAttributeValue::Expressions(exprs) => BoxDoc::text("{")
                 .append(
-                    BoxDoc::line()
+                    BoxDoc::line_()
                         .append(BoxDoc::intersperse(
-                            exprs.iter().map(|e| e.to_doc().append(BoxDoc::text(","))),
-                            BoxDoc::line(),
+                            exprs.iter().map(|e| e.to_doc()),
+                            BoxDoc::text(",").append(BoxDoc::line()),
                         ))
+                        .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
                         .nest(2),
                 )
-                .append(BoxDoc::line())
-                .append(BoxDoc::text("}")),
+                .append(BoxDoc::line_())
+                .append(BoxDoc::text("}"))
+                .group(),
             ParsedAttributeValue::String(range) => BoxDoc::text(format!("\"{}\"", range.as_str())),
         }
     }
@@ -354,15 +356,17 @@ impl ParsedComponentDeclaration {
             .append(match &self.params {
                 Some((params, _)) if !params.is_empty() => BoxDoc::text(" {")
                     .append(
-                        BoxDoc::line()
+                        BoxDoc::line_()
                             .append(BoxDoc::intersperse(
-                                params.iter().map(|p| p.to_doc().append(BoxDoc::text(","))),
-                                BoxDoc::line(),
+                                params.iter().map(|p| p.to_doc()),
+                                BoxDoc::text(",").append(BoxDoc::line()),
                             ))
+                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
                             .nest(2),
                     )
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("}")),
+                    .append(BoxDoc::line_())
+                    .append(BoxDoc::text("}"))
+                    .group(),
                 _ => BoxDoc::nil(),
             })
             .append(BoxDoc::text(">"))

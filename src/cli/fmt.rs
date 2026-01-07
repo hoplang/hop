@@ -85,10 +85,7 @@ mod tests {
         assert_eq!(
             formatted_content,
             indoc! {r#"
-                <Main {
-                  name: String,
-                  count: Int,
-                }>
+                <Main {name: String, count: Int}>
                   <div>
                     {name}
                   </div>

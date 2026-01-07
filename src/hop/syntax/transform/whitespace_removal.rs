@@ -271,9 +271,7 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {
-                  items: Array[String],
-                }>
+                <Main {items: Array[String]}>
                   <for {item in items}>
                     <div>
                       {item}
@@ -297,9 +295,7 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {
-                  show: Bool,
-                }>
+                <Main {show: Bool}>
                   <if {show}>
                     <div>
                       visible
@@ -327,9 +323,7 @@ mod tests {
                   age: Int,
                 }
 
-                <Main {
-                  user: User,
-                }>
+                <Main {user: User}>
                   <div>
                     {user.name}
                   </div>
@@ -400,9 +394,7 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {
-                  name: String,
-                }>
+                <Main {name: String}>
                   {name}
                 </Main>
             "#]],
@@ -420,9 +412,7 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {
-                  name: String,
-                }>
+                <Main {name: String}>
                   Hello
                   {name}
                   World

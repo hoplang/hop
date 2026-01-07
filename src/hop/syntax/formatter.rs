@@ -122,10 +122,7 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {
-                  name: String,
-                  count: Int,
-                }>
+                <Main {name: String, count: Int}>
                   <div>
                     {name}
                   </div>
@@ -169,9 +166,7 @@ mod tests {
                   Blue,
                 }
 
-                <Main {
-                  color: Color,
-                }>
+                <Main {color: Color}>
                   <div class={
                     match color {
                       Color::Red   => "red",
@@ -212,12 +207,26 @@ mod tests {
                   name: String,
                 }
 
-                <Main {
-                  character: Character,
-                }>
+                <Main {character: Character}>
                   <h1 class="text-2xl font-bold">
                     {character.name}
                   </h1>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn html_with_single_class_expression_to_doc() {
+        check(
+            indoc! {r#"
+                <Main>
+                  <div class={"p-2"}></div>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main>
+                  <div class={"p-2"} />
                 </Main>
             "#]],
         );
@@ -233,11 +242,7 @@ mod tests {
             "#},
             expect![[r#"
                 <Main>
-                  <div class={
-                    "foo",
-                    "bar",
-                    "baz",
-                  } />
+                  <div class={"foo", "bar", "baz"} />
                 </Main>
             "#]],
         );
@@ -252,14 +257,8 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                <Main {
-                  name: String,
-                }>
-                  <div class={
-                    "foo",
-                    "bar",
-                    "baz",
-                  }>
+                <Main {name: String}>
+                  <div class={"foo", "bar", "baz"}>
                     {name}
                   </div>
                 </Main>
@@ -290,10 +289,7 @@ mod tests {
                   Large,
                 }
 
-                <Main {
-                  color: Color,
-                  size: Size,
-                }>
+                <Main {color: Color, size: Size}>
                   <div class={
                     match color {
                       Color::Red   => "red",
@@ -318,10 +314,7 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {
-                  a: String,
-                  b: String,
-                }>
+                <Main {a: String, b: String}>
                   <if {a == b}>
                     <div>
                       equal
@@ -343,10 +336,7 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {
-                  a: Bool,
-                  b: Bool,
-                }>
+                <Main {a: Bool, b: Bool}>
                   <if {a && b}>
                     <div>
                       both true
@@ -368,11 +358,7 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {
-                  a: Bool,
-                  b: Bool,
-                  c: Bool,
-                }>
+                <Main {a: Bool, b: Bool, c: Bool}>
                   <if {a && b || c}>
                     <div>
                       complex
@@ -394,9 +380,7 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {
-                  a: Bool,
-                }>
+                <Main {a: Bool}>
                   <if {!a}>
                     <div>
                       not a
@@ -418,10 +402,7 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                <Main {
-                  a: String,
-                  b: String,
-                }>
+                <Main {a: String, b: String}>
                   <if {!(a == b)}>
                     <div>
                       not equal
@@ -539,9 +520,7 @@ mod tests {
                   id: String,
                 }
 
-                <IconShowPage {
-                  product: Product,
-                }>
+                <IconShowPage {product: Product}>
                   <Button {
                     href: "/download/" + product.id,
                   }>
@@ -561,9 +540,7 @@ mod tests {
                 </Greeting>
             "#},
             expect![[r#"
-                <Greeting {
-                  name: String = "World",
-                }>
+                <Greeting {name: String = "World"}>
                   Hello,
                   {name}
                   !
@@ -581,9 +558,7 @@ mod tests {
                 </Counter>
             "},
             expect![[r#"
-                <Counter {
-                  count: Int = 0,
-                }>
+                <Counter {count: Int = 0}>
                   {count}
                 </Counter>
             "#]],
@@ -598,9 +573,7 @@ mod tests {
                 </Toggle>
             "},
             expect![[r#"
-                <Toggle {
-                  enabled: Bool = true,
-                }></Toggle>
+                <Toggle {enabled: Bool = true}></Toggle>
             "#]],
         );
     }
@@ -614,11 +587,7 @@ mod tests {
                 </UserCard>
             "#},
             expect![[r#"
-                <UserCard {
-                  name: String,
-                  role: String = "user",
-                  active: Bool = true,
-                }>
+                <UserCard {name: String, role: String = "user", active: Bool = true}>
                   {name}
                 </UserCard>
             "#]],
@@ -633,9 +602,7 @@ mod tests {
                 </ItemList>
             "#},
             expect![[r#"
-                <ItemList {
-                  items: Array[String] = ["one", "two"],
-                }></ItemList>
+                <ItemList {items: Array[String] = ["one", "two"]}></ItemList>
             "#]],
         );
     }
@@ -648,9 +615,7 @@ mod tests {
                 </ItemList>
             "},
             expect![[r#"
-                <ItemList {
-                  items: Array[String] = [],
-                }></ItemList>
+                <ItemList {items: Array[String] = []}></ItemList>
             "#]],
         );
     }
@@ -669,9 +634,7 @@ mod tests {
                   timeout: Int,
                 }
 
-                <Settings {
-                  config: Config = Config(debug: false, timeout: 30),
-                }></Settings>
+                <Settings {config: Config = Config(debug: false, timeout: 30)}></Settings>
             "#]],
         );
     }
@@ -691,9 +654,7 @@ mod tests {
                   Pending,
                 }
 
-                <Badge {
-                  status: Status = Status::Active,
-                }></Badge>
+                <Badge {status: Status = Status::Active}></Badge>
             "#]],
         );
     }
@@ -728,9 +689,7 @@ mod tests {
                   Blue,
                 }
 
-                <Main {
-                  c: Option[String],
-                }>
+                <Main {c: Option[String]}>
                   <match {c}>
                     <case {Some(x)}>
                       {x}
