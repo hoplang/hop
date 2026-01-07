@@ -196,6 +196,7 @@ impl Compiler {
         }
     }
 
+    /// Compile a collection of patterns into a decision tree.
     pub fn compile(
         mut self,
         patterns: &[ParsedMatchPattern],
@@ -414,8 +415,7 @@ impl Compiler {
         }
 
         // Compile all case bodies, collecting missing patterns along the way
-        let mut compiled_cases: Vec<(Constructor, Vec<Variable>, Option<Decision>)> =
-            Vec::with_capacity(cases.len());
+        let mut compiled_cases = Vec::with_capacity(cases.len());
 
         for (cons, vars, rows) in cases {
             let args = if let Constructor::Record { .. } = &cons {
@@ -511,7 +511,7 @@ impl Compiler {
         format!("{}({})", info.constructor, args)
     }
 
-    /// Validates that a pattern is compatible with the subject type.
+    /// Validates that a pattern is compatible with a given type.
     fn validate_pattern(
         pattern: &ParsedMatchPattern,
         subject_type: &Type,
@@ -525,6 +525,17 @@ impl Compiler {
                 fields,
                 range,
             } => match (constructor, subject_type) {
+                (Constructor::BooleanTrue | Constructor::BooleanFalse, Type::Bool) => Ok(()),
+
+                (Constructor::OptionSome, Type::Option(inner_type)) => {
+                    if let Some(inner_pattern) = args.first() {
+                        Self::validate_pattern(inner_pattern, inner_type)?;
+                    }
+                    Ok(())
+                }
+
+                (Constructor::OptionNone, Type::Option(_)) => Ok(()),
+
                 (
                     Constructor::EnumVariant {
                         enum_name: pattern_enum_name,
@@ -556,17 +567,6 @@ impl Compiler {
 
                     Ok(())
                 }
-
-                (Constructor::BooleanTrue | Constructor::BooleanFalse, Type::Bool) => Ok(()),
-
-                (Constructor::OptionSome, Type::Option(inner_type)) => {
-                    if let Some(inner_pattern) = args.first() {
-                        Self::validate_pattern(inner_pattern, inner_type)?;
-                    }
-                    Ok(())
-                }
-
-                (Constructor::OptionNone, Type::Option(_)) => Ok(()),
 
                 (
                     Constructor::Record {
