@@ -1,9 +1,7 @@
 use crate::error_collector::ErrorCollector;
 use crate::filesystem::project_root::ProjectRoot;
-use crate::hop::syntax::parse_error::ParseError;
+use crate::hop::syntax::format;
 use crate::hop::syntax::parser;
-use crate::hop::syntax::transform::sort_imports::sort_imports;
-use crate::hop::syntax::transform::whitespace_removal::remove_whitespace;
 use anyhow::Result;
 use std::path::Path;
 
@@ -31,7 +29,7 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
     let mut files_unchanged = 0;
 
     for (module_name, source) in hop_modules {
-        let mut errors = ErrorCollector::<ParseError>::new();
+        let mut errors = ErrorCollector::new();
         let ast = parser::parse(module_name.clone(), source.clone(), &mut errors);
 
         if !errors.is_empty() {
@@ -39,9 +37,7 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
             continue;
         }
 
-        let ast = remove_whitespace(ast);
-        let ast = sort_imports(ast);
-        let formatted = ast.to_doc().pretty(60).to_string();
+        let formatted = format(ast);
 
         if formatted != source {
             let path = project_root.module_name_to_path(&module_name);

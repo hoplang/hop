@@ -1,4 +1,6 @@
 pub mod find_node;
+mod formatter;
+pub use formatter::format;
 pub mod parse_error;
 pub mod parsed_ast;
 pub mod parsed_node;
