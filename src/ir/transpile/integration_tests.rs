@@ -1153,6 +1153,95 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn nested_record() {
+        use crate::dop::symbols::field_name::FieldName;
+        use crate::dop::symbols::type_name::TypeName;
+        use crate::dop::Type;
+        use crate::hop::symbols::module_name::ModuleName;
+        use crate::ir::syntax::builder::build_ir_with_records;
+
+        let test_module = ModuleName::new("test").unwrap();
+        let address_type = Type::Record {
+            module: test_module,
+            name: TypeName::new("Address").unwrap(),
+            fields: vec![
+                (FieldName::new("city").unwrap(), Type::String),
+                (FieldName::new("zip").unwrap(), Type::String),
+            ],
+        };
+
+        let records = vec![
+            ("Address", vec![("city", Type::String), ("zip", Type::String)]),
+            ("Person", vec![("name", Type::String), ("address", address_type)]),
+        ];
+
+        check(
+            TestCase::new(
+                build_ir_with_records("Test", [], records.clone(), |t| {
+                    t.let_stmt(
+                        "person",
+                        t.record(
+                            "Person",
+                            vec![
+                                ("name", t.str("Alice")),
+                                (
+                                    "address",
+                                    t.record(
+                                        "Address",
+                                        vec![("city", t.str("Paris")), ("zip", t.str("75001"))],
+                                    ),
+                                ),
+                            ],
+                        ),
+                        |t| {
+                            let person = t.var("person");
+                            let name = t.field_access(person, "name");
+                            t.write_expr(name, false);
+                            t.write(",");
+                            let person = t.var("person");
+                            let address = t.field_access(person, "address");
+                            let city = t.field_access(address, "city");
+                            t.write_expr(city, false);
+                        },
+                    );
+                }),
+                "Alice,Paris",
+            )
+            .with_records(records),
+            expect![[r#"
+                -- input --
+                record Address {
+                  city: String,
+                  zip: String,
+                }
+                record Person {
+                  name: String,
+                  address: Address,
+                }
+                Test() {
+                  let person = Person(
+                    name: "Alice",
+                    address: Address(city: "Paris", zip: "75001"),
+                  ) in {
+                    write_expr(person.name)
+                    write(",")
+                    write_expr(person.address.city)
+                  }
+                }
+                -- expected output --
+                Alice,Paris
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn numeric_add() {
         check(
             TestCase::new(

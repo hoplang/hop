@@ -14,6 +14,13 @@ pub type ExprId = u32;
 pub type StatementId = u32;
 
 #[derive(Debug, Clone)]
+pub struct IrModule {
+    pub components: Vec<IrComponentDeclaration>,
+    pub records: Vec<IrRecordDeclaration>,
+    pub enums: Vec<IrEnumDeclaration>,
+}
+
+#[derive(Debug, Clone)]
 pub struct IrComponentDeclaration {
     /// Component name (e.g. MyComponent)
     pub name: ComponentName,
@@ -33,13 +40,6 @@ pub struct IrRecordDeclaration {
 pub struct IrEnumDeclaration {
     pub name: String,
     pub variants: Vec<TypeName>,
-}
-
-#[derive(Debug, Clone)]
-pub struct IrModule {
-    pub components: Vec<IrComponentDeclaration>,
-    pub records: Vec<IrRecordDeclaration>,
-    pub enums: Vec<IrEnumDeclaration>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1201,11 +1201,26 @@ impl fmt::Display for IrEnumDeclaration {
     }
 }
 
+impl IrRecordDeclaration {
+    fn type_name_without_module(typ: &Type) -> String {
+        match typ {
+            Type::Record { name, .. } => name.as_str().to_string(),
+            Type::Enum { name, .. } => name.as_str().to_string(),
+            _ => format!("{}", typ.to_doc().pretty(60)),
+        }
+    }
+}
+
 impl fmt::Display for IrRecordDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "record {} {{", self.name)?;
         for (field_name, field_type) in self.fields.iter() {
-            writeln!(f, "  {}: {},", field_name.as_str(), field_type.to_doc().pretty(60))?;
+            writeln!(
+                f,
+                "  {}: {},",
+                field_name.as_str(),
+                Self::type_name_without_module(field_type)
+            )?;
         }
         write!(f, "}}")
     }
