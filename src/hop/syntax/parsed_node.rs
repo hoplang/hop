@@ -3,6 +3,7 @@ use std::fmt::{self, Display};
 
 use pretty::BoxDoc;
 
+use crate::common::is_void_element;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::ParsedExpr;
 use crate::dop::VarName;
@@ -346,7 +347,9 @@ impl ParsedNode {
                         ));
                 }
 
-                if children.is_empty() {
+                if is_void_element(tag_name.as_str()) {
+                    tag_doc.append(BoxDoc::text(">"))
+                } else if children.is_empty() {
                     tag_doc
                         .append(BoxDoc::text(">"))
                         .append(BoxDoc::line())

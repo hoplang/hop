@@ -676,6 +676,27 @@ mod tests {
     }
 
     #[test]
+    fn html_with_string_and_expression_attributes_to_doc() {
+        check(
+            indoc! {r#"
+                record Product { img_src: String }
+                <ProductImage {product: Product}>
+                  <img class="rounded-lg" src={product.img_src}>
+                </ProductImage>
+            "#},
+            expect![[r#"
+                record Product {
+                  img_src: String,
+                }
+
+                <ProductImage {product: Product}>
+                  <img class="rounded-lg" src={product.img_src}>
+                </ProductImage>
+            "#]],
+        );
+    }
+
+    #[test]
     fn component_with_match_node_to_doc() {
         check(
             indoc! {"
