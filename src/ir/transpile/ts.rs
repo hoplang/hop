@@ -114,23 +114,35 @@ impl Transpiler for TsTranspiler {
 
         // Add Option type definitions and constructors
         result = result
+            .append(BoxDoc::text("export namespace Option {"))
+            .append(BoxDoc::line())
             .append(BoxDoc::text(
-                "export type None = { readonly _tag: \"None\" };",
+                "    export type Option<T> = { readonly tag: \"None\" } | { readonly tag: \"Some\", value: T };",
+            ))
+            .append(BoxDoc::line())
+            .append(BoxDoc::line())
+            .append(BoxDoc::text(
+                "    export function some<T>(value: T): Option<T> {",
             ))
             .append(BoxDoc::line())
             .append(BoxDoc::text(
-                "export type Some<T> = { readonly _tag: \"Some\"; readonly value: T };",
+                "        return { tag: \"Some\", value };",
             ))
             .append(BoxDoc::line())
-            .append(BoxDoc::text("export type Option<T> = None | Some<T>;"))
+            .append(BoxDoc::text("    }"))
             .append(BoxDoc::line())
-            .append(BoxDoc::text(
-                "function optionSome<T>(value: T): Option<T> { return { _tag: \"Some\", value }; }",
-            ))
             .append(BoxDoc::line())
             .append(BoxDoc::text(
-                "function optionNone<T>(): Option<T> { return { _tag: \"None\" }; }",
+                "    export function none<T>(): Option<T> {",
             ))
+            .append(BoxDoc::line())
+            .append(BoxDoc::text(
+                "        return { tag: \"None\" };",
+            ))
+            .append(BoxDoc::line())
+            .append(BoxDoc::text("    }"))
+            .append(BoxDoc::line())
+            .append(BoxDoc::text("}"))
             .append(BoxDoc::line())
             .append(BoxDoc::line());
 
@@ -464,7 +476,7 @@ impl StatementTranspiler for TsTranspiler {
                 some_arm_body,
                 none_arm_body,
             } => {
-                // switch (subject._tag) {
+                // switch (subject.tag) {
                 //   case "Some": {
                 //     const [[var_name]] = subject.value;
                 //     [[statements]]
@@ -521,7 +533,7 @@ impl StatementTranspiler for TsTranspiler {
 
                 BoxDoc::text("switch (")
                     .append(BoxDoc::text(subject_name))
-                    .append(BoxDoc::text("._tag) {"))
+                    .append(BoxDoc::text(".tag) {"))
                     .append(
                         BoxDoc::hardline()
                             .append(some_case)
@@ -844,16 +856,16 @@ impl ExpressionTranspiler for TsTranspiler {
     ) -> BoxDoc<'a> {
         match value {
             Some(inner) => {
-                // optionSome<T>(value)
-                BoxDoc::text("optionSome<")
+                // Option.some<T>(value)
+                BoxDoc::text("Option.some<")
                     .append(self.transpile_type(inner_type))
                     .append(BoxDoc::text(">("))
                     .append(self.transpile_expr(inner))
                     .append(BoxDoc::text(")"))
             }
             None => {
-                // optionNone<T>()
-                BoxDoc::text("optionNone<")
+                // Option.none<T>()
+                BoxDoc::text("Option.none<")
                     .append(self.transpile_type(inner_type))
                     .append(BoxDoc::text(">()"))
             }
@@ -925,7 +937,7 @@ impl ExpressionTranspiler for TsTranspiler {
                 none_arm_body,
             } => {
                 // (() => {
-                //   switch (subject._tag) {
+                //   switch (subject.tag) {
                 //     case "Some": {
                 //       const [[var]] = subject.value;
                 //       return [[some_arm]];
@@ -969,7 +981,7 @@ impl ExpressionTranspiler for TsTranspiler {
 
                 let switch_body = BoxDoc::text("switch (")
                     .append(BoxDoc::text(subject_name))
-                    .append(BoxDoc::text("._tag) {"))
+                    .append(BoxDoc::text(".tag) {"))
                     .append(BoxDoc::line().append(cases).nest(2))
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("}"));
@@ -1035,7 +1047,7 @@ impl TypeTranspiler for TsTranspiler {
     }
 
     fn transpile_option_type<'a>(&self, inner_type: &'a Type) -> BoxDoc<'a> {
-        BoxDoc::text("Option<")
+        BoxDoc::text("Option.Option<")
             .append(self.transpile_type(inner_type))
             .append(BoxDoc::text(">"))
     }
@@ -1087,11 +1099,17 @@ mod tests {
                 }
 
                 -- after --
-                export type None = { readonly _tag: "None" };
-                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
-                export type Option<T> = None | Some<T>;
-                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
-                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
 
                 export default {
                     helloWorld: (): string => {
@@ -1137,11 +1155,17 @@ mod tests {
                 }
 
                 -- after --
-                export type None = { readonly _tag: "None" };
-                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
-                export type Option<T> = None | Some<T>;
-                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
-                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1197,11 +1221,17 @@ mod tests {
                 }
 
                 -- after --
-                export type None = { readonly _tag: "None" };
-                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
-                export type Option<T> = None | Some<T>;
-                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
-                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1258,11 +1288,17 @@ mod tests {
                 }
 
                 -- after --
-                export type None = { readonly _tag: "None" };
-                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
-                export type Option<T> = None | Some<T>;
-                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
-                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1317,11 +1353,17 @@ mod tests {
                 }
 
                 -- after --
-                export type None = { readonly _tag: "None" };
-                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
-                export type Option<T> = None | Some<T>;
-                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
-                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1375,11 +1417,17 @@ mod tests {
                 }
 
                 -- after --
-                export type None = { readonly _tag: "None" };
-                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
-                export type Option<T> = None | Some<T>;
-                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
-                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1440,11 +1488,17 @@ mod tests {
                 -- after --
                 type TrustedHTML = string & { readonly __brand: unique symbol };
 
-                export type None = { readonly _tag: "None" };
-                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
-                export type Option<T> = None | Some<T>;
-                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
-                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1523,11 +1577,17 @@ mod tests {
                 }
 
                 -- after --
-                export type None = { readonly _tag: "None" };
-                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
-                export type Option<T> = None | Some<T>;
-                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
-                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
 
                 export class User {
                     constructor(
@@ -1588,11 +1648,17 @@ mod tests {
                 }
 
                 -- after --
-                export type None = { readonly _tag: "None" };
-                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
-                export type Option<T> = None | Some<T>;
-                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
-                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
 
                 export class User {
                     constructor(
@@ -1658,11 +1724,17 @@ mod tests {
                 }
 
                 -- after --
-                export type None = { readonly _tag: "None" };
-                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
-                export type Option<T> = None | Some<T>;
-                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
-                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
 
                 export type Color = ColorRed | ColorGreen | ColorBlue;
 
@@ -1744,11 +1816,17 @@ mod tests {
                 }
 
                 -- after --
-                export type None = { readonly _tag: "None" };
-                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
-                export type Option<T> = None | Some<T>;
-                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
-                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
 
                 export type Color = ColorRed | ColorGreen | ColorBlue;
 
@@ -1815,11 +1893,17 @@ mod tests {
                 }
 
                 -- after --
-                export type None = { readonly _tag: "None" };
-                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
-                export type Option<T> = None | Some<T>;
-                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
-                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1865,11 +1949,17 @@ mod tests {
                 }
 
                 -- after --
-                export type None = { readonly _tag: "None" };
-                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
-                export type Option<T> = None | Some<T>;
-                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
-                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1881,10 +1971,10 @@ mod tests {
                 }
 
                 export default {
-                    checkOption: ({ opt }: { opt: Option<number> }): string => {
+                    checkOption: ({ opt }: { opt: Option.Option<number> }): string => {
                         let output: string = "";
                         output += escapeHtml((() => {
-                          switch (opt._tag) {
+                          switch (opt.tag) {
                             case "Some": return "has value";
                             case "None": return "empty";
                           }
@@ -1947,11 +2037,17 @@ mod tests {
                 }
 
                 -- after --
-                export type None = { readonly _tag: "None" };
-                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
-                export type Option<T> = None | Some<T>;
-                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
-                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -1963,14 +2059,14 @@ mod tests {
                 }
 
                 export default {
-                    checkNestedOption: ({ opt }: { opt: Option<Option<boolean>> }): string => {
+                    checkNestedOption: ({ opt }: { opt: Option.Option<Option.Option<boolean>> }): string => {
                         let output: string = "";
                         output += escapeHtml((() => {
-                          switch (opt._tag) {
+                          switch (opt.tag) {
                             case "Some": {
                               const v0 = opt.value;
                               return (() => {
-                                switch (v0._tag) {
+                                switch (v0.tag) {
                                   case "Some": {
                                     const v1 = v0.value;
                                     return (v1 ? "some-some-true" : "some-some-false");
@@ -2006,11 +2102,17 @@ mod tests {
                 }
 
                 -- after --
-                export type None = { readonly _tag: "None" };
-                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
-                export type Option<T> = None | Some<T>;
-                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
-                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -2074,11 +2176,17 @@ mod tests {
                 }
 
                 -- after --
-                export type None = { readonly _tag: "None" };
-                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
-                export type Option<T> = None | Some<T>;
-                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
-                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
 
                 function escapeHtml(str: string): string {
                     return str
@@ -2090,9 +2198,9 @@ mod tests {
                 }
 
                 export default {
-                    displayOption: ({ opt }: { opt: Option<string> }): string => {
+                    displayOption: ({ opt }: { opt: Option.Option<string> }): string => {
                         let output: string = "";
-                        switch (opt._tag) {
+                        switch (opt.tag) {
                             case "Some": {
                                 const value = opt.value;
                                 output += "<span>Found: ";
@@ -2149,23 +2257,29 @@ mod tests {
                 }
 
                 -- after --
-                export type None = { readonly _tag: "None" };
-                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
-                export type Option<T> = None | Some<T>;
-                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
-                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
 
                 export default {
-                    testOptionLiteral: ({ opt1, opt2 }: { opt1: Option<string>, opt2: Option<string> }): string => {
+                    testOptionLiteral: ({ opt1, opt2 }: { opt1: Option.Option<string>, opt2: Option.Option<string> }): string => {
                         let output: string = "";
                         output += (() => {
-                          switch (opt1._tag) {
+                          switch (opt1.tag) {
                             case "Some": return "has value";
                             case "None": return "empty";
                           }
                         })();
                         output += (() => {
-                          switch (opt2._tag) {
+                          switch (opt2.tag) {
                             case "Some": return "HAS";
                             case "None": return "EMPTY";
                           }
@@ -2214,17 +2328,23 @@ mod tests {
                 }
 
                 -- after --
-                export type None = { readonly _tag: "None" };
-                export type Some<T> = { readonly _tag: "Some"; readonly value: T };
-                export type Option<T> = None | Some<T>;
-                function optionSome<T>(value: T): Option<T> { return { _tag: "Some", value }; }
-                function optionNone<T>(): Option<T> { return { _tag: "None" }; }
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
 
                 export default {
                     testInlineMatch: (): string => {
                         let output: string = "";
-                        const opt = optionSome<string>("world");
-                        switch (opt._tag) {
+                        const opt = Option.some<string>("world");
+                        switch (opt.tag) {
                             case "Some": {
                                 const val = opt.value;
                                 output += "Got:";
