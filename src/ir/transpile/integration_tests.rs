@@ -1,59 +1,10 @@
 use super::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
-use crate::ir::ast::{IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration};
-use crate::ir::syntax::builder::{IrBuilder, build_ir, build_ir_with_enums};
+use crate::ir::ast::IrModule;
+use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
 use expect_test::Expect;
-use std::collections::HashSet;
 use std::fs;
 use std::process::Command;
 use tempfile::TempDir;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Language {
-    TypeScript,
-    Go,
-    Python,
-}
-
-#[derive(Debug)]
-struct TestCase {
-    entrypoint: IrComponentDeclaration,
-    expected_output: &'static str,
-    enums: Vec<IrEnumDeclaration>,
-    records: Vec<IrRecordDeclaration>,
-    languages: HashSet<Language>,
-}
-
-impl TestCase {
-    fn new(entrypoint: IrComponentDeclaration, expected_output: &'static str) -> Self {
-        Self {
-            entrypoint,
-            expected_output,
-            enums: vec![],
-            records: vec![],
-            languages: HashSet::from([Language::TypeScript, Language::Go, Language::Python]),
-        }
-    }
-
-    fn with_enums(mut self, enums: Vec<IrEnumDeclaration>) -> Self {
-        self.enums = enums;
-        self
-    }
-
-    fn with_records(mut self, records: Vec<(&str, Vec<(&str, crate::dop::Type)>)>) -> Self {
-        use crate::dop::symbols::field_name::FieldName;
-        self.records = records
-            .into_iter()
-            .map(|(name, fields)| IrRecordDeclaration {
-                name: name.to_string(),
-                fields: fields
-                    .into_iter()
-                    .map(|(k, v)| (FieldName::new(k).unwrap(), v))
-                    .collect(),
-            })
-            .collect();
-        self
-    }
-}
 
 fn execute_typescript(code: &str) -> Result<String, String> {
     let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
@@ -168,68 +119,6 @@ go 1.24
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-fn run_integration_test(test_case: &TestCase) -> String {
-    let module = IrModule {
-        components: vec![test_case.entrypoint.clone()],
-        records: test_case.records.clone(),
-        enums: test_case.enums.clone(),
-    };
-
-    let mut input = String::new();
-    for enum_decl in &test_case.enums {
-        input.push_str(&format!("{}\n", enum_decl));
-    }
-    for record_decl in &test_case.records {
-        input.push_str(&format!("{}\n", record_decl));
-    }
-    input.push_str(&test_case.entrypoint.to_string());
-
-    let mut output = format!(
-        "-- input --\n{}-- expected output --\n{}\n",
-        input, test_case.expected_output
-    );
-
-    if test_case.languages.contains(&Language::TypeScript) {
-        let ts_transpiler = TsTranspiler::new();
-        let ts_code = ts_transpiler.transpile_module(&module);
-        typecheck_typescript(&ts_code).expect("TypeScript typecheck failed");
-        let ts_output = execute_typescript(&ts_code).expect("TypeScript execution failed");
-        assert_eq!(
-            ts_output, test_case.expected_output,
-            "TypeScript output mismatch"
-        );
-        output.push_str("-- ts --\nOK\n");
-    }
-
-    if test_case.languages.contains(&Language::Go) {
-        let go_transpiler = GoTranspiler::new("components".to_string());
-        let go_code = go_transpiler.transpile_module(&module);
-        typecheck_go(&go_code).expect("Go typecheck failed");
-        let go_output = execute_go(&go_code).expect("Go execution failed");
-        assert_eq!(go_output, test_case.expected_output, "Go output mismatch");
-        output.push_str("-- go --\nOK\n");
-    }
-
-    if test_case.languages.contains(&Language::Python) {
-        let python_transpiler = PythonTranspiler::new();
-        let python_code = python_transpiler.transpile_module(&module);
-        typecheck_python(&python_code).expect("Python typecheck failed");
-        let python_output = execute_python(&python_code).expect("Python execution failed");
-        assert_eq!(
-            python_output, test_case.expected_output,
-            "Python output mismatch"
-        );
-        output.push_str("-- python --\nOK\n");
-    }
-
-    output
-}
-
-fn check(test_case: TestCase, expected: Expect) {
-    let output = run_integration_test(&test_case);
-    expected.assert_eq(&output);
-}
-
 fn typecheck_typescript(code: &str) -> Result<(), String> {
     let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
     let module_file = temp_dir.path().join("module.ts");
@@ -316,6 +205,38 @@ fn typecheck_go(code: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn check(module: IrModule, expected_output: &str, expected: Expect) {
+    let input = module.to_string();
+
+    let mut output = format!(
+        "-- input --\n{}-- expected output --\n{}\n",
+        input, expected_output
+    );
+
+    let ts_transpiler = TsTranspiler::new();
+    let ts_code = ts_transpiler.transpile_module(&module);
+    typecheck_typescript(&ts_code).expect("TypeScript typecheck failed");
+    let ts_output = execute_typescript(&ts_code).expect("TypeScript execution failed");
+    assert_eq!(ts_output, expected_output, "TypeScript output mismatch");
+    output.push_str("-- ts --\nOK\n");
+
+    let go_transpiler = GoTranspiler::new("components".to_string());
+    let go_code = go_transpiler.transpile_module(&module);
+    typecheck_go(&go_code).expect("Go typecheck failed");
+    let go_output = execute_go(&go_code).expect("Go execution failed");
+    assert_eq!(go_output, expected_output, "Go output mismatch");
+    output.push_str("-- go --\nOK\n");
+
+    let python_transpiler = PythonTranspiler::new();
+    let python_code = python_transpiler.transpile_module(&module);
+    typecheck_python(&python_code).expect("Python typecheck failed");
+    let python_output = execute_python(&python_code).expect("Python execution failed");
+    assert_eq!(python_output, expected_output, "Python output mismatch");
+    output.push_str("-- python --\nOK\n");
+
+    expected.assert_eq(&output);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -325,12 +246,12 @@ mod tests {
     #[ignore]
     fn simple_html() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.write("<h1>Hello, World!</h1>");
-                }),
-                "<h1>Hello, World!</h1>",
-            ),
+                })
+                .build(),
+            "<h1>Hello, World!</h1>",
             expect![[r#"
                 -- input --
                 Test() {
@@ -352,16 +273,16 @@ mod tests {
     #[ignore]
     fn with_let_binding() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.let_stmt("name", t.str("Alice"), |t| {
                         t.write("Hello, ");
                         t.write_expr(t.var("name"), false);
                         t.write("!");
                     });
-                }),
-                "Hello, Alice!",
-            ),
+                })
+                .build(),
+            "Hello, Alice!",
             expect![[r#"
                 -- input --
                 Test() {
@@ -387,8 +308,8 @@ mod tests {
     #[ignore]
     fn conditional() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.let_stmt("show", t.bool(true), |t| {
                         t.if_stmt(t.var("show"), |t| {
                             t.write("Visible");
@@ -397,9 +318,9 @@ mod tests {
                             t.write("Hidden");
                         });
                     });
-                }),
-                "Visible",
-            ),
+                })
+                .build(),
+            "Visible",
             expect![[r#"
                 -- input --
                 Test() {
@@ -428,8 +349,8 @@ mod tests {
     #[ignore]
     fn if_else() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.let_stmt("show", t.bool(true), |t| {
                         t.if_else_stmt(
                             t.var("show"),
@@ -452,9 +373,9 @@ mod tests {
                             },
                         );
                     });
-                }),
-                "True branchFalse branch",
-            ),
+                })
+                .build(),
+            "True branchFalse branch",
             expect![[r#"
                 -- input --
                 Test() {
@@ -489,8 +410,8 @@ mod tests {
     #[ignore]
     fn for_loop() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.for_loop(
                         "item",
                         t.array(vec![t.str("a"), t.str("b"), t.str("c")]),
@@ -499,9 +420,9 @@ mod tests {
                             t.write(",");
                         },
                     );
-                }),
-                "a,b,c,",
-            ),
+                })
+                .build(),
+            "a,b,c,",
             expect![[r#"
                 -- input --
                 Test() {
@@ -526,14 +447,14 @@ mod tests {
     #[ignore]
     fn html_escaping() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.let_stmt("text", t.str("<div>Hello & world</div>"), |t| {
                         t.write_expr_escaped(t.var("text"));
                     });
-                }),
-                "&lt;div&gt;Hello &amp; world&lt;/div&gt;",
-            ),
+                })
+                .build(),
+            "&lt;div&gt;Hello &amp; world&lt;/div&gt;",
             expect![[r#"
                 -- input --
                 Test() {
@@ -557,14 +478,14 @@ mod tests {
     #[ignore]
     fn let_binding() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.let_stmt("message", t.str("Hello from let"), |t| {
                         t.write_expr(t.var("message"), false);
                     });
-                }),
-                "Hello from let",
-            ),
+                })
+                .build(),
+            "Hello from let",
             expect![[r#"
                 -- input --
                 Test() {
@@ -588,16 +509,16 @@ mod tests {
     #[ignore]
     fn string_concatenation() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.let_stmt("first", t.str("Hello"), |t| {
                         t.let_stmt("second", t.str(" World"), |t| {
                             t.write_expr(t.string_concat(t.var("first"), t.var("second")), false);
                         });
                     });
-                }),
-                "Hello World",
-            ),
+                })
+                .build(),
+            "Hello World",
             expect![[r#"
                 -- input --
                 Test() {
@@ -623,15 +544,15 @@ mod tests {
     #[ignore]
     fn json_encode() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.write_expr(
                         t.json_encode(t.array(vec![t.str("Hello"), t.str("World")])),
                         false,
                     );
-                }),
-                r#"["Hello","World"]"#,
-            ),
+                })
+                .build(),
+            r#"["Hello","World"]"#,
             expect![[r#"
                 -- input --
                 Test() {
@@ -653,8 +574,8 @@ mod tests {
     #[ignore]
     fn complex_nested_structure() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.for_loop("item", t.array(vec![t.str("A"), t.str("B")]), |t| {
                         t.let_stmt("prefix", t.str("["), |t| {
                             t.write_expr(t.var("prefix"), false);
@@ -662,9 +583,9 @@ mod tests {
                             t.write("]");
                         });
                     });
-                }),
-                "[A][B]",
-            ),
+                })
+                .build(),
+            "[A][B]",
             expect![[r#"
                 -- input --
                 Test() {
@@ -692,17 +613,17 @@ mod tests {
     #[ignore]
     fn string_concat_equality() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.if_stmt(
                         t.eq(t.string_concat(t.str("foo"), t.str("bar")), t.str("foobar")),
                         |t| {
                             t.write("equals");
                         },
                     );
-                }),
-                "equals",
-            ),
+                })
+                .build(),
+            "equals",
             expect![[r#"
                 -- input --
                 Test() {
@@ -726,17 +647,17 @@ mod tests {
     #[ignore]
     fn less_than_comparison() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.if_stmt(t.less_than(t.int(3), t.int(5)), |t| {
                         t.write("3 < 5");
                     });
                     t.if_stmt(t.less_than(t.int(10), t.int(2)), |t| {
                         t.write("10 < 2");
                     });
-                }),
-                "3 < 5",
-            ),
+                })
+                .build(),
+            "3 < 5",
             expect![[r#"
                 -- input --
                 Test() {
@@ -763,17 +684,17 @@ mod tests {
     #[ignore]
     fn less_than_float_comparison() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.if_stmt(t.less_than(t.float(1.5), t.float(2.5)), |t| {
                         t.write("1.5 < 2.5");
                     });
                     t.if_stmt(t.less_than(t.float(3.0), t.float(1.0)), |t| {
                         t.write("3.0 < 1.0");
                     });
-                }),
-                "1.5 < 2.5",
-            ),
+                })
+                .build(),
+            "1.5 < 2.5",
             expect![[r#"
                 -- input --
                 Test() {
@@ -799,22 +720,10 @@ mod tests {
     #[test]
     #[ignore]
     fn enum_equality_comparison() {
-        use crate::dop::symbols::type_name::TypeName;
-
-        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
-
-        let enum_declarations = vec![IrEnumDeclaration {
-            name: "Color".to_string(),
-            variants: vec![
-                TypeName::new("Red").unwrap(),
-                TypeName::new("Green").unwrap(),
-                TypeName::new("Blue").unwrap(),
-            ],
-        }];
-
         check(
-            TestCase::new(
-                build_ir_with_enums("Test", [], enums.clone(), |t| {
+            IrModuleBuilder::new()
+                .enum_decl("Color", ["Red", "Green", "Blue"])
+                .component("Test", [], |t| {
                     t.let_stmt("color", t.enum_variant("Color", "Red"), |t| {
                         t.if_else_stmt(
                             t.eq(t.var("color"), t.enum_variant("Color", "Red")),
@@ -826,10 +735,9 @@ mod tests {
                             },
                         );
                     });
-                }),
-                "equal",
-            )
-            .with_enums(enum_declarations),
+                })
+                .build(),
+            "equal",
             expect![[r#"
                 -- input --
                 enum Color {
@@ -861,22 +769,10 @@ mod tests {
     #[test]
     #[ignore]
     fn enum_equality_different_variants() {
-        use crate::dop::symbols::type_name::TypeName;
-
-        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
-
-        let enum_declarations = vec![IrEnumDeclaration {
-            name: "Color".to_string(),
-            variants: vec![
-                TypeName::new("Red").unwrap(),
-                TypeName::new("Green").unwrap(),
-                TypeName::new("Blue").unwrap(),
-            ],
-        }];
-
         check(
-            TestCase::new(
-                build_ir_with_enums("Test", [], enums.clone(), |t| {
+            IrModuleBuilder::new()
+                .enum_decl("Color", ["Red", "Green", "Blue"])
+                .component("Test", [], |t| {
                     t.let_stmt("color", t.enum_variant("Color", "Red"), |t| {
                         t.if_else_stmt(
                             t.eq(t.var("color"), t.enum_variant("Color", "Green")),
@@ -888,10 +784,9 @@ mod tests {
                             },
                         );
                     });
-                }),
-                "not equal",
-            )
-            .with_enums(enum_declarations),
+                })
+                .build(),
+            "not equal",
             expect![[r#"
                 -- input --
                 enum Color {
@@ -924,8 +819,8 @@ mod tests {
     #[ignore]
     fn bool_match_true() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.let_stmt("flag", t.bool(true), |t| {
                         t.bool_match_stmt(
                             t.var("flag"),
@@ -937,9 +832,9 @@ mod tests {
                             },
                         );
                     });
-                }),
-                "yes",
-            ),
+                })
+                .build(),
+            "yes",
             expect![[r#"
                 -- input --
                 Test() {
@@ -970,8 +865,8 @@ mod tests {
     #[ignore]
     fn bool_match_false() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.let_stmt("flag", t.bool(false), |t| {
                         t.bool_match_stmt(
                             t.var("flag"),
@@ -983,9 +878,9 @@ mod tests {
                             },
                         );
                     });
-                }),
-                "no",
-            ),
+                })
+                .build(),
+            "no",
             expect![[r#"
                 -- input --
                 Test() {
@@ -1016,13 +911,14 @@ mod tests {
     #[ignore]
     fn field_access() {
         use crate::dop::Type;
-        use crate::ir::syntax::builder::build_ir_with_records;
-
-        let records = vec![("Person", vec![("name", Type::String), ("age", Type::Int)])];
 
         check(
-            TestCase::new(
-                build_ir_with_records("Test", [], records.clone(), |t| {
+            IrModuleBuilder::new()
+                .record("Person", |r| {
+                    r.field("name", Type::String);
+                    r.field("age", Type::Int);
+                })
+                .component("Test", [], |t| {
                     t.let_stmt(
                         "person",
                         t.record("Person", vec![("name", t.str("Alice")), ("age", t.int(30))]),
@@ -1037,10 +933,9 @@ mod tests {
                             });
                         },
                     );
-                }),
-                "Alice:30",
-            )
-            .with_records(records),
+                })
+                .build(),
+            "Alice:30",
             expect![[r#"
                 -- input --
                 record Person {
@@ -1071,20 +966,15 @@ mod tests {
     #[ignore]
     fn record_literal() {
         use crate::dop::Type;
-        use crate::ir::syntax::builder::build_ir_with_records;
-
-        let records = vec![(
-            "Item",
-            vec![
-                ("label", Type::String),
-                ("count", Type::Int),
-                ("active", Type::Bool),
-            ],
-        )];
 
         check(
-            TestCase::new(
-                build_ir_with_records("Test", [], records.clone(), |t| {
+            IrModuleBuilder::new()
+                .record("Item", |r| {
+                    r.field("label", Type::String);
+                    r.field("count", Type::Int);
+                    r.field("active", Type::Bool);
+                })
+                .component("Test", [], |t| {
                     t.let_stmt(
                         "item",
                         t.record(
@@ -1112,10 +1002,9 @@ mod tests {
                             });
                         },
                     );
-                }),
-                "widget,5,active",
-            )
-            .with_records(records),
+                })
+                .build(),
+            "widget,5,active",
             expect![[r#"
                 -- input --
                 record Item {
@@ -1154,30 +1043,19 @@ mod tests {
     #[test]
     #[ignore]
     fn nested_record() {
-        use crate::dop::symbols::field_name::FieldName;
-        use crate::dop::symbols::type_name::TypeName;
         use crate::dop::Type;
-        use crate::hop::symbols::module_name::ModuleName;
-        use crate::ir::syntax::builder::build_ir_with_records;
-
-        let test_module = ModuleName::new("test").unwrap();
-        let address_type = Type::Record {
-            module: test_module,
-            name: TypeName::new("Address").unwrap(),
-            fields: vec![
-                (FieldName::new("city").unwrap(), Type::String),
-                (FieldName::new("zip").unwrap(), Type::String),
-            ],
-        };
-
-        let records = vec![
-            ("Address", vec![("city", Type::String), ("zip", Type::String)]),
-            ("Person", vec![("name", Type::String), ("address", address_type)]),
-        ];
 
         check(
-            TestCase::new(
-                build_ir_with_records("Test", [], records.clone(), |t| {
+            IrModuleBuilder::new()
+                .record("Address", |r| {
+                    r.field("city", Type::String);
+                    r.field("zip", Type::String);
+                })
+                .record("Person", |r| {
+                    r.field("name", Type::String);
+                    r.field("address", r.record_type("Address"));
+                })
+                .component("Test", [], |t| {
                     t.let_stmt(
                         "person",
                         t.record(
@@ -1204,10 +1082,9 @@ mod tests {
                             t.write_expr(city, false);
                         },
                     );
-                }),
-                "Alice,Paris",
-            )
-            .with_records(records),
+                })
+                .build(),
+            "Alice,Paris",
             expect![[r#"
                 -- input --
                 record Address {
@@ -1242,10 +1119,79 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn record_with_enum_field() {
+        use crate::dop::Type;
+
+        check(
+            IrModuleBuilder::new()
+                .enum_decl("Status", ["Active", "Inactive", "Pending"])
+                .record("User", |r| {
+                    r.field("name", Type::String);
+                    r.field("status", r.enum_type("Status"));
+                })
+                .component("Test", [], |t| {
+                    t.let_stmt(
+                        "user",
+                        t.record(
+                            "User",
+                            vec![
+                                ("name", t.str("Alice")),
+                                ("status", t.enum_variant("Status", "Active")),
+                            ],
+                        ),
+                        |t| {
+                            t.write_expr(t.field_access(t.var("user"), "name"), false);
+                            t.write(":");
+                            let status = t.field_access(t.var("user"), "status");
+                            t.if_stmt(t.eq(status, t.enum_variant("Status", "Active")), |t| {
+                                t.write("active");
+                            });
+                        },
+                    );
+                })
+                .build(),
+            "Alice:active",
+            expect![[r#"
+                -- input --
+                enum Status {
+                  Active,
+                  Inactive,
+                  Pending,
+                }
+                record User {
+                  name: String,
+                  status: Status,
+                }
+                Test() {
+                  let user = User(
+                    name: "Alice",
+                    status: Status::Active,
+                  ) in {
+                    write_expr(user.name)
+                    write(":")
+                    if (user.status == Status::Active) {
+                      write("active")
+                    }
+                  }
+                }
+                -- expected output --
+                Alice:active
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn numeric_add() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.let_stmt("a", t.int(3), |t| {
                         t.let_stmt("b", t.int(7), |t| {
                             let sum = t.add(t.var("a"), t.var("b"));
@@ -1254,9 +1200,9 @@ mod tests {
                             });
                         });
                     });
-                }),
-                "correct",
-            ),
+                })
+                .build(),
+            "correct",
             expect![[r#"
                 -- input --
                 Test() {
@@ -1284,8 +1230,8 @@ mod tests {
     #[ignore]
     fn numeric_subtract() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.let_stmt("a", t.int(10), |t| {
                         t.let_stmt("b", t.int(3), |t| {
                             let diff = t.subtract(t.var("a"), t.var("b"));
@@ -1294,9 +1240,9 @@ mod tests {
                             });
                         });
                     });
-                }),
-                "correct",
-            ),
+                })
+                .build(),
+            "correct",
             expect![[r#"
                 -- input --
                 Test() {
@@ -1324,8 +1270,8 @@ mod tests {
     #[ignore]
     fn numeric_multiply() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.let_stmt("a", t.int(4), |t| {
                         t.let_stmt("b", t.int(5), |t| {
                             let product = t.multiply(t.var("a"), t.var("b"));
@@ -1334,9 +1280,9 @@ mod tests {
                             });
                         });
                     });
-                }),
-                "correct",
-            ),
+                })
+                .build(),
+            "correct",
             expect![[r#"
                 -- input --
                 Test() {
@@ -1364,8 +1310,8 @@ mod tests {
     #[ignore]
     fn boolean_logical_and() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.let_stmt("a", t.bool(true), |t| {
                         t.let_stmt("b", t.bool(true), |t| {
                             t.if_stmt(t.and(t.var("a"), t.var("b")), |t| {
@@ -1380,9 +1326,9 @@ mod tests {
                             });
                         });
                     });
-                }),
-                "TT",
-            ),
+                })
+                .build(),
+            "TT",
             expect![[r#"
                 -- input --
                 Test() {
@@ -1417,8 +1363,8 @@ mod tests {
     #[ignore]
     fn boolean_logical_or() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.let_stmt("a", t.bool(false), |t| {
                         t.let_stmt("b", t.bool(true), |t| {
                             t.if_stmt(t.or(t.var("a"), t.var("b")), |t| {
@@ -1433,9 +1379,9 @@ mod tests {
                             });
                         });
                     });
-                }),
-                "FT",
-            ),
+                })
+                .build(),
+            "FT",
             expect![[r#"
                 -- input --
                 Test() {
@@ -1470,8 +1416,8 @@ mod tests {
     #[ignore]
     fn less_than_or_equal() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.if_stmt(t.less_than_or_equal(t.int(3), t.int(5)), |t| {
                         t.write("A");
                     });
@@ -1481,9 +1427,9 @@ mod tests {
                     t.if_stmt(t.less_than_or_equal(t.int(7), t.int(5)), |t| {
                         t.write("C");
                     });
-                }),
-                "AB",
-            ),
+                })
+                .build(),
+            "AB",
             expect![[r#"
                 -- input --
                 Test() {
@@ -1513,15 +1459,15 @@ mod tests {
     #[ignore]
     fn let_expression() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     let result = t.let_expr("x", t.str("Hello"), |t| {
                         t.string_concat(t.var("x"), t.str(" World"))
                     });
                     t.write_expr(result, false);
-                }),
-                "Hello World",
-            ),
+                })
+                .build(),
+            "Hello World",
             expect![[r#"
                 -- input --
                 Test() {
@@ -1543,8 +1489,8 @@ mod tests {
     #[ignore]
     fn bool_match_expr() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.let_stmt("flag", t.bool(true), |t| {
                         let result = t.bool_match_expr(t.var("flag"), t.str("yes"), t.str("no"));
                         t.write_expr(result, false);
@@ -1553,9 +1499,9 @@ mod tests {
                         let result = t.bool_match_expr(t.var("other"), t.str("YES"), t.str("NO"));
                         t.write_expr(result, false);
                     });
-                }),
-                "yesNO",
-            ),
+                })
+                .build(),
+            "yesNO",
             expect![[r#"
                 -- input --
                 Test() {
@@ -1584,8 +1530,8 @@ mod tests {
         use crate::dop::Type;
 
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.let_stmt("some_val", t.some(t.str("hello")), |t| {
                         t.option_match_stmt(
                             t.var("some_val"),
@@ -1612,9 +1558,9 @@ mod tests {
                             },
                         );
                     });
-                }),
-                "Some:hello,None",
-            ),
+                })
+                .build(),
+            "Some:hello,None",
             expect![[r#"
                 -- input --
                 Test() {
@@ -1659,8 +1605,8 @@ mod tests {
         use crate::dop::Type;
 
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     // Match on Some literal via let binding
                     t.let_stmt("opt1", t.some(t.str("world")), |t| {
                         t.option_match_stmt(
@@ -1690,9 +1636,9 @@ mod tests {
                             },
                         );
                     });
-                }),
-                "Got:world,Empty",
-            ),
+                })
+                .build(),
+            "Got:world,Empty",
             expect![[r#"
                 -- input --
                 Test() {
@@ -1738,8 +1684,8 @@ mod tests {
         use crate::dop::Type;
 
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     // Match expression on Some variable
                     t.let_stmt("opt1", t.some(t.str("hi")), |t| {
                         let result =
@@ -1753,9 +1699,9 @@ mod tests {
                             t.option_match_expr(t.var("opt2"), t.str("SOME"), t.str("NONE"));
                         t.write_expr(result2, false);
                     });
-                }),
-                "some,NONE",
-            ),
+                })
+                .build(),
+            "some,NONE",
             expect![[r#"
                 -- input --
                 Test() {
@@ -1791,8 +1737,8 @@ mod tests {
         use crate::dop::Type;
 
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     // Match statement on Some without extracting the value
                     t.let_stmt("opt1", t.some(t.str("hello")), |t| {
                         t.option_match_stmt(
@@ -1820,9 +1766,9 @@ mod tests {
                             },
                         );
                     });
-                }),
-                "is-some,IS-NONE",
-            ),
+                })
+                .build(),
+            "is-some,IS-NONE",
             expect![[r#"
                 -- input --
                 Test() {
@@ -1866,8 +1812,8 @@ mod tests {
         use crate::dop::Type;
 
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     // match inner { Some(x) => Some(x), None => None }
                     // Then match on the result
                     t.let_stmt("inner", t.some(t.str("hello")), |t| {
@@ -1895,9 +1841,9 @@ mod tests {
                             },
                         );
                     });
-                }),
-                "mapped:hello",
-            ),
+                })
+                .build(),
+            "mapped:hello",
             expect![[r#"
                 -- input --
                 Test() {
@@ -1936,8 +1882,8 @@ mod tests {
         use crate::dop::Type;
 
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     // Some(match innerOpt { Some(x) => x, None => "default" })
                     t.let_stmt("inner_opt", t.some(t.str("inner")), |t| {
                         let match_result = t.option_match_expr_with_binding(
@@ -1960,9 +1906,9 @@ mod tests {
                             );
                         });
                     });
-                }),
-                "inner",
-            ),
+                })
+                .build(),
+            "inner",
             expect![[r#"
                 -- input --
                 Test() {
@@ -2000,8 +1946,8 @@ mod tests {
         use crate::dop::Type;
 
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     let items = t.array(vec![
                         t.some(t.str("a")),
                         t.none(Type::String),
@@ -2021,9 +1967,9 @@ mod tests {
                             },
                         );
                     });
-                }),
-                "[a][_][b]",
-            ),
+                })
+                .build(),
+            "[a][_][b]",
             expect![[r#"
                 -- input --
                 Test() {
@@ -2058,8 +2004,8 @@ mod tests {
         use crate::dop::Type;
 
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     // Some(Some("deep"))
                     let nested_some = t.some(t.some(t.str("deep")));
                     t.let_stmt("nested1", nested_some, |t| {
@@ -2124,9 +2070,9 @@ mod tests {
                             });
                         });
                     });
-                }),
-                "deep,inner-none,outer-none",
-            ),
+                })
+                .build(),
+            "deep,inner-none,outer-none",
             expect![[r#"
                 -- input --
                 Test() {
@@ -2176,8 +2122,8 @@ mod tests {
     #[ignore]
     fn nested_bool_match_expr() {
         check(
-            TestCase::new(
-                build_ir("Test", [], |t| {
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
                     t.let_stmt("outer", t.bool(true), |t| {
                         t.let_stmt("inner", t.bool(false), |t| {
                             let result = t.bool_match_expr(
@@ -2199,9 +2145,9 @@ mod tests {
                             t.write_expr(result, false);
                         });
                     });
-                }),
-                "TF,F",
-            ),
+                })
+                .build(),
+            "TF,F",
             expect![[r#"
                 -- input --
                 Test() {
@@ -2238,22 +2184,10 @@ mod tests {
     #[test]
     #[ignore]
     fn enum_match_expression() {
-        use crate::dop::symbols::type_name::TypeName;
-
-        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
-
-        let enum_declarations = vec![IrEnumDeclaration {
-            name: "Color".to_string(),
-            variants: vec![
-                TypeName::new("Red").unwrap(),
-                TypeName::new("Green").unwrap(),
-                TypeName::new("Blue").unwrap(),
-            ],
-        }];
-
         check(
-            TestCase::new(
-                build_ir_with_enums("Test", [], enums.clone(), |t| {
+            IrModuleBuilder::new()
+                .enum_decl("Color", ["Red", "Green", "Blue"])
+                .component("Test", [], |t| {
                     t.let_stmt("color", t.enum_variant("Color", "Green"), |t| {
                         let result = t.match_expr(
                             t.var("color"),
@@ -2265,10 +2199,9 @@ mod tests {
                         );
                         t.write_expr(result, false);
                     });
-                }),
-                "green",
-            )
-            .with_enums(enum_declarations),
+                })
+                .build(),
+            "green",
             expect![[r#"
                 -- input --
                 enum Color {
@@ -2300,22 +2233,10 @@ mod tests {
     #[test]
     #[ignore]
     fn enum_equality_in_let_expr() {
-        use crate::dop::symbols::type_name::TypeName;
-
-        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
-
-        let enum_declarations = vec![IrEnumDeclaration {
-            name: "Color".to_string(),
-            variants: vec![
-                TypeName::new("Red").unwrap(),
-                TypeName::new("Green").unwrap(),
-                TypeName::new("Blue").unwrap(),
-            ],
-        }];
-
         check(
-            TestCase::new(
-                build_ir_with_enums("Test", [], enums.clone(), |t| {
+            IrModuleBuilder::new()
+                .enum_decl("Color", ["Red", "Green", "Blue"])
+                .component("Test", [], |t| {
                     // write_expr(let color = Color::Green in let is_red = color == Color::Red in if is_red then "eq" else "not eq")
                     let color_expr = t.enum_variant("Color", "Green");
                     let result = t.let_expr("color", color_expr, |t| {
@@ -2326,10 +2247,9 @@ mod tests {
                         )
                     });
                     t.write_expr(result, false);
-                }),
-                "not eq",
-            )
-            .with_enums(enum_declarations),
+                })
+                .build(),
+            "not eq",
             expect![[r#"
                 -- input --
                 enum Color {
@@ -2358,22 +2278,10 @@ mod tests {
     #[test]
     #[ignore]
     fn enum_match_statement() {
-        use crate::dop::symbols::type_name::TypeName;
-
-        let enums = vec![("Color", vec!["Red", "Green", "Blue"])];
-
-        let enum_declarations = vec![IrEnumDeclaration {
-            name: "Color".to_string(),
-            variants: vec![
-                TypeName::new("Red").unwrap(),
-                TypeName::new("Green").unwrap(),
-                TypeName::new("Blue").unwrap(),
-            ],
-        }];
-
         check(
-            TestCase::new(
-                build_ir_with_enums("Test", [], enums.clone(), |t| {
+            IrModuleBuilder::new()
+                .enum_decl("Color", ["Red", "Green", "Blue"])
+                .component("Test", [], |t| {
                     t.let_stmt("color", t.enum_variant("Color", "Blue"), |t| {
                         t.enum_match_stmt(
                             t.var("color"),
@@ -2384,10 +2292,9 @@ mod tests {
                             ],
                         );
                     });
-                }),
-                "blue",
-            )
-            .with_enums(enum_declarations),
+                })
+                .build(),
+            "blue",
             expect![[r#"
                 -- input --
                 enum Color {

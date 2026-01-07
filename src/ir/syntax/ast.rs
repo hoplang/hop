@@ -1225,3 +1225,18 @@ impl fmt::Display for IrRecordDeclaration {
         write!(f, "}}")
     }
 }
+
+impl fmt::Display for IrModule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for enum_decl in &self.enums {
+            writeln!(f, "{}", enum_decl)?;
+        }
+        for record_decl in &self.records {
+            writeln!(f, "{}", record_decl)?;
+        }
+        for component in &self.components {
+            write!(f, "{}", component)?;
+        }
+        Ok(())
+    }
+}

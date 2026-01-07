@@ -10,6 +10,154 @@ use crate::ir::ast::{IrComponentDeclaration, IrEnumDeclaration, IrModule, IrReco
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
+pub struct IrModuleBuilder {
+    module_name: ModuleName,
+    enums: BTreeMap<String, Vec<String>>,
+    records: BTreeMap<String, Vec<(String, Type)>>,
+    components: Vec<IrComponentDeclaration>,
+}
+
+impl IrModuleBuilder {
+    pub fn new() -> Self {
+        Self {
+            module_name: ModuleName::new("test").unwrap(),
+            enums: BTreeMap::new(),
+            records: BTreeMap::new(),
+            components: Vec::new(),
+        }
+    }
+
+    pub fn enum_decl<I, S>(mut self, name: &str, variants: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let variants: Vec<String> = variants
+            .into_iter()
+            .map(|s| s.as_ref().to_string())
+            .collect();
+        self.enums.insert(name.to_string(), variants);
+        self
+    }
+
+    pub fn record<F>(mut self, name: &str, f: F) -> Self
+    where
+        F: FnOnce(&mut RecordBuilder),
+    {
+        let mut builder = RecordBuilder {
+            module_name: &self.module_name,
+            enums: &self.enums,
+            records: &self.records,
+            fields: Vec::new(),
+        };
+        f(&mut builder);
+        self.records.insert(name.to_string(), builder.fields);
+        self
+    }
+
+    pub fn component<F, P>(mut self, name: &str, params: P, body_fn: F) -> Self
+    where
+        F: FnOnce(&mut IrBuilder),
+        P: IntoIterator<Item = (&'static str, Type)>,
+    {
+        let params_owned: Vec<(String, Type)> = params
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+
+        let records_map: BTreeMap<String, BTreeMap<String, Type>> = self
+            .records
+            .iter()
+            .map(|(name, fields)| {
+                let fields_map: BTreeMap<String, Type> = fields.iter().cloned().collect();
+                (name.clone(), fields_map)
+            })
+            .collect();
+
+        let mut builder = IrBuilder::new(params_owned, records_map, self.enums.clone());
+        body_fn(&mut builder);
+        self.components.push(builder.build(name));
+        self
+    }
+
+    pub fn build(self) -> IrModule {
+        let enum_declarations: Vec<IrEnumDeclaration> = self
+            .enums
+            .iter()
+            .map(|(name, variants)| IrEnumDeclaration {
+                name: name.clone(),
+                variants: variants.iter().map(|v| TypeName::new(v).unwrap()).collect(),
+            })
+            .collect();
+
+        let record_declarations: Vec<IrRecordDeclaration> = self
+            .records
+            .iter()
+            .map(|(name, fields)| IrRecordDeclaration {
+                name: name.clone(),
+                fields: fields
+                    .iter()
+                    .map(|(k, v)| (FieldName::new(k).unwrap(), v.clone()))
+                    .collect(),
+            })
+            .collect();
+
+        IrModule {
+            components: self.components,
+            records: record_declarations,
+            enums: enum_declarations,
+        }
+    }
+}
+
+impl Default for IrModuleBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub struct RecordBuilder<'a> {
+    module_name: &'a ModuleName,
+    enums: &'a BTreeMap<String, Vec<String>>,
+    records: &'a BTreeMap<String, Vec<(String, Type)>>,
+    fields: Vec<(String, Type)>,
+}
+
+impl<'a> RecordBuilder<'a> {
+    pub fn field(&mut self, name: &str, typ: Type) -> &mut Self {
+        self.fields.push((name.to_string(), typ));
+        self
+    }
+
+    pub fn record_type(&self, name: &str) -> Type {
+        let fields = self.records.get(name).unwrap_or_else(|| {
+            panic!("Record '{}' not found. Define it before referencing.", name)
+        });
+
+        Type::Record {
+            module: self.module_name.clone(),
+            name: TypeName::new(name).unwrap(),
+            fields: fields
+                .iter()
+                .map(|(k, v)| (FieldName::new(k).unwrap(), v.clone()))
+                .collect(),
+        }
+    }
+
+    pub fn enum_type(&self, name: &str) -> Type {
+        let variants = self
+            .enums
+            .get(name)
+            .unwrap_or_else(|| panic!("Enum '{}' not found. Define it before referencing.", name));
+
+        Type::Enum {
+            module: self.module_name.clone(),
+            name: TypeName::new(name).unwrap(),
+            variants: variants.iter().map(|v| TypeName::new(v).unwrap()).collect(),
+        }
+    }
+}
+
 /// Helper function to extract (VarName, Type) from an IrExpr.
 /// Panics if the expression is not a variable reference.
 fn extract_var_subject(expr: &IrExpr) -> (VarName, Type) {
