@@ -175,7 +175,15 @@ fn run_integration_test(test_case: &TestCase) -> String {
         enums: test_case.enums.clone(),
     };
 
-    let input = test_case.entrypoint.to_string();
+    let mut input = String::new();
+    for enum_decl in &test_case.enums {
+        input.push_str(&format!("{}\n", enum_decl));
+    }
+    for record_decl in &test_case.records {
+        input.push_str(&format!("{}\n", record_decl));
+    }
+    input.push_str(&test_case.entrypoint.to_string());
+
     let mut output = format!(
         "-- input --\n{}-- expected output --\n{}\n",
         input, test_case.expected_output
@@ -824,6 +832,11 @@ mod tests {
             .with_enums(enum_declarations),
             expect![[r#"
                 -- input --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
                 Test() {
                   let color = Color::Red in {
                     if (color == Color::Red) {
@@ -881,6 +894,11 @@ mod tests {
             .with_enums(enum_declarations),
             expect![[r#"
                 -- input --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
                 Test() {
                   let color = Color::Red in {
                     if (color == Color::Green) {
@@ -1025,6 +1043,10 @@ mod tests {
             .with_records(records),
             expect![[r#"
                 -- input --
+                record Person {
+                  name: String,
+                  age: Int,
+                }
                 Test() {
                   let person = Person(name: "Alice", age: 30) in {
                     write_expr(person.name)
@@ -1096,6 +1118,11 @@ mod tests {
             .with_records(records),
             expect![[r#"
                 -- input --
+                record Item {
+                  label: String,
+                  count: Int,
+                  active: Bool,
+                }
                 Test() {
                   let item = Item(
                     label: "widget",
@@ -2155,6 +2182,11 @@ mod tests {
             .with_enums(enum_declarations),
             expect![[r#"
                 -- input --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
                 Test() {
                   let color = Color::Green in {
                     write_expr(match color {
@@ -2211,6 +2243,11 @@ mod tests {
             .with_enums(enum_declarations),
             expect![[r#"
                 -- input --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
                 Test() {
                   write_expr(let color = Color::Green in let is_red = (color == Color::Red) in match is_red {
                     true => "eq",
@@ -2264,6 +2301,11 @@ mod tests {
             .with_enums(enum_declarations),
             expect![[r#"
                 -- input --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
                 Test() {
                   let color = Color::Blue in {
                     match color {

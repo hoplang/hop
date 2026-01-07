@@ -1190,3 +1190,23 @@ impl fmt::Display for IrComponentDeclaration {
         writeln!(f, "{}", self.to_doc().pretty(60))
     }
 }
+
+impl fmt::Display for IrEnumDeclaration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "enum {} {{", self.name)?;
+        for variant in self.variants.iter() {
+            writeln!(f, "  {},", variant.as_str())?;
+        }
+        write!(f, "}}")
+    }
+}
+
+impl fmt::Display for IrRecordDeclaration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "record {} {{", self.name)?;
+        for (field_name, field_type) in self.fields.iter() {
+            writeln!(f, "  {}: {},", field_name.as_str(), field_type.to_doc().pretty(60))?;
+        }
+        write!(f, "}}")
+    }
+}
