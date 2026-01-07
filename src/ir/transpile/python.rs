@@ -1591,6 +1591,109 @@ mod tests {
     }
 
     #[test]
+    fn nested_bool_match_expr() {
+        let module = build_module("TestNestedBoolMatch", [], |t| {
+            t.let_stmt("outer", t.bool(true), |t| {
+                t.let_stmt("inner", t.bool(false), |t| {
+                    let result = t.bool_match_expr(
+                        t.var("outer"),
+                        t.bool_match_expr(t.var("inner"), t.str("TT"), t.str("TF")),
+                        t.str("F"),
+                    );
+                    t.write_expr(result, false);
+                });
+            });
+        });
+
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                TestNestedBoolMatch() {
+                  let outer = true in {
+                    let inner = false in {
+                      write_expr(match outer {
+                        true => match inner {true => "TT", false => "TF"},
+                        false => "F",
+                      })
+                    }
+                  }
+                }
+
+                -- after --
+                def test_nested_bool_match() -> str:
+                    output = []
+                    outer = True
+                    inner = False
+                    output.append((("TT" if inner else "TF") if outer else "F"))
+                    return ''.join(output)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn nested_option_match_expr() {
+        let module = build_module("TestNestedOptionMatch", [], |t| {
+            // Some(Some("deep"))
+            t.let_stmt("nested", t.some(t.some(t.str("deep"))), |t| {
+                let result = t.option_match_expr_with_binding(
+                    t.var("nested"),
+                    "outer",
+                    Type::Option(Box::new(Type::String)),
+                    |t| {
+                        t.option_match_expr_with_binding(
+                            t.var("outer"),
+                            "inner",
+                            Type::String,
+                            |t| t.var("inner"),
+                            t.str("inner-none"),
+                        )
+                    },
+                    t.str("outer-none"),
+                );
+                t.write_expr(result, false);
+            });
+        });
+
+        check(
+            &module,
+            expect![[r#"
+                -- before --
+                TestNestedOptionMatch() {
+                  let nested = Some(Some("deep")) in {
+                    write_expr(match nested {
+                      Some(outer) => match outer {
+                        Some(inner) => inner,
+                        None => "inner-none",
+                      },
+                      None => "outer-none",
+                    })
+                  }
+                }
+
+                -- after --
+                from dataclasses import dataclass
+                from typing import Generic, TypeVar
+
+                T = TypeVar('T')
+
+                @dataclass
+                class Some(Generic[T]):
+                    value: T
+
+                class Nothing:
+                    pass
+
+                def test_nested_option_match() -> str:
+                    output = []
+                    nested = Some(Some("deep"))
+                    output.append(((lambda outer: ((lambda inner: inner)(outer.value) if isinstance(outer, Some) else "inner-none"))(nested.value) if isinstance(nested, Some) else "outer-none"))
+                    return ''.join(output)
+            "#]],
+        );
+    }
+
+    #[test]
     fn option_match_statement() {
         let module = build_module("TestOption", [], |t| {
             t.let_stmt("some_val", t.some(t.str("hello")), |t| {

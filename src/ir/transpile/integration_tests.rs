@@ -2060,6 +2060,69 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn nested_bool_match_expr() {
+        check(
+            TestCase::new(
+                build_ir("Test", [], |t| {
+                    t.let_stmt("outer", t.bool(true), |t| {
+                        t.let_stmt("inner", t.bool(false), |t| {
+                            let result = t.bool_match_expr(
+                                t.var("outer"),
+                                t.bool_match_expr(t.var("inner"), t.str("TT"), t.str("TF")),
+                                t.str("F"),
+                            );
+                            t.write_expr(result, false);
+                        });
+                    });
+                    t.write(",");
+                    t.let_stmt("outer2", t.bool(false), |t| {
+                        t.let_stmt("inner2", t.bool(true), |t| {
+                            let result = t.bool_match_expr(
+                                t.var("outer2"),
+                                t.bool_match_expr(t.var("inner2"), t.str("TT"), t.str("TF")),
+                                t.str("F"),
+                            );
+                            t.write_expr(result, false);
+                        });
+                    });
+                }),
+                "TF,F",
+            ),
+            expect![[r#"
+                -- input --
+                Test() {
+                  let outer = true in {
+                    let inner = false in {
+                      write_expr(match outer {
+                        true => match inner {true => "TT", false => "TF"},
+                        false => "F",
+                      })
+                    }
+                  }
+                  write(",")
+                  let outer2 = false in {
+                    let inner2 = true in {
+                      write_expr(match outer2 {
+                        true => match inner2 {true => "TT", false => "TF"},
+                        false => "F",
+                      })
+                    }
+                  }
+                }
+                -- expected output --
+                TF,F
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn enum_match_expression() {
         use crate::dop::symbols::type_name::TypeName;
 
