@@ -527,6 +527,10 @@ impl Parser {
     fn parse_primary(&mut self) -> Result<ParsedExpr, ParseError> {
         match self.iter.next().transpose()? {
             Some((Token::Identifier(name), name_range)) => {
+                // Check for macro invocation: identifier!
+                if self.advance_if(Token::Not).is_some() {
+                    return self.parse_macro_invocation(name, name_range);
+                }
                 self.parse_field_access(name, name_range)
             }
             Some((Token::TypeName(name), name_range)) => {
@@ -582,6 +586,34 @@ impl Parser {
                 range: self.range.clone(),
             }),
         }
+    }
+
+    fn parse_macro_invocation(
+        &mut self,
+        macro_name: StringSpan,
+        name_range: DocumentRange,
+    ) -> Result<ParsedExpr, ParseError> {
+        // Validate it's a known macro
+        let name_str = macro_name.as_str();
+        if name_str != "classes" {
+            return Err(ParseError::UnknownMacro {
+                name: macro_name,
+                range: name_range,
+            });
+        }
+
+        let left_paren = self.expect_token(&Token::LeftParen)?;
+        let mut args = Vec::new();
+        let right_paren = self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
+            args.push(this.parse_logical()?);
+            Ok(())
+        })?;
+
+        Ok(ParsedExpr::MacroInvocation {
+            name: name_str.to_string(),
+            args,
+            range: name_range.to(right_paren),
+        })
     }
 
     fn parse_record_literal(
@@ -1521,12 +1553,13 @@ mod tests {
 
     #[test]
     fn should_reject_expr_when_not_operator_is_trailing() {
+        // Note: `x !` is now interpreted as a macro invocation `x!`
         check_parse_expr(
             "x !",
             expect![[r#"
-                error: Unexpected token '!'
+                error: Unknown macro 'x'
                 x !
-                  ^
+                ^
             "#]],
         );
     }
@@ -2710,6 +2743,72 @@ mod tests {
             "match color {}",
             expect![[r#"
                 match color {}
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// MACRO INVOCATIONS                                                   ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_classes_macro_with_no_args() {
+        check_parse_expr(
+            "classes!()",
+            expect![[r#"
+                classes!()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_classes_macro_with_single_arg() {
+        check_parse_expr(
+            r#"classes!("hello")"#,
+            expect![[r#"
+                classes!("hello")
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_classes_macro_with_multiple_args() {
+        check_parse_expr(
+            "classes!(a, b, c)",
+            expect![[r#"
+                classes!(a, b, c)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_classes_macro_with_expressions() {
+        check_parse_expr(
+            "classes!(user.first, user.last)",
+            expect![[r#"
+                classes!(user.first, user.last)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_classes_macro_with_string_literals() {
+        check_parse_expr(
+            r#"classes!("hello", "world")"#,
+            expect![[r#"
+                classes!("hello", "world")
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_unknown_macro() {
+        check_parse_expr(
+            "unknown!(x)",
+            expect![[r#"
+                error: Unknown macro 'unknown'
+                unknown!(x)
+                ^^^^^^^
             "#]],
         );
     }

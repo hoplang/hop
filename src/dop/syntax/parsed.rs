@@ -294,6 +294,13 @@ pub enum ParsedExpr {
         value: Option<Box<Self>>,
         range: DocumentRange,
     },
+
+    /// A macro invocation, e.g. `join!(a, b, c)`
+    MacroInvocation {
+        name: String,
+        args: Vec<Self>,
+        range: DocumentRange,
+    },
 }
 
 impl ParsedBinaryOp {
@@ -328,7 +335,8 @@ impl ParsedExpr {
             | ParsedExpr::BinaryOp { range, .. }
             | ParsedExpr::Negation { range, .. }
             | ParsedExpr::Match { range, .. }
-            | ParsedExpr::OptionLiteral { range, .. } => range,
+            | ParsedExpr::OptionLiteral { range, .. }
+            | ParsedExpr::MacroInvocation { range, .. } => range,
         }
     }
 
@@ -347,6 +355,7 @@ impl ParsedExpr {
                 | ParsedExpr::EnumLiteral { .. }
                 | ParsedExpr::Match { .. }
                 | ParsedExpr::OptionLiteral { .. }
+                | ParsedExpr::MacroInvocation { .. }
         )
     }
 
@@ -490,6 +499,26 @@ impl ParsedExpr {
                     .append(BoxDoc::text(")")),
                 None => BoxDoc::text("None"),
             },
+            ParsedExpr::MacroInvocation { name, args, .. } => {
+                if args.is_empty() {
+                    BoxDoc::text(name.as_str()).append(BoxDoc::text("!()"))
+                } else {
+                    BoxDoc::text(name.as_str())
+                        .append(BoxDoc::text("!("))
+                        .append(
+                            BoxDoc::line_()
+                                .append(BoxDoc::intersperse(
+                                    args.iter().map(|e| e.to_doc()),
+                                    BoxDoc::text(",").append(BoxDoc::line()),
+                                ))
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                .append(BoxDoc::line_())
+                                .nest(2)
+                                .group(),
+                        )
+                        .append(BoxDoc::text(")"))
+                }
+            }
         }
     }
 }

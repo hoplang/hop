@@ -113,6 +113,12 @@ pub enum ParseError {
 
     #[error("Expected declaration (import, record, or enum)")]
     ExpectedDeclaration { range: DocumentRange },
+
+    #[error("Unknown macro '{name}'")]
+    UnknownMacro {
+        name: StringSpan,
+        range: DocumentRange,
+    },
 }
 
 impl Ranged for ParseError {
@@ -142,7 +148,8 @@ impl Ranged for ParseError {
             | ParseError::ExpectedIdentifierAfterColonColon { range }
             | ParseError::ExpectedModulePath { range }
             | ParseError::ImportPathTooShort { range }
-            | ParseError::ExpectedDeclaration { range } => range,
+            | ParseError::ExpectedDeclaration { range }
+            | ParseError::UnknownMacro { range, .. } => range,
         }
     }
 }

@@ -793,7 +793,63 @@ pub fn typecheck_expr(
             arms,
             range,
         } => typecheck_match(subject, arms, range, var_env, type_env, annotations),
+        ParsedExpr::MacroInvocation { name, args, range } => {
+            match name.as_str() {
+                "classes" => expand_classes_macro(args, range, var_env, type_env, annotations),
+                _ => unreachable!("Unknown macro '{}' should be caught at parse time", name),
+            }
+        }
     }
+}
+
+/// Expand a `classes!` macro invocation to a chain of StringConcat operations.
+fn expand_classes_macro(
+    args: &[ParsedExpr],
+    _range: &DocumentRange,
+    var_env: &mut Environment<Type>,
+    type_env: &mut Environment<Type>,
+    annotations: &mut Vec<TypeAnnotation>,
+) -> Result<TypedExpr, TypeError> {
+    if args.is_empty() {
+        return Ok(TypedExpr::StringLiteral {
+            value: String::new(),
+        });
+    }
+
+    // Type-check all arguments, expecting String
+    let mut typed_args = Vec::new();
+    for arg in args {
+        let typed = typecheck_expr(arg, var_env, type_env, annotations, Some(&Type::String))?;
+        // Verify it's actually a String
+        if typed.as_type() != &Type::String {
+            return Err(TypeError::MacroArgumentTypeMismatch {
+                macro_name: "classes".to_string(),
+                expected: "String".to_string(),
+                actual: typed.as_type().to_string(),
+                range: arg.range().clone(),
+            });
+        }
+        typed_args.push(typed);
+    }
+
+    // Build: arg0 + " " + arg1 + " " + arg2 + ...
+    let mut result = typed_args.remove(0);
+    for arg in typed_args {
+        // Add " " separator
+        result = TypedExpr::StringConcat {
+            left: Box::new(result),
+            right: Box::new(TypedExpr::StringLiteral {
+                value: " ".to_string(),
+            }),
+        };
+        // Add next argument
+        result = TypedExpr::StringConcat {
+            left: Box::new(result),
+            right: Box::new(arg),
+        };
+    }
+
+    Ok(result)
 }
 
 // Typecheck a match expression and compile it to a TypedExpr.
@@ -3860,6 +3916,73 @@ mod tests {
                 }
             "#},
             expect!["String"],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// MACROS                                                              ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_classes_macro_with_string_args() {
+        check(
+            "",
+            &[("first", "String"), ("last", "String")],
+            "classes!(first, last)",
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_classes_macro_with_single_arg() {
+        check(
+            "",
+            &[("name", "String")],
+            "classes!(name)",
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_classes_macro_with_no_args() {
+        check("", &[], "classes!()", expect!["String"]);
+    }
+
+    #[test]
+    fn should_accept_classes_macro_with_string_literals() {
+        check(
+            "",
+            &[],
+            r#"classes!("hello", "world")"#,
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_reject_classes_macro_with_non_string_arg() {
+        check(
+            "",
+            &[("count", "Int")],
+            "classes!(count)",
+            expect![[r#"
+                error: Macro 'classes' expects String arguments, but got Int
+                classes!(count)
+                         ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_classes_macro_with_mixed_types() {
+        check(
+            "",
+            &[("name", "String"), ("age", "Int")],
+            "classes!(name, age)",
+            expect![[r#"
+                error: Macro 'classes' expects String arguments, but got Int
+                classes!(name, age)
+                               ^^^
+            "#]],
         );
     }
 }

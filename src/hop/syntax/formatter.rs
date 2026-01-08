@@ -897,4 +897,78 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn component_with_classes_macro_in_class_attribute_to_doc() {
+        check(
+            indoc! {r#"
+                <Card {base_class: String, extra_class: String}>
+                  <div class={classes!(base_class, extra_class)}></div>
+                </Card>
+            "#},
+            expect![[r#"
+                <Card {base_class: String, extra_class: String}>
+                  <div class={classes!(base_class, extra_class)}>
+                  </div>
+                </Card>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_classes_macro_multiple_classes_to_doc() {
+        check(
+            indoc! {r#"
+                <Button {size_class: String, variant_class: String, custom_class: String}>
+                  <button class={classes!(size_class, variant_class, custom_class)}>Click</button>
+                </Button>
+            "#},
+            expect![[r#"
+                <Button {
+                  size_class: String,
+                  variant_class: String,
+                  custom_class: String,
+                }>
+                  <button
+                    class={
+                      classes!(size_class, variant_class, custom_class),
+                    }
+                  >
+                    Click
+                  </button>
+                </Button>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_classes_macro_long_args_breaks_to_multiple_lines() {
+        check(
+            indoc! {r#"
+                <Component {base_styles: String, responsive_styles: String, interactive_styles: String, custom_overrides: String}>
+                  <div class={classes!(base_styles, responsive_styles, interactive_styles, custom_overrides)}></div>
+                </Component>
+            "#},
+            expect![[r#"
+                <Component {
+                  base_styles: String,
+                  responsive_styles: String,
+                  interactive_styles: String,
+                  custom_overrides: String,
+                }>
+                  <div
+                    class={
+                      classes!(
+                        base_styles,
+                        responsive_styles,
+                        interactive_styles,
+                        custom_overrides,
+                      ),
+                    }
+                  >
+                  </div>
+                </Component>
+            "#]],
+        );
+    }
 }

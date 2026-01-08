@@ -189,6 +189,14 @@ pub enum TypeError {
 
     #[error("Variable '{name}' is already defined")]
     VariableAlreadyDefined { name: String, range: DocumentRange },
+
+    #[error("Macro '{macro_name}' expects {expected} arguments, but got {actual}")]
+    MacroArgumentTypeMismatch {
+        macro_name: String,
+        expected: String,
+        actual: String,
+        range: DocumentRange,
+    },
 }
 
 impl Ranged for TypeError {
@@ -226,7 +234,8 @@ impl Ranged for TypeError {
             | TypeError::MatchPatternTypeMismatch { range, .. }
             | TypeError::MatchNoArms { range, .. }
             | TypeError::MatchUnusedBinding { range, .. }
-            | TypeError::VariableAlreadyDefined { range, .. } => range,
+            | TypeError::VariableAlreadyDefined { range, .. }
+            | TypeError::MacroArgumentTypeMismatch { range, .. } => range,
         }
     }
 }
