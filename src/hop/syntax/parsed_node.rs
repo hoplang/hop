@@ -336,29 +336,41 @@ impl ParsedNode {
                 children,
                 ..
             } => {
-                let mut tag_doc = BoxDoc::text("<").append(BoxDoc::text(tag_name.as_str()));
+                let tag_name_str = tag_name.as_str();
 
-                if !attributes.is_empty() {
-                    tag_doc = tag_doc
-                        .append(BoxDoc::text(" "))
-                        .append(BoxDoc::intersperse(
-                            attributes.values().map(|attr| attr.to_doc()),
-                            BoxDoc::text(" "),
-                        ));
-                }
-
-                if is_void_element(tag_name.as_str()) {
-                    tag_doc.append(BoxDoc::text(">"))
-                } else if children.is_empty() {
-                    tag_doc
-                        .append(BoxDoc::text(">"))
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::text("</"))
-                        .append(BoxDoc::text(tag_name.as_str()))
+                // Build the opening tag with attributes
+                // When attributes break to multiple lines, each attribute goes on its own line
+                // and the closing > goes on its own line
+                let opening_tag_doc = if attributes.is_empty() {
+                    BoxDoc::text("<")
+                        .append(BoxDoc::text(tag_name_str))
                         .append(BoxDoc::text(">"))
                 } else {
-                    tag_doc
+                    BoxDoc::text("<")
+                        .append(BoxDoc::text(tag_name_str))
+                        .append(
+                            BoxDoc::line()
+                                .append(BoxDoc::intersperse(
+                                    attributes.values().map(|attr| attr.to_doc()),
+                                    BoxDoc::line(),
+                                ))
+                                .nest(2),
+                        )
+                        .append(BoxDoc::line_())
                         .append(BoxDoc::text(">"))
+                        .group()
+                };
+
+                if is_void_element(tag_name_str) {
+                    opening_tag_doc
+                } else if children.is_empty() {
+                    opening_tag_doc
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("</"))
+                        .append(BoxDoc::text(tag_name_str))
+                        .append(BoxDoc::text(">"))
+                } else {
+                    opening_tag_doc
                         .append(
                             BoxDoc::line()
                                 .append(BoxDoc::intersperse(
@@ -369,7 +381,7 @@ impl ParsedNode {
                         )
                         .append(BoxDoc::line())
                         .append(BoxDoc::text("</"))
-                        .append(BoxDoc::text(tag_name.as_str()))
+                        .append(BoxDoc::text(tag_name_str))
                         .append(BoxDoc::text(">"))
                 }
             }
