@@ -1,5 +1,5 @@
 use super::type_error::TypeError;
-use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::patterns::compiler::Compiler as PatMatchCompiler;
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
@@ -619,31 +619,34 @@ fn typecheck_node(
                 .map(|params| params.iter().any(|(_, _, has_default)| !has_default))
                 .unwrap_or(false);
 
-            let typed_args = match (params_without_children.as_deref(), args) {
-                (None | Some([]), None) => Vec::new(),
-                (None | Some([]), Some((_, args_range))) => {
-                    errors.push(TypeError::UnexpectedArguments {
-                        range: args_range.clone(),
-                    });
+            let typed_args = match (params_without_children.as_deref(), args.as_slice()) {
+                (None | Some([]), []) => Vec::new(),
+                (None | Some([]), args) => {
+                    for arg in args {
+                        errors.push(TypeError::UnexpectedArgument {
+                            arg: arg.name.as_str().to_string(),
+                            range: arg.name.clone(),
+                        });
+                    }
                     Vec::new()
                 }
-                (Some(params), None) if has_required_params => {
+                (Some(params), []) if has_required_params => {
                     errors.push(TypeError::missing_arguments(params, tag_name.clone()));
                     Vec::new()
                 }
-                (Some(_), None) => Vec::new(), // no required params, args optional
-                (Some(params), Some((args, args_range))) => {
+                (Some(_), []) => Vec::new(), // no required params, args optional
+                (Some(params), args) => {
                     let mut typed_arguments = Vec::new();
                     // Only check for missing params that don't have defaults
                     for (param_name, _, has_default) in params {
                         if !has_default
                             && !args
                                 .iter()
-                                .any(|a| a.var_name.as_str() == param_name.as_str())
+                                .any(|a| a.name.as_str() == param_name.as_str())
                         {
                             errors.push(TypeError::MissingRequiredParameter {
                                 param: param_name.clone(),
-                                range: args_range.clone(),
+                                range: tag_name.clone(),
                             });
                         }
                     }
@@ -652,30 +655,54 @@ fn typecheck_node(
                     let all_params = module_info.get_parameter_types(component_name.as_str());
 
                     for arg in args {
+                        let arg_name = arg.name.as_str();
+
                         // Disallow children arg - it's handled separately via component children
-                        if arg.var_name.as_str() == "children" {
+                        if arg_name == "children" {
                             errors.push(TypeError::ChildrenArgNotAllowed {
-                                range: arg.var_name_range.clone(),
+                                range: arg.name.clone(),
                             });
                             continue;
                         }
 
                         let (_, param_type, _) = match all_params.and_then(|p| {
                             p.iter()
-                                .find(|(name, _, _)| name.as_str() == arg.var_name.as_str())
+                                .find(|(name, _, _)| name.as_str() == arg_name)
                         }) {
                             None => {
                                 errors.push(TypeError::UnexpectedArgument {
-                                    arg: arg.var_name.as_str().to_string(),
-                                    range: arg.var_name_range.clone(),
+                                    arg: arg_name.to_string(),
+                                    range: arg.name.clone(),
                                 });
                                 continue;
                             }
                             Some(param) => param,
                         };
 
+                        // Convert ParsedAttribute value to expression for type checking
+                        let arg_expr = match &arg.value {
+                            Some(ParsedAttributeValue::Expressions(exprs)) => {
+                                // Parser ensures single expression
+                                exprs.first().unwrap().clone()
+                            }
+                            Some(ParsedAttributeValue::String(content)) => {
+                                let value = content
+                                    .as_ref()
+                                    .map(|r| r.as_str().to_string())
+                                    .unwrap_or_default();
+                                dop::ParsedExpr::StringLiteral {
+                                    value,
+                                    range: arg.name.clone(),
+                                }
+                            }
+                            None => dop::ParsedExpr::BooleanLiteral {
+                                value: true,
+                                range: arg.name.clone(),
+                            },
+                        };
+
                         let typed_expr = match dop::typecheck_expr(
-                            &arg.var_expr,
+                            &arg_expr,
                             env,
                             type_env,
                             annotations,
@@ -694,19 +721,14 @@ fn typecheck_node(
                             errors.push(TypeError::ArgumentIsIncompatible {
                                 expected: param_type.clone(),
                                 found: arg_type.clone(),
-                                arg_name: arg.var_name_range.clone(),
-                                expr_range: arg.var_expr.range().clone(),
+                                arg_name: arg.name.clone(),
+                                expr_range: arg_expr.range().clone(),
                             });
                             continue;
                         }
 
-                        typed_arguments.push((arg.var_name.clone(), typed_expr));
-
-                        annotations.push(TypeAnnotation {
-                            range: arg.var_expr.range().clone(),
-                            typ: arg_type,
-                            name: arg.var_name.to_string(),
-                        });
+                        let var_name = VarName::new(arg_name).unwrap();
+                        typed_arguments.push((var_name, typed_expr));
                     }
 
                     typed_arguments
@@ -912,7 +934,11 @@ fn typecheck_attributes(
                 }
             }
             Some(ParsedAttributeValue::String(s)) => {
-                Some(TypedAttributeValue::String(s.to_string_span()))
+                let string_span = match s {
+                    Some(range) => range.to_string_span(),
+                    None => StringSpan::new("".to_string()),
+                };
+                Some(TypedAttributeValue::String(string_span))
             }
             None => None,
         };
@@ -1571,7 +1597,7 @@ mod tests {
                   </if>
                 </Main>
                 <Foo>
-                  <Main {b: "foo", a: true}/>
+                  <Main b="foo" a={true}/>
                 </Foo>
             "#},
             expect![[r#"
@@ -1596,18 +1622,6 @@ mod tests {
                 1 | <Main {a: Bool, b: String}>
                 2 |   <if {a}>
                   |        ^
-
-                b: String
-                  --> main.hop (line 7, col 13)
-                6 | <Foo>
-                7 |   <Main {b: "foo", a: true}/>
-                  |             ^^^^^
-
-                a: Bool
-                  --> main.hop (line 7, col 23)
-                6 | <Foo>
-                7 |   <Main {b: "foo", a: true}/>
-                  |                       ^^^^
             "#]],
         );
     }
@@ -1623,15 +1637,15 @@ mod tests {
                   </if>
                 </Main>
                 <Foo>
-                  <Main {b: "foo"}/>
+                  <Main b="foo"/>
                 </Foo>
             "#},
             expect![[r#"
                 error: Missing required parameter 'a'
-                  --> main.hop (line 7, col 10)
+                  --> main.hop (line 7, col 4)
                 6 | <Foo>
-                7 |   <Main {b: "foo"}/>
-                  |          ^^^^^^^^
+                7 |   <Main b="foo"/>
+                  |    ^^^^
             "#]],
         );
     }
@@ -1645,15 +1659,15 @@ mod tests {
                   {a}
                 </Main>
                 <Foo>
-                    <Main {a: "", b: 1}/>
+                    <Main a="" b={1}/>
                 </Foo>
             "#},
             expect![[r#"
                 error: Unexpected argument 'b'
-                  --> main.hop (line 5, col 19)
+                  --> main.hop (line 5, col 16)
                 4 | <Foo>
-                5 |     <Main {a: "", b: 1}/>
-                  |                   ^
+                5 |     <Main a="" b={1}/>
+                  |                ^
             "#]],
         );
     }
@@ -1691,15 +1705,15 @@ mod tests {
                   hello world
                 </Main>
                 <Foo>
-                  <Main {a: "foo"} />
+                  <Main a="foo" />
                 </Foo>
             "#},
             expect![[r#"
-                error: Component does not accept arguments
-                  --> main.hop (line 5, col 10)
+                error: Unexpected argument 'a'
+                  --> main.hop (line 5, col 9)
                 4 | <Foo>
-                5 |   <Main {a: "foo"} />
-                  |          ^^^^^^^^
+                5 |   <Main a="foo" />
+                  |         ^
             "#]],
         );
     }
@@ -2129,7 +2143,7 @@ mod tests {
 
                 <PanelComp {data: Data}>
                   <for {item in data.items}>
-                    <WidgetComp {config: item}/>
+                    <WidgetComp config={item}/>
                   </for>
                 </PanelComp>
 
@@ -2145,7 +2159,7 @@ mod tests {
                 }
 
                 <Main {settings: Settings}>
-                  <PanelComp {data: settings.dashboard}/>
+                  <PanelComp data={settings.dashboard}/>
                 </Main>
             "#},
             expect![[r#"
@@ -2186,16 +2200,10 @@ mod tests {
                    |         ^^^^
 
                 item: a::bar::Config
-                  --> foo.hop (line 10, col 26)
+                  --> foo.hop (line 10, col 25)
                  9 |   <for {item in data.items}>
-                10 |     <WidgetComp {config: item}/>
-                   |                          ^^^^
-
-                config: a::bar::Config
-                  --> foo.hop (line 10, col 26)
-                 9 |   <for {item in data.items}>
-                10 |     <WidgetComp {config: item}/>
-                   |                          ^^^^
+                10 |     <WidgetComp config={item}/>
+                   |                         ^^^^
 
                 settings: main::Settings
                   --> main.hop (line 11, col 8)
@@ -2204,16 +2212,10 @@ mod tests {
                    |        ^^^^^^^^
 
                 settings: main::Settings
-                  --> main.hop (line 12, col 21)
+                  --> main.hop (line 12, col 20)
                 11 | <Main {settings: Settings}>
-                12 |   <PanelComp {data: settings.dashboard}/>
-                   |                     ^^^^^^^^
-
-                data: foo::Data
-                  --> main.hop (line 12, col 21)
-                11 | <Main {settings: Settings}>
-                12 |   <PanelComp {data: settings.dashboard}/>
-                   |                     ^^^^^^^^^^^^^^^^^^
+                12 |   <PanelComp data={settings.dashboard}/>
+                   |                    ^^^^^^^^
             "#]],
         );
     }
@@ -2246,16 +2248,16 @@ mod tests {
                 import foo::User
 
                 <Main {user: User}>
-                    <FooComp {user: user}/>
-                    <BarComp {user: user}/>
+                    <FooComp user={user}/>
+                    <BarComp user={user}/>
                 </Main>
             "#},
             expect![[r#"
                 error: Argument 'user' of type foo::User is incompatible with expected type bar::User
-                  --> main.hop (line 7, col 21)
-                6 |     <FooComp {user: user}/>
-                7 |     <BarComp {user: user}/>
-                  |                     ^^^^
+                  --> main.hop (line 7, col 20)
+                6 |     <FooComp user={user}/>
+                7 |     <BarComp user={user}/>
+                  |                    ^^^^
             "#]],
         );
     }
@@ -2290,16 +2292,16 @@ mod tests {
                 import foo::User
 
                 <Main {user: User}>
-                    <FooComp {user: user}/>
-                    <BarComp {user: user}/>
+                    <FooComp user={user}/>
+                    <BarComp user={user}/>
                 </Main>
             "#},
             expect![[r#"
                 error: Argument 'user' of type foo::User is incompatible with expected type bar::User
-                  --> main.hop (line 7, col 21)
-                6 |     <FooComp {user: user}/>
-                7 |     <BarComp {user: user}/>
-                  |                     ^^^^
+                  --> main.hop (line 7, col 20)
+                6 |     <FooComp user={user}/>
+                7 |     <BarComp user={user}/>
+                  |                    ^^^^
             "#]],
         );
     }
@@ -2453,15 +2455,15 @@ mod tests {
                 	<div>{message}</div>
                 </StringComp>
                 <Main>
-                	<StringComp {message: 42}/>
+                	<StringComp message={42}/>
                 </Main>
             "#},
             expect![[r#"
                 error: Argument 'message' of type Int is incompatible with expected type String
-                  --> main.hop (line 5, col 24)
+                  --> main.hop (line 5, col 23)
                 4 | <Main>
-                5 |     <StringComp {message: 42}/>
-                  |                           ^^
+                5 |     <StringComp message={42}/>
+                  |                          ^^
             "#]],
         );
     }
@@ -2477,15 +2479,15 @@ mod tests {
                 	</if>
                 </ToggleComp>
                 <Main>
-                	<ToggleComp {enabled: "not a boolean"}/>
+                	<ToggleComp enabled="not a boolean"/>
                 </Main>
             "#},
             expect![[r#"
                 error: Argument 'enabled' of type String is incompatible with expected type Bool
-                  --> main.hop (line 7, col 24)
+                  --> main.hop (line 7, col 14)
                 6 | <Main>
-                7 |     <ToggleComp {enabled: "not a boolean"}/>
-                  |                           ^^^^^^^^^^^^^^^
+                7 |     <ToggleComp enabled="not a boolean"/>
+                  |                 ^^^^^^^
             "#]],
         );
     }
@@ -2520,21 +2522,21 @@ mod tests {
                   {a} {b}
                 </Main>
                 <Foo>
-                    <Main {a: 1 == "", b: 1 == ""}/>
+                    <Main a={1 == ""} b={1 == ""}/>
                 </Foo>
             "#},
             expect![[r#"
                 error: Can not compare Int to String
-                  --> main.hop (line 5, col 15)
+                  --> main.hop (line 5, col 14)
                 4 | <Foo>
-                5 |     <Main {a: 1 == "", b: 1 == ""}/>
-                  |               ^^^^^^^
+                5 |     <Main a={1 == ""} b={1 == ""}/>
+                  |              ^^^^^^^
 
                 error: Can not compare Int to String
-                  --> main.hop (line 5, col 27)
+                  --> main.hop (line 5, col 26)
                 4 | <Foo>
-                5 |     <Main {a: 1 == "", b: 1 == ""}/>
-                  |                           ^^^^^^^
+                5 |     <Main a={1 == ""} b={1 == ""}/>
+                  |                          ^^^^^^^
             "#]],
         );
     }
@@ -2571,7 +2573,7 @@ mod tests {
                     </for>
                 </List>
                 <Main>
-                    <List {items: []}/>
+                    <List items={[]}/>
                 </Main>
             "#},
             expect![[r#"
@@ -2597,12 +2599,6 @@ mod tests {
                 2 |     <for {item in items}>
                 3 |         <li>{item}</li>
                   |              ^^^^
-
-                items: Array[String]
-                  --> main.hop (line 7, col 19)
-                6 | <Main>
-                7 |     <List {items: []}/>
-                  |                   ^^
             "#]],
         );
     }
@@ -2892,7 +2888,7 @@ mod tests {
                 import bar::User
                 import foo::Address
                 <Baz>
-                    <Bar {user: User(name: "Alice", address: Address(city: "NYC"))} />
+                    <Bar user={User(name: "Alice", address: Address(city: "NYC"))} />
                 </Baz>
             "#},
             expect![[r#"
@@ -2907,12 +2903,6 @@ mod tests {
                  8 | <Bar {user: User}>
                  9 |     <div>{user.address.city}</div>
                    |           ^^^^
-
-                user: bar::User
-                  --> baz.hop (line 5, col 17)
-                4 | <Baz>
-                5 |     <Bar {user: User(name: "Alice", address: Address(city: "NYC"))} />
-                  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -2941,7 +2931,7 @@ mod tests {
                 import colors::ColorDisplay
 
                 <Main>
-                    <ColorDisplay {color: Color::Red}/>
+                    <ColorDisplay color={Color::Red}/>
                 </Main>
             "#},
             expect![[r#"
@@ -2956,12 +2946,6 @@ mod tests {
                  7 | <ColorDisplay {color: Color}>
                  8 |     <div>{match color {
                    |                 ^^^^^
-
-                color: colors::Color
-                  --> main.hop (line 5, col 27)
-                4 | <Main>
-                5 |     <ColorDisplay {color: Color::Red}/>
-                  |                           ^^^^^^^^^^
             "#]],
         );
     }
@@ -3336,7 +3320,7 @@ mod tests {
                   Hello, {name}!
                 </Greeting>
                 <Main>
-                  <Greeting {name: "Claude"} />
+                  <Greeting name="Claude" />
                 </Main>
             "#},
             expect![[r#"
@@ -3350,12 +3334,6 @@ mod tests {
                 1 | <Greeting {name: String = "World"}>
                 2 |   Hello, {name}!
                   |           ^^^^
-
-                name: String
-                  --> main.hop (line 5, col 20)
-                4 | <Main>
-                5 |   <Greeting {name: "Claude"} />
-                  |                    ^^^^^^^^
             "#]],
         );
     }
@@ -3369,7 +3347,7 @@ mod tests {
                   {name} ({role})
                 </UserCard>
                 <Main>
-                  <UserCard {name: "Alice"} />
+                  <UserCard name="Alice" />
                 </Main>
             "#},
             expect![[r#"
@@ -3394,12 +3372,6 @@ mod tests {
                 1 | <UserCard {name: String, role: String = "user"}>
                 2 |   {name} ({role})
                   |            ^^^^
-
-                name: String
-                  --> main.hop (line 5, col 20)
-                4 | <Main>
-                5 |   <UserCard {name: "Alice"} />
-                  |                    ^^^^^^^
             "#]],
         );
     }
@@ -3413,15 +3385,15 @@ mod tests {
                   {name} ({role})
                 </UserCard>
                 <Main>
-                  <UserCard {role: "admin"} />
+                  <UserCard role="admin" />
                 </Main>
             "#},
             expect![[r#"
                 error: Missing required parameter 'name'
-                  --> main.hop (line 5, col 14)
+                  --> main.hop (line 5, col 4)
                 4 | <Main>
-                5 |   <UserCard {role: "admin"} />
-                  |              ^^^^^^^^^^^^^
+                5 |   <UserCard role="admin" />
+                  |    ^^^^^^^^
             "#]],
         );
     }
@@ -3573,7 +3545,7 @@ mod tests {
                   <if {name == None}></if>
                 </Greeting>
                 <Main>
-                  <Greeting {name: Some("World")} />
+                  <Greeting name={Some("World")} />
                 </Main>
             "#},
             expect![[r#"
@@ -3587,12 +3559,6 @@ mod tests {
                 1 | <Greeting {name: Option[String]}>
                 2 |   <if {name == None}></if>
                   |        ^^^^
-
-                name: Option[String]
-                  --> main.hop (line 5, col 20)
-                4 | <Main>
-                5 |   <Greeting {name: Some("World")} />
-                  |                    ^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -3606,7 +3572,7 @@ mod tests {
                   <if {name == None}></if>
                 </Greeting>
                 <Main>
-                  <Greeting {name: None} />
+                  <Greeting name={None} />
                 </Main>
             "#},
             expect![[r#"
@@ -3620,12 +3586,6 @@ mod tests {
                 1 | <Greeting {name: Option[String]}>
                 2 |   <if {name == None}></if>
                   |        ^^^^
-
-                name: Option[String]
-                  --> main.hop (line 5, col 20)
-                4 | <Main>
-                5 |   <Greeting {name: None} />
-                  |                    ^^^^
             "#]],
         );
     }
@@ -3693,15 +3653,15 @@ mod tests {
                   <if {name == None}></if>
                 </Greeting>
                 <Main>
-                  <Greeting {name: "World"} />
+                  <Greeting name="World" />
                 </Main>
             "#},
             expect![[r#"
                 error: Argument 'name' of type String is incompatible with expected type Option[String]
-                  --> main.hop (line 5, col 20)
+                  --> main.hop (line 5, col 13)
                 4 | <Main>
-                5 |   <Greeting {name: "World"} />
-                  |                    ^^^^^^^
+                5 |   <Greeting name="World" />
+                  |             ^^^^
             "#]],
         );
     }

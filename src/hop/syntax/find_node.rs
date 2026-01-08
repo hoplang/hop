@@ -393,14 +393,14 @@ mod tests {
         check_find_node_at_position(
             indoc! {"
                 <Main>
-                    <div><UserCard {data: user}><span>Content</span></UserCard> more text</div>
-                                                        ^
+                    <div><UserCard data={user}><span>Content</span></UserCard> more text</div>
+                                                      ^
                 </Main>
             "},
             expect![[r#"
                 range
-                2 |     <div><UserCard {data: user}><span>Content</span></UserCard> more text</div>
-                  |                                       ^^^^^^^
+                2 |     <div><UserCard data={user}><span>Content</span></UserCard> more text</div>
+                  |                                      ^^^^^^^
             "#]],
         );
     }

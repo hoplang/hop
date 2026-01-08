@@ -246,14 +246,6 @@ impl Parser {
         Ok(((var_name, var_name_range), var_type, default_value))
     }
 
-    // named_argument = Identifier ":" expr
-    fn parse_argument(&mut self) -> Result<((VarName, DocumentRange), ParsedExpr), ParseError> {
-        let (var_name, var_name_range) = self.expect_variable_name()?;
-        self.expect_token(&Token::Colon)?;
-        let expression = self.parse_logical()?;
-        Ok(((var_name, var_name_range), expression))
-    }
-
     // parameters = parameter ("," parameter)* Eof
     pub fn parse_parameters(
         &mut self,
@@ -277,31 +269,6 @@ impl Parser {
         )?;
         self.expect_eof()?;
         Ok(params)
-    }
-
-    // arguments = argument ("," argument)* Eof
-    pub fn parse_arguments(
-        &mut self,
-    ) -> Result<Vec<((VarName, DocumentRange), ParsedExpr)>, ParseError> {
-        let mut args = Vec::new();
-        let mut seen_names = HashSet::new();
-        self.parse_comma_separated(
-            |this| {
-                let arg = this.parse_argument()?;
-                let (var_name, var_name_range) = &arg.0;
-                if !seen_names.insert(var_name.as_str().to_string()) {
-                    return Err(ParseError::DuplicateArgument {
-                        name: var_name_range.to_string_span(),
-                        range: var_name_range.clone(),
-                    });
-                }
-                args.push(arg);
-                Ok(())
-            },
-            None,
-        )?;
-        self.expect_eof()?;
-        Ok(args)
     }
 
     pub fn parse_type(&mut self) -> Result<ParsedType, ParseError> {
@@ -1037,25 +1004,6 @@ mod tests {
         expected.assert_eq(&actual);
     }
 
-    fn check_parse_arguments(input: &str, expected: Expect) {
-        let mut parser = Parser::from(input);
-
-        let actual = match parser.parse_arguments() {
-            Ok(result) => {
-                let args: Vec<String> = result
-                    .into_iter()
-                    .map(|((var_name, _var_name_range), var_expr)| {
-                        format!("{}: {}", var_name, var_expr)
-                    })
-                    .collect();
-                format!("[{}]\n", args.join(", "))
-            }
-            Err(err) => annotate_error(err),
-        };
-
-        expected.assert_eq(&actual);
-    }
-
     fn check_parse_declarations(input: &str, expected: Expect) {
         use crate::document::document_cursor::DocumentCursor;
         use crate::error_collector::ErrorCollector;
@@ -1296,110 +1244,6 @@ mod tests {
             expect![[r#"
                 error: Duplicate parameter 'foo'
                 foo: String, foo: String
-                             ^^^
-            "#]],
-        );
-    }
-
-    ///////////////////////////////////////////////////////////////////////////
-    /// ARGUMENTS                                                           ///
-    ///////////////////////////////////////////////////////////////////////////
-
-    #[test]
-    fn should_accept_arguments_with_single_argument() {
-        check_parse_arguments(
-            r#"name: "John""#,
-            expect![[r#"
-                [name: "John"]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_arguments_with_multiple_arguments() {
-        check_parse_arguments(
-            r#"name: "John", age: 25, active: true"#,
-            expect![[r#"
-                [name: "John", age: 25, active: true]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_arguments_with_complex_expressions() {
-        check_parse_arguments(
-            "user: user.name, enabled: !user.disabled",
-            expect![[r#"
-                [user: user.name, enabled: !user.disabled]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_arguments_with_trailing_comma() {
-        check_parse_arguments(
-            r#"name: "John", age: 25,"#,
-            expect![[r#"
-                [name: "John", age: 25]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_arguments_when_name_is_duplicated() {
-        check_parse_arguments(
-            r#"name: "John", name: "Jane""#,
-            expect![[r#"
-                error: Duplicate argument 'name'
-                name: "John", name: "Jane"
-                              ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_arguments_when_colon_is_missing() {
-        check_parse_arguments(
-            r#"name "John""#,
-            expect![[r#"
-                error: Expected token ':' but got '"John"'
-                name "John"
-                     ^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_arguments_when_value_is_missing() {
-        check_parse_arguments(
-            "name:",
-            expect![[r#"
-            error: Unexpected end of expression
-            name:
-            ^^^^^
-        "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_arguments_when_name_is_not_identifier() {
-        check_parse_arguments(
-            r#"123: "value""#,
-            expect![[r#"
-                error: Expected variable name but got 123
-                123: "value"
-                ^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_arguments_when_comma_is_missing_between_arguments() {
-        check_parse_arguments(
-            r#"name: "John" age: 25"#,
-            expect![[r#"
-                error: Unexpected token 'age'
-                name: "John" age: 25
                              ^^^
             "#]],
         );

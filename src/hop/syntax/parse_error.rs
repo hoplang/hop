@@ -57,6 +57,25 @@ pub enum ParseError {
         message: String,
         range: DocumentRange,
     },
+
+    #[error("Invalid argument name '{name}' on <{tag_name}>: argument names cannot contain hyphens")]
+    InvalidArgumentName {
+        tag_name: StringSpan,
+        name: StringSpan,
+        range: DocumentRange,
+    },
+
+    #[error("Unexpected expression on <{tag_name}>: use attribute syntax instead (e.g. attr={{value}})")]
+    UnexpectedComponentExpression {
+        tag_name: StringSpan,
+        range: DocumentRange,
+    },
+
+    #[error("Component argument '{name}' cannot have multiple expressions")]
+    MultipleExpressionsInArgument {
+        name: StringSpan,
+        range: DocumentRange,
+    },
 }
 
 impl ParseError {
@@ -85,7 +104,10 @@ impl Ranged for ParseError {
             | ParseError::TypeNameIsAlreadyDefined { range, .. }
             | ParseError::DuplicateAttribute { range, .. }
             | ParseError::UnrecognizedAttribute { range, .. }
-            | ParseError::GenericError { range, .. } => range,
+            | ParseError::GenericError { range, .. }
+            | ParseError::InvalidArgumentName { range, .. }
+            | ParseError::UnexpectedComponentExpression { range, .. }
+            | ParseError::MultipleExpressionsInArgument { range, .. } => range,
         }
     }
 }

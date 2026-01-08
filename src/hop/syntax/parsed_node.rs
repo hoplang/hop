@@ -13,30 +13,6 @@ use crate::hop::symbols::module_name::ModuleName;
 
 use super::parsed_ast::ParsedAttribute;
 
-/// A ParsedArgument represents a parsed argument with a name and a value.
-/// E.g. <my-comp {x: [1,2], y: 2}>
-///                ^^^^^^^^
-#[derive(Debug, Clone)]
-pub struct ParsedArgument {
-    pub var_name: VarName,
-    pub var_name_range: DocumentRange,
-    pub var_expr: ParsedExpr,
-}
-
-impl Display for ParsedArgument {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(60))
-    }
-}
-
-impl ParsedArgument {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text(self.var_name.as_str())
-            .append(BoxDoc::text(": "))
-            .append(self.var_expr.to_doc())
-    }
-}
-
 /// A case in a match node.
 /// E.g. <match {x}>
 ///        <case {Some(y)}>...</case>
@@ -99,7 +75,7 @@ pub enum ParsedNode {
         component_name_opening_range: DocumentRange,
         component_name_closing_range: Option<DocumentRange>,
         declaring_module: Option<ModuleName>,
-        args: Option<(Vec<ParsedArgument>, DocumentRange)>,
+        args: Vec<ParsedAttribute>,
         children: Vec<ParsedNode>,
         range: DocumentRange,
     },
@@ -236,27 +212,30 @@ impl ParsedNode {
                 children,
                 ..
             } => {
-                let tag_doc = BoxDoc::text("<")
-                    .append(BoxDoc::text(component_name.as_str()))
-                    .append(match args {
-                        Some((args, _)) if !args.is_empty() => BoxDoc::text(" {")
-                            .append(
-                                BoxDoc::line()
-                                    .append(BoxDoc::intersperse(
-                                        args.iter().map(|a| a.to_doc().append(BoxDoc::text(","))),
-                                        BoxDoc::line(),
-                                    ))
-                                    .nest(2),
-                            )
-                            .append(BoxDoc::line())
-                            .append(BoxDoc::text("}")),
-                        _ => BoxDoc::nil(),
-                    });
+                let component_name_str = component_name.as_str();
+
+                // Build opening tag with attributes (same format as HTML)
+                let opening_tag_doc = if args.is_empty() {
+                    BoxDoc::text("<").append(BoxDoc::text(component_name_str))
+                } else {
+                    BoxDoc::text("<")
+                        .append(BoxDoc::text(component_name_str))
+                        .append(
+                            BoxDoc::line()
+                                .append(BoxDoc::intersperse(
+                                    args.iter().map(|a| a.to_doc()),
+                                    BoxDoc::line(),
+                                ))
+                                .nest(2),
+                        )
+                        .append(BoxDoc::line_())
+                        .group()
+                };
 
                 if children.is_empty() {
-                    tag_doc.append(BoxDoc::text("/>"))
+                    opening_tag_doc.append(BoxDoc::text("/>"))
                 } else {
-                    tag_doc
+                    opening_tag_doc
                         .append(BoxDoc::text(">"))
                         .append(
                             BoxDoc::line()
@@ -268,7 +247,7 @@ impl ParsedNode {
                         )
                         .append(BoxDoc::line())
                         .append(BoxDoc::text("</"))
-                        .append(BoxDoc::text(component_name.as_str()))
+                        .append(BoxDoc::text(component_name_str))
                         .append(BoxDoc::text(">"))
                 }
             }

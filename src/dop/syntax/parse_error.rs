@@ -63,12 +63,6 @@ pub enum ParseError {
     #[error("Expected identifier after '.'")]
     ExpectedIdentifierAfterDot { range: DocumentRange },
 
-    #[error("Duplicate argument '{name}'")]
-    DuplicateArgument {
-        name: StringSpan,
-        range: DocumentRange,
-    },
-
     #[error("Duplicate parameter '{name}'")]
     DuplicateParameter {
         name: StringSpan,
@@ -134,7 +128,6 @@ impl Ranged for ParseError {
             | ParseError::UnexpectedToken { range, .. }
             | ParseError::ExpectedVariableNameButGot { range, .. }
             | ParseError::ExpectedFieldNameButGot { range, .. }
-            | ParseError::DuplicateArgument { range, .. }
             | ParseError::InvalidVariableName { range, .. }
             | ParseError::InvalidFieldName { range, .. }
             | ParseError::ExpectedTypeNameButGot { range, .. }

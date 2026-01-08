@@ -62,9 +62,6 @@ pub enum TypeError {
     #[error("Component requires arguments: {args}")]
     MissingArguments { args: String, range: DocumentRange },
 
-    #[error("Component does not accept arguments")]
-    UnexpectedArguments { range: DocumentRange },
-
     #[error("Unexpected argument '{arg}'")]
     UnexpectedArgument { arg: String, range: DocumentRange },
 
@@ -156,7 +153,6 @@ impl Ranged for TypeError {
             | TypeError::ExpectedBooleanCondition { range, .. }
             | TypeError::MissingRequiredParameter { range, .. }
             | TypeError::MissingArguments { range, .. }
-            | TypeError::UnexpectedArguments { range, .. }
             | TypeError::UnexpectedArgument { range, .. }
             | TypeError::ArgumentIsIncompatible {
                 expr_range: range, ..

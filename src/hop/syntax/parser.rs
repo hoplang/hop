@@ -6,12 +6,13 @@ use super::parsed_ast::{
     ParsedEnumDeclarationVariant, ParsedImportDeclaration, ParsedRecordDeclaration,
     ParsedRecordDeclarationField,
 };
-use super::parsed_node::{ParsedArgument, ParsedMatchCase, ParsedNode};
+use super::parsed_node::{ParsedMatchCase, ParsedNode};
 use super::token_tree::{TokenTree, build_tree};
 use crate::document::document_cursor::{DocumentCursor, DocumentRange};
 use crate::dop;
 use crate::dop::ParsedDeclaration as DopParsedDeclaration;
 use crate::dop::Parser;
+use crate::dop::VarName;
 use crate::error_collector::ErrorCollector;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
@@ -38,8 +39,8 @@ impl AttributeValidator {
         value: &tokenizer::TokenizedAttributeValue,
     ) -> Result<parsed_ast::ParsedAttributeValue, ParseError> {
         match value {
-            tokenizer::TokenizedAttributeValue::String(range) => {
-                Ok(parsed_ast::ParsedAttributeValue::String(range.clone()))
+            tokenizer::TokenizedAttributeValue::String { content } => {
+                Ok(parsed_ast::ParsedAttributeValue::String(content.clone()))
             }
             tokenizer::TokenizedAttributeValue::Expression(range) => {
                 match Parser::from(range.clone()).parse_exprs() {
@@ -84,6 +85,10 @@ impl AttributeValidator {
             .iter()
             .filter(|attr| !self.handled_attributes.contains(attr.name.as_str()))
             .map(AttributeValidator::parse)
+    }
+
+    fn get_all_attributes(&self) -> impl Iterator<Item = &tokenizer::TokenizedAttribute> {
+        self.attributes.iter()
     }
 }
 
@@ -666,26 +671,59 @@ fn construct_nodes(
                         }
                     };
 
-                    let args = expression.as_ref().and_then(|expr| {
-                        errors.ok_or_add(
-                            Parser::from(expr.clone())
-                                .parse_arguments()
-                                .map(|parsed_args| {
-                                    let named_args = parsed_args
-                                        .into_iter()
-                                        .map(|((var_name, var_name_range), var_expr)| {
-                                            ParsedArgument {
-                                                var_name,
-                                                var_name_range,
-                                                var_expr,
-                                            }
-                                        })
-                                        .collect();
-                                    (named_args, expr.clone())
-                                })
-                                .map_err(|err| err.into()),
-                        )
-                    });
+                    // Error if bare expression {..} is present on component reference
+                    if let Some(expr_range) = &expression {
+                        errors.push(ParseError::UnexpectedComponentExpression {
+                            tag_name: tag_name.to_string_span(),
+                            range: expr_range.clone(),
+                        });
+                    }
+
+                    // Parse arguments from attributes
+                    let mut parsed_args: Vec<parsed_ast::ParsedAttribute> = Vec::new();
+
+                    for attr in validator.get_all_attributes() {
+                        // Validate attribute name is a valid variable name
+                        if VarName::new(attr.name.as_str()).is_err() {
+                            errors.push(ParseError::InvalidArgumentName {
+                                tag_name: tag_name.to_string_span(),
+                                name: attr.name.to_string_span(),
+                                range: attr.name.clone(),
+                            });
+                            continue;
+                        }
+
+                        let value = match &attr.value {
+                            Some(tokenizer::TokenizedAttributeValue::Expression(range)) => {
+                                // Parse as expression - must be a single expression
+                                match Parser::from(range.clone()).parse_exprs() {
+                                    Ok(exprs) => {
+                                        if exprs.len() != 1 {
+                                            errors.push(ParseError::MultipleExpressionsInArgument {
+                                                name: attr.name.to_string_span(),
+                                                range: range.clone(),
+                                            });
+                                            continue;
+                                        }
+                                        Some(parsed_ast::ParsedAttributeValue::Expressions(exprs))
+                                    }
+                                    Err(err) => {
+                                        errors.push(err.into());
+                                        continue;
+                                    }
+                                }
+                            }
+                            Some(tokenizer::TokenizedAttributeValue::String { content }) => {
+                                Some(parsed_ast::ParsedAttributeValue::String(content.clone()))
+                            }
+                            None => None,
+                        };
+
+                        parsed_args.push(parsed_ast::ParsedAttribute {
+                            name: attr.name.clone(),
+                            value,
+                        });
+                    }
 
                     let declaring_module = if defined_components.contains(component_name.as_str()) {
                         Some(module_name.clone())
@@ -693,17 +731,12 @@ fn construct_nodes(
                         imported_components.get(component_name.as_str()).cloned()
                     };
 
-                    // Disallow any unrecognized attributes on component references
-                    for error in validator.disallow_unrecognized() {
-                        errors.push(error);
-                    }
-
                     vec![ParsedNode::ComponentReference {
                         component_name,
                         component_name_opening_range: tag_name,
                         component_name_closing_range: tree.closing_tag_name,
                         declaring_module,
-                        args,
+                        args: parsed_args,
                         range: tree.range,
                         children,
                     }]
@@ -1332,13 +1365,13 @@ mod tests {
                   user: String,
                 }
                 <Main {data: Data}>
-                    <Foo {a: data}/>
-                    <Bar {b: data.user}/>
+                    <Foo a={data}/>
+                    <Bar b={data.user}/>
                 </Main>
             "#},
             expect![[r#"
-                component_reference                               6:4-6:20
-                component_reference                               7:4-7:25
+                component_reference                               6:4-6:19
+                component_reference                               7:4-7:24
             "#]],
         );
     }

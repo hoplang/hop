@@ -254,7 +254,7 @@ mod tests {
             import components::Button
 
             <Page>
-              <div><Button {label: "Click me"} /></div>
+              <div><Button label="Click me" /></div>
             </Page>
         "#});
 
@@ -374,7 +374,7 @@ mod tests {
             </Foo>
 
             <Bar>
-              <Foo {name: undefined_variable} />
+              <Foo name={undefined_variable} />
             </Bar>
         "#});
 
@@ -390,10 +390,10 @@ mod tests {
         response.assert_status_bad_request();
         expect![[r#"
             error: Undefined variable: undefined_variable
-              --> test.hop (line 6, col 15)
+              --> test.hop (line 6, col 14)
             5 | <Bar>
-            6 |   <Foo {name: undefined_variable} />
-              |               ^^^^^^^^^^^^^^^^^^
+            6 |   <Foo name={undefined_variable} />
+              |              ^^^^^^^^^^^^^^^^^^
         "#]]
         .assert_eq(&response.text());
     }

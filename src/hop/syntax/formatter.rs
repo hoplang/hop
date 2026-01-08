@@ -491,7 +491,7 @@ mod tests {
                       <Sidebar />
                     </div>
                     <div class="flex gap-4 p-8">
-                      <IconItem {id: "radix-icons", title: "Radix Icons", img_src: "/img/iphone.jpg", description: "A crisp set of 15×15 icons designed by the @workos team."} />
+                      <IconItem id="radix-icons" title="Radix Icons" img_src="/img/iphone.jpg" description="A crisp set of 15x15 icons." />
                     </div>
                   </div>
                 </IconsPage>
@@ -503,15 +503,37 @@ mod tests {
                       <Sidebar/>
                     </div>
                     <div class="flex gap-4 p-8">
-                      <IconItem {
-                        id: "radix-icons",
-                        title: "Radix Icons",
-                        img_src: "/img/iphone.jpg",
-                        description: "A crisp set of 15×15 icons designed by the @workos team.",
-                      }/>
+                      <IconItem
+                        id="radix-icons"
+                        title="Radix Icons"
+                        img_src="/img/iphone.jpg"
+                        description="A crisp set of 15x15 icons."
+                      />
                     </div>
                   </div>
                 </IconsPage>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_expression_attribute_to_doc() {
+        check(
+            indoc! {r#"
+                import hop::ui::lucide::ChevronDown
+
+                <NativeSelect>
+                  <ChevronDown
+                    class={"text-muted-foreground"}
+                  />
+                </NativeSelect>
+            "#},
+            expect![[r#"
+                import hop::ui::lucide::ChevronDown
+
+                <NativeSelect>
+                  <ChevronDown class={"text-muted-foreground"}/>
+                </NativeSelect>
             "#]],
         );
     }
@@ -522,7 +544,7 @@ mod tests {
             indoc! {r#"
                 record Product { id: String }
                 <IconShowPage {product: Product}>
-                  <Button {href: "/download/" + product.id}>
+                  <Button href={"/download/" + product.id}>
                     hello
                   </Button>
                 </IconShowPage>
@@ -533,9 +555,7 @@ mod tests {
                 }
 
                 <IconShowPage {product: Product}>
-                  <Button {
-                    href: "/download/" + product.id,
-                  }>
+                  <Button href={"/download/" + product.id}>
                     hello
                   </Button>
                 </IconShowPage>

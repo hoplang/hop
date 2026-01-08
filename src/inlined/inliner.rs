@@ -402,7 +402,7 @@ mod tests {
                     </CardComp>
 
                     <Main>
-                        <CardComp {title: "Hello"}/>
+                        <CardComp title="Hello"/>
                     </Main>
                 "#,
             )],
@@ -508,7 +508,7 @@ mod tests {
                     </Greeting>
 
                     <Main>
-                        <Greeting {name: "Alice"} />
+                        <Greeting name="Alice" />
                     </Main>
                 "#,
             )],
@@ -542,7 +542,7 @@ mod tests {
                     </Button>
 
                     <Main>
-                        <Button {label: "Click me"} />
+                        <Button label="Click me" />
                     </Main>
                 "#,
             )],

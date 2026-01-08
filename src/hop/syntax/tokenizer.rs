@@ -10,7 +10,8 @@ use crate::dop;
 
 #[derive(Debug, Clone)]
 pub enum TokenizedAttributeValue {
-    String(DocumentRange),
+    /// A quoted string attribute value. Content is None for empty strings like `a=""`
+    String { content: Option<DocumentRange> },
     Expression(DocumentRange),
 }
 
@@ -94,8 +95,12 @@ impl Display for Token {
                     let attr_strs: Vec<String> = attributes
                         .iter()
                         .map(|attr| match &attr.value {
-                            Some(TokenizedAttributeValue::String(val)) => {
-                                format!("{}={:#?}", attr.name, val.to_string())
+                            Some(TokenizedAttributeValue::String { content }) => {
+                                let val = content
+                                    .as_ref()
+                                    .map(|r| r.to_string())
+                                    .unwrap_or_default();
+                                format!("{}={:#?}", attr.name, val)
                             }
                             Some(TokenizedAttributeValue::Expression(val)) => {
                                 format!("{}={{{:#?}}}", attr.name, val.to_string())
@@ -310,10 +315,10 @@ impl Tokenizer {
             );
         };
 
-        // consume: ('-' | [a-zA-Z0-9])*
+        // consume: ('-' | '_' | [a-zA-Z0-9])*
         let attr_name = initial.extend(
             self.iter
-                .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
+                .peeking_take_while(|s| s.ch() == '-' || s.ch() == '_' || s.ch().is_ascii_alphanumeric()),
         );
 
         // consume: whitespace
@@ -366,9 +371,15 @@ impl Tokenizer {
             return None;
         };
 
+        // For empty strings like a="", we still want to return Some(String(...))
+        // to distinguish from valueless attributes like `disabled`
+        let value = Some(TokenizedAttributeValue::String {
+            content: attr_value,
+        });
+
         Some(TokenizedAttribute {
             name: attr_name.clone(),
-            value: attr_value.map(TokenizedAttributeValue::String),
+            value,
             range: attr_name.to(close_quote),
         })
     }
@@ -788,7 +799,7 @@ mod tests {
         check(
             r#"<input type="" value="" disabled="">"#,
             expect![[r#"
-                OpeningTag <input type value disabled>
+                OpeningTag <input type="" value="" disabled="">
                 1 | <input type="" value="" disabled="">
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],

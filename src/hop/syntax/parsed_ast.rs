@@ -45,7 +45,8 @@ impl ParsedParameter {
 #[derive(Debug, Clone)]
 pub enum ParsedAttributeValue {
     Expressions(Vec<ParsedExpr>),
-    String(DocumentRange),
+    /// A quoted string value. None means empty string like `attr=""`
+    String(Option<DocumentRange>),
 }
 
 impl ParsedAttributeValue {
@@ -64,13 +65,19 @@ impl ParsedAttributeValue {
                 .append(BoxDoc::line_())
                 .append(BoxDoc::text("}"))
                 .group(),
-            ParsedAttributeValue::String(range) => BoxDoc::text(format!("\"{}\"", range.as_str())),
+            ParsedAttributeValue::String(range) => {
+                let content = range.as_ref().map(|r| r.as_str()).unwrap_or("");
+                BoxDoc::text(format!("\"{}\"", content))
+            }
         }
     }
 }
 
 /// A ParsedAttribute is an attribute on a node, it can either
-/// be empty, an expression or a string value.
+/// be:
+/// * empty - <foo a>
+/// * an expression - <foo a={bar}>
+/// * or a string value - <foo a="b">
 #[derive(Debug, Clone)]
 pub struct ParsedAttribute {
     pub name: DocumentRange,
