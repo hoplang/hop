@@ -462,13 +462,6 @@ impl ParsedExpr {
                         .append(subject.to_doc())
                         .append(BoxDoc::text(" {}"))
                 } else {
-                    // Pre-compute max pattern width for arrow alignment (multi-line only)
-                    let max_pattern_width = arms
-                        .iter()
-                        .map(|arm| arm.pattern.to_doc().pretty(1000).to_string().len())
-                        .max()
-                        .unwrap_or(0);
-
                     BoxDoc::text("match ")
                         .append(subject.to_doc())
                         .append(BoxDoc::text(" {"))
@@ -476,13 +469,8 @@ impl ParsedExpr {
                             BoxDoc::line_()
                                 .append(BoxDoc::intersperse(
                                     arms.iter().map(|arm| {
-                                        let pattern_str =
-                                            arm.pattern.to_doc().pretty(1000).to_string();
-                                        let padding =
-                                            " ".repeat(max_pattern_width - pattern_str.len());
-                                        // Use flat_alt: no padding on single line, padding on multi-line
-                                        BoxDoc::text(pattern_str.clone())
-                                            .append(BoxDoc::text(padding).flat_alt(BoxDoc::nil()))
+                                        arm.pattern
+                                            .to_doc()
                                             .append(BoxDoc::text(" => "))
                                             .append(arm.body.to_doc())
                                     }),
