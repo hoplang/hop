@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 use std::iter::Peekable;
 use std::mem;
@@ -6,7 +5,7 @@ use std::mem;
 use itertools::Itertools as _;
 
 use super::parse_error::ParseError;
-use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged, StringSpan};
+use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged};
 use crate::dop;
 
 #[derive(Debug, Clone)]
@@ -38,7 +37,7 @@ pub enum Token {
     },
     OpeningTag {
         tag_name: DocumentRange,
-        attributes: BTreeMap<StringSpan, TokenizedAttribute>,
+        attributes: Vec<TokenizedAttribute>,
         expression: Option<DocumentRange>,
         self_closing: bool,
         range: DocumentRange,
@@ -93,9 +92,7 @@ impl Display for Token {
                 if !attributes.is_empty() {
                     write!(f, " ")?;
                     let attr_strs: Vec<String> = attributes
-                        .values()
-                        // Sort by the order they occur in the document
-                        .sorted_by(|a, b| a.range.start().cmp(&b.range.start()))
+                        .iter()
                         .map(|attr| match &attr.value {
                             Some(TokenizedAttributeValue::String(val)) => {
                                 format!("{}={:#?}", attr.name, val.to_string())
@@ -434,13 +431,8 @@ impl Tokenizer {
     ///
     /// E.g. <div foo="bar" {x: String}>
     ///           ^^^^^^^^^^^^^^^^^^^^^
-    fn parse_tag_content(
-        &mut self,
-    ) -> (
-        BTreeMap<StringSpan, TokenizedAttribute>,
-        Option<DocumentRange>,
-    ) {
-        let mut attributes: BTreeMap<StringSpan, TokenizedAttribute> = BTreeMap::new();
+    fn parse_tag_content(&mut self) -> (Vec<TokenizedAttribute>, Option<DocumentRange>) {
+        let mut attributes: Vec<TokenizedAttribute> = Vec::new();
         let mut expression: Option<DocumentRange> = None;
         loop {
             self.skip_whitespace();
@@ -455,13 +447,13 @@ impl Tokenizer {
                     let Some(attr) = self.parse_attribute() else {
                         continue;
                     };
-                    if attributes.contains_key(attr.name.as_str()) {
+                    if attributes.iter().any(|a| a.name.as_str() == attr.name.as_str()) {
                         self.errors.push(ParseError::DuplicateAttribute {
                             name: attr.name.to_string_span(),
                             range: attr.name.clone(),
                         });
                     } else {
-                        attributes.insert(attr.name.to_string_span(), attr);
+                        attributes.push(attr);
                     }
                 }
                 _ => {

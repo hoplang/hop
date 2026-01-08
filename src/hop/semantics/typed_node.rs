@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use crate::document::document_cursor::StringSpan;
 use crate::dop::patterns::Match;
 use crate::dop::{TypedExpr, VarName};
@@ -62,7 +60,7 @@ pub enum TypedNode {
 
     Html {
         tag_name: StringSpan,
-        attributes: BTreeMap<StringSpan, TypedAttribute>,
+        attributes: Vec<TypedAttribute>,
         children: Vec<TypedNode>,
     },
 

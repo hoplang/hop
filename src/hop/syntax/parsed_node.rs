@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 
 use pretty::BoxDoc;
@@ -146,7 +145,7 @@ pub enum ParsedNode {
     Html {
         tag_name: DocumentRange,
         closing_tag_name: Option<DocumentRange>,
-        attributes: BTreeMap<StringSpan, ParsedAttribute>,
+        attributes: Vec<ParsedAttribute>,
         children: Vec<ParsedNode>,
         range: DocumentRange,
     },
@@ -351,7 +350,7 @@ impl ParsedNode {
                         .append(
                             BoxDoc::line()
                                 .append(BoxDoc::intersperse(
-                                    attributes.values().map(|attr| attr.to_doc()),
+                                    attributes.iter().map(|attr| attr.to_doc()),
                                     BoxDoc::line(),
                                 ))
                                 .nest(2),

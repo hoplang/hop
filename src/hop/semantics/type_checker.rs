@@ -1,5 +1,5 @@
 use super::type_error::TypeError;
-use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::patterns::compiler::Compiler as PatMatchCompiler;
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
@@ -8,7 +8,7 @@ use crate::environment::Environment;
 use crate::error_collector::ErrorCollector;
 use crate::hop::syntax::parsed_ast::ParsedParameter;
 use crate::hop::syntax::parsed_ast::{ParsedAttribute, ParsedComponentDeclaration};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fmt::{self, Display};
 
 use crate::dop::patterns::compiler::Decision;
@@ -877,15 +877,15 @@ fn typecheck_node(
 }
 
 fn typecheck_attributes(
-    attributes: &BTreeMap<StringSpan, ParsedAttribute>,
+    attributes: &[ParsedAttribute],
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
     records: &mut Environment<Type>,
-) -> BTreeMap<StringSpan, TypedAttribute> {
-    let mut typed_attributes = BTreeMap::new();
+) -> Vec<TypedAttribute> {
+    let mut typed_attributes = Vec::new();
 
-    for (key, attr) in attributes {
+    for attr in attributes {
         let typed_value = match &attr.value {
             Some(ParsedAttributeValue::Expressions(exprs)) => {
                 let mut typed_exprs = Vec::new();
@@ -917,13 +917,10 @@ fn typecheck_attributes(
             None => None,
         };
 
-        typed_attributes.insert(
-            key.clone(),
-            TypedAttribute {
-                name: attr.name.to_string(),
-                value: typed_value,
-            },
-        );
+        typed_attributes.push(TypedAttribute {
+            name: attr.name.to_string(),
+            value: typed_value,
+        });
     }
 
     typed_attributes
@@ -2325,16 +2322,16 @@ mod tests {
                   |        ^^^^
 
                 user: main::User
-                  --> main.hop (line 3, col 29)
-                2 | <Main {user: User}>
-                3 |   <a href={user.url} class={user.theme}>Link</a>
-                  |                             ^^^^
-
-                user: main::User
                   --> main.hop (line 3, col 12)
                 2 | <Main {user: User}>
                 3 |   <a href={user.url} class={user.theme}>Link</a>
                   |            ^^^^
+
+                user: main::User
+                  --> main.hop (line 3, col 29)
+                2 | <Main {user: User}>
+                3 |   <a href={user.url} class={user.theme}>Link</a>
+                  |                             ^^^^
             "#]],
         );
     }

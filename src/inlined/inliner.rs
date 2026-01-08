@@ -1,4 +1,3 @@
-use crate::document::document_cursor::StringSpan;
 use crate::dop::VarName;
 use crate::dop::patterns::{EnumMatchArm, Match};
 use crate::dop::{Type, TypedExpr};
@@ -101,13 +100,11 @@ impl Inliner {
         }
     }
 
-    /// Convert a BTreeMap of TypedAttributes to InlinedAttributes
-    fn convert_attributes(
-        attrs: &BTreeMap<StringSpan, TypedAttribute>,
-    ) -> BTreeMap<String, InlinedAttribute> {
+    /// Convert a Vec of TypedAttributes to InlinedAttributes
+    fn convert_attributes(attrs: &[TypedAttribute]) -> BTreeMap<String, InlinedAttribute> {
         attrs
             .iter()
-            .map(|(key, attr)| (key.as_str().to_string(), Self::convert_attribute(attr)))
+            .map(|attr| (attr.name.clone(), Self::convert_attribute(attr)))
             .collect()
     }
 

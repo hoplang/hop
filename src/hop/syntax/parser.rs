@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::iter::Peekable;
 
 use super::parsed_ast::{
@@ -8,7 +8,7 @@ use super::parsed_ast::{
 };
 use super::parsed_node::{ParsedArgument, ParsedMatchCase, ParsedNode};
 use super::token_tree::{TokenTree, build_tree};
-use crate::document::document_cursor::{DocumentCursor, DocumentRange, StringSpan};
+use crate::document::document_cursor::{DocumentCursor, DocumentRange};
 use crate::dop;
 use crate::dop::ParsedDeclaration as DopParsedDeclaration;
 use crate::dop::Parser;
@@ -20,16 +20,13 @@ use super::parse_error::ParseError;
 use super::tokenizer::{self, Token, Tokenizer};
 
 struct AttributeValidator {
-    attributes: BTreeMap<StringSpan, tokenizer::TokenizedAttribute>,
+    attributes: Vec<tokenizer::TokenizedAttribute>,
     tag_name: DocumentRange,
     handled_attributes: HashSet<String>,
 }
 
 impl AttributeValidator {
-    fn new(
-        attributes: BTreeMap<StringSpan, tokenizer::TokenizedAttribute>,
-        tag_name: DocumentRange,
-    ) -> Self {
+    fn new(attributes: Vec<tokenizer::TokenizedAttribute>, tag_name: DocumentRange) -> Self {
         Self {
             attributes,
             tag_name,
@@ -71,7 +68,7 @@ impl AttributeValidator {
 
     fn disallow_unrecognized(&self) -> impl Iterator<Item = ParseError> {
         self.attributes
-            .values()
+            .iter()
             .filter(|attr| !self.handled_attributes.contains(attr.name.as_str()))
             .map(move |attr| ParseError::UnrecognizedAttribute {
                 tag_name: self.tag_name.to_string_span(),
@@ -84,7 +81,7 @@ impl AttributeValidator {
         &self,
     ) -> impl Iterator<Item = Result<parsed_ast::ParsedAttribute, ParseError>> {
         self.attributes
-            .values()
+            .iter()
             .filter(|attr| !self.handled_attributes.contains(attr.name.as_str()))
             .map(AttributeValidator::parse)
     }
@@ -717,7 +714,6 @@ fn construct_nodes(
                     let attributes = validator
                         .get_unrecognized()
                         .filter_map(|attr| errors.ok_or_add(attr))
-                        .map(|attr| (attr.name.to_string_span(), attr))
                         .collect();
 
                     vec![ParsedNode::Html {

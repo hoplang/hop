@@ -2801,8 +2801,8 @@ mod tests {
             "#},
             expect![[r#"
                 match color {
-                  Color::Red   => "red",
-                  Color::Blue  => "blue",
+                  Color::Red => "red",
+                  Color::Blue => "blue",
                   Color::Green => "green",
                 }
             "#]],
@@ -2835,7 +2835,7 @@ mod tests {
             "#},
             expect![[r#"
                 match status {
-                  Status::Active   => user.name,
+                  Status::Active => user.name,
                   Status::Inactive => "unknown",
                 }
             "#]],
