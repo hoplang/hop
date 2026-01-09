@@ -81,6 +81,24 @@ impl ModuleTypeInformation {
             .is_some_and(|c| c.parameters.iter().any(|(name, _, _)| name == "children"))
     }
 
+    /// Get the children parameter's type and has_default flag if present
+    fn get_children_param(&self, component_name: &str) -> Option<(&Type, bool)> {
+        self.components
+            .get(component_name)?
+            .parameters
+            .iter()
+            .find(|(name, _, _)| name == "children")
+            .map(|(_, typ, has_default)| (typ, *has_default))
+    }
+
+    /// Check if children are required (TrustedHTML without default)
+    fn children_are_required(&self, component_name: &str) -> bool {
+        matches!(
+            self.get_children_param(component_name),
+            Some((Type::TrustedHTML, false))
+        )
+    }
+
     fn component_is_declared(&self, component_name: &str) -> bool {
         self.components.contains_key(component_name)
     }
@@ -358,6 +376,19 @@ fn typecheck_module(
             for param in params {
                 match resolve_type(&param.var_type, &mut type_env) {
                     Ok(param_type) => {
+                        // Validate that Option[TrustedHTML] children must have a default
+                        if param.var_name.as_str() == "children" {
+                            if let Type::Option(inner) = &param_type {
+                                if **inner == Type::TrustedHTML
+                                    && param.default_value.is_none()
+                                {
+                                    errors.push(TypeError::OptionalChildrenRequiresDefault {
+                                        range: param.var_name_range.clone(),
+                                    });
+                                }
+                            }
+                        }
+
                         // Type-check default value if present
                         let has_default = param.default_value.is_some();
                         let mut typed_default_value: Option<TypedExpr> = None;
@@ -592,9 +623,9 @@ fn typecheck_node(
                 });
             }
 
-            // Check if children: TrustedHTML is required but not provided
-            let accepts_children = module_info.component_accepts_children(component_name.as_str());
-            if accepts_children && children.is_empty() {
+            // Check if children are required (TrustedHTML without default) but not provided
+            // Note: Option[TrustedHTML] children are optional and don't require being passed
+            if module_info.children_are_required(component_name.as_str()) && children.is_empty() {
                 errors.push(TypeError::MissingChildren {
                     component: component_name.as_str().to_string(),
                     range: tag_name.clone(),
@@ -4441,6 +4472,149 @@ mod tests {
                 1 | <Main {count: Int}>
                 2 |   <div data-count={count}></div>
                   |                    ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn optional_children_requires_default() {
+        // children: Option[TrustedHTML] without a default value should error
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Separator {children: Option[TrustedHTML]}>
+                  <li>{children}</li>
+                </Separator>
+                <Main>
+                  <Separator />
+                </Main>
+            "#},
+            expect![[r#"
+                error: Optional children (`children: Option[TrustedHTML]`) must have a default value (e.g., `= None`)
+                  --> main.hop (line 1, col 13)
+                1 | <Separator {children: Option[TrustedHTML]}>
+                  |             ^^^^^^^^
+
+                error: Expected string for text expression, got Option[TrustedHTML]
+                  --> main.hop (line 2, col 8)
+                1 | <Separator {children: Option[TrustedHTML]}>
+                2 |   <li>{children}</li>
+                  |        ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn optional_children_with_default_none_allows_omitting_children() {
+        // children: Option[TrustedHTML] = None should allow omitting children
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Separator {children: Option[TrustedHTML] = None}>
+                  <li>
+                    <match {children}>
+                      <case {Some(c)}>{c}</case>
+                      <case {None}><span>Default</span></case>
+                    </match>
+                  </li>
+                </Separator>
+                <Main>
+                  <Separator />
+                </Main>
+            "#},
+            expect![[r#"
+                children: Option[TrustedHTML]
+                  --> main.hop (line 1, col 13)
+                 1 | <Separator {children: Option[TrustedHTML] = None}>
+                   |             ^^^^^^^^
+
+                children: Option[TrustedHTML]
+                  --> main.hop (line 3, col 13)
+                 2 |   <li>
+                 3 |     <match {children}>
+                   |             ^^^^^^^^
+
+                c: TrustedHTML
+                  --> main.hop (line 4, col 19)
+                 3 |     <match {children}>
+                 4 |       <case {Some(c)}>{c}</case>
+                   |                   ^
+
+                c: TrustedHTML
+                  --> main.hop (line 4, col 24)
+                 3 |     <match {children}>
+                 4 |       <case {Some(c)}>{c}</case>
+                   |                        ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn optional_children_with_default_none_allows_passing_children() {
+        // children: Option[TrustedHTML] = None should allow passing children
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Separator {children: Option[TrustedHTML] = None}>
+                  <li>
+                    <match {children}>
+                      <case {Some(c)}>{c}</case>
+                      <case {None}><span>Default</span></case>
+                    </match>
+                  </li>
+                </Separator>
+                <Main>
+                  <Separator>
+                    <strong>Custom</strong>
+                  </Separator>
+                </Main>
+            "#},
+            expect![[r#"
+                children: Option[TrustedHTML]
+                  --> main.hop (line 1, col 13)
+                 1 | <Separator {children: Option[TrustedHTML] = None}>
+                   |             ^^^^^^^^
+
+                children: Option[TrustedHTML]
+                  --> main.hop (line 3, col 13)
+                 2 |   <li>
+                 3 |     <match {children}>
+                   |             ^^^^^^^^
+
+                c: TrustedHTML
+                  --> main.hop (line 4, col 19)
+                 3 |     <match {children}>
+                 4 |       <case {Some(c)}>{c}</case>
+                   |                   ^
+
+                c: TrustedHTML
+                  --> main.hop (line 4, col 24)
+                 3 |     <match {children}>
+                 4 |       <case {Some(c)}>{c}</case>
+                   |                        ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn optional_children_cannot_be_used_directly_without_match() {
+        // Using {children} directly when type is Option[TrustedHTML] should be an error
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Wrapper {children: Option[TrustedHTML] = None}>
+                  <div>{children}</div>
+                </Wrapper>
+                <Main>
+                  <Wrapper />
+                </Main>
+            "#},
+            expect![[r#"
+                error: Expected string for text expression, got Option[TrustedHTML]
+                  --> main.hop (line 2, col 9)
+                1 | <Wrapper {children: Option[TrustedHTML] = None}>
+                2 |   <div>{children}</div>
+                  |         ^^^^^^^^
             "#]],
         );
     }

@@ -43,6 +43,9 @@ pub enum TypeError {
     #[error("The `children` argument cannot be passed explicitly; use component children instead")]
     ChildrenArgNotAllowed { range: DocumentRange },
 
+    #[error("Optional children (`children: Option[TrustedHTML]`) must have a default value (e.g., `= None`)")]
+    OptionalChildrenRequiresDefault { range: DocumentRange },
+
     #[error(
         "Import cycle: {importer_module} imports from {imported_component} which creates a dependency cycle: {cycle_display}"
     )]
@@ -149,6 +152,7 @@ impl Ranged for TypeError {
             | TypeError::ComponentDoesNotAcceptChildren { range, .. }
             | TypeError::MissingChildren { range, .. }
             | TypeError::ChildrenArgNotAllowed { range, .. }
+            | TypeError::OptionalChildrenRequiresDefault { range, .. }
             | TypeError::ImportCycle { range, .. }
             | TypeError::ExpectedBooleanCondition { range, .. }
             | TypeError::MissingRequiredParameter { range, .. }

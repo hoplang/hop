@@ -10,7 +10,52 @@ use crate::inlined::inlined_ast::{
     InlinedParameter,
 };
 use anyhow::Result;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
+
+/// Context for inlining, carrying slot content and variable bindings.
+#[derive(Debug, Clone)]
+struct InlineContext<'a> {
+    /// The already-inlined slot content passed to this component (if any)
+    slot_content: Option<Vec<InlinedNode>>,
+    /// Variables that are derived from `children` (directly or transitively)
+    children_vars: HashSet<String>,
+    /// Reference to all ASTs for component lookups
+    asts: &'a HashMap<ModuleName, TypedAst>,
+}
+
+impl<'a> InlineContext<'a> {
+    fn new(asts: &'a HashMap<ModuleName, TypedAst>) -> Self {
+        Self {
+            slot_content: None,
+            children_vars: HashSet::new(),
+            asts,
+        }
+    }
+
+    fn with_slot_content(&self, content: Vec<InlinedNode>) -> Self {
+        Self {
+            slot_content: Some(content),
+            children_vars: self.children_vars.clone(),
+            asts: self.asts,
+        }
+    }
+
+    /// Create a child context with an additional children-derived variable
+    fn with_children_var(&self, var: &str) -> Self {
+        let mut children_vars = self.children_vars.clone();
+        children_vars.insert(var.to_string());
+        Self {
+            slot_content: self.slot_content.clone(),
+            children_vars,
+            asts: self.asts,
+        }
+    }
+
+    /// Check if a variable holds children (directly or transitively)
+    fn variable_holds_children(&self, var: &str) -> bool {
+        self.children_vars.contains(var)
+    }
+}
 
 /// The Inliner transforms ASTs by replacing ComponentReference nodes with their
 /// inlined component declarations, using Let nodes for parameter binding and
@@ -68,7 +113,7 @@ impl Inliner {
                     result.push(InlinedComponentDeclaration {
                         module_name: module_name.clone(),
                         component_name: component.component_name.clone(),
-                        children: Self::inline_nodes(&component.children, None, &asts),
+                        children: Self::inline_nodes(&component.children, &asts),
                         params: component
                             .params
                             .iter()
@@ -108,30 +153,54 @@ impl Inliner {
             .collect()
     }
 
-    /// Check if a component has a children: TrustedHTML parameter
-    fn component_accepts_children(component: &TypedComponentDeclaration) -> bool {
-        component.params.iter().any(|(var_name, var_type, _)| {
-            var_name.as_str() == "children" && *var_type == Type::TrustedHTML
-        })
+    /// Get the children parameter type if present
+    fn get_children_param_type(component: &TypedComponentDeclaration) -> Option<&Type> {
+        component
+            .params
+            .iter()
+            .find(|(var_name, _, _)| var_name.as_str() == "children")
+            .map(|(_, var_type, _)| var_type)
     }
 
     /// Inline a component reference
+    /// `parent_ctx` is used to inline slot_children before passing to the component
     fn inline_component_reference(
         module_name: &ModuleName,
         component: &TypedComponentDeclaration,
         args: &[(VarName, TypedExpr)],
         slot_children: &[TypedNode],
+        parent_ctx: Option<&InlineContext>,
         asts: &HashMap<ModuleName, TypedAst>,
     ) -> Vec<InlinedNode> {
-        // Process component children with slot replacement
-        // Children are passed if the component has `children: TrustedHTML` parameter
-        let slot_content =
-            if Self::component_accepts_children(component) && !slot_children.is_empty() {
-                Some(slot_children)
+        // Inline slot_children in parent context (resolves any children-derived variables)
+        let children_type = Self::get_children_param_type(component);
+        let inlined_slot_content = if children_type.is_some() && !slot_children.is_empty() {
+            let content = if let Some(ctx) = parent_ctx {
+                Self::inline_nodes_with_ctx(slot_children, ctx)
             } else {
-                None
+                Self::inline_nodes(slot_children, asts)
             };
-        let inlined_children = Self::inline_nodes(&component.children, slot_content, asts);
+            Some(content)
+        } else {
+            None
+        };
+
+        // Create fresh context for this component with the inlined slot content
+        let mut ctx = InlineContext::new(asts);
+        if let Some(content) = inlined_slot_content {
+            ctx = ctx.with_slot_content(content);
+        }
+        match children_type {
+            Some(Type::TrustedHTML | Type::Option(_)) => {
+                ctx = ctx.with_children_var("children");
+            }
+            Some(other) => {
+                panic!("Invalid children parameter type: {other}");
+            }
+            None => {}
+        }
+
+        let inlined_children = Self::inline_nodes_with_ctx(&component.children, &ctx);
 
         // Build parameter bindings (excluding children - handled via slot mechanism)
         let mut body = inlined_children;
@@ -171,24 +240,22 @@ impl Inliner {
         body
     }
 
-    /// Inline nodes, optionally replacing {children} expressions with the provided slot content
-    fn inline_nodes(
-        nodes: &[TypedNode],
-        slot_content: Option<&[TypedNode]>,
-        asts: &HashMap<ModuleName, TypedAst>,
-    ) -> Vec<InlinedNode> {
+    /// Inline nodes without any slot content
+    fn inline_nodes(nodes: &[TypedNode], asts: &HashMap<ModuleName, TypedAst>) -> Vec<InlinedNode> {
+        let ctx = InlineContext::new(asts);
+        Self::inline_nodes_with_ctx(nodes, &ctx)
+    }
+
+    /// Inline nodes with the given context
+    fn inline_nodes_with_ctx(nodes: &[TypedNode], ctx: &InlineContext) -> Vec<InlinedNode> {
         nodes
             .iter()
-            .flat_map(|node| Self::inline_node(node, slot_content, asts))
+            .flat_map(|node| Self::inline_node_with_ctx(node, ctx))
             .collect()
     }
 
-    /// Inline a single node, optionally replacing {children} expressions with the provided content
-    fn inline_node(
-        node: &TypedNode,
-        slot_content: Option<&[TypedNode]>,
-        asts: &HashMap<ModuleName, TypedAst>,
-    ) -> Vec<InlinedNode> {
+    /// Inline a single node using the context for environment-based resolution
+    fn inline_node_with_ctx(node: &TypedNode, ctx: &InlineContext) -> Vec<InlinedNode> {
         match node {
             TypedNode::ComponentReference {
                 component_name,
@@ -196,17 +263,16 @@ impl Inliner {
                 args,
                 children,
             } => {
-                // Get the component declaration
                 let module = declaring_module
                     .as_ref()
                     .expect("Component reference should have module");
-                let ast = asts.get(module).expect("Component module should exist");
+                let ast = ctx.asts.get(module).expect("Component module should exist");
                 let component = ast
                     .get_component_declaration(component_name.as_str())
                     .expect("Component declaration should exist");
 
-                // Inline the component
-                Self::inline_component_reference(module, component, args, children, asts)
+                // Pass current context so slot_children can be inlined with children-derived vars resolved
+                Self::inline_component_reference(module, component, args, children, Some(ctx), ctx.asts)
             }
 
             TypedNode::Html {
@@ -216,7 +282,7 @@ impl Inliner {
             } => vec![InlinedNode::Html {
                 tag_name: tag_name.clone(),
                 attributes: Self::convert_attributes(attributes),
-                children: Self::inline_nodes(children, slot_content, asts),
+                children: Self::inline_nodes_with_ctx(children, ctx),
             }],
 
             TypedNode::If {
@@ -224,7 +290,7 @@ impl Inliner {
                 children,
             } => vec![InlinedNode::If {
                 condition: condition.clone(),
-                children: Self::inline_nodes(children, slot_content, asts),
+                children: Self::inline_nodes_with_ctx(children, ctx),
             }],
 
             TypedNode::For {
@@ -234,7 +300,7 @@ impl Inliner {
             } => vec![InlinedNode::For {
                 var_name: var_name.clone(),
                 array_expr: array_expr.clone(),
-                children: Self::inline_nodes(children, slot_content, asts),
+                children: Self::inline_nodes_with_ctx(children, ctx),
             }],
 
             // Leaf nodes - return as is
@@ -242,21 +308,17 @@ impl Inliner {
                 value: value.clone(),
             }],
 
-            // Check if this is {children} expression that should be replaced with slot content
             TypedNode::TextExpression { expression } => {
-                // Check if this is a `children` variable of type TrustedHTML
                 if let TypedExpr::Var { value, kind, .. } = expression {
-                    if value.as_str() == "children" && *kind == Type::TrustedHTML {
-                        if let Some(content) = slot_content {
-                            // Replace {children} with the provided content
-                            return Self::inline_nodes(content, None, asts);
-                        } else {
-                            // No slot content provided, return empty vec
-                            return vec![];
-                        }
+                    if ctx.variable_holds_children(value.as_str()) {
+                        assert_eq!(*kind, Type::TrustedHTML, "children-derived variable in TextExpression must be TrustedHTML");
+                        // slot_content is already inlined, just return it
+                        return ctx
+                            .slot_content
+                            .clone()
+                            .expect("children-derived TrustedHTML variable should have slot content");
                     }
                 }
-                // Regular text expression
                 vec![InlinedNode::TextExpression {
                     expression: expression.clone(),
                 }]
@@ -274,35 +336,51 @@ impl Inliner {
                         false_body,
                     } => Match::Bool {
                         subject: subject.clone(),
-                        true_body: Box::new(Self::inline_nodes(true_body, slot_content, asts)),
-                        false_body: Box::new(Self::inline_nodes(false_body, slot_content, asts)),
+                        true_body: Box::new(Self::inline_nodes_with_ctx(true_body, ctx)),
+                        false_body: Box::new(Self::inline_nodes_with_ctx(false_body, ctx)),
                     },
                     Match::Option {
                         subject,
                         some_arm_binding,
                         some_arm_body,
                         none_arm_body,
-                    } => Match::Option {
-                        subject: subject.clone(),
-                        some_arm_binding: some_arm_binding.clone(),
-                        some_arm_body: Box::new(Self::inline_nodes(
-                            some_arm_body,
-                            slot_content,
-                            asts,
-                        )),
-                        none_arm_body: Box::new(Self::inline_nodes(
-                            none_arm_body,
-                            slot_content,
-                            asts,
-                        )),
-                    },
+                    } => {
+                        if ctx.variable_holds_children(subject.0.as_str()) {
+                            assert!(
+                                matches!(&subject.1, Type::Option(inner) if **inner == Type::TrustedHTML),
+                                "children-holding variable in Match::Option must be Option[TrustedHTML]"
+                            );
+                            // Statically resolve based on whether slot content was provided
+                            if ctx.slot_content.is_some() {
+                                // Children provided → inline Some arm with binding marked as children-derived
+                                let child_ctx = if let Some(binding) = some_arm_binding {
+                                    ctx.with_children_var(binding.as_str())
+                                } else {
+                                    ctx.clone()
+                                };
+                                return Self::inline_nodes_with_ctx(some_arm_body, &child_ctx);
+                            } else {
+                                // No children → inline None arm
+                                let fresh_ctx = InlineContext::new(ctx.asts);
+                                return Self::inline_nodes_with_ctx(none_arm_body, &fresh_ctx);
+                            }
+                        }
+
+                        // Regular Option match
+                        Match::Option {
+                            subject: subject.clone(),
+                            some_arm_binding: some_arm_binding.clone(),
+                            some_arm_body: Box::new(Self::inline_nodes_with_ctx(some_arm_body, ctx)),
+                            none_arm_body: Box::new(Self::inline_nodes_with_ctx(none_arm_body, ctx)),
+                        }
+                    }
                     Match::Enum { subject, arms } => Match::Enum {
                         subject: subject.clone(),
                         arms: arms
                             .iter()
                             .map(|arm| EnumMatchArm {
                                 pattern: arm.pattern.clone(),
-                                body: Self::inline_nodes(&arm.body, slot_content, asts),
+                                body: Self::inline_nodes_with_ctx(&arm.body, ctx),
                             })
                             .collect(),
                     },
@@ -316,13 +394,26 @@ impl Inliner {
                 var,
                 value,
                 children,
-            } => vec![InlinedNode::Let {
-                var: var.clone(),
-                value: value.clone(),
-                children: Self::inline_nodes(children, slot_content, asts),
-            }],
+            } => {
+                // Propagate children-derived status through variable aliases
+                if let TypedExpr::Var {
+                    value: var_value, ..
+                } = value
+                {
+                    if ctx.variable_holds_children(var_value.as_str()) {
+                        let child_ctx = ctx.with_children_var(var.as_str());
+                        return Self::inline_nodes_with_ctx(children, &child_ctx);
+                    }
+                }
 
-            TypedNode::Placeholder => panic!(),
+                vec![InlinedNode::Let {
+                    var: var.clone(),
+                    value: value.clone(),
+                    children: Self::inline_nodes_with_ctx(children, ctx),
+                }]
+            }
+
+            TypedNode::Placeholder => panic!("Placeholder nodes should not exist after typing"),
         }
     }
 }
@@ -635,6 +726,549 @@ mod tests {
                     </if>
                     "\n                    "
                   </let>
+                  "\n                    "
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_optional_children_none_provided() {
+        // When no children are provided, the None arm should be inlined
+        check_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Separator {children: Option[TrustedHTML] = None}>
+                        <li>
+                            <match {children}>
+                                <case {Some(c)}>
+                                    {c}
+                                </case>
+                                <case {None}>
+                                    <span>Default</span>
+                                </case>
+                            </match>
+                        </li>
+                    </Separator>
+
+                    <Main>
+                        <Separator />
+                    </Main>
+                "#,
+            )],
+            vec![("main", "Main")],
+            expect![[r#"
+                <Main>
+                  "\n                        "
+                  "\n                        "
+                  <li>
+                    "\n                            "
+                    "\n                                    "
+                    <span>
+                      "Default"
+                    </span>
+                    "\n                                "
+                    "\n                        "
+                  </li>
+                  "\n                    "
+                  "\n                    "
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_with_optional_children_some_provided() {
+        // When children are provided, the Some arm should be inlined with children content
+        check_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Separator {children: Option[TrustedHTML] = None}>
+                        <li>
+                            <match {children}>
+                                <case {Some(c)}>
+                                    {c}
+                                </case>
+                                <case {None}>
+                                    <span>Default</span>
+                                </case>
+                            </match>
+                        </li>
+                    </Separator>
+
+                    <Main>
+                        <Separator>
+                            <strong>Custom</strong>
+                        </Separator>
+                    </Main>
+                "#,
+            )],
+            vec![("main", "Main")],
+            expect![[r#"
+                <Main>
+                  "\n                        "
+                  "\n                        "
+                  <li>
+                    "\n                            "
+                    "\n                                    "
+                    "\n                            "
+                    <strong>
+                      "Custom"
+                    </strong>
+                    "\n                        "
+                    "\n                                "
+                    "\n                        "
+                  </li>
+                  "\n                    "
+                  "\n                    "
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn optional_children_with_multiple_child_elements() {
+        // Multiple children elements should all be inlined in the Some arm
+        check_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Wrapper {children: Option[TrustedHTML] = None}>
+                        <div>
+                            <match {children}>
+                                <case {Some(c)}>{c}</case>
+                                <case {None}><span>Empty</span></case>
+                            </match>
+                        </div>
+                    </Wrapper>
+
+                    <Main>
+                        <Wrapper>
+                            <p>First</p>
+                            <p>Second</p>
+                        </Wrapper>
+                    </Main>
+                "#,
+            )],
+            vec![("main", "Main")],
+            expect![[r#"
+                <Main>
+                  "\n                        "
+                  "\n                        "
+                  <div>
+                    "\n                            "
+                    "\n                            "
+                    <p>
+                      "First"
+                    </p>
+                    "\n                            "
+                    <p>
+                      "Second"
+                    </p>
+                    "\n                        "
+                    "\n                        "
+                  </div>
+                  "\n                    "
+                  "\n                    "
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn optional_children_without_binding() {
+        // Test that optional children work even when the Some arm doesn't bind the content
+        check_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Indicator {children: Option[TrustedHTML] = None}>
+                        <match {children}>
+                            <case {Some(_)}>
+                                <span>Has content</span>
+                            </case>
+                            <case {None}>
+                                <span>Empty</span>
+                            </case>
+                        </match>
+                    </Indicator>
+
+                    <WithChildren>
+                        <Indicator>
+                            <p>Ignored</p>
+                        </Indicator>
+                    </WithChildren>
+
+                    <WithoutChildren>
+                        <Indicator />
+                    </WithoutChildren>
+                "#,
+            )],
+            vec![("main", "WithChildren"), ("main", "WithoutChildren")],
+            expect![[r#"
+                <WithChildren>
+                  "\n                        "
+                  "\n                        "
+                  "\n                                "
+                  <span>
+                    "Has content"
+                  </span>
+                  "\n                            "
+                  "\n                    "
+                  "\n                    "
+                </WithChildren>
+
+
+                <WithoutChildren>
+                  "\n                        "
+                  "\n                        "
+                  "\n                                "
+                  <span>
+                    "Empty"
+                  </span>
+                  "\n                            "
+                  "\n                    "
+                  "\n                    "
+                </WithoutChildren>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn same_component_with_and_without_children() {
+        // Same component used twice - once with children, once without
+        check_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Box {children: Option[TrustedHTML] = None}>
+                        <div>
+                            <match {children}>
+                                <case {Some(c)}>{c}</case>
+                                <case {None}><span>Empty</span></case>
+                            </match>
+                        </div>
+                    </Box>
+
+                    <Main>
+                        <Box><p>First</p></Box>
+                        <Box />
+                        <Box><p>Third</p></Box>
+                    </Main>
+                "#,
+            )],
+            vec![("main", "Main")],
+            expect![[r#"
+                <Main>
+                  "\n                        "
+                  "\n                        "
+                  <div>
+                    "\n                            "
+                    <p>
+                      "First"
+                    </p>
+                    "\n                        "
+                  </div>
+                  "\n                    "
+                  "\n                        "
+                  "\n                        "
+                  <div>
+                    "\n                            "
+                    <span>
+                      "Empty"
+                    </span>
+                    "\n                        "
+                  </div>
+                  "\n                    "
+                  "\n                        "
+                  "\n                        "
+                  <div>
+                    "\n                            "
+                    <p>
+                      "Third"
+                    </p>
+                    "\n                        "
+                  </div>
+                  "\n                    "
+                  "\n                    "
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn nested_optional_children_passthrough() {
+        // Outer component passes its optional children to an inner component that also has optional children
+        check_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Inner {children: Option[TrustedHTML] = None}>
+                        <span>
+                            <match {children}>
+                                <case {Some(c)}>{c}</case>
+                                <case {None}>inner-default</case>
+                            </match>
+                        </span>
+                    </Inner>
+
+                    <Outer {children: Option[TrustedHTML] = None}>
+                        <div>
+                            <match {children}>
+                                <case {Some(c)}>
+                                    <Inner>{c}</Inner>
+                                </case>
+                                <case {None}>
+                                    <Inner />
+                                </case>
+                            </match>
+                        </div>
+                    </Outer>
+
+                    <WithChildren>
+                        <Outer><strong>content</strong></Outer>
+                    </WithChildren>
+
+                    <WithoutChildren>
+                        <Outer />
+                    </WithoutChildren>
+                "#,
+            )],
+            vec![("main", "WithChildren"), ("main", "WithoutChildren")],
+            expect![[r#"
+                <WithChildren>
+                  "\n                        "
+                  "\n                        "
+                  <div>
+                    "\n                            "
+                    "\n                                    "
+                    "\n                        "
+                    <span>
+                      "\n                            "
+                      <strong>
+                        "content"
+                      </strong>
+                      "\n                        "
+                    </span>
+                    "\n                    "
+                    "\n                                "
+                    "\n                        "
+                  </div>
+                  "\n                    "
+                  "\n                    "
+                </WithChildren>
+
+
+                <WithoutChildren>
+                  "\n                        "
+                  "\n                        "
+                  <div>
+                    "\n                            "
+                    "\n                                    "
+                    "\n                        "
+                    <span>
+                      "\n                            "
+                      "inner-default"
+                      "\n                        "
+                    </span>
+                    "\n                    "
+                    "\n                                "
+                    "\n                        "
+                  </div>
+                  "\n                    "
+                  "\n                    "
+                </WithoutChildren>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn optional_children_used_multiple_times() {
+        // Test using the bound content multiple times in the Some arm
+        check_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Repeat {children: Option[TrustedHTML] = None}>
+                        <match {children}>
+                            <case {Some(c)}>
+                                <div>{c}</div>
+                                <div>{c}</div>
+                            </case>
+                            <case {None}>
+                                <span>empty</span>
+                            </case>
+                        </match>
+                    </Repeat>
+
+                    <Main>
+                        <Repeat><strong>content</strong></Repeat>
+                    </Main>
+                "#,
+            )],
+            vec![("main", "Main")],
+            expect![[r#"
+                <Main>
+                  "\n                        "
+                  "\n                        "
+                  "\n                                "
+                  <div>
+                    <strong>
+                      "content"
+                    </strong>
+                  </div>
+                  "\n                                "
+                  <div>
+                    <strong>
+                      "content"
+                    </strong>
+                  </div>
+                  "\n                            "
+                  "\n                    "
+                  "\n                    "
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn regular_option_match_still_works() {
+        // Non-children Option matches should still work normally (not statically resolved)
+        check_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Card {title: Option[String] = None}>
+                        <div>
+                            <match {title}>
+                                <case {Some(t)}><h1>{t}</h1></case>
+                                <case {None}><h1>Untitled</h1></case>
+                            </match>
+                        </div>
+                    </Card>
+
+                    <Main>
+                        <Card title={Some("Hello")} />
+                    </Main>
+                "#,
+            )],
+            vec![("main", "Main")],
+            expect![[r#"
+                <Main>
+                  "\n                        "
+                  <let {title = Some("Hello")}>
+                    "\n                        "
+                    <div>
+                      "\n                            "
+                      <let {match_subject = title}>
+                        <match {match_subject}>
+                          <case {Some(v0)}>
+                            <let {t = v0}>
+                              <h1>
+                                {t}
+                              </h1>
+                            </let>
+                          </case>
+                          <case {None}>
+                            <h1>
+                              "Untitled"
+                            </h1>
+                          </case>
+                        </match>
+                      </let>
+                      "\n                        "
+                    </div>
+                    "\n                    "
+                  </let>
+                  "\n                    "
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn required_children_still_work() {
+        // Required children (TrustedHTML without Option) should still work
+        check_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Box {children: TrustedHTML}>
+                        <div class="box">{children}</div>
+                    </Box>
+
+                    <Main>
+                        <Box>
+                            <span>Content</span>
+                        </Box>
+                    </Main>
+                "#,
+            )],
+            vec![("main", "Main")],
+            expect![[r#"
+                <Main>
+                  "\n                        "
+                  "\n                        "
+                  <div class="box">
+                    "\n                            "
+                    <span>
+                      "Content"
+                    </span>
+                    "\n                        "
+                  </div>
+                  "\n                    "
+                  "\n                    "
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn nested_optional_and_required_children() {
+        // Component with optional children containing a component with required children
+        check_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Inner {children: TrustedHTML}>
+                        <span>{children}</span>
+                    </Inner>
+
+                    <Outer {children: Option[TrustedHTML] = None}>
+                        <div>
+                            <match {children}>
+                                <case {Some(c)}>{c}</case>
+                                <case {None}><Inner>Default</Inner></case>
+                            </match>
+                        </div>
+                    </Outer>
+
+                    <Main>
+                        <Outer>
+                            <Inner>Custom</Inner>
+                        </Outer>
+                    </Main>
+                "#,
+            )],
+            vec![("main", "Main")],
+            expect![[r#"
+                <Main>
+                  "\n                        "
+                  "\n                        "
+                  <div>
+                    "\n                            "
+                    "\n                            "
+                    "\n                        "
+                    <span>
+                      "Custom"
+                    </span>
+                    "\n                    "
+                    "\n                        "
+                    "\n                        "
+                  </div>
+                  "\n                    "
                   "\n                    "
                 </Main>
             "#]],
