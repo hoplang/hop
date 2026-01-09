@@ -25,18 +25,24 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
         }
     };
 
-    let mut files_formatted = 0;
-    let mut files_unchanged = 0;
-
+    // First pass: parse all files and check for errors
+    let mut parsed_modules = Vec::new();
     for (module_name, source) in hop_modules {
         let mut errors = ErrorCollector::new();
         let ast = parser::parse(module_name.clone(), source.clone(), &mut errors);
 
         if !errors.is_empty() {
-            // Skip files with parse errors
-            continue;
+            anyhow::bail!("Parse errors in {}", module_name);
         }
 
+        parsed_modules.push((module_name, source, ast));
+    }
+
+    // Second pass: format all files (only if all parsed successfully)
+    let mut files_formatted = 0;
+    let mut files_unchanged = 0;
+
+    for (module_name, source, ast) in parsed_modules {
         let formatted = format(ast);
 
         if formatted != source {
@@ -117,29 +123,6 @@ mod tests {
     }
 
     #[test]
-    fn skips_files_with_parse_errors() {
-        let archive = Archive::from(indoc! {r#"
-            -- hop.toml --
-            [compile]
-            target = "ts"
-            output_path = "app.ts"
-            -- main.hop --
-            <Main><div>hello</div></Main>
-            -- broken.hop --
-            <Broken><div>
-        "#});
-
-        let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project_root = ProjectRoot::from(&temp_dir).unwrap();
-
-        let result = execute(&project_root, None).unwrap();
-
-        // Only the valid file should be formatted
-        assert_eq!(result.files_formatted, 1);
-        assert_eq!(result.files_unchanged, 0);
-    }
-
-    #[test]
     fn formats_single_file() {
         let archive = Archive::from(indoc! {r#"
             -- hop.toml --
@@ -170,6 +153,32 @@ mod tests {
         // Verify other.hop was NOT formatted (still on one line)
         let other_content = fs::read_to_string(temp_dir.join("other.hop")).unwrap();
         assert_eq!(other_content, "<Other><span>world</span></Other>\n");
+    }
+
+    #[test]
+    fn does_not_format_any_file_if_any_has_parse_errors() {
+        let archive = Archive::from(indoc! {r#"
+            -- hop.toml --
+            [compile]
+            target = "ts"
+            output_path = "app.ts"
+            -- main.hop --
+            <Main><div>hello</div></Main>
+            -- broken.hop --
+            <Broken><div>
+        "#});
+
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let project_root = ProjectRoot::from(&temp_dir).unwrap();
+
+        let result = execute(&project_root, None);
+
+        // Should return an error because broken.hop has parse errors
+        assert!(result.is_err());
+
+        // Verify main.hop was NOT formatted (still on one line)
+        let main_content = fs::read_to_string(temp_dir.join("main.hop")).unwrap();
+        assert_eq!(main_content, "<Main><div>hello</div></Main>\n");
     }
 
     #[test]
