@@ -760,6 +760,93 @@ mod tests {
     }
 
     #[test]
+    fn classes_macro_expands_spaces_in_string_literals() {
+        check(
+            indoc! {r#"
+                <Card>
+                  <div class={classes!("foo bar")}></div>
+                </Card>
+            "#},
+            expect![[r#"
+                <Card>
+                  <div class={classes!("foo", "bar")}>
+                  </div>
+                </Card>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn classes_macro_expands_multiple_spaces_in_string_literals() {
+        check(
+            indoc! {r#"
+                <Card>
+                  <div class={classes!("a b c")}></div>
+                </Card>
+            "#},
+            expect![[r#"
+                <Card>
+                  <div class={classes!("a", "b", "c")}>
+                  </div>
+                </Card>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn classes_macro_expands_mixed_variables_and_literals() {
+        check(
+            indoc! {r#"
+                <Card {a: String, b: String, c: String}>
+                  <div class={classes!(a, "foo bar", b, "baz qux", c)}></div>
+                </Card>
+            "#},
+            expect![[r#"
+                <Card {a: String, b: String, c: String}>
+                  <div
+                    class={classes!(a, "foo", "bar", b, "baz", "qux", c)}
+                  >
+                  </div>
+                </Card>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn classes_macro_collapses_multiple_spaces() {
+        check(
+            indoc! {r#"
+                <Card>
+                  <div class={classes!("foo    bar")}></div>
+                </Card>
+            "#},
+            expect![[r#"
+                <Card>
+                  <div class={classes!("foo", "bar")}>
+                  </div>
+                </Card>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn classes_macro_trims_and_collapses_whitespace() {
+        check(
+            indoc! {r#"
+                <Card>
+                  <div class={classes!("   foo  bar   baz  ")}></div>
+                </Card>
+            "#},
+            expect![[r#"
+                <Card>
+                  <div class={classes!("foo", "bar", "baz")}>
+                  </div>
+                </Card>
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_format_deeply_nested_elements() {
         check(
             indoc! {r#"
