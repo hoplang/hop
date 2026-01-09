@@ -70,12 +70,6 @@ pub enum ParseError {
         tag_name: StringSpan,
         range: DocumentRange,
     },
-
-    #[error("Component argument '{name}' cannot have multiple expressions")]
-    MultipleExpressionsInArgument {
-        name: StringSpan,
-        range: DocumentRange,
-    },
 }
 
 impl ParseError {
@@ -106,8 +100,7 @@ impl Ranged for ParseError {
             | ParseError::UnrecognizedAttribute { range, .. }
             | ParseError::GenericError { range, .. }
             | ParseError::InvalidArgumentName { range, .. }
-            | ParseError::UnexpectedComponentExpression { range, .. }
-            | ParseError::MultipleExpressionsInArgument { range, .. } => range,
+            | ParseError::UnexpectedComponentExpression { range, .. } => range,
         }
     }
 }

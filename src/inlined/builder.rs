@@ -211,10 +211,10 @@ impl InlinedBuilder {
         }
     }
 
-    pub fn attr_exprs(&self, exprs: Vec<TypedExpr>) -> InlinedAttribute {
+    pub fn attr_expr(&self, expr: TypedExpr) -> InlinedAttribute {
         InlinedAttribute {
             name: String::new(),
-            value: Some(InlinedAttributeValue::Expressions(exprs)),
+            value: Some(InlinedAttributeValue::Expression(expr)),
         }
     }
 

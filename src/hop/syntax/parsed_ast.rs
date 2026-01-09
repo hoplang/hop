@@ -44,7 +44,7 @@ impl ParsedParameter {
 
 #[derive(Debug, Clone)]
 pub enum ParsedAttributeValue {
-    Expressions(Vec<ParsedExpr>),
+    Expression(ParsedExpr),
     /// A quoted string value. None means empty string like `attr=""`
     String(Option<DocumentRange>),
 }
@@ -52,16 +52,8 @@ pub enum ParsedAttributeValue {
 impl ParsedAttributeValue {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            ParsedAttributeValue::Expressions(exprs) => BoxDoc::text("{")
-                .append(
-                    BoxDoc::line_()
-                        .append(BoxDoc::intersperse(
-                            exprs.iter().map(|e| e.to_doc()),
-                            BoxDoc::text(",").append(BoxDoc::line()),
-                        ))
-                        .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                        .nest(2),
-                )
+            ParsedAttributeValue::Expression(expr) => BoxDoc::text("{")
+                .append(BoxDoc::line_().append(expr.to_doc()).nest(2))
                 .append(BoxDoc::line_())
                 .append(BoxDoc::text("}"))
                 .group(),

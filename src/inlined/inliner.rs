@@ -92,8 +92,8 @@ impl Inliner {
         InlinedAttribute {
             name: attr.name.clone(),
             value: attr.value.as_ref().map(|v| match v {
-                TypedAttributeValue::Expressions(exprs) => {
-                    InlinedAttributeValue::Expressions(exprs.clone())
+                TypedAttributeValue::Expression(expr) => {
+                    InlinedAttributeValue::Expression(expr.clone())
                 }
                 TypedAttributeValue::String(s) => InlinedAttributeValue::String(s.to_string()),
             }),

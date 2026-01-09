@@ -206,20 +206,6 @@ impl Parser {
         Ok(result)
     }
 
-    // exprs = logical ("," logical)* ","? Eof
-    pub fn parse_exprs(&mut self) -> Result<Vec<ParsedExpr>, ParseError> {
-        let mut exprs = Vec::new();
-        self.parse_comma_separated(
-            |this| {
-                exprs.push(this.parse_logical()?);
-                Ok(())
-            },
-            None,
-        )?;
-        self.expect_eof()?;
-        Ok(exprs)
-    }
-
     // loop_header = Identifier "in" logical Eof
     pub fn parse_loop_header(
         &mut self,
@@ -1002,18 +988,6 @@ mod tests {
         expected.assert_eq(&actual);
     }
 
-    fn check_parse_exprs(input: &str, expected: Expect) {
-        let mut parser = Parser::from(input);
-        let actual = match parser.parse_exprs() {
-            Ok(result) => {
-                let exprs: Vec<String> = result.iter().map(|expr| expr.to_string()).collect();
-                format!("[{}]\n", exprs.join(", "))
-            }
-            Err(err) => annotate_error(err),
-        };
-        expected.assert_eq(&actual);
-    }
-
     fn check_parse_parameters(input: &str, expected: Expect) {
         let mut parser = Parser::from(input);
 
@@ -1277,80 +1251,6 @@ mod tests {
                 error: Duplicate parameter 'foo'
                 foo: String, foo: String
                              ^^^
-            "#]],
-        );
-    }
-
-    ///////////////////////////////////////////////////////////////////////////
-    /// EXPRESSION LISTS (parse_exprs)                                      ///
-    ///////////////////////////////////////////////////////////////////////////
-
-    #[test]
-    fn should_accept_exprs_with_single_expression() {
-        check_parse_exprs(
-            "x",
-            expect![[r#"
-                [x]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_exprs_with_multiple_expressions() {
-        check_parse_exprs(
-            "x, y, z",
-            expect![[r#"
-                [x, y, z]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_exprs_containing_field_access() {
-        check_parse_exprs(
-            "user.name, user.age, user.active",
-            expect![[r#"
-                [user.name, user.age, user.active]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_exprs_containing_mixed_literal_types() {
-        check_parse_exprs(
-            r#""hello", 123, true, [1, 2, 3]"#,
-            expect![[r#"
-                ["hello", 123, true, [1, 2, 3]]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_exprs_containing_operators() {
-        check_parse_exprs(
-            "x + y, a == b, !c",
-            expect![[r#"
-                [x + y, a == b, !c]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_exprs_containing_arrays_with_nested_commas() {
-        check_parse_exprs(
-            "[1, 2, 3], [4, 5, 6]",
-            expect![[r#"
-                [[1, 2, 3], [4, 5, 6]]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_exprs_with_trailing_comma() {
-        check_parse_exprs(
-            "x, y,",
-            expect![[r#"
-                [x, y]
             "#]],
         );
     }

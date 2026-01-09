@@ -379,26 +379,18 @@ impl Compiler {
                     content: format!(" {}=\"{}\"", name, s),
                 });
             }
-            InlinedAttributeValue::Expressions(exprs) => {
+            InlinedAttributeValue::Expression(expr) => {
                 output.push(IrStatement::Write {
                     id: self.next_node_id(),
                     content: format!(" {}=\"", name),
                 });
-                for (i, expr) in exprs.iter().enumerate() {
-                    if i > 0 {
-                        output.push(IrStatement::Write {
-                            id: self.next_node_id(),
-                            content: " ".to_string(),
-                        });
-                    }
-                    let compiled_expr = self.compile_expr(expr.clone());
-                    let should_escape = expr.as_type() != &Type::TrustedHTML;
-                    output.push(IrStatement::WriteExpr {
-                        id: self.next_node_id(),
-                        expr: compiled_expr,
-                        escape: should_escape,
-                    });
-                }
+                let compiled_expr = self.compile_expr(expr.clone());
+                let should_escape = expr.as_type() != &Type::TrustedHTML;
+                output.push(IrStatement::WriteExpr {
+                    id: self.next_node_id(),
+                    expr: compiled_expr,
+                    escape: should_escape,
+                });
                 output.push(IrStatement::Write {
                     id: self.next_node_id(),
                     content: "\"".to_string(),
@@ -916,7 +908,7 @@ mod tests {
                 t.div(
                     vec![
                         ("class", t.attr_str("base")),
-                        ("data-value", t.attr_exprs(vec![t.var_expr("cls")])),
+                        ("data-value", t.attr_expr(t.var_expr("cls"))),
                     ],
                     |t| {
                         t.text("Content");
@@ -948,80 +940,6 @@ mod tests {
                     write(" class=\"base\"")
                     write(" data-value=\"")
                     write_escaped(cls)
-                    write("\"")
-                    write(">")
-                    write("Content")
-                    write("</div>")
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_compile_attributes_with_multiple_expressions() {
-        check(
-            build_inlined(
-                "MainComp",
-                vec![
-                    ("base_class", Type::String),
-                    ("modifier_class", Type::String),
-                    ("state_class", Type::String),
-                ],
-                |t| {
-                    t.div(
-                        vec![(
-                            "class",
-                            t.attr_exprs(vec![
-                                t.var_expr("base_class"),
-                                t.var_expr("modifier_class"),
-                                t.var_expr("state_class"),
-                            ]),
-                        )],
-                        |t| {
-                            t.text("Content");
-                        },
-                    );
-                },
-            ),
-            expect![[r#"
-                -- before --
-                <MainComp {base_class: String, modifier_class: String, state_class: String}>
-                  <div class={base_class, modifier_class, state_class}>
-                    "Content"
-                  </div>
-                </MainComp>
-
-                -- after --
-                MainComp(
-                  base_class: String,
-                  modifier_class: String,
-                  state_class: String,
-                ) {
-                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
-                    write("<!DOCTYPE html>\n")
-                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"MainComp\", \"params\": ")
-                    write("{")
-                    write("\"base_class\":")
-                    write_expr(JsonEncode(base_class))
-                    write(",")
-                    write("\"modifier_class\":")
-                    write_expr(JsonEncode(modifier_class))
-                    write(",")
-                    write("\"state_class\":")
-                    write_expr(JsonEncode(state_class))
-                    write("}")
-                    write("}</script>\n<script src=\"http://localhost:")
-                    write_expr(EnvLookup("HOP_DEV_PORT"))
-                    write("/development_mode.js\"></script>")
-                  } else {
-                    write("<div")
-                    write(" class=\"")
-                    write_escaped(base_class)
-                    write(" ")
-                    write_escaped(modifier_class)
-                    write(" ")
-                    write_escaped(state_class)
                     write("\"")
                     write(">")
                     write("Content")

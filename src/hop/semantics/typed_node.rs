@@ -6,7 +6,7 @@ use crate::hop::symbols::module_name::ModuleName;
 
 #[derive(Debug, Clone)]
 pub enum TypedAttributeValue {
-    Expressions(Vec<TypedExpr>),
+    Expression(TypedExpr),
     String(StringSpan),
 }
 

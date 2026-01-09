@@ -43,8 +43,8 @@ impl AttributeValidator {
                 Ok(parsed_ast::ParsedAttributeValue::String(content.clone()))
             }
             tokenizer::TokenizedAttributeValue::Expression(range) => {
-                match Parser::from(range.clone()).parse_exprs() {
-                    Ok(exprs) => Ok(parsed_ast::ParsedAttributeValue::Expressions(exprs)),
+                match Parser::from(range.clone()).parse_expr() {
+                    Ok(expr) => Ok(parsed_ast::ParsedAttributeValue::Expression(expr)),
                     Err(err) => Err(err.into()),
                 }
             }
@@ -695,17 +695,9 @@ fn construct_nodes(
 
                         let value = match &attr.value {
                             Some(tokenizer::TokenizedAttributeValue::Expression(range)) => {
-                                // Parse as expression - must be a single expression
-                                match Parser::from(range.clone()).parse_exprs() {
-                                    Ok(exprs) => {
-                                        if exprs.len() != 1 {
-                                            errors.push(ParseError::MultipleExpressionsInArgument {
-                                                name: attr.name.to_string_span(),
-                                                range: range.clone(),
-                                            });
-                                            continue;
-                                        }
-                                        Some(parsed_ast::ParsedAttributeValue::Expressions(exprs))
+                                match Parser::from(range.clone()).parse_expr() {
+                                    Ok(expr) => {
+                                        Some(parsed_ast::ParsedAttributeValue::Expression(expr))
                                     }
                                     Err(err) => {
                                         errors.push(err.into());
@@ -1208,7 +1200,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_multiple_expressions_in_class_attribute() {
+    fn should_reject_multiple_expressions_in_attribute() {
         check(
             indoc! {r#"
                 <Main {style1: String, style2: String, style3: String}>
@@ -1216,7 +1208,10 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                div                                               1:4-1:53
+                error: Unexpected token ','
+                1 | <Main {style1: String, style2: String, style3: String}>
+                2 |     <div class={style1, style2, style3}>Content</div>
+                  |                       ^
             "#]],
         );
     }

@@ -18,7 +18,7 @@ pub struct InlinedParameter {
 
 #[derive(Debug, Clone)]
 pub enum InlinedAttributeValue {
-    Expressions(Vec<TypedExpr>),
+    Expression(TypedExpr),
     String(String),
 }
 
@@ -86,15 +86,8 @@ impl InlinedParameter {
 impl InlinedAttributeValue {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            InlinedAttributeValue::Expressions(exprs) => {
-                let mut doc = BoxDoc::text("{");
-                for (i, expr) in exprs.iter().enumerate() {
-                    if i > 0 {
-                        doc = doc.append(BoxDoc::text(", "));
-                    }
-                    doc = doc.append(expr.to_doc());
-                }
-                doc.append(BoxDoc::text("}"))
+            InlinedAttributeValue::Expression(expr) => {
+                BoxDoc::text("{").append(expr.to_doc()).append(BoxDoc::text("}"))
             }
             InlinedAttributeValue::String(s) => BoxDoc::text(format!("\"{}\"", s)),
         }

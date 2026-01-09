@@ -173,7 +173,7 @@ mod tests {
                         Color::Red => "red",
                         Color::Green => "green",
                         Color::Blue => "blue",
-                      },
+                      }
                     }
                   >
                   </div>
@@ -230,85 +230,6 @@ mod tests {
             expect![[r#"
                 <Main>
                   <div class={"p-2"}>
-                  </div>
-                </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn html_with_multiple_class_expressions_to_doc() {
-        check(
-            indoc! {r#"
-                <Main>
-                  <div class={"foo","bar","baz"}></div>
-                </Main>
-            "#},
-            expect![[r#"
-                <Main>
-                  <div class={"foo", "bar", "baz"}>
-                  </div>
-                </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn html_with_multiple_class_expressions_and_child_to_doc() {
-        check(
-            indoc! {r#"
-                <Main {name: String}>
-                  <div class={"foo","bar","baz"}>{name}</div>
-                </Main>
-            "#},
-            expect![[r#"
-                <Main {name: String}>
-                  <div class={"foo", "bar", "baz"}>
-                    {name}
-                  </div>
-                </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn component_with_two_match_expressions_to_doc() {
-        check(
-            indoc! {r#"
-                enum Color { Red, Green, Blue }
-                enum Size { Small, Medium, Large }
-                <Main {color: Color, size: Size}>
-                  <div class={match color { Color::Red => "red", Color::Green => "green", Color::Blue => "blue" }, match size { Size::Small => "sm", Size::Medium => "md", Size::Large => "lg" }}></div>
-                </Main>
-            "#},
-            expect![[r#"
-                enum Color {
-                  Red,
-                  Green,
-                  Blue,
-                }
-
-                enum Size {
-                  Small,
-                  Medium,
-                  Large,
-                }
-
-                <Main {color: Color, size: Size}>
-                  <div
-                    class={
-                      match color {
-                        Color::Red => "red",
-                        Color::Green => "green",
-                        Color::Blue => "blue",
-                      },
-                      match size {
-                        Size::Small => "sm",
-                        Size::Medium => "md",
-                        Size::Large => "lg",
-                      },
-                    }
-                  >
                   </div>
                 </Main>
             "#]],
@@ -765,140 +686,6 @@ mod tests {
     }
 
     #[test]
-    fn button_component_with_variant_and_size_enums_to_doc() {
-        check(
-            indoc! {r#"
-                enum ButtonVariant {Default, Destructive, Outline, Secondary, Ghost, Link}
-
-                enum ButtonSize {Default, Sm, Lg, Icon, IconSm, IconLg}
-
-                <Button {variant: ButtonVariant = ButtonVariant::Default, size: ButtonSize = ButtonSize::Default, class: String = "", type: String = "button", aria_label: String = "", children: TrustedHTML}>
-                  <button aria-label={aria_label} class={
-                    "inline-flex",
-                    "items-center",
-                    "justify-center",
-                    "gap-2",
-                    "whitespace-nowrap",
-                    "rounded-md",
-                    "text-sm",
-                    "font-medium",
-                    "transition-all",
-                    "disabled:pointer-events-none",
-                    "disabled:opacity-50",
-                    "[&_svg]:pointer-events-none",
-                    "[&_svg:not([class*='size-'])]:size-4",
-                    "shrink-0",
-                    "[&_svg]:shrink-0",
-                    "outline-none",
-                    "focus-visible:border-ring",
-                    "focus-visible:ring-ring/50",
-                    "focus-visible:ring-[3px]",
-                    "aria-invalid:ring-destructive/20",
-                    "dark:aria-invalid:ring-destructive/40",
-                    "aria-invalid:border-destructive",
-                    match variant {
-                      ButtonVariant::Default     => "bg-primary text-primary-foreground hover:bg-primary/90",
-                      ButtonVariant::Destructive => "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
-                      ButtonVariant::Outline     => "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50",
-                      ButtonVariant::Secondary   => "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-                      ButtonVariant::Ghost       => "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
-                      ButtonVariant::Link        => "text-primary underline-offset-4 hover:underline",
-                    },
-                    match size {
-                      ButtonSize::Default => "h-9 px-4 py-2 has-[>svg]:px-3",
-                      ButtonSize::Sm      => "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
-                      ButtonSize::Lg      => "h-10 rounded-md px-6 has-[>svg]:px-4",
-                      ButtonSize::Icon    => "size-9",
-                      ButtonSize::IconSm  => "size-8",
-                      ButtonSize::IconLg  => "size-10",
-                    },
-                    class,
-                  } data-slot="button" type={type}>
-                    {children}
-                  </button>
-                </Button>
-            "#},
-            expect![[r#"
-                enum ButtonVariant {
-                  Default,
-                  Destructive,
-                  Outline,
-                  Secondary,
-                  Ghost,
-                  Link,
-                }
-
-                enum ButtonSize {
-                  Default,
-                  Sm,
-                  Lg,
-                  Icon,
-                  IconSm,
-                  IconLg,
-                }
-
-                <Button {
-                  variant: ButtonVariant = ButtonVariant::Default,
-                  size: ButtonSize = ButtonSize::Default,
-                  class: String = "",
-                  type: String = "button",
-                  aria_label: String = "",
-                  children: TrustedHTML,
-                }>
-                  <button
-                    aria-label={aria_label}
-                    class={
-                      "inline-flex",
-                      "items-center",
-                      "justify-center",
-                      "gap-2",
-                      "whitespace-nowrap",
-                      "rounded-md",
-                      "text-sm",
-                      "font-medium",
-                      "transition-all",
-                      "disabled:pointer-events-none",
-                      "disabled:opacity-50",
-                      "[&_svg]:pointer-events-none",
-                      "[&_svg:not([class*='size-'])]:size-4",
-                      "shrink-0",
-                      "[&_svg]:shrink-0",
-                      "outline-none",
-                      "focus-visible:border-ring",
-                      "focus-visible:ring-ring/50",
-                      "focus-visible:ring-[3px]",
-                      "aria-invalid:ring-destructive/20",
-                      "dark:aria-invalid:ring-destructive/40",
-                      "aria-invalid:border-destructive",
-                      match variant {
-                        ButtonVariant::Default => "bg-primary text-primary-foreground hover:bg-primary/90",
-                        ButtonVariant::Destructive => "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
-                        ButtonVariant::Outline => "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50",
-                        ButtonVariant::Secondary => "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-                        ButtonVariant::Ghost => "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
-                        ButtonVariant::Link => "text-primary underline-offset-4 hover:underline",
-                      },
-                      match size {
-                        ButtonSize::Default => "h-9 px-4 py-2 has-[>svg]:px-3",
-                        ButtonSize::Sm => "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
-                        ButtonSize::Lg => "h-10 rounded-md px-6 has-[>svg]:px-4",
-                        ButtonSize::Icon => "size-9",
-                        ButtonSize::IconSm => "size-8",
-                        ButtonSize::IconLg => "size-10",
-                      },
-                      class,
-                    }
-                    data-slot="button"
-                    type={type}
-                  >
-                    {children}
-                  </button>
-                </Button>
-            "#]],
-        );
-    }
-
-    #[test]
     fn component_with_classes_macro_in_class_attribute_to_doc() {
         check(
             indoc! {r#"
@@ -931,7 +718,7 @@ mod tests {
                 }>
                   <button
                     class={
-                      classes!(size_class, variant_class, custom_class),
+                      classes!(size_class, variant_class, custom_class)
                     }
                   >
                     Click
@@ -963,7 +750,7 @@ mod tests {
                         responsive_styles,
                         interactive_styles,
                         custom_overrides,
-                      ),
+                      )
                     }
                   >
                   </div>

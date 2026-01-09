@@ -681,10 +681,7 @@ fn typecheck_node(
 
                         // Convert ParsedAttribute value to expression for type checking
                         let arg_expr = match &arg.value {
-                            Some(ParsedAttributeValue::Expressions(exprs)) => {
-                                // Parser ensures single expression
-                                exprs.first().unwrap().clone()
-                            }
+                            Some(ParsedAttributeValue::Expression(expr)) => expr.clone(),
                             Some(ParsedAttributeValue::String(content)) => {
                                 let value = content
                                     .as_ref()
@@ -909,26 +906,19 @@ fn typecheck_attributes(
 
     for attr in attributes {
         let typed_value = match &attr.value {
-            Some(ParsedAttributeValue::Expressions(exprs)) => {
-                let mut typed_exprs = Vec::new();
-                for expr in exprs {
-                    if let Some(typed_expr) = errors.ok_or_add(
-                        dop::typecheck_expr(expr, env, records, annotations, None)
-                            .map_err(Into::into),
-                    ) {
-                        // Check that attributes evaluate to strings
-                        let expr_type = typed_expr.as_type();
-                        if *expr_type != Type::String {
-                            errors.push(TypeError::ExpectedStringAttribute {
-                                found: expr_type.to_string(),
-                                range: expr.range().clone(),
-                            });
-                        }
-                        typed_exprs.push(typed_expr);
+            Some(ParsedAttributeValue::Expression(expr)) => {
+                if let Some(typed_expr) = errors.ok_or_add(
+                    dop::typecheck_expr(expr, env, records, annotations, None).map_err(Into::into),
+                ) {
+                    // Check that attributes evaluate to strings
+                    let expr_type = typed_expr.as_type();
+                    if *expr_type != Type::String {
+                        errors.push(TypeError::ExpectedStringAttribute {
+                            found: expr_type.to_string(),
+                            range: expr.range().clone(),
+                        });
                     }
-                }
-                if !typed_exprs.is_empty() {
-                    Some(TypedAttributeValue::Expressions(typed_exprs))
+                    Some(TypedAttributeValue::Expression(typed_expr))
                 } else {
                     None
                 }
