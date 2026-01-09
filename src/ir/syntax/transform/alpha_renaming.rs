@@ -42,7 +42,7 @@ impl AlphaRenamingPass {
 
             IrStatement::WriteExpr { id, expr, escape } => IrStatement::WriteExpr {
                 id,
-                expr: self.rename_expr(expr),
+                expr: self.rename_expr(&expr),
                 escape,
             },
 
@@ -67,7 +67,7 @@ impl AlphaRenamingPass {
 
                 IrStatement::If {
                     id,
-                    condition: self.rename_expr(condition),
+                    condition: self.rename_expr(&condition),
                     body: renamed_body,
                     else_body: renamed_else_body,
                 }
@@ -87,7 +87,7 @@ impl AlphaRenamingPass {
                 IrStatement::For {
                     id,
                     var: renamed_var,
-                    array: self.rename_expr(array),
+                    array: self.rename_expr(&array),
                     body: renamed_body,
                 }
             }
@@ -98,7 +98,7 @@ impl AlphaRenamingPass {
                 value,
                 body,
             } => {
-                let renamed_value = self.rename_expr(value);
+                let renamed_value = self.rename_expr(&value);
                 self.push_scope();
                 let renamed_var = self.bind_var(&var);
                 let renamed_body = self.rename_statements(body);
@@ -185,14 +185,14 @@ impl AlphaRenamingPass {
     }
 
     /// Rename variables in an expression
-    fn rename_expr(&mut self, expr: IrExpr) -> IrExpr {
+    fn rename_expr(&mut self, expr: &IrExpr) -> IrExpr {
         match expr {
             IrExpr::Var { value, kind, id } => {
-                let renamed = self.lookup_var(&value);
+                let renamed = self.lookup_var(value);
                 IrExpr::Var {
                     value: renamed,
-                    kind,
-                    id,
+                    kind: kind.clone(),
+                    id: *id,
                 }
             }
             IrExpr::FieldAccess {
@@ -201,19 +201,19 @@ impl AlphaRenamingPass {
                 kind,
                 id,
             } => IrExpr::FieldAccess {
-                record: Box::new(self.rename_expr(*object)),
-                field,
-                kind,
-                id,
+                record: Box::new(self.rename_expr(object)),
+                field: field.clone(),
+                kind: kind.clone(),
+                id: *id,
             },
             IrExpr::BooleanNegation { operand, id } => IrExpr::BooleanNegation {
-                operand: Box::new(self.rename_expr(*operand)),
-                id,
+                operand: Box::new(self.rename_expr(operand)),
+                id: *id,
             },
             IrExpr::ArrayLiteral { elements, kind, id } => IrExpr::ArrayLiteral {
-                elements: elements.into_iter().map(|e| self.rename_expr(e)).collect(),
-                kind,
-                id,
+                elements: elements.iter().map(|e| self.rename_expr(e)).collect(),
+                kind: kind.clone(),
+                id: *id,
             },
             IrExpr::RecordLiteral {
                 record_name,
@@ -221,26 +221,26 @@ impl AlphaRenamingPass {
                 kind,
                 id,
             } => IrExpr::RecordLiteral {
-                record_name,
+                record_name: record_name.clone(),
                 fields: fields
-                    .into_iter()
-                    .map(|(k, v)| (k, self.rename_expr(v)))
+                    .iter()
+                    .map(|(k, v)| (k.clone(), self.rename_expr(v)))
                     .collect(),
-                kind,
-                id,
+                kind: kind.clone(),
+                id: *id,
             },
             IrExpr::JsonEncode { value, id } => IrExpr::JsonEncode {
-                value: Box::new(self.rename_expr(*value)),
-                id,
+                value: Box::new(self.rename_expr(value)),
+                id: *id,
             },
             IrExpr::EnvLookup { key, id } => IrExpr::EnvLookup {
-                key: Box::new(self.rename_expr(*key)),
-                id,
+                key: Box::new(self.rename_expr(key)),
+                id: *id,
             },
             IrExpr::StringConcat { left, right, id } => IrExpr::StringConcat {
-                left: Box::new(self.rename_expr(*left)),
-                right: Box::new(self.rename_expr(*right)),
-                id,
+                left: Box::new(self.rename_expr(left)),
+                right: Box::new(self.rename_expr(right)),
+                id: *id,
             },
             IrExpr::Equals {
                 left,
@@ -248,10 +248,10 @@ impl AlphaRenamingPass {
                 operand_types,
                 id,
             } => IrExpr::Equals {
-                left: Box::new(self.rename_expr(*left)),
-                right: Box::new(self.rename_expr(*right)),
-                operand_types,
-                id,
+                left: Box::new(self.rename_expr(left)),
+                right: Box::new(self.rename_expr(right)),
+                operand_types: operand_types.clone(),
+                id: *id,
             },
             IrExpr::LessThan {
                 left,
@@ -259,10 +259,10 @@ impl AlphaRenamingPass {
                 operand_types,
                 id,
             } => IrExpr::LessThan {
-                left: Box::new(self.rename_expr(*left)),
-                right: Box::new(self.rename_expr(*right)),
-                operand_types,
-                id,
+                left: Box::new(self.rename_expr(left)),
+                right: Box::new(self.rename_expr(right)),
+                operand_types: operand_types.clone(),
+                id: *id,
             },
             IrExpr::LessThanOrEqual {
                 left,
@@ -270,26 +270,48 @@ impl AlphaRenamingPass {
                 operand_types,
                 id,
             } => IrExpr::LessThanOrEqual {
-                left: Box::new(self.rename_expr(*left)),
-                right: Box::new(self.rename_expr(*right)),
-                operand_types,
-                id,
+                left: Box::new(self.rename_expr(left)),
+                right: Box::new(self.rename_expr(right)),
+                operand_types: operand_types.clone(),
+                id: *id,
             },
             // Literals and enum variants don't contain variables
-            IrExpr::StringLiteral { .. } => expr,
-            IrExpr::BooleanLiteral { .. } => expr,
-            IrExpr::FloatLiteral { .. } => expr,
-            IrExpr::IntLiteral { .. } => expr,
-            IrExpr::EnumLiteral { .. } => expr,
+            IrExpr::StringLiteral { value, id } => IrExpr::StringLiteral {
+                value: value.clone(),
+                id: *id,
+            },
+            IrExpr::BooleanLiteral { value, id } => IrExpr::BooleanLiteral {
+                value: *value,
+                id: *id,
+            },
+            IrExpr::FloatLiteral { value, id } => IrExpr::FloatLiteral {
+                value: *value,
+                id: *id,
+            },
+            IrExpr::IntLiteral { value, id } => IrExpr::IntLiteral {
+                value: *value,
+                id: *id,
+            },
+            IrExpr::EnumLiteral {
+                enum_name,
+                variant_name,
+                kind,
+                id,
+            } => IrExpr::EnumLiteral {
+                enum_name: enum_name.clone(),
+                variant_name: variant_name.clone(),
+                kind: kind.clone(),
+                id: *id,
+            },
             IrExpr::Match { match_, kind, id } => {
                 let renamed_match = match match_ {
                     Match::Enum { subject, arms } => Match::Enum {
                         subject: (self.lookup_var(&subject.0), subject.1.clone()),
                         arms: arms
-                            .into_iter()
+                            .iter()
                             .map(|arm| EnumMatchArm {
-                                pattern: arm.pattern,
-                                body: self.rename_expr(arm.body),
+                                pattern: arm.pattern.clone(),
+                                body: self.rename_expr(&arm.body),
                             })
                             .collect(),
                     },
@@ -299,8 +321,8 @@ impl AlphaRenamingPass {
                         false_body,
                     } => Match::Bool {
                         subject: (self.lookup_var(&subject.0), subject.1.clone()),
-                        true_body: Box::new(self.rename_expr(*true_body)),
-                        false_body: Box::new(self.rename_expr(*false_body)),
+                        true_body: Box::new(self.rename_expr(true_body)),
+                        false_body: Box::new(self.rename_expr(false_body)),
                     },
                     Match::Option {
                         subject,
@@ -309,26 +331,26 @@ impl AlphaRenamingPass {
                         none_arm_body,
                     } => Match::Option {
                         subject: (self.lookup_var(&subject.0), subject.1.clone()),
-                        some_arm_binding,
-                        some_arm_body: Box::new(self.rename_expr(*some_arm_body)),
-                        none_arm_body: Box::new(self.rename_expr(*none_arm_body)),
+                        some_arm_binding: some_arm_binding.clone(),
+                        some_arm_body: Box::new(self.rename_expr(some_arm_body)),
+                        none_arm_body: Box::new(self.rename_expr(none_arm_body)),
                     },
                 };
                 IrExpr::Match {
                     match_: renamed_match,
-                    kind,
-                    id,
+                    kind: kind.clone(),
+                    id: *id,
                 }
             }
             IrExpr::BooleanLogicalAnd { left, right, id } => IrExpr::BooleanLogicalAnd {
-                left: Box::new(self.rename_expr(*left)),
-                right: Box::new(self.rename_expr(*right)),
-                id,
+                left: Box::new(self.rename_expr(left)),
+                right: Box::new(self.rename_expr(right)),
+                id: *id,
             },
             IrExpr::BooleanLogicalOr { left, right, id } => IrExpr::BooleanLogicalOr {
-                left: Box::new(self.rename_expr(*left)),
-                right: Box::new(self.rename_expr(*right)),
-                id,
+                left: Box::new(self.rename_expr(left)),
+                right: Box::new(self.rename_expr(right)),
+                id: *id,
             },
             IrExpr::NumericAdd {
                 left,
@@ -336,10 +358,10 @@ impl AlphaRenamingPass {
                 operand_types,
                 id,
             } => IrExpr::NumericAdd {
-                left: Box::new(self.rename_expr(*left)),
-                right: Box::new(self.rename_expr(*right)),
-                operand_types,
-                id,
+                left: Box::new(self.rename_expr(left)),
+                right: Box::new(self.rename_expr(right)),
+                operand_types: operand_types.clone(),
+                id: *id,
             },
             IrExpr::NumericSubtract {
                 left,
@@ -347,10 +369,10 @@ impl AlphaRenamingPass {
                 operand_types,
                 id,
             } => IrExpr::NumericSubtract {
-                left: Box::new(self.rename_expr(*left)),
-                right: Box::new(self.rename_expr(*right)),
-                operand_types,
-                id,
+                left: Box::new(self.rename_expr(left)),
+                right: Box::new(self.rename_expr(right)),
+                operand_types: operand_types.clone(),
+                id: *id,
             },
             IrExpr::NumericMultiply {
                 left,
@@ -358,10 +380,10 @@ impl AlphaRenamingPass {
                 operand_types,
                 id,
             } => IrExpr::NumericMultiply {
-                left: Box::new(self.rename_expr(*left)),
-                right: Box::new(self.rename_expr(*right)),
-                operand_types,
-                id,
+                left: Box::new(self.rename_expr(left)),
+                right: Box::new(self.rename_expr(right)),
+                operand_types: operand_types.clone(),
+                id: *id,
             },
             IrExpr::Let {
                 var,
@@ -370,23 +392,23 @@ impl AlphaRenamingPass {
                 kind,
                 id,
             } => {
-                let renamed_value = self.rename_expr(*value);
+                let renamed_value = self.rename_expr(value);
                 self.push_scope();
-                let new_var = self.bind_var(&var);
-                let renamed_body = self.rename_expr(*body);
+                let new_var = self.bind_var(var);
+                let renamed_body = self.rename_expr(body);
                 self.pop_scope();
                 IrExpr::Let {
                     var: new_var,
                     value: Box::new(renamed_value),
                     body: Box::new(renamed_body),
-                    kind,
-                    id,
+                    kind: kind.clone(),
+                    id: *id,
                 }
             }
             IrExpr::OptionLiteral { value, kind, id } => IrExpr::OptionLiteral {
-                value: value.map(|v| Box::new(self.rename_expr(*v))),
-                kind,
-                id,
+                value: value.as_ref().map(|v| Box::new(self.rename_expr(v))),
+                kind: kind.clone(),
+                id: *id,
             },
         }
     }
@@ -750,5 +772,29 @@ mod tests {
                 }
             "#]],
         );
+    }
+
+    #[test]
+    fn should_rename_deeply_nested_string_concat() {
+        // Create a deeply nested left-leaning StringConcat tree
+        let depth = 100;
+        let mut expr = IrExpr::StringLiteral {
+            value: "start".to_string(),
+            id: 0,
+        };
+        for i in 0..depth {
+            expr = IrExpr::StringConcat {
+                left: Box::new(expr),
+                right: Box::new(IrExpr::StringLiteral {
+                    value: format!("{}", i),
+                    id: (i + 1) as u32,
+                }),
+                id: (i + 1000) as u32,
+            };
+        }
+
+        let mut pass = AlphaRenamingPass::new();
+        let _result = pass.rename_expr(&expr);
+        // If we get here without stack overflow, the test passes
     }
 }

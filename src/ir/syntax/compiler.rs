@@ -194,7 +194,7 @@ impl Compiler {
             }
 
             InlinedNode::TextExpression { expression } => {
-                let compiled_expr = self.compile_expr(expression.clone());
+                let compiled_expr = self.compile_expr(&expression);
                 let should_escape = expression.as_type() != &Type::TrustedHTML;
                 output.push(IrStatement::WriteExpr {
                     id: self.next_node_id(),
@@ -218,7 +218,7 @@ impl Compiler {
             } => {
                 output.push(IrStatement::If {
                     id: self.next_node_id(),
-                    condition: self.compile_expr(condition.clone()),
+                    condition: self.compile_expr(&condition),
                     body: self.compile_nodes(children, slot_content.cloned()),
                     else_body: None,
                 });
@@ -233,7 +233,7 @@ impl Compiler {
                 output.push(IrStatement::For {
                     id: self.next_node_id(),
                     var: var_name,
-                    array: self.compile_expr(array_expr.clone()),
+                    array: self.compile_expr(&array_expr),
                     body: self.compile_nodes(children, slot_content.cloned()),
                 });
             }
@@ -253,7 +253,7 @@ impl Compiler {
                 output.push(IrStatement::Let {
                     id: self.next_node_id(),
                     var,
-                    value: self.compile_expr(value.clone()),
+                    value: self.compile_expr(&value),
                     body: self.compile_nodes(children, slot_content.cloned()),
                 });
             }
@@ -382,7 +382,7 @@ impl Compiler {
             InlinedAttributeValue::Expression(expr) => {
                 // Boolean attributes: output attribute name if true, nothing if false
                 if expr.as_type() == &Type::Bool {
-                    let compiled_expr = self.compile_expr(expr);
+                    let compiled_expr = self.compile_expr(&expr);
                     output.push(IrStatement::If {
                         id: self.next_node_id(),
                         condition: compiled_expr,
@@ -398,7 +398,7 @@ impl Compiler {
                         id: self.next_node_id(),
                         content: format!(" {}=\"", name),
                     });
-                    let compiled_expr = self.compile_expr(expr.clone());
+                    let compiled_expr = self.compile_expr(&expr);
                     let should_escape = expr.as_type() != &Type::TrustedHTML;
                     output.push(IrStatement::WriteExpr {
                         id: self.next_node_id(),
@@ -414,13 +414,13 @@ impl Compiler {
         }
     }
 
-    fn compile_expr(&mut self, expr: TypedExpr) -> IrExpr {
+    fn compile_expr(&mut self, expr: &TypedExpr) -> IrExpr {
         let expr_id = self.next_expr_id();
 
         match expr {
             TypedExpr::Var { value, kind, .. } => IrExpr::Var {
-                value,
-                kind,
+                value: value.clone(),
+                kind: kind.clone(),
                 id: expr_id,
             },
             TypedExpr::FieldAccess {
@@ -429,18 +429,18 @@ impl Compiler {
                 kind,
                 ..
             } => IrExpr::FieldAccess {
-                record: Box::new(self.compile_expr(*object)),
-                field,
-                kind,
+                record: Box::new(self.compile_expr(object)),
+                field: field.clone(),
+                kind: kind.clone(),
                 id: expr_id,
             },
             TypedExpr::BooleanNegation { operand, .. } => IrExpr::BooleanNegation {
-                operand: Box::new(self.compile_expr(*operand)),
+                operand: Box::new(self.compile_expr(operand)),
                 id: expr_id,
             },
             TypedExpr::ArrayLiteral { elements, kind, .. } => IrExpr::ArrayLiteral {
-                elements: elements.into_iter().map(|e| self.compile_expr(e)).collect(),
-                kind,
+                elements: elements.iter().map(|e| self.compile_expr(e)).collect(),
+                kind: kind.clone(),
                 id: expr_id,
             },
             TypedExpr::RecordLiteral {
@@ -449,23 +449,33 @@ impl Compiler {
                 kind,
                 ..
             } => IrExpr::RecordLiteral {
-                record_name,
+                record_name: record_name.clone(),
                 fields: fields
-                    .into_iter()
-                    .map(|(k, v)| (k, self.compile_expr(v)))
+                    .iter()
+                    .map(|(k, v)| (k.clone(), self.compile_expr(v)))
                     .collect(),
-                kind,
+                kind: kind.clone(),
                 id: expr_id,
             },
-            TypedExpr::StringLiteral { value, .. } => IrExpr::StringLiteral { value, id: expr_id },
-            TypedExpr::BooleanLiteral { value, .. } => {
-                IrExpr::BooleanLiteral { value, id: expr_id }
-            }
-            TypedExpr::FloatLiteral { value, .. } => IrExpr::FloatLiteral { value, id: expr_id },
-            TypedExpr::IntLiteral { value, .. } => IrExpr::IntLiteral { value, id: expr_id },
+            TypedExpr::StringLiteral { value, .. } => IrExpr::StringLiteral {
+                value: value.clone(),
+                id: expr_id,
+            },
+            TypedExpr::BooleanLiteral { value, .. } => IrExpr::BooleanLiteral {
+                value: *value,
+                id: expr_id,
+            },
+            TypedExpr::FloatLiteral { value, .. } => IrExpr::FloatLiteral {
+                value: *value,
+                id: expr_id,
+            },
+            TypedExpr::IntLiteral { value, .. } => IrExpr::IntLiteral {
+                value: *value,
+                id: expr_id,
+            },
             TypedExpr::StringConcat { left, right, .. } => IrExpr::StringConcat {
-                left: Box::new(self.compile_expr(*left)),
-                right: Box::new(self.compile_expr(*right)),
+                left: Box::new(self.compile_expr(left)),
+                right: Box::new(self.compile_expr(right)),
                 id: expr_id,
             },
             TypedExpr::Equals {
@@ -474,9 +484,9 @@ impl Compiler {
                 operand_types,
                 ..
             } => IrExpr::Equals {
-                left: Box::new(self.compile_expr(*left)),
-                right: Box::new(self.compile_expr(*right)),
-                operand_types,
+                left: Box::new(self.compile_expr(left)),
+                right: Box::new(self.compile_expr(right)),
+                operand_types: operand_types.clone(),
                 id: expr_id,
             },
             TypedExpr::NotEquals {
@@ -489,9 +499,9 @@ impl Compiler {
                 let equals_id = self.next_expr_id();
                 IrExpr::BooleanNegation {
                     operand: Box::new(IrExpr::Equals {
-                        left: Box::new(self.compile_expr(*left)),
-                        right: Box::new(self.compile_expr(*right)),
-                        operand_types,
+                        left: Box::new(self.compile_expr(left)),
+                        right: Box::new(self.compile_expr(right)),
+                        operand_types: operand_types.clone(),
                         id: equals_id,
                     }),
                     id: expr_id,
@@ -503,9 +513,9 @@ impl Compiler {
                 operand_types,
                 ..
             } => IrExpr::LessThan {
-                left: Box::new(self.compile_expr(*left)),
-                right: Box::new(self.compile_expr(*right)),
-                operand_types,
+                left: Box::new(self.compile_expr(left)),
+                right: Box::new(self.compile_expr(right)),
+                operand_types: operand_types.clone(),
                 id: expr_id,
             },
             // Convert a > b to b < a
@@ -515,9 +525,9 @@ impl Compiler {
                 operand_types,
                 ..
             } => IrExpr::LessThan {
-                left: Box::new(self.compile_expr(*right)),
-                right: Box::new(self.compile_expr(*left)),
-                operand_types,
+                left: Box::new(self.compile_expr(right)),
+                right: Box::new(self.compile_expr(left)),
+                operand_types: operand_types.clone(),
                 id: expr_id,
             },
             TypedExpr::LessThanOrEqual {
@@ -526,9 +536,9 @@ impl Compiler {
                 operand_types,
                 ..
             } => IrExpr::LessThanOrEqual {
-                left: Box::new(self.compile_expr(*left)),
-                right: Box::new(self.compile_expr(*right)),
-                operand_types,
+                left: Box::new(self.compile_expr(left)),
+                right: Box::new(self.compile_expr(right)),
+                operand_types: operand_types.clone(),
                 id: expr_id,
             },
             // Convert a >= b to b <= a
@@ -538,19 +548,19 @@ impl Compiler {
                 operand_types,
                 ..
             } => IrExpr::LessThanOrEqual {
-                left: Box::new(self.compile_expr(*right)),
-                right: Box::new(self.compile_expr(*left)),
-                operand_types,
+                left: Box::new(self.compile_expr(right)),
+                right: Box::new(self.compile_expr(left)),
+                operand_types: operand_types.clone(),
                 id: expr_id,
             },
             TypedExpr::BooleanLogicalAnd { left, right, .. } => IrExpr::BooleanLogicalAnd {
-                left: Box::new(self.compile_expr(*left)),
-                right: Box::new(self.compile_expr(*right)),
+                left: Box::new(self.compile_expr(left)),
+                right: Box::new(self.compile_expr(right)),
                 id: expr_id,
             },
             TypedExpr::BooleanLogicalOr { left, right, .. } => IrExpr::BooleanLogicalOr {
-                left: Box::new(self.compile_expr(*left)),
-                right: Box::new(self.compile_expr(*right)),
+                left: Box::new(self.compile_expr(left)),
+                right: Box::new(self.compile_expr(right)),
                 id: expr_id,
             },
             TypedExpr::NumericAdd {
@@ -559,9 +569,9 @@ impl Compiler {
                 operand_types,
                 ..
             } => IrExpr::NumericAdd {
-                left: Box::new(self.compile_expr(*left)),
-                right: Box::new(self.compile_expr(*right)),
-                operand_types,
+                left: Box::new(self.compile_expr(left)),
+                right: Box::new(self.compile_expr(right)),
+                operand_types: operand_types.clone(),
                 id: expr_id,
             },
             TypedExpr::NumericSubtract {
@@ -570,9 +580,9 @@ impl Compiler {
                 operand_types,
                 ..
             } => IrExpr::NumericSubtract {
-                left: Box::new(self.compile_expr(*left)),
-                right: Box::new(self.compile_expr(*right)),
-                operand_types,
+                left: Box::new(self.compile_expr(left)),
+                right: Box::new(self.compile_expr(right)),
+                operand_types: operand_types.clone(),
                 id: expr_id,
             },
             TypedExpr::NumericMultiply {
@@ -581,9 +591,9 @@ impl Compiler {
                 operand_types,
                 ..
             } => IrExpr::NumericMultiply {
-                left: Box::new(self.compile_expr(*left)),
-                right: Box::new(self.compile_expr(*right)),
-                operand_types,
+                left: Box::new(self.compile_expr(left)),
+                right: Box::new(self.compile_expr(right)),
+                operand_types: operand_types.clone(),
                 id: expr_id,
             },
             TypedExpr::EnumLiteral {
@@ -592,20 +602,20 @@ impl Compiler {
                 kind,
                 ..
             } => IrExpr::EnumLiteral {
-                enum_name,
-                variant_name,
-                kind,
+                enum_name: enum_name.clone(),
+                variant_name: variant_name.clone(),
+                kind: kind.clone(),
                 id: expr_id,
             },
             TypedExpr::Match { match_, kind } => {
                 let compiled_match = match match_ {
                     Match::Enum { subject, arms } => Match::Enum {
-                        subject,
+                        subject: subject.clone(),
                         arms: arms
-                            .into_iter()
+                            .iter()
                             .map(|arm| EnumMatchArm {
-                                pattern: arm.pattern,
-                                body: self.compile_expr(arm.body),
+                                pattern: arm.pattern.clone(),
+                                body: self.compile_expr(&arm.body),
                             })
                             .collect(),
                     },
@@ -614,9 +624,9 @@ impl Compiler {
                         true_body,
                         false_body,
                     } => Match::Bool {
-                        subject,
-                        true_body: Box::new(self.compile_expr(*true_body)),
-                        false_body: Box::new(self.compile_expr(*false_body)),
+                        subject: subject.clone(),
+                        true_body: Box::new(self.compile_expr(true_body)),
+                        false_body: Box::new(self.compile_expr(false_body)),
                     },
                     Match::Option {
                         subject,
@@ -624,21 +634,21 @@ impl Compiler {
                         some_arm_body,
                         none_arm_body,
                     } => Match::Option {
-                        subject,
-                        some_arm_binding,
-                        some_arm_body: Box::new(self.compile_expr(*some_arm_body)),
-                        none_arm_body: Box::new(self.compile_expr(*none_arm_body)),
+                        subject: subject.clone(),
+                        some_arm_binding: some_arm_binding.clone(),
+                        some_arm_body: Box::new(self.compile_expr(some_arm_body)),
+                        none_arm_body: Box::new(self.compile_expr(none_arm_body)),
                     },
                 };
                 IrExpr::Match {
                     match_: compiled_match,
-                    kind,
+                    kind: kind.clone(),
                     id: expr_id,
                 }
             }
             TypedExpr::OptionLiteral { value, kind } => IrExpr::OptionLiteral {
-                value: value.map(|v| Box::new(self.compile_expr(*v))),
-                kind,
+                value: value.as_ref().map(|v| Box::new(self.compile_expr(v))),
+                kind: kind.clone(),
                 id: expr_id,
             },
             TypedExpr::Let {
@@ -647,10 +657,10 @@ impl Compiler {
                 body,
                 kind,
             } => IrExpr::Let {
-                var,
-                value: Box::new(self.compile_expr(*value)),
-                body: Box::new(self.compile_expr(*body)),
-                kind,
+                var: var.clone(),
+                value: Box::new(self.compile_expr(value)),
+                body: Box::new(self.compile_expr(body)),
+                kind: kind.clone(),
                 id: expr_id,
             },
         }
@@ -1112,5 +1122,29 @@ mod tests {
                 }
             "#]],
         );
+    }
+
+    #[test]
+    fn should_compile_deeply_nested_string_concat() {
+        // Create a deeply nested left-leaning StringConcat tree
+        let depth = 100;
+        let mut expr = TypedExpr::StringLiteral {
+            value: "start".to_string(),
+        };
+        for i in 0..depth {
+            expr = TypedExpr::StringConcat {
+                left: Box::new(expr),
+                right: Box::new(TypedExpr::StringLiteral {
+                    value: format!("{}", i),
+                }),
+            };
+        }
+
+        let mut compiler = Compiler {
+            expr_id_counter: 0,
+            node_id_counter: 0,
+        };
+        let _result = compiler.compile_expr(&expr);
+        // If we get here without stack overflow, the test passes
     }
 }
