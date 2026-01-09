@@ -380,21 +380,36 @@ impl Compiler {
                 });
             }
             InlinedAttributeValue::Expression(expr) => {
-                output.push(IrStatement::Write {
-                    id: self.next_node_id(),
-                    content: format!(" {}=\"", name),
-                });
-                let compiled_expr = self.compile_expr(expr.clone());
-                let should_escape = expr.as_type() != &Type::TrustedHTML;
-                output.push(IrStatement::WriteExpr {
-                    id: self.next_node_id(),
-                    expr: compiled_expr,
-                    escape: should_escape,
-                });
-                output.push(IrStatement::Write {
-                    id: self.next_node_id(),
-                    content: "\"".to_string(),
-                });
+                // Boolean attributes: output attribute name if true, nothing if false
+                if expr.as_type() == &Type::Bool {
+                    let compiled_expr = self.compile_expr(expr);
+                    output.push(IrStatement::If {
+                        id: self.next_node_id(),
+                        condition: compiled_expr,
+                        body: vec![IrStatement::Write {
+                            id: self.next_node_id(),
+                            content: format!(" {}", name),
+                        }],
+                        else_body: None,
+                    });
+                } else {
+                    // String attributes: output attribute="value"
+                    output.push(IrStatement::Write {
+                        id: self.next_node_id(),
+                        content: format!(" {}=\"", name),
+                    });
+                    let compiled_expr = self.compile_expr(expr.clone());
+                    let should_escape = expr.as_type() != &Type::TrustedHTML;
+                    output.push(IrStatement::WriteExpr {
+                        id: self.next_node_id(),
+                        expr: compiled_expr,
+                        escape: should_escape,
+                    });
+                    output.push(IrStatement::Write {
+                        id: self.next_node_id(),
+                        content: "\"".to_string(),
+                    });
+                }
             }
         }
     }
@@ -1053,6 +1068,46 @@ mod tests {
                         write("no")
                       }
                     }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_boolean_attributes() {
+        check(
+            build_inlined("TestComp", vec![("disabled", Type::Bool)], |t| {
+                t.html(
+                    "input",
+                    vec![("disabled", t.attr_expr(t.var_expr("disabled")))],
+                    |_| {},
+                );
+            }),
+            expect![[r#"
+                -- before --
+                <TestComp {disabled: Bool}>
+                  <input disabled={disabled} />
+                </TestComp>
+
+                -- after --
+                TestComp(disabled: Bool) {
+                  if (EnvLookup("HOP_DEV_MODE") == "enabled") {
+                    write("<!DOCTYPE html>\n")
+                    write("<script type=\"application/json\">{\"module\": \"test\", \"component\": \"TestComp\", \"params\": ")
+                    write("{")
+                    write("\"disabled\":")
+                    write_expr(JsonEncode(disabled))
+                    write("}")
+                    write("}</script>\n<script src=\"http://localhost:")
+                    write_expr(EnvLookup("HOP_DEV_PORT"))
+                    write("/development_mode.js\"></script>")
+                  } else {
+                    write("<input")
+                    if disabled {
+                      write(" disabled")
+                    }
+                    write(">")
                   }
                 }
             "#]],

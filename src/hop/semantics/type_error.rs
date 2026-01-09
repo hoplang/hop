@@ -81,8 +81,8 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Expected string attribute, got {found}")]
-    ExpectedStringAttribute { found: String, range: DocumentRange },
+    #[error("Expected String or Bool attribute, got {found}")]
+    ExpectedStringOrBoolAttribute { found: String, range: DocumentRange },
 
     #[error("Can not iterate over {typ}")]
     CannotIterateOver { typ: String, range: DocumentRange },
@@ -158,7 +158,7 @@ impl Ranged for TypeError {
                 expr_range: range, ..
             }
             | TypeError::DefaultValueTypeMismatch { range, .. }
-            | TypeError::ExpectedStringAttribute { range, .. }
+            | TypeError::ExpectedStringOrBoolAttribute { range, .. }
             | TypeError::CannotIterateOver { range, .. }
             | TypeError::ExpectedStringForTextExpression { range, .. } => range,
             TypeError::DopError { err } => err.range(),

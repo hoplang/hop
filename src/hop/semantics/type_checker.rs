@@ -910,10 +910,10 @@ fn typecheck_attributes(
                 if let Some(typed_expr) = errors.ok_or_add(
                     dop::typecheck_expr(expr, env, records, annotations, None).map_err(Into::into),
                 ) {
-                    // Check that attributes evaluate to strings
+                    // Check that attributes evaluate to strings or booleans
                     let expr_type = typed_expr.as_type();
-                    if *expr_type != Type::String {
-                        errors.push(TypeError::ExpectedStringAttribute {
+                    if *expr_type != Type::String && *expr_type != Type::Bool {
+                        errors.push(TypeError::ExpectedStringOrBoolAttribute {
                             found: expr_type.to_string(),
                             range: expr.range().clone(),
                         });
@@ -4387,6 +4387,63 @@ mod tests {
                  5 |         None    => x,
                  6 |         Some(x) => x,
                    |              ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_boolean_expressions_in_attributes() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {is_required: Bool}>
+                  <input required={is_required}>
+                </Main>
+            "#},
+            expect![[r#"
+                is_required: Bool
+                  --> main.hop (line 1, col 8)
+                1 | <Main {is_required: Bool}>
+                  |        ^^^^^^^^^^^
+
+                is_required: Bool
+                  --> main.hop (line 2, col 20)
+                1 | <Main {is_required: Bool}>
+                2 |   <input required={is_required}>
+                  |                    ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_boolean_literal_in_attributes() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main>
+                  <input required={true}>
+                  <input disabled={false}>
+                </Main>
+            "#},
+            expect![[r#""#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_non_string_or_bool_attribute_expression() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {count: Int}>
+                  <div data-count={count}></div>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Expected String or Bool attribute, got Int
+                  --> main.hop (line 2, col 20)
+                1 | <Main {count: Int}>
+                2 |   <div data-count={count}></div>
+                  |                    ^^^^^
             "#]],
         );
     }
