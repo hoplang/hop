@@ -569,7 +569,7 @@ impl StatementTranspiler for GoTranspiler {
                 //     ...
                 // }
                 let subject_name = subject.0.as_str();
-                let some_body = if let Some((var_name, _)) = some_arm_binding {
+                let some_body = if let Some(var_name) = some_arm_binding {
                     BoxDoc::text(var_name.as_str())
                         .append(BoxDoc::text(" := "))
                         .append(BoxDoc::text(subject_name))
@@ -961,7 +961,7 @@ impl ExpressionTranspiler for GoTranspiler {
                 let subject_name = subject.0.as_str();
                 let return_type = self.transpile_type(some_arm_body.as_type());
 
-                let some_body = if let Some((var_name, _)) = some_arm_binding {
+                let some_body = if let Some(var_name) = some_arm_binding {
                     BoxDoc::text(var_name.as_str())
                         .append(BoxDoc::text(" := "))
                         .append(BoxDoc::text(subject_name))

@@ -1010,10 +1010,7 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
                         match &case.constructor {
                             Constructor::OptionSome => {
                                 some_arm_binding = case.arguments.first().map(|var| {
-                                    (
-                                        VarName::new(&var.name).expect("invalid variable name"),
-                                        var.typ.clone(),
-                                    )
+                                    VarName::new(&var.name).expect("invalid variable name")
                                 });
                                 some_arm_body =
                                     Some(decision_to_typed_nodes(&case.body, typed_bodies));

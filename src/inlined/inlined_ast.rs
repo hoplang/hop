@@ -284,7 +284,7 @@ impl InlinedNode {
                         none_arm_body,
                     } => {
                         let some_pattern = match some_arm_binding {
-                            Some((name, _)) => format!("Some({})", name.as_str()),
+                            Some(name) => format!("Some({})", name.as_str()),
                             None => "Some(_)".to_string(),
                         };
                         BoxDoc::text("<match {")

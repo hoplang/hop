@@ -144,7 +144,7 @@ fn eval_statement(
                     .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
                 if subject_value.is_null() {
                     eval_statements(none_arm_body, env, output)?;
-                } else if let Some((var, _)) = some_arm_binding {
+                } else if let Some(var) = some_arm_binding {
                     let _ = env.push(var.to_string(), subject_value);
                     eval_statements(some_arm_body, env, output)?;
                     let _ = env.pop();
@@ -533,7 +533,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
 
                 if is_some {
                     // If there's a binding, add the inner value to the environment
-                    if let Some((var_name, _)) = some_arm_binding {
+                    if let Some(var_name) = some_arm_binding {
                         let _ = env.push(var_name.to_string(), subject_val.clone());
                         let result = evaluate_expr(some_arm_body, env);
                         env.pop();

@@ -383,7 +383,7 @@ impl IrStatement {
                         none_arm_body,
                         ..
                     } => {
-                        if let Some((var, _)) = some_arm_binding {
+                        if let Some(var) = some_arm_binding {
                             let prev_value = scope.insert(var.to_string(), self);
                             for stmt in some_arm_body.iter() {
                                 stmt.traverse_with_scope_impl(scope, f);
@@ -595,7 +595,7 @@ impl IrStatement {
                         none_arm_body,
                     } => {
                         let some_pattern = match some_arm_binding {
-                            Some((var, _)) => format!("Some({})", var.as_str()),
+                            Some(var) => format!("Some({})", var.as_str()),
                             None => "Some(_)".to_string(),
                         };
                         BoxDoc::text("match ")
@@ -929,7 +929,7 @@ impl IrExpr {
                     none_arm_body,
                 } => {
                     let some_pattern_doc = match some_arm_binding {
-                        Some((name, _)) => BoxDoc::text("Some(")
+                        Some(name) => BoxDoc::text("Some(")
                             .append(BoxDoc::text(name.as_str()))
                             .append(BoxDoc::text(")")),
                         None => BoxDoc::text("Some(_)"),

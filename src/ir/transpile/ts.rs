@@ -488,7 +488,7 @@ impl StatementTranspiler for TsTranspiler {
                 // }
                 let subject_name = subject.0.as_str();
                 let some_case = {
-                    if let Some((var_name, _)) = some_arm_binding {
+                    if let Some(var_name) = some_arm_binding {
                         BoxDoc::text("case \"Some\": {")
                             .append(
                                 BoxDoc::hardline()
@@ -943,7 +943,7 @@ impl ExpressionTranspiler for TsTranspiler {
                 let subject_name = subject.0.as_str();
                 let some_case = {
                     let body_doc = self.transpile_expr(some_arm_body);
-                    if let Some((var_name, _)) = some_arm_binding {
+                    if let Some(var_name) = some_arm_binding {
                         BoxDoc::text("case \"Some\": {")
                             .append(
                                 BoxDoc::line()

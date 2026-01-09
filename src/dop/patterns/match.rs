@@ -43,7 +43,7 @@ pub enum Match<Body> {
     /// An option match, e.g. `match opt { Some(x) => x, None => "empty" }`
     Option {
         subject: (VarName, Type),
-        some_arm_binding: Option<(VarName, Type)>,
+        some_arm_binding: Option<VarName>,
         some_arm_body: Box<Body>,
         none_arm_body: Box<Body>,
     },

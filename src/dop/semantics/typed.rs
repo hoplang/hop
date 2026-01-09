@@ -407,7 +407,7 @@ impl TypedExpr {
                     none_arm_body,
                 } => {
                     let some_pattern_doc = match some_arm_binding {
-                        Some((name, _)) => BoxDoc::text("Some(")
+                        Some(name) => BoxDoc::text("Some(")
                             .append(BoxDoc::text(name.as_str()))
                             .append(BoxDoc::text(")")),
                         None => BoxDoc::text("Some(_)"),

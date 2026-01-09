@@ -634,7 +634,7 @@ impl IrBuilder {
         IrExpr::Match {
             match_: Match::Option {
                 subject: extract_var_subject(&subject),
-                some_arm_binding: Some((VarName::new(binding_name).unwrap(), inner_type)),
+                some_arm_binding: Some(VarName::new(binding_name).unwrap()),
                 some_arm_body: Box::new(some_body),
                 none_arm_body: Box::new(none_body),
             },
@@ -939,7 +939,7 @@ impl IrBuilder {
             self.var_stack
                 .borrow_mut()
                 .push((var.to_string(), inner_type.clone()));
-            (VarName::try_from(var.to_string()).unwrap(), inner_type)
+            VarName::try_from(var.to_string()).unwrap()
         });
 
         let mut some_builder = self.new_scoped();

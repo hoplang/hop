@@ -544,7 +544,7 @@ impl StatementTranspiler for PythonTranspiler {
 
                 // Some case
                 let some_pattern = match some_arm_binding {
-                    Some((binding, _)) => BoxDoc::text("case Some(value=")
+                    Some(binding) => BoxDoc::text("case Some(value=")
                         .append(BoxDoc::text(binding.as_str()))
                         .append(BoxDoc::text("):")),
                     None => BoxDoc::text("case Some():"),
@@ -883,7 +883,7 @@ impl ExpressionTranspiler for PythonTranspiler {
                 let subject_name = subject.0.as_str();
                 match some_arm_binding {
                     // ((lambda [[binding]]: [[some_body]])([[subject]].value) if isinstance([[subject]], Some) else [[none_body]])
-                    Some((binding, _)) => BoxDoc::text("((lambda ")
+                    Some(binding) => BoxDoc::text("((lambda ")
                         .append(BoxDoc::text(binding.as_str()))
                         .append(BoxDoc::text(": "))
                         .append(self.transpile_expr(some_arm_body))
