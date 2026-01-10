@@ -139,7 +139,7 @@ impl InlinedComponentDeclaration {
 impl InlinedNode {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            InlinedNode::Text { value } => BoxDoc::text(format!("{:?}", value.as_str())),
+            InlinedNode::Text { value } => BoxDoc::text(value.as_str()),
             InlinedNode::TextExpression { expression } => BoxDoc::text("{")
                 .append(expression.to_doc())
                 .append(BoxDoc::text("}")),

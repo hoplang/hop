@@ -426,6 +426,7 @@ mod tests {
     use crate::hop::semantics::type_checker::TypeChecker;
     use crate::hop::symbols::module_name::ModuleName;
     use crate::hop::syntax::parser::parse;
+    use crate::hop::syntax::transform::whitespace_removal::remove_whitespace;
     use expect_test::{Expect, expect};
 
     fn create_typed_asts_from_sources(sources: Vec<(&str, &str)>) -> HashMap<ModuleName, TypedAst> {
@@ -436,6 +437,7 @@ mod tests {
         for (module_name_str, source) in sources {
             let module_name = ModuleName::new(module_name_str).unwrap();
             let ast = parse(module_name.clone(), source.to_string(), &mut errors);
+            let ast = remove_whitespace(ast);
             untyped_asts.insert(module_name, ast);
         }
 
@@ -501,15 +503,11 @@ mod tests {
             vec![("main", "Main")],
             expect![[r#"
                 <Main>
-                  "\n                        "
                   <let {title = "Hello"}>
-                    "\n                        "
                     <h2>
                       {title}
                     </h2>
-                    "\n                    "
                   </let>
-                  "\n                    "
                 </Main>
             "#]],
         );
@@ -537,19 +535,11 @@ mod tests {
             vec![("main", "Main")],
             expect![[r#"
                 <Main>
-                  "\n                        "
-                  "\n                        "
                   <div class="card">
-                    "\n                            "
-                    "\n                            "
                     <p>
-                      "Slot content"
+                      Slot content
                     </p>
-                    "\n                        "
-                    "\n                        "
                   </div>
-                  "\n                    "
-                  "\n                    "
                 </Main>
             "#]],
         );
@@ -573,17 +563,13 @@ mod tests {
             vec![("main", "Main")],
             expect![[r#"
                 <Main>
-                  "\n                        "
                   <let {name = "World"}>
-                    "\n                        "
                     <p>
-                      "Hello, "
+                      Hello,
                       {name}
-                      "!"
+                      !
                     </p>
-                    "\n                    "
                   </let>
-                  "\n                    "
                 </Main>
             "#]],
         );
@@ -607,17 +593,13 @@ mod tests {
             vec![("main", "Main")],
             expect![[r#"
                 <Main>
-                  "\n                        "
                   <let {name = "Alice"}>
-                    "\n                        "
                     <p>
-                      "Hello, "
+                      Hello,
                       {name}
-                      "!"
+                      !
                     </p>
-                    "\n                    "
                   </let>
-                  "\n                    "
                 </Main>
             "#]],
         );
@@ -641,17 +623,13 @@ mod tests {
             vec![("main", "Main")],
             expect![[r#"
                 <Main>
-                  "\n                        "
                   <let {label = "Click me"}>
                     <let {size = "medium"}>
-                      "\n                        "
                       <button class={size}>
                         {label}
                       </button>
-                      "\n                    "
                     </let>
                   </let>
-                  "\n                    "
                 </Main>
             "#]],
         );
@@ -677,19 +655,13 @@ mod tests {
             vec![("main", "Main")],
             expect![[r#"
                 <Main>
-                  "\n                        "
                   <let {count = 0}>
-                    "\n                        "
                     <if {(count == 0)}>
-                      "\n                            "
                       <span>
-                        "Zero"
+                        Zero
                       </span>
-                      "\n                        "
                     </if>
-                    "\n                    "
                   </let>
-                  "\n                    "
                 </Main>
             "#]],
         );
@@ -715,19 +687,13 @@ mod tests {
             vec![("main", "Main")],
             expect![[r#"
                 <Main>
-                  "\n                        "
                   <let {enabled = true}>
-                    "\n                        "
                     <if {enabled}>
-                      "\n                            "
                       <span>
-                        "On"
+                        On
                       </span>
-                      "\n                        "
                     </if>
-                    "\n                    "
                   </let>
-                  "\n                    "
                 </Main>
             "#]],
         );
@@ -761,19 +727,11 @@ mod tests {
             vec![("main", "Main")],
             expect![[r#"
                 <Main>
-                  "\n                        "
-                  "\n                        "
                   <li>
-                    "\n                            "
-                    "\n                                    "
                     <span>
-                      "Default"
+                      Default
                     </span>
-                    "\n                                "
-                    "\n                        "
                   </li>
-                  "\n                    "
-                  "\n                    "
                 </Main>
             "#]],
         );
@@ -809,21 +767,11 @@ mod tests {
             vec![("main", "Main")],
             expect![[r#"
                 <Main>
-                  "\n                        "
-                  "\n                        "
                   <li>
-                    "\n                            "
-                    "\n                                    "
-                    "\n                            "
                     <strong>
-                      "Custom"
+                      Custom
                     </strong>
-                    "\n                        "
-                    "\n                                "
-                    "\n                        "
                   </li>
-                  "\n                    "
-                  "\n                    "
                 </Main>
             "#]],
         );
@@ -856,23 +804,14 @@ mod tests {
             vec![("main", "Main")],
             expect![[r#"
                 <Main>
-                  "\n                        "
-                  "\n                        "
                   <div>
-                    "\n                            "
-                    "\n                            "
                     <p>
-                      "First"
+                      First
                     </p>
-                    "\n                            "
                     <p>
-                      "Second"
+                      Second
                     </p>
-                    "\n                        "
-                    "\n                        "
                   </div>
-                  "\n                    "
-                  "\n                    "
                 </Main>
             "#]],
         );
@@ -910,28 +849,16 @@ mod tests {
             vec![("main", "WithChildren"), ("main", "WithoutChildren")],
             expect![[r#"
                 <WithChildren>
-                  "\n                        "
-                  "\n                        "
-                  "\n                                "
                   <span>
-                    "Has content"
+                    Has content
                   </span>
-                  "\n                            "
-                  "\n                    "
-                  "\n                    "
                 </WithChildren>
 
 
                 <WithoutChildren>
-                  "\n                        "
-                  "\n                        "
-                  "\n                                "
                   <span>
-                    "Empty"
+                    Empty
                   </span>
-                  "\n                            "
-                  "\n                    "
-                  "\n                    "
                 </WithoutChildren>
             "#]],
         );
@@ -963,37 +890,21 @@ mod tests {
             vec![("main", "Main")],
             expect![[r#"
                 <Main>
-                  "\n                        "
-                  "\n                        "
                   <div>
-                    "\n                            "
                     <p>
-                      "First"
+                      First
                     </p>
-                    "\n                        "
                   </div>
-                  "\n                    "
-                  "\n                        "
-                  "\n                        "
                   <div>
-                    "\n                            "
                     <span>
-                      "Empty"
+                      Empty
                     </span>
-                    "\n                        "
                   </div>
-                  "\n                    "
-                  "\n                        "
-                  "\n                        "
                   <div>
-                    "\n                            "
                     <p>
-                      "Third"
+                      Third
                     </p>
-                    "\n                        "
                   </div>
-                  "\n                    "
-                  "\n                    "
                 </Main>
             "#]],
         );
@@ -1040,46 +951,22 @@ mod tests {
             vec![("main", "WithChildren"), ("main", "WithoutChildren")],
             expect![[r#"
                 <WithChildren>
-                  "\n                        "
-                  "\n                        "
                   <div>
-                    "\n                            "
-                    "\n                                    "
-                    "\n                        "
                     <span>
-                      "\n                            "
                       <strong>
-                        "content"
+                        content
                       </strong>
-                      "\n                        "
                     </span>
-                    "\n                    "
-                    "\n                                "
-                    "\n                        "
                   </div>
-                  "\n                    "
-                  "\n                    "
                 </WithChildren>
 
 
                 <WithoutChildren>
-                  "\n                        "
-                  "\n                        "
                   <div>
-                    "\n                            "
-                    "\n                                    "
-                    "\n                        "
                     <span>
-                      "\n                            "
-                      "inner-default"
-                      "\n                        "
+                      inner-default
                     </span>
-                    "\n                    "
-                    "\n                                "
-                    "\n                        "
                   </div>
-                  "\n                    "
-                  "\n                    "
                 </WithoutChildren>
             "#]],
         );
@@ -1112,23 +999,16 @@ mod tests {
             vec![("main", "Main")],
             expect![[r#"
                 <Main>
-                  "\n                        "
-                  "\n                        "
-                  "\n                                "
                   <div>
                     <strong>
-                      "content"
+                      content
                     </strong>
                   </div>
-                  "\n                                "
                   <div>
                     <strong>
-                      "content"
+                      content
                     </strong>
                   </div>
-                  "\n                            "
-                  "\n                    "
-                  "\n                    "
                 </Main>
             "#]],
         );
@@ -1158,11 +1038,8 @@ mod tests {
             vec![("main", "Main")],
             expect![[r#"
                 <Main>
-                  "\n                        "
                   <let {title = Some("Hello")}>
-                    "\n                        "
                     <div>
-                      "\n                            "
                       <let {match_subject = title}>
                         <match {match_subject}>
                           <case {Some(v0)}>
@@ -1174,16 +1051,13 @@ mod tests {
                           </case>
                           <case {None}>
                             <h1>
-                              "Untitled"
+                              Untitled
                             </h1>
                           </case>
                         </match>
                       </let>
-                      "\n                        "
                     </div>
-                    "\n                    "
                   </let>
-                  "\n                    "
                 </Main>
             "#]],
         );
@@ -1210,17 +1084,11 @@ mod tests {
             vec![("main", "Main")],
             expect![[r#"
                 <Main>
-                  "\n                        "
-                  "\n                        "
                   <div class="box">
-                    "\n                            "
                     <span>
-                      "Content"
+                      Content
                     </span>
-                    "\n                        "
                   </div>
-                  "\n                    "
-                  "\n                    "
                 </Main>
             "#]],
         );
@@ -1256,21 +1124,11 @@ mod tests {
             vec![("main", "Main")],
             expect![[r#"
                 <Main>
-                  "\n                        "
-                  "\n                        "
                   <div>
-                    "\n                            "
-                    "\n                            "
-                    "\n                        "
                     <span>
-                      "Custom"
+                      Custom
                     </span>
-                    "\n                    "
-                    "\n                        "
-                    "\n                        "
                   </div>
-                  "\n                    "
-                  "\n                    "
                 </Main>
             "#]],
         );
@@ -1331,92 +1189,52 @@ mod tests {
             vec![("main", "TestBadge"), ("main", "TestBadgeLink")],
             expect![[r#"
                 <TestBadge>
-                  "\n                        "
-                  "\n                        "
                   <let {element = BadgeElement::Span}>
-                    "\n                        "
                     <let {classes = "inline-flex items-center"}>
-                      "\n                            "
                       <let {match_subject = element}>
                         <match {match_subject}>
                           <case {BadgeElement::Span}>
-                            "\n                                    "
                             <span class={classes} data-slot="badge">
-                              "\n                                        "
-                              "\n                            "
-                              "Hello"
-                              "\n                        "
-                              "\n                                    "
+                              Hello
                             </span>
-                            "\n                                "
                           </case>
                           <case {BadgeElement::Link(href: v0)}>
                             <let {h = v0}>
-                              "\n                                    "
                               <a class={classes} data-slot="badge" href={h}>
-                                "\n                                        "
-                                "\n                            "
-                                "Hello"
-                                "\n                        "
-                                "\n                                    "
+                                Hello
                               </a>
-                              "\n                                "
                             </let>
                           </case>
                         </match>
                       </let>
-                      "\n                        "
                     </let>
-                    "\n                    "
                   </let>
-                  "\n                    "
-                  "\n                    "
                 </TestBadge>
 
 
                 <TestBadgeLink>
-                  "\n                        "
                   <let {href = "/home"}>
-                    "\n                        "
                     <let {element = BadgeElement::Link(href: href)}>
-                      "\n                        "
                       <let {classes = "inline-flex items-center"}>
-                        "\n                            "
                         <let {match_subject = element}>
                           <match {match_subject}>
                             <case {BadgeElement::Span}>
-                              "\n                                    "
                               <span class={classes} data-slot="badge">
-                                "\n                                        "
-                                "\n                            "
-                                "Click me"
-                                "\n                        "
-                                "\n                                    "
+                                Click me
                               </span>
-                              "\n                                "
                             </case>
                             <case {BadgeElement::Link(href: v0)}>
                               <let {h = v0}>
-                                "\n                                    "
                                 <a class={classes} data-slot="badge" href={h}>
-                                  "\n                                        "
-                                  "\n                            "
-                                  "Click me"
-                                  "\n                        "
-                                  "\n                                    "
+                                  Click me
                                 </a>
-                                "\n                                "
                               </let>
                             </case>
                           </match>
                         </let>
-                        "\n                        "
                       </let>
-                      "\n                    "
                     </let>
-                    "\n                    "
                   </let>
-                  "\n                    "
                 </TestBadgeLink>
             "#]],
         );

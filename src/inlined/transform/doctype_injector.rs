@@ -94,10 +94,12 @@ mod tests {
             entrypoint,
             expect![[r#"
                 -- before --
-                "\n"
+
+
                 <!DOCTYPE html>
                 -- after --
-                "\n"
+
+
                 <!DOCTYPE html>
             "#]],
         );
@@ -113,10 +115,12 @@ mod tests {
             entrypoint,
             expect![[r#"
                 -- before --
-                "\n"
+
+
                 -- after --
                 <!DOCTYPE html>
-                "\n"
+
+
             "#]],
         );
     }
@@ -131,10 +135,10 @@ mod tests {
             entrypoint,
             expect![[r#"
                 -- before --
-                "Just some text content"
+                Just some text content
                 -- after --
                 <!DOCTYPE html>
-                "Just some text content"
+                Just some text content
             "#]],
         );
     }

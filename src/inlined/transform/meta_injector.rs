@@ -157,7 +157,7 @@ mod tests {
                 <html>
                   <head />
                   <body>
-                    "Hello World"
+                    Hello World
                   </body>
                 </html>
                 -- after --
@@ -167,7 +167,7 @@ mod tests {
                     <meta content="width=device-width, initial-scale=1" name="viewport" />
                   </head>
                   <body>
-                    "Hello World"
+                    Hello World
                   </body>
                 </html>
             "#]],
@@ -194,7 +194,7 @@ mod tests {
                 <html>
                   <head>
                     <title>
-                      "My Page"
+                      My Page
                     </title>
                   </head>
                   <body />
@@ -205,7 +205,7 @@ mod tests {
                     <meta charset="utf-8" />
                     <meta content="width=device-width, initial-scale=1" name="viewport" />
                     <title>
-                      "My Page"
+                      My Page
                     </title>
                   </head>
                   <body />

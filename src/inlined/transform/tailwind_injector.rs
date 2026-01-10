@@ -154,18 +154,18 @@ mod tests {
                 <html>
                   <head />
                   <body>
-                    "Hello World"
+                    Hello World
                   </body>
                 </html>
                 -- after --
                 <html>
                   <head>
                     <style>
-                      ".text-red { color: red; }"
+                      .text-red { color: red; }
                     </style>
                   </head>
                   <body>
-                    "Hello World"
+                    Hello World
                   </body>
                 </html>
             "#]],

@@ -698,7 +698,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 <MainComp>
-                  "Hello World"
+                  Hello World
                 </MainComp>
 
                 -- after --
@@ -729,7 +729,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 <MainComp {name: String}>
-                  "Hello "
+                  Hello 
                   {name}
                 </MainComp>
 
@@ -766,7 +766,7 @@ mod tests {
                 -- before --
                 <MainComp>
                   <div>
-                    "Content"
+                    Content
                   </div>
                 </MainComp>
 
@@ -806,7 +806,7 @@ mod tests {
                 <MainComp {show: Bool}>
                   <if {show}>
                     <div>
-                      "Visible"
+                      Visible
                     </div>
                   </if>
                 </MainComp>
@@ -907,7 +907,7 @@ mod tests {
                 -- before --
                 <MainComp>
                   <div class="base" id="test">
-                    "Content"
+                    Content
                   </div>
                 </MainComp>
 
@@ -952,7 +952,7 @@ mod tests {
                 -- before --
                 <MainComp {cls: String}>
                   <div class="base" data-value={cls}>
-                    "Content"
+                    Content
                   </div>
                 </MainComp>
 
@@ -1002,9 +1002,9 @@ mod tests {
                 -- before --
                 <TestComp {name: String, count: String}>
                   <div>
-                    "Hello "
+                    Hello 
                     {name}
-                    ", count: "
+                    , count: 
                     {count}
                   </div>
                 </TestComp>
@@ -1057,10 +1057,10 @@ mod tests {
                 <TestComp {flag: Bool}>
                   <match {flag}>
                     <case {true}>
-                      "yes"
+                      yes
                     </case>
                     <case {false}>
-                      "no"
+                      no
                     </case>
                   </match>
                 </TestComp>

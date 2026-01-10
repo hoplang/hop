@@ -310,7 +310,7 @@ mod tests {
             }),
             expect![[r#"
                 <Hello>
-                  "Hello, World!"
+                  Hello, World!
                 </Hello>
             "#]],
         );
@@ -327,7 +327,7 @@ mod tests {
             expect![[r#"
                 <Card>
                   <div class="container">
-                    "Content"
+                    Content
                   </div>
                 </Card>
             "#]],
@@ -343,7 +343,7 @@ mod tests {
             }),
             expect![[r#"
                 <Greeting {name: String}>
-                  "Hello, "
+                  Hello, 
                   {name}
                 </Greeting>
             "#]],
@@ -394,7 +394,7 @@ mod tests {
                 <Toggle {visible: Bool}>
                   <if {visible}>
                     <div>
-                      "Shown"
+                      Shown
                     </div>
                   </if>
                 </Toggle>
