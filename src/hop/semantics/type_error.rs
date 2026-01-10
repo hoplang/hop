@@ -90,6 +90,13 @@ pub enum TypeError {
     #[error("Can not iterate over {typ}")]
     CannotIterateOver { typ: String, range: DocumentRange },
 
+    #[error("Let binding has type {found}, expected {expected}")]
+    LetBindingTypeMismatch {
+        expected: String,
+        found: String,
+        range: DocumentRange,
+    },
+
     #[error("Expected string for text expression, got {found}")]
     ExpectedStringForTextExpression { found: Type, range: DocumentRange },
 
@@ -164,6 +171,7 @@ impl Ranged for TypeError {
             | TypeError::DefaultValueTypeMismatch { range, .. }
             | TypeError::ExpectedStringOrBoolAttribute { range, .. }
             | TypeError::CannotIterateOver { range, .. }
+            | TypeError::LetBindingTypeMismatch { range, .. }
             | TypeError::ExpectedStringForTextExpression { range, .. } => range,
             TypeError::DopError { err } => err.range(),
         }

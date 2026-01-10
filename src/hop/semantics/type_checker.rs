@@ -608,6 +608,81 @@ fn typecheck_node(
             })
         }
 
+        ParsedNode::Let {
+            var_name,
+            var_name_range,
+            var_type,
+            value_expr,
+            children,
+            range: _,
+        } => {
+            // Resolve the declared type
+            let resolved_type = match resolve_type(var_type, type_env) {
+                Ok(t) => t,
+                Err(err) => {
+                    errors.push(err.into());
+                    return None;
+                }
+            };
+
+            // Type-check the value expression with the expected type
+            let typed_value = errors.ok_or_add(
+                dop::typecheck_expr(value_expr, env, type_env, annotations, Some(&resolved_type))
+                    .map_err(Into::into),
+            )?;
+
+            // Validate that the expression type matches the declared type
+            let value_type = typed_value.as_type();
+            if *value_type != resolved_type {
+                errors.push(TypeError::LetBindingTypeMismatch {
+                    expected: resolved_type.to_string(),
+                    found: value_type.to_string(),
+                    range: value_expr.range().clone(),
+                });
+            }
+
+            // Push the variable into scope
+            let pushed = match env.push(var_name.to_string(), resolved_type.clone()) {
+                Ok(_) => {
+                    annotations.push(TypeAnnotation {
+                        range: var_name_range.clone(),
+                        typ: resolved_type.clone(),
+                        name: var_name.to_string(),
+                    });
+                    true
+                }
+                Err(_) => {
+                    errors.push(TypeError::VariableIsAlreadyDefined {
+                        var: var_name.as_str().to_string(),
+                        range: var_name_range.clone(),
+                    });
+                    false
+                }
+            };
+
+            let typed_children = children
+                .iter()
+                .filter_map(|child| {
+                    typecheck_node(child, state, env, annotations, errors, type_env)
+                })
+                .collect();
+
+            if pushed {
+                let (_, _, accessed) = env.pop();
+                if !accessed {
+                    errors.push(TypeError::UnusedVariable {
+                        var_name: var_name_range.clone(),
+                    })
+                }
+            }
+
+            Some(TypedNode::Let {
+                var: var_name.clone(),
+                value: typed_value,
+                children: typed_children,
+            })
+        }
+
         ParsedNode::ComponentReference {
             component_name,
             component_name_opening_range: tag_name,
@@ -4644,6 +4719,161 @@ mod tests {
                 1 | <Wrapper {children: Option[TrustedHTML] = None}>
                 2 |   <div>{children}</div>
                   |         ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_let_binding_used_in_children() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main>
+                  <let {name: String = "World"}>
+                    <div>Hello {name}</div>
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                name: String
+                  --> main.hop (line 2, col 9)
+                1 | <Main>
+                2 |   <let {name: String = "World"}>
+                  |         ^^^^
+
+                name: String
+                  --> main.hop (line 3, col 17)
+                2 |   <let {name: String = "World"}>
+                3 |     <div>Hello {name}</div>
+                  |                 ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_let_with_unused_variable() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main>
+                  <let {name: String = "World"}>
+                    <div>Hello</div>
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Unused variable name
+                  --> main.hop (line 2, col 9)
+                1 | <Main>
+                2 |   <let {name: String = "World"}>
+                  |         ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_let_shadowing_parameter() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main {name: String}>
+                  <let {name: String = "Shadow"}>
+                    <div>{name}</div>
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Variable name is already defined
+                  --> main.hop (line 2, col 9)
+                1 | <Main {name: String}>
+                2 |   <let {name: String = "Shadow"}>
+                  |         ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_let_shadowing_another_let() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main>
+                  <let {name: String = "First"}>
+                    <let {name: String = "Second"}>
+                      <div>{name}</div>
+                    </let>
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Variable name is already defined
+                  --> main.hop (line 3, col 11)
+                2 |   <let {name: String = "First"}>
+                3 |     <let {name: String = "Second"}>
+                  |           ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_let_with_same_name_in_sibling_scope() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main>
+                  <let {name: String = "First"}>
+                    <div>{name}</div>
+                  </let>
+                  <let {name: String = "Second"}>
+                    <div>{name}</div>
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                name: String
+                  --> main.hop (line 2, col 9)
+                1 | <Main>
+                2 |   <let {name: String = "First"}>
+                  |         ^^^^
+
+                name: String
+                  --> main.hop (line 3, col 11)
+                2 |   <let {name: String = "First"}>
+                3 |     <div>{name}</div>
+                  |           ^^^^
+
+                name: String
+                  --> main.hop (line 5, col 9)
+                4 |   </let>
+                5 |   <let {name: String = "Second"}>
+                  |         ^^^^
+
+                name: String
+                  --> main.hop (line 6, col 11)
+                5 |   <let {name: String = "Second"}>
+                6 |     <div>{name}</div>
+                  |           ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_let_with_type_mismatch() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main>
+                  <let {name: String = 42}>
+                    <div>{name}</div>
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Let binding has type Int, expected String
+                  --> main.hop (line 2, col 24)
+                1 | <Main>
+                2 |   <let {name: String = 42}>
+                  |                        ^^
             "#]],
         );
     }

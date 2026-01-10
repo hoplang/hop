@@ -659,6 +659,39 @@ fn construct_nodes(
                     }]
                 }
 
+                // <let {...}>
+                "let" => {
+                    errors.extend(validator.disallow_unrecognized());
+                    let parse_result = expression
+                        .ok_or_else(|| {
+                            ParseError::new(
+                                "Missing binding in <let> tag".to_string(),
+                                opening_tag_range.clone(),
+                            )
+                        })
+                        .and_then(|e| {
+                            Parser::from(e.clone())
+                                .parse_let_binding()
+                                .map_err(|err| err.into())
+                        });
+                    let Some((var_name, var_name_range, var_type, value_expr)) =
+                        errors.ok_or_add(parse_result)
+                    else {
+                        return vec![ParsedNode::Placeholder {
+                            range: tree.range.clone(),
+                            children,
+                        }];
+                    };
+                    vec![ParsedNode::Let {
+                        var_name,
+                        var_name_range,
+                        var_type,
+                        value_expr,
+                        range: tree.range.clone(),
+                        children,
+                    }]
+                }
+
                 // <ComponentReference> - PascalCase indicates a component
                 name if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
                     let component_name = match ComponentName::new(tag_name.as_str().to_string()) {
@@ -770,6 +803,7 @@ mod tests {
             ParsedNode::ComponentReference { .. } => "component_reference",
             ParsedNode::If { .. } => "if",
             ParsedNode::For { .. } => "for",
+            ParsedNode::Let { .. } => "let",
             ParsedNode::Match { .. } => "match",
             ParsedNode::Html { tag_name, .. } => tag_name.as_str(),
             ParsedNode::Text { .. } => "text",
@@ -2127,6 +2161,140 @@ mod tests {
             "#},
             expect![[r#"
                 case                                              1:4-1:39
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_let_with_string_value() {
+        check(
+            indoc! {r#"
+                <Main>
+                    <let {name: String = "World"}>
+                        <div>Hello {name}</div>
+                    </let>
+                </Main>
+            "#},
+            expect![[r#"
+                let                                               1:4-3:10
+                    div                                           2:8-2:31
+                        text_expression                           2:19-2:25
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_let_with_int_value() {
+        check(
+            indoc! {"
+                <Main>
+                    <let {count: Int = 42}>
+                        <span>{count}</span>
+                    </let>
+                </Main>
+            "},
+            expect![[r#"
+                let                                               1:4-3:10
+                    span                                          2:8-2:28
+                        text_expression                           2:14-2:21
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_let_with_expression_value() {
+        check(
+            indoc! {r#"
+                record User { name: String }
+                <Main {user: User}>
+                    <let {greeting: String = user.name}>
+                        <div>{greeting}</div>
+                    </let>
+                </Main>
+            "#},
+            expect![[r#"
+                let                                               2:4-4:10
+                    div                                           3:8-3:29
+                        text_expression                           3:13-3:23
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_nested_let_tags() {
+        check(
+            indoc! {r#"
+                <Main>
+                    <let {a: Int = 1}>
+                        <let {b: Int = 2}>
+                            <div>{a} + {b}</div>
+                        </let>
+                    </let>
+                </Main>
+            "#},
+            expect![[r#"
+                let                                               1:4-5:10
+                    let                                           2:8-4:14
+                        div                                       3:12-3:32
+                            text_expression                       3:17-3:20
+                            text_expression                       3:23-3:26
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_let_without_binding() {
+        check(
+            indoc! {"
+                <Main>
+                    <let>
+                        <div>Content</div>
+                    </let>
+                </Main>
+            "},
+            expect![[r#"
+                error: Missing binding in <let> tag
+                1 | <Main>
+                2 |     <let>
+                  |     ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_let_with_missing_type() {
+        check(
+            indoc! {"
+                <Main>
+                    <let {x = 1}>
+                        <div>Content</div>
+                    </let>
+                </Main>
+            "},
+            expect![[r#"
+                error: Expected token ':' but got '='
+                1 | <Main>
+                2 |     <let {x = 1}>
+                  |             ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_let_with_missing_value() {
+        check(
+            indoc! {"
+                <Main>
+                    <let {x: String}>
+                        <div>Content</div>
+                    </let>
+                </Main>
+            "},
+            expect![[r#"
+                error: Expected token '=' but got end of file
+                1 | <Main>
+                2 |     <let {x: String}>
+                  |           ^^^^^^^^^
             "#]],
         );
     }

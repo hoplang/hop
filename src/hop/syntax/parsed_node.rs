@@ -6,7 +6,7 @@ use crate::common::is_void_element;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::ParsedExpr;
 use crate::dop::VarName;
-use crate::dop::syntax::parsed::ParsedMatchPattern;
+use crate::dop::syntax::parsed::{ParsedMatchPattern, ParsedType};
 
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
@@ -109,6 +109,17 @@ pub enum ParsedNode {
         range: DocumentRange,
     },
 
+    /// A Let node introduces a local variable binding.
+    /// E.g. <let {name: String = "World"}>Hello {name}</let>
+    Let {
+        var_name: VarName,
+        var_name_range: DocumentRange,
+        var_type: ParsedType,
+        value_expr: ParsedExpr,
+        children: Vec<ParsedNode>,
+        range: DocumentRange,
+    },
+
     /// A Doctype node represents a doctype, e.g. a <!DOCTYPE html>
     Doctype {
         value: StringSpan,
@@ -144,6 +155,7 @@ impl ParsedNode {
             ParsedNode::ComponentReference { children, .. } => children,
             ParsedNode::If { children, .. } => children,
             ParsedNode::For { children, .. } => children,
+            ParsedNode::Let { children, .. } => children,
             ParsedNode::Html { children, .. } => children,
             ParsedNode::Placeholder { children, .. } => children,
             ParsedNode::Match { .. } => &[], // children are inside cases
@@ -292,6 +304,31 @@ impl ParsedNode {
                         .append(BoxDoc::line())
                 })
                 .append(BoxDoc::text("</for>")),
+            ParsedNode::Let {
+                var_name,
+                var_type,
+                value_expr,
+                children,
+                ..
+            } => BoxDoc::text("<let {")
+                .append(BoxDoc::text(var_name.as_str()))
+                .append(BoxDoc::text(": "))
+                .append(BoxDoc::text(var_type.to_string()))
+                .append(BoxDoc::text(" = "))
+                .append(value_expr.to_doc())
+                .append(BoxDoc::text("}>"))
+                .append(if children.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            children.iter().map(|c| c.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .nest(2)
+                        .append(BoxDoc::line())
+                })
+                .append(BoxDoc::text("</let>")),
             ParsedNode::Doctype { value, .. } => BoxDoc::text(value.as_str()),
             ParsedNode::Match { subject, cases, .. } => BoxDoc::text("<match {")
                 .append(subject.to_doc())
@@ -390,6 +427,7 @@ impl Ranged for ParsedNode {
             | ParsedNode::ComponentReference { range, .. }
             | ParsedNode::If { range, .. }
             | ParsedNode::For { range, .. }
+            | ParsedNode::Let { range, .. }
             | ParsedNode::Match { range, .. }
             | ParsedNode::Html { range, .. }
             | ParsedNode::Placeholder { range, .. }

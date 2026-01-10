@@ -217,6 +217,19 @@ impl Parser {
         Ok((var_name, var_name_range, array_expr))
     }
 
+    // let_binding = Identifier ":" type "=" expr Eof
+    pub fn parse_let_binding(
+        &mut self,
+    ) -> Result<(VarName, DocumentRange, ParsedType, ParsedExpr), ParseError> {
+        let (var_name, var_name_range) = self.expect_variable_name()?;
+        self.expect_token(&Token::Colon)?;
+        let var_type = self.parse_type()?;
+        self.expect_token(&Token::Assign)?;
+        let value_expr = self.parse_logical()?;
+        self.expect_eof()?;
+        Ok((var_name, var_name_range, var_type, value_expr))
+    }
+
     // parameter_with_type = Identifier ":" type ("=" primary)?
     fn parse_parameter(
         &mut self,

@@ -81,6 +81,21 @@ fn transform_node(node: ParsedNode) -> Vec<ParsedNode> {
             children: transform_nodes(children),
             range,
         }],
+        ParsedNode::Let {
+            var_name,
+            var_name_range,
+            var_type,
+            value_expr,
+            children,
+            range,
+        } => vec![ParsedNode::Let {
+            var_name,
+            var_name_range,
+            var_type,
+            value_expr,
+            children: transform_nodes(children),
+            range,
+        }],
         ParsedNode::Html {
             tag_name,
             closing_tag_name,
