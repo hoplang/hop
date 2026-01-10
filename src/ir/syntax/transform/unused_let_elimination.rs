@@ -28,6 +28,19 @@ impl UnusedLetEliminationPass {
         // Now traverse with scope tracking to find used lets
         for stmt in &entrypoint.body {
             stmt.traverse_with_scope(&mut |s, scope| {
+                // Check for match statement subjects (which are variable references)
+                if let IrStatement::Match { match_, .. } = s {
+                    let subject_name = match match_ {
+                        Match::Bool { subject, .. } => &subject.0,
+                        Match::Enum { subject, .. } => &subject.0,
+                        Match::Option { subject, .. } => &subject.0,
+                    };
+                    if let Some(IrStatement::Let { id, .. }) = scope.get(&subject_name.to_string())
+                    {
+                        used_lets.insert(*id);
+                    }
+                }
+
                 // Process only the primary expression of this statement (not nested ones)
                 // This avoids O(n²) behavior from traverse_exprs
                 if let Some(primary_expr) = s.expr() {
@@ -113,7 +126,10 @@ impl Pass for UnusedLetEliminationPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::syntax::builder::build_ir;
+    use crate::{
+        dop::Type,
+        ir::syntax::builder::{IrBuilder, IrModuleBuilder, build_ir},
+    };
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrComponentDeclaration, expected: Expect) {
@@ -492,6 +508,234 @@ mod tests {
                 Test() {
                   let flag = true in {
                     write_escaped(match flag {true => "yes", false => "no"})
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_preserve_let_used_as_enum_match_subject() {
+        let module = IrModuleBuilder::new()
+            .enum_with_fields("BadgeElement", |e| {
+                e.variant("Span");
+                e.variant_with_fields("Link", vec![("href", Type::String)]);
+            })
+            .component("Test", [], |t| {
+                t.let_stmt("element", t.enum_variant("BadgeElement", "Span"), |t| {
+                    t.let_stmt("match_subject", t.var("element"), |t| {
+                        t.enum_match_stmt_with_bindings(
+                            t.var("match_subject"),
+                            vec![
+                                (
+                                    "Span",
+                                    vec![],
+                                    Box::new(|t: &mut IrBuilder| {
+                                        t.write("<span>badge</span>");
+                                    }),
+                                ),
+                                (
+                                    "Link",
+                                    vec![("href", "h")],
+                                    Box::new(|t: &mut IrBuilder| {
+                                        t.write("<a>badge</a>");
+                                    }),
+                                ),
+                            ],
+                        );
+                    });
+                });
+            })
+            .build();
+
+        let entrypoint = module.components.into_iter().next().unwrap();
+        check(
+            entrypoint,
+            expect![[r#"
+                -- before --
+                Test() {
+                  let element = BadgeElement::Span in {
+                    let match_subject = element in {
+                      match match_subject {
+                        BadgeElement::Span => {
+                          write("<span>badge</span>")
+                        }
+                        BadgeElement::Link(href: h) => {
+                          write("<a>badge</a>")
+                        }
+                      }
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let element = BadgeElement::Span in {
+                    let match_subject = element in {
+                      match match_subject {
+                        BadgeElement::Span => {
+                          write("<span>badge</span>")
+                        }
+                        BadgeElement::Link(href: h) => {
+                          write("<a>badge</a>")
+                        }
+                      }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_preserve_let_used_in_enum_literal() {
+        let module = IrModuleBuilder::new()
+            .enum_with_fields("MyEnum", |e| {
+                e.variant_with_fields("Foo", vec![("value", Type::String)]);
+            })
+            .component("Test", [], |t| {
+                // let x = "hello"
+                // let foo = MyEnum::Foo(value: x)
+                // match foo { Foo(v) => write(v) }  -- uses foo, which uses x
+                t.let_stmt("x", t.str("hello"), |t| {
+                    t.let_stmt(
+                        "foo",
+                        t.enum_variant_with_fields("MyEnum", "Foo", vec![("value", t.var("x"))]),
+                        |t| {
+                            t.enum_match_stmt_with_bindings(
+                                t.var("foo"),
+                                vec![(
+                                    "Foo",
+                                    vec![("value", "v")],
+                                    Box::new(|t: &mut IrBuilder| {
+                                        t.write_expr(t.var("v"), true);
+                                    }),
+                                )],
+                            );
+                        },
+                    );
+                });
+            })
+            .build();
+
+        let entrypoint = module.components.into_iter().next().unwrap();
+        check(
+            entrypoint,
+            expect![[r#"
+                -- before --
+                Test() {
+                  let x = "hello" in {
+                    let foo = MyEnum::Foo(value: x) in {
+                      match foo {
+                        MyEnum::Foo(value: v) => {
+                          write_escaped(v)
+                        }
+                      }
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let x = "hello" in {
+                    let foo = MyEnum::Foo(value: x) in {
+                      match foo {
+                        MyEnum::Foo(value: v) => {
+                          write_escaped(v)
+                        }
+                      }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_preserve_let_used_in_enum_variant_field() {
+        let module = IrModuleBuilder::new()
+            .enum_with_fields("BadgeElement", |e| {
+                e.variant("Span");
+                e.variant_with_fields("Link", vec![("href", Type::String)]);
+            })
+            .component("Test", [], |t| {
+                // let href = "/home"
+                t.let_stmt("href", t.str("/home"), |t| {
+                    // let element = BadgeElement::Link(href: href)
+                    t.let_stmt(
+                        "element",
+                        t.enum_variant_with_fields(
+                            "BadgeElement",
+                            "Link",
+                            vec![("href", t.var("href"))],
+                        ),
+                        |t| {
+                            // let match_subject = element
+                            t.let_stmt("match_subject", t.var("element"), |t| {
+                                // match match_subject { Span => ..., Link(h) => ... }
+                                t.enum_match_stmt_with_bindings(
+                                    t.var("match_subject"),
+                                    vec![
+                                        (
+                                            "Span",
+                                            vec![],
+                                            Box::new(|t: &mut IrBuilder| {
+                                                t.write("<span>badge</span>");
+                                            }),
+                                        ),
+                                        (
+                                            "Link",
+                                            vec![("href", "h")],
+                                            Box::new(|t: &mut IrBuilder| {
+                                                t.write_expr(t.var("h"), true);
+                                            }),
+                                        ),
+                                    ],
+                                );
+                            });
+                        },
+                    );
+                });
+            })
+            .build();
+
+        let entrypoint = module.components.into_iter().next().unwrap();
+        check(
+            entrypoint,
+            expect![[r#"
+                -- before --
+                Test() {
+                  let href = "/home" in {
+                    let element = BadgeElement::Link(href: href) in {
+                      let match_subject = element in {
+                        match match_subject {
+                          BadgeElement::Span => {
+                            write("<span>badge</span>")
+                          }
+                          BadgeElement::Link(href: h) => {
+                            write_escaped(h)
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let href = "/home" in {
+                    let element = BadgeElement::Link(href: href) in {
+                      let match_subject = element in {
+                        match match_subject {
+                          BadgeElement::Span => {
+                            write("<span>badge</span>")
+                          }
+                          BadgeElement::Link(href: h) => {
+                            write_escaped(h)
+                          }
+                        }
+                      }
+                    }
                   }
                 }
             "#]],

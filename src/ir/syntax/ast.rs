@@ -1094,12 +1094,16 @@ impl IrExpr {
                     inner.traverse(f);
                 }
             }
+            IrExpr::EnumLiteral { fields, .. } => {
+                for (_, value) in fields {
+                    value.traverse(f);
+                }
+            }
             IrExpr::Var { .. }
             | IrExpr::StringLiteral { .. }
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
-            | IrExpr::IntLiteral { .. }
-            | IrExpr::EnumLiteral { .. } => {}
+            | IrExpr::IntLiteral { .. } => {}
         }
     }
 
@@ -1176,12 +1180,16 @@ impl IrExpr {
                     inner.traverse_mut(f);
                 }
             }
+            IrExpr::EnumLiteral { fields, .. } => {
+                for (_, value) in fields {
+                    value.traverse_mut(f);
+                }
+            }
             IrExpr::Var { .. }
             | IrExpr::StringLiteral { .. }
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
-            | IrExpr::IntLiteral { .. }
-            | IrExpr::EnumLiteral { .. } => {}
+            | IrExpr::IntLiteral { .. } => {}
         }
     }
 }
