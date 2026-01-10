@@ -404,9 +404,7 @@ fn typecheck_module(
                         // Validate that Option[TrustedHTML] children must have a default
                         if param.var_name.as_str() == "children" {
                             if let Type::Option(inner) = &param_type {
-                                if **inner == Type::TrustedHTML
-                                    && param.default_value.is_none()
-                                {
+                                if **inner == Type::TrustedHTML && param.default_value.is_none() {
                                     errors.push(TypeError::OptionalChildrenRequiresDefault {
                                         range: param.var_name_range.clone(),
                                     });
@@ -794,9 +792,7 @@ fn typecheck_node(
                     // Only check for missing params that don't have defaults
                     for (param_name, _, has_default) in params {
                         if !has_default
-                            && !args
-                                .iter()
-                                .any(|a| a.name.as_str() == param_name.as_str())
+                            && !args.iter().any(|a| a.name.as_str() == param_name.as_str())
                         {
                             errors.push(TypeError::MissingRequiredParameter {
                                 param: param_name.clone(),
@@ -819,10 +815,9 @@ fn typecheck_node(
                             continue;
                         }
 
-                        let (_, param_type, _) = match all_params.and_then(|p| {
-                            p.iter()
-                                .find(|(name, _, _)| name.as_str() == arg_name)
-                        }) {
+                        let (_, param_type, _) = match all_params
+                            .and_then(|p| p.iter().find(|(name, _, _)| name.as_str() == arg_name))
+                        {
                             None => {
                                 errors.push(TypeError::UnexpectedArgument {
                                     arg: arg_name.to_string(),
@@ -1217,7 +1212,8 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
                                         .map(|((field_name, _), arg)| {
                                             (
                                                 field_name.clone(),
-                                                VarName::new(&arg.name).expect("invalid variable name"),
+                                                VarName::new(&arg.name)
+                                                    .expect("invalid variable name"),
                                             )
                                         })
                                         .collect();
@@ -1287,6 +1283,7 @@ mod tests {
     use crate::document::DocumentAnnotator;
     use crate::hop::symbols::module_name::ModuleName;
     use crate::hop::syntax::parser::parse;
+    use crate::hop::syntax::transform::whitespace_removal::remove_whitespace;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use simple_txtar::Archive;
@@ -1294,17 +1291,14 @@ mod tests {
     fn check(archive_str: &str, expected: Expect) {
         let archive = Archive::from(archive_str);
         let mut error_output = Vec::new();
-        let mut type_output = Vec::new();
+        let mut ast_output = Vec::new();
         let error_annotator = DocumentAnnotator::new()
             .with_label("error")
             .with_lines_before(1)
             .with_location();
 
-        let type_annotator = DocumentAnnotator::new()
-            .with_lines_before(1)
-            .with_location();
-
         let mut typechecker = TypeChecker::default();
+        let mut module_names = Vec::new();
 
         // Process all .hop files in the archive
         for file in archive.iter() {
@@ -1314,41 +1308,50 @@ mod tests {
             let source_code = file.content.trim();
             let mut parse_errors = ErrorCollector::new();
             let module_name = ModuleName::new(file.name.trim_end_matches(".hop")).unwrap();
+            module_names.push(module_name.clone());
             let ast = parse(module_name, source_code.to_string(), &mut parse_errors);
 
             if !parse_errors.is_empty() {
                 panic!("Got parse errors: {:#?}", parse_errors);
             }
 
+            let ast = remove_whitespace(ast);
             typechecker.typecheck(&[&ast]);
 
             let type_errors = typechecker.type_errors.get(&ast.name);
-            let type_annotations = typechecker.type_annotations.get(&ast.name);
 
             if type_errors.is_some_and(|err| !err.is_empty()) {
                 error_output.push(error_annotator.annotate(
                     Some(&file.name),
                     typechecker.type_errors.get(&ast.name).unwrap(),
                 ));
-            } else if type_annotations.is_some_and(|ann| !ann.is_empty()) {
-                let formatted_errors = type_annotator.annotate(
-                    Some(&file.name),
-                    typechecker.type_annotations.get(&ast.name).unwrap(),
-                );
-                type_output.push(formatted_errors);
             }
         }
 
         if !error_output.is_empty() {
             expected.assert_eq(error_output.join("\n").as_str());
         } else {
-            expected.assert_eq(type_output.join("\n").as_str());
+            for module_name in &module_names {
+                if let Some(typed_ast) = typechecker.typed_asts.get(module_name) {
+                    ast_output.push(format!(
+                        "-- {}.hop --\n{}",
+                        module_name,
+                        typed_ast.to_string()
+                    ));
+                }
+            }
+            expected.assert_eq(&ast_output.join("\n"));
         }
     }
 
     #[test]
     fn should_accept_empty_file() {
-        check("-- main.hop --", expect![[r#""#]]);
+        check(
+            "-- main.hop --",
+            expect![[r#"
+            -- main.hop --
+        "#]],
+        );
     }
 
     #[test]
@@ -1359,7 +1362,10 @@ mod tests {
                 <Main>
                 </Main>
             "#},
-            expect![""],
+            expect![[r#"
+                -- main.hop --
+                <Main></Main>
+            "#]],
         );
     }
 
@@ -1480,7 +1486,13 @@ mod tests {
                 <Main>
                 </Main>
             "#},
-            expect![""],
+            expect![[r#"
+                -- other.hop --
+                <Foo></Foo>
+
+                -- main.hop --
+                <Main></Main>
+            "#]],
         );
     }
 
@@ -1522,7 +1534,13 @@ mod tests {
                 <Foo>
                 </Foo>
             "#},
-            expect![""],
+            expect![[r#"
+                -- other.hop --
+                <Foo></Foo>
+
+                -- main.hop --
+                <Foo></Foo>
+            "#]],
         );
     }
 
@@ -1766,27 +1784,18 @@ mod tests {
                 </Foo>
             "#},
             expect![[r#"
-                a: Bool
-                  --> main.hop (line 1, col 8)
-                1 | <Main {a: Bool, b: String}>
-                  |        ^
+                -- main.hop --
+                <Main {a: Bool, b: String}>
+                  <if {a}>
+                    <div>
+                      {b}
+                    </div>
+                  </if>
+                </Main>
 
-                b: String
-                  --> main.hop (line 1, col 17)
-                1 | <Main {a: Bool, b: String}>
-                  |                 ^
-
-                b: String
-                  --> main.hop (line 3, col 11)
-                2 |   <if {a}>
-                3 |     <div>{b}</div>
-                  |           ^
-
-                a: Bool
-                  --> main.hop (line 2, col 8)
-                1 | <Main {a: Bool, b: String}>
-                2 |   <if {a}>
-                  |        ^
+                <Foo>
+                  <Main b={"foo"} a={true}/>
+                </Foo>
             "#]],
         );
     }
@@ -1924,16 +1933,12 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: String
-                  --> main.hop (line 1, col 8)
-                1 | <Main {params: String}>
-                  |        ^^^^^^
-
-                params: String
-                  --> main.hop (line 2, col 8)
-                1 | <Main {params: String}>
-                2 |     <div>{params}</div>
-                  |           ^^^^^^
+                -- main.hop --
+                <Main {params: String}>
+                  <div>
+                    {params}
+                  </div>
+                </Main>
             "#]],
         );
     }
@@ -1950,16 +1955,14 @@ mod tests {
                 </ToggleComp>
             "#},
             expect![[r#"
-                enabled: Bool
-                  --> main.hop (line 1, col 14)
-                1 | <ToggleComp {enabled: Bool}>
-                  |              ^^^^^^^
-
-                enabled: Bool
-                  --> main.hop (line 2, col 7)
-                1 | <ToggleComp {enabled: Bool}>
-                2 |     <if {enabled}>
-                  |          ^^^^^^^
+                -- main.hop --
+                <ToggleComp {enabled: Bool}>
+                  <if {enabled}>
+                    <div>
+                      Enabled
+                    </div>
+                  </if>
+                </ToggleComp>
             "#]],
         );
     }
@@ -1976,16 +1979,14 @@ mod tests {
                 </CounterComp>
             "#},
             expect![[r#"
-                count: Float
-                  --> main.hop (line 1, col 15)
-                1 | <CounterComp {count: Float}>
-                  |               ^^^^^
-
-                count: Float
-                  --> main.hop (line 2, col 7)
-                1 | <CounterComp {count: Float}>
-                2 |     <if {count == 0.0}>
-                  |          ^^^^^
+                -- main.hop --
+                <CounterComp {count: Float}>
+                  <if {(count == 0)}>
+                    <div>
+                      Zero
+                    </div>
+                  </if>
+                </CounterComp>
             "#]],
         );
     }
@@ -2013,35 +2014,22 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: main::Params
-                  --> main.hop (line 9, col 8)
-                 8 | 
-                 9 | <Main {params: Params}>
-                   |        ^^^^^^
+                -- main.hop --
+                record Item {
+                  active: Bool,
+                  name: Bool,
+                }
 
-                params: main::Params
-                  --> main.hop (line 10, col 16)
-                 9 | <Main {params: Params}>
-                10 |     <for {item in params.items}>
-                   |                   ^^^^^^
+                record Params {
+                  items: Array[main::Item],
+                }
 
-                item: main::Item
-                  --> main.hop (line 10, col 8)
-                 9 | <Main {params: Params}>
-                10 |     <for {item in params.items}>
-                   |           ^^^^
-
-                item: main::Item
-                  --> main.hop (line 11, col 8)
-                10 |     <for {item in params.items}>
-                11 |         <if {item.active}>
-                   |              ^^^^
-
-                item: main::Item
-                  --> main.hop (line 13, col 8)
-                12 |         </if>
-                13 |         <if {item.name}>
-                   |              ^^^^
+                <Main {params: main::Params}>
+                  <for {item in params.items}>
+                    <if {item.active}></if>
+                    <if {item.name}></if>
+                  </for>
+                </Main>
             "#]],
         );
     }
@@ -2058,28 +2046,14 @@ mod tests {
                 </ListComp>
             "#},
             expect![[r#"
-                items: Array[String]
-                  --> main.hop (line 1, col 12)
-                1 | <ListComp {items: Array[String]}>
-                  |            ^^^^^
-
-                items: Array[String]
-                  --> main.hop (line 2, col 16)
-                1 | <ListComp {items: Array[String]}>
-                2 |     <for {item in items}>
-                  |                   ^^^^^
-
-                item: String
-                  --> main.hop (line 2, col 8)
-                1 | <ListComp {items: Array[String]}>
-                2 |     <for {item in items}>
-                  |           ^^^^
-
-                item: String
-                  --> main.hop (line 3, col 9)
-                2 |     <for {item in items}>
-                3 |         <div>{item}</div>
-                  |               ^^^^
+                -- main.hop --
+                <ListComp {items: Array[String]}>
+                  <for {item in items}>
+                    <div>
+                      {item}
+                    </div>
+                  </for>
+                </ListComp>
             "#]],
         );
     }
@@ -2101,23 +2075,19 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: main::Params
-                  --> main.hop (line 6, col 8)
-                 5 | 
-                 6 | <Main {params: Params}>
-                   |        ^^^^^^
+                -- main.hop --
+                record Params {
+                  x: String,
+                  y: String,
+                }
 
-                params: main::Params
-                  --> main.hop (line 7, col 8)
-                 6 | <Main {params: Params}>
-                 7 |   <if {params.x == params.y}>
-                   |        ^^^^^^
-
-                params: main::Params
-                  --> main.hop (line 7, col 20)
-                 6 | <Main {params: Params}>
-                 7 |   <if {params.x == params.y}>
-                   |                    ^^^^^^
+                <Main {params: main::Params}>
+                  <if {(params.x == params.y)}>
+                    <div>
+                      Values are equal
+                    </div>
+                  </if>
+                </Main>
             "#]],
         );
     }
@@ -2144,47 +2114,20 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: Array[main::Item]
-                  --> main.hop (line 6, col 8)
-                 5 | 
-                 6 | <Main {params: Array[Item]}>
-                   |        ^^^^^^
+                -- main.hop --
+                record Item {
+                  a: Bool,
+                  b: Bool,
+                }
 
-                params: Array[main::Item]
-                  --> main.hop (line 7, col 13)
-                 6 | <Main {params: Array[Item]}>
-                 7 |     <for {j in params}>
-                   |                ^^^^^^
-
-                j: main::Item
-                  --> main.hop (line 7, col 8)
-                 6 | <Main {params: Array[Item]}>
-                 7 |     <for {j in params}>
-                   |           ^
-
-                j: main::Item
-                  --> main.hop (line 8, col 8)
-                 7 |     <for {j in params}>
-                 8 |         <if {j.a}>
-                   |              ^
-
-                params: Array[main::Item]
-                  --> main.hop (line 11, col 13)
-                10 |     </for>
-                11 |     <for {j in params}>
-                   |                ^^^^^^
-
-                j: main::Item
-                  --> main.hop (line 11, col 8)
-                10 |     </for>
-                11 |     <for {j in params}>
-                   |           ^
-
-                j: main::Item
-                  --> main.hop (line 12, col 8)
-                11 |     <for {j in params}>
-                12 |         <if {j.b}>
-                   |              ^
+                <Main {params: Array[main::Item]}>
+                  <for {j in params}>
+                    <if {j.a}></if>
+                  </for>
+                  <for {j in params}>
+                    <if {j.b}></if>
+                  </for>
+                </Main>
             "#]],
         );
     }
@@ -2202,28 +2145,12 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                i: Array[Bool]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {i: Array[Bool]}>
-                  |        ^
-
-                i: Array[Bool]
-                  --> main.hop (line 2, col 13)
-                1 | <Main {i: Array[Bool]}>
-                2 |     <for {j in i}>
-                  |                ^
-
-                j: Bool
-                  --> main.hop (line 2, col 8)
-                1 | <Main {i: Array[Bool]}>
-                2 |     <for {j in i}>
-                  |           ^
-
-                j: Bool
-                  --> main.hop (line 3, col 8)
-                2 |     <for {j in i}>
-                3 |         <if {j}>
-                  |              ^
+                -- main.hop --
+                <Main {i: Array[Bool]}>
+                  <for {j in i}>
+                    <if {j}></if>
+                  </for>
+                </Main>
             "#]],
         );
     }
@@ -2244,40 +2171,16 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                i: Array[Array[Bool]]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {i: Array[Array[Bool]]}>
-                  |        ^
-
-                i: Array[Array[Bool]]
-                  --> main.hop (line 2, col 13)
-                1 | <Main {i: Array[Array[Bool]]}>
-                2 |     <for {j in i}>
-                  |                ^
-
-                j: Array[Bool]
-                  --> main.hop (line 2, col 8)
-                1 | <Main {i: Array[Array[Bool]]}>
-                2 |     <for {j in i}>
-                  |           ^
-
-                j: Array[Bool]
-                  --> main.hop (line 3, col 14)
-                2 |     <for {j in i}>
-                3 |         <for {k in j}>
-                  |                    ^
-
-                k: Bool
-                  --> main.hop (line 3, col 9)
-                2 |     <for {j in i}>
-                3 |         <for {k in j}>
-                  |               ^
-
-                k: Bool
-                  --> main.hop (line 4, col 9)
-                3 |         <for {k in j}>
-                4 |             <if {k}>
-                  |                  ^
+                -- main.hop --
+                <Main {i: Array[Array[Bool]]}>
+                  <for {j in i}>
+                    <for {k in j}>
+                      <if {k}>
+                        ok!
+                      </if>
+                    </for>
+                  </for>
+                </Main>
             "#]],
         );
     }
@@ -2328,59 +2231,43 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                config: a::bar::Config
-                  --> a/bar.hop (line 6, col 14)
-                 5 | 
-                 6 | <WidgetComp {config: Config}>
-                   |              ^^^^^^
+                -- a::bar.hop --
+                record Config {
+                  enabled: Bool,
+                  title: String,
+                }
 
-                config: a::bar::Config
-                  --> a/bar.hop (line 8, col 11)
-                 7 |   <if {config.enabled}>
-                 8 |     <div>{config.title}</div>
-                   |           ^^^^^^
+                <WidgetComp {config: a::bar::Config}>
+                  <if {config.enabled}>
+                    <div>
+                      {config.title}
+                    </div>
+                  </if>
+                </WidgetComp>
 
-                config: a::bar::Config
-                  --> a/bar.hop (line 7, col 8)
-                 6 | <WidgetComp {config: Config}>
-                 7 |   <if {config.enabled}>
-                   |        ^^^^^^
+                -- foo.hop --
+                record Data {
+                  items: Array[a::bar::Config],
+                }
 
-                data: foo::Data
-                  --> foo.hop (line 8, col 13)
-                 7 | 
-                 8 | <PanelComp {data: Data}>
-                   |             ^^^^
+                <PanelComp {data: foo::Data}>
+                  <for {item in data.items}>
+                    <WidgetComp config={item}/>
+                  </for>
+                </PanelComp>
 
-                data: foo::Data
-                  --> foo.hop (line 9, col 17)
-                 8 | <PanelComp {data: Data}>
-                 9 |   <for {item in data.items}>
-                   |                 ^^^^
+                -- main.hop --
+                record Dashboard {
+                  items: Array[foo::Data],
+                }
 
-                item: a::bar::Config
-                  --> foo.hop (line 9, col 9)
-                 8 | <PanelComp {data: Data}>
-                 9 |   <for {item in data.items}>
-                   |         ^^^^
+                record Settings {
+                  dashboard: foo::Data,
+                }
 
-                item: a::bar::Config
-                  --> foo.hop (line 10, col 25)
-                 9 |   <for {item in data.items}>
-                10 |     <WidgetComp config={item}/>
-                   |                         ^^^^
-
-                settings: main::Settings
-                  --> main.hop (line 11, col 8)
-                10 | 
-                11 | <Main {settings: Settings}>
-                   |        ^^^^^^^^
-
-                settings: main::Settings
-                  --> main.hop (line 12, col 20)
-                11 | <Main {settings: Settings}>
-                12 |   <PanelComp data={settings.dashboard}/>
-                   |                    ^^^^^^^^
+                <Main {settings: main::Settings}>
+                  <PanelComp data={settings.dashboard}/>
+                </Main>
             "#]],
         );
     }
@@ -2482,23 +2369,17 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                user: main::User
-                  --> main.hop (line 2, col 8)
-                1 | record User {url: String, theme: String}
-                2 | <Main {user: User}>
-                  |        ^^^^
+                -- main.hop --
+                record User {
+                  url: String,
+                  theme: String,
+                }
 
-                user: main::User
-                  --> main.hop (line 3, col 12)
-                2 | <Main {user: User}>
-                3 |   <a href={user.url} class={user.theme}>Link</a>
-                  |            ^^^^
-
-                user: main::User
-                  --> main.hop (line 3, col 29)
-                2 | <Main {user: User}>
-                3 |   <a href={user.url} class={user.theme}>Link</a>
-                  |                             ^^^^
+                <Main {user: main::User}>
+                  <a href={user.url} class={user.theme}>
+                    Link
+                  </a>
+                </Main>
             "#]],
         );
     }
@@ -2521,16 +2402,18 @@ mod tests {
                 </Bar>
             "#},
             expect![[r#"
-                children: TrustedHTML
-                  --> main.hop (line 1, col 8)
-                 1 | <Main {children: TrustedHTML}>
-                   |        ^^^^^^^^
+                -- main.hop --
+                <Main {children: TrustedHTML}>
+                  <strong>
+                    {children}
+                  </strong>
+                </Main>
 
-                children: TrustedHTML
-                  --> main.hop (line 3, col 10)
-                 2 |     <strong>
-                 3 |         {children}
-                   |          ^^^^^^^^
+                <Bar>
+                  <Main>
+                    Here's the content for the children
+                  </Main>
+                </Bar>
             "#]],
         );
     }
@@ -2572,17 +2455,18 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                user: main::User
-                  --> main.hop (line 2, col 8)
-                1 | record User {is_active: Bool}
-                2 | <Main {user: User}>
-                  |        ^^^^
+                -- main.hop --
+                record User {
+                  is_active: Bool,
+                }
 
-                user: main::User
-                  --> main.hop (line 3, col 8)
-                2 | <Main {user: User}>
-                3 |   <if {user.is_active}>
-                  |        ^^^^
+                <Main {user: main::User}>
+                  <if {user.is_active}>
+                    <div>
+                      User is active
+                    </div>
+                  </if>
+                </Main>
             "#]],
         );
     }
@@ -2742,28 +2626,18 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                items: Array[String]
-                  --> main.hop (line 1, col 8)
-                1 | <List {items: Array[String]}>
-                  |        ^^^^^
+                -- main.hop --
+                <List {items: Array[String]}>
+                  <for {item in items}>
+                    <li>
+                      {item}
+                    </li>
+                  </for>
+                </List>
 
-                items: Array[String]
-                  --> main.hop (line 2, col 19)
-                1 | <List {items: Array[String]}>
-                2 |     <for {item in items}>
-                  |                   ^^^^^
-
-                item: String
-                  --> main.hop (line 2, col 11)
-                1 | <List {items: Array[String]}>
-                2 |     <for {item in items}>
-                  |           ^^^^
-
-                item: String
-                  --> main.hop (line 3, col 14)
-                2 |     <for {item in items}>
-                3 |         <li>{item}</li>
-                  |              ^^^^
+                <Main>
+                  <List items={[]}/>
+                </Main>
             "#]],
         );
     }
@@ -2882,17 +2756,16 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                user: main::User
-                  --> main.hop (line 2, col 8)
-                1 | record User {name: String}
-                2 | <Main {user: User}>
-                  |        ^^^^
+                -- main.hop --
+                record User {
+                  name: String,
+                }
 
-                user: main::User
-                  --> main.hop (line 3, col 11)
-                2 | <Main {user: User}>
-                3 |     <div>{user.name}</div>
-                  |           ^^^^
+                <Main {user: main::User}>
+                  <div>
+                    {user.name}
+                  </div>
+                </Main>
             "#]],
         );
     }
@@ -2909,17 +2782,21 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                user: main::User
-                  --> main.hop (line 3, col 8)
-                2 | record User {name: String, address: Address}
-                3 | <Main {user: User}>
-                  |        ^^^^
+                -- main.hop --
+                record Address {
+                  city: String,
+                }
 
-                user: main::User
-                  --> main.hop (line 4, col 11)
-                3 | <Main {user: User}>
-                4 |     <div>{user.address.city}</div>
-                  |           ^^^^
+                record User {
+                  name: String,
+                  address: main::Address,
+                }
+
+                <Main {user: main::User}>
+                  <div>
+                    {user.address.city}
+                  </div>
+                </Main>
             "#]],
         );
     }
@@ -2951,29 +2828,56 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                params: main::Params
-                  --> main.hop (line 10, col 8)
-                 9 | record Params {app: App}
-                10 | <Main {params: Params}>
-                   |        ^^^^^^
+                -- main.hop --
+                record Theme {
+                  dark: Bool,
+                }
 
-                params: main::Params
-                  --> main.hop (line 11, col 7)
-                10 | <Main {params: Params}>
-                11 |     <if {params.app.ui.theme.dark}>
-                   |          ^^^^^^
+                record UI {
+                  theme: main::Theme,
+                }
 
-                params: main::Params
-                  --> main.hop (line 14, col 7)
-                13 |     </if>
-                14 |     <if {params.app.api.endpoints.users.enabled}>
-                   |          ^^^^^^
+                record Users {
+                  enabled: Bool,
+                }
 
-                params: main::Params
-                  --> main.hop (line 17, col 7)
-                16 |     </if>
-                17 |     <if {params.app.database.connection.ssl}>
-                   |          ^^^^^^
+                record Endpoints {
+                  users: main::Users,
+                }
+
+                record API {
+                  endpoints: main::Endpoints,
+                }
+
+                record Connection {
+                  ssl: Bool,
+                }
+
+                record Database {
+                  connection: main::Connection,
+                }
+
+                record App {
+                  ui: main::UI,
+                  api: main::API,
+                  database: main::Database,
+                }
+
+                record Params {
+                  app: main::App,
+                }
+
+                <Main {params: main::Params}>
+                  <if {params.app.ui.theme.dark}>
+                    ok!
+                  </if>
+                  <if {params.app.api.endpoints.users.enabled}>
+                    ok!
+                  </if>
+                  <if {params.app.database.connection.ssl}>
+                    ok!
+                  </if>
+                </Main>
             "#]],
         );
     }
@@ -3057,17 +2961,29 @@ mod tests {
                 </Baz>
             "#},
             expect![[r#"
-                user: bar::User
-                  --> bar.hop (line 8, col 7)
-                 7 | 
-                 8 | <Bar {user: User}>
-                   |       ^^^^
+                -- foo.hop --
+                record Address {
+                  city: String,
+                }
 
-                user: bar::User
-                  --> bar.hop (line 9, col 11)
-                 8 | <Bar {user: User}>
-                 9 |     <div>{user.address.city}</div>
-                   |           ^^^^
+                <Foo></Foo>
+
+                -- bar.hop --
+                record User {
+                  name: String,
+                  address: foo::Address,
+                }
+
+                <Bar {user: bar::User}>
+                  <div>
+                    {user.address.city}
+                  </div>
+                </Bar>
+
+                -- baz.hop --
+                <Baz>
+                  <Bar user={User(name: "Alice", address: Address(city: "NYC"))}/>
+                </Baz>
             "#]],
         );
     }
@@ -3100,17 +3016,27 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                color: colors::Color
-                  --> colors.hop (line 7, col 16)
-                 6 | 
-                 7 | <ColorDisplay {color: Color}>
-                   |                ^^^^^
+                -- colors.hop --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
 
-                color: colors::Color
-                  --> colors.hop (line 8, col 17)
-                 7 | <ColorDisplay {color: Color}>
-                 8 |     <div>{match color {
-                   |                 ^^^^^
+                <ColorDisplay {color: colors::Color}>
+                  <div>
+                    {match color {
+                      Color::Red => "red",
+                      Color::Green => "green",
+                      Color::Blue => "blue",
+                    }}
+                  </div>
+                </ColorDisplay>
+
+                -- main.hop --
+                <Main>
+                  <ColorDisplay color={Color::Red}/>
+                </Main>
             "#]],
         );
     }
@@ -3156,29 +3082,16 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                a: main::Color
-                  --> main.hop (line 3, col 8)
-                2 | 
-                3 | <Main {a: Color, b: Color}>
-                  |        ^
+                -- main.hop --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
 
-                b: main::Color
-                  --> main.hop (line 3, col 18)
-                2 | 
-                3 | <Main {a: Color, b: Color}>
-                  |                  ^
-
-                a: main::Color
-                  --> main.hop (line 4, col 10)
-                3 | <Main {a: Color, b: Color}>
-                4 |     <if {a == b}>
-                  |          ^
-
-                b: main::Color
-                  --> main.hop (line 4, col 15)
-                3 | <Main {a: Color, b: Color}>
-                4 |     <if {a == b}>
-                  |               ^
+                <Main {a: main::Color, b: main::Color}>
+                  <if {(a == b)}></if>
+                </Main>
             "#]],
         );
     }
@@ -3203,17 +3116,22 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                color: main::Color
-                  --> main.hop (line 7, col 8)
-                 6 | 
-                 7 | <Main {color: Color}>
-                   |        ^^^^^
+                -- main.hop --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
 
-                color: main::Color
-                  --> main.hop (line 8, col 17)
-                 7 | <Main {color: Color}>
-                 8 |     <div>{match color {
-                   |                 ^^^^^
+                <Main {color: main::Color}>
+                  <div>
+                    {match color {
+                      Color::Red => "red",
+                      Color::Green => "green",
+                      Color::Blue => "blue",
+                    }}
+                  </div>
+                </Main>
             "#]],
         );
     }
@@ -3352,23 +3270,24 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                color: main::Color
-                  --> main.hop (line 7, col 8)
-                 6 | 
-                 7 | <Main {color: Color}>
-                   |        ^^^^^
+                -- main.hop --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
 
-                color: main::Color
-                  --> main.hop (line 9, col 21)
-                 8 |     <if {color == Color::Red}>
-                 9 |         <div>{match color {
-                   |                     ^^^^^
-
-                color: main::Color
-                  --> main.hop (line 8, col 10)
-                 7 | <Main {color: Color}>
-                 8 |     <if {color == Color::Red}>
-                   |          ^^^^^
+                <Main {color: main::Color}>
+                  <if {(color == Color::Red)}>
+                    <div>
+                      {match color {
+                        Color::Red => "red",
+                        Color::Green => "green",
+                        Color::Blue => "blue",
+                      }}
+                    </div>
+                  </if>
+                </Main>
             "#]],
         );
     }
@@ -3396,17 +3315,25 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                user: main::User
-                  --> main.hop (line 11, col 8)
-                10 | 
-                11 | <Main {user: User}>
-                   |        ^^^^
+                -- main.hop --
+                record User {
+                  name: String,
+                  status: main::Status,
+                }
 
-                user: main::User
-                  --> main.hop (line 12, col 17)
-                11 | <Main {user: User}>
-                12 |     <div>{match user.status {
-                   |                 ^^^^
+                enum Status {
+                  Active,
+                  Inactive,
+                }
+
+                <Main {user: main::User}>
+                  <div>
+                    {let v0 = user.status in match v0 {
+                      Status::Active => "active",
+                      Status::Inactive => "inactive",
+                    }}
+                  </div>
+                </Main>
             "#]],
         );
     }
@@ -3434,17 +3361,25 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                person: main::Person
-                  --> main.hop (line 12, col 8)
-                11 | 
-                12 | <Main {person: Person}>
-                   |        ^^^^^^
+                -- main.hop --
+                record Person {
+                  name: String,
+                  role: main::Role,
+                }
 
-                person: main::Person
-                  --> main.hop (line 13, col 10)
-                12 | <Main {person: Person}>
-                13 |     <if {person.role == Role::Admin}>
-                   |          ^^^^^^
+                enum Role {
+                  Admin,
+                  User,
+                  Guest,
+                }
+
+                <Main {person: main::Person}>
+                  <if {(person.role == Role::Admin)}>
+                    <div>
+                      Welcome, admin!
+                    </div>
+                  </if>
+                </Main>
             "#]],
         );
     }
@@ -3462,16 +3397,16 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                name: String
-                  --> main.hop (line 1, col 12)
-                1 | <Greeting {name: String = "World"}>
-                  |            ^^^^
+                -- main.hop --
+                <Greeting {name: String = "World"}>
+                  Hello,
+                  {name}
+                  !
+                </Greeting>
 
-                name: String
-                  --> main.hop (line 2, col 11)
-                1 | <Greeting {name: String = "World"}>
-                2 |   Hello, {name}!
-                  |           ^^^^
+                <Main>
+                  <Greeting/>
+                </Main>
             "#]],
         );
     }
@@ -3489,16 +3424,16 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                name: String
-                  --> main.hop (line 1, col 12)
-                1 | <Greeting {name: String = "World"}>
-                  |            ^^^^
+                -- main.hop --
+                <Greeting {name: String = "World"}>
+                  Hello,
+                  {name}
+                  !
+                </Greeting>
 
-                name: String
-                  --> main.hop (line 2, col 11)
-                1 | <Greeting {name: String = "World"}>
-                2 |   Hello, {name}!
-                  |           ^^^^
+                <Main>
+                  <Greeting name={"Claude"}/>
+                </Main>
             "#]],
         );
     }
@@ -3516,27 +3451,17 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                name: String
-                  --> main.hop (line 1, col 12)
-                1 | <UserCard {name: String, role: String = "user"}>
-                  |            ^^^^
+                -- main.hop --
+                <UserCard {name: String, role: String = "user"}>
+                  {name}
+                  (
+                  {role}
+                  )
+                </UserCard>
 
-                role: String
-                  --> main.hop (line 1, col 26)
-                1 | <UserCard {name: String, role: String = "user"}>
-                  |                          ^^^^
-
-                name: String
-                  --> main.hop (line 2, col 4)
-                1 | <UserCard {name: String, role: String = "user"}>
-                2 |   {name} ({role})
-                  |    ^^^^
-
-                role: String
-                  --> main.hop (line 2, col 12)
-                1 | <UserCard {name: String, role: String = "user"}>
-                2 |   {name} ({role})
-                  |            ^^^^
+                <Main>
+                  <UserCard name={"Alice"}/>
+                </Main>
             "#]],
         );
     }
@@ -3624,28 +3549,16 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                items: Array[String]
-                  --> main.hop (line 1, col 12)
-                1 | <ItemList {items: Array[String] = []}>
-                  |            ^^^^^
+                -- main.hop --
+                <ItemList {items: Array[String] = []}>
+                  <for {item in items}>
+                    {item}
+                  </for>
+                </ItemList>
 
-                items: Array[String]
-                  --> main.hop (line 2, col 17)
-                1 | <ItemList {items: Array[String] = []}>
-                2 |   <for {item in items}>
-                  |                 ^^^^^
-
-                item: String
-                  --> main.hop (line 2, col 9)
-                1 | <ItemList {items: Array[String] = []}>
-                2 |   <for {item in items}>
-                  |         ^^^^
-
-                item: String
-                  --> main.hop (line 3, col 6)
-                2 |   <for {item in items}>
-                3 |     {item}
-                  |      ^^^^
+                <Main>
+                  <ItemList/>
+                </Main>
             "#]],
         );
     }
@@ -3664,17 +3577,19 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                config: main::Config
-                  --> main.hop (line 2, col 12)
-                1 | record Config { name: String, enabled: Bool }
-                2 | <Settings {config: Config = Config(name: "default", enabled: true)}>
-                  |            ^^^^^^
+                -- main.hop --
+                record Config {
+                  name: String,
+                  enabled: Bool,
+                }
 
-                config: main::Config
-                  --> main.hop (line 3, col 4)
-                2 | <Settings {config: Config = Config(name: "default", enabled: true)}>
-                3 |   {config.name}
-                  |    ^^^^^^
+                <Settings {config: main::Config = Config(name: "default", enabled: true)}>
+                  {config.name}
+                </Settings>
+
+                <Main>
+                  <Settings/>
+                </Main>
             "#]],
         );
     }
@@ -3714,16 +3629,14 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                name: Option[String]
-                  --> main.hop (line 1, col 12)
-                1 | <Greeting {name: Option[String]}>
-                  |            ^^^^
+                -- main.hop --
+                <Greeting {name: Option[String]}>
+                  <if {(name == None)}></if>
+                </Greeting>
 
-                name: Option[String]
-                  --> main.hop (line 2, col 8)
-                1 | <Greeting {name: Option[String]}>
-                2 |   <if {name == None}></if>
-                  |        ^^^^
+                <Main>
+                  <Greeting name={Some("World")}/>
+                </Main>
             "#]],
         );
     }
@@ -3741,16 +3654,14 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                name: Option[String]
-                  --> main.hop (line 1, col 12)
-                1 | <Greeting {name: Option[String]}>
-                  |            ^^^^
+                -- main.hop --
+                <Greeting {name: Option[String]}>
+                  <if {(name == None)}></if>
+                </Greeting>
 
-                name: Option[String]
-                  --> main.hop (line 2, col 8)
-                1 | <Greeting {name: Option[String]}>
-                2 |   <if {name == None}></if>
-                  |        ^^^^
+                <Main>
+                  <Greeting name={None}/>
+                </Main>
             "#]],
         );
     }
@@ -3768,16 +3679,14 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                name: Option[String]
-                  --> main.hop (line 1, col 12)
-                1 | <Greeting {name: Option[String] = None}>
-                  |            ^^^^
+                -- main.hop --
+                <Greeting {name: Option[String] = None}>
+                  <if {(name == None)}></if>
+                </Greeting>
 
-                name: Option[String]
-                  --> main.hop (line 2, col 8)
-                1 | <Greeting {name: Option[String] = None}>
-                2 |   <if {name == None}></if>
-                  |        ^^^^
+                <Main>
+                  <Greeting/>
+                </Main>
             "#]],
         );
     }
@@ -3795,16 +3704,14 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                name: Option[String]
-                  --> main.hop (line 1, col 12)
-                1 | <Greeting {name: Option[String] = Some("World")}>
-                  |            ^^^^
+                -- main.hop --
+                <Greeting {name: Option[String] = Some("World")}>
+                  <if {(name == None)}></if>
+                </Greeting>
 
-                name: Option[String]
-                  --> main.hop (line 2, col 8)
-                1 | <Greeting {name: Option[String] = Some("World")}>
-                2 |   <if {name == None}></if>
-                  |        ^^^^
+                <Main>
+                  <Greeting/>
+                </Main>
             "#]],
         );
     }
@@ -3848,28 +3755,22 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                x: Option[String]
-                  --> main.hop (line 1, col 8)
-                 1 | <Main {x: Option[String]}>
-                   |        ^
-
-                x: Option[String]
-                  --> main.hop (line 2, col 13)
-                 1 | <Main {x: Option[String]}>
-                 2 |     <match {x}>
-                   |             ^
-
-                y: String
-                  --> main.hop (line 3, col 21)
-                 2 |     <match {x}>
-                 3 |         <case {Some(y)}>
-                   |                     ^
-
-                y: String
-                  --> main.hop (line 4, col 20)
-                 3 |         <case {Some(y)}>
-                 4 |             found {y}
-                   |                    ^
+                -- main.hop --
+                <Main {x: Option[String]}>
+                  <let {match_subject = x}>
+                    <match {match_subject}>
+                      <case {Some(v0)}>
+                        <let {y = v0}>
+                          found
+                          {y}
+                        </let>
+                      </case>
+                      <case {None}>
+                        nothing
+                      </case>
+                    </match>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -3889,17 +3790,28 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                c: main::Color
-                  --> main.hop (line 2, col 8)
-                1 | enum Color { Red, Green, Blue }
-                2 | <Main {c: Color}>
-                  |        ^
+                -- main.hop --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
 
-                c: main::Color
-                  --> main.hop (line 3, col 13)
-                2 | <Main {c: Color}>
-                3 |     <match {c}>
-                  |             ^
+                <Main {c: main::Color}>
+                  <let {match_subject = c}>
+                    <match {match_subject}>
+                      <case {Color::Red}>
+                        red
+                      </case>
+                      <case {Color::Green}>
+                        green
+                      </case>
+                      <case {Color::Blue}>
+                        blue
+                      </case>
+                    </match>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -3917,16 +3829,19 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                flag: Bool
-                  --> main.hop (line 1, col 8)
-                1 | <Main {flag: Bool}>
-                  |        ^^^^
-
-                flag: Bool
-                  --> main.hop (line 2, col 13)
-                1 | <Main {flag: Bool}>
-                2 |     <match {flag}>
-                  |             ^^^^
+                -- main.hop --
+                <Main {flag: Bool}>
+                  <let {match_subject = flag}>
+                    <match {match_subject}>
+                      <case {true}>
+                        yes
+                      </case>
+                      <case {false}>
+                        no
+                      </case>
+                    </match>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -3969,28 +3884,21 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                x: Option[String]
-                  --> main.hop (line 1, col 8)
-                 1 | <Main {x: Option[String]}>
-                   |        ^
-
-                x: Option[String]
-                  --> main.hop (line 2, col 13)
-                 1 | <Main {x: Option[String]}>
-                 2 |     <match {x}>
-                   |             ^
-
-                name: String
-                  --> main.hop (line 3, col 21)
-                 2 |     <match {x}>
-                 3 |         <case {Some(name)}>
-                   |                     ^^^^
-
-                name: String
-                  --> main.hop (line 4, col 25)
-                 3 |         <case {Some(name)}>
-                 4 |             <div class={name}></div>
-                   |                         ^^^^
+                -- main.hop --
+                <Main {x: Option[String]}>
+                  <let {match_subject = x}>
+                    <match {match_subject}>
+                      <case {Some(v0)}>
+                        <let {name = v0}>
+                          <div class={name}></div>
+                        </let>
+                      </case>
+                      <case {None}>
+                        nothing
+                      </case>
+                    </match>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -4194,40 +4102,32 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                x: Option[Option[String]]
-                  --> main.hop (line 1, col 8)
-                 1 | <Main {x: Option[Option[String]]}>
-                   |        ^
-
-                x: Option[Option[String]]
-                  --> main.hop (line 2, col 13)
-                 1 | <Main {x: Option[Option[String]]}>
-                 2 |     <match {x}>
-                   |             ^
-
-                inner: Option[String]
-                  --> main.hop (line 3, col 21)
-                 2 |     <match {x}>
-                 3 |         <case {Some(inner)}>
-                   |                     ^^^^^
-
-                inner: Option[String]
-                  --> main.hop (line 4, col 21)
-                 3 |         <case {Some(inner)}>
-                 4 |             <match {inner}>
-                   |                     ^^^^^
-
-                val: String
-                  --> main.hop (line 5, col 29)
-                 4 |             <match {inner}>
-                 5 |                 <case {Some(val)}>{val}</case>
-                   |                             ^^^
-
-                val: String
-                  --> main.hop (line 5, col 36)
-                 4 |             <match {inner}>
-                 5 |                 <case {Some(val)}>{val}</case>
-                   |                                    ^^^
+                -- main.hop --
+                <Main {x: Option[Option[String]]}>
+                  <let {match_subject = x}>
+                    <match {match_subject}>
+                      <case {Some(v0)}>
+                        <let {inner = v0}>
+                          <let {match_subject = inner}>
+                            <match {match_subject}>
+                              <case {Some(v0)}>
+                                <let {val = v0}>
+                                  {val}
+                                </let>
+                              </case>
+                              <case {None}>
+                                inner none
+                              </case>
+                            </match>
+                          </let>
+                        </let>
+                      </case>
+                      <case {None}>
+                        outer none
+                      </case>
+                    </match>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -4247,40 +4147,23 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                items: Array[Option[String]]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {items: Array[Option[String]]}>
-                  |        ^^^^^
-
-                items: Array[Option[String]]
-                  --> main.hop (line 2, col 19)
-                1 | <Main {items: Array[Option[String]]}>
-                2 |     <for {item in items}>
-                  |                   ^^^^^
-
-                item: Option[String]
-                  --> main.hop (line 2, col 11)
-                1 | <Main {items: Array[Option[String]]}>
-                2 |     <for {item in items}>
-                  |           ^^^^
-
-                item: Option[String]
-                  --> main.hop (line 3, col 17)
-                2 |     <for {item in items}>
-                3 |         <match {item}>
-                  |                 ^^^^
-
-                val: String
-                  --> main.hop (line 4, col 25)
-                3 |         <match {item}>
-                4 |             <case {Some(val)}>{val}</case>
-                  |                         ^^^
-
-                val: String
-                  --> main.hop (line 4, col 32)
-                3 |         <match {item}>
-                4 |             <case {Some(val)}>{val}</case>
-                  |                                ^^^
+                -- main.hop --
+                <Main {items: Array[Option[String]]}>
+                  <for {item in items}>
+                    <let {match_subject = item}>
+                      <match {match_subject}>
+                        <case {Some(v0)}>
+                          <let {val = v0}>
+                            {val}
+                          </let>
+                        </case>
+                        <case {None}>
+                          -
+                        </case>
+                      </match>
+                    </let>
+                  </for>
+                </Main>
             "#]],
         );
     }
@@ -4302,16 +4185,19 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                x: Option[String]
-                  --> main.hop (line 1, col 8)
-                 1 | <Main {x: Option[String]}>
-                   |        ^
-
-                x: Option[String]
-                  --> main.hop (line 2, col 13)
-                 1 | <Main {x: Option[String]}>
-                 2 |     <match {x}>
-                   |             ^
+                -- main.hop --
+                <Main {x: Option[String]}>
+                  <let {match_subject = x}>
+                    <match {match_subject}>
+                      <case {Some(v0)}>
+                        found something
+                      </case>
+                      <case {None}>
+                        nothing
+                      </case>
+                    </match>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -4334,51 +4220,34 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                r1: Option[String]
-                  --> main.hop (line 1, col 8)
-                 1 | <Main {r1: Option[String], r2: Option[Bool]}>
-                   |        ^^
-
-                r2: Option[Bool]
-                  --> main.hop (line 1, col 28)
-                 1 | <Main {r1: Option[String], r2: Option[Bool]}>
-                   |                            ^^
-
-                r1: Option[String]
-                  --> main.hop (line 2, col 13)
-                 1 | <Main {r1: Option[String], r2: Option[Bool]}>
-                 2 |     <match {r1}>
-                   |             ^^
-
-                val: String
-                  --> main.hop (line 3, col 21)
-                 2 |     <match {r1}>
-                 3 |         <case {Some(val)}>{val}</case>
-                   |                     ^^^
-
-                val: String
-                  --> main.hop (line 3, col 28)
-                 2 |     <match {r1}>
-                 3 |         <case {Some(val)}>{val}</case>
-                   |                            ^^^
-
-                r2: Option[Bool]
-                  --> main.hop (line 5, col 21)
-                 4 |         <case {None}>
-                 5 |             <match {r2}>
-                   |                     ^^
-
-                val: Bool
-                  --> main.hop (line 6, col 29)
-                 5 |             <match {r2}>
-                 6 |                 <case {Some(val)}><if {val}>yes</if></case>
-                   |                             ^^^
-
-                val: Bool
-                  --> main.hop (line 6, col 40)
-                 5 |             <match {r2}>
-                 6 |                 <case {Some(val)}><if {val}>yes</if></case>
-                   |                                        ^^^
+                -- main.hop --
+                <Main {r1: Option[String], r2: Option[Bool]}>
+                  <let {match_subject = r1}>
+                    <match {match_subject}>
+                      <case {Some(v0)}>
+                        <let {val = v0}>
+                          {val}
+                        </let>
+                      </case>
+                      <case {None}>
+                        <let {match_subject = r2}>
+                          <match {match_subject}>
+                            <case {Some(v0)}>
+                              <let {val = v0}>
+                                <if {val}>
+                                  yes
+                                </if>
+                              </let>
+                            </case>
+                            <case {None}>
+                              both none
+                            </case>
+                          </match>
+                        </let>
+                      </case>
+                    </match>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -4397,29 +4266,25 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                user: main::User
-                  --> main.hop (line 2, col 8)
-                1 | record User { name: Option[String] }
-                2 | <Main {user: User}>
-                  |        ^^^^
+                -- main.hop --
+                record User {
+                  name: Option[String],
+                }
 
-                user: main::User
-                  --> main.hop (line 3, col 13)
-                2 | <Main {user: User}>
-                3 |     <match {user.name}>
-                  |             ^^^^
-
-                n: String
-                  --> main.hop (line 4, col 21)
-                3 |     <match {user.name}>
-                4 |         <case {Some(n)}>{n}</case>
-                  |                     ^
-
-                n: String
-                  --> main.hop (line 4, col 26)
-                3 |     <match {user.name}>
-                4 |         <case {Some(n)}>{n}</case>
-                  |                          ^
+                <Main {user: main::User}>
+                  <let {match_subject = user.name}>
+                    <match {match_subject}>
+                      <case {Some(v0)}>
+                        <let {n = v0}>
+                          {n}
+                        </let>
+                      </case>
+                      <case {None}>
+                        anonymous
+                      </case>
+                    </match>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -4460,39 +4325,23 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                show: Bool
-                  --> main.hop (line 1, col 8)
-                1 | <Main {show: Bool, x: Option[String]}>
-                  |        ^^^^
-
-                x: Option[String]
-                  --> main.hop (line 1, col 20)
-                1 | <Main {show: Bool, x: Option[String]}>
-                  |                    ^
-
-                x: Option[String]
-                  --> main.hop (line 3, col 17)
-                2 |     <if {show}>
-                3 |         <match {x}>
-                  |                 ^
-
-                v: String
-                  --> main.hop (line 4, col 25)
-                3 |         <match {x}>
-                4 |             <case {Some(v)}>{v}</case>
-                  |                         ^
-
-                v: String
-                  --> main.hop (line 4, col 30)
-                3 |         <match {x}>
-                4 |             <case {Some(v)}>{v}</case>
-                  |                              ^
-
-                show: Bool
-                  --> main.hop (line 2, col 10)
-                1 | <Main {show: Bool, x: Option[String]}>
-                2 |     <if {show}>
-                  |          ^^^^
+                -- main.hop --
+                <Main {show: Bool, x: Option[String]}>
+                  <if {show}>
+                    <let {match_subject = x}>
+                      <match {match_subject}>
+                        <case {Some(v0)}>
+                          <let {v = v0}>
+                            {v}
+                          </let>
+                        </case>
+                        <case {None}>
+                          none
+                        </case>
+                      </match>
+                    </let>
+                  </if>
+                </Main>
             "#]],
         );
     }
@@ -4512,28 +4361,27 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                x: Option[String]
-                  --> main.hop (line 1, col 8)
-                1 | <Main {x: Option[String]}>
-                  |        ^
-
-                x: Option[String]
-                  --> main.hop (line 3, col 17)
-                2 |     <div>
-                3 |         <match {x}>
-                  |                 ^
-
-                v: String
-                  --> main.hop (line 4, col 25)
-                3 |         <match {x}>
-                4 |             <case {Some(v)}><span>{v}</span></case>
-                  |                         ^
-
-                v: String
-                  --> main.hop (line 4, col 36)
-                3 |         <match {x}>
-                4 |             <case {Some(v)}><span>{v}</span></case>
-                  |                                    ^
+                -- main.hop --
+                <Main {x: Option[String]}>
+                  <div>
+                    <let {match_subject = x}>
+                      <match {match_subject}>
+                        <case {Some(v0)}>
+                          <let {v = v0}>
+                            <span>
+                              {v}
+                            </span>
+                          </let>
+                        </case>
+                        <case {None}>
+                          <span>
+                            none
+                          </span>
+                        </case>
+                      </match>
+                    </let>
+                  </div>
+                </Main>
             "#]],
         );
     }
@@ -4576,16 +4424,10 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                is_required: Bool
-                  --> main.hop (line 1, col 8)
-                1 | <Main {is_required: Bool}>
-                  |        ^^^^^^^^^^^
-
-                is_required: Bool
-                  --> main.hop (line 2, col 20)
-                1 | <Main {is_required: Bool}>
-                2 |   <input required={is_required}>
-                  |                    ^^^^^^^^^^^
+                -- main.hop --
+                <Main {is_required: Bool}>
+                  <input required={is_required}></input>
+                </Main>
             "#]],
         );
     }
@@ -4600,7 +4442,13 @@ mod tests {
                   <input disabled={false}>
                 </Main>
             "#},
-            expect![[r#""#]],
+            expect![[r#"
+                -- main.hop --
+                <Main>
+                  <input required={true}></input>
+                  <input disabled={false}></input>
+                </Main>
+            "#]],
         );
     }
 
@@ -4670,35 +4518,35 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                children: Option[TrustedHTML]
-                  --> main.hop (line 1, col 13)
-                 1 | <Separator {children: Option[TrustedHTML] = None}>
-                   |             ^^^^^^^^
+                -- main.hop --
+                <Separator {children: Option[TrustedHTML] = None}>
+                  <li>
+                    <let {match_subject = children}>
+                      <match {match_subject}>
+                        <case {Some(v0)}>
+                          <let {c = v0}>
+                            {c}
+                          </let>
+                        </case>
+                        <case {None}>
+                          <span>
+                            Default
+                          </span>
+                        </case>
+                      </match>
+                    </let>
+                  </li>
+                </Separator>
 
-                children: Option[TrustedHTML]
-                  --> main.hop (line 3, col 13)
-                 2 |   <li>
-                 3 |     <match {children}>
-                   |             ^^^^^^^^
-
-                c: TrustedHTML
-                  --> main.hop (line 4, col 19)
-                 3 |     <match {children}>
-                 4 |       <case {Some(c)}>{c}</case>
-                   |                   ^
-
-                c: TrustedHTML
-                  --> main.hop (line 4, col 24)
-                 3 |     <match {children}>
-                 4 |       <case {Some(c)}>{c}</case>
-                   |                        ^
+                <Main>
+                  <Separator/>
+                </Main>
             "#]],
         );
     }
 
     #[test]
     fn optional_children_with_default_none_allows_passing_children() {
-        // children: Option[TrustedHTML] = None should allow passing children
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4717,35 +4565,39 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                children: Option[TrustedHTML]
-                  --> main.hop (line 1, col 13)
-                 1 | <Separator {children: Option[TrustedHTML] = None}>
-                   |             ^^^^^^^^
+                -- main.hop --
+                <Separator {children: Option[TrustedHTML] = None}>
+                  <li>
+                    <let {match_subject = children}>
+                      <match {match_subject}>
+                        <case {Some(v0)}>
+                          <let {c = v0}>
+                            {c}
+                          </let>
+                        </case>
+                        <case {None}>
+                          <span>
+                            Default
+                          </span>
+                        </case>
+                      </match>
+                    </let>
+                  </li>
+                </Separator>
 
-                children: Option[TrustedHTML]
-                  --> main.hop (line 3, col 13)
-                 2 |   <li>
-                 3 |     <match {children}>
-                   |             ^^^^^^^^
-
-                c: TrustedHTML
-                  --> main.hop (line 4, col 19)
-                 3 |     <match {children}>
-                 4 |       <case {Some(c)}>{c}</case>
-                   |                   ^
-
-                c: TrustedHTML
-                  --> main.hop (line 4, col 24)
-                 3 |     <match {children}>
-                 4 |       <case {Some(c)}>{c}</case>
-                   |                        ^
+                <Main>
+                  <Separator>
+                    <strong>
+                      Custom
+                    </strong>
+                  </Separator>
+                </Main>
             "#]],
         );
     }
 
     #[test]
     fn optional_children_cannot_be_used_directly_without_match() {
-        // Using {children} directly when type is Option[TrustedHTML] should be an error
         check(
             indoc! {r#"
                 -- main.hop --
@@ -4778,17 +4630,15 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                name: String
-                  --> main.hop (line 2, col 9)
-                1 | <Main>
-                2 |   <let {name: String = "World"}>
-                  |         ^^^^
-
-                name: String
-                  --> main.hop (line 3, col 17)
-                2 |   <let {name: String = "World"}>
-                3 |     <div>Hello {name}</div>
-                  |                 ^^^^
+                -- main.hop --
+                <Main>
+                  <let {name = "World"}>
+                    <div>
+                      Hello
+                      {name}
+                    </div>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -4873,29 +4723,19 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                name: String
-                  --> main.hop (line 2, col 9)
-                1 | <Main>
-                2 |   <let {name: String = "First"}>
-                  |         ^^^^
-
-                name: String
-                  --> main.hop (line 3, col 11)
-                2 |   <let {name: String = "First"}>
-                3 |     <div>{name}</div>
-                  |           ^^^^
-
-                name: String
-                  --> main.hop (line 5, col 9)
-                4 |   </let>
-                5 |   <let {name: String = "Second"}>
-                  |         ^^^^
-
-                name: String
-                  --> main.hop (line 6, col 11)
-                5 |   <let {name: String = "Second"}>
-                6 |     <div>{name}</div>
-                  |           ^^^^
+                -- main.hop --
+                <Main>
+                  <let {name = "First"}>
+                    <div>
+                      {name}
+                    </div>
+                  </let>
+                  <let {name = "Second"}>
+                    <div>
+                      {name}
+                    </div>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -4933,29 +4773,17 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                first: String
-                  --> main.hop (line 2, col 9)
-                1 | <Main>
-                2 |   <let {first: String = "Hello", second: String = "World"}>
-                  |         ^^^^^
-
-                second: String
-                  --> main.hop (line 2, col 34)
-                1 | <Main>
-                2 |   <let {first: String = "Hello", second: String = "World"}>
-                  |                                  ^^^^^^
-
-                first: String
-                  --> main.hop (line 3, col 11)
-                2 |   <let {first: String = "Hello", second: String = "World"}>
-                3 |     <div>{first} {second}</div>
-                  |           ^^^^^
-
-                second: String
-                  --> main.hop (line 3, col 19)
-                2 |   <let {first: String = "Hello", second: String = "World"}>
-                3 |     <div>{first} {second}</div>
-                  |                   ^^^^^^
+                -- main.hop --
+                <Main>
+                  <let {first = "Hello"}>
+                    <let {second = "World"}>
+                      <div>
+                        {first}
+                        {second}
+                      </div>
+                    </let>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -5014,29 +4842,16 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                greeting: String
-                  --> main.hop (line 2, col 9)
-                1 | <Main>
-                2 |   <let {greeting: String = "Hello", message: String = greeting}>
-                  |         ^^^^^^^^
-
-                greeting: String
-                  --> main.hop (line 2, col 55)
-                1 | <Main>
-                2 |   <let {greeting: String = "Hello", message: String = greeting}>
-                  |                                                       ^^^^^^^^
-
-                message: String
-                  --> main.hop (line 2, col 37)
-                1 | <Main>
-                2 |   <let {greeting: String = "Hello", message: String = greeting}>
-                  |                                     ^^^^^^^
-
-                message: String
-                  --> main.hop (line 3, col 11)
-                2 |   <let {greeting: String = "Hello", message: String = greeting}>
-                3 |     <div>{message}</div>
-                  |           ^^^^^^^
+                -- main.hop --
+                <Main>
+                  <let {greeting = "Hello"}>
+                    <let {message = greeting}>
+                      <div>
+                        {message}
+                      </div>
+                    </let>
+                  </let>
+                </Main>
             "#]],
         );
     }
