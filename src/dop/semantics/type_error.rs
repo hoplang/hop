@@ -84,15 +84,15 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Missing field '{field_name}' in record literal '{record_name}'")]
-    RecordLiteralMissingRecordField {
-        field_name: String,
+    #[error("Record '{record_name}' is missing fields: {}", missing_fields.join(", "))]
+    RecordMissingFields {
         record_name: String,
+        missing_fields: Vec<String>,
         range: DocumentRange,
     },
 
-    #[error("Unknown field '{field_name}' in record literal '{record_name}'")]
-    RecordLiteralUnknownRecordField {
+    #[error("Unknown field '{field_name}' in record '{record_name}'")]
+    RecordUnknownField {
         field_name: String,
         record_name: String,
         range: DocumentRange,
@@ -119,6 +119,32 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
+    #[error("Enum variant '{enum_name}::{variant_name}' is missing fields: {}", missing_fields.join(", "))]
+    EnumVariantMissingFields {
+        enum_name: String,
+        variant_name: String,
+        missing_fields: Vec<String>,
+        range: DocumentRange,
+    },
+
+    #[error("Unknown field '{field_name}' in enum variant '{enum_name}::{variant_name}'")]
+    EnumVariantUnknownField {
+        enum_name: String,
+        variant_name: String,
+        field_name: String,
+        range: DocumentRange,
+    },
+
+    #[error("Field '{field_name}' in '{enum_name}::{variant_name}' expects type {expected}, but got {found}")]
+    EnumVariantFieldTypeMismatch {
+        enum_name: String,
+        variant_name: String,
+        field_name: String,
+        expected: String,
+        found: String,
+        range: DocumentRange,
+    },
+
     #[error("Match is not implemented for type {found}")]
     MatchNotImplementedForType { found: String, range: DocumentRange },
 
@@ -138,22 +164,6 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error(
-        "Record pattern for '{record_name}' must specify all {expected} fields, but only {found} were provided"
-    )]
-    MatchRecordPatternFieldCount {
-        record_name: String,
-        expected: usize,
-        found: usize,
-        range: DocumentRange,
-    },
-
-    #[error("Unknown field '{field_name}' in record pattern for '{record_name}'")]
-    MatchRecordPatternUnknownField {
-        field_name: String,
-        record_name: String,
-        range: DocumentRange,
-    },
 
     #[error("Match arms must all have the same type, expected {expected} but found {found}")]
     MatchArmTypeMismatch {
@@ -218,16 +228,17 @@ impl Ranged for TypeError {
             | TypeError::IncompatibleTypesForMultiplication { range, .. }
             | TypeError::UndefinedType { range, .. }
             | TypeError::UndefinedRecord { range, .. }
-            | TypeError::RecordLiteralMissingRecordField { range, .. }
-            | TypeError::RecordLiteralUnknownRecordField { range, .. }
+            | TypeError::RecordMissingFields { range, .. }
+            | TypeError::RecordUnknownField { range, .. }
             | TypeError::RecordLiteralFieldTypeMismatch { range, .. }
             | TypeError::UndefinedEnum { range, .. }
             | TypeError::UndefinedEnumVariant { range, .. }
+            | TypeError::EnumVariantMissingFields { range, .. }
+            | TypeError::EnumVariantUnknownField { range, .. }
+            | TypeError::EnumVariantFieldTypeMismatch { range, .. }
             | TypeError::MatchNotImplementedForType { range, .. }
             | TypeError::MatchPatternEnumMismatch { range, .. }
             | TypeError::MatchPatternRecordMismatch { range, .. }
-            | TypeError::MatchRecordPatternFieldCount { range, .. }
-            | TypeError::MatchRecordPatternUnknownField { range, .. }
             | TypeError::MatchArmTypeMismatch { range, .. }
             | TypeError::MatchMissingVariants { range, .. }
             | TypeError::MatchUnreachableArm { range, .. }

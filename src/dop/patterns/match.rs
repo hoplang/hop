@@ -1,6 +1,7 @@
 //! Generic match types that can be used across different AST representations.
 
 use crate::dop::semantics::r#type::Type;
+use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::var_name::VarName;
 
 /// An enum variant pattern, e.g. `Color::Red`
@@ -16,6 +17,8 @@ pub enum EnumPattern {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumMatchArm<Body> {
     pub pattern: EnumPattern,
+    /// Field bindings for this arm, e.g. `Result::Ok(value: v)` binds field "value" to variable "v"
+    pub bindings: Vec<(FieldName, VarName)>,
     pub body: Body,
 }
 

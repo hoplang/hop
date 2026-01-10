@@ -51,7 +51,9 @@ pub enum Type {
     Enum {
         module: ModuleName,
         name: TypeName,
-        variants: Vec<TypeName>,
+        /// Variants with their optional fields: (variant_name, fields)
+        /// Empty fields Vec for unit variants
+        variants: Vec<(TypeName, Vec<(FieldName, Type)>)>,
     },
 }
 

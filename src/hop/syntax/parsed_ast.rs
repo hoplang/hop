@@ -286,11 +286,27 @@ impl ParsedRecordDeclaration {
 #[derive(Debug, Clone)]
 pub struct ParsedEnumDeclarationVariant {
     pub name: TypeName,
+    /// Optional fields for this variant (empty for unit variants)
+    pub fields: Vec<(FieldName, DocumentRange, ParsedType)>,
 }
 
 impl ParsedEnumDeclarationVariant {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text(self.name.as_str())
+        if self.fields.is_empty() {
+            BoxDoc::text(self.name.as_str())
+        } else {
+            BoxDoc::text(self.name.as_str())
+                .append(BoxDoc::text("("))
+                .append(BoxDoc::intersperse(
+                    self.fields.iter().map(|(field_name, _, field_type)| {
+                        BoxDoc::text(field_name.to_string())
+                            .append(BoxDoc::text(": "))
+                            .append(field_type.to_doc())
+                    }),
+                    BoxDoc::text(", "),
+                ))
+                .append(BoxDoc::text(")"))
+        }
     }
 }
 

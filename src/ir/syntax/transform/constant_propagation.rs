@@ -321,6 +321,8 @@ impl Pass for ConstantPropagationPass {
                                 } => IrExpr::EnumLiteral {
                                     enum_name: enum_name.clone(),
                                     variant_name: variant_name.clone(),
+                                    // Constants are only for unit variants (no fields)
+                                    fields: vec![],
                                     kind: e.as_type().clone(),
                                     id: e.id(),
                                 },

@@ -39,7 +39,8 @@ pub struct IrRecordDeclaration {
 #[derive(Debug, Clone)]
 pub struct IrEnumDeclaration {
     pub name: String,
-    pub variants: Vec<TypeName>,
+    /// Variants with their fields: (variant_name, fields)
+    pub variants: Vec<(TypeName, Vec<(FieldName, Type)>)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -133,10 +134,12 @@ pub enum IrExpr {
         id: ExprId,
     },
 
-    /// An enum literal expression, e.g. Color::Red
+    /// An enum literal expression, e.g. Color::Red or Result::Ok(value: 42)
     EnumLiteral {
         enum_name: String,
         variant_name: String,
+        /// Field values for variants with fields (empty for unit variants)
+        fields: Vec<(FieldName, IrExpr)>,
         kind: Type,
         id: ExprId,
     },
@@ -622,7 +625,23 @@ impl IrStatement {
                                     EnumPattern::Variant {
                                         enum_name,
                                         variant_name,
-                                    } => format!("{}::{}", enum_name, variant_name),
+                                    } => {
+                                        if arm.bindings.is_empty() {
+                                            format!("{}::{}", enum_name, variant_name)
+                                        } else {
+                                            let bindings_str: Vec<String> = arm
+                                                .bindings
+                                                .iter()
+                                                .map(|(field, var)| format!("{}: {}", field, var))
+                                                .collect();
+                                            format!(
+                                                "{}::{}({})",
+                                                enum_name,
+                                                variant_name,
+                                                bindings_str.join(", ")
+                                            )
+                                        }
+                                    }
                                 };
                                 (pattern, &arm.body)
                             })
@@ -848,10 +867,27 @@ impl IrExpr {
             IrExpr::EnumLiteral {
                 enum_name,
                 variant_name,
+                fields,
                 ..
-            } => BoxDoc::text(enum_name.as_str())
-                .append(BoxDoc::text("::"))
-                .append(BoxDoc::text(variant_name.as_str())),
+            } => {
+                let base = BoxDoc::text(enum_name.as_str())
+                    .append(BoxDoc::text("::"))
+                    .append(BoxDoc::text(variant_name.as_str()));
+                if fields.is_empty() {
+                    base
+                } else {
+                    base.append(BoxDoc::text("("))
+                        .append(BoxDoc::intersperse(
+                            fields.iter().map(|(name, expr)| {
+                                BoxDoc::text(name.as_str())
+                                    .append(BoxDoc::text(": "))
+                                    .append(expr.to_doc())
+                            }),
+                            BoxDoc::text(", "),
+                        ))
+                        .append(BoxDoc::text(")"))
+                }
+            }
             IrExpr::OptionLiteral { value, .. } => match value {
                 Some(inner) => BoxDoc::text("Some(")
                     .append(inner.to_doc())
@@ -876,9 +912,25 @@ impl IrExpr {
                                                 EnumPattern::Variant {
                                                     enum_name,
                                                     variant_name,
-                                                } => BoxDoc::text(enum_name.as_str())
-                                                    .append(BoxDoc::text("::"))
-                                                    .append(BoxDoc::text(variant_name.as_str())),
+                                                } => {
+                                                    let base = BoxDoc::text(enum_name.as_str())
+                                                        .append(BoxDoc::text("::"))
+                                                        .append(BoxDoc::text(variant_name.as_str()));
+                                                    if arm.bindings.is_empty() {
+                                                        base
+                                                    } else {
+                                                        let bindings_str: Vec<String> = arm
+                                                            .bindings
+                                                            .iter()
+                                                            .map(|(field, var)| {
+                                                                format!("{}: {}", field, var)
+                                                            })
+                                                            .collect();
+                                                        base.append(BoxDoc::text("("))
+                                                            .append(BoxDoc::text(bindings_str.join(", ")))
+                                                            .append(BoxDoc::text(")"))
+                                                    }
+                                                }
                                             };
                                             pattern_doc
                                                 .append(BoxDoc::text(" => "))
@@ -1194,8 +1246,16 @@ impl fmt::Display for IrComponentDeclaration {
 impl fmt::Display for IrEnumDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "enum {} {{", self.name)?;
-        for variant in self.variants.iter() {
-            writeln!(f, "  {},", variant.as_str())?;
+        for (variant_name, fields) in self.variants.iter() {
+            if fields.is_empty() {
+                writeln!(f, "  {},", variant_name.as_str())?;
+            } else {
+                let fields_str: Vec<String> = fields
+                    .iter()
+                    .map(|(name, typ)| format!("{}: {}", name, typ))
+                    .collect();
+                writeln!(f, "  {}({}),", variant_name.as_str(), fields_str.join(", "))?;
+            }
         }
         write!(f, "}}")
     }

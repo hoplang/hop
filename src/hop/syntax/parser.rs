@@ -216,8 +216,9 @@ pub fn parse(
                                 name_range: name_range.clone(),
                                 variants: variants
                                     .iter()
-                                    .map(|(name, _range)| ParsedEnumDeclarationVariant {
+                                    .map(|(name, _range, fields)| ParsedEnumDeclarationVariant {
                                         name: name.clone(),
+                                        fields: fields.clone(),
                                     })
                                     .collect(),
                             };

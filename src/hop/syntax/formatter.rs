@@ -183,6 +183,47 @@ mod tests {
     }
 
     #[test]
+    fn match_pattern_with_empty_parens_omits_parens() {
+        // Empty parens in enum patterns should be normalized away
+        check(
+            indoc! {r#"
+                enum Color { Red }
+                <Main {color: Color}>
+                  <div class={match color { Color::Red() => "red" }}></div>
+                </Main>
+            "#},
+            expect![[r#"
+                enum Color {
+                  Red,
+                }
+
+                <Main {color: Color}>
+                  <div class={match color {Color::Red => "red"}}>
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_declaration_with_empty_parens_omits_parens() {
+        // Empty parens in enum declarations should be normalized away
+        check(
+            indoc! {r#"
+                enum Foo { Bar() }
+                <Main></Main>
+            "#},
+            expect![[r#"
+                enum Foo {
+                  Bar,
+                }
+
+                <Main></Main>
+            "#]],
+        );
+    }
+
+    #[test]
     fn component_declaration_with_text_child_to_doc() {
         check(
             indoc! {"

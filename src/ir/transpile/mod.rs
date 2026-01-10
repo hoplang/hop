@@ -147,7 +147,12 @@ pub trait ExpressionTranspiler {
         record_name: &'a str,
         fields: &'a [(FieldName, IrExpr)],
     ) -> BoxDoc<'a>;
-    fn transpile_enum_literal<'a>(&self, enum_name: &'a str, variant_name: &'a str) -> BoxDoc<'a>;
+    fn transpile_enum_literal<'a>(
+        &self,
+        enum_name: &'a str,
+        variant_name: &'a str,
+        fields: &'a [(FieldName, IrExpr)],
+    ) -> BoxDoc<'a>;
     fn transpile_option_literal<'a>(
         &self,
         value: Option<&'a IrExpr>,
@@ -252,8 +257,9 @@ pub trait ExpressionTranspiler {
             IrExpr::EnumLiteral {
                 enum_name,
                 variant_name,
+                fields,
                 ..
-            } => self.transpile_enum_literal(enum_name, variant_name),
+            } => self.transpile_enum_literal(enum_name, variant_name, fields),
             IrExpr::OptionLiteral { value, kind, .. } => {
                 let inner_type = match kind {
                     Type::Option(inner) => inner.as_ref(),

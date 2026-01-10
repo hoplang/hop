@@ -13,7 +13,8 @@ pub struct TypedRecordDeclaration {
 #[derive(Debug, Clone)]
 pub struct TypedEnumDeclaration {
     pub name: TypeName,
-    pub variants: Vec<TypeName>,
+    /// Variants with their fields: (variant_name, fields)
+    pub variants: Vec<(TypeName, Vec<(FieldName, Type)>)>,
 }
 
 #[derive(Debug, Clone)]

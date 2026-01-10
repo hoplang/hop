@@ -185,7 +185,7 @@ impl Compiler {
                 if let Type::Enum { variants, .. } = typ {
                     variants
                         .iter()
-                        .position(|v| v.as_str() == variant_name)
+                        .position(|(v, _)| v.as_str() == variant_name)
                         .expect("unknown variant")
                 } else {
                     panic!("type is not an enum")
@@ -323,13 +323,18 @@ impl Compiler {
             }
             Type::Enum { name, variants, .. } => variants
                 .iter()
-                .map(|variant| {
+                .map(|(variant_name, fields)| {
+                    // Create fresh variables for each field in the variant
+                    let field_vars: Vec<Variable> = fields
+                        .iter()
+                        .map(|(_, field_type)| self.fresh_var(field_type.clone()))
+                        .collect();
                     (
                         Constructor::EnumVariant {
                             enum_name: name.clone(),
-                            variant_name: variant.to_string(),
+                            variant_name: variant_name.to_string(),
                         },
-                        Vec::new(),
+                        field_vars,
                         Vec::new(),
                     )
                 })
@@ -382,13 +387,13 @@ impl Compiler {
                     let mut cols = row.columns;
 
                     if !fields.is_empty() {
-                        // Record pattern: match fields by name
+                        // Field patterns: match fields by name for records and enum variants
                         if let Type::Record {
                             fields: type_fields,
                             ..
                         } = &branch_var.typ
                         {
-                            for (field_name, field_pattern) in fields {
+                            for (field_name, _, field_pattern) in fields {
                                 // Find the index of this field in the record type
                                 let field_idx = type_fields
                                     .iter()
@@ -396,6 +401,24 @@ impl Compiler {
                                     .expect("field not found in record type");
                                 let var = &cases[idx].1[field_idx];
                                 cols.push(Column::new(var.clone(), field_pattern));
+                            }
+                        } else if let Type::Enum { variants, .. } = &branch_var.typ {
+                            // Get the variant fields for the matched constructor
+                            if let Constructor::EnumVariant { variant_name, .. } = &cons {
+                                let variant_fields = variants
+                                    .iter()
+                                    .find(|(v, _)| v.as_str() == variant_name)
+                                    .map(|(_, f)| f)
+                                    .expect("variant not found in enum type");
+                                for (field_name, _, field_pattern) in fields {
+                                    // Find the index of this field in the variant
+                                    let field_idx = variant_fields
+                                        .iter()
+                                        .position(|(name, _)| name == &field_name)
+                                        .expect("field not found in variant");
+                                    let var = &cases[idx].1[field_idx];
+                                    cols.push(Column::new(var.clone(), field_pattern));
+                                }
                             }
                         }
                     } else {
@@ -426,6 +449,26 @@ impl Compiler {
                         .collect()
                 } else {
                     Vec::new()
+                }
+            } else if let Constructor::EnumVariant { variant_name, .. } = &cons {
+                // For enum variants with fields, include field names
+                if let Type::Enum { variants, .. } = &branch_var.typ {
+                    let variant_fields = variants
+                        .iter()
+                        .find(|(v, _)| v.as_str() == variant_name)
+                        .map(|(_, f)| f);
+                    if let Some(fields) = variant_fields {
+                        vars.iter()
+                            .zip(fields.iter())
+                            .map(|(v, (field_name, _))| {
+                                (v.name.clone(), Some(field_name.to_string()))
+                            })
+                            .collect()
+                    } else {
+                        vars.iter().map(|v| (v.name.clone(), None)).collect()
+                    }
+                } else {
+                    vars.iter().map(|v| (v.name.clone(), None)).collect()
                 }
             } else {
                 vars.iter().map(|v| (v.name.clone(), None)).collect()
@@ -523,6 +566,7 @@ impl Compiler {
                 constructor,
                 args,
                 fields,
+                constructor_range,
                 range,
             } => match (constructor, subject_type) {
                 (Constructor::BooleanTrue | Constructor::BooleanFalse, Type::Bool) => Ok(()),
@@ -555,13 +599,56 @@ impl Compiler {
                         });
                     }
 
-                    let variant_exists =
-                        variants.iter().any(|v| v.as_str() == pattern_variant_name);
-                    if !variant_exists {
-                        return Err(TypeError::UndefinedEnumVariant {
+                    let variant_fields = variants
+                        .iter()
+                        .find(|(v, _)| v.as_str() == pattern_variant_name)
+                        .map(|(_, f)| f);
+
+                    let variant_fields = match variant_fields {
+                        Some(f) => f,
+                        None => {
+                            return Err(TypeError::UndefinedEnumVariant {
+                                enum_name: pattern_enum_name.to_string(),
+                                variant_name: pattern_variant_name.clone(),
+                                range: range.clone(),
+                            });
+                        }
+                    };
+
+                    // Validate each field pattern (also catches unknown fields on unit variants)
+                    for (field_name, field_name_range, field_pattern) in fields {
+                        let field_type = variant_fields
+                            .iter()
+                            .find(|(name, _)| name == field_name)
+                            .map(|(_, typ)| typ);
+
+                        match field_type {
+                            Some(typ) => Self::validate_pattern(field_pattern, typ)?,
+                            None => {
+                                return Err(TypeError::EnumVariantUnknownField {
+                                    enum_name: pattern_enum_name.to_string(),
+                                    variant_name: pattern_variant_name.clone(),
+                                    field_name: field_name.to_string(),
+                                    range: field_name_range.clone(),
+                                });
+                            }
+                        }
+                    }
+
+                    // Check all fields are specified (no partial matching)
+                    if fields.len() < variant_fields.len() {
+                        let pattern_field_names: Vec<_> =
+                            fields.iter().map(|(name, _, _)| name).collect();
+                        let missing_fields: Vec<String> = variant_fields
+                            .iter()
+                            .filter(|(name, _)| !pattern_field_names.contains(&name))
+                            .map(|(name, _)| name.to_string())
+                            .collect();
+                        return Err(TypeError::EnumVariantMissingFields {
                             enum_name: pattern_enum_name.to_string(),
                             variant_name: pattern_variant_name.clone(),
-                            range: range.clone(),
+                            missing_fields,
+                            range: constructor_range.clone(),
                         });
                     }
 
@@ -587,18 +674,8 @@ impl Compiler {
                         });
                     }
 
-                    // Check all fields are specified (no partial matching)
-                    if fields.len() != subject_fields.len() {
-                        return Err(TypeError::MatchRecordPatternFieldCount {
-                            record_name: pattern_type_name.to_string(),
-                            expected: subject_fields.len(),
-                            found: fields.len(),
-                            range: range.clone(),
-                        });
-                    }
-
-                    // Validate each field pattern against the field type
-                    for (field_name, field_pattern) in fields {
+                    // Validate each field pattern (also catches unknown fields)
+                    for (field_name, field_name_range, field_pattern) in fields {
                         let field_type = subject_fields
                             .iter()
                             .find(|(name, _)| name == field_name)
@@ -607,13 +684,29 @@ impl Compiler {
                         match field_type {
                             Some(typ) => Self::validate_pattern(field_pattern, typ)?,
                             None => {
-                                return Err(TypeError::MatchRecordPatternUnknownField {
+                                return Err(TypeError::RecordUnknownField {
                                     field_name: field_name.to_string(),
                                     record_name: pattern_type_name.to_string(),
-                                    range: field_pattern.range().clone(),
+                                    range: field_name_range.clone(),
                                 });
                             }
                         }
+                    }
+
+                    // Check all fields are specified (no partial matching)
+                    if fields.len() < subject_fields.len() {
+                        let pattern_field_names: Vec<_> =
+                            fields.iter().map(|(name, _, _)| name).collect();
+                        let missing_fields: Vec<String> = subject_fields
+                            .iter()
+                            .filter(|(name, _)| !pattern_field_names.contains(&name))
+                            .map(|(name, _)| name.to_string())
+                            .collect();
+                        return Err(TypeError::RecordMissingFields {
+                            record_name: pattern_type_name.to_string(),
+                            missing_fields,
+                            range: constructor_range.clone(),
+                        });
                     }
 
                     Ok(())
@@ -731,6 +824,32 @@ mod tests {
                             .map(|((field_name, _), v)| format!("{}: {}", field_name, v.name))
                             .collect();
                         format!("({})", named.join(", "))
+                    } else if let (
+                        Constructor::EnumVariant { variant_name, .. },
+                        Type::Enum { variants, .. },
+                    ) = (&case.constructor, &var.typ)
+                    {
+                        // For enum variants with fields, show field names
+                        let variant_fields = variants
+                            .iter()
+                            .find(|(v, _)| v.as_str() == variant_name)
+                            .map(|(_, f)| f);
+                        if let Some(fields) = variant_fields {
+                            if fields.is_empty() {
+                                String::new()
+                            } else {
+                                let named: Vec<_> = fields
+                                    .iter()
+                                    .zip(case.arguments.iter())
+                                    .map(|((field_name, _), v)| {
+                                        format!("{}: {}", field_name, v.name)
+                                    })
+                                    .collect();
+                                format!("({})", named.join(", "))
+                            }
+                        } else {
+                            String::new()
+                        }
                     } else {
                         let names: Vec<_> =
                             case.arguments.iter().map(|v| v.name.as_str()).collect();
@@ -957,9 +1076,9 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
-                    TypeName::new("Red").unwrap(),
-                    TypeName::new("Green").unwrap(),
-                    TypeName::new("Blue").unwrap(),
+                    (TypeName::new("Red").unwrap(), vec![]),
+                    (TypeName::new("Green").unwrap(), vec![]),
+                    (TypeName::new("Blue").unwrap(), vec![]),
                 ],
             },
             indoc! {"
@@ -987,9 +1106,9 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
-                    TypeName::new("Red").unwrap(),
-                    TypeName::new("Green").unwrap(),
-                    TypeName::new("Blue").unwrap(),
+                    (TypeName::new("Red").unwrap(), vec![]),
+                    (TypeName::new("Green").unwrap(), vec![]),
+                    (TypeName::new("Blue").unwrap(), vec![]),
                 ],
             },
             indoc! {"
@@ -1019,9 +1138,9 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
-                    TypeName::new("Red").unwrap(),
-                    TypeName::new("Green").unwrap(),
-                    TypeName::new("Blue").unwrap(),
+                    (TypeName::new("Red").unwrap(), vec![]),
+                    (TypeName::new("Green").unwrap(), vec![]),
+                    (TypeName::new("Blue").unwrap(), vec![]),
                 ],
             },
             indoc! {"
@@ -1048,9 +1167,9 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
-                    TypeName::new("Red").unwrap(),
-                    TypeName::new("Green").unwrap(),
-                    TypeName::new("Blue").unwrap(),
+                    (TypeName::new("Red").unwrap(), vec![]),
+                    (TypeName::new("Green").unwrap(), vec![]),
+                    (TypeName::new("Blue").unwrap(), vec![]),
                 ],
             },
             indoc! {"
@@ -1063,6 +1182,847 @@ mod tests {
                 error: Unreachable match arm for variant 'Color::Red'
                     Color::Red => 1,
                     ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    // Enum with fields tests
+
+    #[test]
+    fn enum_variant_with_fields_exhaustive() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Result").unwrap(),
+                variants: vec![
+                    (
+                        TypeName::new("Ok").unwrap(),
+                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                    ),
+                    (
+                        TypeName::new("Err").unwrap(),
+                        vec![(FieldName::new("message").unwrap(), Type::String)],
+                    ),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Result::Ok(value: v) => 0,
+                    Result::Err(message: m) => 1,
+                }
+            "},
+            expect![[r#"
+                x is Result::Ok(value: v0)
+                  let v = v0
+                  branch 0
+                x is Result::Err(message: v1)
+                  let m = v1
+                  branch 1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_mixed_fields_and_unit() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Maybe").unwrap(),
+                variants: vec![
+                    (
+                        TypeName::new("Just").unwrap(),
+                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                    ),
+                    (TypeName::new("Nothing").unwrap(), vec![]),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Maybe::Just(value: v) => 0,
+                    Maybe::Nothing => 1,
+                }
+            "},
+            expect![[r#"
+                x is Maybe::Just(value: v0)
+                  let v = v0
+                  branch 0
+                x is Maybe::Nothing
+                  branch 1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_with_wildcard_field() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Result").unwrap(),
+                variants: vec![
+                    (
+                        TypeName::new("Ok").unwrap(),
+                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                    ),
+                    (
+                        TypeName::new("Err").unwrap(),
+                        vec![(FieldName::new("message").unwrap(), Type::String)],
+                    ),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Result::Ok(value: _) => 0,
+                    Result::Err(message: _) => 1,
+                }
+            "},
+            expect![[r#"
+                x is Result::Ok(value: v0)
+                  branch 0
+                x is Result::Err(message: v1)
+                  branch 1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_three_variants_with_fields() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Status").unwrap(),
+                variants: vec![
+                    (
+                        TypeName::new("Pending").unwrap(),
+                        vec![(FieldName::new("since").unwrap(), Type::Int)],
+                    ),
+                    (
+                        TypeName::new("Active").unwrap(),
+                        vec![
+                            (FieldName::new("id").unwrap(), Type::Int),
+                            (FieldName::new("name").unwrap(), Type::String),
+                        ],
+                    ),
+                    (TypeName::new("Inactive").unwrap(), vec![]),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Status::Pending(since: s) => 0,
+                    Status::Active(id: i, name: n) => 1,
+                    Status::Inactive => 2,
+                }
+            "},
+            expect![[r#"
+                x is Status::Pending(since: v0)
+                  let s = v0
+                  branch 0
+                x is Status::Active(id: v1, name: v2)
+                  let i = v1
+                  let n = v2
+                  branch 1
+                x is Status::Inactive
+                  branch 2
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_with_three_fields() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Point3D").unwrap(),
+                variants: vec![(
+                    TypeName::new("Coords").unwrap(),
+                    vec![
+                        (FieldName::new("x").unwrap(), Type::Int),
+                        (FieldName::new("y").unwrap(), Type::Int),
+                        (FieldName::new("z").unwrap(), Type::Int),
+                    ],
+                )],
+            },
+            indoc! {"
+                match x {
+                    Point3D::Coords(x: a, y: b, z: c) => 0,
+                }
+            "},
+            expect![[r#"
+                x is Point3D::Coords(x: v0, y: v1, z: v2)
+                  let a = v0
+                  let b = v1
+                  let c = v2
+                  branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_all_fields_wildcard() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Point3D").unwrap(),
+                variants: vec![(
+                    TypeName::new("Coords").unwrap(),
+                    vec![
+                        (FieldName::new("x").unwrap(), Type::Int),
+                        (FieldName::new("y").unwrap(), Type::Int),
+                        (FieldName::new("z").unwrap(), Type::Int),
+                    ],
+                )],
+            },
+            indoc! {"
+                match x {
+                    Point3D::Coords(x: _, y: _, z: _) => 0,
+                }
+            "},
+            expect![[r#"
+                x is Point3D::Coords(x: v0, y: v1, z: v2)
+                  branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_mixed_bindings_and_wildcards() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Point3D").unwrap(),
+                variants: vec![(
+                    TypeName::new("Coords").unwrap(),
+                    vec![
+                        (FieldName::new("x").unwrap(), Type::Int),
+                        (FieldName::new("y").unwrap(), Type::Int),
+                        (FieldName::new("z").unwrap(), Type::Int),
+                    ],
+                )],
+            },
+            indoc! {"
+                match x {
+                    Point3D::Coords(x: a, y: _, z: c) => 0,
+                }
+            "},
+            expect![[r#"
+                x is Point3D::Coords(x: v0, y: v1, z: v2)
+                  let a = v0
+                  let c = v2
+                  branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_wildcard_covers_all_variants() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Result").unwrap(),
+                variants: vec![
+                    (
+                        TypeName::new("Ok").unwrap(),
+                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                    ),
+                    (
+                        TypeName::new("Err").unwrap(),
+                        vec![(FieldName::new("message").unwrap(), Type::String)],
+                    ),
+                ],
+            },
+            indoc! {"
+                match x {
+                    _ => 0,
+                }
+            "},
+            expect![[r#"
+                branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_binding_covers_all_variants() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Result").unwrap(),
+                variants: vec![
+                    (
+                        TypeName::new("Ok").unwrap(),
+                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                    ),
+                    (
+                        TypeName::new("Err").unwrap(),
+                        vec![(FieldName::new("message").unwrap(), Type::String)],
+                    ),
+                ],
+            },
+            indoc! {"
+                match x {
+                    r => 0,
+                }
+            "},
+            expect![[r#"
+                let r = x
+                branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_partial_coverage_with_wildcard() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Status").unwrap(),
+                variants: vec![
+                    (
+                        TypeName::new("Pending").unwrap(),
+                        vec![(FieldName::new("since").unwrap(), Type::Int)],
+                    ),
+                    (
+                        TypeName::new("Active").unwrap(),
+                        vec![(FieldName::new("id").unwrap(), Type::Int)],
+                    ),
+                    (TypeName::new("Inactive").unwrap(), vec![]),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Status::Pending(since: s) => 0,
+                    _ => 1,
+                }
+            "},
+            expect![[r#"
+                x is Status::Pending(since: v0)
+                  let s = v0
+                  branch 0
+                x is Status::Active(id: v1)
+                  branch 1
+                x is Status::Inactive
+                  branch 1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_missing_variant_error() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Result").unwrap(),
+                variants: vec![
+                    (
+                        TypeName::new("Ok").unwrap(),
+                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                    ),
+                    (
+                        TypeName::new("Err").unwrap(),
+                        vec![(FieldName::new("message").unwrap(), Type::String)],
+                    ),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Result::Ok(value: v) => 0,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: Result::Err(message: _)
+                match x {
+                ^^^^^^^^^
+                    Result::Ok(value: v) => 0,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_missing_multiple_variants_error() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Status").unwrap(),
+                variants: vec![
+                    (
+                        TypeName::new("Pending").unwrap(),
+                        vec![(FieldName::new("since").unwrap(), Type::Int)],
+                    ),
+                    (
+                        TypeName::new("Active").unwrap(),
+                        vec![(FieldName::new("id").unwrap(), Type::Int)],
+                    ),
+                    (TypeName::new("Inactive").unwrap(), vec![]),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Status::Pending(since: _) => 0,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: Status::Active(id: _), Status::Inactive
+                match x {
+                ^^^^^^^^^
+                    Status::Pending(since: _) => 0,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_duplicate_pattern_error() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Result").unwrap(),
+                variants: vec![
+                    (
+                        TypeName::new("Ok").unwrap(),
+                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                    ),
+                    (
+                        TypeName::new("Err").unwrap(),
+                        vec![(FieldName::new("message").unwrap(), Type::String)],
+                    ),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Result::Ok(value: v) => 0,
+                    Result::Ok(value: w) => 1,
+                    Result::Err(message: _) => 2,
+                }
+            "},
+            expect![[r#"
+                error: Unreachable match arm for variant 'Result::Ok(value: w)'
+                    Result::Ok(value: w) => 1,
+                    ^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_unreachable_after_wildcard_error() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Result").unwrap(),
+                variants: vec![
+                    (
+                        TypeName::new("Ok").unwrap(),
+                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                    ),
+                    (
+                        TypeName::new("Err").unwrap(),
+                        vec![(FieldName::new("message").unwrap(), Type::String)],
+                    ),
+                ],
+            },
+            indoc! {"
+                match x {
+                    _ => 0,
+                    Result::Ok(value: v) => 1,
+                }
+            "},
+            expect![[r#"
+                error: Unreachable match arm for variant 'Result::Ok(value: v)'
+                    Result::Ok(value: v) => 1,
+                    ^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_unknown_field_error() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Result").unwrap(),
+                variants: vec![
+                    (
+                        TypeName::new("Ok").unwrap(),
+                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                    ),
+                    (
+                        TypeName::new("Err").unwrap(),
+                        vec![(FieldName::new("message").unwrap(), Type::String)],
+                    ),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Result::Ok(unknown: v) => 0,
+                    Result::Err(message: _) => 1,
+                }
+            "},
+            expect![[r#"
+                error: Unknown field 'unknown' in enum variant 'Result::Ok'
+                    Result::Ok(unknown: v) => 0,
+                               ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_unknown_field_after_valid_field_error() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Point").unwrap(),
+                variants: vec![(
+                    TypeName::new("XY").unwrap(),
+                    vec![
+                        (FieldName::new("x").unwrap(), Type::Int),
+                        (FieldName::new("y").unwrap(), Type::Int),
+                    ],
+                )],
+            },
+            indoc! {"
+                match x {
+                    Point::XY(x: a, unknown: b) => 0,
+                }
+            "},
+            expect![[r#"
+                error: Unknown field 'unknown' in enum variant 'Point::XY'
+                    Point::XY(x: a, unknown: b) => 0,
+                                    ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_two_unknown_fields_error() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Point").unwrap(),
+                variants: vec![(
+                    TypeName::new("XY").unwrap(),
+                    vec![
+                        (FieldName::new("x").unwrap(), Type::Int),
+                        (FieldName::new("y").unwrap(), Type::Int),
+                    ],
+                )],
+            },
+            indoc! {"
+                match x {
+                    Point::XY(foo: a, bar: b) => 0,
+                }
+            "},
+            expect![[r#"
+                error: Unknown field 'foo' in enum variant 'Point::XY'
+                    Point::XY(foo: a, bar: b) => 0,
+                              ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_missing_field_in_pattern_error() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Point").unwrap(),
+                variants: vec![(
+                    TypeName::new("XY").unwrap(),
+                    vec![
+                        (FieldName::new("x").unwrap(), Type::Int),
+                        (FieldName::new("y").unwrap(), Type::Int),
+                    ],
+                )],
+            },
+            indoc! {"
+                match x {
+                    Point::XY(x: a) => 0,
+                }
+            "},
+            expect![[r#"
+                error: Enum variant 'Point::XY' is missing fields: y
+                    Point::XY(x: a) => 0,
+                    ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_missing_two_fields_in_pattern_error() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Point").unwrap(),
+                variants: vec![(
+                    TypeName::new("XYZ").unwrap(),
+                    vec![
+                        (FieldName::new("x").unwrap(), Type::Int),
+                        (FieldName::new("y").unwrap(), Type::Int),
+                        (FieldName::new("z").unwrap(), Type::Int),
+                    ],
+                )],
+            },
+            indoc! {"
+                match x {
+                    Point::XYZ(x: a) => 0,
+                }
+            "},
+            expect![[r#"
+                error: Enum variant 'Point::XYZ' is missing fields: y, z
+                    Point::XYZ(x: a) => 0,
+                    ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_no_parens_when_fields_expected_error() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Point").unwrap(),
+                variants: vec![(
+                    TypeName::new("XY").unwrap(),
+                    vec![
+                        (FieldName::new("x").unwrap(), Type::Int),
+                        (FieldName::new("y").unwrap(), Type::Int),
+                    ],
+                )],
+            },
+            indoc! {"
+                match x {
+                    Point::XY => 0,
+                }
+            "},
+            expect![[r#"
+                error: Enum variant 'Point::XY' is missing fields: x, y
+                    Point::XY => 0,
+                    ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_fields_provided_to_unit_variant_error() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Maybe").unwrap(),
+                variants: vec![
+                    (
+                        TypeName::new("Just").unwrap(),
+                        vec![(FieldName::new("value").unwrap(), Type::Int)],
+                    ),
+                    (TypeName::new("Nothing").unwrap(), vec![]),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Maybe::Just(value: v) => 0,
+                    Maybe::Nothing(value: v) => 1,
+                }
+            "},
+            expect![[r#"
+                error: Unknown field 'value' in enum variant 'Maybe::Nothing'
+                    Maybe::Nothing(value: v) => 1,
+                                   ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_nested_option_field() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Container").unwrap(),
+                variants: vec![(
+                    TypeName::new("Wrapped").unwrap(),
+                    vec![(
+                        FieldName::new("inner").unwrap(),
+                        Type::Option(Box::new(Type::Int)),
+                    )],
+                )],
+            },
+            indoc! {"
+                match x {
+                    Container::Wrapped(inner: Some(v)) => 0,
+                    Container::Wrapped(inner: None) => 1,
+                }
+            "},
+            expect![[r#"
+                x is Container::Wrapped(inner: v0)
+                  v0 is Some(v1)
+                    let v = v1
+                    branch 0
+                  v0 is None
+                    branch 1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_nested_option_field_missing_none() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Container").unwrap(),
+                variants: vec![(
+                    TypeName::new("Wrapped").unwrap(),
+                    vec![(
+                        FieldName::new("inner").unwrap(),
+                        Type::Option(Box::new(Type::Int)),
+                    )],
+                )],
+            },
+            indoc! {"
+                match x {
+                    Container::Wrapped(inner: Some(v)) => 0,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: Container::Wrapped(inner: None)
+                match x {
+                ^^^^^^^^^
+                    Container::Wrapped(inner: Some(v)) => 0,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_nested_bool_field() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Flag").unwrap(),
+                variants: vec![(
+                    TypeName::new("Set").unwrap(),
+                    vec![(FieldName::new("enabled").unwrap(), Type::Bool)],
+                )],
+            },
+            indoc! {"
+                match x {
+                    Flag::Set(enabled: true) => 0,
+                    Flag::Set(enabled: false) => 1,
+                }
+            "},
+            expect![[r#"
+                x is Flag::Set(enabled: v0)
+                  v0 is false
+                    branch 1
+                  v0 is true
+                    branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_nested_bool_field_missing_case() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Flag").unwrap(),
+                variants: vec![(
+                    TypeName::new("Set").unwrap(),
+                    vec![(FieldName::new("enabled").unwrap(), Type::Bool)],
+                )],
+            },
+            indoc! {"
+                match x {
+                    Flag::Set(enabled: true) => 0,
+                }
+            "},
+            expect![[r#"
+                error: Match expression is missing arms for: Flag::Set(enabled: false)
+                match x {
+                ^^^^^^^^^
+                    Flag::Set(enabled: true) => 0,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_four_fields() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Rectangle").unwrap(),
+                variants: vec![(
+                    TypeName::new("Bounds").unwrap(),
+                    vec![
+                        (FieldName::new("x").unwrap(), Type::Int),
+                        (FieldName::new("y").unwrap(), Type::Int),
+                        (FieldName::new("width").unwrap(), Type::Int),
+                        (FieldName::new("height").unwrap(), Type::Int),
+                    ],
+                )],
+            },
+            indoc! {"
+                match x {
+                    Rectangle::Bounds(x: a, y: b, width: w, height: h) => 0,
+                }
+            "},
+            expect![[r#"
+                x is Rectangle::Bounds(x: v0, y: v1, width: v2, height: v3)
+                  let a = v0
+                  let b = v1
+                  let w = v2
+                  let h = v3
+                  branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_four_variants_mixed() {
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Event").unwrap(),
+                variants: vec![
+                    (
+                        TypeName::new("Click").unwrap(),
+                        vec![
+                            (FieldName::new("x").unwrap(), Type::Int),
+                            (FieldName::new("y").unwrap(), Type::Int),
+                        ],
+                    ),
+                    (
+                        TypeName::new("KeyPress").unwrap(),
+                        vec![(FieldName::new("key").unwrap(), Type::String)],
+                    ),
+                    (TypeName::new("Focus").unwrap(), vec![]),
+                    (TypeName::new("Blur").unwrap(), vec![]),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Event::Click(x: a, y: b) => 0,
+                    Event::KeyPress(key: k) => 1,
+                    Event::Focus => 2,
+                    Event::Blur => 3,
+                }
+            "},
+            expect![[r#"
+                x is Event::Click(x: v0, y: v1)
+                  let a = v0
+                  let b = v1
+                  branch 0
+                x is Event::KeyPress(key: v2)
+                  let k = v2
+                  branch 1
+                x is Event::Focus
+                  branch 2
+                x is Event::Blur
+                  branch 3
             "#]],
         );
     }
@@ -1391,9 +2351,9 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
-                    TypeName::new("Red").unwrap(),
-                    TypeName::new("Green").unwrap(),
-                    TypeName::new("Blue").unwrap(),
+                    (TypeName::new("Red").unwrap(), vec![]),
+                    (TypeName::new("Green").unwrap(), vec![]),
+                    (TypeName::new("Blue").unwrap(), vec![]),
                 ],
             },
             indoc! {"
@@ -1415,8 +2375,8 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
-                    TypeName::new("Red").unwrap(),
-                    TypeName::new("Green").unwrap(),
+                    (TypeName::new("Red").unwrap(), vec![]),
+                    (TypeName::new("Green").unwrap(), vec![]),
                 ],
             },
             indoc! {"
@@ -1441,8 +2401,8 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
-                    TypeName::new("Red").unwrap(),
-                    TypeName::new("Green").unwrap(),
+                    (TypeName::new("Red").unwrap(), vec![]),
+                    (TypeName::new("Green").unwrap(), vec![]),
                 ],
             },
             indoc! {"
@@ -1466,9 +2426,9 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
-                    TypeName::new("Red").unwrap(),
-                    TypeName::new("Green").unwrap(),
-                    TypeName::new("Blue").unwrap(),
+                    (TypeName::new("Red").unwrap(), vec![]),
+                    (TypeName::new("Green").unwrap(), vec![]),
+                    (TypeName::new("Blue").unwrap(), vec![]),
                 ],
             },
             indoc! {"
@@ -1680,8 +2640,8 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
-                    TypeName::new("Red").unwrap(),
-                    TypeName::new("Green").unwrap(),
+                    (TypeName::new("Red").unwrap(), vec![]),
+                    (TypeName::new("Green").unwrap(), vec![]),
                 ],
             },
             indoc! {"
@@ -1715,9 +2675,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Record pattern for 'User' must specify all 2 fields, but only 1 were provided
+                error: Record 'User' is missing fields: age
                     User(name: n) => 0,
-                    ^^^^^^^^^^^^^
+                    ^^^^
             "#]],
         );
     }
@@ -1736,9 +2696,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                error: Unknown field 'email' in record pattern for 'User'
+                error: Unknown field 'email' in record 'User'
                     User(email: e) => 0,
-                                ^
+                         ^^^^^
             "#]],
         );
     }
@@ -1750,8 +2710,8 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
-                    TypeName::new("Red").unwrap(),
-                    TypeName::new("Green").unwrap(),
+                    (TypeName::new("Red").unwrap(), vec![]),
+                    (TypeName::new("Green").unwrap(), vec![]),
                 ],
             },
             indoc! {"
@@ -1775,8 +2735,8 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("Color").unwrap(),
                 variants: vec![
-                    TypeName::new("Red").unwrap(),
-                    TypeName::new("Green").unwrap(),
+                    (TypeName::new("Red").unwrap(), vec![]),
+                    (TypeName::new("Green").unwrap(), vec![]),
                 ],
             },
             indoc! {"

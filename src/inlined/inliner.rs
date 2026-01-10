@@ -380,6 +380,7 @@ impl Inliner {
                             .iter()
                             .map(|arm| EnumMatchArm {
                                 pattern: arm.pattern.clone(),
+                                bindings: arm.bindings.clone(),
                                 body: Self::inline_nodes_with_ctx(&arm.body, ctx),
                             })
                             .collect(),

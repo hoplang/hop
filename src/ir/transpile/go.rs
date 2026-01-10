@@ -234,16 +234,38 @@ impl Transpiler for GoTranspiler {
                 .append(BoxDoc::line());
 
             // Generate a struct and Equals method for each variant
-            for variant in &enum_def.variants {
-                let struct_name = format!("{}{}", enum_def.name, variant.as_str());
+            for (variant_name, fields) in &enum_def.variants {
+                let struct_name = format!("{}{}", enum_def.name, variant_name.as_str());
 
-                // type [[EnumNameVariant]] struct{}
+                // type [[EnumNameVariant]] struct { Field Type; ... } or struct{}
                 result = result
                     .append(BoxDoc::text("type "))
-                    .append(BoxDoc::as_string(struct_name.clone()))
-                    .append(BoxDoc::text(" struct{}"))
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::line());
+                    .append(BoxDoc::as_string(struct_name.clone()));
+
+                if fields.is_empty() {
+                    result = result.append(BoxDoc::text(" struct{}"));
+                } else {
+                    let field_docs: Vec<BoxDoc> = fields
+                        .iter()
+                        .map(|(field_name, field_type)| {
+                            let pascal_name = field_name.to_pascal_case();
+                            BoxDoc::as_string(pascal_name)
+                                .append(BoxDoc::text(" "))
+                                .append(self.transpile_type(field_type))
+                        })
+                        .collect();
+                    result = result
+                        .append(BoxDoc::text(" struct {"))
+                        .append(
+                            BoxDoc::line()
+                                .append(BoxDoc::intersperse(field_docs, BoxDoc::line()))
+                                .nest(1),
+                        )
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("}"));
+                }
+
+                result = result.append(BoxDoc::line()).append(BoxDoc::line());
 
                 // func (e [[EnumNameVariant]]) Equals(o [[EnumName]]) bool {
                 //   _, ok := o.([[EnumNameVariant]])
@@ -595,11 +617,15 @@ impl StatementTranspiler for GoTranspiler {
                     .append(BoxDoc::text("}"))
             }
             Match::Enum { subject, arms } => {
-                // switch subject.(type) {
+                // switch _v := subject.(type) {
                 // case EnumNameVariantName:
+                //     binding := _v.Field
                 //     [[statements]]
                 // [[...]]
                 // }
+                let subject_name = subject.0.as_str();
+                let has_any_bindings = arms.iter().any(|arm| !arm.bindings.is_empty());
+
                 let cases = BoxDoc::intersperse(
                     arms.iter().map(|arm| match &arm.pattern {
                         crate::dop::patterns::EnumPattern::Variant {
@@ -607,11 +633,29 @@ impl StatementTranspiler for GoTranspiler {
                             variant_name,
                         } => {
                             let struct_name = format!("{}{}", enum_name, variant_name);
+                            // Generate binding assignments
+                            let bindings_doc = if arm.bindings.is_empty() {
+                                BoxDoc::nil()
+                            } else {
+                                let binding_stmts: Vec<_> = arm
+                                    .bindings
+                                    .iter()
+                                    .map(|(field, var)| {
+                                        let pascal_field = field.to_pascal_case();
+                                        BoxDoc::text(var.as_str())
+                                            .append(BoxDoc::text(" := _v."))
+                                            .append(BoxDoc::as_string(pascal_field))
+                                    })
+                                    .collect();
+                                BoxDoc::intersperse(binding_stmts, BoxDoc::line())
+                                    .append(BoxDoc::line())
+                            };
                             BoxDoc::text("case ")
                                 .append(BoxDoc::text(struct_name))
                                 .append(BoxDoc::text(":"))
                                 .append(
                                     BoxDoc::line()
+                                        .append(bindings_doc)
                                         .append(self.transpile_statements(&arm.body))
                                         .nest(1),
                                 )
@@ -620,9 +664,18 @@ impl StatementTranspiler for GoTranspiler {
                     BoxDoc::line(),
                 );
 
-                BoxDoc::text("switch ")
-                    .append(BoxDoc::text(subject.0.as_str()))
-                    .append(BoxDoc::text(".(type) {"))
+                // Use "_v :=" syntax only if there are bindings
+                let switch_start = if has_any_bindings {
+                    BoxDoc::text("switch _v := ")
+                        .append(BoxDoc::text(subject_name))
+                        .append(BoxDoc::text(".(type) {"))
+                } else {
+                    BoxDoc::text("switch ")
+                        .append(BoxDoc::text(subject_name))
+                        .append(BoxDoc::text(".(type) {"))
+                };
+
+                switch_start
                     .append(BoxDoc::line().append(cases).nest(1))
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("}"))
@@ -702,11 +755,38 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text("}"))
     }
 
-    fn transpile_enum_literal<'a>(&self, enum_name: &'a str, variant_name: &'a str) -> BoxDoc<'a> {
+    fn transpile_enum_literal<'a>(
+        &self,
+        enum_name: &'a str,
+        variant_name: &'a str,
+        fields: &'a [(FieldName, IrExpr)],
+    ) -> BoxDoc<'a> {
         // In Go, enum variants are structs with the pattern EnumNameVariantName{}
-        BoxDoc::text(enum_name)
+        let base = BoxDoc::text(enum_name)
             .append(BoxDoc::text(variant_name))
-            .append(BoxDoc::text("{}"))
+            .append(BoxDoc::text("{"));
+        if fields.is_empty() {
+            base.append(BoxDoc::text("}"))
+        } else {
+            base.append(BoxDoc::intersperse(
+                fields.iter().map(|(field_name, field_expr)| {
+                    // Capitalize field name for Go export
+                    let capitalized = {
+                        let s = field_name.as_str();
+                        let mut c = s.chars();
+                        match c.next() {
+                            None => String::new(),
+                            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                        }
+                    };
+                    BoxDoc::as_string(capitalized)
+                        .append(BoxDoc::text(": "))
+                        .append(self.transpile_expr(field_expr))
+                }),
+                BoxDoc::text(", "),
+            ))
+            .append(BoxDoc::text("}"))
+        }
     }
 
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
@@ -999,13 +1079,16 @@ impl ExpressionTranspiler for GoTranspiler {
             }
             Match::Enum { subject, arms } => {
                 // func() ReturnType {
-                //     switch subject.(type) {
+                //     switch _v := subject.(type) {
                 //     case EnumNameVariantName:
+                //         binding := _v.Field
                 //         return body
                 //     [[...]]
                 //     }
                 //     panic("unreachable")
                 // }()
+                let subject_name = subject.0.as_str();
+                let has_any_bindings = arms.iter().any(|arm| !arm.bindings.is_empty());
                 let return_type = self.transpile_type(arms[0].body.as_type());
 
                 let cases = BoxDoc::intersperse(
@@ -1015,11 +1098,29 @@ impl ExpressionTranspiler for GoTranspiler {
                             variant_name,
                         } => {
                             let struct_name = format!("{}{}", enum_name, variant_name);
+                            // Generate binding assignments
+                            let bindings_doc = if arm.bindings.is_empty() {
+                                BoxDoc::nil()
+                            } else {
+                                let binding_stmts: Vec<_> = arm
+                                    .bindings
+                                    .iter()
+                                    .map(|(field, var)| {
+                                        let pascal_field = field.to_pascal_case();
+                                        BoxDoc::text(var.as_str())
+                                            .append(BoxDoc::text(" := _v."))
+                                            .append(BoxDoc::as_string(pascal_field))
+                                    })
+                                    .collect();
+                                BoxDoc::intersperse(binding_stmts, BoxDoc::line())
+                                    .append(BoxDoc::line())
+                            };
                             BoxDoc::text("case ")
                                 .append(BoxDoc::text(struct_name))
                                 .append(BoxDoc::text(":"))
                                 .append(
                                     BoxDoc::line()
+                                        .append(bindings_doc)
                                         .append(BoxDoc::text("return "))
                                         .append(self.transpile_expr(&arm.body))
                                         .nest(2),
@@ -1029,9 +1130,18 @@ impl ExpressionTranspiler for GoTranspiler {
                     BoxDoc::line(),
                 );
 
-                let switch_body = BoxDoc::text("switch ")
-                    .append(BoxDoc::text(subject.0.as_str()))
-                    .append(BoxDoc::text(".(type) {"))
+                // Use "_v :=" syntax only if there are bindings
+                let switch_start = if has_any_bindings {
+                    BoxDoc::text("switch _v := ")
+                        .append(BoxDoc::text(subject_name))
+                        .append(BoxDoc::text(".(type) {"))
+                } else {
+                    BoxDoc::text("switch ")
+                        .append(BoxDoc::text(subject_name))
+                        .append(BoxDoc::text(".(type) {"))
+                };
+
+                let switch_body = switch_start
                     .append(BoxDoc::line().append(cases).nest(2))
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("}"))
@@ -1683,9 +1793,9 @@ mod tests {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("Color").unwrap(),
             variants: vec![
-                TypeName::new("Red").unwrap(),
-                TypeName::new("Green").unwrap(),
-                TypeName::new("Blue").unwrap(),
+                (TypeName::new("Red").unwrap(), vec![]),
+                (TypeName::new("Green").unwrap(), vec![]),
+                (TypeName::new("Blue").unwrap(), vec![]),
             ],
         };
 
@@ -1766,9 +1876,9 @@ mod tests {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("Status").unwrap(),
             variants: vec![
-                TypeName::new("Active").unwrap(),
-                TypeName::new("Inactive").unwrap(),
-                TypeName::new("Pending").unwrap(),
+                (TypeName::new("Active").unwrap(), vec![]),
+                (TypeName::new("Inactive").unwrap(), vec![]),
+                (TypeName::new("Pending").unwrap(), vec![]),
             ],
         };
 
@@ -1864,9 +1974,9 @@ mod tests {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("Color").unwrap(),
             variants: vec![
-                TypeName::new("Red").unwrap(),
-                TypeName::new("Green").unwrap(),
-                TypeName::new("Blue").unwrap(),
+                (TypeName::new("Red").unwrap(), vec![]),
+                (TypeName::new("Green").unwrap(), vec![]),
+                (TypeName::new("Blue").unwrap(), vec![]),
             ],
         };
 
@@ -2093,9 +2203,9 @@ mod tests {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("Color").unwrap(),
             variants: vec![
-                TypeName::new("Red").unwrap(),
-                TypeName::new("Green").unwrap(),
-                TypeName::new("Blue").unwrap(),
+                (TypeName::new("Red").unwrap(), vec![]),
+                (TypeName::new("Green").unwrap(), vec![]),
+                (TypeName::new("Blue").unwrap(), vec![]),
             ],
         };
 
@@ -2266,6 +2376,222 @@ mod tests {
                 			}
                 			panic("unreachable")
                 	}())
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_with_fields() {
+        use crate::dop::symbols::field_name::FieldName;
+        use crate::dop::symbols::type_name::TypeName;
+        use crate::hop::symbols::module_name::ModuleName;
+
+        let result_type = Type::Enum {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Result").unwrap(),
+            variants: vec![
+                (
+                    TypeName::new("Ok").unwrap(),
+                    vec![(FieldName::new("value").unwrap(), Type::Int)],
+                ),
+                (
+                    TypeName::new("Err").unwrap(),
+                    vec![(FieldName::new("message").unwrap(), Type::String)],
+                ),
+            ],
+        };
+
+        check(
+            IrModuleBuilder::new()
+                .enum_with_fields("Result", |e| {
+                    e.variant_with_fields("Ok", vec![("value", Type::Int)]);
+                    e.variant_with_fields("Err", vec![("message", Type::String)]);
+                })
+                .component("ShowResult", [("r", result_type)], |t| {
+                    t.write("<div>");
+                    let ok_result =
+                        t.enum_variant_with_fields("Result", "Ok", vec![("value", t.int(42))]);
+                    t.let_stmt("ok", ok_result, |t| {
+                        t.write_expr(t.str("Created Ok!"), false);
+                    });
+                    t.write("</div>");
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                enum Result {
+                  Ok(value: Int),
+                  Err(message: String),
+                }
+                ShowResult(r: test::Result) {
+                  write("<div>")
+                  let ok = Result::Ok(value: 42) in {
+                    write_expr("Created Ok!")
+                  }
+                  write("</div>")
+                }
+
+                -- after --
+                package components
+
+                import (
+                	"io"
+                )
+
+                type Result interface {
+                	Equals(o Result) bool
+                }
+
+                type ResultOk struct {
+                	Value int
+                }
+
+                func (e ResultOk) Equals(o Result) bool {
+                	_, ok := o.(ResultOk)
+                	return ok
+                }
+
+                type ResultErr struct {
+                	Message string
+                }
+
+                func (e ResultErr) Equals(o Result) bool {
+                	_, ok := o.(ResultErr)
+                	return ok
+                }
+
+                type ShowResultParams struct {
+                	R Result `json:"r"`
+                }
+
+                func ShowResult(w io.Writer, params ShowResultParams) {
+                	r := params.R
+                	io.WriteString(w, "<div>")
+                	var ok Result = ResultOk{Value: 42}
+                	io.WriteString(w, "Created Ok!")
+                	io.WriteString(w, "</div>")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_match_with_field_bindings() {
+        use crate::dop::symbols::field_name::FieldName;
+        use crate::dop::symbols::type_name::TypeName;
+        use crate::hop::symbols::module_name::ModuleName;
+        use crate::ir::syntax::builder::IrBuilder;
+
+        let result_type = Type::Enum {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Result").unwrap(),
+            variants: vec![
+                (
+                    TypeName::new("Ok").unwrap(),
+                    vec![(FieldName::new("value").unwrap(), Type::String)],
+                ),
+                (
+                    TypeName::new("Err").unwrap(),
+                    vec![(FieldName::new("message").unwrap(), Type::String)],
+                ),
+            ],
+        };
+
+        check(
+            IrModuleBuilder::new()
+                .enum_with_fields("Result", |e| {
+                    e.variant_with_fields("Ok", vec![("value", Type::String)]);
+                    e.variant_with_fields("Err", vec![("message", Type::String)]);
+                })
+                .component("ShowResult", [("r", result_type)], |t| {
+                    t.enum_match_stmt_with_bindings(
+                        t.var("r"),
+                        vec![
+                            (
+                                "Ok",
+                                vec![("value", "v")],
+                                Box::new(|t: &mut IrBuilder| {
+                                    t.write("Value: ");
+                                    t.write_expr(t.var("v"), false);
+                                }),
+                            ),
+                            (
+                                "Err",
+                                vec![("message", "m")],
+                                Box::new(|t: &mut IrBuilder| {
+                                    t.write("Error: ");
+                                    t.write_expr(t.var("m"), false);
+                                }),
+                            ),
+                        ],
+                    );
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                enum Result {
+                  Ok(value: String),
+                  Err(message: String),
+                }
+                ShowResult(r: test::Result) {
+                  match r {
+                    Result::Ok(value: v) => {
+                      write("Value: ")
+                      write_expr(v)
+                    }
+                    Result::Err(message: m) => {
+                      write("Error: ")
+                      write_expr(m)
+                    }
+                  }
+                }
+
+                -- after --
+                package components
+
+                import (
+                	"io"
+                )
+
+                type Result interface {
+                	Equals(o Result) bool
+                }
+
+                type ResultOk struct {
+                	Value string
+                }
+
+                func (e ResultOk) Equals(o Result) bool {
+                	_, ok := o.(ResultOk)
+                	return ok
+                }
+
+                type ResultErr struct {
+                	Message string
+                }
+
+                func (e ResultErr) Equals(o Result) bool {
+                	_, ok := o.(ResultErr)
+                	return ok
+                }
+
+                type ShowResultParams struct {
+                	R Result `json:"r"`
+                }
+
+                func ShowResult(w io.Writer, params ShowResultParams) {
+                	r := params.R
+                	switch _v := r.(type) {
+                		case ResultOk:
+                			v := _v.Value
+                			io.WriteString(w, "Value: ")
+                			io.WriteString(w, v)
+                		case ResultErr:
+                			m := _v.Message
+                			io.WriteString(w, "Error: ")
+                			io.WriteString(w, m)
+                	}
                 }
             "#]],
         );

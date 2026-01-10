@@ -246,15 +246,35 @@ impl Transpiler for PythonTranspiler {
         // Generate enum type definitions (dataclasses + Union type alias)
         for enum_def in &module.enums {
             // Generate a dataclass for each variant
-            for variant in &enum_def.variants {
-                let class_name = format!("{}{}", enum_def.name, variant.as_str());
+            for (variant_name, fields) in &enum_def.variants {
+                let class_name = format!("{}{}", enum_def.name, variant_name.as_str());
 
                 result = result
                     .append(BoxDoc::text("@dataclass"))
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("class "))
                     .append(BoxDoc::as_string(class_name.clone()))
-                    .append(BoxDoc::text(":"))
+                    .append(BoxDoc::text(":"));
+
+                // Add field declarations if variant has fields
+                if !fields.is_empty() {
+                    let field_docs: Vec<BoxDoc> = fields
+                        .iter()
+                        .map(|(field_name, field_type)| {
+                            BoxDoc::text(field_name.as_str())
+                                .append(BoxDoc::text(": "))
+                                .append(self.transpile_type(field_type))
+                        })
+                        .collect();
+                    result = result.append(
+                        BoxDoc::line()
+                            .append(BoxDoc::intersperse(field_docs, BoxDoc::line()))
+                            .nest(4),
+                    );
+                }
+
+                // Add the equals method
+                result = result
                     .append(
                         BoxDoc::line()
                             .append(BoxDoc::text("def equals(self, o: \""))
@@ -277,7 +297,7 @@ impl Transpiler for PythonTranspiler {
             let variants: Vec<String> = enum_def
                 .variants
                 .iter()
-                .map(|v| format!("{}{}", enum_def.name, v.as_str()))
+                .map(|(v, _)| format!("{}{}", enum_def.name, v.as_str()))
                 .collect();
             let union_rhs = variants.join(" | ");
 
@@ -567,7 +587,7 @@ impl StatementTranspiler for PythonTranspiler {
             }
             Match::Enum { subject, arms } => {
                 // match [[subject]]:
-                //     case [[EnumNameVariantName]]():
+                //     case [[EnumNameVariantName]](field=binding, ...):
                 //         [[body]]
                 //     ...
                 let subject_name = subject.0.as_str();
@@ -581,9 +601,24 @@ impl StatementTranspiler for PythonTranspiler {
                             variant_name,
                         } => {
                             let class_name = format!("{}{}", enum_name, variant_name);
+                            // Generate pattern with field bindings
+                            let pattern_args = if arm.bindings.is_empty() {
+                                BoxDoc::nil()
+                            } else {
+                                BoxDoc::intersperse(
+                                    arm.bindings.iter().map(|(field, var)| {
+                                        BoxDoc::text(field.as_str())
+                                            .append(BoxDoc::text("="))
+                                            .append(BoxDoc::text(var.as_str()))
+                                    }),
+                                    BoxDoc::text(", "),
+                                )
+                            };
                             BoxDoc::text("case ")
                                 .append(BoxDoc::as_string(class_name))
-                                .append(BoxDoc::text("():"))
+                                .append(BoxDoc::text("("))
+                                .append(pattern_args)
+                                .append(BoxDoc::text("):"))
                                 .append(
                                     BoxDoc::line()
                                         .append(self.transpile_statements(&arm.body))
@@ -664,11 +699,29 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_enum_literal<'a>(&self, enum_name: &'a str, variant_name: &'a str) -> BoxDoc<'a> {
+    fn transpile_enum_literal<'a>(
+        &self,
+        enum_name: &'a str,
+        variant_name: &'a str,
+        fields: &'a [(FieldName, IrExpr)],
+    ) -> BoxDoc<'a> {
         // In Python, enum variants are dataclasses with the pattern EnumNameVariantName()
-        BoxDoc::text(enum_name)
+        let base = BoxDoc::text(enum_name)
             .append(BoxDoc::text(variant_name))
-            .append(BoxDoc::text("()"))
+            .append(BoxDoc::text("("));
+        if fields.is_empty() {
+            base.append(BoxDoc::text(")"))
+        } else {
+            base.append(BoxDoc::intersperse(
+                fields.iter().map(|(field_name, field_expr)| {
+                    BoxDoc::text(field_name.as_str())
+                        .append(BoxDoc::text("="))
+                        .append(self.transpile_expr(field_expr))
+                }),
+                BoxDoc::text(", "),
+            ))
+            .append(BoxDoc::text(")"))
+        }
     }
 
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
@@ -1474,9 +1527,9 @@ mod tests {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("Color").unwrap(),
             variants: vec![
-                TypeName::new("Red").unwrap(),
-                TypeName::new("Green").unwrap(),
-                TypeName::new("Blue").unwrap(),
+                (TypeName::new("Red").unwrap(), vec![]),
+                (TypeName::new("Green").unwrap(), vec![]),
+                (TypeName::new("Blue").unwrap(), vec![]),
             ],
         };
 
@@ -1775,6 +1828,197 @@ mod tests {
                             output.append(val)
                         case Nothing():
                             output.append(",None")
+                    return ''.join(output)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_with_fields() {
+        use crate::dop::symbols::field_name::FieldName;
+        use crate::dop::symbols::type_name::TypeName;
+        use crate::hop::symbols::module_name::ModuleName;
+
+        let result_type = Type::Enum {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Result").unwrap(),
+            variants: vec![
+                (
+                    TypeName::new("Ok").unwrap(),
+                    vec![(FieldName::new("value").unwrap(), Type::Int)],
+                ),
+                (
+                    TypeName::new("Err").unwrap(),
+                    vec![(FieldName::new("message").unwrap(), Type::String)],
+                ),
+            ],
+        };
+
+        check(
+            IrModuleBuilder::new()
+                .enum_with_fields("Result", |e| {
+                    e.variant_with_fields("Ok", vec![("value", Type::Int)]);
+                    e.variant_with_fields("Err", vec![("message", Type::String)]);
+                })
+                .component("ShowResult", [("r", result_type)], |t| {
+                    t.write("<div>");
+                    let ok_result =
+                        t.enum_variant_with_fields("Result", "Ok", vec![("value", t.int(42))]);
+                    t.let_stmt("ok", ok_result, |t| {
+                        t.write_expr(t.str("Created Ok!"), false);
+                    });
+                    t.write("</div>");
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                enum Result {
+                  Ok(value: Int),
+                  Err(message: String),
+                }
+                ShowResult(r: test::Result) {
+                  write("<div>")
+                  let ok = Result::Ok(value: 42) in {
+                    write_expr("Created Ok!")
+                  }
+                  write("</div>")
+                }
+
+                -- after --
+                from dataclasses import dataclass
+
+                @dataclass
+                class ResultOk:
+                    value: int
+                    def equals(self, o: "Result") -> bool:
+                        return isinstance(o, ResultOk)
+
+                @dataclass
+                class ResultErr:
+                    message: str
+                    def equals(self, o: "Result") -> bool:
+                        return isinstance(o, ResultErr)
+
+                Result = ResultOk | ResultErr
+
+                @dataclass
+                class ShowResultParams:
+                    r: Result
+
+                def show_result(params: ShowResultParams) -> str:
+                    r = params.r
+                    output = []
+                    output.append("<div>")
+                    ok = ResultOk(value=42)
+                    output.append("Created Ok!")
+                    output.append("</div>")
+                    return ''.join(output)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_match_with_field_bindings() {
+        use crate::dop::symbols::field_name::FieldName;
+        use crate::dop::symbols::type_name::TypeName;
+        use crate::hop::symbols::module_name::ModuleName;
+        use crate::ir::syntax::builder::IrBuilder;
+
+        let result_type = Type::Enum {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Result").unwrap(),
+            variants: vec![
+                (
+                    TypeName::new("Ok").unwrap(),
+                    vec![(FieldName::new("value").unwrap(), Type::String)],
+                ),
+                (
+                    TypeName::new("Err").unwrap(),
+                    vec![(FieldName::new("message").unwrap(), Type::String)],
+                ),
+            ],
+        };
+
+        check(
+            IrModuleBuilder::new()
+                .enum_with_fields("Result", |e| {
+                    e.variant_with_fields("Ok", vec![("value", Type::String)]);
+                    e.variant_with_fields("Err", vec![("message", Type::String)]);
+                })
+                .component("ShowResult", [("r", result_type)], |t| {
+                    t.enum_match_stmt_with_bindings(
+                        t.var("r"),
+                        vec![
+                            (
+                                "Ok",
+                                vec![("value", "v")],
+                                Box::new(|t: &mut IrBuilder| {
+                                    t.write("Value: ");
+                                    t.write_expr(t.var("v"), false);
+                                }),
+                            ),
+                            (
+                                "Err",
+                                vec![("message", "m")],
+                                Box::new(|t: &mut IrBuilder| {
+                                    t.write("Error: ");
+                                    t.write_expr(t.var("m"), false);
+                                }),
+                            ),
+                        ],
+                    );
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                enum Result {
+                  Ok(value: String),
+                  Err(message: String),
+                }
+                ShowResult(r: test::Result) {
+                  match r {
+                    Result::Ok(value: v) => {
+                      write("Value: ")
+                      write_expr(v)
+                    }
+                    Result::Err(message: m) => {
+                      write("Error: ")
+                      write_expr(m)
+                    }
+                  }
+                }
+
+                -- after --
+                from dataclasses import dataclass
+
+                @dataclass
+                class ResultOk:
+                    value: str
+                    def equals(self, o: "Result") -> bool:
+                        return isinstance(o, ResultOk)
+
+                @dataclass
+                class ResultErr:
+                    message: str
+                    def equals(self, o: "Result") -> bool:
+                        return isinstance(o, ResultErr)
+
+                Result = ResultOk | ResultErr
+
+                @dataclass
+                class ShowResultParams:
+                    r: Result
+
+                def show_result(params: ShowResultParams) -> str:
+                    r = params.r
+                    output = []
+                    match r:
+                        case ResultOk(value=v):
+                            output.append("Value: ")
+                            output.append(v)
+                        case ResultErr(message=m):
+                            output.append("Error: ")
+                            output.append(m)
                     return ''.join(output)
             "#]],
         );

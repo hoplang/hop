@@ -161,10 +161,20 @@ impl AlphaRenamingPass {
                             .into_iter()
                             .map(|arm| {
                                 self.push_scope();
+                                // Rename bindings and add them to scope
+                                let renamed_bindings: Vec<_> = arm
+                                    .bindings
+                                    .into_iter()
+                                    .map(|(field, var)| {
+                                        let renamed_var = self.bind_var(&var);
+                                        (field, renamed_var)
+                                    })
+                                    .collect();
                                 let renamed_body = self.rename_statements(arm.body);
                                 self.pop_scope();
                                 EnumMatchArm {
                                     pattern: arm.pattern,
+                                    bindings: renamed_bindings,
                                     body: renamed_body,
                                 }
                             })
@@ -294,26 +304,51 @@ impl AlphaRenamingPass {
             IrExpr::EnumLiteral {
                 enum_name,
                 variant_name,
+                fields,
                 kind,
                 id,
             } => IrExpr::EnumLiteral {
                 enum_name: enum_name.clone(),
                 variant_name: variant_name.clone(),
+                fields: fields
+                    .iter()
+                    .map(|(field_name, field_expr)| {
+                        (field_name.clone(), self.rename_expr(field_expr))
+                    })
+                    .collect(),
                 kind: kind.clone(),
                 id: *id,
             },
             IrExpr::Match { match_, kind, id } => {
                 let renamed_match = match match_ {
-                    Match::Enum { subject, arms } => Match::Enum {
-                        subject: (self.lookup_var(&subject.0), subject.1.clone()),
-                        arms: arms
+                    Match::Enum { subject, arms } => {
+                        let renamed_arms = arms
                             .iter()
-                            .map(|arm| EnumMatchArm {
-                                pattern: arm.pattern.clone(),
-                                body: self.rename_expr(&arm.body),
+                            .map(|arm| {
+                                self.push_scope();
+                                // Rename bindings and add them to scope
+                                let renamed_bindings: Vec<_> = arm
+                                    .bindings
+                                    .iter()
+                                    .map(|(field, var)| {
+                                        let renamed_var = self.bind_var(var);
+                                        (field.clone(), renamed_var)
+                                    })
+                                    .collect();
+                                let renamed_body = self.rename_expr(&arm.body);
+                                self.pop_scope();
+                                EnumMatchArm {
+                                    pattern: arm.pattern.clone(),
+                                    bindings: renamed_bindings,
+                                    body: renamed_body,
+                                }
                             })
-                            .collect(),
-                    },
+                            .collect();
+                        Match::Enum {
+                            subject: (self.lookup_var(&subject.0), subject.1.clone()),
+                            arms: renamed_arms,
+                        }
+                    }
                     Match::Bool {
                         subject,
                         true_body,

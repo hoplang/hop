@@ -624,7 +624,7 @@ impl Parser {
 
     /// Parse an enum literal expression.
     ///
-    /// Syntax: `EnumName::VariantName`
+    /// Syntax: `EnumName::VariantName` or `EnumName::VariantName(field: value, ...)`
     fn parse_enum_literal(
         &mut self,
         enum_name: StringSpan,
@@ -632,10 +632,28 @@ impl Parser {
     ) -> Result<ParsedExpr, ParseError> {
         self.expect_token(&Token::ColonColon)?;
         let (variant_name, variant_range) = self.expect_type_name()?;
+        let constructor_range = enum_name_range.clone().to(variant_range.clone());
+
+        // Check for optional field values: Variant(field: value, ...)
+        let (fields, end_range) = if let Some(left_paren) = self.advance_if(Token::LeftParen) {
+            let mut fields = Vec::new();
+            let right_paren = self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
+                let (field_name, field_name_range) = this.expect_field_name()?;
+                this.expect_token(&Token::Colon)?;
+                fields.push((field_name, field_name_range, this.parse_logical()?));
+                Ok(())
+            })?;
+            (fields, right_paren)
+        } else {
+            (Vec::new(), variant_range)
+        };
+
         Ok(ParsedExpr::EnumLiteral {
             enum_name: enum_name.as_str().to_string(),
             variant_name: variant_name.as_str().to_string(),
-            range: enum_name_range.to(variant_range),
+            fields,
+            constructor_range,
+            range: enum_name_range.to(end_range),
         })
     }
 
@@ -652,6 +670,7 @@ impl Parser {
                 constructor: Constructor::BooleanTrue,
                 args: Vec::new(),
                 fields: Vec::new(),
+                constructor_range: range.clone(),
                 range,
             });
         }
@@ -660,6 +679,7 @@ impl Parser {
                 constructor: Constructor::BooleanFalse,
                 args: Vec::new(),
                 fields: Vec::new(),
+                constructor_range: range.clone(),
                 range,
             });
         }
@@ -673,6 +693,7 @@ impl Parser {
                 constructor: Constructor::OptionSome,
                 args: vec![inner_pattern],
                 fields: Vec::new(),
+                constructor_range: some_range.clone(),
                 range: some_range.to(right_paren),
             });
         }
@@ -681,6 +702,7 @@ impl Parser {
                 constructor: Constructor::OptionNone,
                 args: Vec::new(),
                 fields: Vec::new(),
+                constructor_range: range.clone(),
                 range,
             });
         }
@@ -698,16 +720,36 @@ impl Parser {
 
             // Check if this is an enum pattern (::) or record pattern (()
             if self.advance_if(Token::ColonColon).is_some() {
-                // Enum pattern: TypeName::Variant
+                // Enum pattern: TypeName::Variant or TypeName::Variant(field: pattern, ...)
                 let (variant_name, variant_range) = self.expect_type_name()?;
+
+                // Check for optional field patterns: Variant(field: pattern, ...)
+                let (fields, end_range) = if let Some(left_paren) = self.advance_if(Token::LeftParen)
+                {
+                    let mut fields = Vec::new();
+                    let right_paren =
+                        self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
+                            let (field_name, field_range) = this.expect_field_name()?;
+                            this.expect_token(&Token::Colon)?;
+                            let pattern = this.parse_match_pattern()?;
+                            fields.push((field_name, field_range, pattern));
+                            Ok(())
+                        })?;
+                    (fields, right_paren)
+                } else {
+                    (Vec::new(), variant_range.clone())
+                };
+
+                let constructor_range = type_name_range.clone().to(variant_range);
                 return Ok(ParsedMatchPattern::Constructor {
                     constructor: Constructor::EnumVariant {
                         enum_name: type_name,
                         variant_name: variant_name.as_str().to_string(),
                     },
                     args: Vec::new(),
-                    fields: Vec::new(),
-                    range: type_name_range.to(variant_range),
+                    fields,
+                    constructor_range,
+                    range: type_name_range.to(end_range),
                 });
             } else {
                 // Record pattern: TypeName(field: pattern, ...)
@@ -715,16 +757,17 @@ impl Parser {
                 let mut fields = Vec::new();
                 let right_paren =
                     self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
-                        let (field_name, _) = this.expect_field_name()?;
+                        let (field_name, field_range) = this.expect_field_name()?;
                         this.expect_token(&Token::Colon)?;
                         let pattern = this.parse_match_pattern()?;
-                        fields.push((field_name, pattern));
+                        fields.push((field_name, field_range, pattern));
                         Ok(())
                     })?;
                 return Ok(ParsedMatchPattern::Constructor {
                     constructor: Constructor::Record { type_name },
                     args: Vec::new(),
                     fields,
+                    constructor_range: type_name_range.clone(),
                     range: type_name_range.to(right_paren),
                 });
             }
@@ -877,7 +920,7 @@ impl Parser {
 
     /// Parse an enum declaration.
     ///
-    /// Syntax: `enum Name {Variant1, Variant2, ...}`
+    /// Syntax: `enum Name {Variant1, Variant2(field: Type), ...}`
     fn parse_enum_declaration(&mut self) -> Result<ParsedDeclaration, ParseError> {
         let start_range = self.expect_token(&Token::Enum)?;
         let (name, name_range) = self.expect_type_name()?;
@@ -893,7 +936,15 @@ impl Parser {
                     range: variant_range.clone(),
                 });
             }
-            variants.push((variant_name, variant_range));
+
+            // Check for optional field list: Variant(field: Type, ...)
+            let fields = if this.advance_if(Token::LeftParen).is_some() {
+                this.parse_enum_variant_fields()?
+            } else {
+                Vec::new()
+            };
+
+            variants.push((variant_name, variant_range, fields));
             Ok(())
         })?;
 
@@ -905,6 +956,49 @@ impl Parser {
             variants,
             range: full_range,
         })
+    }
+
+    /// Parse the fields of an enum variant: `field: Type, ...)`
+    ///
+    /// Called after consuming the opening `(`. Consumes the closing `)`.
+    fn parse_enum_variant_fields(
+        &mut self,
+    ) -> Result<Vec<(FieldName, DocumentRange, ParsedType)>, ParseError> {
+        let mut fields = Vec::new();
+        let mut seen_names = HashSet::new();
+
+        // Handle empty field list
+        if self.advance_if(Token::RightParen).is_some() {
+            return Ok(fields);
+        }
+
+        loop {
+            let (field_name, field_name_range) = self.expect_field_name()?;
+            self.expect_token(&Token::Colon)?;
+            let field_type = self.parse_type()?;
+
+            if !seen_names.insert(field_name.as_str().to_string()) {
+                return Err(ParseError::DuplicateField {
+                    name: field_name_range.to_string_span(),
+                    range: field_name_range.clone(),
+                });
+            }
+
+            fields.push((field_name, field_name_range, field_type));
+
+            // Check for comma or closing paren
+            if self.advance_if(Token::Comma).is_some() {
+                // Allow trailing comma
+                if self.advance_if(Token::RightParen).is_some() {
+                    break;
+                }
+            } else {
+                self.expect_token(&Token::RightParen)?;
+                break;
+            }
+        }
+
+        Ok(fields)
     }
 
     /// Parse all declarations from the source.
@@ -2028,7 +2122,8 @@ mod tests {
                 Import {
                   name: UserList,
                   module_name: user_list,
-                }"#]],
+                }
+            "#]],
         );
     }
 
@@ -2042,7 +2137,8 @@ mod tests {
                 Import {
                   name: Header,
                   module_name: components::header,
-                }"#]],
+                }
+            "#]],
         );
     }
 
@@ -2090,7 +2186,8 @@ mod tests {
                     name: String,
                     age: Int,
                   },
-                }"#]],
+                }
+            "#]],
         );
     }
 
@@ -2108,7 +2205,8 @@ mod tests {
                   fields: {
                     users: Array[User],
                   },
-                }"#]],
+                }
+            "#]],
         );
     }
 
@@ -2138,7 +2236,8 @@ mod tests {
                 Import {
                   name: UserList,
                   module_name: user_list,
-                }"#]],
+                }
+            "#]],
         );
     }
 
@@ -2157,16 +2256,19 @@ mod tests {
                   name: Header,
                   module_name: header,
                 }
+
                 Record {
                   name: User,
                   fields: {
                     name: String,
                   },
                 }
+
                 Import {
                   name: Footer,
                   module_name: footer,
-                }"#]],
+                }
+            "#]],
         );
     }
 
@@ -2230,7 +2332,8 @@ mod tests {
                 Record {
                   name: Empty,
                   fields: {},
-                }"#]],
+                }
+            "#]],
         );
     }
 
@@ -2250,7 +2353,8 @@ mod tests {
                     name: String,
                     age: Int,
                   },
-                }"#]],
+                }
+            "#]],
         );
     }
 
@@ -2300,7 +2404,8 @@ mod tests {
                   variants: {
                     Red,
                   },
-                }"#]],
+                }
+            "#]],
         );
     }
 
@@ -2316,7 +2421,8 @@ mod tests {
                     Green,
                     Blue,
                   },
-                }"#]],
+                }
+            "#]],
         );
     }
 
@@ -2332,7 +2438,8 @@ mod tests {
                     Green,
                     Blue,
                   },
-                }"#]],
+                }
+            "#]],
         );
     }
 
@@ -2344,7 +2451,8 @@ mod tests {
                 Enum {
                   name: Empty,
                   variants: {},
-                }"#]],
+                }
+            "#]],
         );
     }
 
@@ -2380,6 +2488,111 @@ mod tests {
                 error: Expected type name but got red
                 1 | enum Color {red}
                   |             ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_variant_with_single_field() {
+        check_parse_declarations(
+            "enum Result { Ok(value: Int), Err(message: String) }",
+            expect![[r#"
+                Enum {
+                  name: Result,
+                  variants: {
+                    Ok(value: Int),
+                    Err(message: String),
+                  },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_variant_with_multiple_fields() {
+        check_parse_declarations(
+            "enum Event { Click(x: Int, y: Int), KeyPress(key: String, shift: Bool) }",
+            expect![[r#"
+                Enum {
+                  name: Event,
+                  variants: {
+                    Click(x: Int, y: Int),
+                    KeyPress(key: String, shift: Bool),
+                  },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_mixed_enum_variants() {
+        check_parse_declarations(
+            "enum Maybe { Just(value: Int), Nothing }",
+            expect![[r#"
+                Enum {
+                  name: Maybe,
+                  variants: {
+                    Just(value: Int),
+                    Nothing,
+                  },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_variant_with_trailing_comma_in_fields() {
+        check_parse_declarations(
+            "enum Result { Ok(value: Int,) }",
+            expect![[r#"
+                Enum {
+                  name: Result,
+                  variants: {
+                    Ok(value: Int),
+                  },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_enum_variant_with_duplicate_field() {
+        check_parse_declarations(
+            "enum Result { Ok(value: Int, value: String) }",
+            expect![[r#"
+                error: Duplicate field 'value'
+                1 | enum Result { Ok(value: Int, value: String) }
+                  |                              ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_variant_with_empty_parens() {
+        check_parse_declarations(
+            "enum Color { Red() }",
+            expect![[r#"
+                Enum {
+                  name: Color,
+                  variants: {
+                    Red,
+                  },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_variant_with_complex_field_types() {
+        check_parse_declarations(
+            "enum Container { Box(items: Array[String], count: Option[Int]) }",
+            expect![[r#"
+                Enum {
+                  name: Container,
+                  variants: {
+                    Box(items: Array[String], count: Option[Int]),
+                  },
+                }
             "#]],
         );
     }
@@ -2438,6 +2651,56 @@ mod tests {
                 error: Expected type name but got end of file
                 Color::
                 ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_literal_with_single_field() {
+        check_parse_expr(
+            "Result::Ok(value: 42)",
+            expect![[r#"
+                Result::Ok(value: 42)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_literal_with_multiple_fields() {
+        check_parse_expr(
+            r#"Event::Click(x: 10, y: 20)"#,
+            expect![[r#"
+                Event::Click(x: 10, y: 20)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_literal_with_string_field() {
+        check_parse_expr(
+            r#"Result::Err(message: "something went wrong")"#,
+            expect![[r#"
+                Result::Err(message: "something went wrong")
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_literal_with_nested_expression() {
+        check_parse_expr(
+            r#"Result::Ok(value: x + 1)"#,
+            expect![[r#"
+                Result::Ok(value: x + 1)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_literal_with_trailing_comma() {
+        check_parse_expr(
+            "Result::Ok(value: 42,)",
+            expect![[r#"
+                Result::Ok(value: 42)
             "#]],
         );
     }
@@ -2643,6 +2906,76 @@ mod tests {
             "match color {}",
             expect![[r#"
                 match color {}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_with_enum_field_pattern() {
+        check_parse_expr(
+            "match result { Result::Ok(value: v) => v, Result::Err(message: m) => m }",
+            expect![[r#"
+                match result {
+                  Result::Ok(value: v) => v,
+                  Result::Err(message: m) => m,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_with_enum_multiple_field_pattern() {
+        check_parse_expr(
+            "match event { Event::Click(x: a, y: b) => a + b }",
+            expect![[r#"
+                match event {Event::Click(x: a, y: b) => a + b}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_with_mixed_enum_patterns() {
+        check_parse_expr(
+            "match maybe { Maybe::Just(value: v) => v, Maybe::Nothing => 0 }",
+            expect![[r#"
+                match maybe {
+                  Maybe::Just(value: v) => v,
+                  Maybe::Nothing => 0,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_with_nested_enum_field_pattern() {
+        check_parse_expr(
+            "match result { Result::Ok(data: Some(x)) => x, _ => 0 }",
+            expect![[r#"
+                match result {Result::Ok(data: Some(x)) => x, _ => 0}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_with_wildcard_field_pattern() {
+        check_parse_expr(
+            "match result { Result::Ok(value: _) => 1, Result::Err(message: _) => 0 }",
+            expect![[r#"
+                match result {
+                  Result::Ok(value: _) => 1,
+                  Result::Err(message: _) => 0,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_match_with_empty_parens_pattern() {
+        // Empty parens are accepted but normalized away
+        check_parse_expr(
+            "match point { Point::XY() => 0 }",
+            expect![[r#"
+                match point {Point::XY => 0}
             "#]],
         );
     }

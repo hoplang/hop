@@ -41,10 +41,12 @@ pub enum TypedExpr {
         kind: Type,
     },
 
-    /// An enum literal expression, e.g. Color::Red
+    /// An enum literal expression, e.g. Color::Red or Result::Ok(value: 42)
     EnumLiteral {
         enum_name: String,
         variant_name: String,
+        /// Field values for variants with fields (empty for unit variants)
+        fields: Vec<(FieldName, Self)>,
         kind: Type,
     },
 
@@ -326,10 +328,27 @@ impl TypedExpr {
             TypedExpr::EnumLiteral {
                 enum_name,
                 variant_name,
+                fields,
                 ..
-            } => BoxDoc::text(enum_name.as_str())
-                .append(BoxDoc::text("::"))
-                .append(BoxDoc::text(variant_name.as_str())),
+            } => {
+                let base = BoxDoc::text(enum_name.as_str())
+                    .append(BoxDoc::text("::"))
+                    .append(BoxDoc::text(variant_name.as_str()));
+                if fields.is_empty() {
+                    base
+                } else {
+                    base.append(BoxDoc::text("("))
+                        .append(BoxDoc::intersperse(
+                            fields.iter().map(|(name, expr)| {
+                                BoxDoc::text(name.as_str())
+                                    .append(BoxDoc::text(": "))
+                                    .append(expr.to_doc())
+                            }),
+                            BoxDoc::text(", "),
+                        ))
+                        .append(BoxDoc::text(")"))
+                }
+            }
             TypedExpr::OptionLiteral { value, .. } => match value {
                 Some(inner) => BoxDoc::text("Some(")
                     .append(inner.to_doc())

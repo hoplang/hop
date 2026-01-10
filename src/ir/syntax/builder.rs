@@ -13,7 +13,8 @@ use std::rc::Rc;
 
 pub struct IrModuleBuilder {
     module_name: ModuleName,
-    enums: BTreeMap<String, Vec<String>>,
+    /// Enums with their variants. Each variant has a name and optional fields.
+    enums: BTreeMap<String, Vec<(String, Vec<(String, Type)>)>>,
     records: BTreeMap<String, Vec<(String, Type)>>,
     components: Vec<IrComponentDeclaration>,
 }
@@ -28,16 +29,30 @@ impl IrModuleBuilder {
         }
     }
 
+    /// Define an enum with unit variants (no fields)
     pub fn enum_decl<I, S>(mut self, name: &str, variants: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        let variants: Vec<String> = variants
+        let variants: Vec<(String, Vec<(String, Type)>)> = variants
             .into_iter()
-            .map(|s| s.as_ref().to_string())
+            .map(|s| (s.as_ref().to_string(), vec![]))
             .collect();
         self.enums.insert(name.to_string(), variants);
+        self
+    }
+
+    /// Define an enum with a builder closure for more complex variants
+    pub fn enum_with_fields<F>(mut self, name: &str, f: F) -> Self
+    where
+        F: FnOnce(&mut EnumBuilder),
+    {
+        let mut builder = EnumBuilder {
+            variants: Vec::new(),
+        };
+        f(&mut builder);
+        self.enums.insert(name.to_string(), builder.variants);
         self
     }
 
@@ -87,7 +102,18 @@ impl IrModuleBuilder {
             .iter()
             .map(|(name, variants)| IrEnumDeclaration {
                 name: name.clone(),
-                variants: variants.iter().map(|v| TypeName::new(v).unwrap()).collect(),
+                variants: variants
+                    .iter()
+                    .map(|(variant_name, fields)| {
+                        (
+                            TypeName::new(variant_name).unwrap(),
+                            fields
+                                .iter()
+                                .map(|(f, t)| (FieldName::new(f).unwrap(), t.clone()))
+                                .collect(),
+                        )
+                    })
+                    .collect(),
             })
             .collect();
 
@@ -119,7 +145,7 @@ impl Default for IrModuleBuilder {
 
 pub struct RecordBuilder<'a> {
     module_name: &'a ModuleName,
-    enums: &'a BTreeMap<String, Vec<String>>,
+    enums: &'a BTreeMap<String, Vec<(String, Vec<(String, Type)>)>>,
     records: &'a BTreeMap<String, Vec<(String, Type)>>,
     fields: Vec<(String, Type)>,
 }
@@ -154,8 +180,44 @@ impl<'a> RecordBuilder<'a> {
         Type::Enum {
             module: self.module_name.clone(),
             name: TypeName::new(name).unwrap(),
-            variants: variants.iter().map(|v| TypeName::new(v).unwrap()).collect(),
+            variants: variants
+                .iter()
+                .map(|(variant_name, fields)| {
+                    (
+                        TypeName::new(variant_name).unwrap(),
+                        fields
+                            .iter()
+                            .map(|(f, t)| (FieldName::new(f).unwrap(), t.clone()))
+                            .collect(),
+                    )
+                })
+                .collect(),
         }
+    }
+}
+
+/// Builder for defining enum variants with optional fields
+pub struct EnumBuilder {
+    variants: Vec<(String, Vec<(String, Type)>)>,
+}
+
+impl EnumBuilder {
+    /// Add a unit variant (no fields)
+    pub fn variant(&mut self, name: &str) -> &mut Self {
+        self.variants.push((name.to_string(), vec![]));
+        self
+    }
+
+    /// Add a variant with fields
+    pub fn variant_with_fields(&mut self, name: &str, fields: Vec<(&str, Type)>) -> &mut Self {
+        self.variants.push((
+            name.to_string(),
+            fields
+                .into_iter()
+                .map(|(n, t)| (n.to_string(), t))
+                .collect(),
+        ));
+        self
     }
 }
 
@@ -197,12 +259,16 @@ where
         .map(|(k, v)| (k.to_string(), v))
         .collect();
 
-    let enums_map: BTreeMap<String, Vec<String>> = enums
+    // Convert unit variants to the new format (variant_name, empty fields)
+    let enums_map: BTreeMap<String, Vec<(String, Vec<(String, Type)>)>> = enums
         .into_iter()
         .map(|(name, variants)| {
             (
                 name.to_string(),
-                variants.into_iter().map(|v| v.to_string()).collect(),
+                variants
+                    .into_iter()
+                    .map(|v| (v.to_string(), vec![]))
+                    .collect(),
             )
         })
         .collect();
@@ -218,7 +284,8 @@ pub struct IrBuilder {
     var_stack: RefCell<Vec<(String, Type)>>,
     params: Vec<(VarName, Type)>,
     records: BTreeMap<String, BTreeMap<String, Type>>,
-    enums: BTreeMap<String, Vec<String>>,
+    /// Enums with their variants. Each variant has a name and optional fields.
+    enums: BTreeMap<String, Vec<(String, Vec<(String, Type)>)>>,
     statements: Vec<IrStatement>,
 }
 
@@ -226,7 +293,7 @@ impl IrBuilder {
     fn new(
         params: Vec<(String, Type)>,
         records: BTreeMap<String, BTreeMap<String, Type>>,
-        enums: BTreeMap<String, Vec<String>>,
+        enums: BTreeMap<String, Vec<(String, Vec<(String, Type)>)>>,
     ) -> Self {
         let initial_vars = params.clone();
 
@@ -483,16 +550,28 @@ impl IrBuilder {
         }
     }
 
+    /// Create a unit enum variant (no fields)
     pub fn enum_variant(&self, enum_name: &str, variant_name: &str) -> IrExpr {
+        self.enum_variant_with_fields(enum_name, variant_name, vec![])
+    }
+
+    /// Create an enum variant with field values
+    pub fn enum_variant_with_fields(
+        &self,
+        enum_name: &str,
+        variant_name: &str,
+        field_values: Vec<(&str, IrExpr)>,
+    ) -> IrExpr {
         let variants = self
             .enums
             .get(enum_name)
             .unwrap_or_else(|| panic!("Enum '{}' not found in test builder", enum_name));
 
-        if !variants.iter().any(|v| v == variant_name) {
+        if !variants.iter().any(|(v, _)| v == variant_name) {
+            let variant_names: Vec<&str> = variants.iter().map(|(v, _)| v.as_str()).collect();
             panic!(
                 "Variant '{}' not found in enum '{}'. Available variants: {:?}",
-                variant_name, enum_name, variants
+                variant_name, enum_name, variant_names
             );
         }
 
@@ -500,10 +579,25 @@ impl IrBuilder {
         IrExpr::EnumLiteral {
             enum_name: enum_name.to_string(),
             variant_name: variant_name.to_string(),
+            fields: field_values
+                .into_iter()
+                .map(|(k, v)| (FieldName::new(k).unwrap(), v))
+                .collect(),
             kind: Type::Enum {
                 module: test_module,
                 name: TypeName::new(enum_name).unwrap(),
-                variants: variants.iter().map(|v| TypeName::new(v).unwrap()).collect(),
+                variants: variants
+                    .iter()
+                    .map(|(variant_name, fields)| {
+                        (
+                            TypeName::new(variant_name).unwrap(),
+                            fields
+                                .iter()
+                                .map(|(f, t)| (FieldName::new(f).unwrap(), t.clone()))
+                                .collect(),
+                        )
+                    })
+                    .collect(),
             },
             id: self.next_expr_id(),
         }
@@ -551,6 +645,7 @@ impl IrBuilder {
                     enum_name: enum_name.clone(),
                     variant_name: variant_name.to_string(),
                 },
+                bindings: vec![],
                 body,
             })
             .collect();
@@ -964,7 +1059,7 @@ impl IrBuilder {
         });
     }
 
-    /// Create a match statement over an enum value
+    /// Create a match statement over an enum value (unit variants only)
     /// arms is a list of (variant_name, body_fn) tuples
     pub fn enum_match_stmt(
         &mut self,
@@ -988,6 +1083,83 @@ impl IrBuilder {
                         enum_name: enum_name.clone(),
                         variant_name: variant_name.to_string(),
                     },
+                    bindings: vec![],
+                    body: arm_builder.statements,
+                }
+            })
+            .collect();
+
+        self.statements.push(IrStatement::Match {
+            id: self.next_node_id(),
+            match_: Match::Enum {
+                subject: extract_var_subject(&subject),
+                arms: ir_arms,
+            },
+        });
+    }
+
+    /// Create a match statement over an enum value with field bindings
+    /// arms is a list of (variant_name, field_bindings, body_fn) tuples
+    /// where field_bindings is a list of (field_name, binding_name) pairs
+    pub fn enum_match_stmt_with_bindings(
+        &mut self,
+        subject: IrExpr,
+        arms: Vec<(&str, Vec<(&str, &str)>, Box<dyn FnOnce(&mut Self)>)>,
+    ) {
+        use crate::dop::patterns::Match;
+
+        let Type::Enum {
+            name, variants, ..
+        } = subject.as_type()
+        else {
+            panic!("Match subject must be an enum type")
+        };
+        let enum_name = name.as_str().to_string();
+
+        let ir_arms: Vec<EnumMatchArm<Vec<IrStatement>>> = arms
+            .into_iter()
+            .map(|(variant_name, field_bindings, body_fn)| {
+                // Look up the variant to get field types
+                let variant_fields = variants
+                    .iter()
+                    .find(|(v, _)| v.as_str() == variant_name)
+                    .map(|(_, fields)| fields)
+                    .expect("Variant not found in enum");
+
+                // Create binding names and push variables to scope
+                let bindings: Vec<(FieldName, VarName)> = field_bindings
+                    .iter()
+                    .map(|(field_name, binding_name)| {
+                        (
+                            FieldName::new(field_name).unwrap(),
+                            VarName::new(binding_name).unwrap(),
+                        )
+                    })
+                    .collect();
+
+                let mut arm_builder = self.new_scoped();
+
+                // Add bound variables to the builder's stack
+                for (field_name, binding_name) in &bindings {
+                    let field_type = variant_fields
+                        .iter()
+                        .find(|(f, _)| f == field_name)
+                        .map(|(_, t)| t.clone())
+                        .expect("Field not found in variant");
+                    arm_builder
+                        .var_stack
+                        .borrow_mut()
+                        .push((binding_name.as_str().to_string(), field_type));
+                }
+
+                body_fn(&mut arm_builder);
+
+                EnumMatchArm {
+                    pattern: EnumPattern::Variant {
+                        enum_name: enum_name.clone(),
+                        variant_name: variant_name.to_string(),
+                    },
+                    bindings,
                     body: arm_builder.statements,
                 }
             })

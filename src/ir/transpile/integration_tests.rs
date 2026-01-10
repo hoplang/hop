@@ -2328,4 +2328,314 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn enum_with_fields_literal() {
+        use crate::dop::Type;
+        use crate::ir::syntax::builder::IrBuilder;
+
+        check(
+            IrModuleBuilder::new()
+                .enum_with_fields("Result", |e| {
+                    e.variant_with_fields("Ok", vec![("value", Type::String)]);
+                    e.variant_with_fields("Err", vec![("message", Type::String)]);
+                })
+                .component("Test", [], |t| {
+                    t.let_stmt(
+                        "ok",
+                        t.enum_variant_with_fields("Result", "Ok", vec![("value", t.str("success"))]),
+                        |t| {
+                            t.enum_match_stmt_with_bindings(
+                                t.var("ok"),
+                                vec![
+                                    (
+                                        "Ok",
+                                        vec![("value", "v")],
+                                        Box::new(|t: &mut IrBuilder| {
+                                            t.write("created:");
+                                            t.write_expr(t.var("v"), false);
+                                        }),
+                                    ),
+                                    (
+                                        "Err",
+                                        vec![("message", "m")],
+                                        Box::new(|t: &mut IrBuilder| {
+                                            t.write("error:");
+                                            t.write_expr(t.var("m"), false);
+                                        }),
+                                    ),
+                                ],
+                            );
+                        },
+                    );
+                })
+                .build(),
+            "created:success",
+            expect![[r#"
+                -- input --
+                enum Result {
+                  Ok(value: String),
+                  Err(message: String),
+                }
+                Test() {
+                  let ok = Result::Ok(value: "success") in {
+                    match ok {
+                      Result::Ok(value: v) => {
+                        write("created:")
+                        write_expr(v)
+                      }
+                      Result::Err(message: m) => {
+                        write("error:")
+                        write_expr(m)
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                created:success
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn enum_match_with_field_bindings() {
+        use crate::dop::Type;
+
+        check(
+            IrModuleBuilder::new()
+                .enum_with_fields("Result", |e| {
+                    e.variant_with_fields("Ok", vec![("value", Type::String)]);
+                    e.variant_with_fields("Err", vec![("message", Type::String)]);
+                })
+                .component("Test", [], |t| {
+                    t.let_stmt(
+                        "result",
+                        t.enum_variant_with_fields("Result", "Ok", vec![("value", t.str("hello"))]),
+                        |t| {
+                            t.enum_match_stmt_with_bindings(
+                                t.var("result"),
+                                vec![
+                                    (
+                                        "Ok",
+                                        vec![("value", "v")],
+                                        Box::new(|t: &mut IrBuilder| {
+                                            t.write("Ok:");
+                                            t.write_expr(t.var("v"), false);
+                                        }),
+                                    ),
+                                    (
+                                        "Err",
+                                        vec![("message", "m")],
+                                        Box::new(|t: &mut IrBuilder| {
+                                            t.write("Err:");
+                                            t.write_expr(t.var("m"), false);
+                                        }),
+                                    ),
+                                ],
+                            );
+                        },
+                    );
+                })
+                .build(),
+            "Ok:hello",
+            expect![[r#"
+                -- input --
+                enum Result {
+                  Ok(value: String),
+                  Err(message: String),
+                }
+                Test() {
+                  let result = Result::Ok(value: "hello") in {
+                    match result {
+                      Result::Ok(value: v) => {
+                        write("Ok:")
+                        write_expr(v)
+                      }
+                      Result::Err(message: m) => {
+                        write("Err:")
+                        write_expr(m)
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                Ok:hello
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn enum_match_err_variant_with_bindings() {
+        use crate::dop::Type;
+
+        check(
+            IrModuleBuilder::new()
+                .enum_with_fields("Result", |e| {
+                    e.variant_with_fields("Ok", vec![("value", Type::String)]);
+                    e.variant_with_fields("Err", vec![("message", Type::String)]);
+                })
+                .component("Test", [], |t| {
+                    t.let_stmt(
+                        "result",
+                        t.enum_variant_with_fields(
+                            "Result",
+                            "Err",
+                            vec![("message", t.str("something went wrong"))],
+                        ),
+                        |t| {
+                            t.enum_match_stmt_with_bindings(
+                                t.var("result"),
+                                vec![
+                                    (
+                                        "Ok",
+                                        vec![("value", "v")],
+                                        Box::new(|t: &mut IrBuilder| {
+                                            t.write("Ok:");
+                                            t.write_expr(t.var("v"), false);
+                                        }),
+                                    ),
+                                    (
+                                        "Err",
+                                        vec![("message", "m")],
+                                        Box::new(|t: &mut IrBuilder| {
+                                            t.write("Err:");
+                                            t.write_expr(t.var("m"), false);
+                                        }),
+                                    ),
+                                ],
+                            );
+                        },
+                    );
+                })
+                .build(),
+            "Err:something went wrong",
+            expect![[r#"
+                -- input --
+                enum Result {
+                  Ok(value: String),
+                  Err(message: String),
+                }
+                Test() {
+                  let result = Result::Err(message: "something went wrong") in {
+                    match result {
+                      Result::Ok(value: v) => {
+                        write("Ok:")
+                        write_expr(v)
+                      }
+                      Result::Err(message: m) => {
+                        write("Err:")
+                        write_expr(m)
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                Err:something went wrong
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn enum_with_multiple_fields() {
+        use crate::dop::Type;
+
+        check(
+            IrModuleBuilder::new()
+                .enum_with_fields("Response", |e| {
+                    e.variant_with_fields(
+                        "Success",
+                        vec![("code", Type::String), ("body", Type::String)],
+                    );
+                    e.variant_with_fields("Error", vec![("reason", Type::String)]);
+                })
+                .component("Test", [], |t| {
+                    t.let_stmt(
+                        "resp",
+                        t.enum_variant_with_fields(
+                            "Response",
+                            "Success",
+                            vec![("code", t.str("200")), ("body", t.str("OK"))],
+                        ),
+                        |t| {
+                            t.enum_match_stmt_with_bindings(
+                                t.var("resp"),
+                                vec![
+                                    (
+                                        "Success",
+                                        vec![("code", "c"), ("body", "b")],
+                                        Box::new(|t: &mut IrBuilder| {
+                                            t.write_expr(t.var("c"), false);
+                                            t.write(":");
+                                            t.write_expr(t.var("b"), false);
+                                        }),
+                                    ),
+                                    (
+                                        "Error",
+                                        vec![("reason", "r")],
+                                        Box::new(|t: &mut IrBuilder| {
+                                            t.write("Error:");
+                                            t.write_expr(t.var("r"), false);
+                                        }),
+                                    ),
+                                ],
+                            );
+                        },
+                    );
+                })
+                .build(),
+            "200:OK",
+            expect![[r#"
+                -- input --
+                enum Response {
+                  Success(code: String, body: String),
+                  Error(reason: String),
+                }
+                Test() {
+                  let resp = Response::Success(code: "200", body: "OK") in {
+                    match resp {
+                      Response::Success(code: c, body: b) => {
+                        write_expr(c)
+                        write(":")
+                        write_expr(b)
+                      }
+                      Response::Error(reason: r) => {
+                        write("Error:")
+                        write_expr(r)
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                200:OK
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
 }

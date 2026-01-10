@@ -292,6 +292,7 @@ impl Compiler {
                             .into_iter()
                             .map(|arm| EnumMatchArm {
                                 pattern: arm.pattern,
+                                bindings: arm.bindings,
                                 body: self.compile_nodes(arm.body, slot_content.cloned()),
                             })
                             .collect(),
@@ -599,11 +600,17 @@ impl Compiler {
             TypedExpr::EnumLiteral {
                 enum_name,
                 variant_name,
+                fields,
                 kind,
-                ..
             } => IrExpr::EnumLiteral {
                 enum_name: enum_name.clone(),
                 variant_name: variant_name.clone(),
+                fields: fields
+                    .iter()
+                    .map(|(field_name, field_expr)| {
+                        (field_name.clone(), self.compile_expr(field_expr))
+                    })
+                    .collect(),
                 kind: kind.clone(),
                 id: expr_id,
             },
@@ -615,6 +622,7 @@ impl Compiler {
                             .iter()
                             .map(|arm| EnumMatchArm {
                                 pattern: arm.pattern.clone(),
+                                bindings: arm.bindings.clone(),
                                 body: self.compile_expr(&arm.body),
                             })
                             .collect(),

@@ -54,7 +54,8 @@ struct RecordTypeInformation {
 
 #[derive(Debug, Clone)]
 struct EnumTypeInformation {
-    variants: Vec<TypeName>,
+    /// Variants with their fields: (variant_name, fields)
+    variants: Vec<(TypeName, Vec<(FieldName, Type)>)>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -291,11 +292,35 @@ fn typecheck_module(
     let mut typed_enums: Vec<TypedEnumDeclaration> = Vec::new();
     for enum_decl in module.get_enum_declarations() {
         let enum_name = enum_decl.name();
-        let variants: Vec<TypeName> = enum_decl.variants.iter().map(|v| v.name.clone()).collect();
+
+        // Resolve variant fields
+        let mut typed_variants: Vec<(TypeName, Vec<(FieldName, Type)>)> = Vec::new();
+        let mut has_errors = false;
+
+        for variant in &enum_decl.variants {
+            let mut typed_fields: Vec<(FieldName, Type)> = Vec::new();
+            for (field_name, _, field_type) in &variant.fields {
+                match resolve_type(field_type, &mut type_env) {
+                    Ok(resolved_type) => {
+                        typed_fields.push((field_name.clone(), resolved_type));
+                    }
+                    Err(e) => {
+                        errors.push(e.into());
+                        has_errors = true;
+                    }
+                }
+            }
+            typed_variants.push((variant.name.clone(), typed_fields));
+        }
+
+        if has_errors {
+            continue;
+        }
+
         let enum_type = Type::Enum {
             module: module.name.clone(),
             name: TypeName::new(enum_name).unwrap(),
-            variants: variants.clone(),
+            variants: typed_variants.clone(),
         };
         let _ = type_env.push(enum_name.to_string(), enum_type);
 
@@ -303,13 +328,13 @@ fn typecheck_module(
             &module.name,
             enum_name,
             EnumTypeInformation {
-                variants: variants.clone(),
+                variants: typed_variants.clone(),
             },
         );
 
         typed_enums.push(TypedEnumDeclaration {
             name: enum_decl.name.clone(),
-            variants,
+            variants: typed_variants,
         });
     }
 
@@ -1083,7 +1108,11 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
                                 _ => unreachable!("Invalid constructor for Enum type"),
                             };
                             let body = decision_to_typed_nodes(&case.body, typed_bodies);
-                            EnumMatchArm { pattern, body }
+                            EnumMatchArm {
+                                pattern,
+                                bindings: vec![],
+                                body,
+                            }
                         })
                         .collect();
 

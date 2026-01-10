@@ -163,10 +163,24 @@ impl Transpiler for TsTranspiler {
                 .append(BoxDoc::text(enum_def.name.as_str()))
                 .append(BoxDoc::text(" = "))
                 .append(BoxDoc::intersperse(
-                    enum_def.variants.iter().map(|variant| {
-                        BoxDoc::text("{ readonly tag: \"")
-                            .append(BoxDoc::text(variant.as_str()))
-                            .append(BoxDoc::text("\" }"))
+                    enum_def.variants.iter().map(|(variant_name, fields)| {
+                        let base = BoxDoc::text("{ readonly tag: \"")
+                            .append(BoxDoc::text(variant_name.as_str()))
+                            .append(BoxDoc::text("\""));
+                        if fields.is_empty() {
+                            base.append(BoxDoc::text(" }"))
+                        } else {
+                            base.append(BoxDoc::intersperse(
+                                fields.iter().map(|(field_name, field_type)| {
+                                    BoxDoc::text(", readonly ")
+                                        .append(BoxDoc::text(field_name.as_str()))
+                                        .append(BoxDoc::text(": "))
+                                        .append(self.transpile_type(field_type))
+                                }),
+                                BoxDoc::nil(),
+                            ))
+                            .append(BoxDoc::text(" }"))
+                        }
                     }),
                     BoxDoc::text(" | "),
                 ))
@@ -174,20 +188,55 @@ impl Transpiler for TsTranspiler {
                 .append(BoxDoc::line());
 
             // Generate constructor function for each variant
-            for variant in &enum_def.variants {
-                result = result
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("    export function "))
-                    .append(BoxDoc::text(variant.as_str()))
-                    .append(BoxDoc::text("(): "))
-                    .append(BoxDoc::text(enum_def.name.as_str()))
-                    .append(BoxDoc::text(" {"))
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("        return { tag: \""))
-                    .append(BoxDoc::text(variant.as_str()))
-                    .append(BoxDoc::text("\" };"))
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("    }"));
+            for (variant_name, fields) in &enum_def.variants {
+                result = result.append(BoxDoc::line());
+
+                if fields.is_empty() {
+                    // Unit variant: no parameters
+                    result = result
+                        .append(BoxDoc::text("    export function "))
+                        .append(BoxDoc::text(variant_name.as_str()))
+                        .append(BoxDoc::text("(): "))
+                        .append(BoxDoc::text(enum_def.name.as_str()))
+                        .append(BoxDoc::text(" {"))
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("        return { tag: \""))
+                        .append(BoxDoc::text(variant_name.as_str()))
+                        .append(BoxDoc::text("\" };"))
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("    }"));
+                } else {
+                    // Variant with fields: add parameters
+                    result = result
+                        .append(BoxDoc::text("    export function "))
+                        .append(BoxDoc::text(variant_name.as_str()))
+                        .append(BoxDoc::text("("))
+                        .append(BoxDoc::intersperse(
+                            fields.iter().map(|(field_name, field_type)| {
+                                BoxDoc::text(field_name.as_str())
+                                    .append(BoxDoc::text(": "))
+                                    .append(self.transpile_type(field_type))
+                            }),
+                            BoxDoc::text(", "),
+                        ))
+                        .append(BoxDoc::text("): "))
+                        .append(BoxDoc::text(enum_def.name.as_str()))
+                        .append(BoxDoc::text(" {"))
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("        return { tag: \""))
+                        .append(BoxDoc::text(variant_name.as_str()))
+                        .append(BoxDoc::text("\""))
+                        .append(BoxDoc::intersperse(
+                            fields.iter().map(|(field_name, _)| {
+                                BoxDoc::text(", ")
+                                    .append(BoxDoc::text(field_name.as_str()))
+                            }),
+                            BoxDoc::nil(),
+                        ))
+                        .append(BoxDoc::text(" };"))
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("    }"));
+                }
             }
 
             result = result
@@ -546,22 +595,45 @@ impl StatementTranspiler for TsTranspiler {
             Match::Enum { subject, arms } => {
                 // switch ([[subject]].tag) {
                 //   case "[[variant_name]]": {
+                //     const { field: binding, ... } = [[subject]];
                 //     [[statements]]
                 //     break;
                 //   }
                 //   [[...]]
                 // }
+                let subject_name = subject.0.as_str();
                 let cases = BoxDoc::intersperse(
                     arms.iter().map(|arm| match &arm.pattern {
                         EnumPattern::Variant {
                             enum_name: _,
                             variant_name,
                         } => {
+                            // Generate binding destructuring if there are bindings
+                            let bindings_doc = if arm.bindings.is_empty() {
+                                BoxDoc::nil()
+                            } else {
+                                let destructure = BoxDoc::intersperse(
+                                    arm.bindings.iter().map(|(field, var)| {
+                                        BoxDoc::text(field.as_str())
+                                            .append(BoxDoc::text(": "))
+                                            .append(BoxDoc::text(var.as_str()))
+                                    }),
+                                    BoxDoc::text(", "),
+                                );
+                                BoxDoc::text("const { ")
+                                    .append(destructure)
+                                    .append(BoxDoc::text(" } = "))
+                                    .append(BoxDoc::text(subject_name))
+                                    .append(BoxDoc::text(";"))
+                                    .append(BoxDoc::hardline())
+                            };
+
                             BoxDoc::text("case \"")
                                 .append(BoxDoc::text(variant_name.as_str()))
                                 .append(BoxDoc::text("\": {"))
                                 .append(
                                     BoxDoc::hardline()
+                                        .append(bindings_doc)
                                         .append(self.transpile_statements(&arm.body))
                                         .append(BoxDoc::hardline())
                                         .append(BoxDoc::text("break;"))
@@ -575,7 +647,7 @@ impl StatementTranspiler for TsTranspiler {
                 );
 
                 BoxDoc::text("switch (")
-                    .append(BoxDoc::text(subject.0.as_str()))
+                    .append(BoxDoc::text(subject_name))
                     .append(BoxDoc::text(".tag) {"))
                     .append(BoxDoc::hardline().append(cases).nest(4))
                     .append(BoxDoc::hardline())
@@ -647,12 +719,28 @@ impl ExpressionTranspiler for TsTranspiler {
             .append(BoxDoc::text(")"))
     }
 
-    fn transpile_enum_literal<'a>(&self, enum_name: &'a str, variant_name: &'a str) -> BoxDoc<'a> {
-        // Call the namespace constructor function: Color.Red()
-        BoxDoc::text(enum_name)
+    fn transpile_enum_literal<'a>(
+        &self,
+        enum_name: &'a str,
+        variant_name: &'a str,
+        fields: &'a [(FieldName, IrExpr)],
+    ) -> BoxDoc<'a> {
+        // Call the namespace constructor function: Color.Red() or Result.Ok(value)
+        let base = BoxDoc::text(enum_name)
             .append(BoxDoc::text("."))
             .append(BoxDoc::text(variant_name))
-            .append(BoxDoc::text("()"))
+            .append(BoxDoc::text("("));
+        if fields.is_empty() {
+            base.append(BoxDoc::text(")"))
+        } else {
+            base.append(BoxDoc::intersperse(
+                fields
+                    .iter()
+                    .map(|(_, field_expr)| self.transpile_expr(field_expr)),
+                BoxDoc::text(", "),
+            ))
+            .append(BoxDoc::text(")"))
+        }
     }
 
     fn transpile_string_equals<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a> {
@@ -874,28 +962,61 @@ impl ExpressionTranspiler for TsTranspiler {
             Match::Enum { subject, arms } => {
                 // (() => {
                 //   switch ([[subject]].tag) {
-                //     case "[[variant_name]]": return [[body]];
+                //     case "[[variant_name]]": {
+                //       const { field: binding } = [[subject]];
+                //       return [[body]];
+                //     }
                 //     [[...]]
                 //   }
                 // })()
+                let subject_name = subject.0.as_str();
                 let cases = BoxDoc::intersperse(
                     arms.iter().map(|arm| match &arm.pattern {
                         EnumPattern::Variant {
                             enum_name: _,
                             variant_name,
                         } => {
-                            BoxDoc::text("case \"")
-                                .append(BoxDoc::text(variant_name.as_str()))
-                                .append(BoxDoc::text("\": return "))
-                                .append(self.transpile_expr(&arm.body))
-                                .append(BoxDoc::text(";"))
+                            if arm.bindings.is_empty() {
+                                BoxDoc::text("case \"")
+                                    .append(BoxDoc::text(variant_name.as_str()))
+                                    .append(BoxDoc::text("\": return "))
+                                    .append(self.transpile_expr(&arm.body))
+                                    .append(BoxDoc::text(";"))
+                            } else {
+                                let destructure = BoxDoc::intersperse(
+                                    arm.bindings.iter().map(|(field, var)| {
+                                        BoxDoc::text(field.as_str())
+                                            .append(BoxDoc::text(": "))
+                                            .append(BoxDoc::text(var.as_str()))
+                                    }),
+                                    BoxDoc::text(", "),
+                                );
+                                BoxDoc::text("case \"")
+                                    .append(BoxDoc::text(variant_name.as_str()))
+                                    .append(BoxDoc::text("\": {"))
+                                    .append(
+                                        BoxDoc::line()
+                                            .append(BoxDoc::text("const { "))
+                                            .append(destructure)
+                                            .append(BoxDoc::text(" } = "))
+                                            .append(BoxDoc::text(subject_name))
+                                            .append(BoxDoc::text(";"))
+                                            .append(BoxDoc::line())
+                                            .append(BoxDoc::text("return "))
+                                            .append(self.transpile_expr(&arm.body))
+                                            .append(BoxDoc::text(";"))
+                                            .nest(2),
+                                    )
+                                    .append(BoxDoc::line())
+                                    .append(BoxDoc::text("}"))
+                            }
                         }
                     }),
                     BoxDoc::line(),
                 );
 
                 let switch_body = BoxDoc::text("switch (")
-                    .append(BoxDoc::text(subject.0.as_str()))
+                    .append(BoxDoc::text(subject_name))
                     .append(BoxDoc::text(".tag) {"))
                     .append(BoxDoc::line().append(cases).nest(2))
                     .append(BoxDoc::line())
@@ -1677,9 +1798,9 @@ mod tests {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("Color").unwrap(),
             variants: vec![
-                TypeName::new("Red").unwrap(),
-                TypeName::new("Green").unwrap(),
-                TypeName::new("Blue").unwrap(),
+                (TypeName::new("Red").unwrap(), vec![]),
+                (TypeName::new("Green").unwrap(), vec![]),
+                (TypeName::new("Blue").unwrap(), vec![]),
             ],
         };
 
@@ -1753,9 +1874,9 @@ mod tests {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("Color").unwrap(),
             variants: vec![
-                TypeName::new("Red").unwrap(),
-                TypeName::new("Green").unwrap(),
-                TypeName::new("Blue").unwrap(),
+                (TypeName::new("Red").unwrap(), vec![]),
+                (TypeName::new("Green").unwrap(), vec![]),
+                (TypeName::new("Blue").unwrap(), vec![]),
             ],
         };
 
@@ -2312,6 +2433,213 @@ mod tests {
                             }
                             case "None": {
                                 output += "Empty";
+                                break;
+                            }
+                        }
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_with_fields() {
+        use crate::dop::symbols::field_name::FieldName;
+        use crate::dop::symbols::type_name::TypeName;
+        use crate::hop::symbols::module_name::ModuleName;
+
+        let result_type = Type::Enum {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Result").unwrap(),
+            variants: vec![
+                (
+                    TypeName::new("Ok").unwrap(),
+                    vec![(FieldName::new("value").unwrap(), Type::Int)],
+                ),
+                (
+                    TypeName::new("Err").unwrap(),
+                    vec![(FieldName::new("message").unwrap(), Type::String)],
+                ),
+            ],
+        };
+
+        check(
+            IrModuleBuilder::new()
+                .enum_with_fields("Result", |e| {
+                    e.variant_with_fields("Ok", vec![("value", Type::Int)]);
+                    e.variant_with_fields("Err", vec![("message", Type::String)]);
+                })
+                .component("ShowResult", [("r", result_type)], |t| {
+                    t.write("<div>");
+                    // Create an Ok variant with a field value
+                    let ok_result =
+                        t.enum_variant_with_fields("Result", "Ok", vec![("value", t.int(42))]);
+                    t.let_stmt("ok", ok_result, |t| {
+                        t.write_expr(t.str("Created Ok!"), false);
+                    });
+                    t.write("</div>");
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                enum Result {
+                  Ok(value: Int),
+                  Err(message: String),
+                }
+                ShowResult(r: test::Result) {
+                  write("<div>")
+                  let ok = Result::Ok(value: 42) in {
+                    write_expr("Created Ok!")
+                  }
+                  write("</div>")
+                }
+
+                -- after --
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
+
+                export namespace Result {
+                    export type Result = { readonly tag: "Ok", readonly value: number } | { readonly tag: "Err", readonly message: string };
+
+                    export function Ok(value: number): Result {
+                        return { tag: "Ok", value };
+                    }
+                    export function Err(message: string): Result {
+                        return { tag: "Err", message };
+                    }
+                }
+
+                export default {
+                    showResult: ({ r }: { r: Result.Result }): string => {
+                        let output: string = "";
+                        output += "<div>";
+                        const ok = Result.Ok(42);
+                        output += "Created Ok!";
+                        output += "</div>";
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_match_with_field_bindings() {
+        use crate::dop::symbols::field_name::FieldName;
+        use crate::dop::symbols::type_name::TypeName;
+        use crate::hop::symbols::module_name::ModuleName;
+        use crate::ir::syntax::builder::IrBuilder;
+
+        let result_type = Type::Enum {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Result").unwrap(),
+            variants: vec![
+                (
+                    TypeName::new("Ok").unwrap(),
+                    vec![(FieldName::new("value").unwrap(), Type::String)],
+                ),
+                (
+                    TypeName::new("Err").unwrap(),
+                    vec![(FieldName::new("message").unwrap(), Type::String)],
+                ),
+            ],
+        };
+
+        check(
+            IrModuleBuilder::new()
+                .enum_with_fields("Result", |e| {
+                    e.variant_with_fields("Ok", vec![("value", Type::String)]);
+                    e.variant_with_fields("Err", vec![("message", Type::String)]);
+                })
+                .component("ShowResult", [("r", result_type)], |t| {
+                    t.enum_match_stmt_with_bindings(
+                        t.var("r"),
+                        vec![
+                            (
+                                "Ok",
+                                vec![("value", "v")],
+                                Box::new(|t: &mut IrBuilder| {
+                                    t.write("Value: ");
+                                    t.write_expr(t.var("v"), false);
+                                }),
+                            ),
+                            (
+                                "Err",
+                                vec![("message", "m")],
+                                Box::new(|t: &mut IrBuilder| {
+                                    t.write("Error: ");
+                                    t.write_expr(t.var("m"), false);
+                                }),
+                            ),
+                        ],
+                    );
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                enum Result {
+                  Ok(value: String),
+                  Err(message: String),
+                }
+                ShowResult(r: test::Result) {
+                  match r {
+                    Result::Ok(value: v) => {
+                      write("Value: ")
+                      write_expr(v)
+                    }
+                    Result::Err(message: m) => {
+                      write("Error: ")
+                      write_expr(m)
+                    }
+                  }
+                }
+
+                -- after --
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
+
+                export namespace Result {
+                    export type Result = { readonly tag: "Ok", readonly value: string } | { readonly tag: "Err", readonly message: string };
+
+                    export function Ok(value: string): Result {
+                        return { tag: "Ok", value };
+                    }
+                    export function Err(message: string): Result {
+                        return { tag: "Err", message };
+                    }
+                }
+
+                export default {
+                    showResult: ({ r }: { r: Result.Result }): string => {
+                        let output: string = "";
+                        switch (r.tag) {
+                            case "Ok": {
+                                const { value: v } = r;
+                                output += "Value: ";
+                                output += v;
+                                break;
+                            }
+                            case "Err": {
+                                const { message: m } = r;
+                                output += "Error: ";
+                                output += m;
                                 break;
                             }
                         }

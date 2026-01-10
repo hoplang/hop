@@ -137,6 +137,7 @@ impl WriteCoalescingPass {
                                     .into_iter()
                                     .map(|arm| crate::dop::patterns::EnumMatchArm {
                                         pattern: arm.pattern,
+                                        bindings: arm.bindings,
                                         body: Self::transform_statements(arm.body),
                                     })
                                     .collect(),

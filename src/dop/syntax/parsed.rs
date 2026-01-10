@@ -133,7 +133,11 @@ pub enum ParsedMatchPattern {
         /// Positional arguments (e.g., the inner pattern in `Some(x)`)
         args: Vec<ParsedMatchPattern>,
         /// Named field patterns for record matching (e.g., `User(name: x, age: y)`)
-        fields: Vec<(FieldName, ParsedMatchPattern)>,
+        /// The tuple is (field_name, field_name_range, field_pattern)
+        fields: Vec<(FieldName, DocumentRange, ParsedMatchPattern)>,
+        /// Range of just the constructor (e.g., `Point::XY` without the field patterns)
+        constructor_range: DocumentRange,
+        /// Range of the entire pattern including fields
         range: DocumentRange,
     },
     /// A wildcard pattern that matches anything, written as `_`
@@ -165,7 +169,7 @@ impl ParsedMatchPattern {
                 if !fields.is_empty() {
                     // Record pattern: User(name: x, age: y)
                     let fields_doc = BoxDoc::intersperse(
-                        fields.iter().map(|(name, pat)| {
+                        fields.iter().map(|(name, _, pat)| {
                             BoxDoc::text(name.as_str())
                                 .append(BoxDoc::text(": "))
                                 .append(pat.to_doc())
@@ -266,6 +270,11 @@ pub enum ParsedExpr {
     EnumLiteral {
         enum_name: String,
         variant_name: String,
+        /// Field values for variants with fields (empty for unit variants)
+        /// The tuple is (field_name, field_name_range, field_expr)
+        fields: Vec<(FieldName, DocumentRange, Self)>,
+        /// Range of just the constructor (e.g., `Point::XY` without the field values)
+        constructor_range: DocumentRange,
         range: DocumentRange,
     },
 
@@ -461,10 +470,27 @@ impl ParsedExpr {
             ParsedExpr::EnumLiteral {
                 enum_name,
                 variant_name,
+                fields,
                 ..
-            } => BoxDoc::text(enum_name.as_str())
-                .append(BoxDoc::text("::"))
-                .append(BoxDoc::text(variant_name.as_str())),
+            } => {
+                let base = BoxDoc::text(enum_name.as_str())
+                    .append(BoxDoc::text("::"))
+                    .append(BoxDoc::text(variant_name.as_str()));
+                if fields.is_empty() {
+                    base
+                } else {
+                    base.append(BoxDoc::text("("))
+                        .append(BoxDoc::intersperse(
+                            fields.iter().map(|(field_name, _, field_value)| {
+                                BoxDoc::text(field_name.to_string())
+                                    .append(BoxDoc::text(": "))
+                                    .append(field_value.to_doc())
+                            }),
+                            BoxDoc::text(", "),
+                        ))
+                        .append(BoxDoc::text(")"))
+                }
+            }
             ParsedExpr::Match { subject, arms, .. } => {
                 if arms.is_empty() {
                     BoxDoc::text("match ")
@@ -595,14 +621,15 @@ pub enum ParsedDeclaration {
         /// The full range of the declaration.
         range: DocumentRange,
     },
-    /// An enum declaration: `enum Name {Variant1, Variant2, ...}`
+    /// An enum declaration: `enum Name {Variant1, Variant2(field: Type), ...}`
     Enum {
         /// The name of the enum type.
         name: TypeName,
         /// The range of the enum name in the source.
         name_range: DocumentRange,
-        /// The variants of the enum (name, range).
-        variants: Vec<(TypeName, DocumentRange)>,
+        /// The variants of the enum (name, range, fields).
+        /// Each variant can optionally have named fields like records.
+        variants: Vec<(TypeName, DocumentRange, Vec<(FieldName, DocumentRange, ParsedType)>)>,
         /// The full range of the declaration.
         range: DocumentRange,
     },
@@ -671,9 +698,23 @@ impl ParsedDeclaration {
                 } else {
                     BoxDoc::line()
                         .append(BoxDoc::intersperse(
-                            variants
-                                .iter()
-                                .map(|(name, _)| BoxDoc::text(name.to_string())),
+                            variants.iter().map(|(variant_name, _, fields)| {
+                                if fields.is_empty() {
+                                    BoxDoc::text(variant_name.to_string())
+                                } else {
+                                    BoxDoc::text(variant_name.to_string())
+                                        .append(BoxDoc::text("("))
+                                        .append(BoxDoc::intersperse(
+                                            fields.iter().map(|(field_name, _, field_type)| {
+                                                BoxDoc::text(field_name.to_string())
+                                                    .append(BoxDoc::text(": "))
+                                                    .append(field_type.to_doc())
+                                            }),
+                                            BoxDoc::text(", "),
+                                        ))
+                                        .append(BoxDoc::text(")"))
+                                }
+                            }),
                             BoxDoc::text(",").append(BoxDoc::line()),
                         ))
                         .append(BoxDoc::text(","))
@@ -704,7 +745,7 @@ impl ParsedDeclaration {
 
 impl fmt::Display for ParsedDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(80))
+        writeln!(f, "{}", self.to_doc().pretty(80))
     }
 }
 

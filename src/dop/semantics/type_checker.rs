@@ -659,7 +659,7 @@ pub fn typecheck_expr(
 
                 // Check if this field exists in the record
                 let expected_type = expected_fields.get(field_name_str).ok_or_else(|| {
-                    TypeError::RecordLiteralUnknownRecordField {
+                    TypeError::RecordUnknownField {
                         field_name: field_name_str.to_string(),
                         record_name: record_name.clone(),
                         range: field_value.range().clone(),
@@ -691,14 +691,17 @@ pub fn typecheck_expr(
             }
 
             // Check for missing fields
-            for expected_field in expected_fields.keys() {
-                if !provided_fields.contains(expected_field) {
-                    return Err(TypeError::RecordLiteralMissingRecordField {
-                        field_name: (*expected_field).to_string(),
-                        record_name: record_name.clone(),
-                        range: range.clone(),
-                    });
-                }
+            let missing_fields: Vec<String> = expected_fields
+                .keys()
+                .filter(|name| !provided_fields.contains(*name))
+                .map(|name| (*name).to_string())
+                .collect();
+            if !missing_fields.is_empty() {
+                return Err(TypeError::RecordMissingFields {
+                    record_name: record_name.clone(),
+                    missing_fields,
+                    range: range.clone(),
+                });
             }
 
             Ok(TypedExpr::RecordLiteral {
@@ -710,6 +713,8 @@ pub fn typecheck_expr(
         ParsedExpr::EnumLiteral {
             enum_name,
             variant_name,
+            fields,
+            constructor_range,
             range,
         } => {
             // Look up the enum type in the type environment
@@ -721,16 +726,19 @@ pub fn typecheck_expr(
                 })?
                 .clone();
 
-            // Verify it's actually an enum type and the variant exists
-            match &enum_type {
+            // Verify it's actually an enum type and get the variant's fields
+            let variant_fields = match &enum_type {
                 Type::Enum { variants, .. } => {
-                    let variant_exists = variants.iter().any(|v| v.as_str() == variant_name);
-                    if !variant_exists {
-                        return Err(TypeError::UndefinedEnumVariant {
-                            enum_name: enum_name.clone(),
-                            variant_name: variant_name.clone(),
-                            range: range.clone(),
-                        });
+                    let variant = variants.iter().find(|(v, _)| v.as_str() == variant_name);
+                    match variant {
+                        Some((_, fields)) => fields.clone(),
+                        None => {
+                            return Err(TypeError::UndefinedEnumVariant {
+                                enum_name: enum_name.clone(),
+                                variant_name: variant_name.clone(),
+                                range: range.clone(),
+                            });
+                        }
                     }
                 }
                 _ => {
@@ -739,11 +747,81 @@ pub fn typecheck_expr(
                         range: range.clone(),
                     });
                 }
-            }
+            };
+
+            // Validate fields
+            let typed_fields = {
+                let mut typed_fields = Vec::new();
+                let mut provided_field_names: std::collections::HashSet<String> =
+                    std::collections::HashSet::new();
+
+                // Type check each provided field
+                for (field_name, field_name_range, field_expr) in fields {
+                    // Check if field exists in variant definition
+                    let expected_field = variant_fields
+                        .iter()
+                        .find(|(name, _)| name.as_str() == field_name.as_str());
+
+                    match expected_field {
+                        Some((_, expected_type)) => {
+                            // Type check the field expression
+                            let typed_field_expr = typecheck_expr(
+                                field_expr,
+                                var_env,
+                                type_env,
+                                annotations,
+                                Some(expected_type),
+                            )?;
+
+                            // Verify type matches
+                            let actual_type = typed_field_expr.as_type();
+                            if actual_type != expected_type {
+                                return Err(TypeError::EnumVariantFieldTypeMismatch {
+                                    enum_name: enum_name.clone(),
+                                    variant_name: variant_name.clone(),
+                                    field_name: field_name.as_str().to_string(),
+                                    expected: expected_type.to_string(),
+                                    found: actual_type.to_string(),
+                                    range: field_expr.range().clone(),
+                                });
+                            }
+
+                            provided_field_names.insert(field_name.as_str().to_string());
+                            typed_fields.push((field_name.clone(), typed_field_expr));
+                        }
+                        None => {
+                            return Err(TypeError::EnumVariantUnknownField {
+                                enum_name: enum_name.clone(),
+                                variant_name: variant_name.clone(),
+                                field_name: field_name.as_str().to_string(),
+                                range: field_name_range.clone(),
+                            });
+                        }
+                    }
+                }
+
+                // Check for missing fields
+                let missing_fields: Vec<String> = variant_fields
+                    .iter()
+                    .filter(|(name, _)| !provided_field_names.contains(name.as_str()))
+                    .map(|(name, _)| name.as_str().to_string())
+                    .collect();
+                if !missing_fields.is_empty() {
+                    return Err(TypeError::EnumVariantMissingFields {
+                        enum_name: enum_name.clone(),
+                        variant_name: variant_name.clone(),
+                        missing_fields,
+                        range: constructor_range.clone(),
+                    });
+                }
+
+                typed_fields
+            };
 
             Ok(TypedExpr::EnumLiteral {
                 enum_name: enum_name.clone(),
                 variant_name: variant_name.clone(),
+                fields: typed_fields,
                 kind: enum_type,
             })
         }
@@ -933,7 +1011,7 @@ pub fn extract_bindings_from_pattern(
                 };
 
                 let mut bindings = Vec::new();
-                for (field_name, field_pattern) in fields {
+                for (field_name, _, field_pattern) in fields {
                     let field_type = type_fields
                         .iter()
                         .find(|(name, _)| name == field_name)
@@ -943,10 +1021,31 @@ pub fn extract_bindings_from_pattern(
                 }
                 bindings
             }
-            Constructor::OptionNone
-            | Constructor::BooleanTrue
-            | Constructor::BooleanFalse
-            | Constructor::EnumVariant { .. } => vec![],
+            Constructor::EnumVariant { variant_name, .. } => {
+                let Type::Enum { variants, .. } = subject_type else {
+                    unreachable!("EnumVariant pattern requires Enum type")
+                };
+
+                let variant_fields = variants
+                    .iter()
+                    .find(|(name, _)| name.as_str() == variant_name)
+                    .map(|(_, fields)| fields)
+                    .expect("variant not found in enum type");
+
+                let mut bindings = Vec::new();
+                for (field_name, _, field_pattern) in fields {
+                    let field_type = variant_fields
+                        .iter()
+                        .find(|(name, _)| name == field_name)
+                        .map(|(_, typ)| typ)
+                        .expect("field type not found");
+                    bindings.extend(extract_bindings_from_pattern(field_pattern, field_type));
+                }
+                bindings
+            }
+            Constructor::OptionNone | Constructor::BooleanTrue | Constructor::BooleanFalse => {
+                vec![]
+            }
         },
     }
 }
@@ -1133,26 +1232,70 @@ fn decision_to_typed_expr(
                     }
                 }
 
-                Type::Enum { .. } => {
+                Type::Enum { variants, .. } => {
                     let arms = cases
                         .iter()
                         .map(|case| {
-                            let pattern = match &case.constructor {
+                            let (pattern, variant_fields) = match &case.constructor {
                                 Constructor::EnumVariant {
                                     enum_name,
                                     variant_name,
-                                } => EnumPattern::Variant {
-                                    enum_name: enum_name.to_string(),
-                                    variant_name: variant_name.clone(),
-                                },
+                                } => {
+                                    let fields = variants
+                                        .iter()
+                                        .find(|(name, _)| name.as_str() == variant_name)
+                                        .map(|(_, fields)| fields)
+                                        .expect("variant not found");
+                                    (
+                                        EnumPattern::Variant {
+                                            enum_name: enum_name.to_string(),
+                                            variant_name: variant_name.clone(),
+                                        },
+                                        fields,
+                                    )
+                                }
                                 _ => unreachable!("Invalid constructor for Enum type"),
                             };
-                            let body = decision_to_typed_expr(
+
+                            let mut body = decision_to_typed_expr(
                                 &case.body,
                                 typed_bodies,
                                 result_type.clone(),
                             );
-                            EnumMatchArm { pattern, body }
+
+                            // Wrap with Let expressions for each field (using FieldAccess)
+                            // Iterate in reverse so bindings are in the correct order
+                            for (i, (field_name, _field_type)) in
+                                variant_fields.iter().enumerate().rev()
+                            {
+                                let var = &case.arguments[i];
+                                let var_name =
+                                    VarName::new(&var.name).expect("invalid variable name");
+
+                                // Create field access: subject.field_name
+                                let field_access = TypedExpr::FieldAccess {
+                                    record: Box::new(TypedExpr::Var {
+                                        value: subject.0.clone(),
+                                        kind: subject.1.clone(),
+                                    }),
+                                    field: field_name.clone(),
+                                    kind: var.typ.clone(),
+                                };
+
+                                let kind = body.as_type().clone();
+                                body = TypedExpr::Let {
+                                    var: var_name,
+                                    value: Box::new(field_access),
+                                    body: Box::new(body),
+                                    kind,
+                                };
+                            }
+
+                            EnumMatchArm {
+                                pattern,
+                                bindings: vec![],
+                                body,
+                            }
                         })
                         .collect();
 
@@ -1229,10 +1372,25 @@ mod tests {
         for declaration in parser.parse_declarations(&mut errors) {
             match declaration {
                 ParsedDeclaration::Enum { name, variants, .. } => {
+                    // Build variant types with properly resolved field types
+                    let typed_variants: Vec<_> = variants
+                        .iter()
+                        .map(|(variant_name, _, fields)| {
+                            let typed_fields: Vec<_> = fields
+                                .iter()
+                                .map(|(field_name, _, parsed_type)| {
+                                    let resolved_type = resolve_type(parsed_type, &mut type_env)
+                                        .expect("Test enum field type should be valid");
+                                    (field_name.clone(), resolved_type)
+                                })
+                                .collect();
+                            (variant_name.clone(), typed_fields)
+                        })
+                        .collect();
                     let enum_type = Type::Enum {
                         module: test_module.clone(),
                         name: TypeName::new(name.as_str()).unwrap(),
-                        variants: variants.iter().map(|(name, _)| name.clone()).collect(),
+                        variants: typed_variants,
                     };
                     let _ = type_env.push(name.to_string(), enum_type);
                 }
@@ -2136,7 +2294,7 @@ mod tests {
             &[],
             r#"User(name: "John")"#,
             expect![[r#"
-                error: Missing field 'age' in record literal 'User'
+                error: Record 'User' is missing fields: age
                 User(name: "John")
                 ^^^^^^^^^^^^^^^^^^
             "#]],
@@ -2174,7 +2332,7 @@ mod tests {
             &[],
             r#"User(name: "John", email: "john@example.com")"#,
             expect![[r#"
-                error: Unknown field 'email' in record literal 'User'
+                error: Unknown field 'email' in record 'User'
                 User(name: "John", email: "john@example.com")
                                           ^^^^^^^^^^^^^^^^^^
             "#]],
@@ -2491,6 +2649,130 @@ mod tests {
                 error: Enum type 'Unknown' is not defined
                 Unknown::Red
                 ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_variant_with_fields() {
+        check(
+            indoc! {"
+                enum Result {
+                    Ok(value: Int),
+                    Err(message: String),
+                }
+            "},
+            &[],
+            "Result::Ok(value: 42)",
+            expect!["test::Result"],
+        );
+    }
+
+    #[test]
+    fn should_accept_enum_variant_with_multiple_fields() {
+        check(
+            indoc! {"
+                enum Point {
+                    XY(x: Int, y: Int),
+                    Origin,
+                }
+            "},
+            &[],
+            "Point::XY(x: 10, y: 20)",
+            expect!["test::Point"],
+        );
+    }
+
+    #[test]
+    fn should_reject_enum_variant_missing_field() {
+        check(
+            indoc! {"
+                enum Result {
+                    Ok(value: Int),
+                    Err(message: String),
+                }
+            "},
+            &[],
+            "Result::Ok()",
+            expect![[r#"
+                error: Enum variant 'Result::Ok' is missing fields: value
+                Result::Ok()
+                ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_enum_variant_missing_two_fields() {
+        check(
+            indoc! {"
+                enum Point {
+                    XY(x: Int, y: Int),
+                }
+            "},
+            &[],
+            "Point::XY()",
+            expect![[r#"
+                error: Enum variant 'Point::XY' is missing fields: x, y
+                Point::XY()
+                ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_enum_variant_unknown_field() {
+        check(
+            indoc! {"
+                enum Result {
+                    Ok(value: Int),
+                    Err(message: String),
+                }
+            "},
+            &[],
+            "Result::Ok(wrong: 42)",
+            expect![[r#"
+                error: Unknown field 'wrong' in enum variant 'Result::Ok'
+                Result::Ok(wrong: 42)
+                           ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_enum_variant_field_type_mismatch() {
+        check(
+            indoc! {"
+                enum Result {
+                    Ok(value: Int),
+                    Err(message: String),
+                }
+            "},
+            &[],
+            r#"Result::Ok(value: "hello")"#,
+            expect![[r#"
+                error: Field 'value' in 'Result::Ok' expects type Int, but got String
+                Result::Ok(value: "hello")
+                                  ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_fields_on_unit_variant() {
+        check(
+            indoc! {"
+                enum Maybe {
+                    Just(value: Int),
+                    Nothing,
+                }
+            "},
+            &[],
+            "Maybe::Nothing(value: 42)",
+            expect![[r#"
+                error: Unknown field 'value' in enum variant 'Maybe::Nothing'
+                Maybe::Nothing(value: 42)
+                               ^^^^^
             "#]],
         );
     }
@@ -3778,9 +4060,9 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Record pattern for 'User' must specify all 2 fields, but only 1 were provided
+                error: Record 'User' is missing fields: age
                     User(name: n) => n,
-                    ^^^^^^^^^^^^^
+                    ^^^^
             "#]],
         );
     }
@@ -3801,9 +4083,9 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Unknown field 'email' in record pattern for 'User'
+                error: Unknown field 'email' in record 'User'
                     User(name: n, email: e) => n,
-                                         ^
+                                  ^^^^^
             "#]],
         );
     }
