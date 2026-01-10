@@ -9,6 +9,31 @@ pub struct Tokenizer {
     iter: Peekable<DocumentCursor>,
 }
 
+/// A filtered token stream that skips comments.
+/// Used by the parser to transparently ignore comment tokens.
+pub struct CommentSkippingTokenizer {
+    inner: Tokenizer,
+}
+
+impl From<Tokenizer> for CommentSkippingTokenizer {
+    fn from(inner: Tokenizer) -> Self {
+        Self { inner }
+    }
+}
+
+impl Iterator for CommentSkippingTokenizer {
+    type Item = Result<(Token, DocumentRange), ParseError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.inner.next() {
+                Some(Ok((Token::Comment(_), _))) => continue,
+                other => return other,
+            }
+        }
+    }
+}
+
 impl From<DocumentCursor> for Tokenizer {
     fn from(iter: DocumentCursor) -> Self {
         Self {
@@ -76,6 +101,20 @@ impl Iterator for Tokenizer {
                     Some(end) => Ok((Token::LogicalOr, start.to(end))),
                     None => Err(ParseError::UnexpectedCharacter {
                         ch: '|',
+                        range: start,
+                    }),
+                },
+                '/' => match self.iter.next_if(|s| s.ch() == '/') {
+                    Some(_) => {
+                        let comment = start.extend(
+                            self.iter.peeking_take_while(|s| s.ch() != '\n'),
+                        );
+                        // Extract just the comment text (after the //)
+                        let text = comment.as_str().strip_prefix("//").unwrap_or("").to_string();
+                        Ok((Token::Comment(text), comment))
+                    }
+                    None => Err(ParseError::UnexpectedCharacter {
+                        ch: '/',
                         range: start,
                     }),
                 },
@@ -1494,6 +1533,98 @@ mod tests {
                 token: __
                 _ _test __
                         ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_line_comment() {
+        check(
+            "// this is a comment",
+            expect![[r#"
+                token: // this is a comment
+                // this is a comment
+                ^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_comment_after_code() {
+        check(
+            "foo // comment",
+            expect![[r#"
+                token: foo
+                foo // comment
+                ^^^
+
+                token: // comment
+                foo // comment
+                    ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_code_after_comment_on_next_line() {
+        check(
+            "// comment\nfoo",
+            expect![[r#"
+                token: // comment
+                // comment
+                ^^^^^^^^^^
+
+                token: foo
+                foo
+                ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_empty_comment() {
+        check(
+            "//",
+            expect![[r#"
+                token: //
+                //
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_multiple_comments() {
+        check(
+            "// first\n// second",
+            expect![[r#"
+                token: // first
+                // first
+                ^^^^^^^^
+
+                token: // second
+                // second
+                ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_single_slash() {
+        check(
+            "foo / bar",
+            expect![[r#"
+                token: foo
+                foo / bar
+                ^^^
+
+                error: Unexpected character: '/'
+                foo / bar
+                    ^
+
+                token: bar
+                foo / bar
+                      ^^^
             "#]],
         );
     }

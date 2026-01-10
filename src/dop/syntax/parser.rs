@@ -14,17 +14,17 @@ use super::parsed::{
     ParsedType,
 };
 use super::token::Token;
-use super::tokenizer::Tokenizer;
+use super::tokenizer::{CommentSkippingTokenizer, Tokenizer};
 
 pub struct Parser {
-    iter: Peekable<Tokenizer>,
+    iter: Peekable<CommentSkippingTokenizer>,
     range: DocumentRange,
 }
 
 impl From<DocumentRange> for Parser {
     fn from(range: DocumentRange) -> Self {
         Self {
-            iter: Tokenizer::from(range.cursor()).peekable(),
+            iter: CommentSkippingTokenizer::from(Tokenizer::from(range.cursor())).peekable(),
             range: range.clone(),
         }
     }
@@ -35,7 +35,7 @@ impl From<&str> for Parser {
         let cursor = DocumentCursor::new(input.to_string());
         let range = cursor.range();
         Self {
-            iter: Tokenizer::from(cursor).peekable(),
+            iter: CommentSkippingTokenizer::from(Tokenizer::from(cursor)).peekable(),
             range,
         }
     }
@@ -1366,6 +1366,40 @@ mod tests {
                 error: Duplicate parameter 'foo'
                 foo: String, foo: String
                              ^^^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// COMMENTS                                                            ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_skip_comments_in_expression() {
+        check_parse_expr(
+            "x // this is a comment\n== y",
+            expect![[r#"
+                x == y
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_skip_comments_between_tokens() {
+        check_parse_expr(
+            "// leading comment\nx + // middle\ny // trailing",
+            expect![[r#"
+                x + y
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_skip_comments_in_array() {
+        check_parse_expr(
+            "[1, // comment\n2, 3]",
+            expect![[r#"
+                [1, 2, 3]
             "#]],
         );
     }
