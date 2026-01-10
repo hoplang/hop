@@ -217,17 +217,25 @@ impl Parser {
         Ok((var_name, var_name_range, array_expr))
     }
 
-    // let_binding = Identifier ":" type "=" expr Eof
-    pub fn parse_let_binding(
+    // let_binding = (Identifier ":" type "=" expr) ("," Identifier ":" type "=" expr)* Eof
+    pub fn parse_let_bindings(
         &mut self,
-    ) -> Result<(VarName, DocumentRange, ParsedType, ParsedExpr), ParseError> {
-        let (var_name, var_name_range) = self.expect_variable_name()?;
-        self.expect_token(&Token::Colon)?;
-        let var_type = self.parse_type()?;
-        self.expect_token(&Token::Assign)?;
-        let value_expr = self.parse_logical()?;
+    ) -> Result<Vec<(VarName, DocumentRange, ParsedType, ParsedExpr)>, ParseError> {
+        let mut bindings = Vec::new();
+        self.parse_comma_separated(
+            |this| {
+                let (var_name, var_name_range) = this.expect_variable_name()?;
+                this.expect_token(&Token::Colon)?;
+                let var_type = this.parse_type()?;
+                this.expect_token(&Token::Assign)?;
+                let value_expr = this.parse_logical()?;
+                bindings.push((var_name, var_name_range, var_type, value_expr));
+                Ok(())
+            },
+            None,
+        )?;
         self.expect_eof()?;
-        Ok((var_name, var_name_range, var_type, value_expr))
+        Ok(bindings)
     }
 
     // parameter_with_type = Identifier ":" type ("=" primary)?
@@ -3055,6 +3063,133 @@ mod tests {
                 error: Unknown macro 'unknown'
                 unknown!(x)
                 ^^^^^^^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// LET BINDINGS                                                        ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    fn check_parse_let_bindings(input: &str, expected: Expect) {
+        let mut parser = Parser::from(input);
+        let actual = match parser.parse_let_bindings() {
+            Ok(result) => {
+                let bindings: Vec<String> = result
+                    .into_iter()
+                    .map(|(var_name, _range, var_type, value_expr)| {
+                        format!("{}: {} = {}", var_name, var_type, value_expr)
+                    })
+                    .collect();
+                format!("[{}]\n", bindings.join(", "))
+            }
+            Err(err) => annotate_error(err),
+        };
+        expected.assert_eq(&actual);
+    }
+
+    #[test]
+    fn should_accept_single_let_binding() {
+        check_parse_let_bindings(
+            r#"name: String = "World""#,
+            expect![[r#"
+                [name: String = "World"]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_single_let_binding_with_trailing_comma() {
+        check_parse_let_bindings(
+            r#"name: String = "World","#,
+            expect![[r#"
+                [name: String = "World"]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_multiple_let_bindings() {
+        check_parse_let_bindings(
+            r#"first: String = "Hello", second: String = "World""#,
+            expect![[r#"
+                [first: String = "Hello", second: String = "World"]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_multiple_let_bindings_with_trailing_comma() {
+        check_parse_let_bindings(
+            r#"first: String = "Hello", second: String = "World","#,
+            expect![[r#"
+                [first: String = "Hello", second: String = "World"]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_three_let_bindings() {
+        check_parse_let_bindings(
+            "a: Int = 1, b: Int = 2, c: Int = 3",
+            expect![[r#"
+                [a: Int = 1, b: Int = 2, c: Int = 3]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_let_binding_with_expression_value() {
+        check_parse_let_bindings(
+            "sum: Int = a + b",
+            expect![[r#"
+                [sum: Int = a + b]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_let_binding_with_field_access() {
+        check_parse_let_bindings(
+            "name: String = user.name",
+            expect![[r#"
+                [name: String = user.name]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_let_binding_without_type() {
+        check_parse_let_bindings(
+            r#"name = "World""#,
+            expect![[r#"
+                error: Expected token ':' but got '='
+                name = "World"
+                     ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_let_binding_without_value() {
+        check_parse_let_bindings(
+            "name: String",
+            expect![[r#"
+                error: Expected token '=' but got end of file
+                name: String
+                ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_let_binding_with_missing_comma() {
+        check_parse_let_bindings(
+            r#"first: String = "a" second: String = "b""#,
+            expect![[r#"
+                error: Unexpected token 'second'
+                first: String = "a" second: String = "b"
+                                    ^^^^^^
             "#]],
         );
     }

@@ -46,6 +46,16 @@ impl ParsedMatchCase {
     }
 }
 
+/// A single binding in a let node.
+/// E.g. `name: String = "World"` in `<let {name: String = "World", count: Int = 0}>`
+#[derive(Debug, Clone)]
+pub struct ParsedLetBinding {
+    pub var_name: VarName,
+    pub var_name_range: DocumentRange,
+    pub var_type: ParsedType,
+    pub value_expr: ParsedExpr,
+}
+
 #[derive(Debug, Clone)]
 pub enum ParsedNode {
     /// A Text node represents text in the document.
@@ -109,13 +119,10 @@ pub enum ParsedNode {
         range: DocumentRange,
     },
 
-    /// A Let node introduces a local variable binding.
-    /// E.g. <let {name: String = "World"}>Hello {name}</let>
+    /// A Let node introduces one or more local variable bindings.
+    /// E.g. <let {name: String = "World", count: Int = 0}>Hello {name}</let>
     Let {
-        var_name: VarName,
-        var_name_range: DocumentRange,
-        var_type: ParsedType,
-        value_expr: ParsedExpr,
+        bindings: Vec<ParsedLetBinding>,
         children: Vec<ParsedNode>,
         range: DocumentRange,
     },
@@ -304,31 +311,38 @@ impl ParsedNode {
                         .append(BoxDoc::line())
                 })
                 .append(BoxDoc::text("</for>")),
-            ParsedNode::Let {
-                var_name,
-                var_type,
-                value_expr,
-                children,
-                ..
-            } => BoxDoc::text("<let {")
-                .append(BoxDoc::text(var_name.as_str()))
-                .append(BoxDoc::text(": "))
-                .append(BoxDoc::text(var_type.to_string()))
-                .append(BoxDoc::text(" = "))
-                .append(value_expr.to_doc())
-                .append(BoxDoc::text("}>"))
-                .append(if children.is_empty() {
-                    BoxDoc::nil()
-                } else {
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            children.iter().map(|c| c.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .nest(2)
-                        .append(BoxDoc::line())
-                })
-                .append(BoxDoc::text("</let>")),
+            ParsedNode::Let { bindings, children, .. } => {
+                let bindings_doc = BoxDoc::line_()
+                    .append(BoxDoc::intersperse(
+                        bindings.iter().map(|b| {
+                            BoxDoc::text(b.var_name.as_str())
+                                .append(BoxDoc::text(": "))
+                                .append(BoxDoc::text(b.var_type.to_string()))
+                                .append(BoxDoc::text(" = "))
+                                .append(b.value_expr.to_doc())
+                        }),
+                        BoxDoc::text(",").append(BoxDoc::line()),
+                    ))
+                    .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                    .nest(2)
+                    .append(BoxDoc::line_())
+                    .group();
+                BoxDoc::text("<let {")
+                    .append(bindings_doc)
+                    .append(BoxDoc::text("}>"))
+                    .append(if children.is_empty() {
+                        BoxDoc::nil()
+                    } else {
+                        BoxDoc::line()
+                            .append(BoxDoc::intersperse(
+                                children.iter().map(|c| c.to_doc()),
+                                BoxDoc::line(),
+                            ))
+                            .nest(2)
+                            .append(BoxDoc::line())
+                    })
+                    .append(BoxDoc::text("</let>"))
+            }
             ParsedNode::Doctype { value, .. } => BoxDoc::text(value.as_str()),
             ParsedNode::Match { subject, cases, .. } => BoxDoc::text("<match {")
                 .append(subject.to_doc())

@@ -609,78 +609,101 @@ fn typecheck_node(
         }
 
         ParsedNode::Let {
-            var_name,
-            var_name_range,
-            var_type,
-            value_expr,
+            bindings,
             children,
             range: _,
         } => {
-            // Resolve the declared type
-            let resolved_type = match resolve_type(var_type, type_env) {
-                Ok(t) => t,
-                Err(err) => {
-                    errors.push(err.into());
-                    return None;
-                }
-            };
+            // Process each binding: resolve type, typecheck value, push to scope
+            let mut typed_bindings = Vec::new();
 
-            // Type-check the value expression with the expected type
-            let typed_value = errors.ok_or_add(
-                dop::typecheck_expr(value_expr, env, type_env, annotations, Some(&resolved_type))
+            for binding in bindings {
+                // Resolve the declared type
+                let resolved_type = match resolve_type(&binding.var_type, type_env) {
+                    Ok(t) => t,
+                    Err(err) => {
+                        errors.push(err.into());
+                        continue;
+                    }
+                };
+
+                // Type-check the value expression with the expected type
+                let Some(typed_value) = errors.ok_or_add(
+                    dop::typecheck_expr(
+                        &binding.value_expr,
+                        env,
+                        type_env,
+                        annotations,
+                        Some(&resolved_type),
+                    )
                     .map_err(Into::into),
-            )?;
+                ) else {
+                    continue;
+                };
 
-            // Validate that the expression type matches the declared type
-            let value_type = typed_value.as_type();
-            if *value_type != resolved_type {
-                errors.push(TypeError::LetBindingTypeMismatch {
-                    expected: resolved_type.to_string(),
-                    found: value_type.to_string(),
-                    range: value_expr.range().clone(),
-                });
+                // Validate that the expression type matches the declared type
+                let value_type = typed_value.as_type();
+                if *value_type != resolved_type {
+                    errors.push(TypeError::LetBindingTypeMismatch {
+                        expected: resolved_type.to_string(),
+                        found: value_type.to_string(),
+                        range: binding.value_expr.range().clone(),
+                    });
+                }
+
+                // Push the variable into scope
+                let pushed = match env.push(binding.var_name.to_string(), resolved_type.clone()) {
+                    Ok(_) => {
+                        annotations.push(TypeAnnotation {
+                            range: binding.var_name_range.clone(),
+                            typ: resolved_type.clone(),
+                            name: binding.var_name.to_string(),
+                        });
+                        true
+                    }
+                    Err(_) => {
+                        errors.push(TypeError::VariableIsAlreadyDefined {
+                            var: binding.var_name.as_str().to_string(),
+                            range: binding.var_name_range.clone(),
+                        });
+                        false
+                    }
+                };
+
+                typed_bindings.push((binding, typed_value, pushed));
             }
 
-            // Push the variable into scope
-            let pushed = match env.push(var_name.to_string(), resolved_type.clone()) {
-                Ok(_) => {
-                    annotations.push(TypeAnnotation {
-                        range: var_name_range.clone(),
-                        typ: resolved_type.clone(),
-                        name: var_name.to_string(),
-                    });
-                    true
-                }
-                Err(_) => {
-                    errors.push(TypeError::VariableIsAlreadyDefined {
-                        var: var_name.as_str().to_string(),
-                        range: var_name_range.clone(),
-                    });
-                    false
-                }
-            };
-
-            let typed_children = children
+            // Type-check children with all variables in scope
+            let typed_children: Vec<TypedNode> = children
                 .iter()
                 .filter_map(|child| {
                     typecheck_node(child, state, env, annotations, errors, type_env)
                 })
                 .collect();
 
-            if pushed {
-                let (_, _, accessed) = env.pop();
-                if !accessed {
-                    errors.push(TypeError::UnusedVariable {
-                        var_name: var_name_range.clone(),
-                    })
+            // Pop variables in reverse order and check for unused
+            for (binding, _, pushed) in typed_bindings.iter().rev() {
+                if *pushed {
+                    let (_, _, accessed) = env.pop();
+                    if !accessed {
+                        errors.push(TypeError::UnusedVariable {
+                            var_name: binding.var_name_range.clone(),
+                        })
+                    }
                 }
             }
 
-            Some(TypedNode::Let {
-                var: var_name.clone(),
-                value: typed_value,
-                children: typed_children,
-            })
+            // Build nested Let structure from innermost to outermost
+            // Start with children, then wrap with each binding in reverse order
+            let mut result = typed_children;
+            for (binding, typed_value, _) in typed_bindings.into_iter().rev() {
+                result = vec![TypedNode::Let {
+                    var: binding.var_name.clone(),
+                    value: typed_value,
+                    children: result,
+                }];
+            }
+
+            result.into_iter().next()
         }
 
         ParsedNode::ComponentReference {
@@ -4874,6 +4897,126 @@ mod tests {
                 1 | <Main>
                 2 |   <let {name: String = 42}>
                   |                        ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_let_with_multiple_bindings() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main>
+                  <let {first: String = "Hello", second: String = "World"}>
+                    <div>{first} {second}</div>
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                first: String
+                  --> main.hop (line 2, col 9)
+                1 | <Main>
+                2 |   <let {first: String = "Hello", second: String = "World"}>
+                  |         ^^^^^
+
+                second: String
+                  --> main.hop (line 2, col 34)
+                1 | <Main>
+                2 |   <let {first: String = "Hello", second: String = "World"}>
+                  |                                  ^^^^^^
+
+                first: String
+                  --> main.hop (line 3, col 11)
+                2 |   <let {first: String = "Hello", second: String = "World"}>
+                3 |     <div>{first} {second}</div>
+                  |           ^^^^^
+
+                second: String
+                  --> main.hop (line 3, col 19)
+                2 |   <let {first: String = "Hello", second: String = "World"}>
+                3 |     <div>{first} {second}</div>
+                  |                   ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_let_with_duplicate_bindings() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main>
+                  <let {name: String = "Hello", name: String = "World"}>
+                    <div>{name}</div>
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Variable name is already defined
+                  --> main.hop (line 2, col 33)
+                1 | <Main>
+                2 |   <let {name: String = "Hello", name: String = "World"}>
+                  |                                 ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_let_with_unused_second_binding() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main>
+                  <let {name: String = "Hello", count: Int = 42}>
+                    <div>{name}</div>
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Unused variable count
+                  --> main.hop (line 2, col 33)
+                1 | <Main>
+                2 |   <let {name: String = "Hello", count: Int = 42}>
+                  |                                 ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_allow_later_binding_to_reference_earlier_binding() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main>
+                  <let {greeting: String = "Hello", message: String = greeting}>
+                    <div>{message}</div>
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                greeting: String
+                  --> main.hop (line 2, col 9)
+                1 | <Main>
+                2 |   <let {greeting: String = "Hello", message: String = greeting}>
+                  |         ^^^^^^^^
+
+                greeting: String
+                  --> main.hop (line 2, col 55)
+                1 | <Main>
+                2 |   <let {greeting: String = "Hello", message: String = greeting}>
+                  |                                                       ^^^^^^^^
+
+                message: String
+                  --> main.hop (line 2, col 37)
+                1 | <Main>
+                2 |   <let {greeting: String = "Hello", message: String = greeting}>
+                  |                                     ^^^^^^^
+
+                message: String
+                  --> main.hop (line 3, col 11)
+                2 |   <let {greeting: String = "Hello", message: String = greeting}>
+                3 |     <div>{message}</div>
+                  |           ^^^^^^^
             "#]],
         );
     }

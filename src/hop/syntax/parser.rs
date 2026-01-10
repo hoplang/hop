@@ -6,7 +6,7 @@ use super::parsed_ast::{
     ParsedEnumDeclarationVariant, ParsedImportDeclaration, ParsedRecordDeclaration,
     ParsedRecordDeclarationField,
 };
-use super::parsed_node::{ParsedMatchCase, ParsedNode};
+use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
 use super::token_tree::{TokenTree, build_tree};
 use crate::document::document_cursor::{DocumentCursor, DocumentRange};
 use crate::dop;
@@ -671,22 +671,28 @@ fn construct_nodes(
                         })
                         .and_then(|e| {
                             Parser::from(e.clone())
-                                .parse_let_binding()
+                                .parse_let_bindings()
                                 .map_err(|err| err.into())
                         });
-                    let Some((var_name, var_name_range, var_type, value_expr)) =
-                        errors.ok_or_add(parse_result)
-                    else {
+                    let Some(parsed_bindings) = errors.ok_or_add(parse_result) else {
                         return vec![ParsedNode::Placeholder {
                             range: tree.range.clone(),
                             children,
                         }];
                     };
+                    let bindings = parsed_bindings
+                        .into_iter()
+                        .map(|(var_name, var_name_range, var_type, value_expr)| {
+                            ParsedLetBinding {
+                                var_name,
+                                var_name_range,
+                                var_type,
+                                value_expr,
+                            }
+                        })
+                        .collect();
                     vec![ParsedNode::Let {
-                        var_name,
-                        var_name_range,
-                        var_type,
-                        value_expr,
+                        bindings,
                         range: tree.range.clone(),
                         children,
                     }]
@@ -2295,6 +2301,125 @@ mod tests {
                 1 | <Main>
                 2 |     <let {x: String}>
                   |           ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_let_with_multiple_bindings() {
+        check(
+            indoc! {r#"
+                <Main>
+                    <let {first: String = "Hello", second: String = "World"}>
+                        <div>{first} {second}</div>
+                    </let>
+                </Main>
+            "#},
+            expect![[r#"
+                let                                               1:4-3:10
+                    div                                           2:8-2:35
+                        text_expression                           2:13-2:20
+                        text_expression                           2:21-2:29
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_let_with_three_bindings() {
+        check(
+            indoc! {r#"
+                <Main>
+                    <let {a: Int = 1, b: Int = 2, c: Int = 3}>
+                        <div>{a} + {b} + {c}</div>
+                    </let>
+                </Main>
+            "#},
+            expect![[r#"
+                let                                               1:4-3:10
+                    div                                           2:8-2:34
+                        text_expression                           2:13-2:16
+                        text_expression                           2:19-2:22
+                        text_expression                           2:25-2:28
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_let_with_trailing_comma() {
+        check(
+            indoc! {r#"
+                <Main>
+                    <let {name: String = "World",}>
+                        <div>Hello {name}</div>
+                    </let>
+                </Main>
+            "#},
+            expect![[r#"
+                let                                               1:4-3:10
+                    div                                           2:8-2:31
+                        text_expression                           2:19-2:25
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_multiple_sibling_let_tags() {
+        check(
+            indoc! {r#"
+                <Main>
+                    <let {a: String = "Hello"}>
+                        {a}
+                    </let>
+                    <let {b: String = "World"}>
+                        {b}
+                    </let>
+                </Main>
+            "#},
+            expect![[r#"
+                let                                               1:4-3:10
+                    text_expression                               2:8-2:11
+                let                                               4:4-6:10
+                    text_expression                               5:8-5:11
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_let_after_html_element() {
+        check(
+            indoc! {r#"
+                <Main>
+                    <div>First</div>
+                    <let {name: String = "World"}>
+                        <div>Hello {name}</div>
+                    </let>
+                </Main>
+            "#},
+            expect![[r#"
+                div                                               1:4-1:20
+                let                                               2:4-4:10
+                    div                                           3:8-3:31
+                        text_expression                           3:19-3:25
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_let_before_html_element() {
+        check(
+            indoc! {r#"
+                <Main>
+                    <let {name: String = "World"}>
+                        <div>Hello {name}</div>
+                    </let>
+                    <div>Last</div>
+                </Main>
+            "#},
+            expect![[r#"
+                let                                               1:4-3:10
+                    div                                           2:8-2:31
+                        text_expression                           2:19-2:25
+                div                                               4:4-4:19
             "#]],
         );
     }

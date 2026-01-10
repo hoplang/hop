@@ -1012,4 +1012,305 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn let_with_single_string_binding_to_doc() {
+        check(
+            indoc! {r#"
+                <Main>
+                  <let {name: String = "World"}>
+                    Hello, {name}!
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main>
+                  <let {name: String = "World"}>
+                    Hello,
+                    {name}
+                    !
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_with_single_int_binding_to_doc() {
+        check(
+            indoc! {"
+                <Main>
+                  <let {count: Int = 42}>
+                    <span>{count}</span>
+                  </let>
+                </Main>
+            "},
+            expect![[r#"
+                <Main>
+                  <let {count: Int = 42}>
+                    <span>
+                      {count}
+                    </span>
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_with_trailing_comma_to_doc() {
+        check(
+            indoc! {r#"
+                <Main>
+                  <let {name: String = "World",}>
+                    {name}
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main>
+                  <let {name: String = "World"}>
+                    {name}
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_with_multiple_bindings_to_doc() {
+        check(
+            indoc! {r#"
+                <Main>
+                  <let {first: String = "Hello", second: String = "World"}>
+                    {first} {second}
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main>
+                  <let {first: String = "Hello", second: String = "World"}>
+                    {first}
+                    {second}
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_with_three_bindings_to_doc() {
+        check(
+            indoc! {"
+                <Main>
+                  <let {a: Int = 1, b: Int = 2, c: Int = 3}>
+                    <div>{a} + {b} + {c}</div>
+                  </let>
+                </Main>
+            "},
+            expect![[r#"
+                <Main>
+                  <let {a: Int = 1, b: Int = 2, c: Int = 3}>
+                    <div>
+                      {a}
+                      +
+                      {b}
+                      +
+                      {c}
+                    </div>
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_with_expression_value_to_doc() {
+        check(
+            indoc! {"
+                <Main {x: Int, y: Int}>
+                  <let {sum: Int = x + y}>
+                    <span>{sum}</span>
+                  </let>
+                </Main>
+            "},
+            expect![[r#"
+                <Main {x: Int, y: Int}>
+                  <let {sum: Int = x + y}>
+                    <span>
+                      {sum}
+                    </span>
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_with_field_access_value_to_doc() {
+        check(
+            indoc! {"
+                record User { name: String }
+                <Main {user: User}>
+                  <let {name: String = user.name}>
+                    <div>{name}</div>
+                  </let>
+                </Main>
+            "},
+            expect![[r#"
+                record User {
+                  name: String,
+                }
+
+                <Main {user: User}>
+                  <let {name: String = user.name}>
+                    <div>
+                      {name}
+                    </div>
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn nested_let_tags_to_doc() {
+        check(
+            indoc! {r#"
+                <Main>
+                  <let {a: String = "outer"}>
+                    <let {b: String = "inner"}>
+                      {a} {b}
+                    </let>
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main>
+                  <let {a: String = "outer"}>
+                    <let {b: String = "inner"}>
+                      {a}
+                      {b}
+                    </let>
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_inside_if_to_doc() {
+        check(
+            indoc! {r#"
+                <Main {show: Bool}>
+                  <if {show}>
+                    <let {msg: String = "visible"}>
+                      {msg}
+                    </let>
+                  </if>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main {show: Bool}>
+                  <if {show}>
+                    <let {msg: String = "visible"}>
+                      {msg}
+                    </let>
+                  </if>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_inside_for_to_doc() {
+        check(
+            indoc! {"
+                <Main {items: Array[Int]}>
+                  <for {item in items}>
+                    <let {doubled: Int = item * 2}>
+                      <span>{doubled}</span>
+                    </let>
+                  </for>
+                </Main>
+            "},
+            expect![[r#"
+                <Main {items: Array[Int]}>
+                  <for {item in items}>
+                    <let {doubled: Int = item * 2}>
+                      <span>
+                        {doubled}
+                      </span>
+                    </let>
+                  </for>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn multiple_sibling_let_tags_to_doc() {
+        check(
+            indoc! {r#"
+                <Main>
+                  <let {a: String = "first"}>
+                    {a}
+                  </let>
+                  <let {b: String = "second"}>
+                    {b}
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main>
+                  <let {a: String = "first"}>
+                    {a}
+                  </let>
+                  <let {b: String = "second"}>
+                    {b}
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_with_empty_children_to_doc() {
+        check(
+            indoc! {r#"
+                <Main>
+                  <let {x: String = "unused"}></let>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main>
+                  <let {x: String = "unused"}></let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_with_long_bindings_breaks_to_multiple_lines() {
+        check(
+            indoc! {r#"
+                <Main>
+                  <let {first_name: String = "Hello", last_name: String = "World"}>
+                    {first_name} {last_name}
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main>
+                  <let {
+                    first_name: String = "Hello",
+                    last_name: String = "World",
+                  }>
+                    {first_name}
+                    {last_name}
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
 }
