@@ -3834,6 +3834,48 @@ mod tests {
     }
 
     #[test]
+    fn should_accept_match_node_on_enum_literal_with_fields() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Status { Active(name: String), Inactive }
+                <Main>
+                    <match {Status::Active(name: "test")}>
+                        <case {Status::Active(name: n)}>
+                            {n}
+                        </case>
+                        <case {Status::Inactive}>
+                            none
+                        </case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                -- main.hop --
+                enum Status {
+                  Active(name: String),
+                  Inactive,
+                }
+
+                <Main>
+                  <let {match_subject = Status::Active(name: "test")}>
+                    <match {match_subject}>
+                      <case {Status::Active(name: v0)}>
+                        <let {n = v0}>
+                          {n}
+                        </let>
+                      </case>
+                      <case {Status::Inactive}>
+                        none
+                      </case>
+                    </match>
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_accept_match_node_with_bool() {
         check(
             indoc! {r#"
