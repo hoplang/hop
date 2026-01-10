@@ -1275,4 +1275,150 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn badge_and_badge_link_with_enum_element() {
+        check_inlining(
+            vec![(
+                "main",
+                r#"
+                    enum BadgeElement {
+                        Span,
+                        Link(href: String),
+                    }
+
+                    <BadgeBase {
+                        element: BadgeElement,
+                        children: TrustedHTML,
+                    }>
+                        <let {classes: String = "inline-flex items-center"}>
+                            <match {element}>
+                                <case {BadgeElement::Span}>
+                                    <span data-slot="badge" class={classes}>
+                                        {children}
+                                    </span>
+                                </case>
+                                <case {BadgeElement::Link(href: h)}>
+                                    <a data-slot="badge" href={h} class={classes}>
+                                        {children}
+                                    </a>
+                                </case>
+                            </match>
+                        </let>
+                    </BadgeBase>
+
+                    <Badge {children: TrustedHTML}>
+                        <BadgeBase element={BadgeElement::Span}>
+                            {children}
+                        </BadgeBase>
+                    </Badge>
+
+                    <BadgeLink {href: String, children: TrustedHTML}>
+                        <BadgeBase element={BadgeElement::Link(href: href)}>
+                            {children}
+                        </BadgeBase>
+                    </BadgeLink>
+
+                    <TestBadge>
+                        <Badge>Hello</Badge>
+                    </TestBadge>
+
+                    <TestBadgeLink>
+                        <BadgeLink href="/home">Click me</BadgeLink>
+                    </TestBadgeLink>
+                "#,
+            )],
+            vec![("main", "TestBadge"), ("main", "TestBadgeLink")],
+            expect![[r#"
+                <TestBadge>
+                  "\n                        "
+                  "\n                        "
+                  <let {element = BadgeElement::Span}>
+                    "\n                        "
+                    <let {classes = "inline-flex items-center"}>
+                      "\n                            "
+                      <let {match_subject = element}>
+                        <match {match_subject}>
+                          <case {BadgeElement::Span}>
+                            "\n                                    "
+                            <span class={classes} data-slot="badge">
+                              "\n                                        "
+                              "\n                            "
+                              "Hello"
+                              "\n                        "
+                              "\n                                    "
+                            </span>
+                            "\n                                "
+                          </case>
+                          <case {BadgeElement::Link(href: v0)}>
+                            <let {h = v0}>
+                              "\n                                    "
+                              <a class={classes} data-slot="badge" href={h}>
+                                "\n                                        "
+                                "\n                            "
+                                "Hello"
+                                "\n                        "
+                                "\n                                    "
+                              </a>
+                              "\n                                "
+                            </let>
+                          </case>
+                        </match>
+                      </let>
+                      "\n                        "
+                    </let>
+                    "\n                    "
+                  </let>
+                  "\n                    "
+                  "\n                    "
+                </TestBadge>
+
+
+                <TestBadgeLink>
+                  "\n                        "
+                  <let {href = "/home"}>
+                    "\n                        "
+                    <let {element = BadgeElement::Link(href: href)}>
+                      "\n                        "
+                      <let {classes = "inline-flex items-center"}>
+                        "\n                            "
+                        <let {match_subject = element}>
+                          <match {match_subject}>
+                            <case {BadgeElement::Span}>
+                              "\n                                    "
+                              <span class={classes} data-slot="badge">
+                                "\n                                        "
+                                "\n                            "
+                                "Click me"
+                                "\n                        "
+                                "\n                                    "
+                              </span>
+                              "\n                                "
+                            </case>
+                            <case {BadgeElement::Link(href: v0)}>
+                              <let {h = v0}>
+                                "\n                                    "
+                                <a class={classes} data-slot="badge" href={h}>
+                                  "\n                                        "
+                                  "\n                            "
+                                  "Click me"
+                                  "\n                        "
+                                  "\n                                    "
+                                </a>
+                                "\n                                "
+                              </let>
+                            </case>
+                          </match>
+                        </let>
+                        "\n                        "
+                      </let>
+                      "\n                    "
+                    </let>
+                    "\n                    "
+                  </let>
+                  "\n                    "
+                </TestBadgeLink>
+            "#]],
+        );
+    }
 }

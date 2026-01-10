@@ -313,7 +313,24 @@ impl InlinedNode {
                                             EnumPattern::Variant {
                                                 enum_name,
                                                 variant_name,
-                                            } => format!("{}::{}", enum_name, variant_name),
+                                            } => {
+                                                if arm.bindings.is_empty() {
+                                                    format!("{}::{}", enum_name, variant_name)
+                                                } else {
+                                                    let bindings_str = arm
+                                                        .bindings
+                                                        .iter()
+                                                        .map(|(field, var)| {
+                                                            format!("{}: {}", field.as_str(), var.as_str())
+                                                        })
+                                                        .collect::<Vec<_>>()
+                                                        .join(", ");
+                                                    format!(
+                                                        "{}::{}({})",
+                                                        enum_name, variant_name, bindings_str
+                                                    )
+                                                }
+                                            }
                                         };
                                         case_doc(&pattern, &arm.body)
                                     }),

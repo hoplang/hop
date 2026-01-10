@@ -1191,24 +1191,44 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
                     }]
                 }
 
-                Type::Enum { .. } => {
+                Type::Enum { variants, .. } => {
                     let arms = cases
                         .iter()
                         .map(|case| {
-                            let pattern = match &case.constructor {
+                            let (pattern, bindings) = match &case.constructor {
                                 Constructor::EnumVariant {
                                     enum_name,
                                     variant_name,
-                                } => EnumPattern::Variant {
-                                    enum_name: enum_name.to_string(),
-                                    variant_name: variant_name.clone(),
-                                },
+                                } => {
+                                    let pattern = EnumPattern::Variant {
+                                        enum_name: enum_name.to_string(),
+                                        variant_name: variant_name.clone(),
+                                    };
+                                    // Get the variant's fields to create bindings
+                                    let empty_fields = vec![];
+                                    let variant_fields = variants
+                                        .iter()
+                                        .find(|(v, _)| v.as_str() == variant_name)
+                                        .map(|(_, fields)| fields)
+                                        .unwrap_or(&empty_fields);
+                                    let bindings: Vec<_> = variant_fields
+                                        .iter()
+                                        .zip(case.arguments.iter())
+                                        .map(|((field_name, _), arg)| {
+                                            (
+                                                field_name.clone(),
+                                                VarName::new(&arg.name).expect("invalid variable name"),
+                                            )
+                                        })
+                                        .collect();
+                                    (pattern, bindings)
+                                }
                                 _ => unreachable!("Invalid constructor for Enum type"),
                             };
                             let body = decision_to_typed_nodes(&case.body, typed_bodies);
                             EnumMatchArm {
                                 pattern,
-                                bindings: vec![],
+                                bindings,
                                 body,
                             }
                         })
