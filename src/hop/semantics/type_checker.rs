@@ -3599,19 +3599,36 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                enum Status { Active, Inactive, Pending }
-                <Badge {status: Status = Status::Active}>
+                enum Status { Active(since: Int), Inactive, Pending }
+                <Badge {status: Status = Status::Active(since: 2000)}>
+                  {match status {
+                    Status::Active(since: _) => "active",
+                    _ => "not active",
+                  }}
                 </Badge>
                 <Main>
                   <Badge />
                 </Main>
             "#},
             expect![[r#"
-                error: Unused variable status
-                  --> main.hop (line 2, col 9)
-                1 | enum Status { Active, Inactive, Pending }
-                2 | <Badge {status: Status = Status::Active}>
-                  |         ^^^^^^
+                -- main.hop --
+                enum Status {
+                  Active(since: Int),
+                  Inactive,
+                  Pending,
+                }
+
+                <Badge {status: main::Status = Status::Active(since: 2000)}>
+                  {match status {
+                    Status::Active => let v0 = status.since in "active",
+                    Status::Inactive => "not active",
+                    Status::Pending => "not active",
+                  }}
+                </Badge>
+
+                <Main>
+                  <Badge/>
+                </Main>
             "#]],
         );
     }
