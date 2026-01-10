@@ -2,24 +2,47 @@ use crate::ir::ast::{IrComponentDeclaration, IrStatement, StatementId};
 
 use super::Pass;
 
-/// A pass that concatenates consecutive Write statements into a single Write statement
-#[allow(dead_code)]
-pub struct WriteCoalescingPass;
+/// A pass that concatenates consecutive Write statements into a single Write statement.
+///
+/// The `limit` parameter controls the maximum combined length of merged writes.
+/// Two writes A and B will only be merged if `len(A) + len(B) < limit`.
+pub struct WriteCoalescingPass {
+    limit: usize,
+}
 
-#[allow(dead_code)]
 impl WriteCoalescingPass {
+    /// Create a new WriteCoalescingPass with the specified limit.
+    /// Two writes will only be merged if their combined length is less than the limit.
+    pub fn with_limit(limit: usize) -> Self {
+        Self { limit }
+    }
+
     /// Transform a list of statements, coalescing consecutive Write statements
-    fn transform_statements(statements: Vec<IrStatement>) -> Vec<IrStatement> {
+    fn transform_statements(&self, statements: Vec<IrStatement>) -> Vec<IrStatement> {
         let mut result = Vec::new();
         let mut pending_write: Option<(StatementId, String)> = None;
 
         for statement in statements {
             match statement {
                 IrStatement::Write { id, content: text } => {
-                    // Accumulate consecutive writes
+                    // Accumulate consecutive writes if within limit
                     match pending_write {
-                        Some((_, ref mut accumulated)) => {
-                            accumulated.push_str(&text);
+                        Some((pending_id, ref accumulated)) => {
+                            if accumulated.len() + text.len() < self.limit {
+                                // Safe to merge
+                                pending_write
+                                    .as_mut()
+                                    .unwrap()
+                                    .1
+                                    .push_str(&text);
+                            } else {
+                                // Would exceed limit, flush pending and start new
+                                result.push(IrStatement::Write {
+                                    id: pending_id,
+                                    content: accumulated.clone(),
+                                });
+                                pending_write = Some((id, text));
+                            }
                         }
                         None => {
                             pending_write = Some((id, text));
@@ -43,8 +66,8 @@ impl WriteCoalescingPass {
                     result.push(IrStatement::If {
                         id,
                         condition,
-                        body: Self::transform_statements(body),
-                        else_body: else_body.map(Self::transform_statements),
+                        body: self.transform_statements(body),
+                        else_body: else_body.map(|b| self.transform_statements(b)),
                     });
                 }
                 IrStatement::For {
@@ -65,7 +88,7 @@ impl WriteCoalescingPass {
                         id,
                         var,
                         array,
-                        body: Self::transform_statements(body),
+                        body: self.transform_statements(body),
                     });
                 }
                 IrStatement::Let {
@@ -86,7 +109,7 @@ impl WriteCoalescingPass {
                         id,
                         var,
                         value,
-                        body: Self::transform_statements(body),
+                        body: self.transform_statements(body),
                     });
                 }
                 IrStatement::WriteExpr { .. } => {
@@ -116,8 +139,8 @@ impl WriteCoalescingPass {
                             false_body,
                         } => crate::dop::patterns::Match::Bool {
                             subject,
-                            true_body: Box::new(Self::transform_statements(*true_body)),
-                            false_body: Box::new(Self::transform_statements(*false_body)),
+                            true_body: Box::new(self.transform_statements(*true_body)),
+                            false_body: Box::new(self.transform_statements(*false_body)),
                         },
                         crate::dop::patterns::Match::Option {
                             subject,
@@ -127,8 +150,8 @@ impl WriteCoalescingPass {
                         } => crate::dop::patterns::Match::Option {
                             subject,
                             some_arm_binding,
-                            some_arm_body: Box::new(Self::transform_statements(*some_arm_body)),
-                            none_arm_body: Box::new(Self::transform_statements(*none_arm_body)),
+                            some_arm_body: Box::new(self.transform_statements(*some_arm_body)),
+                            none_arm_body: Box::new(self.transform_statements(*none_arm_body)),
                         },
                         crate::dop::patterns::Match::Enum { subject, arms } => {
                             crate::dop::patterns::Match::Enum {
@@ -138,7 +161,7 @@ impl WriteCoalescingPass {
                                     .map(|arm| crate::dop::patterns::EnumMatchArm {
                                         pattern: arm.pattern,
                                         bindings: arm.bindings,
-                                        body: Self::transform_statements(arm.body),
+                                        body: self.transform_statements(arm.body),
                                     })
                                     .collect(),
                             }
@@ -162,12 +185,26 @@ impl WriteCoalescingPass {
 
         result
     }
+
+    /// Run the pass on a component with the configured limit
+    pub fn run_with_limit(
+        &self,
+        mut entrypoint: IrComponentDeclaration,
+    ) -> IrComponentDeclaration {
+        entrypoint.body = self.transform_statements(entrypoint.body);
+        entrypoint
+    }
+}
+
+impl Default for WriteCoalescingPass {
+    fn default() -> Self {
+        Self { limit: usize::MAX }
+    }
 }
 
 impl Pass for WriteCoalescingPass {
-    fn run(mut entrypoint: IrComponentDeclaration) -> IrComponentDeclaration {
-        entrypoint.body = Self::transform_statements(entrypoint.body);
-        entrypoint
+    fn run(entrypoint: IrComponentDeclaration) -> IrComponentDeclaration {
+        Self::default().run_with_limit(entrypoint)
     }
 }
 
@@ -456,6 +493,191 @@ mod tests {
                 -- after --
                 Test() {
                   write("Single")
+                }
+            "#]],
+        );
+    }
+
+    fn check_with_limit(entrypoint: IrComponentDeclaration, limit: usize, expected: Expect) {
+        let before = entrypoint.to_string();
+        let pass = WriteCoalescingPass::with_limit(limit);
+        let result = pass.run_with_limit(entrypoint);
+        let after = result.to_string();
+        let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
+        expected.assert_eq(&output);
+    }
+
+    #[test]
+    fn limit_prevents_merge_when_exceeded() {
+        // "Hello" (5) + " " (1) = 6, which is >= limit of 6, so no merge
+        // " " (1) + "World" (5) = 6, which is >= limit of 6, so no merge
+        check_with_limit(
+            build_ir("Test", [], |t| {
+                t.write("Hello");
+                t.write(" ");
+                t.write("World");
+            }),
+            6,
+            expect![[r#"
+                -- before --
+                Test() {
+                  write("Hello")
+                  write(" ")
+                  write("World")
+                }
+
+                -- after --
+                Test() {
+                  write("Hello")
+                  write(" ")
+                  write("World")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn limit_allows_merge_when_under() {
+        // "Hello" (5) + " " (1) = 6, which is < limit of 7, so merge to "Hello " (6)
+        // "Hello " (6) + "World" (5) = 11, which is >= limit of 7, so no merge
+        check_with_limit(
+            build_ir("Test", [], |t| {
+                t.write("Hello");
+                t.write(" ");
+                t.write("World");
+            }),
+            7,
+            expect![[r#"
+                -- before --
+                Test() {
+                  write("Hello")
+                  write(" ")
+                  write("World")
+                }
+
+                -- after --
+                Test() {
+                  write("Hello ")
+                  write("World")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn limit_creates_multiple_chunks() {
+        // With limit 5, we can't merge anything since each write is 3 chars
+        // "AAA" + "BBB" = 6 >= 5, so no merge
+        check_with_limit(
+            build_ir("Test", [], |t| {
+                t.write("AAA");
+                t.write("BBB");
+                t.write("CCC");
+                t.write("DDD");
+            }),
+            5,
+            expect![[r#"
+                -- before --
+                Test() {
+                  write("AAA")
+                  write("BBB")
+                  write("CCC")
+                  write("DDD")
+                }
+
+                -- after --
+                Test() {
+                  write("AAA")
+                  write("BBB")
+                  write("CCC")
+                  write("DDD")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn limit_allows_partial_merges() {
+        // With limit 7: "AAA" (3) + "BBB" (3) = 6 < 7, merge to "AAABBB"
+        // Then "AAABBB" (6) + "CCC" (3) = 9 >= 7, flush and start new
+        // "CCC" (3) + "DDD" (3) = 6 < 7, merge to "CCCDDD"
+        check_with_limit(
+            build_ir("Test", [], |t| {
+                t.write("AAA");
+                t.write("BBB");
+                t.write("CCC");
+                t.write("DDD");
+            }),
+            7,
+            expect![[r#"
+                -- before --
+                Test() {
+                  write("AAA")
+                  write("BBB")
+                  write("CCC")
+                  write("DDD")
+                }
+
+                -- after --
+                Test() {
+                  write("AAABBB")
+                  write("CCCDDD")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn limit_zero_prevents_all_merges() {
+        check_with_limit(
+            build_ir("Test", [], |t| {
+                t.write("A");
+                t.write("B");
+            }),
+            0,
+            expect![[r#"
+                -- before --
+                Test() {
+                  write("A")
+                  write("B")
+                }
+
+                -- after --
+                Test() {
+                  write("A")
+                  write("B")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn limit_applies_inside_nested_structures() {
+        check_with_limit(
+            build_ir("Test", [], |t| {
+                t.if_stmt(t.bool(true), |t| {
+                    t.write("AAA");
+                    t.write("BBB");
+                    t.write("CCC");
+                });
+            }),
+            7,
+            expect![[r#"
+                -- before --
+                Test() {
+                  if true {
+                    write("AAA")
+                    write("BBB")
+                    write("CCC")
+                  }
+                }
+
+                -- after --
+                Test() {
+                  if true {
+                    write("AAABBB")
+                    write("CCC")
+                  }
                 }
             "#]],
         );

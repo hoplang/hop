@@ -1,13 +1,8 @@
-use crate::inlined::Inliner;
 use crate::hop::semantics::typed_ast::TypedAst;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
-use crate::ir::syntax::{
-    AlphaRenamingPass, ConstantPropagationPass, Pass, UnusedIfEliminationPass,
-    UnusedLetEliminationPass, WriteExprSimplificationPass,
-};
-use crate::inlined::{DoctypeInjector, HtmlStructureInjector, MetaInjector, TailwindInjector};
-use crate::ir::{Compiler, IrEnumDeclaration, IrModule, IrRecordDeclaration};
+use crate::inlined::{DoctypeInjector, HtmlStructureInjector, Inliner, MetaInjector, TailwindInjector};
+use crate::ir::{optimize, Compiler, IrEnumDeclaration, IrModule, IrRecordDeclaration};
 use anyhow::Result;
 use std::collections::HashMap;
 
@@ -38,7 +33,7 @@ pub fn orchestrate(
         .collect();
     enums.sort_by(|a, b| a.name.cmp(&b.name));
 
-    let entrypoints = Inliner::inline_entrypoints(typed_asts, pages)?
+    let components = Inliner::inline_entrypoints(typed_asts, pages)?
         .into_iter()
         // transform ASTs
         .map(DoctypeInjector::run)
@@ -47,17 +42,13 @@ pub fn orchestrate(
         .map(|entrypoint| TailwindInjector::run(entrypoint, generated_tailwind_css))
         // compile to IR
         .map(Compiler::compile)
-        // optimize IR
-        .map(AlphaRenamingPass::run)
-        .map(ConstantPropagationPass::run)
-        .map(UnusedLetEliminationPass::run)
-        .map(UnusedIfEliminationPass::run)
-        .map(WriteExprSimplificationPass::run)
         .collect();
 
-    Ok(IrModule {
-        components: entrypoints,
+    let module = IrModule {
+        components,
         records,
         enums,
-    })
+    };
+
+    Ok(optimize(module))
 }

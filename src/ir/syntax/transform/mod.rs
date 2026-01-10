@@ -9,6 +9,7 @@ pub use alpha_renaming::AlphaRenamingPass;
 pub use constant_propagation::ConstantPropagationPass;
 pub use unused_if_elimination::UnusedIfEliminationPass;
 pub use unused_let_elimination::UnusedLetEliminationPass;
+pub use write_coalescing::WriteCoalescingPass;
 pub use write_expr_simplification::WriteExprSimplificationPass;
 
 use super::ast::IrComponentDeclaration;
