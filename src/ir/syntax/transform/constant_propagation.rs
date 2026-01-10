@@ -63,8 +63,10 @@ impl Pass for ConstantPropagationPass {
                         IrExpr::EnumLiteral {
                             enum_name,
                             variant_name,
+                            fields,
                             ..
-                        } => {
+                        } if fields.is_empty() => {
+                            // Only unit variants (no fields) can be treated as constants
                             initial_constants.push((
                                 expr.id(),
                                 Const::Enum {
@@ -1076,6 +1078,40 @@ mod tests {
                   let y = "second" in {
                     write_escaped("second")
                   }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_preserve_enum_variant_fields() {
+        use crate::dop::Type;
+        use crate::ir::syntax::builder::IrModuleBuilder;
+
+        let module = IrModuleBuilder::new()
+            .enum_with_fields("Msg", |e| {
+                e.variant_with_fields("Say", vec![("text", Type::String)]);
+            })
+            .component("Test", [], |t| {
+                t.let_stmt(
+                    "x",
+                    t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hi"))]),
+                    |_| {},
+                );
+            })
+            .build();
+
+        check(
+            module.components.into_iter().next().unwrap(),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let x = Msg::Say(text: "hi") in {}
+                }
+
+                -- after --
+                Test() {
+                  let x = Msg::Say(text: "hi") in {}
                 }
             "#]],
         );
