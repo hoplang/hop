@@ -682,14 +682,14 @@ fn construct_nodes(
                     };
                     let bindings = parsed_bindings
                         .into_iter()
-                        .map(|(var_name, var_name_range, var_type, value_expr)| {
-                            ParsedLetBinding {
+                        .map(
+                            |(var_name, var_name_range, var_type, value_expr)| ParsedLetBinding {
                                 var_name,
                                 var_name_range,
                                 var_type,
                                 value_expr,
-                            }
-                        })
+                            },
+                        )
                         .collect();
                     vec![ParsedNode::Let {
                         bindings,
@@ -796,51 +796,12 @@ fn construct_nodes(
 
 #[cfg(test)]
 mod tests {
-    use super::parsed_ast::ParsedComponentDeclaration;
     use super::*;
-    use crate::document::{DocumentAnnotator, document_cursor::Ranged};
+    use crate::document::DocumentAnnotator;
     use crate::error_collector::ErrorCollector;
+    use crate::hop::syntax::transform::whitespace_removal::remove_whitespace;
     use expect_test::{Expect, expect};
     use indoc::indoc;
-
-    fn node_name(node: &ParsedNode) -> &str {
-        match node {
-            ParsedNode::Doctype { .. } => "doctype",
-            ParsedNode::ComponentReference { .. } => "component_reference",
-            ParsedNode::If { .. } => "if",
-            ParsedNode::For { .. } => "for",
-            ParsedNode::Let { .. } => "let",
-            ParsedNode::Match { .. } => "match",
-            ParsedNode::Html { tag_name, .. } => tag_name.as_str(),
-            ParsedNode::Text { .. } => "text",
-            ParsedNode::TextExpression { .. } => "text_expression",
-            ParsedNode::Placeholder { .. } => "error",
-        }
-    }
-
-    fn write_node(node: &ParsedNode, depth: usize, lines: &mut Vec<String>) {
-        if matches!(node, ParsedNode::Text { .. }) {
-            return;
-        }
-        let left = format!("{}{}", "    ".repeat(depth).as_str(), node_name(node));
-        let right = format!(
-            "{}-{}",
-            node.range().start_utf32(),
-            node.range().end_utf32()
-        );
-        lines.push(format!("{:<50}{}", left, right));
-        for child in node.children() {
-            write_node(child, depth + 1, lines);
-        }
-    }
-
-    pub fn format_component_declaration(d: &ParsedComponentDeclaration) -> String {
-        let mut lines = Vec::new();
-        for child in &d.children {
-            write_node(child, 0, &mut lines);
-        }
-        lines.join("\n") + "\n"
-    }
 
     fn check(input: &str, expected: Expect) {
         let mut errors = ErrorCollector::new();
@@ -856,15 +817,8 @@ mod tests {
                 .with_lines_before(1)
                 .annotate(None, errors.to_vec())
         } else {
-            for component in module.get_component_declarations() {
-                if component.tag_name.as_str() == "Main" {
-                    return expected.assert_eq(&format_component_declaration(component));
-                }
-            }
-            String::new()
+            remove_whitespace(module).to_string()
         };
-
-        println!("{}", actual);
 
         expected.assert_eq(&actual);
     }
@@ -900,12 +854,26 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                for                                               7:4-12:10
-                    for                                           8:8-11:14
-                        if                                        9:12-10:17
-                for                                               13:4-18:10
-                    for                                           14:8-17:14
-                        for                                       15:12-16:18
+                record T {
+                  t: Array[String],
+                }
+
+                record S {
+                  s: T,
+                }
+
+                <Main {i: Array[S]}>
+                  <for {j in i}>
+                    <for {k in j.s.t}>
+                      <if {k}></if>
+                    </for>
+                  </for>
+                  <for {p in i}>
+                    <for {k in p.s.t}>
+                      <for {item in k}></for>
+                    </for>
+                  </for>
+                </Main>
             "#]],
         );
     }
@@ -916,7 +884,7 @@ mod tests {
             indoc! {r#"
                 <Main>
                     <script>
-                        // note that the <div> inside here is note
+                        // note that the <div> inside here is not
                         // parsed as html
                         console.log("<div>test</div>");
                     </script>
@@ -926,8 +894,16 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                script                                            1:4-5:13
-                style                                             6:4-8:12
+                <Main>
+                  <script>
+                    // note that the <div> inside here is not
+                    // parsed as html
+                    console.log("<div>test</div>");
+                  </script>
+                  <style>
+                    body { color: red; }
+                  </style>
+                </Main>
             "#]],
         );
     }
@@ -944,9 +920,14 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                form                                              1:4-4:11
-                    input                                         2:8-2:36
-                    button                                        3:8-3:43
+                <Main>
+                  <form id="form">
+                    <input type="text" required>
+                    <button type="submit">
+                      Send
+                    </button>
+                  </form>
+                </Main>
             "#]],
         );
     }
@@ -1025,9 +1006,15 @@ mod tests {
                 <Foo/>
             "#},
             expect![[r#"
-                hr                                                2:4-2:9
-                br                                                3:4-3:9
-                input                                             4:4-4:12
+                import bar::Bar
+
+                <Main>
+                  <hr>
+                  <br>
+                  <input>
+                </Main>
+
+                <Foo></Foo>
             "#]],
         );
     }
@@ -1046,10 +1033,16 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                doctype                                           1:4-1:19
-                html                                              2:4-6:11
-                    body                                          3:8-5:15
-                        div                                       4:12-4:34
+                <Main {foo: String}>
+                  <!DOCTYPE html>
+                  <html>
+                    <body>
+                      <div>
+                        hello world
+                      </div>
+                    </body>
+                  </html>
+                </Main>
             "#]],
         );
     }
@@ -1235,7 +1228,16 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                a                                                 5:4-5:50
+                record User {
+                  url: String,
+                  theme: String,
+                }
+
+                <Main {user: User}>
+                  <a href={user.url} class={user.theme}>
+                    Link
+                  </a>
+                </Main>
             "#]],
         );
     }
@@ -1385,8 +1387,10 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                component_reference                               1:4-1:15
-                component_reference                               2:4-2:15
+                <Main {p: String}>
+                  <Foo/>
+                  <Foo/>
+                </Main>
             "#]],
         );
     }
@@ -1406,8 +1410,17 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                component_reference                               6:4-6:19
-                component_reference                               7:4-7:24
+                import foo::Foo
+                import bar::Bar
+
+                record Data {
+                  user: String,
+                }
+
+                <Main {data: Data}>
+                  <Foo a={data}/>
+                  <Bar b={data.user}/>
+                </Main>
             "#]],
         );
     }
@@ -1423,8 +1436,13 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                for                                               1:4-3:10
-                    div                                           2:8-2:31
+                <Main {item: Array[String]}>
+                  <for {item in items}>
+                    <div>
+                      Item content
+                    </div>
+                  </for>
+                </Main>
             "#]],
         );
     }
@@ -1440,9 +1458,13 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                for                                               1:4-3:10
-                    div                                           2:8-2:22
-                        text_expression                           2:13-2:16
+                <Main {foo: Array[String]}>
+                  <for {v in foo}>
+                    <div>
+                      {v}
+                    </div>
+                  </for>
+                </Main>
             "#]],
         );
     }
@@ -1458,8 +1480,13 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                if                                                1:4-3:9
-                    div                                           2:8-2:24
+                <Main {x: Int, y: Int}>
+                  <if {x == y}>
+                    <div>
+                      Equal
+                    </div>
+                  </if>
+                </Main>
             "#]],
         );
     }
@@ -1477,9 +1504,13 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                if                                                1:1-5:6
-                    for                                           2:2-4:8
-                        text_expression                           3:10-3:13
+                <Main {x: Bool, data: Array[String]}>
+                  <if {x}>
+                    <for {d in data}>
+                      {d}
+                    </for>
+                  </if>
+                </Main>
             "#]],
         );
     }
@@ -1504,15 +1535,36 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                div                                               1:4-12:10
-                    svg                                           2:8-8:14
-                        g                                         3:12-7:16
-                            path                                  4:16-4:65
-                            path                                  5:16-5:63
-                            path                                  6:16-6:73
-                    ul                                            9:8-11:13
-                        li                                        10:12-10:41
-                            a                                     10:16-10:36
+                <Main>
+                  <div class="navbar">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="128"
+                      height="128"
+                      version="1.1"
+                      viewBox="0 0 128 128"
+                      class="size-12"
+                    >
+                      <g
+                        style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;"
+                      >
+                        <path d="M20.04 38 64 22l43.96 16L64 54Z">
+                        </path>
+                        <path d="M17.54 47.09v48l35.099 12.775">
+                        </path>
+                        <path d="M64 112V64l46.46-16.91v48L77.988 106.91">
+                        </path>
+                      </g>
+                    </svg>
+                    <ul>
+                      <li>
+                        <a href="/">
+                          Home
+                        </a>
+                      </li>
+                    </ul>
+                  </div>
+                </Main>
             "#]],
         );
     }
@@ -1526,8 +1578,11 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                div                                               1:4-1:21
-                    text_expression                               1:9-1:15
+                <Main {data: String}>
+                  <div>
+                    {data}
+                  </div>
+                </Main>
             "#]],
         );
     }
@@ -1546,9 +1601,18 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                h1                                                5:4-5:24
-                p                                                 6:4-6:25
-                    text_expression                               6:7-6:21
+                record Data {
+                  message: String,
+                }
+
+                <Main {data: Data}>
+                  <h1>
+                    Hello World
+                  </h1>
+                  <p>
+                    {data.message}
+                  </p>
+                </Main>
             "#]],
         );
     }
@@ -1564,9 +1628,13 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                for                                               1:4-3:10
-                    div                                           2:8-2:25
-                        text_expression                           2:13-2:19
+                <Main {items: Array[String]}>
+                  <for {item in items}>
+                    <div>
+                      {item}
+                    </div>
+                  </for>
+                </Main>
             "#]],
         );
     }
@@ -1590,12 +1658,23 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                for                                               6:4-11:10
-                    h1                                            7:8-7:32
-                        text_expression                           7:12-7:27
-                    for                                           8:8-10:14
-                        div                                       9:12-9:29
-                            text_expression                       9:17-9:23
+                record Section {
+                  title: String,
+                  items: Array[String],
+                }
+
+                <Main {data: Array[Section]}>
+                  <for {section in data}>
+                    <h1>
+                      {section.title}
+                    </h1>
+                    <for {item in section.items}>
+                      <div>
+                        {item}
+                      </div>
+                    </for>
+                  </for>
+                </Main>
             "#]],
         );
     }
@@ -1605,8 +1684,13 @@ mod tests {
         check(
             "<Main><h1>Hello {name}!</h1></Main>",
             expect![[r#"
-                h1                                                0:6-0:28
-                    text_expression                               0:16-0:22
+                <Main>
+                  <h1>
+                    Hello
+                    {name}
+                    !
+                  </h1>
+                </Main>
             "#]],
         );
     }
@@ -1616,9 +1700,15 @@ mod tests {
         check(
             "<Main><p>User {user.name} has {user.count} items</p></Main>",
             expect![[r#"
-                p                                                 0:6-0:52
-                    text_expression                               0:14-0:25
-                    text_expression                               0:30-0:42
+                <Main>
+                  <p>
+                    User
+                    {user.name}
+                    has
+                    {user.count}
+                    items
+                  </p>
+                </Main>
             "#]],
         );
     }
@@ -1628,8 +1718,12 @@ mod tests {
         check(
             "<Main><span>{greeting} world!</span></Main>",
             expect![[r#"
-                span                                              0:6-0:36
-                    text_expression                               0:12-0:22
+                <Main>
+                  <span>
+                    {greeting}
+                    world!
+                  </span>
+                </Main>
             "#]],
         );
     }
@@ -1639,8 +1733,12 @@ mod tests {
         check(
             "<Main><div>Price: {price}</div></Main>",
             expect![[r#"
-                div                                               0:6-0:31
-                    text_expression                               0:18-0:25
+                <Main>
+                  <div>
+                    Price:
+                    {price}
+                  </div>
+                </Main>
             "#]],
         );
     }
@@ -1650,8 +1748,11 @@ mod tests {
         check(
             "<Main><h2>{title}</h2></Main>",
             expect![[r#"
-                h2                                                0:6-0:22
-                    text_expression                               0:10-0:17
+                <Main>
+                  <h2>
+                    {title}
+                  </h2>
+                </Main>
             "#]],
         );
     }
@@ -1668,7 +1769,12 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                script                                            1:4-4:13
+                <Main>
+                  <script>
+                    const x = "{not_an_expression}";
+                    const obj = {key: "value"};
+                  </script>
+                </Main>
             "#]],
         );
     }
@@ -1685,7 +1791,12 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                style                                             1:4-4:12
+                <Main>
+                  <style>
+                    body { color: red; }
+                    .class { font-size: 12px; }
+                  </style>
+                </Main>
             "#]],
         );
     }
@@ -1719,8 +1830,12 @@ mod tests {
         check(
             r#"<Main><p>Status: {user.profile.status == "active"}</p></Main>"#,
             expect![[r#"
-                p                                                 0:6-0:54
-                    text_expression                               0:17-0:50
+                <Main>
+                  <p>
+                    Status:
+                    {user.profile.status == "active"}
+                  </p>
+                </Main>
             "#]],
         );
     }
@@ -1730,9 +1845,12 @@ mod tests {
         check(
             "<Main><span>{first}{second}</span></Main>",
             expect![[r#"
-                span                                              0:6-0:34
-                    text_expression                               0:12-0:19
-                    text_expression                               0:19-0:27
+                <Main>
+                  <span>
+                    {first}
+                    {second}
+                  </span>
+                </Main>
             "#]],
         );
     }
@@ -1854,7 +1972,15 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                text_expression                                   3:4-3:62
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
+
+                <Main {color: Color}>
+                  {match color {Color::Red => "red", Color::Blue => "blue"}}
+                </Main>
             "#]],
         );
     }
@@ -1870,7 +1996,18 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                div                                               3:4-3:90
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
+
+                <Main {color: Color}>
+                  <div
+                    class={match color {Color::Red => "text-red", Color::Blue => "text-blue"}}
+                  >
+                  </div>
+                </Main>
             "#]],
         );
     }
@@ -1890,7 +2027,19 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                text_expression                                   3:4-7:6
+                enum Status {
+                  Active,
+                  Inactive,
+                  Pending,
+                }
+
+                <Main {status: Status}>
+                  {match status {
+                    Status::Active => "active",
+                    Status::Inactive => "inactive",
+                    Status::Pending => "pending",
+                  }}
+                </Main>
             "#]],
         );
     }
@@ -1904,8 +2053,11 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                div                                               1:4-1:21
-                    text_expression                               1:9-1:15
+                <Main {name: String = "World"}>
+                  <div>
+                    {name}
+                  </div>
+                </Main>
             "#]],
         );
     }
@@ -1919,8 +2071,11 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                span                                              1:4-1:24
-                    text_expression                               1:10-1:17
+                <Main {count: Int = 42}>
+                  <span>
+                    {count}
+                  </span>
+                </Main>
             "#]],
         );
     }
@@ -1934,7 +2089,10 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                div                                               1:4-1:15
+                <Main {enabled: Bool = true}>
+                  <div>
+                  </div>
+                </Main>
             "#]],
         );
     }
@@ -1948,8 +2106,11 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                div                                               1:4-1:21
-                    text_expression                               1:9-1:15
+                <Main {name: String, role: String = "user", active: Bool = true}>
+                  <div>
+                    {name}
+                  </div>
+                </Main>
             "#]],
         );
     }
@@ -1965,8 +2126,11 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                for                                               1:4-3:10
-                    text_expression                               2:8-2:14
+                <Main {items: Array[String] = ["a", "b"]}>
+                  <for {item in items}>
+                    {item}
+                  </for>
+                </Main>
             "#]],
         );
     }
@@ -1981,7 +2145,15 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                div                                               2:4-2:15
+                record Config {
+                  debug: Bool,
+                  timeout: Int,
+                }
+
+                <Main {config: Config = Config(debug: false, timeout: 30)}>
+                  <div>
+                  </div>
+                </Main>
             "#]],
         );
     }
@@ -1996,7 +2168,16 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                div                                               2:4-2:15
+                enum Status {
+                  Active,
+                  Inactive,
+                  Pending,
+                }
+
+                <Main {status: Status = Status::Active}>
+                  <div>
+                  </div>
+                </Main>
             "#]],
         );
     }
@@ -2010,7 +2191,10 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                div                                               1:4-1:15
+                <Main {name: Option[String]}>
+                  <div>
+                  </div>
+                </Main>
             "#]],
         );
     }
@@ -2024,7 +2208,10 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                div                                               1:4-1:15
+                <Main {name: Option[String] = None}>
+                  <div>
+                  </div>
+                </Main>
             "#]],
         );
     }
@@ -2038,7 +2225,10 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                div                                               1:4-1:15
+                <Main {name: Option[String] = Some("default")}>
+                  <div>
+                  </div>
+                </Main>
             "#]],
         );
     }
@@ -2059,7 +2249,17 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                match                                             1:4-8:12
+                <Main {x: Option[String]}>
+                  <match {x}>
+                    <case {Some(y)}>
+                      found
+                      {y}
+                    </case>
+                    <case {None}>
+                      nothing
+                    </case>
+                  </match>
+                </Main>
             "#]],
         );
     }
@@ -2078,7 +2278,99 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                match                                             2:4-6:12
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
+
+                <Main {c: Color}>
+                  <match {c}>
+                    <case {Color::Red}>
+                      red
+                    </case>
+                    <case {Color::Green}>
+                      green
+                    </case>
+                    <case {Color::Blue}>
+                      blue
+                    </case>
+                  </match>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_match_with_enum_variant_fields() {
+        check(
+            indoc! {r#"
+                enum Result { Ok(value: Int), Err(message: String) }
+                <Main {r: Result}>
+                    <match {r}>
+                        <case {Result::Ok(value: v)}>
+                            Success: {v}
+                        </case>
+                        <case {Result::Err(message: m)}>
+                            Error: {m}
+                        </case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                enum Result {
+                  Ok(value: Int),
+                  Err(message: String),
+                }
+
+                <Main {r: Result}>
+                  <match {r}>
+                    <case {Result::Ok(value: v)}>
+                      Success:
+                      {v}
+                    </case>
+                    <case {Result::Err(message: m)}>
+                      Error:
+                      {m}
+                    </case>
+                  </match>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_match_on_enum_literal_expression() {
+        check(
+            indoc! {r#"
+                enum Status { Active(name: String), Inactive }
+                <Main>
+                    <match {Status::Active(name: "test")}>
+                        <case {Status::Active(name: n)}>
+                            {n}
+                        </case>
+                        <case {Status::Inactive}>
+                            none
+                        </case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                enum Status {
+                  Active(name: String),
+                  Inactive,
+                }
+
+                <Main>
+                  <match {Status::Active(name: "test")}>
+                    <case {Status::Active(name: n)}>
+                      {n}
+                    </case>
+                    <case {Status::Inactive}>
+                      none
+                    </case>
+                  </match>
+                </Main>
             "#]],
         );
     }
@@ -2095,7 +2387,16 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                match                                             1:4-4:12
+                <Main {flag: Bool}>
+                  <match {flag}>
+                    <case {true}>
+                      yes
+                    </case>
+                    <case {false}>
+                      no
+                    </case>
+                  </match>
+                </Main>
             "#]],
         );
     }
@@ -2166,7 +2467,11 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                case                                              1:4-1:39
+                <Main>
+                  <case>
+                    standalone case
+                  </case>
+                </Main>
             "#]],
         );
     }
@@ -2182,9 +2487,14 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                let                                               1:4-3:10
-                    div                                           2:8-2:31
-                        text_expression                           2:19-2:25
+                <Main>
+                  <let {name: String = "World"}>
+                    <div>
+                      Hello
+                      {name}
+                    </div>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -2200,9 +2510,13 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                let                                               1:4-3:10
-                    span                                          2:8-2:28
-                        text_expression                           2:14-2:21
+                <Main>
+                  <let {count: Int = 42}>
+                    <span>
+                      {count}
+                    </span>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -2219,9 +2533,17 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                let                                               2:4-4:10
-                    div                                           3:8-3:29
-                        text_expression                           3:13-3:23
+                record User {
+                  name: String,
+                }
+
+                <Main {user: User}>
+                  <let {greeting: String = user.name}>
+                    <div>
+                      {greeting}
+                    </div>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -2239,11 +2561,17 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                let                                               1:4-5:10
-                    let                                           2:8-4:14
-                        div                                       3:12-3:32
-                            text_expression                       3:17-3:20
-                            text_expression                       3:23-3:26
+                <Main>
+                  <let {a: Int = 1}>
+                    <let {b: Int = 2}>
+                      <div>
+                        {a}
+                        +
+                        {b}
+                      </div>
+                    </let>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -2316,10 +2644,14 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                let                                               1:4-3:10
-                    div                                           2:8-2:35
-                        text_expression                           2:13-2:20
-                        text_expression                           2:21-2:29
+                <Main>
+                  <let {first: String = "Hello", second: String = "World"}>
+                    <div>
+                      {first}
+                      {second}
+                    </div>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -2335,11 +2667,17 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                let                                               1:4-3:10
-                    div                                           2:8-2:34
-                        text_expression                           2:13-2:16
-                        text_expression                           2:19-2:22
-                        text_expression                           2:25-2:28
+                <Main>
+                  <let {a: Int = 1, b: Int = 2, c: Int = 3}>
+                    <div>
+                      {a}
+                      +
+                      {b}
+                      +
+                      {c}
+                    </div>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -2355,9 +2693,14 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                let                                               1:4-3:10
-                    div                                           2:8-2:31
-                        text_expression                           2:19-2:25
+                <Main>
+                  <let {name: String = "World"}>
+                    <div>
+                      Hello
+                      {name}
+                    </div>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -2376,10 +2719,14 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                let                                               1:4-3:10
-                    text_expression                               2:8-2:11
-                let                                               4:4-6:10
-                    text_expression                               5:8-5:11
+                <Main>
+                  <let {a: String = "Hello"}>
+                    {a}
+                  </let>
+                  <let {b: String = "World"}>
+                    {b}
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -2396,10 +2743,17 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                div                                               1:4-1:20
-                let                                               2:4-4:10
-                    div                                           3:8-3:31
-                        text_expression                           3:19-3:25
+                <Main>
+                  <div>
+                    First
+                  </div>
+                  <let {name: String = "World"}>
+                    <div>
+                      Hello
+                      {name}
+                    </div>
+                  </let>
+                </Main>
             "#]],
         );
     }
@@ -2416,10 +2770,17 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                let                                               1:4-3:10
-                    div                                           2:8-2:31
-                        text_expression                           2:19-2:25
-                div                                               4:4-4:19
+                <Main>
+                  <let {name: String = "World"}>
+                    <div>
+                      Hello
+                      {name}
+                    </div>
+                  </let>
+                  <div>
+                    Last
+                  </div>
+                </Main>
             "#]],
         );
     }
