@@ -14,7 +14,6 @@ use crate::dop::syntax::parsed::{
 };
 use pretty::BoxDoc;
 
-/// Drain all comments that start before the given position.
 fn drain_comments_before<'a>(
     comments: &mut Vec<&'a (String, DocumentRange)>,
     position: usize,
@@ -34,8 +33,6 @@ fn drain_comments_before<'a>(
     doc
 }
 
-/// Formats a comma-separated list of items inside braces with trailing comments support.
-/// Returns the content to place between `{` and `}`.
 fn format_braced_list<'a, T, F>(
     items: &'a [T],
     mut format_item: F,
@@ -45,16 +42,10 @@ fn format_braced_list<'a, T, F>(
 where
     F: FnMut(&'a T, &mut Vec<&'a (String, DocumentRange)>) -> BoxDoc<'a>,
 {
-    let has_trailing_comments = comments
-        .first()
-        .is_some_and(|c| c.1.start() < end_position);
-
-    // Empty body with no comments
+    let has_trailing_comments = comments.first().is_some_and(|c| c.1.start() < end_position);
     if items.is_empty() && !has_trailing_comments {
         return BoxDoc::nil();
     }
-
-    // Build comma-separated items
     let mut items_doc = BoxDoc::nil();
     for (i, item) in items.iter().enumerate() {
         if i > 0 {
@@ -65,10 +56,7 @@ where
     if !items.is_empty() {
         items_doc = items_doc.append(BoxDoc::text(","));
     }
-
     let trailing_comments = drain_comments_before(comments, end_position);
-
-    // Build content based on what we have
     let content = if items.is_empty() {
         trailing_comments
     } else if has_trailing_comments {
@@ -76,9 +64,6 @@ where
     } else {
         items_doc
     };
-
-    // Wrap with newlines and indentation
-    // Note: trailing comments end with line(), so we only add closing line when there are none
     let body = BoxDoc::line().append(content).nest(2);
     if has_trailing_comments {
         body
@@ -95,11 +80,8 @@ pub fn format(ast: ParsedAst) -> String {
 
 fn format_ast(ast: &ParsedAst) -> BoxDoc<'_> {
     let declarations = ast.get_declarations();
-
-    // Collect and sort comments by position
     let mut comments: Vec<&(String, DocumentRange)> = ast.comments().iter().collect();
     comments.sort_by_key(|(_, range)| range.start());
-
     if declarations.is_empty() {
         BoxDoc::nil()
     } else {
@@ -221,28 +203,47 @@ fn format_component_declaration<'a>(
     comments: &mut Vec<&'a (String, DocumentRange)>,
 ) -> BoxDoc<'a> {
     let leading_comments = drain_comments_before(comments, component.range.start());
-
     let params_doc = match &component.params {
-        Some((params, _)) if !params.is_empty() => {
+        Some((params, params_range)) => {
             let mut params_inner = BoxDoc::nil();
             for (i, param) in params.iter().enumerate() {
                 if i > 0 {
-                    params_inner = params_inner.append(BoxDoc::text(",")).append(BoxDoc::line());
+                    params_inner = params_inner
+                        .append(BoxDoc::text(","))
+                        .append(BoxDoc::line());
                 }
                 params_inner = params_inner.append(format_parameter(param, comments));
             }
-            BoxDoc::text(" {")
-                .append(
+            let has_trailing_comments = comments
+                .first()
+                .is_some_and(|c| c.1.start() < params_range.end());
+            let trailing_comments = drain_comments_before(comments, params_range.end());
+            if params.is_empty() && !has_trailing_comments {
+                BoxDoc::nil()
+            } else {
+                let body = if params.is_empty() {
+                    BoxDoc::line_().append(trailing_comments).nest(2)
+                } else if has_trailing_comments {
+                    BoxDoc::line_()
+                        .append(params_inner)
+                        .append(BoxDoc::text(","))
+                        .append(BoxDoc::line())
+                        .append(trailing_comments)
+                        .nest(2)
+                } else {
                     BoxDoc::line_()
                         .append(params_inner)
                         .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                        .nest(2),
-                )
-                .append(BoxDoc::line_())
-                .append(BoxDoc::text("}"))
-                .group()
+                        .nest(2)
+                        .append(BoxDoc::line_())
+                };
+                BoxDoc::text(" {")
+                    .append(body)
+                    .append(BoxDoc::text("}"))
+                    .group()
+            }
         }
-        _ => BoxDoc::nil(),
+        None => BoxDoc::nil(),
     };
 
     let children_doc = if component.children.is_empty() {
@@ -335,8 +336,6 @@ fn format_node<'a>(
             ..
         } => {
             let component_name_str = component_name.as_str();
-
-            // Build opening tag with attributes (same format as HTML)
             let opening_tag_doc = if args.is_empty() {
                 BoxDoc::text("<").append(BoxDoc::text(component_name_str))
             } else {
@@ -353,7 +352,6 @@ fn format_node<'a>(
                     .append(BoxDoc::line_())
                     .group()
             };
-
             if children.is_empty() {
                 opening_tag_doc.append(BoxDoc::text("/>"))
             } else {
@@ -406,7 +404,9 @@ fn format_node<'a>(
             let mut bindings_doc = BoxDoc::nil();
             for (i, binding) in bindings.iter().enumerate() {
                 if i > 0 {
-                    bindings_doc = bindings_doc.append(BoxDoc::text(",")).append(BoxDoc::line());
+                    bindings_doc = bindings_doc
+                        .append(BoxDoc::text(","))
+                        .append(BoxDoc::line());
                 }
                 bindings_doc = bindings_doc.append(format_let_binding(binding, comments));
             }
@@ -450,8 +450,6 @@ fn format_node<'a>(
             ..
         } => {
             let tag_name_str = tag_name.as_str();
-
-            // Build the opening tag with attributes
             let opening_tag_doc = if attributes.is_empty() {
                 BoxDoc::text("<")
                     .append(BoxDoc::text(tag_name_str))
@@ -516,7 +514,6 @@ fn format_node<'a>(
     }
 }
 
-/// Helper to format a list of child nodes
 fn format_children<'a>(
     children: &'a [ParsedNode],
     comments: &mut Vec<&'a (String, DocumentRange)>,
@@ -601,8 +598,9 @@ fn format_expr<'a>(
                 let mut elements_doc = BoxDoc::nil();
                 for (i, elem) in elements.iter().enumerate() {
                     if i > 0 {
-                        elements_doc =
-                            elements_doc.append(BoxDoc::text(",")).append(BoxDoc::line());
+                        elements_doc = elements_doc
+                            .append(BoxDoc::text(","))
+                            .append(BoxDoc::line());
                     }
                     elements_doc = elements_doc.append(format_expr(elem, comments));
                 }
@@ -730,7 +728,6 @@ fn format_expr<'a>(
             None => BoxDoc::text("None"),
         },
         ParsedExpr::MacroInvocation { name, args, .. } => {
-            // For classes! macro, expand string literals with spaces into separate arguments
             let mut expanded_docs: Vec<BoxDoc<'a>> = Vec::new();
             if name == "classes" {
                 for e in args.iter() {
@@ -739,7 +736,6 @@ fn format_expr<'a>(
                         ParsedExpr::StringLiteral { value, .. } => {
                             let parts: Vec<_> = value.split_whitespace().collect();
                             for (i, part) in parts.iter().enumerate() {
-                                // Only prepend comments to the first part of a split string
                                 if i == 0 {
                                     expanded_docs.push(
                                         leading_comments
@@ -751,8 +747,7 @@ fn format_expr<'a>(
                                 }
                             }
                         }
-                        _ => expanded_docs
-                            .push(leading_comments.append(format_expr(e, comments))),
+                        _ => expanded_docs.push(leading_comments.append(format_expr(e, comments))),
                     }
                 }
             } else {
@@ -847,7 +842,6 @@ fn format_match_pattern(pattern: &ParsedMatchPattern) -> BoxDoc<'_> {
         } => {
             let base = format_constructor(constructor);
             if !fields.is_empty() {
-                // Record pattern: User(name: x, age: y)
                 let fields_doc = BoxDoc::intersperse(
                     fields.iter().map(|(name, _, pat)| {
                         BoxDoc::text(name.as_str())
@@ -862,7 +856,6 @@ fn format_match_pattern(pattern: &ParsedMatchPattern) -> BoxDoc<'_> {
             } else if args.is_empty() {
                 base
             } else {
-                // Positional args (Option Some, etc.)
                 let args_doc =
                     BoxDoc::intersperse(args.iter().map(format_match_pattern), BoxDoc::text(", "));
                 base.append(BoxDoc::text("("))
@@ -2545,6 +2538,30 @@ mod tests {
                   label: String,
                   // Whether the button is disabled
                   disabled: Bool = false,
+                }>
+                  {label}
+                </Button>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn trailing_comment_in_component_parameters() {
+        check(
+            indoc! {r#"
+                <Button {
+                    label: String,
+                    disabled: Bool = false,
+                    // More params to come
+                }>
+                  {label}
+                </Button>
+            "#},
+            expect![[r#"
+                <Button {
+                  label: String,
+                  disabled: Bool = false,
+                  // More params to come
                 }>
                   {label}
                 </Button>
