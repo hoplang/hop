@@ -16,6 +16,12 @@ use crate::dop::syntax::parsed::{
 };
 use pretty::BoxDoc;
 
+pub fn format(ast: ParsedAst) -> String {
+    let ast = remove_whitespace(ast);
+    let ast = sort_imports(ast);
+    format_ast(&ast).pretty(60).to_string()
+}
+
 /// Wraps items in a grouped body with optional trailing comma: `{ items, }` or `( items )`
 /// Used for arrays, records, match arms, macros, etc.
 fn soft_block<'a>(items: BoxDoc<'a>) -> BoxDoc<'a> {
@@ -83,12 +89,6 @@ where
     } else {
         body.append(BoxDoc::line())
     }
-}
-
-pub fn format(ast: ParsedAst) -> String {
-    let ast = remove_whitespace(ast);
-    let ast = sort_imports(ast);
-    format_ast(&ast).pretty(60).to_string()
 }
 
 fn format_ast(ast: &ParsedAst) -> BoxDoc<'_> {
@@ -701,9 +701,8 @@ fn format_expr<'a>(
             }
 
             let end_position = expr.range().end();
-            let has_trailing_comments = comments
-                .front()
-                .is_some_and(|c| c.1.start() < end_position);
+            let has_trailing_comments =
+                comments.front().is_some_and(|c| c.1.start() < end_position);
             let trailing_comments = drain_comments_before(comments, end_position);
 
             if expanded_docs.is_empty() && !has_trailing_comments {
