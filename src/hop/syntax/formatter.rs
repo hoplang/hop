@@ -732,32 +732,49 @@ fn format_expr<'a>(
             let mut expanded_docs: Vec<BoxDoc<'a>> = Vec::new();
             if name == "classes" {
                 for e in args.iter() {
+                    let leading_comments = drain_comments_before(comments, e.range().start());
                     match e {
                         ParsedExpr::StringLiteral { value, .. } => {
-                            for part in value.split_whitespace() {
-                                expanded_docs.push(BoxDoc::text(format!("\"{}\"", part)));
+                            let parts: Vec<_> = value.split_whitespace().collect();
+                            for (i, part) in parts.iter().enumerate() {
+                                // Only prepend comments to the first part of a split string
+                                if i == 0 {
+                                    expanded_docs.push(
+                                        leading_comments
+                                            .clone()
+                                            .append(BoxDoc::text(format!("\"{}\"", part))),
+                                    );
+                                } else {
+                                    expanded_docs.push(BoxDoc::text(format!("\"{}\"", part)));
+                                }
                             }
                         }
-                        _ => expanded_docs.push(format_expr(e, comments)),
+                        _ => expanded_docs
+                            .push(leading_comments.append(format_expr(e, comments))),
                     }
                 }
             } else {
                 for e in args.iter() {
-                    expanded_docs.push(format_expr(e, comments));
+                    let leading_comments = drain_comments_before(comments, e.range().start());
+                    expanded_docs.push(leading_comments.append(format_expr(e, comments)));
                 }
             }
 
             if expanded_docs.is_empty() {
                 BoxDoc::text(name.as_str()).append(BoxDoc::text("!()"))
             } else {
+                let mut args_doc = BoxDoc::nil();
+                for (i, doc) in expanded_docs.into_iter().enumerate() {
+                    if i > 0 {
+                        args_doc = args_doc.append(BoxDoc::text(",")).append(BoxDoc::line());
+                    }
+                    args_doc = args_doc.append(doc);
+                }
                 BoxDoc::text(name.as_str())
                     .append(BoxDoc::text("!("))
                     .append(
                         BoxDoc::line_()
-                            .append(BoxDoc::intersperse(
-                                expanded_docs,
-                                BoxDoc::text(",").append(BoxDoc::line()),
-                            ))
+                            .append(args_doc)
                             .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
                             .append(BoxDoc::line_())
                             .nest(2)
@@ -2435,6 +2452,70 @@ mod tests {
                         // b
                         Orientation::Vertical => "vertical",
                       }
+                    }
+                  >
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn comment_before_macro_arg() {
+        check(
+            indoc! {r#"
+                <Main>
+                  <div class={classes!(
+                    // base styles
+                    "flex",
+                    // conditional style
+                    "items-center",
+                  )}></div>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main>
+                  <div
+                    class={
+                      classes!(
+                        // base styles
+                        "flex",
+                        // conditional style
+                        "items-center",
+                      )
+                    }
+                  >
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn comment_before_macro_arg_with_string_expansion() {
+        check(
+            indoc! {r#"
+                <Main>
+                  <div class={classes!(
+                    // base styles
+                    "flex items-center",
+                    // conditional style
+                    "justify-between gap-4",
+                  )}></div>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main>
+                  <div
+                    class={
+                      classes!(
+                        // base styles
+                        "flex",
+                        "items-center",
+                        // conditional style
+                        "justify-between",
+                        "gap-4",
+                      )
                     }
                   >
                   </div>
