@@ -492,7 +492,6 @@ impl Parser {
         while let Some(dot) = self.advance_if(Token::Dot) {
             match self.iter.next().transpose()? {
                 Some((Token::Identifier(field_ident), range)) => {
-                    // Validate field name
                     let field_name = FieldName::new(field_ident.as_str()).map_err(|error| {
                         ParseError::InvalidFieldName {
                             name: field_ident,
@@ -523,7 +522,6 @@ impl Parser {
     fn parse_primary(&mut self) -> Result<ParsedExpr, ParseError> {
         match self.iter.next().transpose()? {
             Some((Token::Identifier(name), name_range)) => {
-                // Check for macro invocation: identifier!
                 if self.advance_if(Token::Not).is_some() {
                     return self.parse_macro_invocation(name, name_range);
                 }
@@ -589,7 +587,6 @@ impl Parser {
         macro_name: StringSpan,
         name_range: DocumentRange,
     ) -> Result<ParsedExpr, ParseError> {
-        // Validate it's a known macro
         let name_str = macro_name.as_str();
         if name_str != "classes" {
             return Err(ParseError::UnknownMacro {
@@ -640,8 +637,6 @@ impl Parser {
         self.expect_token(&Token::ColonColon)?;
         let (variant_name, variant_range) = self.expect_type_name()?;
         let constructor_range = enum_name_range.clone().to(variant_range.clone());
-
-        // Check for optional field values: Variant(field: value, ...)
         let (fields, end_range) = if let Some(left_paren) = self.advance_if(Token::LeftParen) {
             let mut fields = Vec::new();
             let right_paren =
@@ -655,7 +650,6 @@ impl Parser {
         } else {
             (Vec::new(), variant_range)
         };
-
         Ok(ParsedExpr::EnumLiteral {
             enum_name: enum_name.as_str().to_string(),
             variant_name: variant_name.as_str().to_string(),
@@ -666,12 +660,10 @@ impl Parser {
     }
 
     pub fn parse_match_pattern(&mut self) -> Result<ParsedMatchPattern, ParseError> {
-        // Check for wildcard pattern
         if let Some(range) = self.advance_if(Token::Underscore) {
             return Ok(ParsedMatchPattern::Wildcard { range });
         }
 
-        // Check for boolean literal patterns
         if let Some(range) = self.advance_if(Token::True) {
             return Ok(ParsedMatchPattern::Constructor {
                 constructor: Constructor::BooleanTrue,
@@ -691,7 +683,6 @@ impl Parser {
             });
         }
 
-        // Check for Option patterns: Some(...) and None
         if let Some(some_range) = self.advance_if(Token::Some) {
             self.expect_token(&Token::LeftParen)?;
             let inner_pattern = self.parse_match_pattern()?;
@@ -714,7 +705,6 @@ impl Parser {
             });
         }
 
-        // Check for TypeName patterns: either enum (TypeName::Variant) or record (TypeName(...))
         if let Some(Ok((Token::TypeName(type_name_str), type_name_range))) = self
             .iter
             .next_if(|res| matches!(res, Ok((Token::TypeName(_), _))))
@@ -725,12 +715,8 @@ impl Parser {
                     range: type_name_range.clone(),
                 })?;
 
-            // Check if this is an enum pattern (::) or record pattern (()
             if self.advance_if(Token::ColonColon).is_some() {
-                // Enum pattern: TypeName::Variant or TypeName::Variant(field: pattern, ...)
                 let (variant_name, variant_range) = self.expect_type_name()?;
-
-                // Check for optional field patterns: Variant(field: pattern, ...)
                 let (fields, end_range) =
                     if let Some(left_paren) = self.advance_if(Token::LeftParen) {
                         let mut fields = Vec::new();
@@ -759,7 +745,6 @@ impl Parser {
                     range: type_name_range.to(end_range),
                 });
             } else {
-                // Record pattern: TypeName(field: pattern, ...)
                 let left_paren = self.expect_token(&Token::LeftParen)?;
                 let mut fields = Vec::new();
                 let right_paren =
@@ -780,7 +765,6 @@ impl Parser {
             }
         }
 
-        // Otherwise, parse a binding pattern (lowercase identifier)
         let (var_name, range) = self.expect_variable_name()?;
         Ok(ParsedMatchPattern::Binding {
             name: var_name.to_string(),
@@ -889,7 +873,6 @@ impl Parser {
         let start_range = self.expect_token(&Token::Record)?;
         let (name, name_range) = self.expect_type_name()?;
         let left_brace = self.expect_token(&Token::LeftBrace)?;
-
         let mut fields = Vec::new();
         let mut seen_names = HashSet::new();
         let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
@@ -905,9 +888,7 @@ impl Parser {
             fields.push((field_name, field_name_range, field_type));
             Ok(())
         })?;
-
         let full_range = start_range.to(right_brace);
-
         Ok(ParsedDeclaration::Record {
             name,
             name_range,
@@ -920,7 +901,6 @@ impl Parser {
         let start_range = self.expect_token(&Token::Enum)?;
         let (name, name_range) = self.expect_type_name()?;
         let left_brace = self.expect_token(&Token::LeftBrace)?;
-
         let mut variants = Vec::new();
         let mut seen_names = HashSet::new();
         let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
@@ -931,20 +911,15 @@ impl Parser {
                     range: variant_range.clone(),
                 });
             }
-
-            // Check for optional field list: Variant(field: Type, ...)
             let fields = if this.advance_if(Token::LeftParen).is_some() {
                 this.parse_enum_variant_fields()?
             } else {
                 Vec::new()
             };
-
             variants.push((variant_name, variant_range, fields));
             Ok(())
         })?;
-
         let full_range = start_range.to(right_brace);
-
         Ok(ParsedDeclaration::Enum {
             name,
             name_range,
@@ -953,37 +928,26 @@ impl Parser {
         })
     }
 
-    /// Parse the fields of an enum variant: `field: Type, ...)`
-    ///
-    /// Called after consuming the opening `(`. Consumes the closing `)`.
     fn parse_enum_variant_fields(
         &mut self,
     ) -> Result<Vec<(FieldName, DocumentRange, ParsedType)>, ParseError> {
         let mut fields = Vec::new();
         let mut seen_names = HashSet::new();
-
-        // Handle empty field list
         if self.advance_if(Token::RightParen).is_some() {
             return Ok(fields);
         }
-
         loop {
             let (field_name, field_name_range) = self.expect_field_name()?;
             self.expect_token(&Token::Colon)?;
             let field_type = self.parse_type()?;
-
             if !seen_names.insert(field_name.as_str().to_string()) {
                 return Err(ParseError::DuplicateField {
                     name: field_name_range.to_string_span(),
                     range: field_name_range.clone(),
                 });
             }
-
             fields.push((field_name, field_name_range, field_type));
-
-            // Check for comma or closing paren
             if self.advance_if(Token::Comma).is_some() {
-                // Allow trailing comma
                 if self.advance_if(Token::RightParen).is_some() {
                     break;
                 }
@@ -1001,7 +965,6 @@ impl Parser {
         errors: &mut ErrorCollector<ParseError>,
     ) -> Vec<ParsedDeclaration> {
         let mut declarations = Vec::new();
-
         loop {
             match self.iter.peek() {
                 Some(Ok((Token::Import, _))) => match self.parse_import_declaration() {
@@ -1038,7 +1001,6 @@ impl Parser {
                 None => break,
             }
         }
-
         declarations
     }
 }
@@ -1115,6 +1077,23 @@ mod tests {
                 .join("\n")
         };
 
+        expected.assert_eq(&actual);
+    }
+
+    fn check_parse_let_bindings(input: &str, expected: Expect) {
+        let mut parser = Parser::from(input);
+        let actual = match parser.parse_let_bindings() {
+            Ok(result) => {
+                let bindings: Vec<String> = result
+                    .into_iter()
+                    .map(|(var_name, _range, var_type, value_expr)| {
+                        format!("{}: {} = {}", var_name, var_type, value_expr)
+                    })
+                    .collect();
+                format!("[{}]\n", bindings.join(", "))
+            }
+            Err(err) => annotate_error(err),
+        };
         expected.assert_eq(&actual);
     }
 
@@ -1572,7 +1551,6 @@ mod tests {
 
     #[test]
     fn should_reject_expr_when_not_operator_is_trailing() {
-        // Note: `x !` is now interpreted as a macro invocation `x!`
         check_parse_expr(
             "x !",
             expect![[r#"
@@ -2996,7 +2974,6 @@ mod tests {
 
     #[test]
     fn should_accept_match_with_empty_parens_pattern() {
-        // Empty parens are accepted but normalized away
         check_parse_expr(
             "match point { Point::XY() => 0 }",
             expect![[r#"
@@ -3074,23 +3051,6 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
     // LET BINDINGS                                                          //
     ///////////////////////////////////////////////////////////////////////////
-
-    fn check_parse_let_bindings(input: &str, expected: Expect) {
-        let mut parser = Parser::from(input);
-        let actual = match parser.parse_let_bindings() {
-            Ok(result) => {
-                let bindings: Vec<String> = result
-                    .into_iter()
-                    .map(|(var_name, _range, var_type, value_expr)| {
-                        format!("{}: {} = {}", var_name, var_type, value_expr)
-                    })
-                    .collect();
-                format!("[{}]\n", bindings.join(", "))
-            }
-            Err(err) => annotate_error(err),
-        };
-        expected.assert_eq(&actual);
-    }
 
     #[test]
     fn should_accept_single_let_binding() {
