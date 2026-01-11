@@ -14,6 +14,17 @@ use crate::dop::syntax::parsed::{
 };
 use pretty::BoxDoc;
 
+/// Wraps items in a grouped body with optional trailing comma: `{ items, }` or `( items )`
+/// Used for arrays, records, match arms, macros, etc.
+fn soft_block<'a>(items: BoxDoc<'a>) -> BoxDoc<'a> {
+    BoxDoc::line_()
+        .append(items)
+        .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+        .append(BoxDoc::line_())
+        .nest(2)
+        .group()
+}
+
 fn drain_comments_before<'a>(
     comments: &mut Vec<&'a (String, DocumentRange)>,
     position: usize,
@@ -246,28 +257,12 @@ fn format_component_declaration<'a>(
         None => BoxDoc::nil(),
     };
 
-    let children_doc = if component.children.is_empty() {
-        BoxDoc::nil()
-    } else {
-        let mut children_inner = BoxDoc::nil();
-        for (i, child) in component.children.iter().enumerate() {
-            if i > 0 {
-                children_inner = children_inner.append(BoxDoc::line());
-            }
-            children_inner = children_inner.append(format_node(child, comments));
-        }
-        BoxDoc::line()
-            .append(children_inner)
-            .nest(2)
-            .append(BoxDoc::line())
-    };
-
     leading_comments
         .append(BoxDoc::text("<"))
         .append(BoxDoc::text(component.component_name.as_str()))
         .append(params_doc)
         .append(BoxDoc::text(">"))
-        .append(children_doc)
+        .append(format_children(&component.children, comments))
         .append(BoxDoc::text("</"))
         .append(BoxDoc::text(component.component_name.as_str()))
         .append(BoxDoc::text(">"))
@@ -355,17 +350,9 @@ fn format_node<'a>(
             if children.is_empty() {
                 opening_tag_doc.append(BoxDoc::text("/>"))
             } else {
-                let mut children_doc = BoxDoc::nil();
-                for (i, child) in children.iter().enumerate() {
-                    if i > 0 {
-                        children_doc = children_doc.append(BoxDoc::line());
-                    }
-                    children_doc = children_doc.append(format_node(child, comments));
-                }
                 opening_tag_doc
                     .append(BoxDoc::text(">"))
-                    .append(BoxDoc::line().append(children_doc).nest(2))
-                    .append(BoxDoc::line())
+                    .append(format_children(children, comments))
                     .append(BoxDoc::text("</"))
                     .append(BoxDoc::text(component_name_str))
                     .append(BoxDoc::text(">"))
@@ -410,15 +397,9 @@ fn format_node<'a>(
                 }
                 bindings_doc = bindings_doc.append(format_let_binding(binding, comments));
             }
-            let bindings_wrapped = BoxDoc::line_()
-                .append(bindings_doc)
-                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                .nest(2)
-                .append(BoxDoc::line_())
-                .group();
             let children_doc = format_children(children, comments);
             BoxDoc::text("<let {")
-                .append(bindings_wrapped)
+                .append(soft_block(bindings_doc))
                 .append(BoxDoc::text("}>"))
                 .append(children_doc)
                 .append(BoxDoc::text("</let>"))
@@ -479,16 +460,8 @@ fn format_node<'a>(
                     .append(BoxDoc::text(tag_name_str))
                     .append(BoxDoc::text(">"))
             } else {
-                let mut children_doc = BoxDoc::nil();
-                for (i, child) in children.iter().enumerate() {
-                    if i > 0 {
-                        children_doc = children_doc.append(BoxDoc::line());
-                    }
-                    children_doc = children_doc.append(format_node(child, comments));
-                }
                 opening_tag_doc
-                    .append(BoxDoc::line().append(children_doc).nest(2))
-                    .append(BoxDoc::line())
+                    .append(format_children(children, comments))
                     .append(BoxDoc::text("</"))
                     .append(BoxDoc::text(tag_name_str))
                     .append(BoxDoc::text(">"))
@@ -498,16 +471,8 @@ fn format_node<'a>(
             if children.is_empty() {
                 BoxDoc::text("<placeholder />")
             } else {
-                let mut children_doc = BoxDoc::nil();
-                for (i, child) in children.iter().enumerate() {
-                    if i > 0 {
-                        children_doc = children_doc.append(BoxDoc::line());
-                    }
-                    children_doc = children_doc.append(format_node(child, comments));
-                }
                 BoxDoc::text("<placeholder>")
-                    .append(BoxDoc::line().append(children_doc).nest(2))
-                    .append(BoxDoc::line())
+                    .append(format_children(children, comments))
                     .append(BoxDoc::text("</placeholder>"))
             }
         }
@@ -562,12 +527,10 @@ fn format_type(ty: &ParsedType) -> BoxDoc<'_> {
         ParsedType::Int { .. } => BoxDoc::text("Int"),
         ParsedType::Float { .. } => BoxDoc::text("Float"),
         ParsedType::TrustedHTML { .. } => BoxDoc::text("TrustedHTML"),
-        ParsedType::Option { element, .. } => BoxDoc::nil()
-            .append(BoxDoc::text("Option["))
+        ParsedType::Option { element, .. } => BoxDoc::text("Option[")
             .append(format_type(element))
             .append(BoxDoc::text("]")),
-        ParsedType::Array { element, .. } => BoxDoc::nil()
-            .append(BoxDoc::text("Array["))
+        ParsedType::Array { element, .. } => BoxDoc::text("Array[")
             .append(format_type(element))
             .append(BoxDoc::text("]")),
         ParsedType::Named { name, .. } => BoxDoc::text(name.clone()),
@@ -605,14 +568,7 @@ fn format_expr<'a>(
                     elements_doc = elements_doc.append(format_expr(elem, comments));
                 }
                 BoxDoc::text("[")
-                    .append(
-                        BoxDoc::line_()
-                            .append(elements_doc)
-                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                            .append(BoxDoc::line_())
-                            .nest(2)
-                            .group(),
-                    )
+                    .append(soft_block(elements_doc))
                     .append(BoxDoc::text("]"))
             }
         }
@@ -636,14 +592,7 @@ fn format_expr<'a>(
                 }
                 BoxDoc::text(record_name.as_str())
                     .append(BoxDoc::text("("))
-                    .append(
-                        BoxDoc::line_()
-                            .append(fields_doc)
-                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                            .append(BoxDoc::line_())
-                            .nest(2)
-                            .group(),
-                    )
+                    .append(soft_block(fields_doc))
                     .append(BoxDoc::text(")"))
             }
         }
@@ -710,14 +659,7 @@ fn format_expr<'a>(
                 BoxDoc::text("match ")
                     .append(format_expr(subject, comments))
                     .append(BoxDoc::text(" {"))
-                    .append(
-                        BoxDoc::line_()
-                            .append(arms_doc)
-                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                            .append(BoxDoc::line_())
-                            .nest(2)
-                            .group(),
-                    )
+                    .append(soft_block(arms_doc))
                     .append(BoxDoc::text("}"))
             }
         }
@@ -786,17 +728,14 @@ fn format_expr<'a>(
                         .append(BoxDoc::line())
                         .append(trailing_comments)
                         .nest(2)
+                        .group()
                 } else {
-                    BoxDoc::line_()
-                        .append(args_doc)
-                        .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                        .append(BoxDoc::line_())
-                        .nest(2)
+                    soft_block(args_doc)
                 };
 
                 BoxDoc::text(name.as_str())
                     .append(BoxDoc::text("!("))
-                    .append(body.group())
+                    .append(body)
                     .append(BoxDoc::text(")"))
             }
         }
@@ -893,14 +832,14 @@ fn format_constructor(constructor: &Constructor) -> BoxDoc<'_> {
         Constructor::EnumVariant {
             enum_name,
             variant_name,
-        } => BoxDoc::text(enum_name.as_str().to_string())
+        } => BoxDoc::text(enum_name.as_str())
             .append(BoxDoc::text("::"))
             .append(BoxDoc::text(variant_name.as_str())),
         Constructor::BooleanTrue => BoxDoc::text("true"),
         Constructor::BooleanFalse => BoxDoc::text("false"),
         Constructor::OptionSome => BoxDoc::text("Some"),
         Constructor::OptionNone => BoxDoc::text("None"),
-        Constructor::Record { type_name } => BoxDoc::text(type_name.as_str().to_string()),
+        Constructor::Record { type_name } => BoxDoc::text(type_name.as_str()),
     }
 }
 
