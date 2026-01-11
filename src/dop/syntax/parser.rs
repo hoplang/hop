@@ -199,14 +199,12 @@ impl Parser {
         self.expect_opposite(opening_token, opening_range)
     }
 
-    // expr = logical Eof
     pub fn parse_expr(&mut self) -> Result<ParsedExpr, ParseError> {
         let result = self.parse_logical()?;
         self.expect_eof()?;
         Ok(result)
     }
 
-    // loop_header = Identifier "in" logical Eof
     pub fn parse_loop_header(
         &mut self,
     ) -> Result<(VarName, DocumentRange, ParsedExpr), ParseError> {
@@ -217,7 +215,6 @@ impl Parser {
         Ok((var_name, var_name_range, array_expr))
     }
 
-    // let_binding = (Identifier ":" type "=" expr) ("," Identifier ":" type "=" expr)* Eof
     pub fn parse_let_bindings(
         &mut self,
     ) -> Result<Vec<(VarName, DocumentRange, ParsedType, ParsedExpr)>, ParseError> {
@@ -238,7 +235,6 @@ impl Parser {
         Ok(bindings)
     }
 
-    // parameter_with_type = Identifier ":" type ("=" primary)?
     fn parse_parameter(
         &mut self,
     ) -> Result<((VarName, DocumentRange), ParsedType, Option<ParsedExpr>), ParseError> {
@@ -253,7 +249,6 @@ impl Parser {
         Ok(((var_name, var_name_range), var_type, default_value))
     }
 
-    // parameters = parameter ("," parameter)* Eof
     pub fn parse_parameters(
         &mut self,
     ) -> Result<Vec<((VarName, DocumentRange), ParsedType, Option<ParsedExpr>)>, ParseError> {
@@ -342,7 +337,6 @@ impl Parser {
         Ok(expr)
     }
 
-    // equality = relational ( ("==" | "!=") relational )*
     fn parse_equality(&mut self) -> Result<ParsedExpr, ParseError> {
         let mut expr = self.parse_relational()?;
         loop {
@@ -369,7 +363,6 @@ impl Parser {
         Ok(expr)
     }
 
-    // relational = additive ( ("<" | ">" | "<=" | ">=") additive )*
     fn parse_relational(&mut self) -> Result<ParsedExpr, ParseError> {
         let mut expr = self.parse_additive()?;
         loop {
@@ -412,7 +405,6 @@ impl Parser {
         Ok(expr)
     }
 
-    // additive = multiplicative ( ("+" | "-") multiplicative )*
     fn parse_additive(&mut self) -> Result<ParsedExpr, ParseError> {
         let mut expr = self.parse_multiplicative()?;
         loop {
@@ -439,7 +431,6 @@ impl Parser {
         Ok(expr)
     }
 
-    // multiplicative = unary ( "*" unary )*
     fn parse_multiplicative(&mut self) -> Result<ParsedExpr, ParseError> {
         let mut expr = self.parse_unary()?;
         while self.advance_if(Token::Asterisk).is_some() {
@@ -454,7 +445,6 @@ impl Parser {
         Ok(expr)
     }
 
-    // unary = ( "!" )* primary
     fn parse_unary(&mut self) -> Result<ParsedExpr, ParseError> {
         if let Some(operator_range) = self.advance_if(Token::Not) {
             let expr = self.parse_unary()?; // Right associative for multiple !
@@ -467,7 +457,6 @@ impl Parser {
         }
     }
 
-    // array_literal = "[" ( logical ("," logical)* )? "]"
     fn parse_array_literal(
         &mut self,
         left_bracket: DocumentRange,
@@ -643,9 +632,6 @@ impl Parser {
         })
     }
 
-    /// Parse an enum literal expression.
-    ///
-    /// Syntax: `EnumName::VariantName` or `EnumName::VariantName(field: value, ...)`
     fn parse_enum_literal(
         &mut self,
         enum_name: StringSpan,
@@ -658,12 +644,13 @@ impl Parser {
         // Check for optional field values: Variant(field: value, ...)
         let (fields, end_range) = if let Some(left_paren) = self.advance_if(Token::LeftParen) {
             let mut fields = Vec::new();
-            let right_paren = self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
-                let (field_name, field_name_range) = this.expect_field_name()?;
-                this.expect_token(&Token::Colon)?;
-                fields.push((field_name, field_name_range, this.parse_logical()?));
-                Ok(())
-            })?;
+            let right_paren =
+                self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
+                    let (field_name, field_name_range) = this.expect_field_name()?;
+                    this.expect_token(&Token::Colon)?;
+                    fields.push((field_name, field_name_range, this.parse_logical()?));
+                    Ok(())
+                })?;
             (fields, right_paren)
         } else {
             (Vec::new(), variant_range)
@@ -678,7 +665,6 @@ impl Parser {
         })
     }
 
-    /// Parse a match pattern.
     pub fn parse_match_pattern(&mut self) -> Result<ParsedMatchPattern, ParseError> {
         // Check for wildcard pattern
         if let Some(range) = self.advance_if(Token::Underscore) {
@@ -745,21 +731,21 @@ impl Parser {
                 let (variant_name, variant_range) = self.expect_type_name()?;
 
                 // Check for optional field patterns: Variant(field: pattern, ...)
-                let (fields, end_range) = if let Some(left_paren) = self.advance_if(Token::LeftParen)
-                {
-                    let mut fields = Vec::new();
-                    let right_paren =
-                        self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
-                            let (field_name, field_range) = this.expect_field_name()?;
-                            this.expect_token(&Token::Colon)?;
-                            let pattern = this.parse_match_pattern()?;
-                            fields.push((field_name, field_range, pattern));
-                            Ok(())
-                        })?;
-                    (fields, right_paren)
-                } else {
-                    (Vec::new(), variant_range.clone())
-                };
+                let (fields, end_range) =
+                    if let Some(left_paren) = self.advance_if(Token::LeftParen) {
+                        let mut fields = Vec::new();
+                        let right_paren =
+                            self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
+                                let (field_name, field_range) = this.expect_field_name()?;
+                                this.expect_token(&Token::Colon)?;
+                                let pattern = this.parse_match_pattern()?;
+                                fields.push((field_name, field_range, pattern));
+                                Ok(())
+                            })?;
+                        (fields, right_paren)
+                    } else {
+                        (Vec::new(), variant_range.clone())
+                    };
 
                 let constructor_range = type_name_range.clone().to(variant_range);
                 return Ok(ParsedMatchPattern::Constructor {
@@ -802,9 +788,6 @@ impl Parser {
         })
     }
 
-    /// Parse a match expression.
-    ///
-    /// Syntax: `match subject {Pattern1 => expr1, Pattern2 => expr2}`
     fn parse_match_expr(&mut self, match_range: DocumentRange) -> Result<ParsedExpr, ParseError> {
         let subject = self.parse_primary()?;
         let left_brace = self.expect_token(&Token::LeftBrace)?;
@@ -825,9 +808,6 @@ impl Parser {
         })
     }
 
-    /// Parse an import declaration.
-    ///
-    /// Syntax: `import module::path::ComponentName`
     fn parse_import_declaration(&mut self) -> Result<ParsedDeclaration, ParseError> {
         let import_range = self.expect_token(&Token::Import)?;
 
@@ -905,9 +885,6 @@ impl Parser {
         })
     }
 
-    /// Parse a record declaration.
-    ///
-    /// Syntax: `record Name {field: Type, ...}`
     fn parse_record_declaration(&mut self) -> Result<ParsedDeclaration, ParseError> {
         let start_range = self.expect_token(&Token::Record)?;
         let (name, name_range) = self.expect_type_name()?;
@@ -939,9 +916,6 @@ impl Parser {
         })
     }
 
-    /// Parse an enum declaration.
-    ///
-    /// Syntax: `enum Name {Variant1, Variant2(field: Type), ...}`
     fn parse_enum_declaration(&mut self) -> Result<ParsedDeclaration, ParseError> {
         let start_range = self.expect_token(&Token::Enum)?;
         let (name, name_range) = self.expect_type_name()?;
@@ -1022,10 +996,6 @@ impl Parser {
         Ok(fields)
     }
 
-    /// Parse all declarations from the source.
-    ///
-    /// This parses import and record declarations from a top-level
-    /// text node. The text should only contain declarations and whitespace.
     pub fn parse_declarations(
         &mut self,
         errors: &mut ErrorCollector<ParseError>,
