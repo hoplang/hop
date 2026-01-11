@@ -757,8 +757,19 @@ fn format_expr<'a>(
                 }
             }
 
-            if expanded_docs.is_empty() {
+            let end_position = expr.range().end();
+            let has_trailing_comments = comments
+                .first()
+                .is_some_and(|c| c.1.start() < end_position);
+            let trailing_comments = drain_comments_before(comments, end_position);
+
+            if expanded_docs.is_empty() && !has_trailing_comments {
                 BoxDoc::text(name.as_str()).append(BoxDoc::text("!()"))
+            } else if expanded_docs.is_empty() {
+                BoxDoc::text(name.as_str())
+                    .append(BoxDoc::text("!("))
+                    .append(BoxDoc::line_().append(trailing_comments).nest(2))
+                    .append(BoxDoc::text(")"))
             } else {
                 let mut args_doc = BoxDoc::nil();
                 for (i, doc) in expanded_docs.into_iter().enumerate() {
@@ -767,16 +778,25 @@ fn format_expr<'a>(
                     }
                     args_doc = args_doc.append(doc);
                 }
+
+                let body = if has_trailing_comments {
+                    BoxDoc::line_()
+                        .append(args_doc)
+                        .append(BoxDoc::text(","))
+                        .append(BoxDoc::line())
+                        .append(trailing_comments)
+                        .nest(2)
+                } else {
+                    BoxDoc::line_()
+                        .append(args_doc)
+                        .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                        .append(BoxDoc::line_())
+                        .nest(2)
+                };
+
                 BoxDoc::text(name.as_str())
                     .append(BoxDoc::text("!("))
-                    .append(
-                        BoxDoc::line_()
-                            .append(args_doc)
-                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                            .append(BoxDoc::line_())
-                            .nest(2)
-                            .group(),
-                    )
+                    .append(body.group())
                     .append(BoxDoc::text(")"))
             }
         }
@@ -2510,6 +2530,41 @@ mod tests {
                         // conditional style
                         "justify-between",
                         "gap-4",
+                      )
+                    }
+                  >
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn trailing_comment_in_macro() {
+        check(
+            indoc! {r#"
+                <Main {class: String}>
+                  <div class={classes!(
+                    "mx-auto",
+                    "flex",
+                    "w-full",
+                    "justify-center",
+                    class,
+                    // more to come!
+                  )}></div>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main {class: String}>
+                  <div
+                    class={
+                      classes!(
+                        "mx-auto",
+                        "flex",
+                        "w-full",
+                        "justify-center",
+                        class,
+                        // more to come!
                       )
                     }
                   >
