@@ -34,6 +34,59 @@ fn drain_comments_before<'a>(
     doc
 }
 
+/// Formats a comma-separated list of items inside braces with trailing comments support.
+/// Returns the content to place between `{` and `}`.
+fn format_braced_list<'a, T, F>(
+    items: &'a [T],
+    mut format_item: F,
+    comments: &mut Vec<&'a (String, DocumentRange)>,
+    end_position: usize,
+) -> BoxDoc<'a>
+where
+    F: FnMut(&'a T, &mut Vec<&'a (String, DocumentRange)>) -> BoxDoc<'a>,
+{
+    let has_trailing_comments = comments
+        .first()
+        .is_some_and(|c| c.1.start() < end_position);
+
+    // Empty body with no comments
+    if items.is_empty() && !has_trailing_comments {
+        return BoxDoc::nil();
+    }
+
+    // Build comma-separated items
+    let mut items_doc = BoxDoc::nil();
+    for (i, item) in items.iter().enumerate() {
+        if i > 0 {
+            items_doc = items_doc.append(BoxDoc::text(",")).append(BoxDoc::line());
+        }
+        items_doc = items_doc.append(format_item(item, comments));
+    }
+    if !items.is_empty() {
+        items_doc = items_doc.append(BoxDoc::text(","));
+    }
+
+    let trailing_comments = drain_comments_before(comments, end_position);
+
+    // Build content based on what we have
+    let content = if items.is_empty() {
+        trailing_comments
+    } else if has_trailing_comments {
+        items_doc.append(BoxDoc::line()).append(trailing_comments)
+    } else {
+        items_doc
+    };
+
+    // Wrap with newlines and indentation
+    // Note: trailing comments end with line(), so we only add closing line when there are none
+    let body = BoxDoc::line().append(content).nest(2);
+    if has_trailing_comments {
+        body
+    } else {
+        body.append(BoxDoc::line())
+    }
+}
+
 pub fn format(ast: ParsedAst) -> String {
     let ast = remove_whitespace(ast);
     let ast = sort_imports(ast);
@@ -100,38 +153,12 @@ fn format_record_declaration<'a>(
         .append(BoxDoc::text(record.name.as_str()))
         .append(BoxDoc::space())
         .append(BoxDoc::text("{"))
-        .append({
-            let mut fields_doc = BoxDoc::nil();
-            for (i, field) in record.fields.iter().enumerate() {
-                if i > 0 {
-                    fields_doc = fields_doc.append(BoxDoc::text(",")).append(BoxDoc::line());
-                }
-                fields_doc = fields_doc.append(format_record_declaration_field(field, comments));
-            }
-            // Check for trailing comments before the closing brace
-            let has_trailing_comments = comments
-                .first()
-                .is_some_and(|c| c.1.start() < record.range.end());
-            let trailing_comments = drain_comments_before(comments, record.range.end());
-            if record.fields.is_empty() && !has_trailing_comments {
-                BoxDoc::nil()
-            } else {
-                let body = BoxDoc::line()
-                    .append(fields_doc)
-                    .append(if record.fields.is_empty() {
-                        BoxDoc::nil()
-                    } else {
-                        BoxDoc::text(",")
-                    });
-                if has_trailing_comments {
-                    body.append(BoxDoc::line())
-                        .append(trailing_comments)
-                        .nest(2)
-                } else {
-                    body.nest(2).append(BoxDoc::line())
-                }
-            }
-        })
+        .append(format_braced_list(
+            &record.fields,
+            format_record_declaration_field,
+            comments,
+            record.range.end(),
+        ))
         .append(BoxDoc::text("}"))
 }
 
@@ -157,41 +184,12 @@ fn format_enum_declaration<'a>(
         .append(BoxDoc::text(e.name.as_str()))
         .append(BoxDoc::space())
         .append(BoxDoc::text("{"))
-        .append({
-            let mut variants_doc = BoxDoc::nil();
-            for (i, variant) in e.variants.iter().enumerate() {
-                if i > 0 {
-                    variants_doc = variants_doc
-                        .append(BoxDoc::text(","))
-                        .append(BoxDoc::line());
-                }
-                variants_doc =
-                    variants_doc.append(format_enum_declaration_variant(variant, comments));
-            }
-            // Check for trailing comments before the closing brace
-            let has_trailing_comments = comments
-                .first()
-                .is_some_and(|c| c.1.start() < e.range.end());
-            let trailing_comments = drain_comments_before(comments, e.range.end());
-            if e.variants.is_empty() && !has_trailing_comments {
-                BoxDoc::nil()
-            } else {
-                let body = BoxDoc::line()
-                    .append(variants_doc)
-                    .append(if e.variants.is_empty() {
-                        BoxDoc::nil()
-                    } else {
-                        BoxDoc::text(",")
-                    });
-                if has_trailing_comments {
-                    body.append(BoxDoc::line())
-                        .append(trailing_comments)
-                        .nest(2)
-                } else {
-                    body.nest(2).append(BoxDoc::line())
-                }
-            }
-        })
+        .append(format_braced_list(
+            &e.variants,
+            format_enum_declaration_variant,
+            comments,
+            e.range.end(),
+        ))
         .append(BoxDoc::text("}"))
 }
 
@@ -2311,6 +2309,38 @@ mod tests {
 
                 // e
                 <Main></Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn empty_enum_with_comment() {
+        check(
+            indoc! {"
+                enum X {
+                // Empty
+                }
+            "},
+            expect![[r#"
+                enum X {
+                  // Empty
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn empty_record_with_comment() {
+        check(
+            indoc! {"
+                record X {
+                // Empty
+                }
+            "},
+            expect![[r#"
+                record X {
+                  // Empty
+                }
             "#]],
         );
     }
