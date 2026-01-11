@@ -110,11 +110,24 @@ impl ParsedDeclaration {
 pub struct ParsedAst {
     pub name: ModuleName,
     declarations: Vec<ParsedDeclaration>,
+    comments: Vec<(String, DocumentRange)>,
 }
 
 impl ParsedAst {
-    pub fn new(name: ModuleName, declarations: Vec<ParsedDeclaration>) -> Self {
-        Self { name, declarations }
+    pub fn new(
+        name: ModuleName,
+        declarations: Vec<ParsedDeclaration>,
+        comments: Vec<(String, DocumentRange)>,
+    ) -> Self {
+        Self {
+            name,
+            declarations,
+            comments,
+        }
+    }
+
+    pub fn comments(&self) -> &[(String, DocumentRange)] {
+        &self.comments
     }
 
     /// Returns a reference to all declarations in the AST, preserving their original order.

@@ -16,7 +16,7 @@ pub fn remove_whitespace(ast: ParsedAst) -> ParsedAst {
         .cloned()
         .map(transform_declaration)
         .collect();
-    ParsedAst::new(ast.name.clone(), declarations)
+    ParsedAst::new(ast.name.clone(), declarations, ast.comments().to_vec())
 }
 
 fn transform_declaration(decl: ParsedDeclaration) -> ParsedDeclaration {

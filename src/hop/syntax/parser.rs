@@ -36,6 +36,7 @@ impl AttributeValidator {
 
     fn parse_attribute_value(
         value: &tokenizer::TokenizedAttributeValue,
+        comments: &mut Vec<(String, DocumentRange)>,
     ) -> Result<parsed_ast::ParsedAttributeValue, ParseError> {
         match value {
             tokenizer::TokenizedAttributeValue::String { content } => {
@@ -43,7 +44,7 @@ impl AttributeValidator {
             }
             tokenizer::TokenizedAttributeValue::Expression(range) => {
                 let mut iter = range.cursor().peekable();
-                match dop::parser::parse_expr(&mut iter, range) {
+                match dop::parser::parse_expr(&mut iter, comments, range) {
                     Ok(expr) => Ok(parsed_ast::ParsedAttributeValue::Expression(expr)),
                     Err(err) => Err(err.into()),
                 }
@@ -54,11 +55,12 @@ impl AttributeValidator {
     // Parse an attribute or return an error.
     fn parse(
         attr: &tokenizer::TokenizedAttribute,
+        comments: &mut Vec<(String, DocumentRange)>,
     ) -> Result<parsed_ast::ParsedAttribute, ParseError> {
         match &attr.value {
             Some(val) => Ok(parsed_ast::ParsedAttribute {
                 name: attr.name.clone(),
-                value: Some(Self::parse_attribute_value(val)?),
+                value: Some(Self::parse_attribute_value(val, comments)?),
             }),
             None => Ok(parsed_ast::ParsedAttribute {
                 name: attr.name.clone(),
@@ -67,7 +69,7 @@ impl AttributeValidator {
         }
     }
 
-    fn disallow_unrecognized(&self) -> impl Iterator<Item = ParseError> {
+    fn disallow_unrecognized(&self) -> impl Iterator<Item = ParseError> + '_ {
         self.attributes
             .iter()
             .filter(|attr| !self.handled_attributes.contains(attr.name.as_str()))
@@ -78,13 +80,15 @@ impl AttributeValidator {
             })
     }
 
-    fn get_unrecognized(
+    fn parse_unrecognized(
         &self,
-    ) -> impl Iterator<Item = Result<parsed_ast::ParsedAttribute, ParseError>> {
+        comments: &mut Vec<(String, DocumentRange)>,
+    ) -> Vec<Result<parsed_ast::ParsedAttribute, ParseError>> {
         self.attributes
             .iter()
             .filter(|attr| !self.handled_attributes.contains(attr.name.as_str()))
-            .map(AttributeValidator::parse)
+            .map(|attr| Self::parse(attr, comments))
+            .collect()
     }
 
     fn get_all_attributes(&self) -> impl Iterator<Item = &tokenizer::TokenizedAttribute> {
@@ -138,13 +142,21 @@ pub fn parse(
     let mut defined_records = HashSet::new();
     let mut defined_enums = HashSet::new();
 
+    // Collect all comments from parsed expressions
+    let mut comments = Vec::new();
+
     // Process token trees
     for mut tree in trees {
         match &tree.token {
             Token::Text { range } => {
                 let mut decl_errors = ErrorCollector::new();
                 let mut iter = range.cursor().peekable();
-                for decl in dop::parser::parse_declarations(&mut iter, range, &mut decl_errors) {
+                for decl in dop::parser::parse_declarations(
+                    &mut iter,
+                    &mut comments,
+                    range,
+                    &mut decl_errors,
+                ) {
                     match decl {
                         DopParsedDeclaration::Import {
                             name,
@@ -250,6 +262,7 @@ pub fn parse(
                     .flat_map(|child| {
                         construct_nodes(
                             child,
+                            &mut comments,
                             errors,
                             &module_name,
                             &defined_components,
@@ -258,7 +271,9 @@ pub fn parse(
                     })
                     .collect();
 
-                if let Some(component) = parse_component_declaration(tree, children, errors) {
+                if let Some(component) =
+                    parse_component_declaration(tree, children, &mut comments, errors)
+                {
                     let name = component.tag_name.as_str();
                     if defined_components.contains(name)
                         || imported_components.contains_key(name)
@@ -278,7 +293,7 @@ pub fn parse(
         }
     }
 
-    ParsedAst::new(module_name, declarations)
+    ParsedAst::new(module_name, declarations, comments)
 }
 
 /// Try to parse a token tree as a component declaration.
@@ -288,6 +303,7 @@ pub fn parse(
 fn parse_component_declaration(
     tree: TokenTree,
     children: Vec<ParsedNode>,
+    comments: &mut Vec<(String, DocumentRange)>,
     errors: &mut ErrorCollector<ParseError>,
 ) -> Option<ParsedComponentDeclaration> {
     let Token::OpeningTag {
@@ -317,7 +333,7 @@ fn parse_component_declaration(
     let params = expression.as_ref().and_then(|expr| {
         let mut iter = expr.cursor().peekable();
         errors.ok_or_add(
-            dop::parser::parse_parameters(&mut iter, expr)
+            dop::parser::parse_parameters(&mut iter, comments, expr)
                 .map(|parsed_params| {
                     let params = parsed_params
                         .into_iter()
@@ -358,6 +374,7 @@ fn is_raw_text_element(tag_name: &str) -> bool {
 
 fn construct_nodes(
     tree: TokenTree,
+    comments: &mut Vec<(String, DocumentRange)>,
     errors: &mut ErrorCollector<ParseError>,
     module_name: &ModuleName,
     defined_components: &HashSet<String>,
@@ -426,7 +443,7 @@ fn construct_nodes(
                         if let Some(expr_range) = expr_range {
                             // Parse the expression
                             let mut iter = expr_range.cursor().peekable();
-                            match dop::parser::parse_expr(&mut iter, &expr_range) {
+                            match dop::parser::parse_expr(&mut iter, comments, &expr_range) {
                                 Ok(expression) => {
                                     nodes.push(ParsedNode::TextExpression {
                                         expression,
@@ -491,7 +508,7 @@ fn construct_nodes(
                 });
                 let Some(subject) = errors.ok_or_add(expr.and_then(|e| {
                     let mut iter = e.cursor().peekable();
-                    dop::parser::parse_expr(&mut iter, &e).map_err(|err| err.into())
+                    dop::parser::parse_expr(&mut iter, comments, &e).map_err(|err| err.into())
                 })) else {
                     // Parse children normally for error recovery
                     let children: Vec<_> = tree
@@ -500,6 +517,7 @@ fn construct_nodes(
                         .flat_map(|child| {
                             construct_nodes(
                                 child,
+                                comments,
                                 errors,
                                 module_name,
                                 defined_components,
@@ -537,8 +555,12 @@ fn construct_nodes(
                             };
                             let Some(pattern) = errors.ok_or_add({
                                 let mut iter = pattern_range.cursor().peekable();
-                                dop::parser::parse_match_pattern(&mut iter, &pattern_range)
-                                    .map_err(|err| err.into())
+                                dop::parser::parse_match_pattern(
+                                    &mut iter,
+                                    comments,
+                                    &pattern_range,
+                                )
+                                .map_err(|err| err.into())
                             }) else {
                                 continue;
                             };
@@ -549,6 +571,7 @@ fn construct_nodes(
                                 .flat_map(|c| {
                                     construct_nodes(
                                         c,
+                                        comments,
                                         errors,
                                         module_name,
                                         defined_components,
@@ -598,6 +621,7 @@ fn construct_nodes(
                     .flat_map(|child| {
                         construct_nodes(
                             child,
+                            comments,
                             errors,
                             module_name,
                             defined_components,
@@ -619,7 +643,7 @@ fn construct_nodes(
                     });
                     let Some(condition) = errors.ok_or_add(expr.and_then(|e| {
                         let mut iter = e.cursor().peekable();
-                        dop::parser::parse_expr(&mut iter, &e).map_err(|err| err.into())
+                        dop::parser::parse_expr(&mut iter, comments, &e).map_err(|err| err.into())
                     })) else {
                         return vec![];
                     };
@@ -642,7 +666,8 @@ fn construct_nodes(
                         })
                         .and_then(|e| {
                             let mut iter = e.cursor().peekable();
-                            dop::parser::parse_loop_header(&mut iter, &e).map_err(|err| err.into())
+                            dop::parser::parse_loop_header(&mut iter, comments, &e)
+                                .map_err(|err| err.into())
                         });
                     let Some((var_name, var_name_range, array_expr)) =
                         errors.ok_or_add(parse_result)
@@ -673,7 +698,8 @@ fn construct_nodes(
                         })
                         .and_then(|e| {
                             let mut iter = e.cursor().peekable();
-                            dop::parser::parse_let_bindings(&mut iter, &e).map_err(|err| err.into())
+                            dop::parser::parse_let_bindings(&mut iter, comments, &e)
+                                .map_err(|err| err.into())
                         });
                     let Some(parsed_bindings) = errors.ok_or_add(parse_result) else {
                         return vec![ParsedNode::Placeholder {
@@ -737,7 +763,7 @@ fn construct_nodes(
                         let value = match &attr.value {
                             Some(tokenizer::TokenizedAttributeValue::Expression(range)) => {
                                 let mut iter = range.cursor().peekable();
-                                match dop::parser::parse_expr(&mut iter, range) {
+                                match dop::parser::parse_expr(&mut iter, comments, range) {
                                     Ok(expr) => {
                                         Some(parsed_ast::ParsedAttributeValue::Expression(expr))
                                     }
@@ -779,7 +805,8 @@ fn construct_nodes(
                 _ => {
                     // Default case: treat as HTML
                     let attributes = validator
-                        .get_unrecognized()
+                        .parse_unrecognized(comments)
+                        .into_iter()
                         .filter_map(|attr| errors.ok_or_add(attr))
                         .collect();
 

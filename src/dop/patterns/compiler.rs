@@ -753,7 +753,9 @@ mod tests {
         let cursor = DocumentCursor::new(expr_str.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
-        let expr = parser::parse_expr(&mut iter, &range).expect("Failed to parse expression");
+        let mut comments = Vec::new();
+        let expr = parser::parse_expr(&mut iter, &mut comments, &range)
+            .expect("Failed to parse expression");
 
         let (subject_name, subject_range, patterns, match_range) = match expr {
             ParsedExpr::Match {

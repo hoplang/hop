@@ -174,24 +174,29 @@ pub fn next(
     })
 }
 
-/// Returns the next non-comment token, skipping any comment tokens.
-pub fn next_skipping_comments(
+/// Returns the next non-comment token, collecting any comment tokens into the provided vec.
+pub fn next_collecting_comments(
     iter: &mut Peekable<DocumentCursor>,
+    comments: &mut Vec<(String, DocumentRange)>,
 ) -> Option<Result<(Token, DocumentRange), ParseError>> {
     loop {
         match next(iter) {
-            Some(Ok((Token::Comment(_), _))) => continue,
+            Some(Ok((Token::Comment(text), range))) => {
+                comments.push((text, range));
+                continue;
+            }
             other => return other,
         }
     }
 }
 
 /// Peeks at the next non-comment token without consuming it.
-pub fn peek_skipping_comments(
+pub fn peek_past_comments(
     iter: &Peekable<DocumentCursor>,
 ) -> Option<Result<(Token, DocumentRange), ParseError>> {
     let mut cloned = iter.clone();
-    next_skipping_comments(&mut cloned)
+    let mut discarded = Vec::new();
+    next_collecting_comments(&mut cloned, &mut discarded)
 }
 
 #[cfg(test)]

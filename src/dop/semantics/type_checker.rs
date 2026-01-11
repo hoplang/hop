@@ -1371,7 +1371,9 @@ mod tests {
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut errors = ErrorCollector::new();
-        for declaration in parser::parse_declarations(&mut iter, &range, &mut errors) {
+        let mut comments = Vec::new();
+        for declaration in parser::parse_declarations(&mut iter, &mut comments, &range, &mut errors)
+        {
             match declaration {
                 ParsedDeclaration::Enum { name, variants, .. } => {
                     // Build variant types with properly resolved field types
@@ -1429,7 +1431,9 @@ mod tests {
             let cursor = DocumentCursor::new(type_str.to_string());
             let range = cursor.range();
             let mut iter = cursor.peekable();
-            let parsed_type = parser::parse_type(&mut iter, &range).expect("Failed to parse type");
+            let mut comments = Vec::new();
+            let parsed_type =
+                parser::parse_type(&mut iter, &mut comments, &range).expect("Failed to parse type");
             let typ = resolve_type(&parsed_type, &mut type_env)
                 .expect("Test parameter type should be valid");
             let _ = env.push(var_name.to_string(), typ);
@@ -1438,7 +1442,9 @@ mod tests {
         let cursor = DocumentCursor::new(expr_str.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
-        let expr = parser::parse_expr(&mut iter, &range).expect("Failed to parse expression");
+        let mut comments = Vec::new();
+        let expr = parser::parse_expr(&mut iter, &mut comments, &range)
+            .expect("Failed to parse expression");
 
         let mut annotations = Vec::new();
 
