@@ -276,15 +276,17 @@ fn format_parameter<'a>(
     param: &'a ParsedParameter,
     comments: &mut Vec<&'a (String, DocumentRange)>,
 ) -> BoxDoc<'a> {
+    let leading_comments = drain_comments_before(comments, param.var_name_range.start());
     let base = BoxDoc::text(param.var_name.as_str())
         .append(BoxDoc::text(": "))
         .append(format_type(&param.var_type));
-    match &param.default_value {
+    let param_doc = match &param.default_value {
         Some(default) => base
             .append(BoxDoc::text(" = "))
             .append(format_expr(default, comments)),
         None => base,
-    }
+    };
+    leading_comments.append(param_doc)
 }
 
 fn format_attribute<'a>(
@@ -2520,6 +2522,32 @@ mod tests {
                   >
                   </div>
                 </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn comment_before_component_parameter() {
+        check(
+            indoc! {r#"
+                <Button {
+                    // The button label
+                    label: String,
+                    // Whether the button is disabled
+                    disabled: Bool = false,
+                }>
+                  {label}
+                </Button>
+            "#},
+            expect![[r#"
+                <Button {
+                  // The button label
+                  label: String,
+                  // Whether the button is disabled
+                  disabled: Bool = false,
+                }>
+                  {label}
+                </Button>
             "#]],
         );
     }
