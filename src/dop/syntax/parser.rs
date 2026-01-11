@@ -16,17 +16,14 @@ use super::parsed::{
 use super::token::Token;
 use super::tokenizer;
 
-/// Returns the next token, skipping comments.
 fn next(iter: &mut Peekable<DocumentCursor>) -> Option<Result<(Token, DocumentRange), ParseError>> {
     tokenizer::next_skipping_comments(iter)
 }
 
-/// Peeks at the next token without consuming it, skipping comments.
 fn peek(iter: &Peekable<DocumentCursor>) -> Option<Result<(Token, DocumentRange), ParseError>> {
     tokenizer::peek_skipping_comments(iter)
 }
 
-/// Consumes and returns the next token if the predicate returns true.
 fn next_if<F>(
     iter: &mut Peekable<DocumentCursor>,
     predicate: F,
@@ -207,7 +204,6 @@ where
     expect_opposite(iter, opening_token, opening_range)
 }
 
-// expr = logical Eof
 pub fn parse_expr(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
@@ -217,7 +213,6 @@ pub fn parse_expr(
     Ok(result)
 }
 
-// loop_header = Identifier "in" logical Eof
 pub fn parse_loop_header(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
@@ -229,7 +224,6 @@ pub fn parse_loop_header(
     Ok((var_name, var_name_range, array_expr))
 }
 
-// let_binding = (Identifier ":" type "=" expr) ("," Identifier ":" type "=" expr)* Eof
 pub fn parse_let_bindings(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
@@ -253,7 +247,6 @@ pub fn parse_let_bindings(
     Ok(bindings)
 }
 
-// parameter_with_type = Identifier ":" type ("=" primary)?
 fn parse_parameter(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
@@ -269,7 +262,6 @@ fn parse_parameter(
     Ok(((var_name, var_name_range), var_type, default_value))
 }
 
-// parameters = parameter ("," parameter)* Eof
 pub fn parse_parameters(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
@@ -375,7 +367,6 @@ fn parse_logical_and(
     Ok(expr)
 }
 
-// equality = relational ( ("==" | "!=") relational )*
 fn parse_equality(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
@@ -405,7 +396,6 @@ fn parse_equality(
     Ok(expr)
 }
 
-// relational = additive ( ("<" | ">" | "<=" | ">=") additive )*
 fn parse_relational(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
@@ -451,7 +441,6 @@ fn parse_relational(
     Ok(expr)
 }
 
-// additive = multiplicative ( ("+" | "-") multiplicative )*
 fn parse_additive(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
@@ -481,7 +470,6 @@ fn parse_additive(
     Ok(expr)
 }
 
-// multiplicative = unary ( "*" unary )*
 fn parse_multiplicative(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
@@ -499,7 +487,6 @@ fn parse_multiplicative(
     Ok(expr)
 }
 
-// unary = ( "!" )* primary
 fn parse_unary(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
@@ -515,7 +502,6 @@ fn parse_unary(
     }
 }
 
-// array_literal = "[" ( logical ("," logical)* )? "]"
 fn parse_array_literal(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
@@ -663,7 +649,6 @@ fn parse_macro_invocation(
     macro_name: StringSpan,
     name_range: DocumentRange,
 ) -> Result<ParsedExpr, ParseError> {
-    // Validate it's a known macro
     let name_str = macro_name.as_str();
     if name_str != "classes" {
         return Err(ParseError::UnknownMacro {
@@ -719,9 +704,6 @@ fn parse_record_literal(
     })
 }
 
-/// Parse an enum literal expression.
-///
-/// Syntax: `EnumName::VariantName` or `EnumName::VariantName(field: value, ...)`
 fn parse_enum_literal(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
@@ -732,7 +714,6 @@ fn parse_enum_literal(
     let (variant_name, variant_range) = expect_type_name(iter, range)?;
     let constructor_range = enum_name_range.clone().to(variant_range.clone());
 
-    // Check for optional field values: Variant(field: value, ...)
     let (fields, end_range) = if let Some(left_paren) = advance_if(iter, Token::LeftParen) {
         let mut fields = Vec::new();
         let right_paren = parse_delimited_list(
@@ -761,19 +742,16 @@ fn parse_enum_literal(
     })
 }
 
-/// Parse a match pattern.
 pub fn parse_match_pattern(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
 ) -> Result<ParsedMatchPattern, ParseError> {
-    // Check for wildcard pattern
     if let Some(pattern_range) = advance_if(iter, Token::Underscore) {
         return Ok(ParsedMatchPattern::Wildcard {
             range: pattern_range,
         });
     }
 
-    // Check for boolean literal patterns
     if let Some(pattern_range) = advance_if(iter, Token::True) {
         return Ok(ParsedMatchPattern::Constructor {
             constructor: Constructor::BooleanTrue,
@@ -793,7 +771,6 @@ pub fn parse_match_pattern(
         });
     }
 
-    // Check for Option patterns: Some(...) and None
     if let Some(some_range) = advance_if(iter, Token::Some) {
         expect_token(iter, range, &Token::LeftParen)?;
         let inner_pattern = parse_match_pattern(iter, range)?;
@@ -816,7 +793,6 @@ pub fn parse_match_pattern(
         });
     }
 
-    // Check for TypeName patterns: either enum (TypeName::Variant) or record (TypeName(...))
     if let Some(Ok((Token::TypeName(type_name_str), type_name_range))) =
         next_if(iter, |res| matches!(res, Ok((Token::TypeName(_), _))))
     {
@@ -826,12 +802,9 @@ pub fn parse_match_pattern(
                 range: type_name_range.clone(),
             })?;
 
-        // Check if this is an enum pattern (::) or record pattern (()
         if advance_if(iter, Token::ColonColon).is_some() {
-            // Enum pattern: TypeName::Variant or TypeName::Variant(field: pattern, ...)
             let (variant_name, variant_range) = expect_type_name(iter, range)?;
 
-            // Check for optional field patterns: Variant(field: pattern, ...)
             let (fields, end_range) = if let Some(left_paren) = advance_if(iter, Token::LeftParen) {
                 let mut fields = Vec::new();
                 let right_paren = parse_delimited_list(
@@ -864,7 +837,6 @@ pub fn parse_match_pattern(
                 range: type_name_range.to(end_range),
             });
         } else {
-            // Record pattern: TypeName(field: pattern, ...)
             let left_paren = expect_token(iter, range, &Token::LeftParen)?;
             let mut fields = Vec::new();
             let right_paren = parse_delimited_list(
@@ -890,7 +862,6 @@ pub fn parse_match_pattern(
         }
     }
 
-    // Otherwise, parse a binding pattern (lowercase identifier)
     let (var_name, var_range) = expect_variable_name(iter, range)?;
     Ok(ParsedMatchPattern::Binding {
         name: var_name.to_string(),
@@ -898,9 +869,6 @@ pub fn parse_match_pattern(
     })
 }
 
-/// Parse a match expression.
-///
-/// Syntax: `match subject {Pattern1 => expr1, Pattern2 => expr2}`
 fn parse_match_expr(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
@@ -931,9 +899,6 @@ fn parse_match_expr(
     })
 }
 
-/// Parse an import declaration.
-///
-/// Syntax: `import module::path::ComponentName`
 fn parse_import_declaration(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
@@ -1018,9 +983,6 @@ fn parse_import_declaration(
     })
 }
 
-/// Parse a record declaration.
-///
-/// Syntax: `record Name {field: Type, ...}`
 fn parse_record_declaration(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
@@ -1061,9 +1023,6 @@ fn parse_record_declaration(
     })
 }
 
-/// Parse an enum declaration.
-///
-/// Syntax: `enum Name {Variant1, Variant2(field: Type), ...}`
 fn parse_enum_declaration(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
@@ -1088,7 +1047,6 @@ fn parse_enum_declaration(
                 });
             }
 
-            // Check for optional field list: Variant(field: Type, ...)
             let fields = if advance_if(iter, Token::LeftParen).is_some() {
                 parse_enum_variant_fields(iter, range)?
             } else {
@@ -1110,9 +1068,6 @@ fn parse_enum_declaration(
     })
 }
 
-/// Parse the fields of an enum variant: `field: Type, ...)`
-///
-/// Called after consuming the opening `(`. Consumes the closing `)`.
 fn parse_enum_variant_fields(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
@@ -1120,7 +1075,6 @@ fn parse_enum_variant_fields(
     let mut fields = Vec::new();
     let mut seen_names = HashSet::new();
 
-    // Handle empty field list
     if advance_if(iter, Token::RightParen).is_some() {
         return Ok(fields);
     }
@@ -1139,9 +1093,7 @@ fn parse_enum_variant_fields(
 
         fields.push((field_name, field_name_range, field_type));
 
-        // Check for comma or closing paren
         if advance_if(iter, Token::Comma).is_some() {
-            // Allow trailing comma
             if advance_if(iter, Token::RightParen).is_some() {
                 break;
             }
@@ -1154,10 +1106,6 @@ fn parse_enum_variant_fields(
     Ok(fields)
 }
 
-/// Parse all declarations from the source.
-///
-/// This parses import and record declarations from a top-level
-/// text node. The text should only contain declarations and whitespace.
 pub fn parse_declarations(
     iter: &mut Peekable<DocumentCursor>,
     range: &DocumentRange,
