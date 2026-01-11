@@ -25,7 +25,7 @@ fn drain_comments_before<'a>(
             doc = doc
                 .append(BoxDoc::text("//"))
                 .append(BoxDoc::text(comment.0.as_str()))
-                .append(BoxDoc::line());
+                .append(BoxDoc::hardline());
         } else {
             break;
         }
@@ -2620,6 +2620,28 @@ mod tests {
                 }>
                   {label}
                 </Button>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn trailing_comment_in_component_parameters_single_param() {
+        check(
+            indoc! {r#"
+                <X {
+                  x: String,
+                  // ?
+                }>
+                  {x}
+                </X>
+            "#},
+            expect![[r#"
+                <X {
+                  x: String,
+                  // ?
+                }>
+                  {x}
+                </X>
             "#]],
         );
     }
