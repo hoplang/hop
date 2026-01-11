@@ -16,924 +16,1030 @@ use super::parsed::{
 use super::token::Token;
 use super::tokenizer;
 
-pub struct Parser {
-    iter: Peekable<DocumentCursor>,
-    range: DocumentRange,
+/// Returns the next token, skipping comments.
+fn next(iter: &mut Peekable<DocumentCursor>) -> Option<Result<(Token, DocumentRange), ParseError>> {
+    tokenizer::next_skipping_comments(iter)
 }
 
-impl From<DocumentRange> for Parser {
-    fn from(range: DocumentRange) -> Self {
-        Self {
-            iter: range.cursor().peekable(),
+/// Peeks at the next token without consuming it, skipping comments.
+fn peek(iter: &Peekable<DocumentCursor>) -> Option<Result<(Token, DocumentRange), ParseError>> {
+    tokenizer::peek_skipping_comments(iter)
+}
+
+/// Consumes and returns the next token if the predicate returns true.
+fn next_if<F>(
+    iter: &mut Peekable<DocumentCursor>,
+    predicate: F,
+) -> Option<Result<(Token, DocumentRange), ParseError>>
+where
+    F: FnOnce(&Result<(Token, DocumentRange), ParseError>) -> bool,
+{
+    match peek(iter) {
+        Some(ref result) if predicate(result) => next(iter),
+        _ => None,
+    }
+}
+
+fn advance_if(iter: &mut Peekable<DocumentCursor>, token: Token) -> Option<DocumentRange> {
+    match next_if(iter, |res| res.as_ref().is_ok_and(|(t, _)| *t == token)) {
+        Some(Ok((_, range))) => Some(range),
+        _ => None,
+    }
+}
+
+fn expect_token(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+    expected: &Token,
+) -> Result<DocumentRange, ParseError> {
+    match next(iter).transpose()? {
+        Some((token, token_range)) if token == *expected => Ok(token_range),
+        Some((actual, token_range)) => Err(ParseError::ExpectedTokenButGot {
+            expected: expected.clone(),
+            actual,
+            range: token_range,
+        }),
+        None => Err(ParseError::ExpectedTokenButGotEof {
+            expected: expected.clone(),
             range: range.clone(),
-        }
+        }),
     }
 }
 
-impl From<&str> for Parser {
-    fn from(input: &str) -> Self {
-        let cursor = DocumentCursor::new(input.to_string());
-        let range = cursor.range();
-        Self {
-            iter: cursor.peekable(),
-            range,
-        }
+fn expect_opposite(
+    iter: &mut Peekable<DocumentCursor>,
+    token: &Token,
+    token_range: &DocumentRange,
+) -> Result<DocumentRange, ParseError> {
+    let expected = token.opposite_token();
+
+    match next(iter).transpose()? {
+        Some((actual, actual_range)) if actual == expected => Ok(actual_range),
+        Some((actual, actual_range)) => Err(ParseError::ExpectedTokenButGot {
+            expected,
+            actual,
+            range: actual_range,
+        }),
+        None => Err(ParseError::UnmatchedToken {
+            token: token.clone(),
+            range: token_range.clone(),
+        }),
     }
 }
 
-impl Parser {
-    /// Returns the next token, skipping comments.
-    fn iter_next(&mut self) -> Option<Result<(Token, DocumentRange), ParseError>> {
-        tokenizer::next_skipping_comments(&mut self.iter)
-    }
-
-    /// Peeks at the next token without consuming it, skipping comments.
-    fn iter_peek(&self) -> Option<Result<(Token, DocumentRange), ParseError>> {
-        tokenizer::peek_skipping_comments(&self.iter)
-    }
-
-    /// Consumes and returns the next token if the predicate returns true.
-    fn iter_next_if<F>(&mut self, predicate: F) -> Option<Result<(Token, DocumentRange), ParseError>>
-    where
-        F: FnOnce(&Result<(Token, DocumentRange), ParseError>) -> bool,
-    {
-        match self.iter_peek() {
-            Some(ref result) if predicate(result) => self.iter_next(),
-            _ => None,
-        }
-    }
-
-    fn advance_if(&mut self, token: Token) -> Option<DocumentRange> {
-        match self.iter_next_if(|res| res.as_ref().is_ok_and(|(t, _)| *t == token)) {
-            Some(Ok((_, range))) => Some(range),
-            _ => None,
-        }
-    }
-
-    fn expect_token(&mut self, expected: &Token) -> Result<DocumentRange, ParseError> {
-        match self.iter_next().transpose()? {
-            Some((token, range)) if token == *expected => Ok(range),
-            Some((actual, range)) => Err(ParseError::ExpectedTokenButGot {
-                expected: expected.clone(),
-                actual,
-                range: range.clone(),
-            }),
-            None => Err(ParseError::ExpectedTokenButGotEof {
-                expected: expected.clone(),
-                range: self.range.clone(),
-            }),
-        }
-    }
-
-    fn expect_opposite(
-        &mut self,
-        token: &Token,
-        range: &DocumentRange,
-    ) -> Result<DocumentRange, ParseError> {
-        let expected = token.opposite_token();
-
-        match self.iter_next().transpose()? {
-            Some((actual, range)) if actual == expected => Ok(range),
-            Some((actual, range)) => Err(ParseError::ExpectedTokenButGot {
-                expected,
-                actual,
-                range,
-            }),
-            None => Err(ParseError::UnmatchedToken {
-                token: token.clone(),
-                range: range.clone(),
-            }),
-        }
-    }
-
-    fn expect_variable_name(&mut self) -> Result<(VarName, DocumentRange), ParseError> {
-        match self.iter_next().transpose()? {
-            Some((Token::Identifier(name), range)) => {
-                let var_name = VarName::new(name.as_str()).map_err(|error| {
-                    ParseError::InvalidVariableName {
-                        name,
-                        error,
-                        range: range.clone(),
-                    }
-                })?;
-                Ok((var_name, range))
-            }
-            Some((actual, range)) => Err(ParseError::ExpectedVariableNameButGot { actual, range }),
-            None => Err(ParseError::UnexpectedEof {
-                range: self.range.clone(),
-            }),
-        }
-    }
-
-    fn expect_field_name(&mut self) -> Result<(FieldName, DocumentRange), ParseError> {
-        match self.iter_next().transpose()? {
-            Some((Token::Identifier(name), range)) => {
-                let prop_name = FieldName::new(name.as_str()).map_err(|error| {
-                    ParseError::InvalidFieldName {
-                        name,
-                        error,
-                        range: range.clone(),
-                    }
-                })?;
-                Ok((prop_name, range))
-            }
-            Some((token, range)) => Err(ParseError::ExpectedFieldNameButGot {
-                actual: token,
-                range: range.clone(),
-            }),
-            None => Err(ParseError::UnexpectedEof {
-                range: self.range.clone(),
-            }),
-        }
-    }
-
-    fn expect_type_name(&mut self) -> Result<(TypeName, DocumentRange), ParseError> {
-        match self.iter_next().transpose()? {
-            Some((Token::TypeName(name), range)) => {
-                let type_name =
-                    TypeName::new(name.as_str()).map_err(|error| ParseError::InvalidTypeName {
-                        error,
-                        range: range.clone(),
-                    })?;
-                Ok((type_name, range))
-            }
-            Some((actual, range)) => Err(ParseError::ExpectedTypeNameButGot { actual, range }),
-            None => Err(ParseError::ExpectedTypeNameButGotEof {
-                range: self.range.clone(),
-            }),
-        }
-    }
-
-    fn expect_eof(&mut self) -> Result<(), ParseError> {
-        match self.iter_next().transpose()? {
-            None => Ok(()),
-            Some((token, range)) => Err(ParseError::UnexpectedToken {
-                token,
-                range: range.clone(),
-            }),
-        }
-    }
-
-    fn parse_comma_separated<F>(
-        &mut self,
-        mut parse: F,
-        end_token: Option<&Token>,
-    ) -> Result<(), ParseError>
-    where
-        F: FnMut(&mut Self) -> Result<(), ParseError>,
-    {
-        parse(self)?;
-        while self.advance_if(Token::Comma).is_some() {
-            let at_end = self
-                .iter_peek()
-                .and_then(|r| r.ok())
-                .map(|(t, _)| t)
-                .as_ref()
-                == end_token;
-            if at_end {
-                break;
-            }
-            parse(self)?;
-        }
-
-        Ok(())
-    }
-
-    fn parse_delimited_list<F>(
-        &mut self,
-        opening_token: &Token,
-        opening_range: &DocumentRange,
-        parse: F,
-    ) -> Result<DocumentRange, ParseError>
-    where
-        F: FnMut(&mut Self) -> Result<(), ParseError>,
-    {
-        let closing_token = opening_token.opposite_token();
-        if let Some(closing_range) = self.advance_if(closing_token.clone()) {
-            return Ok(closing_range);
-        }
-        self.parse_comma_separated(parse, Some(&closing_token))?;
-        self.expect_opposite(opening_token, opening_range)
-    }
-
-    // expr = logical Eof
-    pub fn parse_expr(&mut self) -> Result<ParsedExpr, ParseError> {
-        let result = self.parse_logical()?;
-        self.expect_eof()?;
-        Ok(result)
-    }
-
-    // loop_header = Identifier "in" logical Eof
-    pub fn parse_loop_header(
-        &mut self,
-    ) -> Result<(VarName, DocumentRange, ParsedExpr), ParseError> {
-        let (var_name, var_name_range) = self.expect_variable_name()?;
-        self.expect_token(&Token::In)?;
-        let array_expr = self.parse_logical()?;
-        self.expect_eof()?;
-        Ok((var_name, var_name_range, array_expr))
-    }
-
-    // let_binding = (Identifier ":" type "=" expr) ("," Identifier ":" type "=" expr)* Eof
-    pub fn parse_let_bindings(
-        &mut self,
-    ) -> Result<Vec<(VarName, DocumentRange, ParsedType, ParsedExpr)>, ParseError> {
-        let mut bindings = Vec::new();
-        self.parse_comma_separated(
-            |this| {
-                let (var_name, var_name_range) = this.expect_variable_name()?;
-                this.expect_token(&Token::Colon)?;
-                let var_type = this.parse_type()?;
-                this.expect_token(&Token::Assign)?;
-                let value_expr = this.parse_logical()?;
-                bindings.push((var_name, var_name_range, var_type, value_expr));
-                Ok(())
-            },
-            None,
-        )?;
-        self.expect_eof()?;
-        Ok(bindings)
-    }
-
-    // parameter_with_type = Identifier ":" type ("=" primary)?
-    fn parse_parameter(
-        &mut self,
-    ) -> Result<((VarName, DocumentRange), ParsedType, Option<ParsedExpr>), ParseError> {
-        let (var_name, var_name_range) = self.expect_variable_name()?;
-        self.expect_token(&Token::Colon)?;
-        let var_type = self.parse_type()?;
-        let default_value = if self.advance_if(Token::Assign).is_some() {
-            Some(self.parse_primary()?)
-        } else {
-            None
-        };
-        Ok(((var_name, var_name_range), var_type, default_value))
-    }
-
-    // parameters = parameter ("," parameter)* Eof
-    pub fn parse_parameters(
-        &mut self,
-    ) -> Result<Vec<((VarName, DocumentRange), ParsedType, Option<ParsedExpr>)>, ParseError> {
-        let mut params = Vec::new();
-        let mut seen_names = HashSet::new();
-        self.parse_comma_separated(
-            |this| {
-                let param = this.parse_parameter()?;
-                let (var_name, var_name_range) = &param.0;
-                if !seen_names.insert(var_name.as_str().to_string()) {
-                    return Err(ParseError::DuplicateParameter {
-                        name: var_name_range.to_string_span(),
-                        range: var_name_range.clone(),
-                    });
-                }
-                params.push(param);
-                Ok(())
-            },
-            None,
-        )?;
-        self.expect_eof()?;
-        Ok(params)
-    }
-
-    pub fn parse_type(&mut self) -> Result<ParsedType, ParseError> {
-        match self.iter_next().transpose()? {
-            Some((Token::TypeString, range)) => Ok(ParsedType::String { range }),
-            Some((Token::TypeInt, range)) => Ok(ParsedType::Int { range }),
-            Some((Token::TypeFloat, range)) => Ok(ParsedType::Float { range }),
-            Some((Token::TypeBoolean, range)) => Ok(ParsedType::Bool { range }),
-            Some((Token::TypeTrustedHTML, range)) => Ok(ParsedType::TrustedHTML { range }),
-            Some((Token::TypeArray, type_array)) => {
-                let left_bracket = self.expect_token(&Token::LeftBracket)?;
-                let element = self.parse_type()?;
-                let right_bracket = self.expect_opposite(&Token::LeftBracket, &left_bracket)?;
-                Ok(ParsedType::Array {
-                    element: Box::new(element),
-                    range: type_array.to(right_bracket),
-                })
-            }
-            Some((Token::TypeOption, type_option)) => {
-                let left_bracket = self.expect_token(&Token::LeftBracket)?;
-                let element = self.parse_type()?;
-                let right_bracket = self.expect_opposite(&Token::LeftBracket, &left_bracket)?;
-                Ok(ParsedType::Option {
-                    element: Box::new(element),
-                    range: type_option.to(right_bracket),
-                })
-            }
-            Some((Token::TypeName(name), range)) => Ok(ParsedType::Named {
-                name: name.as_str().to_string(),
-                range,
-            }),
-            Some((actual, range)) => Err(ParseError::ExpectedTypeNameButGot { actual, range }),
-            None => Err(ParseError::ExpectedTypeNameButGotEof {
-                range: self.range.clone(),
-            }),
-        }
-    }
-
-    fn parse_logical(&mut self) -> Result<ParsedExpr, ParseError> {
-        let mut expr = self.parse_logical_and()?;
-        while self.advance_if(Token::LogicalOr).is_some() {
-            let right = self.parse_logical_and()?;
-            expr = ParsedExpr::BinaryOp {
-                range: expr.range().clone().to(right.range().clone()),
-                left: Box::new(expr),
-                operator: ParsedBinaryOp::LogicalOr,
-                right: Box::new(right),
-            };
-        }
-        Ok(expr)
-    }
-
-    fn parse_logical_and(&mut self) -> Result<ParsedExpr, ParseError> {
-        let mut expr = self.parse_equality()?;
-        while self.advance_if(Token::LogicalAnd).is_some() {
-            let right = self.parse_equality()?;
-            expr = ParsedExpr::BinaryOp {
-                range: expr.range().clone().to(right.range().clone()),
-                left: Box::new(expr),
-                operator: ParsedBinaryOp::LogicalAnd,
-                right: Box::new(right),
-            };
-        }
-        Ok(expr)
-    }
-
-    // equality = relational ( ("==" | "!=") relational )*
-    fn parse_equality(&mut self) -> Result<ParsedExpr, ParseError> {
-        let mut expr = self.parse_relational()?;
-        loop {
-            if self.advance_if(Token::Eq).is_some() {
-                let right = self.parse_relational()?;
-                expr = ParsedExpr::BinaryOp {
-                    range: expr.range().clone().to(right.range().clone()),
-                    left: Box::new(expr),
-                    operator: ParsedBinaryOp::Eq,
-                    right: Box::new(right),
-                };
-            } else if self.advance_if(Token::NotEq).is_some() {
-                let right = self.parse_relational()?;
-                expr = ParsedExpr::BinaryOp {
-                    range: expr.range().clone().to(right.range().clone()),
-                    left: Box::new(expr),
-                    operator: ParsedBinaryOp::NotEq,
-                    right: Box::new(right),
-                };
-            } else {
-                break;
-            }
-        }
-        Ok(expr)
-    }
-
-    // relational = additive ( ("<" | ">" | "<=" | ">=") additive )*
-    fn parse_relational(&mut self) -> Result<ParsedExpr, ParseError> {
-        let mut expr = self.parse_additive()?;
-        loop {
-            if self.advance_if(Token::LessThan).is_some() {
-                let right = self.parse_additive()?;
-                expr = ParsedExpr::BinaryOp {
-                    range: expr.range().clone().to(right.range().clone()),
-                    left: Box::new(expr),
-                    operator: ParsedBinaryOp::LessThan,
-                    right: Box::new(right),
-                };
-            } else if self.advance_if(Token::GreaterThan).is_some() {
-                let right = self.parse_additive()?;
-                expr = ParsedExpr::BinaryOp {
-                    range: expr.range().clone().to(right.range().clone()),
-                    left: Box::new(expr),
-                    operator: ParsedBinaryOp::GreaterThan,
-                    right: Box::new(right),
-                };
-            } else if self.advance_if(Token::LessThanOrEqual).is_some() {
-                let right = self.parse_additive()?;
-                expr = ParsedExpr::BinaryOp {
-                    range: expr.range().clone().to(right.range().clone()),
-                    left: Box::new(expr),
-                    operator: ParsedBinaryOp::LessThanOrEqual,
-                    right: Box::new(right),
-                };
-            } else if self.advance_if(Token::GreaterThanOrEqual).is_some() {
-                let right = self.parse_additive()?;
-                expr = ParsedExpr::BinaryOp {
-                    range: expr.range().clone().to(right.range().clone()),
-                    left: Box::new(expr),
-                    operator: ParsedBinaryOp::GreaterThanOrEqual,
-                    right: Box::new(right),
-                };
-            } else {
-                break;
-            }
-        }
-        Ok(expr)
-    }
-
-    // additive = multiplicative ( ("+" | "-") multiplicative )*
-    fn parse_additive(&mut self) -> Result<ParsedExpr, ParseError> {
-        let mut expr = self.parse_multiplicative()?;
-        loop {
-            if self.advance_if(Token::Plus).is_some() {
-                let right = self.parse_multiplicative()?;
-                expr = ParsedExpr::BinaryOp {
-                    range: expr.range().clone().to(right.range().clone()),
-                    left: Box::new(expr),
-                    operator: ParsedBinaryOp::Plus,
-                    right: Box::new(right),
-                };
-            } else if self.advance_if(Token::Minus).is_some() {
-                let right = self.parse_multiplicative()?;
-                expr = ParsedExpr::BinaryOp {
-                    range: expr.range().clone().to(right.range().clone()),
-                    left: Box::new(expr),
-                    operator: ParsedBinaryOp::Minus,
-                    right: Box::new(right),
-                };
-            } else {
-                break;
-            }
-        }
-        Ok(expr)
-    }
-
-    // multiplicative = unary ( "*" unary )*
-    fn parse_multiplicative(&mut self) -> Result<ParsedExpr, ParseError> {
-        let mut expr = self.parse_unary()?;
-        while self.advance_if(Token::Asterisk).is_some() {
-            let right = self.parse_unary()?;
-            expr = ParsedExpr::BinaryOp {
-                range: expr.range().clone().to(right.range().clone()),
-                left: Box::new(expr),
-                operator: ParsedBinaryOp::Multiply,
-                right: Box::new(right),
-            };
-        }
-        Ok(expr)
-    }
-
-    // unary = ( "!" )* primary
-    fn parse_unary(&mut self) -> Result<ParsedExpr, ParseError> {
-        if let Some(operator_range) = self.advance_if(Token::Not) {
-            let expr = self.parse_unary()?; // Right associative for multiple !
-            Ok(ParsedExpr::Negation {
-                range: operator_range.to(expr.range().clone()),
-                operand: Box::new(expr),
-            })
-        } else {
-            self.parse_primary()
-        }
-    }
-
-    // array_literal = "[" ( logical ("," logical)* )? "]"
-    fn parse_array_literal(
-        &mut self,
-        left_bracket: DocumentRange,
-    ) -> Result<ParsedExpr, ParseError> {
-        let mut elements = Vec::new();
-        let right_bracket =
-            self.parse_delimited_list(&Token::LeftBracket, &left_bracket, |this| {
-                elements.push(this.parse_logical()?);
-                Ok(())
-            })?;
-        Ok(ParsedExpr::ArrayLiteral {
-            elements,
-            range: left_bracket.to(right_bracket),
-        })
-    }
-
-    fn parse_field_access(
-        &mut self,
-        identifier: StringSpan,
-        range: DocumentRange,
-    ) -> Result<ParsedExpr, ParseError> {
-        let var_name =
-            VarName::new(identifier.as_str()).map_err(|error| ParseError::InvalidVariableName {
-                name: identifier,
-                error,
-                range: range.clone(),
-            })?;
-        let mut expr = ParsedExpr::Var {
-            range: range.clone(),
-            value: var_name,
-        };
-
-        while let Some(dot) = self.advance_if(Token::Dot) {
-            match self.iter_next().transpose()? {
-                Some((Token::Identifier(field_ident), range)) => {
-                    // Validate field name
-                    let field_name = FieldName::new(field_ident.as_str()).map_err(|error| {
-                        ParseError::InvalidFieldName {
-                            name: field_ident,
-                            error,
-                            range: range.clone(),
-                        }
-                    })?;
-                    let range = expr.range().clone().to(range.clone());
-                    expr = ParsedExpr::FieldAccess {
-                        record: Box::new(expr),
-                        field: field_name,
-                        range,
-                    };
-                }
-                Some((_, range)) => {
-                    return Err(ParseError::ExpectedIdentifierAfterDot { range });
-                }
-                None => {
-                    return Err(ParseError::UnexpectedEndOfFieldAccess {
-                        range: expr.range().clone().to(dot.clone()),
-                    });
-                }
-            }
-        }
-        Ok(expr)
-    }
-
-    fn parse_primary(&mut self) -> Result<ParsedExpr, ParseError> {
-        match self.iter_next().transpose()? {
-            Some((Token::Identifier(name), name_range)) => {
-                // Check for macro invocation: identifier!
-                if self.advance_if(Token::Not).is_some() {
-                    return self.parse_macro_invocation(name, name_range);
-                }
-                self.parse_field_access(name, name_range)
-            }
-            Some((Token::TypeName(name), name_range)) => {
-                let is_enum_variant = self
-                    .iter_peek()
-                    .and_then(|r| r.ok())
-                    .map(|(t, _)| t)
-                    == Some(Token::ColonColon);
-                if is_enum_variant {
-                    self.parse_enum_literal(name, name_range)
-                } else {
-                    self.parse_record_literal(name, name_range)
-                }
-            }
-            Some((Token::StringLiteral(value), range)) => {
-                Ok(ParsedExpr::StringLiteral { value, range })
-            }
-            Some((Token::True, range)) => Ok(ParsedExpr::BooleanLiteral { value: true, range }),
-            Some((Token::False, range)) => Ok(ParsedExpr::BooleanLiteral {
-                value: false,
-                range,
-            }),
-            Some((Token::IntLiteral(value), range)) => Ok(ParsedExpr::IntLiteral { value, range }),
-            Some((Token::FloatLiteral(value), range)) => {
-                Ok(ParsedExpr::FloatLiteral { value, range })
-            }
-            Some((Token::LeftBracket, left_bracket)) => self.parse_array_literal(left_bracket),
-            Some((Token::LeftParen, left_paren)) => {
-                let expr = self.parse_logical()?;
-                self.expect_opposite(&Token::LeftParen, &left_paren)?;
-                Ok(expr)
-            }
-            Some((Token::Match, match_range)) => self.parse_match_expr(match_range),
-            Some((Token::Some, some_range)) => {
-                let left_paren = self.expect_token(&Token::LeftParen)?;
-                let value = self.parse_logical()?;
-                let right_paren = self.expect_opposite(&Token::LeftParen, &left_paren)?;
-                Ok(ParsedExpr::OptionLiteral {
-                    value: Some(Box::new(value)),
-                    range: some_range.to(right_paren),
-                })
-            }
-            Some((Token::None, none_range)) => Ok(ParsedExpr::OptionLiteral {
-                value: None,
-                range: none_range,
-            }),
-            Some((token, range)) => Err(ParseError::UnexpectedToken {
-                token,
-                range: range.clone(),
-            }),
-            None => Err(ParseError::UnexpectedEof {
-                range: self.range.clone(),
-            }),
-        }
-    }
-
-    fn parse_macro_invocation(
-        &mut self,
-        macro_name: StringSpan,
-        name_range: DocumentRange,
-    ) -> Result<ParsedExpr, ParseError> {
-        // Validate it's a known macro
-        let name_str = macro_name.as_str();
-        if name_str != "classes" {
-            return Err(ParseError::UnknownMacro {
-                name: macro_name,
-                range: name_range,
-            });
-        }
-
-        let left_paren = self.expect_token(&Token::LeftParen)?;
-        let mut args = Vec::new();
-        let right_paren = self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
-            args.push(this.parse_logical()?);
-            Ok(())
-        })?;
-
-        Ok(ParsedExpr::MacroInvocation {
-            name: name_str.to_string(),
-            args,
-            range: name_range.to(right_paren),
-        })
-    }
-
-    fn parse_record_literal(
-        &mut self,
-        name: StringSpan,
-        name_range: DocumentRange,
-    ) -> Result<ParsedExpr, ParseError> {
-        let left_paren = self.expect_token(&Token::LeftParen)?;
-        let mut fields = Vec::new();
-        let right_paren = self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
-            let (field_name, _) = this.expect_field_name()?;
-            this.expect_token(&Token::Colon)?;
-            fields.push((field_name, this.parse_logical()?));
-            Ok(())
-        })?;
-        Ok(ParsedExpr::RecordLiteral {
-            record_name: name.as_str().to_string(),
-            fields,
-            range: name_range.to(right_paren),
-        })
-    }
-
-    /// Parse an enum literal expression.
-    ///
-    /// Syntax: `EnumName::VariantName` or `EnumName::VariantName(field: value, ...)`
-    fn parse_enum_literal(
-        &mut self,
-        enum_name: StringSpan,
-        enum_name_range: DocumentRange,
-    ) -> Result<ParsedExpr, ParseError> {
-        self.expect_token(&Token::ColonColon)?;
-        let (variant_name, variant_range) = self.expect_type_name()?;
-        let constructor_range = enum_name_range.clone().to(variant_range.clone());
-
-        // Check for optional field values: Variant(field: value, ...)
-        let (fields, end_range) = if let Some(left_paren) = self.advance_if(Token::LeftParen) {
-            let mut fields = Vec::new();
-            let right_paren = self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
-                let (field_name, field_name_range) = this.expect_field_name()?;
-                this.expect_token(&Token::Colon)?;
-                fields.push((field_name, field_name_range, this.parse_logical()?));
-                Ok(())
-            })?;
-            (fields, right_paren)
-        } else {
-            (Vec::new(), variant_range)
-        };
-
-        Ok(ParsedExpr::EnumLiteral {
-            enum_name: enum_name.as_str().to_string(),
-            variant_name: variant_name.as_str().to_string(),
-            fields,
-            constructor_range,
-            range: enum_name_range.to(end_range),
-        })
-    }
-
-    /// Parse a match pattern.
-    pub fn parse_match_pattern(&mut self) -> Result<ParsedMatchPattern, ParseError> {
-        // Check for wildcard pattern
-        if let Some(range) = self.advance_if(Token::Underscore) {
-            return Ok(ParsedMatchPattern::Wildcard { range });
-        }
-
-        // Check for boolean literal patterns
-        if let Some(range) = self.advance_if(Token::True) {
-            return Ok(ParsedMatchPattern::Constructor {
-                constructor: Constructor::BooleanTrue,
-                args: Vec::new(),
-                fields: Vec::new(),
-                constructor_range: range.clone(),
-                range,
-            });
-        }
-        if let Some(range) = self.advance_if(Token::False) {
-            return Ok(ParsedMatchPattern::Constructor {
-                constructor: Constructor::BooleanFalse,
-                args: Vec::new(),
-                fields: Vec::new(),
-                constructor_range: range.clone(),
-                range,
-            });
-        }
-
-        // Check for Option patterns: Some(...) and None
-        if let Some(some_range) = self.advance_if(Token::Some) {
-            self.expect_token(&Token::LeftParen)?;
-            let inner_pattern = self.parse_match_pattern()?;
-            let right_paren = self.expect_token(&Token::RightParen)?;
-            return Ok(ParsedMatchPattern::Constructor {
-                constructor: Constructor::OptionSome,
-                args: vec![inner_pattern],
-                fields: Vec::new(),
-                constructor_range: some_range.clone(),
-                range: some_range.to(right_paren),
-            });
-        }
-        if let Some(range) = self.advance_if(Token::None) {
-            return Ok(ParsedMatchPattern::Constructor {
-                constructor: Constructor::OptionNone,
-                args: Vec::new(),
-                fields: Vec::new(),
-                constructor_range: range.clone(),
-                range,
-            });
-        }
-
-        // Check for TypeName patterns: either enum (TypeName::Variant) or record (TypeName(...))
-        if let Some(Ok((Token::TypeName(type_name_str), type_name_range))) = self
-            .iter_next_if(|res| matches!(res, Ok((Token::TypeName(_), _))))
-        {
-            let type_name =
-                TypeName::new(&type_name_str).map_err(|error| ParseError::InvalidTypeName {
+fn expect_variable_name(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<(VarName, DocumentRange), ParseError> {
+    match next(iter).transpose()? {
+        Some((Token::Identifier(name), name_range)) => {
+            let var_name =
+                VarName::new(name.as_str()).map_err(|error| ParseError::InvalidVariableName {
+                    name,
                     error,
-                    range: type_name_range.clone(),
+                    range: name_range.clone(),
                 })?;
+            Ok((var_name, name_range))
+        }
+        Some((actual, actual_range)) => Err(ParseError::ExpectedVariableNameButGot {
+            actual,
+            range: actual_range,
+        }),
+        None => Err(ParseError::UnexpectedEof {
+            range: range.clone(),
+        }),
+    }
+}
 
-            // Check if this is an enum pattern (::) or record pattern (()
-            if self.advance_if(Token::ColonColon).is_some() {
-                // Enum pattern: TypeName::Variant or TypeName::Variant(field: pattern, ...)
-                let (variant_name, variant_range) = self.expect_type_name()?;
+fn expect_field_name(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<(FieldName, DocumentRange), ParseError> {
+    match next(iter).transpose()? {
+        Some((Token::Identifier(name), name_range)) => {
+            let prop_name =
+                FieldName::new(name.as_str()).map_err(|error| ParseError::InvalidFieldName {
+                    name,
+                    error,
+                    range: name_range.clone(),
+                })?;
+            Ok((prop_name, name_range))
+        }
+        Some((token, token_range)) => Err(ParseError::ExpectedFieldNameButGot {
+            actual: token,
+            range: token_range,
+        }),
+        None => Err(ParseError::UnexpectedEof {
+            range: range.clone(),
+        }),
+    }
+}
 
-                // Check for optional field patterns: Variant(field: pattern, ...)
-                let (fields, end_range) = if let Some(left_paren) = self.advance_if(Token::LeftParen)
-                {
-                    let mut fields = Vec::new();
-                    let right_paren =
-                        self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
-                            let (field_name, field_range) = this.expect_field_name()?;
-                            this.expect_token(&Token::Colon)?;
-                            let pattern = this.parse_match_pattern()?;
-                            fields.push((field_name, field_range, pattern));
-                            Ok(())
-                        })?;
-                    (fields, right_paren)
-                } else {
-                    (Vec::new(), variant_range.clone())
-                };
+fn expect_type_name(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<(TypeName, DocumentRange), ParseError> {
+    match next(iter).transpose()? {
+        Some((Token::TypeName(name), name_range)) => {
+            let type_name =
+                TypeName::new(name.as_str()).map_err(|error| ParseError::InvalidTypeName {
+                    error,
+                    range: name_range.clone(),
+                })?;
+            Ok((type_name, name_range))
+        }
+        Some((actual, actual_range)) => Err(ParseError::ExpectedTypeNameButGot {
+            actual,
+            range: actual_range,
+        }),
+        None => Err(ParseError::ExpectedTypeNameButGotEof {
+            range: range.clone(),
+        }),
+    }
+}
 
-                let constructor_range = type_name_range.clone().to(variant_range);
-                return Ok(ParsedMatchPattern::Constructor {
-                    constructor: Constructor::EnumVariant {
-                        enum_name: type_name,
-                        variant_name: variant_name.as_str().to_string(),
-                    },
-                    args: Vec::new(),
-                    fields,
-                    constructor_range,
-                    range: type_name_range.to(end_range),
-                });
-            } else {
-                // Record pattern: TypeName(field: pattern, ...)
-                let left_paren = self.expect_token(&Token::LeftParen)?;
-                let mut fields = Vec::new();
-                let right_paren =
-                    self.parse_delimited_list(&Token::LeftParen, &left_paren, |this| {
-                        let (field_name, field_range) = this.expect_field_name()?;
-                        this.expect_token(&Token::Colon)?;
-                        let pattern = this.parse_match_pattern()?;
-                        fields.push((field_name, field_range, pattern));
-                        Ok(())
-                    })?;
-                return Ok(ParsedMatchPattern::Constructor {
-                    constructor: Constructor::Record { type_name },
-                    args: Vec::new(),
-                    fields,
-                    constructor_range: type_name_range.clone(),
-                    range: type_name_range.to(right_paren),
+fn expect_eof(iter: &mut Peekable<DocumentCursor>) -> Result<(), ParseError> {
+    match next(iter).transpose()? {
+        None => Ok(()),
+        Some((token, token_range)) => Err(ParseError::UnexpectedToken {
+            token,
+            range: token_range,
+        }),
+    }
+}
+
+fn parse_comma_separated<F>(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+    mut parse: F,
+    end_token: Option<&Token>,
+) -> Result<(), ParseError>
+where
+    F: FnMut(&mut Peekable<DocumentCursor>, &DocumentRange) -> Result<(), ParseError>,
+{
+    parse(iter, range)?;
+    while advance_if(iter, Token::Comma).is_some() {
+        let at_end = peek(iter).and_then(|r| r.ok()).map(|(t, _)| t).as_ref() == end_token;
+        if at_end {
+            break;
+        }
+        parse(iter, range)?;
+    }
+
+    Ok(())
+}
+
+fn parse_delimited_list<F>(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+    opening_token: &Token,
+    opening_range: &DocumentRange,
+    parse: F,
+) -> Result<DocumentRange, ParseError>
+where
+    F: FnMut(&mut Peekable<DocumentCursor>, &DocumentRange) -> Result<(), ParseError>,
+{
+    let closing_token = opening_token.opposite_token();
+    if let Some(closing_range) = advance_if(iter, closing_token.clone()) {
+        return Ok(closing_range);
+    }
+    parse_comma_separated(iter, range, parse, Some(&closing_token))?;
+    expect_opposite(iter, opening_token, opening_range)
+}
+
+// expr = logical Eof
+pub fn parse_expr(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<ParsedExpr, ParseError> {
+    let result = parse_logical(iter, range)?;
+    expect_eof(iter)?;
+    Ok(result)
+}
+
+// loop_header = Identifier "in" logical Eof
+pub fn parse_loop_header(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<(VarName, DocumentRange, ParsedExpr), ParseError> {
+    let (var_name, var_name_range) = expect_variable_name(iter, range)?;
+    expect_token(iter, range, &Token::In)?;
+    let array_expr = parse_logical(iter, range)?;
+    expect_eof(iter)?;
+    Ok((var_name, var_name_range, array_expr))
+}
+
+// let_binding = (Identifier ":" type "=" expr) ("," Identifier ":" type "=" expr)* Eof
+pub fn parse_let_bindings(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<Vec<(VarName, DocumentRange, ParsedType, ParsedExpr)>, ParseError> {
+    let mut bindings = Vec::new();
+    parse_comma_separated(
+        iter,
+        range,
+        |iter, range| {
+            let (var_name, var_name_range) = expect_variable_name(iter, range)?;
+            expect_token(iter, range, &Token::Colon)?;
+            let var_type = parse_type(iter, range)?;
+            expect_token(iter, range, &Token::Assign)?;
+            let value_expr = parse_logical(iter, range)?;
+            bindings.push((var_name, var_name_range, var_type, value_expr));
+            Ok(())
+        },
+        None,
+    )?;
+    expect_eof(iter)?;
+    Ok(bindings)
+}
+
+// parameter_with_type = Identifier ":" type ("=" primary)?
+fn parse_parameter(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<((VarName, DocumentRange), ParsedType, Option<ParsedExpr>), ParseError> {
+    let (var_name, var_name_range) = expect_variable_name(iter, range)?;
+    expect_token(iter, range, &Token::Colon)?;
+    let var_type = parse_type(iter, range)?;
+    let default_value = if advance_if(iter, Token::Assign).is_some() {
+        Some(parse_primary(iter, range)?)
+    } else {
+        None
+    };
+    Ok(((var_name, var_name_range), var_type, default_value))
+}
+
+// parameters = parameter ("," parameter)* Eof
+pub fn parse_parameters(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<Vec<((VarName, DocumentRange), ParsedType, Option<ParsedExpr>)>, ParseError> {
+    let mut params = Vec::new();
+    let mut seen_names = HashSet::new();
+    parse_comma_separated(
+        iter,
+        range,
+        |iter, range| {
+            let param = parse_parameter(iter, range)?;
+            let (var_name, var_name_range) = &param.0;
+            if !seen_names.insert(var_name.as_str().to_string()) {
+                return Err(ParseError::DuplicateParameter {
+                    name: var_name_range.to_string_span(),
+                    range: var_name_range.clone(),
                 });
             }
-        }
-
-        // Otherwise, parse a binding pattern (lowercase identifier)
-        let (var_name, range) = self.expect_variable_name()?;
-        Ok(ParsedMatchPattern::Binding {
-            name: var_name.to_string(),
-            range,
-        })
-    }
-
-    /// Parse a match expression.
-    ///
-    /// Syntax: `match subject {Pattern1 => expr1, Pattern2 => expr2}`
-    fn parse_match_expr(&mut self, match_range: DocumentRange) -> Result<ParsedExpr, ParseError> {
-        let subject = self.parse_primary()?;
-        let left_brace = self.expect_token(&Token::LeftBrace)?;
-
-        let mut arms = Vec::new();
-        let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
-            let pattern = this.parse_match_pattern()?;
-            this.expect_token(&Token::FatArrow)?;
-            let body = this.parse_logical()?;
-            arms.push(ParsedMatchArm { pattern, body });
+            params.push(param);
             Ok(())
-        })?;
+        },
+        None,
+    )?;
+    expect_eof(iter)?;
+    Ok(params)
+}
 
-        Ok(ParsedExpr::Match {
-            subject: Box::new(subject),
-            arms,
-            range: match_range.to(right_brace),
-        })
+pub fn parse_type(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<ParsedType, ParseError> {
+    match next(iter).transpose()? {
+        Some((Token::TypeString, type_range)) => Ok(ParsedType::String { range: type_range }),
+        Some((Token::TypeInt, type_range)) => Ok(ParsedType::Int { range: type_range }),
+        Some((Token::TypeFloat, type_range)) => Ok(ParsedType::Float { range: type_range }),
+        Some((Token::TypeBoolean, type_range)) => Ok(ParsedType::Bool { range: type_range }),
+        Some((Token::TypeTrustedHTML, type_range)) => {
+            Ok(ParsedType::TrustedHTML { range: type_range })
+        }
+        Some((Token::TypeArray, type_array)) => {
+            let left_bracket = expect_token(iter, range, &Token::LeftBracket)?;
+            let element = parse_type(iter, range)?;
+            let right_bracket = expect_opposite(iter, &Token::LeftBracket, &left_bracket)?;
+            Ok(ParsedType::Array {
+                element: Box::new(element),
+                range: type_array.to(right_bracket),
+            })
+        }
+        Some((Token::TypeOption, type_option)) => {
+            let left_bracket = expect_token(iter, range, &Token::LeftBracket)?;
+            let element = parse_type(iter, range)?;
+            let right_bracket = expect_opposite(iter, &Token::LeftBracket, &left_bracket)?;
+            Ok(ParsedType::Option {
+                element: Box::new(element),
+                range: type_option.to(right_bracket),
+            })
+        }
+        Some((Token::TypeName(name), type_range)) => Ok(ParsedType::Named {
+            name: name.as_str().to_string(),
+            range: type_range,
+        }),
+        Some((actual, actual_range)) => Err(ParseError::ExpectedTypeNameButGot {
+            actual,
+            range: actual_range,
+        }),
+        None => Err(ParseError::ExpectedTypeNameButGotEof {
+            range: range.clone(),
+        }),
     }
+}
 
-    /// Parse an import declaration.
-    ///
-    /// Syntax: `import module::path::ComponentName`
-    fn parse_import_declaration(&mut self) -> Result<ParsedDeclaration, ParseError> {
-        let import_range = self.expect_token(&Token::Import)?;
+fn parse_logical(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<ParsedExpr, ParseError> {
+    let mut expr = parse_logical_and(iter, range)?;
+    while advance_if(iter, Token::LogicalOr).is_some() {
+        let right = parse_logical_and(iter, range)?;
+        expr = ParsedExpr::BinaryOp {
+            range: expr.range().clone().to(right.range().clone()),
+            left: Box::new(expr),
+            operator: ParsedBinaryOp::LogicalOr,
+            right: Box::new(right),
+        };
+    }
+    Ok(expr)
+}
 
-        let mut path_segments: Vec<DocumentRange> = Vec::new();
+fn parse_logical_and(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<ParsedExpr, ParseError> {
+    let mut expr = parse_equality(iter, range)?;
+    while advance_if(iter, Token::LogicalAnd).is_some() {
+        let right = parse_equality(iter, range)?;
+        expr = ParsedExpr::BinaryOp {
+            range: expr.range().clone().to(right.range().clone()),
+            left: Box::new(expr),
+            operator: ParsedBinaryOp::LogicalAnd,
+            right: Box::new(right),
+        };
+    }
+    Ok(expr)
+}
 
-        let first_segment = match self.iter_next().transpose()? {
-            Some((Token::Identifier(_), range)) | Some((Token::TypeName(_), range)) => range,
-            Some((_, range)) => {
-                return Err(ParseError::ExpectedModulePath { range });
+// equality = relational ( ("==" | "!=") relational )*
+fn parse_equality(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<ParsedExpr, ParseError> {
+    let mut expr = parse_relational(iter, range)?;
+    loop {
+        if advance_if(iter, Token::Eq).is_some() {
+            let right = parse_relational(iter, range)?;
+            expr = ParsedExpr::BinaryOp {
+                range: expr.range().clone().to(right.range().clone()),
+                left: Box::new(expr),
+                operator: ParsedBinaryOp::Eq,
+                right: Box::new(right),
+            };
+        } else if advance_if(iter, Token::NotEq).is_some() {
+            let right = parse_relational(iter, range)?;
+            expr = ParsedExpr::BinaryOp {
+                range: expr.range().clone().to(right.range().clone()),
+                left: Box::new(expr),
+                operator: ParsedBinaryOp::NotEq,
+                right: Box::new(right),
+            };
+        } else {
+            break;
+        }
+    }
+    Ok(expr)
+}
+
+// relational = additive ( ("<" | ">" | "<=" | ">=") additive )*
+fn parse_relational(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<ParsedExpr, ParseError> {
+    let mut expr = parse_additive(iter, range)?;
+    loop {
+        if advance_if(iter, Token::LessThan).is_some() {
+            let right = parse_additive(iter, range)?;
+            expr = ParsedExpr::BinaryOp {
+                range: expr.range().clone().to(right.range().clone()),
+                left: Box::new(expr),
+                operator: ParsedBinaryOp::LessThan,
+                right: Box::new(right),
+            };
+        } else if advance_if(iter, Token::GreaterThan).is_some() {
+            let right = parse_additive(iter, range)?;
+            expr = ParsedExpr::BinaryOp {
+                range: expr.range().clone().to(right.range().clone()),
+                left: Box::new(expr),
+                operator: ParsedBinaryOp::GreaterThan,
+                right: Box::new(right),
+            };
+        } else if advance_if(iter, Token::LessThanOrEqual).is_some() {
+            let right = parse_additive(iter, range)?;
+            expr = ParsedExpr::BinaryOp {
+                range: expr.range().clone().to(right.range().clone()),
+                left: Box::new(expr),
+                operator: ParsedBinaryOp::LessThanOrEqual,
+                right: Box::new(right),
+            };
+        } else if advance_if(iter, Token::GreaterThanOrEqual).is_some() {
+            let right = parse_additive(iter, range)?;
+            expr = ParsedExpr::BinaryOp {
+                range: expr.range().clone().to(right.range().clone()),
+                left: Box::new(expr),
+                operator: ParsedBinaryOp::GreaterThanOrEqual,
+                right: Box::new(right),
+            };
+        } else {
+            break;
+        }
+    }
+    Ok(expr)
+}
+
+// additive = multiplicative ( ("+" | "-") multiplicative )*
+fn parse_additive(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<ParsedExpr, ParseError> {
+    let mut expr = parse_multiplicative(iter, range)?;
+    loop {
+        if advance_if(iter, Token::Plus).is_some() {
+            let right = parse_multiplicative(iter, range)?;
+            expr = ParsedExpr::BinaryOp {
+                range: expr.range().clone().to(right.range().clone()),
+                left: Box::new(expr),
+                operator: ParsedBinaryOp::Plus,
+                right: Box::new(right),
+            };
+        } else if advance_if(iter, Token::Minus).is_some() {
+            let right = parse_multiplicative(iter, range)?;
+            expr = ParsedExpr::BinaryOp {
+                range: expr.range().clone().to(right.range().clone()),
+                left: Box::new(expr),
+                operator: ParsedBinaryOp::Minus,
+                right: Box::new(right),
+            };
+        } else {
+            break;
+        }
+    }
+    Ok(expr)
+}
+
+// multiplicative = unary ( "*" unary )*
+fn parse_multiplicative(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<ParsedExpr, ParseError> {
+    let mut expr = parse_unary(iter, range)?;
+    while advance_if(iter, Token::Asterisk).is_some() {
+        let right = parse_unary(iter, range)?;
+        expr = ParsedExpr::BinaryOp {
+            range: expr.range().clone().to(right.range().clone()),
+            left: Box::new(expr),
+            operator: ParsedBinaryOp::Multiply,
+            right: Box::new(right),
+        };
+    }
+    Ok(expr)
+}
+
+// unary = ( "!" )* primary
+fn parse_unary(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<ParsedExpr, ParseError> {
+    if let Some(operator_range) = advance_if(iter, Token::Not) {
+        let expr = parse_unary(iter, range)?; // Right associative for multiple !
+        Ok(ParsedExpr::Negation {
+            range: operator_range.to(expr.range().clone()),
+            operand: Box::new(expr),
+        })
+    } else {
+        parse_primary(iter, range)
+    }
+}
+
+// array_literal = "[" ( logical ("," logical)* )? "]"
+fn parse_array_literal(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+    left_bracket: DocumentRange,
+) -> Result<ParsedExpr, ParseError> {
+    let mut elements = Vec::new();
+    let right_bracket = parse_delimited_list(
+        iter,
+        range,
+        &Token::LeftBracket,
+        &left_bracket,
+        |iter, range| {
+            elements.push(parse_logical(iter, range)?);
+            Ok(())
+        },
+    )?;
+    Ok(ParsedExpr::ArrayLiteral {
+        elements,
+        range: left_bracket.to(right_bracket),
+    })
+}
+
+fn parse_field_access(
+    iter: &mut Peekable<DocumentCursor>,
+    _range: &DocumentRange,
+    identifier: StringSpan,
+    id_range: DocumentRange,
+) -> Result<ParsedExpr, ParseError> {
+    let var_name =
+        VarName::new(identifier.as_str()).map_err(|error| ParseError::InvalidVariableName {
+            name: identifier,
+            error,
+            range: id_range.clone(),
+        })?;
+    let mut expr = ParsedExpr::Var {
+        range: id_range,
+        value: var_name,
+    };
+
+    while let Some(dot) = advance_if(iter, Token::Dot) {
+        match next(iter).transpose()? {
+            Some((Token::Identifier(field_ident), field_range)) => {
+                // Validate field name
+                let field_name = FieldName::new(field_ident.as_str()).map_err(|error| {
+                    ParseError::InvalidFieldName {
+                        name: field_ident,
+                        error,
+                        range: field_range.clone(),
+                    }
+                })?;
+                let new_range = expr.range().clone().to(field_range);
+                expr = ParsedExpr::FieldAccess {
+                    record: Box::new(expr),
+                    field: field_name,
+                    range: new_range,
+                };
+            }
+            Some((_, token_range)) => {
+                return Err(ParseError::ExpectedIdentifierAfterDot { range: token_range });
             }
             None => {
-                return Err(ParseError::ExpectedModulePath {
-                    range: self.range.clone(),
+                return Err(ParseError::UnexpectedEndOfFieldAccess {
+                    range: expr.range().clone().to(dot),
+                });
+            }
+        }
+    }
+    Ok(expr)
+}
+
+fn parse_primary(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<ParsedExpr, ParseError> {
+    match next(iter).transpose()? {
+        Some((Token::Identifier(name), name_range)) => {
+            // Check for macro invocation: identifier!
+            if advance_if(iter, Token::Not).is_some() {
+                return parse_macro_invocation(iter, range, name, name_range);
+            }
+            parse_field_access(iter, range, name, name_range)
+        }
+        Some((Token::TypeName(name), name_range)) => {
+            let is_enum_variant =
+                peek(iter).and_then(|r| r.ok()).map(|(t, _)| t) == Some(Token::ColonColon);
+            if is_enum_variant {
+                parse_enum_literal(iter, range, name, name_range)
+            } else {
+                parse_record_literal(iter, range, name, name_range)
+            }
+        }
+        Some((Token::StringLiteral(value), lit_range)) => Ok(ParsedExpr::StringLiteral {
+            value,
+            range: lit_range,
+        }),
+        Some((Token::True, lit_range)) => Ok(ParsedExpr::BooleanLiteral {
+            value: true,
+            range: lit_range,
+        }),
+        Some((Token::False, lit_range)) => Ok(ParsedExpr::BooleanLiteral {
+            value: false,
+            range: lit_range,
+        }),
+        Some((Token::IntLiteral(value), lit_range)) => Ok(ParsedExpr::IntLiteral {
+            value,
+            range: lit_range,
+        }),
+        Some((Token::FloatLiteral(value), lit_range)) => Ok(ParsedExpr::FloatLiteral {
+            value,
+            range: lit_range,
+        }),
+        Some((Token::LeftBracket, left_bracket)) => parse_array_literal(iter, range, left_bracket),
+        Some((Token::LeftParen, left_paren)) => {
+            let expr = parse_logical(iter, range)?;
+            expect_opposite(iter, &Token::LeftParen, &left_paren)?;
+            Ok(expr)
+        }
+        Some((Token::Match, match_range)) => parse_match_expr(iter, range, match_range),
+        Some((Token::Some, some_range)) => {
+            let left_paren = expect_token(iter, range, &Token::LeftParen)?;
+            let value = parse_logical(iter, range)?;
+            let right_paren = expect_opposite(iter, &Token::LeftParen, &left_paren)?;
+            Ok(ParsedExpr::OptionLiteral {
+                value: Some(Box::new(value)),
+                range: some_range.to(right_paren),
+            })
+        }
+        Some((Token::None, none_range)) => Ok(ParsedExpr::OptionLiteral {
+            value: None,
+            range: none_range,
+        }),
+        Some((token, token_range)) => Err(ParseError::UnexpectedToken {
+            token,
+            range: token_range,
+        }),
+        None => Err(ParseError::UnexpectedEof {
+            range: range.clone(),
+        }),
+    }
+}
+
+fn parse_macro_invocation(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+    macro_name: StringSpan,
+    name_range: DocumentRange,
+) -> Result<ParsedExpr, ParseError> {
+    // Validate it's a known macro
+    let name_str = macro_name.as_str();
+    if name_str != "classes" {
+        return Err(ParseError::UnknownMacro {
+            name: macro_name,
+            range: name_range,
+        });
+    }
+
+    let left_paren = expect_token(iter, range, &Token::LeftParen)?;
+    let mut args = Vec::new();
+    let right_paren = parse_delimited_list(
+        iter,
+        range,
+        &Token::LeftParen,
+        &left_paren,
+        |iter, range| {
+            args.push(parse_logical(iter, range)?);
+            Ok(())
+        },
+    )?;
+
+    Ok(ParsedExpr::MacroInvocation {
+        name: name_str.to_string(),
+        args,
+        range: name_range.to(right_paren),
+    })
+}
+
+fn parse_record_literal(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+    name: StringSpan,
+    name_range: DocumentRange,
+) -> Result<ParsedExpr, ParseError> {
+    let left_paren = expect_token(iter, range, &Token::LeftParen)?;
+    let mut fields = Vec::new();
+    let right_paren = parse_delimited_list(
+        iter,
+        range,
+        &Token::LeftParen,
+        &left_paren,
+        |iter, range| {
+            let (field_name, _) = expect_field_name(iter, range)?;
+            expect_token(iter, range, &Token::Colon)?;
+            fields.push((field_name, parse_logical(iter, range)?));
+            Ok(())
+        },
+    )?;
+    Ok(ParsedExpr::RecordLiteral {
+        record_name: name.as_str().to_string(),
+        fields,
+        range: name_range.to(right_paren),
+    })
+}
+
+/// Parse an enum literal expression.
+///
+/// Syntax: `EnumName::VariantName` or `EnumName::VariantName(field: value, ...)`
+fn parse_enum_literal(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+    enum_name: StringSpan,
+    enum_name_range: DocumentRange,
+) -> Result<ParsedExpr, ParseError> {
+    expect_token(iter, range, &Token::ColonColon)?;
+    let (variant_name, variant_range) = expect_type_name(iter, range)?;
+    let constructor_range = enum_name_range.clone().to(variant_range.clone());
+
+    // Check for optional field values: Variant(field: value, ...)
+    let (fields, end_range) = if let Some(left_paren) = advance_if(iter, Token::LeftParen) {
+        let mut fields = Vec::new();
+        let right_paren = parse_delimited_list(
+            iter,
+            range,
+            &Token::LeftParen,
+            &left_paren,
+            |iter, range| {
+                let (field_name, field_name_range) = expect_field_name(iter, range)?;
+                expect_token(iter, range, &Token::Colon)?;
+                fields.push((field_name, field_name_range, parse_logical(iter, range)?));
+                Ok(())
+            },
+        )?;
+        (fields, right_paren)
+    } else {
+        (Vec::new(), variant_range)
+    };
+
+    Ok(ParsedExpr::EnumLiteral {
+        enum_name: enum_name.as_str().to_string(),
+        variant_name: variant_name.as_str().to_string(),
+        fields,
+        constructor_range,
+        range: enum_name_range.to(end_range),
+    })
+}
+
+/// Parse a match pattern.
+pub fn parse_match_pattern(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<ParsedMatchPattern, ParseError> {
+    // Check for wildcard pattern
+    if let Some(pattern_range) = advance_if(iter, Token::Underscore) {
+        return Ok(ParsedMatchPattern::Wildcard {
+            range: pattern_range,
+        });
+    }
+
+    // Check for boolean literal patterns
+    if let Some(pattern_range) = advance_if(iter, Token::True) {
+        return Ok(ParsedMatchPattern::Constructor {
+            constructor: Constructor::BooleanTrue,
+            args: Vec::new(),
+            fields: Vec::new(),
+            constructor_range: pattern_range.clone(),
+            range: pattern_range,
+        });
+    }
+    if let Some(pattern_range) = advance_if(iter, Token::False) {
+        return Ok(ParsedMatchPattern::Constructor {
+            constructor: Constructor::BooleanFalse,
+            args: Vec::new(),
+            fields: Vec::new(),
+            constructor_range: pattern_range.clone(),
+            range: pattern_range,
+        });
+    }
+
+    // Check for Option patterns: Some(...) and None
+    if let Some(some_range) = advance_if(iter, Token::Some) {
+        expect_token(iter, range, &Token::LeftParen)?;
+        let inner_pattern = parse_match_pattern(iter, range)?;
+        let right_paren = expect_token(iter, range, &Token::RightParen)?;
+        return Ok(ParsedMatchPattern::Constructor {
+            constructor: Constructor::OptionSome,
+            args: vec![inner_pattern],
+            fields: Vec::new(),
+            constructor_range: some_range.clone(),
+            range: some_range.to(right_paren),
+        });
+    }
+    if let Some(pattern_range) = advance_if(iter, Token::None) {
+        return Ok(ParsedMatchPattern::Constructor {
+            constructor: Constructor::OptionNone,
+            args: Vec::new(),
+            fields: Vec::new(),
+            constructor_range: pattern_range.clone(),
+            range: pattern_range,
+        });
+    }
+
+    // Check for TypeName patterns: either enum (TypeName::Variant) or record (TypeName(...))
+    if let Some(Ok((Token::TypeName(type_name_str), type_name_range))) =
+        next_if(iter, |res| matches!(res, Ok((Token::TypeName(_), _))))
+    {
+        let type_name =
+            TypeName::new(&type_name_str).map_err(|error| ParseError::InvalidTypeName {
+                error,
+                range: type_name_range.clone(),
+            })?;
+
+        // Check if this is an enum pattern (::) or record pattern (()
+        if advance_if(iter, Token::ColonColon).is_some() {
+            // Enum pattern: TypeName::Variant or TypeName::Variant(field: pattern, ...)
+            let (variant_name, variant_range) = expect_type_name(iter, range)?;
+
+            // Check for optional field patterns: Variant(field: pattern, ...)
+            let (fields, end_range) = if let Some(left_paren) = advance_if(iter, Token::LeftParen) {
+                let mut fields = Vec::new();
+                let right_paren = parse_delimited_list(
+                    iter,
+                    range,
+                    &Token::LeftParen,
+                    &left_paren,
+                    |iter, range| {
+                        let (field_name, field_range) = expect_field_name(iter, range)?;
+                        expect_token(iter, range, &Token::Colon)?;
+                        let pattern = parse_match_pattern(iter, range)?;
+                        fields.push((field_name, field_range, pattern));
+                        Ok(())
+                    },
+                )?;
+                (fields, right_paren)
+            } else {
+                (Vec::new(), variant_range.clone())
+            };
+
+            let constructor_range = type_name_range.clone().to(variant_range);
+            return Ok(ParsedMatchPattern::Constructor {
+                constructor: Constructor::EnumVariant {
+                    enum_name: type_name,
+                    variant_name: variant_name.as_str().to_string(),
+                },
+                args: Vec::new(),
+                fields,
+                constructor_range,
+                range: type_name_range.to(end_range),
+            });
+        } else {
+            // Record pattern: TypeName(field: pattern, ...)
+            let left_paren = expect_token(iter, range, &Token::LeftParen)?;
+            let mut fields = Vec::new();
+            let right_paren = parse_delimited_list(
+                iter,
+                range,
+                &Token::LeftParen,
+                &left_paren,
+                |iter, range| {
+                    let (field_name, field_range) = expect_field_name(iter, range)?;
+                    expect_token(iter, range, &Token::Colon)?;
+                    let pattern = parse_match_pattern(iter, range)?;
+                    fields.push((field_name, field_range, pattern));
+                    Ok(())
+                },
+            )?;
+            return Ok(ParsedMatchPattern::Constructor {
+                constructor: Constructor::Record { type_name },
+                args: Vec::new(),
+                fields,
+                constructor_range: type_name_range.clone(),
+                range: type_name_range.to(right_paren),
+            });
+        }
+    }
+
+    // Otherwise, parse a binding pattern (lowercase identifier)
+    let (var_name, var_range) = expect_variable_name(iter, range)?;
+    Ok(ParsedMatchPattern::Binding {
+        name: var_name.to_string(),
+        range: var_range,
+    })
+}
+
+/// Parse a match expression.
+///
+/// Syntax: `match subject {Pattern1 => expr1, Pattern2 => expr2}`
+fn parse_match_expr(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+    match_range: DocumentRange,
+) -> Result<ParsedExpr, ParseError> {
+    let subject = parse_primary(iter, range)?;
+    let left_brace = expect_token(iter, range, &Token::LeftBrace)?;
+
+    let mut arms = Vec::new();
+    let right_brace = parse_delimited_list(
+        iter,
+        range,
+        &Token::LeftBrace,
+        &left_brace,
+        |iter, range| {
+            let pattern = parse_match_pattern(iter, range)?;
+            expect_token(iter, range, &Token::FatArrow)?;
+            let body = parse_logical(iter, range)?;
+            arms.push(ParsedMatchArm { pattern, body });
+            Ok(())
+        },
+    )?;
+
+    Ok(ParsedExpr::Match {
+        subject: Box::new(subject),
+        arms,
+        range: match_range.to(right_brace),
+    })
+}
+
+/// Parse an import declaration.
+///
+/// Syntax: `import module::path::ComponentName`
+fn parse_import_declaration(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<ParsedDeclaration, ParseError> {
+    let import_range = expect_token(iter, range, &Token::Import)?;
+
+    let mut path_segments: Vec<DocumentRange> = Vec::new();
+
+    let first_segment = match next(iter).transpose()? {
+        Some((Token::Identifier(_), seg_range)) | Some((Token::TypeName(_), seg_range)) => {
+            seg_range
+        }
+        Some((_, seg_range)) => {
+            return Err(ParseError::ExpectedModulePath { range: seg_range });
+        }
+        None => {
+            return Err(ParseError::ExpectedModulePath {
+                range: range.clone(),
+            });
+        }
+    };
+    path_segments.push(first_segment);
+
+    while advance_if(iter, Token::ColonColon).is_some() {
+        let segment = match next(iter).transpose()? {
+            Some((Token::Identifier(_), seg_range)) | Some((Token::TypeName(_), seg_range)) => {
+                seg_range
+            }
+            Some((_, seg_range)) => {
+                return Err(ParseError::ExpectedIdentifierAfterColonColon { range: seg_range });
+            }
+            None => {
+                return Err(ParseError::ExpectedIdentifierAfterColonColon {
+                    range: range.clone(),
                 });
             }
         };
-        path_segments.push(first_segment);
-
-        while self.advance_if(Token::ColonColon).is_some() {
-            let segment = match self.iter_next().transpose()? {
-                Some((Token::Identifier(_), range)) | Some((Token::TypeName(_), range)) => range,
-                Some((_, range)) => {
-                    return Err(ParseError::ExpectedIdentifierAfterColonColon { range });
-                }
-                None => {
-                    return Err(ParseError::ExpectedIdentifierAfterColonColon {
-                        range: self.range.clone(),
-                    });
-                }
-            };
-            path_segments.push(segment);
-        }
-
-        if path_segments.len() < 2 {
-            return Err(ParseError::ImportPathTooShort {
-                range: path_segments[0].clone(),
-            });
-        }
-
-        let name_range = path_segments.pop().unwrap();
-
-        let name = TypeName::new(name_range.as_str()).map_err(|e| ParseError::InvalidTypeName {
-            error: e,
-            range: name_range.clone(),
-        })?;
-
-        let module_path_str = path_segments
-            .iter()
-            .map(|s| s.as_str())
-            .collect::<Vec<_>>()
-            .join("/");
-
-        let module_name =
-            ModuleName::new(&module_path_str).map_err(|e| ParseError::InvalidModuleName {
-                error: e,
-                range: path_segments
-                    .first()
-                    .unwrap()
-                    .clone()
-                    .to(path_segments.last().unwrap().clone()),
-            })?;
-
-        let path_range = path_segments
-            .first()
-            .unwrap()
-            .clone()
-            .to(name_range.clone());
-
-        Ok(ParsedDeclaration::Import {
-            name,
-            name_range: name_range.clone(),
-            path: path_range,
-            module_name,
-            range: import_range.to(name_range),
-        })
+        path_segments.push(segment);
     }
 
-    /// Parse a record declaration.
-    ///
-    /// Syntax: `record Name {field: Type, ...}`
-    fn parse_record_declaration(&mut self) -> Result<ParsedDeclaration, ParseError> {
-        let start_range = self.expect_token(&Token::Record)?;
-        let (name, name_range) = self.expect_type_name()?;
-        let left_brace = self.expect_token(&Token::LeftBrace)?;
+    if path_segments.len() < 2 {
+        return Err(ParseError::ImportPathTooShort {
+            range: path_segments[0].clone(),
+        });
+    }
 
-        let mut fields = Vec::new();
-        let mut seen_names = HashSet::new();
-        let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
-            let (field_name, field_name_range) = this.expect_field_name()?;
-            this.expect_token(&Token::Colon)?;
-            let field_type = this.parse_type()?;
+    let name_range = path_segments.pop().unwrap();
+
+    let name = TypeName::new(name_range.as_str()).map_err(|e| ParseError::InvalidTypeName {
+        error: e,
+        range: name_range.clone(),
+    })?;
+
+    let module_path_str = path_segments
+        .iter()
+        .map(|s| s.as_str())
+        .collect::<Vec<_>>()
+        .join("/");
+
+    let module_name =
+        ModuleName::new(&module_path_str).map_err(|e| ParseError::InvalidModuleName {
+            error: e,
+            range: path_segments
+                .first()
+                .unwrap()
+                .clone()
+                .to(path_segments.last().unwrap().clone()),
+        })?;
+
+    let path_range = path_segments
+        .first()
+        .unwrap()
+        .clone()
+        .to(name_range.clone());
+
+    Ok(ParsedDeclaration::Import {
+        name,
+        name_range: name_range.clone(),
+        path: path_range,
+        module_name,
+        range: import_range.to(name_range),
+    })
+}
+
+/// Parse a record declaration.
+///
+/// Syntax: `record Name {field: Type, ...}`
+fn parse_record_declaration(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<ParsedDeclaration, ParseError> {
+    let start_range = expect_token(iter, range, &Token::Record)?;
+    let (name, name_range) = expect_type_name(iter, range)?;
+    let left_brace = expect_token(iter, range, &Token::LeftBrace)?;
+
+    let mut fields = Vec::new();
+    let mut seen_names = HashSet::new();
+    let right_brace = parse_delimited_list(
+        iter,
+        range,
+        &Token::LeftBrace,
+        &left_brace,
+        |iter, range| {
+            let (field_name, field_name_range) = expect_field_name(iter, range)?;
+            expect_token(iter, range, &Token::Colon)?;
+            let field_type = parse_type(iter, range)?;
             if !seen_names.insert(field_name.as_str().to_string()) {
                 return Err(ParseError::DuplicateField {
                     name: field_name_range.to_string_span(),
@@ -942,30 +1048,39 @@ impl Parser {
             }
             fields.push((field_name, field_name_range, field_type));
             Ok(())
-        })?;
+        },
+    )?;
 
-        let full_range = start_range.to(right_brace);
+    let full_range = start_range.to(right_brace);
 
-        Ok(ParsedDeclaration::Record {
-            name,
-            name_range,
-            fields,
-            range: full_range,
-        })
-    }
+    Ok(ParsedDeclaration::Record {
+        name,
+        name_range,
+        fields,
+        range: full_range,
+    })
+}
 
-    /// Parse an enum declaration.
-    ///
-    /// Syntax: `enum Name {Variant1, Variant2(field: Type), ...}`
-    fn parse_enum_declaration(&mut self) -> Result<ParsedDeclaration, ParseError> {
-        let start_range = self.expect_token(&Token::Enum)?;
-        let (name, name_range) = self.expect_type_name()?;
-        let left_brace = self.expect_token(&Token::LeftBrace)?;
+/// Parse an enum declaration.
+///
+/// Syntax: `enum Name {Variant1, Variant2(field: Type), ...}`
+fn parse_enum_declaration(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<ParsedDeclaration, ParseError> {
+    let start_range = expect_token(iter, range, &Token::Enum)?;
+    let (name, name_range) = expect_type_name(iter, range)?;
+    let left_brace = expect_token(iter, range, &Token::LeftBrace)?;
 
-        let mut variants = Vec::new();
-        let mut seen_names = HashSet::new();
-        let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
-            let (variant_name, variant_range) = this.expect_type_name()?;
+    let mut variants = Vec::new();
+    let mut seen_names = HashSet::new();
+    let right_brace = parse_delimited_list(
+        iter,
+        range,
+        &Token::LeftBrace,
+        &left_brace,
+        |iter, range| {
+            let (variant_name, variant_range) = expect_type_name(iter, range)?;
             if !seen_names.insert(variant_name.as_str().to_string()) {
                 return Err(ParseError::DuplicateVariant {
                     name: variant_range.to_string_span(),
@@ -974,116 +1089,118 @@ impl Parser {
             }
 
             // Check for optional field list: Variant(field: Type, ...)
-            let fields = if this.advance_if(Token::LeftParen).is_some() {
-                this.parse_enum_variant_fields()?
+            let fields = if advance_if(iter, Token::LeftParen).is_some() {
+                parse_enum_variant_fields(iter, range)?
             } else {
                 Vec::new()
             };
 
             variants.push((variant_name, variant_range, fields));
             Ok(())
-        })?;
+        },
+    )?;
 
-        let full_range = start_range.to(right_brace);
+    let full_range = start_range.to(right_brace);
 
-        Ok(ParsedDeclaration::Enum {
-            name,
-            name_range,
-            variants,
-            range: full_range,
-        })
+    Ok(ParsedDeclaration::Enum {
+        name,
+        name_range,
+        variants,
+        range: full_range,
+    })
+}
+
+/// Parse the fields of an enum variant: `field: Type, ...)`
+///
+/// Called after consuming the opening `(`. Consumes the closing `)`.
+fn parse_enum_variant_fields(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+) -> Result<Vec<(FieldName, DocumentRange, ParsedType)>, ParseError> {
+    let mut fields = Vec::new();
+    let mut seen_names = HashSet::new();
+
+    // Handle empty field list
+    if advance_if(iter, Token::RightParen).is_some() {
+        return Ok(fields);
     }
 
-    /// Parse the fields of an enum variant: `field: Type, ...)`
-    ///
-    /// Called after consuming the opening `(`. Consumes the closing `)`.
-    fn parse_enum_variant_fields(
-        &mut self,
-    ) -> Result<Vec<(FieldName, DocumentRange, ParsedType)>, ParseError> {
-        let mut fields = Vec::new();
-        let mut seen_names = HashSet::new();
+    loop {
+        let (field_name, field_name_range) = expect_field_name(iter, range)?;
+        expect_token(iter, range, &Token::Colon)?;
+        let field_type = parse_type(iter, range)?;
 
-        // Handle empty field list
-        if self.advance_if(Token::RightParen).is_some() {
-            return Ok(fields);
+        if !seen_names.insert(field_name.as_str().to_string()) {
+            return Err(ParseError::DuplicateField {
+                name: field_name_range.to_string_span(),
+                range: field_name_range.clone(),
+            });
         }
 
-        loop {
-            let (field_name, field_name_range) = self.expect_field_name()?;
-            self.expect_token(&Token::Colon)?;
-            let field_type = self.parse_type()?;
+        fields.push((field_name, field_name_range, field_type));
 
-            if !seen_names.insert(field_name.as_str().to_string()) {
-                return Err(ParseError::DuplicateField {
-                    name: field_name_range.to_string_span(),
-                    range: field_name_range.clone(),
-                });
-            }
-
-            fields.push((field_name, field_name_range, field_type));
-
-            // Check for comma or closing paren
-            if self.advance_if(Token::Comma).is_some() {
-                // Allow trailing comma
-                if self.advance_if(Token::RightParen).is_some() {
-                    break;
-                }
-            } else {
-                self.expect_token(&Token::RightParen)?;
+        // Check for comma or closing paren
+        if advance_if(iter, Token::Comma).is_some() {
+            // Allow trailing comma
+            if advance_if(iter, Token::RightParen).is_some() {
                 break;
             }
+        } else {
+            expect_token(iter, range, &Token::RightParen)?;
+            break;
         }
-
-        Ok(fields)
     }
 
-    /// Parse all declarations from the source.
-    ///
-    /// This parses import and record declarations from a top-level
-    /// text node. The text should only contain declarations and whitespace.
-    pub fn parse_declarations(
-        &mut self,
-        errors: &mut ErrorCollector<ParseError>,
-    ) -> Vec<ParsedDeclaration> {
-        let mut declarations = Vec::new();
+    Ok(fields)
+}
 
-        loop {
-            match self.iter_peek() {
-                Some(Ok((Token::Import, _))) => match self.parse_import_declaration() {
-                    Ok(decl) => declarations.push(decl),
-                    Err(err) => {
-                        errors.push(err);
-                        break;
-                    }
-                },
-                Some(Ok((Token::Record, _))) => match self.parse_record_declaration() {
-                    Ok(decl) => declarations.push(decl),
-                    Err(err) => {
-                        errors.push(err);
-                        break;
-                    }
-                },
-                Some(Ok((Token::Enum, _))) => match self.parse_enum_declaration() {
-                    Ok(decl) => declarations.push(decl),
-                    Err(err) => {
-                        errors.push(err);
-                        break;
-                    }
-                },
-                Some(Ok((_, range))) => {
-                    errors.push(ParseError::ExpectedDeclaration { range });
-                    break;
-                }
-                Some(Err(err)) => {
+/// Parse all declarations from the source.
+///
+/// This parses import and record declarations from a top-level
+/// text node. The text should only contain declarations and whitespace.
+pub fn parse_declarations(
+    iter: &mut Peekable<DocumentCursor>,
+    range: &DocumentRange,
+    errors: &mut ErrorCollector<ParseError>,
+) -> Vec<ParsedDeclaration> {
+    let mut declarations = Vec::new();
+
+    loop {
+        match peek(iter) {
+            Some(Ok((Token::Import, _))) => match parse_import_declaration(iter, range) {
+                Ok(decl) => declarations.push(decl),
+                Err(err) => {
                     errors.push(err);
                     break;
                 }
-                None => break,
+            },
+            Some(Ok((Token::Record, _))) => match parse_record_declaration(iter, range) {
+                Ok(decl) => declarations.push(decl),
+                Err(err) => {
+                    errors.push(err);
+                    break;
+                }
+            },
+            Some(Ok((Token::Enum, _))) => match parse_enum_declaration(iter, range) {
+                Ok(decl) => declarations.push(decl),
+                Err(err) => {
+                    errors.push(err);
+                    break;
+                }
+            },
+            Some(Ok((_, token_range))) => {
+                errors.push(ParseError::ExpectedDeclaration { range: token_range });
+                break;
             }
+            Some(Err(err)) => {
+                errors.push(err);
+                break;
+            }
+            None => break,
         }
-
-        declarations
     }
+
+    declarations
 }
 
 #[cfg(test)]
@@ -1108,8 +1225,10 @@ mod tests {
     }
 
     fn check_parse_expr(input: &str, expected: Expect) {
-        let mut parser = Parser::from(input);
-        let actual = match parser.parse_expr() {
+        let cursor = DocumentCursor::new(input.to_string());
+        let range = cursor.range();
+        let mut iter = cursor.peekable();
+        let actual = match parse_expr(&mut iter, &range) {
             Ok(result) => format!("{}\n", result),
             Err(err) => annotate_error(err),
         };
@@ -1117,9 +1236,11 @@ mod tests {
     }
 
     fn check_parse_parameters(input: &str, expected: Expect) {
-        let mut parser = Parser::from(input);
+        let cursor = DocumentCursor::new(input.to_string());
+        let range = cursor.range();
+        let mut iter = cursor.peekable();
 
-        let actual = match parser.parse_parameters() {
+        let actual = match parse_parameters(&mut iter, &range) {
             Ok(result) => {
                 let params: Vec<String> = result
                     .into_iter()
@@ -1139,12 +1260,13 @@ mod tests {
     }
 
     fn check_parse_declarations(input: &str, expected: Expect) {
-        use crate::document::document_cursor::DocumentCursor;
         use crate::error_collector::ErrorCollector;
 
         let mut errors = ErrorCollector::<ParseError>::new();
-        let range = DocumentCursor::new(input.to_string()).range();
-        let declarations = Parser::from(range).parse_declarations(&mut errors);
+        let cursor = DocumentCursor::new(input.to_string());
+        let range = cursor.range();
+        let mut iter = cursor.peekable();
+        let declarations = parse_declarations(&mut iter, &range, &mut errors);
 
         let actual = if !errors.is_empty() {
             DocumentAnnotator::new()
@@ -3119,8 +3241,10 @@ mod tests {
     ///////////////////////////////////////////////////////////////////////////
 
     fn check_parse_let_bindings(input: &str, expected: Expect) {
-        let mut parser = Parser::from(input);
-        let actual = match parser.parse_let_bindings() {
+        let cursor = DocumentCursor::new(input.to_string());
+        let range = cursor.range();
+        let mut iter = cursor.peekable();
+        let actual = match parse_let_bindings(&mut iter, &range) {
             Ok(result) => {
                 let bindings: Vec<String> = result
                     .into_iter()

@@ -1108,10 +1108,7 @@ impl IrBuilder {
     ) {
         use crate::dop::patterns::Match;
 
-        let Type::Enum {
-            name, variants, ..
-        } = subject.as_type()
-        else {
+        let Type::Enum { name, variants, .. } = subject.as_type() else {
             panic!("Match subject must be an enum type")
         };
         let enum_name = name.as_str().to_string();

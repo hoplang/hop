@@ -629,7 +629,11 @@ pub enum ParsedDeclaration {
         name_range: DocumentRange,
         /// The variants of the enum (name, range, fields).
         /// Each variant can optionally have named fields like records.
-        variants: Vec<(TypeName, DocumentRange, Vec<(FieldName, DocumentRange, ParsedType)>)>,
+        variants: Vec<(
+            TypeName,
+            DocumentRange,
+            Vec<(FieldName, DocumentRange, ParsedType)>,
+        )>,
         /// The full range of the declaration.
         range: DocumentRange,
     },

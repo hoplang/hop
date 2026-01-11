@@ -228,8 +228,7 @@ impl Transpiler for TsTranspiler {
                         .append(BoxDoc::text("\""))
                         .append(BoxDoc::intersperse(
                             fields.iter().map(|(field_name, _)| {
-                                BoxDoc::text(", ")
-                                    .append(BoxDoc::text(field_name.as_str()))
+                                BoxDoc::text(", ").append(BoxDoc::text(field_name.as_str()))
                             }),
                             BoxDoc::nil(),
                         ))

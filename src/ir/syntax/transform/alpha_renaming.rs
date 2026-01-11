@@ -140,9 +140,7 @@ impl AlphaRenamingPass {
                     } => {
                         let renamed_subject = (self.lookup_var(&subject.0), subject.1.clone());
                         self.push_scope();
-                        let renamed_binding = some_arm_binding.map(|var| {
-                            self.bind_var(&var)
-                        });
+                        let renamed_binding = some_arm_binding.map(|var| self.bind_var(&var));
                         let renamed_some_body = self.rename_statements(*some_arm_body);
                         self.pop_scope();
                         self.push_scope();

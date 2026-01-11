@@ -11,7 +11,9 @@ use crate::dop;
 #[derive(Debug, Clone)]
 pub enum TokenizedAttributeValue {
     /// A quoted string attribute value. Content is None for empty strings like `a=""`
-    String { content: Option<DocumentRange> },
+    String {
+        content: Option<DocumentRange>,
+    },
     Expression(DocumentRange),
 }
 
@@ -96,10 +98,8 @@ impl Display for Token {
                         .iter()
                         .map(|attr| match &attr.value {
                             Some(TokenizedAttributeValue::String { content }) => {
-                                let val = content
-                                    .as_ref()
-                                    .map(|r| r.to_string())
-                                    .unwrap_or_default();
+                                let val =
+                                    content.as_ref().map(|r| r.to_string()).unwrap_or_default();
                                 format!("{}={:#?}", attr.name, val)
                             }
                             Some(TokenizedAttributeValue::Expression(val)) => {
@@ -315,10 +315,9 @@ impl Tokenizer {
         };
 
         // consume: ('-' | '_' | [a-zA-Z0-9])*
-        let attr_name = initial.extend(
-            self.iter
-                .peeking_take_while(|s| s.ch() == '-' || s.ch() == '_' || s.ch().is_ascii_alphanumeric()),
-        );
+        let attr_name = initial.extend(self.iter.peeking_take_while(|s| {
+            s.ch() == '-' || s.ch() == '_' || s.ch().is_ascii_alphanumeric()
+        }));
 
         // consume: whitespace
         self.skip_whitespace();
@@ -457,7 +456,10 @@ impl Tokenizer {
                     let Some(attr) = self.parse_attribute() else {
                         continue;
                     };
-                    if attributes.iter().any(|a| a.name.as_str() == attr.name.as_str()) {
+                    if attributes
+                        .iter()
+                        .any(|a| a.name.as_str() == attr.name.as_str())
+                    {
                         self.errors.push(ParseError::DuplicateAttribute {
                             name: attr.name.to_string_span(),
                             range: attr.name.clone(),

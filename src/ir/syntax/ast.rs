@@ -915,7 +915,9 @@ impl IrExpr {
                                                 } => {
                                                     let base = BoxDoc::text(enum_name.as_str())
                                                         .append(BoxDoc::text("::"))
-                                                        .append(BoxDoc::text(variant_name.as_str()));
+                                                        .append(BoxDoc::text(
+                                                            variant_name.as_str(),
+                                                        ));
                                                     if arm.bindings.is_empty() {
                                                         base
                                                     } else {
@@ -927,7 +929,9 @@ impl IrExpr {
                                                             })
                                                             .collect();
                                                         base.append(BoxDoc::text("("))
-                                                            .append(BoxDoc::text(bindings_str.join(", ")))
+                                                            .append(BoxDoc::text(
+                                                                bindings_str.join(", "),
+                                                            ))
                                                             .append(BoxDoc::text(")"))
                                                     }
                                                 }

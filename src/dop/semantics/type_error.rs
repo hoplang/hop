@@ -135,7 +135,9 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Field '{field_name}' in '{enum_name}::{variant_name}' expects type {expected}, but got {found}")]
+    #[error(
+        "Field '{field_name}' in '{enum_name}::{variant_name}' expects type {expected}, but got {found}"
+    )]
     EnumVariantFieldTypeMismatch {
         enum_name: String,
         variant_name: String,
@@ -163,7 +165,6 @@ pub enum TypeError {
         subject_record: String,
         range: DocumentRange,
     },
-
 
     #[error("Match arms must all have the same type, expected {expected} but found {found}")]
     MatchArmTypeMismatch {

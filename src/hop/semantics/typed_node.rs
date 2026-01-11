@@ -96,9 +96,9 @@ impl TypedNode {
             TypedNode::TextExpression { expression } => BoxDoc::text("{")
                 .append(expression.to_doc())
                 .append(BoxDoc::text("}")),
-            TypedNode::Doctype { value } => {
-                BoxDoc::text("<!DOCTYPE ").append(BoxDoc::text(value.as_str())).append(BoxDoc::text(">"))
-            }
+            TypedNode::Doctype { value } => BoxDoc::text("<!DOCTYPE ")
+                .append(BoxDoc::text(value.as_str()))
+                .append(BoxDoc::text(">")),
             TypedNode::ComponentReference {
                 component_name,
                 args,
@@ -138,7 +138,10 @@ impl TypedNode {
                         .append(BoxDoc::text(">"))
                 }
             }
-            TypedNode::If { condition, children } => {
+            TypedNode::If {
+                condition,
+                children,
+            } => {
                 let tag = BoxDoc::text("<if {")
                     .append(condition.to_doc())
                     .append(BoxDoc::text("}>"));
@@ -182,7 +185,11 @@ impl TypedNode {
                     .append(BoxDoc::text("</for>"))
                 }
             }
-            TypedNode::Let { var, value, children } => {
+            TypedNode::Let {
+                var,
+                value,
+                children,
+            } => {
                 let tag = BoxDoc::text("<let {")
                     .append(BoxDoc::text(var.as_str()))
                     .append(BoxDoc::text(" = "))
@@ -210,7 +217,10 @@ impl TypedNode {
                         .append(BoxDoc::text("}>"));
                     let cases = arms.iter().map(|arm| {
                         let pattern = match &arm.pattern {
-                            EnumPattern::Variant { enum_name, variant_name } => {
+                            EnumPattern::Variant {
+                                enum_name,
+                                variant_name,
+                            } => {
                                 let base = BoxDoc::text(enum_name.as_str())
                                     .append(BoxDoc::text("::"))
                                     .append(BoxDoc::text(variant_name.as_str()));
@@ -250,7 +260,11 @@ impl TypedNode {
                         }
                     });
                     header
-                        .append(BoxDoc::line().append(BoxDoc::intersperse(cases, BoxDoc::line())).nest(2))
+                        .append(
+                            BoxDoc::line()
+                                .append(BoxDoc::intersperse(cases, BoxDoc::line()))
+                                .nest(2),
+                        )
                         .append(BoxDoc::line())
                         .append(BoxDoc::text("</match>"))
                 }
@@ -325,7 +339,9 @@ impl TypedNode {
                         None => BoxDoc::text("Some(_)"),
                     };
                     let some_case = {
-                        let case_header = BoxDoc::text("<case {").append(some_pattern).append(BoxDoc::text("}>"));
+                        let case_header = BoxDoc::text("<case {")
+                            .append(some_pattern)
+                            .append(BoxDoc::text("}>"));
                         if some_arm_body.is_empty() {
                             case_header.append(BoxDoc::text("</case>"))
                         } else {
@@ -397,7 +413,11 @@ impl TypedNode {
                     .append(BoxDoc::line())
                 };
                 if children.is_empty() {
-                    tag_with_attrs.append(BoxDoc::text(">")).append(BoxDoc::text("</")).append(BoxDoc::text(tag_name.as_str())).append(BoxDoc::text(">"))
+                    tag_with_attrs
+                        .append(BoxDoc::text(">"))
+                        .append(BoxDoc::text("</"))
+                        .append(BoxDoc::text(tag_name.as_str()))
+                        .append(BoxDoc::text(">"))
                 } else {
                     tag_with_attrs
                         .append(BoxDoc::text(">"))

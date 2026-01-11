@@ -30,11 +30,7 @@ impl WriteCoalescingPass {
                         Some((pending_id, ref accumulated)) => {
                             if accumulated.len() + text.len() < self.limit {
                                 // Safe to merge
-                                pending_write
-                                    .as_mut()
-                                    .unwrap()
-                                    .1
-                                    .push_str(&text);
+                                pending_write.as_mut().unwrap().1.push_str(&text);
                             } else {
                                 // Would exceed limit, flush pending and start new
                                 result.push(IrStatement::Write {
@@ -187,10 +183,7 @@ impl WriteCoalescingPass {
     }
 
     /// Run the pass on a component with the configured limit
-    pub fn run_with_limit(
-        &self,
-        mut entrypoint: IrComponentDeclaration,
-    ) -> IrComponentDeclaration {
+    pub fn run_with_limit(&self, mut entrypoint: IrComponentDeclaration) -> IrComponentDeclaration {
         entrypoint.body = self.transform_statements(entrypoint.body);
         entrypoint
     }

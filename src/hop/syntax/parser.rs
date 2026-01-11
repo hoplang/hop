@@ -11,7 +11,6 @@ use super::token_tree::{TokenTree, build_tree};
 use crate::document::document_cursor::{DocumentCursor, DocumentRange};
 use crate::dop;
 use crate::dop::ParsedDeclaration as DopParsedDeclaration;
-use crate::dop::Parser;
 use crate::dop::VarName;
 use crate::error_collector::ErrorCollector;
 use crate::hop::symbols::component_name::ComponentName;
@@ -43,7 +42,8 @@ impl AttributeValidator {
                 Ok(parsed_ast::ParsedAttributeValue::String(content.clone()))
             }
             tokenizer::TokenizedAttributeValue::Expression(range) => {
-                match Parser::from(range.clone()).parse_expr() {
+                let mut iter = range.cursor().peekable();
+                match dop::parser::parse_expr(&mut iter, range) {
                     Ok(expr) => Ok(parsed_ast::ParsedAttributeValue::Expression(expr)),
                     Err(err) => Err(err.into()),
                 }
@@ -143,7 +143,8 @@ pub fn parse(
         match &tree.token {
             Token::Text { range } => {
                 let mut decl_errors = ErrorCollector::new();
-                for decl in Parser::from(range.clone()).parse_declarations(&mut decl_errors) {
+                let mut iter = range.cursor().peekable();
+                for decl in dop::parser::parse_declarations(&mut iter, range, &mut decl_errors) {
                     match decl {
                         DopParsedDeclaration::Import {
                             name,
@@ -314,9 +315,9 @@ fn parse_component_declaration(
 
     // Parse parameters
     let params = expression.as_ref().and_then(|expr| {
+        let mut iter = expr.cursor().peekable();
         errors.ok_or_add(
-            Parser::from(expr.clone())
-                .parse_parameters()
+            dop::parser::parse_parameters(&mut iter, expr)
                 .map(|parsed_params| {
                     let params = parsed_params
                         .into_iter()
@@ -424,7 +425,8 @@ fn construct_nodes(
 
                         if let Some(expr_range) = expr_range {
                             // Parse the expression
-                            match Parser::from(expr_range.clone()).parse_expr() {
+                            let mut iter = expr_range.cursor().peekable();
+                            match dop::parser::parse_expr(&mut iter, &expr_range) {
                                 Ok(expression) => {
                                     nodes.push(ParsedNode::TextExpression {
                                         expression,
@@ -487,9 +489,10 @@ fn construct_nodes(
                         opening_tag_range.clone(),
                     )
                 });
-                let Some(subject) = errors.ok_or_add(
-                    expr.and_then(|e| Parser::from(e).parse_expr().map_err(|err| err.into())),
-                ) else {
+                let Some(subject) = errors.ok_or_add(expr.and_then(|e| {
+                    let mut iter = e.cursor().peekable();
+                    dop::parser::parse_expr(&mut iter, &e).map_err(|err| err.into())
+                })) else {
                     // Parse children normally for error recovery
                     let children: Vec<_> = tree
                         .children
@@ -532,11 +535,11 @@ fn construct_nodes(
                                 ));
                                 continue;
                             };
-                            let Some(pattern) = errors.ok_or_add(
-                                Parser::from(pattern_range.clone())
-                                    .parse_match_pattern()
-                                    .map_err(|err| err.into()),
-                            ) else {
+                            let Some(pattern) = errors.ok_or_add({
+                                let mut iter = pattern_range.cursor().peekable();
+                                dop::parser::parse_match_pattern(&mut iter, &pattern_range)
+                                    .map_err(|err| err.into())
+                            }) else {
                                 continue;
                             };
                             // Parse case children normally
@@ -614,9 +617,10 @@ fn construct_nodes(
                             opening_tag_range.clone(),
                         )
                     });
-                    let Some(condition) = errors.ok_or_add(
-                        expr.and_then(|e| Parser::from(e).parse_expr().map_err(|err| err.into())),
-                    ) else {
+                    let Some(condition) = errors.ok_or_add(expr.and_then(|e| {
+                        let mut iter = e.cursor().peekable();
+                        dop::parser::parse_expr(&mut iter, &e).map_err(|err| err.into())
+                    })) else {
                         return vec![];
                     };
                     vec![ParsedNode::If {
@@ -637,9 +641,8 @@ fn construct_nodes(
                             )
                         })
                         .and_then(|e| {
-                            Parser::from(e.clone())
-                                .parse_loop_header()
-                                .map_err(|err| err.into())
+                            let mut iter = e.cursor().peekable();
+                            dop::parser::parse_loop_header(&mut iter, &e).map_err(|err| err.into())
                         });
                     let Some((var_name, var_name_range, array_expr)) =
                         errors.ok_or_add(parse_result)
@@ -669,9 +672,8 @@ fn construct_nodes(
                             )
                         })
                         .and_then(|e| {
-                            Parser::from(e.clone())
-                                .parse_let_bindings()
-                                .map_err(|err| err.into())
+                            let mut iter = e.cursor().peekable();
+                            dop::parser::parse_let_bindings(&mut iter, &e).map_err(|err| err.into())
                         });
                     let Some(parsed_bindings) = errors.ok_or_add(parse_result) else {
                         return vec![ParsedNode::Placeholder {
@@ -734,7 +736,8 @@ fn construct_nodes(
 
                         let value = match &attr.value {
                             Some(tokenizer::TokenizedAttributeValue::Expression(range)) => {
-                                match Parser::from(range.clone()).parse_expr() {
+                                let mut iter = range.cursor().peekable();
+                                match dop::parser::parse_expr(&mut iter, range) {
                                     Ok(expr) => {
                                         Some(parsed_ast::ParsedAttributeValue::Expression(expr))
                                     }

@@ -108,9 +108,9 @@ impl TypedComponentDeclaration {
                                     .append(BoxDoc::text(": "))
                                     .append(ty.to_doc());
                                 match default {
-                                    Some(expr) => base
-                                        .append(BoxDoc::text(" = "))
-                                        .append(expr.to_doc()),
+                                    Some(expr) => {
+                                        base.append(BoxDoc::text(" = ")).append(expr.to_doc())
+                                    }
                                     None => base,
                                 }
                             }),
@@ -206,8 +206,7 @@ impl TypedAst {
         if docs.is_empty() {
             BoxDoc::nil()
         } else {
-            BoxDoc::intersperse(docs, BoxDoc::line().append(BoxDoc::line()))
-                .append(BoxDoc::line())
+            BoxDoc::intersperse(docs, BoxDoc::line().append(BoxDoc::line())).append(BoxDoc::line())
         }
     }
 }

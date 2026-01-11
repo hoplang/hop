@@ -311,7 +311,9 @@ impl ParsedNode {
                         .append(BoxDoc::line())
                 })
                 .append(BoxDoc::text("</for>")),
-            ParsedNode::Let { bindings, children, .. } => {
+            ParsedNode::Let {
+                bindings, children, ..
+            } => {
                 let bindings_doc = BoxDoc::line_()
                     .append(BoxDoc::intersperse(
                         bindings.iter().map(|b| {

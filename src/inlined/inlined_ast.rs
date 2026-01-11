@@ -86,9 +86,9 @@ impl InlinedParameter {
 impl InlinedAttributeValue {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            InlinedAttributeValue::Expression(expr) => {
-                BoxDoc::text("{").append(expr.to_doc()).append(BoxDoc::text("}"))
-            }
+            InlinedAttributeValue::Expression(expr) => BoxDoc::text("{")
+                .append(expr.to_doc())
+                .append(BoxDoc::text("}")),
             InlinedAttributeValue::String(s) => BoxDoc::text(format!("\"{}\"", s)),
         }
     }
@@ -321,7 +321,11 @@ impl InlinedNode {
                                                         .bindings
                                                         .iter()
                                                         .map(|(field, var)| {
-                                                            format!("{}: {}", field.as_str(), var.as_str())
+                                                            format!(
+                                                                "{}: {}",
+                                                                field.as_str(),
+                                                                var.as_str()
+                                                            )
                                                         })
                                                         .collect::<Vec<_>>()
                                                         .join(", ");

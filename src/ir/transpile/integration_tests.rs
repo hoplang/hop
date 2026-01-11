@@ -2344,7 +2344,11 @@ mod tests {
                 .component("Test", [], |t| {
                     t.let_stmt(
                         "ok",
-                        t.enum_variant_with_fields("Result", "Ok", vec![("value", t.str("success"))]),
+                        t.enum_variant_with_fields(
+                            "Result",
+                            "Ok",
+                            vec![("value", t.str("success"))],
+                        ),
                         |t| {
                             t.enum_match_stmt_with_bindings(
                                 t.var("ok"),

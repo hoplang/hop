@@ -58,14 +58,18 @@ pub enum ParseError {
         range: DocumentRange,
     },
 
-    #[error("Invalid argument name '{name}' on <{tag_name}>: argument names cannot contain hyphens")]
+    #[error(
+        "Invalid argument name '{name}' on <{tag_name}>: argument names cannot contain hyphens"
+    )]
     InvalidArgumentName {
         tag_name: StringSpan,
         name: StringSpan,
         range: DocumentRange,
     },
 
-    #[error("Unexpected expression on <{tag_name}>: use attribute syntax instead (e.g. attr={{value}})")]
+    #[error(
+        "Unexpected expression on <{tag_name}>: use attribute syntax instead (e.g. attr={{value}})"
+    )]
     UnexpectedComponentExpression {
         tag_name: StringSpan,
         range: DocumentRange,

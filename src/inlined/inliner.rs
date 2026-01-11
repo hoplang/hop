@@ -272,7 +272,14 @@ impl Inliner {
                     .expect("Component declaration should exist");
 
                 // Pass current context so slot_children can be inlined with children-derived vars resolved
-                Self::inline_component_reference(module, component, args, children, Some(ctx), ctx.asts)
+                Self::inline_component_reference(
+                    module,
+                    component,
+                    args,
+                    children,
+                    Some(ctx),
+                    ctx.asts,
+                )
             }
 
             TypedNode::Html {
@@ -311,12 +318,15 @@ impl Inliner {
             TypedNode::TextExpression { expression } => {
                 if let TypedExpr::Var { value, kind, .. } = expression {
                     if ctx.variable_holds_children(value.as_str()) {
-                        assert_eq!(*kind, Type::TrustedHTML, "children-derived variable in TextExpression must be TrustedHTML");
+                        assert_eq!(
+                            *kind,
+                            Type::TrustedHTML,
+                            "children-derived variable in TextExpression must be TrustedHTML"
+                        );
                         // slot_content is already inlined, just return it
-                        return ctx
-                            .slot_content
-                            .clone()
-                            .expect("children-derived TrustedHTML variable should have slot content");
+                        return ctx.slot_content.clone().expect(
+                            "children-derived TrustedHTML variable should have slot content",
+                        );
                     }
                 }
                 vec![InlinedNode::TextExpression {
@@ -370,8 +380,14 @@ impl Inliner {
                         Match::Option {
                             subject: subject.clone(),
                             some_arm_binding: some_arm_binding.clone(),
-                            some_arm_body: Box::new(Self::inline_nodes_with_ctx(some_arm_body, ctx)),
-                            none_arm_body: Box::new(Self::inline_nodes_with_ctx(none_arm_body, ctx)),
+                            some_arm_body: Box::new(Self::inline_nodes_with_ctx(
+                                some_arm_body,
+                                ctx,
+                            )),
+                            none_arm_body: Box::new(Self::inline_nodes_with_ctx(
+                                none_arm_body,
+                                ctx,
+                            )),
                         }
                     }
                     Match::Enum { subject, arms } => Match::Enum {

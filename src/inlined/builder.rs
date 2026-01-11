@@ -265,7 +265,12 @@ impl InlinedBuilder {
         });
     }
 
-    pub fn bool_match_expr(&self, subject: TypedExpr, true_value: &str, false_value: &str) -> TypedExpr {
+    pub fn bool_match_expr(
+        &self,
+        subject: TypedExpr,
+        true_value: &str,
+        false_value: &str,
+    ) -> TypedExpr {
         use crate::dop::patterns::Match;
 
         TypedExpr::Match {

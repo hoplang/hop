@@ -871,12 +871,10 @@ pub fn typecheck_expr(
             arms,
             range,
         } => typecheck_match(subject, arms, range, var_env, type_env, annotations),
-        ParsedExpr::MacroInvocation { name, args, range } => {
-            match name.as_str() {
-                "classes" => expand_classes_macro(args, range, var_env, type_env, annotations),
-                _ => unreachable!("Unknown macro '{}' should be caught at parse time", name),
-            }
-        }
+        ParsedExpr::MacroInvocation { name, args, range } => match name.as_str() {
+            "classes" => expand_classes_macro(args, range, var_env, type_env, annotations),
+            _ => unreachable!("Unknown macro '{}' should be caught at parse time", name),
+        },
     }
 }
 
@@ -1354,8 +1352,10 @@ fn decision_to_typed_expr(
 mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
+    use crate::document::document_cursor::DocumentCursor;
+    use crate::dop::ParsedDeclaration;
+    use crate::dop::parser;
     use crate::dop::symbols::type_name::TypeName;
-    use crate::dop::{ParsedDeclaration, Parser};
     use crate::error_collector::ErrorCollector;
     use crate::hop::symbols::module_name::ModuleName;
     use expect_test::{Expect, expect};
@@ -1367,9 +1367,11 @@ mod tests {
         let test_module = ModuleName::new("test").unwrap();
 
         // Parse and process declarations
-        let mut parser = Parser::from(declarations_str);
+        let cursor = DocumentCursor::new(declarations_str.to_string());
+        let range = cursor.range();
+        let mut iter = cursor.peekable();
         let mut errors = ErrorCollector::new();
-        for declaration in parser.parse_declarations(&mut errors) {
+        for declaration in parser::parse_declarations(&mut iter, &range, &mut errors) {
             match declaration {
                 ParsedDeclaration::Enum { name, variants, .. } => {
                     // Build variant types with properly resolved field types
@@ -1424,15 +1426,19 @@ mod tests {
         }
 
         for (var_name, type_str) in env_vars {
-            let mut parser = Parser::from(*type_str);
-            let parsed_type = parser.parse_type().expect("Failed to parse type");
+            let cursor = DocumentCursor::new(type_str.to_string());
+            let range = cursor.range();
+            let mut iter = cursor.peekable();
+            let parsed_type = parser::parse_type(&mut iter, &range).expect("Failed to parse type");
             let typ = resolve_type(&parsed_type, &mut type_env)
                 .expect("Test parameter type should be valid");
             let _ = env.push(var_name.to_string(), typ);
         }
 
-        let mut parser = Parser::from(expr_str);
-        let expr = parser.parse_expr().expect("Failed to parse expression");
+        let cursor = DocumentCursor::new(expr_str.to_string());
+        let range = cursor.range();
+        let mut iter = cursor.peekable();
+        let expr = parser::parse_expr(&mut iter, &range).expect("Failed to parse expression");
 
         let mut annotations = Vec::new();
 
@@ -4229,12 +4235,7 @@ mod tests {
 
     #[test]
     fn should_accept_classes_macro_with_string_literals() {
-        check(
-            "",
-            &[],
-            r#"classes!("hello", "world")"#,
-            expect!["String"],
-        );
+        check("", &[], r#"classes!("hello", "world")"#, expect!["String"]);
     }
 
     #[test]

@@ -740,7 +740,8 @@ impl Compiler {
 mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
-    use crate::dop::Parser;
+    use crate::document::document_cursor::DocumentCursor;
+    use crate::dop::parser;
     use crate::dop::symbols::field_name::FieldName;
     use crate::dop::symbols::type_name::TypeName;
     use crate::dop::syntax::parsed::ParsedExpr;
@@ -749,8 +750,10 @@ mod tests {
     use indoc::indoc;
 
     fn check(subject_type: Type, expr_str: &str, expected: Expect) {
-        let mut parser = Parser::from(expr_str);
-        let expr = parser.parse_expr().expect("Failed to parse expression");
+        let cursor = DocumentCursor::new(expr_str.to_string());
+        let range = cursor.range();
+        let mut iter = cursor.peekable();
+        let expr = parser::parse_expr(&mut iter, &range).expect("Failed to parse expression");
 
         let (subject_name, subject_range, patterns, match_range) = match expr {
             ParsedExpr::Match {

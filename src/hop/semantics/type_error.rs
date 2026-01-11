@@ -43,7 +43,9 @@ pub enum TypeError {
     #[error("The `children` argument cannot be passed explicitly; use component children instead")]
     ChildrenArgNotAllowed { range: DocumentRange },
 
-    #[error("Optional children (`children: Option[TrustedHTML]`) must have a default value (e.g., `= None`)")]
+    #[error(
+        "Optional children (`children: Option[TrustedHTML]`) must have a default value (e.g., `= None`)"
+    )]
     OptionalChildrenRequiresDefault { range: DocumentRange },
 
     #[error(
