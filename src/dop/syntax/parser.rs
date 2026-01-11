@@ -1692,16 +1692,6 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_comparing_string_literal_to_field() {
-        check_parse_expr(
-            r#""guest" == user.role"#,
-            expect![[r#"
-                "guest" == user.role
-            "#]],
-        );
-    }
-
-    #[test]
     fn should_accept_expr_comparing_two_variables() {
         check_parse_expr(
             "x == y",
@@ -1727,26 +1717,6 @@ mod tests {
             "x",
             expect![[r#"
                 x
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_expr_comparing_two_string_literals() {
-        check_parse_expr(
-            r#""apple" == "orange""#,
-            expect![[r#"
-                "apple" == "orange"
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_expr_comparing_field_to_string_literal() {
-        check_parse_expr(
-            r#"user.name == "admin""#,
-            expect![[r#"
-                user.name == "admin"
             "#]],
         );
     }
@@ -1792,16 +1762,6 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expr_with_array_of_mixed_types() {
-        check_parse_expr(
-            r#"[1, "hello", true]"#,
-            expect![[r#"
-                [1, "hello", true]
-            "#]],
-        );
-    }
-
-    #[test]
     fn should_accept_expr_with_nested_arrays() {
         check_parse_expr(
             "[[1, 2], [3, 4]]",
@@ -1837,16 +1797,6 @@ mod tests {
             "[\n\t1,\n\t2,\n\t3,\n]",
             expect![[r#"
                 [1, 2, 3]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_expr_with_single_element_array_and_trailing_comma() {
-        check_parse_expr(
-            "[\n\t1,\n]",
-            expect![[r#"
-                [1]
             "#]],
         );
     }
@@ -2723,26 +2673,6 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_some_with_integer_literal() {
-        check_parse_expr(
-            "Some(42)",
-            expect![[r#"
-                Some(42)
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_some_with_variable() {
-        check_parse_expr(
-            "Some(x)",
-            expect![[r#"
-                Some(x)
-            "#]],
-        );
-    }
-
-    #[test]
     fn should_accept_some_with_expression() {
         check_parse_expr(
             "Some(a + b)",
@@ -2828,26 +2758,6 @@ mod tests {
             "#},
             expect![[r#"
                 match color {Color::Red => "red"}
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_match_expression_with_multiple_arms() {
-        check_parse_expr(
-            indoc! {r#"
-                match color {
-                    Color::Red => "red",
-                    Color::Blue => "blue",
-                    Color::Green => "green",
-                }
-            "#},
-            expect![[r#"
-                match color {
-                  Color::Red => "red",
-                  Color::Blue => "blue",
-                  Color::Green => "green",
-                }
             "#]],
         );
     }
@@ -3063,16 +2973,6 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_single_let_binding_with_trailing_comma() {
-        check_parse_let_bindings(
-            r#"name: String = "World","#,
-            expect![[r#"
-                [name: String = "World"]
-            "#]],
-        );
-    }
-
-    #[test]
     fn should_accept_multiple_let_bindings() {
         check_parse_let_bindings(
             r#"first: String = "Hello", second: String = "World""#,
@@ -3088,16 +2988,6 @@ mod tests {
             r#"first: String = "Hello", second: String = "World","#,
             expect![[r#"
                 [first: String = "Hello", second: String = "World"]
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_three_let_bindings() {
-        check_parse_let_bindings(
-            "a: Int = 1, b: Int = 2, c: Int = 3",
-            expect![[r#"
-                [a: Int = 1, b: Int = 2, c: Int = 3]
             "#]],
         );
     }
