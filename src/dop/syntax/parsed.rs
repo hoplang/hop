@@ -314,7 +314,7 @@ pub enum ParsedExpr {
 
 impl ParsedBinaryOp {
     /// Returns the precedence of this operator (higher = binds tighter).
-    fn precedence(&self) -> u8 {
+    pub fn precedence(&self) -> u8 {
         match self {
             ParsedBinaryOp::LogicalOr => 1,
             ParsedBinaryOp::LogicalAnd => 2,
@@ -526,22 +526,7 @@ impl ParsedExpr {
                 None => BoxDoc::text("None"),
             },
             ParsedExpr::MacroInvocation { name, args, .. } => {
-                // For classes! macro, expand string literals with spaces into separate arguments
-                let expanded_docs: Vec<BoxDoc<'_>> = if name == "classes" {
-                    args.iter()
-                        .flat_map(|e| match e {
-                            ParsedExpr::StringLiteral { value, .. } => value
-                                .split_whitespace()
-                                .map(|part| BoxDoc::text(format!("\"{}\"", part)))
-                                .collect::<Vec<_>>(),
-                            _ => vec![e.to_doc()],
-                        })
-                        .collect()
-                } else {
-                    args.iter().map(|e| e.to_doc()).collect()
-                };
-
-                if expanded_docs.is_empty() {
+                if args.is_empty() {
                     BoxDoc::text(name.as_str()).append(BoxDoc::text("!()"))
                 } else {
                     BoxDoc::text(name.as_str())
@@ -549,7 +534,7 @@ impl ParsedExpr {
                         .append(
                             BoxDoc::line_()
                                 .append(BoxDoc::intersperse(
-                                    expanded_docs,
+                                    args.iter().map(|e| e.to_doc()),
                                     BoxDoc::text(",").append(BoxDoc::line()),
                                 ))
                                 .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))

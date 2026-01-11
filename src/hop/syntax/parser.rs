@@ -187,16 +187,18 @@ pub fn parse(
                             name,
                             name_range,
                             fields,
-                            range: _,
+                            range,
                         } => {
                             let record = ParsedRecordDeclaration {
                                 name: name.clone(),
                                 name_range: name_range.clone(),
+                                range: range.clone(),
                                 fields: fields
                                     .iter()
-                                    .map(|(field_name, _field_name_range, field_type)| {
+                                    .map(|(field_name, field_name_range, field_type)| {
                                         ParsedRecordDeclarationField {
                                             name: field_name.clone(),
+                                            name_range: field_name_range.clone(),
                                             field_type: field_type.clone(),
                                         }
                                     })
@@ -221,16 +223,20 @@ pub fn parse(
                             name,
                             name_range,
                             variants,
-                            range: _,
+                            range,
                         } => {
                             let enum_decl = ParsedEnumDeclaration {
                                 name: name.clone(),
                                 name_range: name_range.clone(),
+                                range: range.clone(),
                                 variants: variants
                                     .iter()
-                                    .map(|(name, _range, fields)| ParsedEnumDeclarationVariant {
-                                        name: name.clone(),
-                                        fields: fields.clone(),
+                                    .map(|(name, name_range, fields)| {
+                                        ParsedEnumDeclarationVariant {
+                                            name: name.clone(),
+                                            name_range: name_range.clone(),
+                                            fields: fields.clone(),
+                                        }
                                     })
                                     .collect(),
                             };

@@ -251,6 +251,7 @@ impl ParsedImportDeclaration {
 #[derive(Debug, Clone)]
 pub struct ParsedRecordDeclarationField {
     pub name: FieldName,
+    pub name_range: DocumentRange,
     pub field_type: ParsedType,
 }
 
@@ -266,6 +267,7 @@ impl ParsedRecordDeclarationField {
 pub struct ParsedRecordDeclaration {
     pub name: TypeName,
     pub name_range: DocumentRange,
+    pub range: DocumentRange,
     pub fields: Vec<ParsedRecordDeclarationField>,
 }
 
@@ -299,6 +301,7 @@ impl ParsedRecordDeclaration {
 #[derive(Debug, Clone)]
 pub struct ParsedEnumDeclarationVariant {
     pub name: TypeName,
+    pub name_range: DocumentRange,
     /// Optional fields for this variant (empty for unit variants)
     pub fields: Vec<(FieldName, DocumentRange, ParsedType)>,
 }
@@ -327,6 +330,7 @@ impl ParsedEnumDeclarationVariant {
 pub struct ParsedEnumDeclaration {
     pub name: TypeName,
     pub name_range: DocumentRange,
+    pub range: DocumentRange,
     pub variants: Vec<ParsedEnumDeclarationVariant>,
 }
 

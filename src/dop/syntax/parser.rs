@@ -1226,6 +1226,9 @@ pub fn parse_declarations(
         }
     }
 
+    // TODO: Expect eof?
+    next(iter, comments);
+
     declarations
 }
 

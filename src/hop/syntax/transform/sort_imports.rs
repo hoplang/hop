@@ -33,7 +33,11 @@ pub fn sort_imports(ast: ParsedAst) -> ParsedAst {
         .chain(non_imports)
         .collect();
 
-    ParsedAst::new(ast.name.clone(), sorted_declarations, ast.comments().to_vec())
+    ParsedAst::new(
+        ast.name.clone(),
+        sorted_declarations,
+        ast.comments().to_vec(),
+    )
 }
 
 #[cfg(test)]
