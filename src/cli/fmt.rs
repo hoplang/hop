@@ -181,38 +181,4 @@ mod tests {
         assert_eq!(main_content, "<Main><div>hello</div></Main>\n");
     }
 
-    #[test]
-    fn sorts_imports_alphabetically() {
-        let archive = Archive::from(indoc! {r#"
-            -- hop.toml --
-            [compile]
-            target = "ts"
-            output_path = "app.ts"
-            -- main.hop --
-            import zebra::Animal
-            import apple::Fruit
-            import mango::Tropical
-            <Main></Main>
-        "#});
-
-        let temp_dir = temp_dir_from_archive(&archive).unwrap();
-        let project_root = ProjectRoot::from(&temp_dir).unwrap();
-
-        let result = execute(&project_root, None).unwrap();
-
-        assert_eq!(result.files_formatted, 1);
-        assert_eq!(result.files_unchanged, 0);
-
-        let formatted_content = fs::read_to_string(temp_dir.join("main.hop")).unwrap();
-        assert_eq!(
-            formatted_content,
-            indoc! {r#"
-                import apple::Fruit
-                import mango::Tropical
-                import zebra::Animal
-
-                <Main></Main>
-            "#}
-        );
-    }
 }

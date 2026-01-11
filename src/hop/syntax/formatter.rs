@@ -7,7 +7,6 @@ use super::parsed_ast::{
     ParsedRecordDeclarationField,
 };
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
-use super::transform::sort_imports::sort_imports;
 use super::transform::whitespace_removal::remove_whitespace;
 use crate::common::is_void_element;
 use crate::document::document_cursor::{DocumentRange, Ranged};
@@ -18,7 +17,6 @@ use pretty::BoxDoc;
 
 pub fn format(ast: ParsedAst) -> String {
     let ast = remove_whitespace(ast);
-    let ast = sort_imports(ast);
     format_ast(&ast).pretty(60).to_string()
 }
 
@@ -119,7 +117,7 @@ fn format_declaration<'a>(
     comments: &mut VecDeque<&'a (String, DocumentRange)>,
 ) -> BoxDoc<'a> {
     match decl {
-        ParsedDeclaration::Import(import) => format_import_declaration(import),
+        ParsedDeclaration::Import(import) => format_import_declaration(import, comments),
         ParsedDeclaration::Record(record) => format_record_declaration(record, comments),
         ParsedDeclaration::Enum(e) => format_enum_declaration(e, comments),
         ParsedDeclaration::Component(component) => {
@@ -128,8 +126,13 @@ fn format_declaration<'a>(
     }
 }
 
-fn format_import_declaration(import: &ParsedImportDeclaration) -> BoxDoc<'_> {
-    BoxDoc::text("import")
+fn format_import_declaration<'a>(
+    import: &'a ParsedImportDeclaration,
+    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+) -> BoxDoc<'a> {
+    let leading_comments = drain_comments_before(comments, import.path.start());
+    leading_comments
+        .append(BoxDoc::text("import"))
         .append(BoxDoc::space())
         .append(BoxDoc::text(import.module_name.to_string()))
         .append(BoxDoc::text("::"))
@@ -886,9 +889,9 @@ mod tests {
                 record User { name: String }
             "},
             expect![[r#"
+                import foo::Bar
                 import baz::Qux
                 import components::Button
-                import foo::Bar
 
                 record User {
                   name: String,
@@ -2145,6 +2148,45 @@ mod tests {
                     {last_name}
                   </let>
                 </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn comment_before_import_declaration() {
+        check(
+            indoc! {"
+                // External component
+                import components::Button
+                <Main></Main>
+            "},
+            expect![[r#"
+                // External component
+                import components::Button
+
+                <Main></Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn comments_before_imports() {
+        check(
+            indoc! {"
+                // c
+                import c::Baz
+                // b
+                import b::Bar
+                // a
+                import a::Foo
+            "},
+            expect![[r#"
+                // c
+                import c::Baz
+                // b
+                import b::Bar
+                // a
+                import a::Foo
             "#]],
         );
     }
