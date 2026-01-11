@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::fmt::{self, Display};
 
 use crate::document::document_cursor::{DocumentRange, Ranged};
@@ -110,14 +111,14 @@ impl ParsedDeclaration {
 pub struct ParsedAst {
     pub name: ModuleName,
     declarations: Vec<ParsedDeclaration>,
-    comments: Vec<(String, DocumentRange)>,
+    comments: VecDeque<(String, DocumentRange)>,
 }
 
 impl ParsedAst {
     pub fn new(
         name: ModuleName,
         declarations: Vec<ParsedDeclaration>,
-        comments: Vec<(String, DocumentRange)>,
+        comments: VecDeque<(String, DocumentRange)>,
     ) -> Self {
         Self {
             name,
@@ -126,7 +127,7 @@ impl ParsedAst {
         }
     }
 
-    pub fn comments(&self) -> &[(String, DocumentRange)] {
+    pub fn comments(&self) -> &VecDeque<(String, DocumentRange)> {
         &self.comments
     }
 

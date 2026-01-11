@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use super::r#type::{NumericType, Type};
 use super::type_error::TypeError;
 use crate::document::document_cursor::DocumentRange;
@@ -1371,7 +1373,7 @@ mod tests {
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut errors = ErrorCollector::new();
-        let mut comments = Vec::new();
+        let mut comments = VecDeque::new();
         for declaration in parser::parse_declarations(&mut iter, &mut comments, &range, &mut errors)
         {
             match declaration {
@@ -1431,7 +1433,7 @@ mod tests {
             let cursor = DocumentCursor::new(type_str.to_string());
             let range = cursor.range();
             let mut iter = cursor.peekable();
-            let mut comments = Vec::new();
+            let mut comments = VecDeque::new();
             let parsed_type =
                 parser::parse_type(&mut iter, &mut comments, &range).expect("Failed to parse type");
             let typ = resolve_type(&parsed_type, &mut type_env)
@@ -1442,7 +1444,7 @@ mod tests {
         let cursor = DocumentCursor::new(expr_str.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
-        let mut comments = Vec::new();
+        let mut comments = VecDeque::new();
         let expr = parser::parse_expr(&mut iter, &mut comments, &range)
             .expect("Failed to parse expression");
 

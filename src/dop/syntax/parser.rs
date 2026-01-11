@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::iter::Peekable;
 
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, StringSpan};
@@ -18,7 +18,7 @@ use super::tokenizer;
 
 fn next(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
 ) -> Option<Result<(Token, DocumentRange), ParseError>> {
     tokenizer::next_collecting_comments(iter, comments)
 }
@@ -29,7 +29,7 @@ fn peek(iter: &Peekable<DocumentCursor>) -> Option<Result<(Token, DocumentRange)
 
 fn next_if<F>(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     predicate: F,
 ) -> Option<Result<(Token, DocumentRange), ParseError>>
 where
@@ -43,7 +43,7 @@ where
 
 fn advance_if(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     token: Token,
 ) -> Option<DocumentRange> {
     match next_if(iter, comments, |res| {
@@ -56,7 +56,7 @@ fn advance_if(
 
 fn expect_token(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
     expected: &Token,
 ) -> Result<DocumentRange, ParseError> {
@@ -76,7 +76,7 @@ fn expect_token(
 
 fn expect_opposite(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     token: &Token,
     token_range: &DocumentRange,
 ) -> Result<DocumentRange, ParseError> {
@@ -98,7 +98,7 @@ fn expect_opposite(
 
 fn expect_variable_name(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<(VarName, DocumentRange), ParseError> {
     match next(iter, comments).transpose()? {
@@ -123,7 +123,7 @@ fn expect_variable_name(
 
 fn expect_field_name(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<(FieldName, DocumentRange), ParseError> {
     match next(iter, comments).transpose()? {
@@ -148,7 +148,7 @@ fn expect_field_name(
 
 fn expect_type_name(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<(TypeName, DocumentRange), ParseError> {
     match next(iter, comments).transpose()? {
@@ -172,7 +172,7 @@ fn expect_type_name(
 
 fn expect_eof(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
 ) -> Result<(), ParseError> {
     match next(iter, comments).transpose()? {
         None => Ok(()),
@@ -185,7 +185,7 @@ fn expect_eof(
 
 fn parse_comma_separated<F>(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
     mut parse: F,
     end_token: Option<&Token>,
@@ -193,7 +193,7 @@ fn parse_comma_separated<F>(
 where
     F: FnMut(
         &mut Peekable<DocumentCursor>,
-        &mut Vec<(String, DocumentRange)>,
+        &mut VecDeque<(String, DocumentRange)>,
         &DocumentRange,
     ) -> Result<(), ParseError>,
 {
@@ -211,7 +211,7 @@ where
 
 fn parse_delimited_list<F>(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
     opening_token: &Token,
     opening_range: &DocumentRange,
@@ -220,7 +220,7 @@ fn parse_delimited_list<F>(
 where
     F: FnMut(
         &mut Peekable<DocumentCursor>,
-        &mut Vec<(String, DocumentRange)>,
+        &mut VecDeque<(String, DocumentRange)>,
         &DocumentRange,
     ) -> Result<(), ParseError>,
 {
@@ -234,7 +234,7 @@ where
 
 pub fn parse_expr(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<ParsedExpr, ParseError> {
     let result = parse_logical(iter, comments, range)?;
@@ -244,7 +244,7 @@ pub fn parse_expr(
 
 pub fn parse_loop_header(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<(VarName, DocumentRange, ParsedExpr), ParseError> {
     let (var_name, var_name_range) = expect_variable_name(iter, comments, range)?;
@@ -256,7 +256,7 @@ pub fn parse_loop_header(
 
 pub fn parse_let_bindings(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<Vec<(VarName, DocumentRange, ParsedType, ParsedExpr)>, ParseError> {
     let mut bindings = Vec::new();
@@ -281,7 +281,7 @@ pub fn parse_let_bindings(
 
 fn parse_parameter(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<((VarName, DocumentRange), ParsedType, Option<ParsedExpr>), ParseError> {
     let (var_name, var_name_range) = expect_variable_name(iter, comments, range)?;
@@ -297,7 +297,7 @@ fn parse_parameter(
 
 pub fn parse_parameters(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<Vec<((VarName, DocumentRange), ParsedType, Option<ParsedExpr>)>, ParseError> {
     let mut params = Vec::new();
@@ -326,7 +326,7 @@ pub fn parse_parameters(
 
 pub fn parse_type(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<ParsedType, ParseError> {
     match next(iter, comments).transpose()? {
@@ -373,7 +373,7 @@ pub fn parse_type(
 
 fn parse_logical(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<ParsedExpr, ParseError> {
     let mut expr = parse_logical_and(iter, comments, range)?;
@@ -391,7 +391,7 @@ fn parse_logical(
 
 fn parse_logical_and(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<ParsedExpr, ParseError> {
     let mut expr = parse_equality(iter, comments, range)?;
@@ -409,7 +409,7 @@ fn parse_logical_and(
 
 fn parse_equality(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<ParsedExpr, ParseError> {
     let mut expr = parse_relational(iter, comments, range)?;
@@ -439,7 +439,7 @@ fn parse_equality(
 
 fn parse_relational(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<ParsedExpr, ParseError> {
     let mut expr = parse_additive(iter, comments, range)?;
@@ -485,7 +485,7 @@ fn parse_relational(
 
 fn parse_additive(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<ParsedExpr, ParseError> {
     let mut expr = parse_multiplicative(iter, comments, range)?;
@@ -515,7 +515,7 @@ fn parse_additive(
 
 fn parse_multiplicative(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<ParsedExpr, ParseError> {
     let mut expr = parse_unary(iter, comments, range)?;
@@ -533,7 +533,7 @@ fn parse_multiplicative(
 
 fn parse_unary(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<ParsedExpr, ParseError> {
     if let Some(operator_range) = advance_if(iter, comments, Token::Not) {
@@ -549,7 +549,7 @@ fn parse_unary(
 
 fn parse_array_literal(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
     left_bracket: DocumentRange,
 ) -> Result<ParsedExpr, ParseError> {
@@ -573,7 +573,7 @@ fn parse_array_literal(
 
 fn parse_field_access(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     _range: &DocumentRange,
     identifier: StringSpan,
     id_range: DocumentRange,
@@ -622,7 +622,7 @@ fn parse_field_access(
 
 fn parse_primary(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<ParsedExpr, ParseError> {
     match next(iter, comments).transpose()? {
@@ -696,7 +696,7 @@ fn parse_primary(
 
 fn parse_macro_invocation(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
     macro_name: StringSpan,
     name_range: DocumentRange,
@@ -732,7 +732,7 @@ fn parse_macro_invocation(
 
 fn parse_record_literal(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
     name: StringSpan,
     name_range: DocumentRange,
@@ -761,7 +761,7 @@ fn parse_record_literal(
 
 fn parse_enum_literal(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
     enum_name: StringSpan,
     enum_name_range: DocumentRange,
@@ -806,7 +806,7 @@ fn parse_enum_literal(
 
 pub fn parse_match_pattern(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<ParsedMatchPattern, ParseError> {
     if let Some(pattern_range) = advance_if(iter, comments, Token::Underscore) {
@@ -940,7 +940,7 @@ pub fn parse_match_pattern(
 
 fn parse_match_expr(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
     match_range: DocumentRange,
 ) -> Result<ParsedExpr, ParseError> {
@@ -972,7 +972,7 @@ fn parse_match_expr(
 
 fn parse_import_declaration(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<ParsedDeclaration, ParseError> {
     let import_range = expect_token(iter, comments, range, &Token::Import)?;
@@ -1057,7 +1057,7 @@ fn parse_import_declaration(
 
 fn parse_record_declaration(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<ParsedDeclaration, ParseError> {
     let start_range = expect_token(iter, comments, range, &Token::Record)?;
@@ -1099,7 +1099,7 @@ fn parse_record_declaration(
 
 fn parse_enum_declaration(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<ParsedDeclaration, ParseError> {
     let start_range = expect_token(iter, comments, range, &Token::Enum)?;
@@ -1146,7 +1146,7 @@ fn parse_enum_declaration(
 
 fn parse_enum_variant_fields(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
 ) -> Result<Vec<(FieldName, DocumentRange, ParsedType)>, ParseError> {
     let mut fields = Vec::new();
@@ -1185,7 +1185,7 @@ fn parse_enum_variant_fields(
 
 pub fn parse_declarations(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
     errors: &mut ErrorCollector<ParseError>,
 ) -> Vec<ParsedDeclaration> {
@@ -1257,7 +1257,7 @@ mod tests {
         let cursor = DocumentCursor::new(input.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
-        let mut comments = Vec::new();
+        let mut comments = VecDeque::new();
         let actual = match parse_expr(&mut iter, &mut comments, &range) {
             Ok(result) => format!("{}\n", result),
             Err(err) => annotate_error(err),
@@ -1269,7 +1269,7 @@ mod tests {
         let cursor = DocumentCursor::new(input.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
-        let mut comments = Vec::new();
+        let mut comments = VecDeque::new();
 
         let actual = match parse_parameters(&mut iter, &mut comments, &range) {
             Ok(result) => {
@@ -1297,7 +1297,7 @@ mod tests {
         let cursor = DocumentCursor::new(input.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
-        let mut comments = Vec::new();
+        let mut comments = VecDeque::new();
         let declarations = parse_declarations(&mut iter, &mut comments, &range, &mut errors);
 
         let actual = if !errors.is_empty() {
@@ -3276,7 +3276,7 @@ mod tests {
         let cursor = DocumentCursor::new(input.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
-        let mut comments = Vec::new();
+        let mut comments = VecDeque::new();
         let actual = match parse_let_bindings(&mut iter, &mut comments, &range) {
             Ok(result) => {
                 let bindings: Vec<String> = result

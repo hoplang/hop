@@ -36,7 +36,7 @@ pub fn sort_imports(ast: ParsedAst) -> ParsedAst {
     ParsedAst::new(
         ast.name.clone(),
         sorted_declarations,
-        ast.comments().to_vec(),
+        ast.comments().clone(),
     )
 }
 

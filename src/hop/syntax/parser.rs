@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::iter::Peekable;
 
 use super::parsed_ast::{
@@ -36,7 +36,7 @@ impl AttributeValidator {
 
     fn parse_attribute_value(
         value: &tokenizer::TokenizedAttributeValue,
-        comments: &mut Vec<(String, DocumentRange)>,
+        comments: &mut VecDeque<(String, DocumentRange)>,
     ) -> Result<parsed_ast::ParsedAttributeValue, ParseError> {
         match value {
             tokenizer::TokenizedAttributeValue::String { content } => {
@@ -55,7 +55,7 @@ impl AttributeValidator {
     // Parse an attribute or return an error.
     fn parse(
         attr: &tokenizer::TokenizedAttribute,
-        comments: &mut Vec<(String, DocumentRange)>,
+        comments: &mut VecDeque<(String, DocumentRange)>,
     ) -> Result<parsed_ast::ParsedAttribute, ParseError> {
         match &attr.value {
             Some(val) => Ok(parsed_ast::ParsedAttribute {
@@ -82,7 +82,7 @@ impl AttributeValidator {
 
     fn parse_unrecognized(
         &self,
-        comments: &mut Vec<(String, DocumentRange)>,
+        comments: &mut VecDeque<(String, DocumentRange)>,
     ) -> Vec<Result<parsed_ast::ParsedAttribute, ParseError>> {
         self.attributes
             .iter()
@@ -143,7 +143,7 @@ pub fn parse(
     let mut defined_enums = HashSet::new();
 
     // Collect all comments from parsed expressions
-    let mut comments = Vec::new();
+    let mut comments = VecDeque::new();
 
     // Process token trees
     for mut tree in trees {
@@ -309,7 +309,7 @@ pub fn parse(
 fn parse_component_declaration(
     tree: TokenTree,
     children: Vec<ParsedNode>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     errors: &mut ErrorCollector<ParseError>,
 ) -> Option<ParsedComponentDeclaration> {
     let Token::OpeningTag {
@@ -380,7 +380,7 @@ fn is_raw_text_element(tag_name: &str) -> bool {
 
 fn construct_nodes(
     tree: TokenTree,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
     errors: &mut ErrorCollector<ParseError>,
     module_name: &ModuleName,
     defined_components: &HashSet<String>,

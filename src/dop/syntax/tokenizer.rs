@@ -1,6 +1,8 @@
-use itertools::Itertools as _;
+use std::collections::VecDeque;
 use std::iter::Peekable;
 use std::str::FromStr;
+
+use itertools::Itertools as _;
 
 use crate::document::document_cursor::{DocumentCursor, DocumentRange};
 
@@ -174,15 +176,15 @@ pub fn next(
     })
 }
 
-/// Returns the next non-comment token, collecting any comment tokens into the provided vec.
+/// Returns the next non-comment token, collecting any comment tokens into the provided deque.
 pub fn next_collecting_comments(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut Vec<(String, DocumentRange)>,
+    comments: &mut VecDeque<(String, DocumentRange)>,
 ) -> Option<Result<(Token, DocumentRange), ParseError>> {
     loop {
         match next(iter) {
             Some(Ok((Token::Comment(text), range))) => {
-                comments.push((text, range));
+                comments.push_back((text, range));
                 continue;
             }
             other => return other,
@@ -195,7 +197,7 @@ pub fn peek_past_comments(
     iter: &Peekable<DocumentCursor>,
 ) -> Option<Result<(Token, DocumentRange), ParseError>> {
     let mut cloned = iter.clone();
-    let mut discarded = Vec::new();
+    let mut discarded = VecDeque::new();
     next_collecting_comments(&mut cloned, &mut discarded)
 }
 
