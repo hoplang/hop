@@ -1,244 +1,209 @@
 use itertools::Itertools as _;
+use std::iter::Peekable;
+use std::str::FromStr;
 
 use crate::document::document_cursor::{DocumentCursor, DocumentRange};
-use std::{iter::Peekable, str::FromStr};
 
-use super::{parse_error::ParseError, token::Token};
+use super::parse_error::ParseError;
+use super::token::Token;
 
-pub struct Tokenizer {
-    iter: Peekable<DocumentCursor>,
-}
-
-/// A filtered token stream that skips comments.
-/// Used by the parser to transparently ignore comment tokens.
-pub struct CommentSkippingTokenizer {
-    inner: Tokenizer,
-}
-
-impl From<Tokenizer> for CommentSkippingTokenizer {
-    fn from(inner: Tokenizer) -> Self {
-        Self { inner }
+pub fn next(
+    iter: &mut Peekable<DocumentCursor>,
+) -> Option<Result<(Token, DocumentRange), ParseError>> {
+    // Skip whitespace
+    while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
+        iter.next();
     }
-}
 
-impl Iterator for CommentSkippingTokenizer {
-    type Item = Result<(Token, DocumentRange), ParseError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            match self.inner.next() {
-                Some(Ok((Token::Comment(_), _))) => continue,
-                other => return other,
+    iter.next().map(|start| {
+        match start.ch() {
+            '.' => Ok((Token::Dot, start)),
+            '(' => Ok((Token::LeftParen, start)),
+            ')' => Ok((Token::RightParen, start)),
+            '[' => Ok((Token::LeftBracket, start)),
+            ']' => Ok((Token::RightBracket, start)),
+            '{' => Ok((Token::LeftBrace, start)),
+            '}' => Ok((Token::RightBrace, start)),
+            ':' => match iter.next_if(|s| s.ch() == ':') {
+                Some(end) => Ok((Token::ColonColon, start.to(end))),
+                None => Ok((Token::Colon, start)),
+            },
+            ',' => Ok((Token::Comma, start)),
+            '+' => Ok((Token::Plus, start)),
+            '-' => match iter.next_if(|s| s.ch() == '>') {
+                Some(end) => Ok((Token::Arrow, start.to(end))),
+                None => Ok((Token::Minus, start)),
+            },
+            '*' => Ok((Token::Asterisk, start)),
+            '&' => match iter.next_if(|s| s.ch() == '&') {
+                Some(end) => Ok((Token::LogicalAnd, start.to(end))),
+                None => Err(ParseError::UnexpectedCharacter {
+                    ch: '&',
+                    range: start,
+                }),
+            },
+            '|' => match iter.next_if(|s| s.ch() == '|') {
+                Some(end) => Ok((Token::LogicalOr, start.to(end))),
+                None => Err(ParseError::UnexpectedCharacter {
+                    ch: '|',
+                    range: start,
+                }),
+            },
+            '/' => match iter.next_if(|s| s.ch() == '/') {
+                Some(_) => {
+                    let comment = start.extend(iter.peeking_take_while(|s| s.ch() != '\n'));
+                    // Extract just the comment text (after the //)
+                    let text = comment
+                        .as_str()
+                        .strip_prefix("//")
+                        .unwrap_or("")
+                        .to_string();
+                    Ok((Token::Comment(text), comment))
+                }
+                None => Err(ParseError::UnexpectedCharacter {
+                    ch: '/',
+                    range: start,
+                }),
+            },
+            '!' => match iter.next_if(|s| s.ch() == '=') {
+                Some(end) => Ok((Token::NotEq, start.to(end))),
+                None => Ok((Token::Not, start)),
+            },
+            '<' => match iter.next_if(|s| s.ch() == '=') {
+                Some(end) => Ok((Token::LessThanOrEqual, start.to(end))),
+                None => Ok((Token::LessThan, start)),
+            },
+            '>' => match iter.next_if(|s| s.ch() == '=') {
+                Some(end) => Ok((Token::GreaterThanOrEqual, start.to(end))),
+                None => Ok((Token::GreaterThan, start)),
+            },
+            '=' => match iter.peek().map(|s| s.ch()) {
+                Some('=') => {
+                    let end = iter.next().unwrap();
+                    Ok((Token::Eq, start.to(end)))
+                }
+                Some('>') => {
+                    let end = iter.next().unwrap();
+                    Ok((Token::FatArrow, start.to(end)))
+                }
+                _ => Ok((Token::Assign, start)),
+            },
+            '"' => {
+                let mut end_range = start.clone();
+                let mut result = String::new();
+                while let Some(s) = iter.next_if(|s| s.ch() != '"') {
+                    result.push(s.ch());
+                    end_range = s;
+                }
+                match iter.next() {
+                    None => Err(ParseError::UnterminatedStringLiteral {
+                        range: start.to(end_range),
+                    }),
+                    Some(end) => Ok((Token::StringLiteral(result), start.to(end))),
+                }
             }
-        }
-    }
-}
-
-impl From<DocumentCursor> for Tokenizer {
-    fn from(iter: DocumentCursor) -> Self {
-        Self {
-            iter: iter.peekable(),
-        }
-    }
-}
-
-impl From<Peekable<DocumentCursor>> for Tokenizer {
-    fn from(iter: Peekable<DocumentCursor>) -> Self {
-        Self { iter }
-    }
-}
-
-impl From<String> for Tokenizer {
-    fn from(input: String) -> Self {
-        Self {
-            iter: DocumentCursor::new(input).peekable(),
-        }
-    }
-}
-
-impl From<&str> for Tokenizer {
-    fn from(input: &str) -> Self {
-        Self::from(input.to_string())
-    }
-}
-
-impl Iterator for Tokenizer {
-    type Item = Result<(Token, DocumentRange), ParseError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while self.iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
-            self.iter.next();
-        }
-
-        self.iter.next().map(|start| {
-            match start.ch() {
-                '.' => Ok((Token::Dot, start)),
-                '(' => Ok((Token::LeftParen, start)),
-                ')' => Ok((Token::RightParen, start)),
-                '[' => Ok((Token::LeftBracket, start)),
-                ']' => Ok((Token::RightBracket, start)),
-                '{' => Ok((Token::LeftBrace, start)),
-                '}' => Ok((Token::RightBrace, start)),
-                ':' => match self.iter.next_if(|s| s.ch() == ':') {
-                    Some(end) => Ok((Token::ColonColon, start.to(end))),
-                    None => Ok((Token::Colon, start)),
-                },
-                ',' => Ok((Token::Comma, start)),
-                '+' => Ok((Token::Plus, start)),
-                '-' => match self.iter.next_if(|s| s.ch() == '>') {
-                    Some(end) => Ok((Token::Arrow, start.to(end))),
-                    None => Ok((Token::Minus, start)),
-                },
-                '*' => Ok((Token::Asterisk, start)),
-                '&' => match self.iter.next_if(|s| s.ch() == '&') {
-                    Some(end) => Ok((Token::LogicalAnd, start.to(end))),
-                    None => Err(ParseError::UnexpectedCharacter {
-                        ch: '&',
-                        range: start,
-                    }),
-                },
-                '|' => match self.iter.next_if(|s| s.ch() == '|') {
-                    Some(end) => Ok((Token::LogicalOr, start.to(end))),
-                    None => Err(ParseError::UnexpectedCharacter {
-                        ch: '|',
-                        range: start,
-                    }),
-                },
-                '/' => match self.iter.next_if(|s| s.ch() == '/') {
-                    Some(_) => {
-                        let comment = start.extend(
-                            self.iter.peeking_take_while(|s| s.ch() != '\n'),
-                        );
-                        // Extract just the comment text (after the //)
-                        let text = comment.as_str().strip_prefix("//").unwrap_or("").to_string();
-                        Ok((Token::Comment(text), comment))
-                    }
-                    None => Err(ParseError::UnexpectedCharacter {
-                        ch: '/',
-                        range: start,
-                    }),
-                },
-                '!' => match self.iter.next_if(|s| s.ch() == '=') {
-                    Some(end) => Ok((Token::NotEq, start.to(end))),
-                    None => Ok((Token::Not, start)),
-                },
-                '<' => match self.iter.next_if(|s| s.ch() == '=') {
-                    Some(end) => Ok((Token::LessThanOrEqual, start.to(end))),
-                    None => Ok((Token::LessThan, start)),
-                },
-                '>' => match self.iter.next_if(|s| s.ch() == '=') {
-                    Some(end) => Ok((Token::GreaterThanOrEqual, start.to(end))),
-                    None => Ok((Token::GreaterThan, start)),
-                },
-                '=' => match self.iter.peek().map(|s| s.ch()) {
-                    Some('=') => {
-                        let end = self.iter.next().unwrap();
-                        Ok((Token::Eq, start.to(end)))
-                    }
-                    Some('>') => {
-                        let end = self.iter.next().unwrap();
-                        Ok((Token::FatArrow, start.to(end)))
-                    }
-                    _ => Ok((Token::Assign, start)),
-                },
-                '"' => {
-                    let mut end_range = start.clone();
-                    let mut result = String::new();
-                    while let Some(s) = self.iter.next_if(|s| s.ch() != '"') {
-                        result.push(s.ch());
-                        end_range = s;
-                    }
-                    match self.iter.next() {
-                        None => Err(ParseError::UnterminatedStringLiteral {
-                            range: start.to(end_range),
-                        }),
-                        Some(end) => Ok((Token::StringLiteral(result), start.to(end))),
-                    }
-                }
-                'A'..='Z' | 'a'..='z' | '_' => {
-                    let identifier = start.extend(self.iter.peeking_take_while(
-                        |s| matches!(s.ch(), 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'),
-                    ));
-                    let t = match identifier.as_str() {
-                        // Wildcard
-                        "_" => Token::Underscore,
-                        // Keywords
-                        "in" => Token::In,
-                        "import" => Token::Import,
-                        "true" => Token::True,
-                        "false" => Token::False,
-                        "record" => Token::Record,
-                        "match" => Token::Match,
-                        "enum" => Token::Enum,
-                        "Some" => Token::Some,
-                        "None" => Token::None,
-                        // Types
-                        "String" => Token::TypeString,
-                        "Int" => Token::TypeInt,
-                        "Float" => Token::TypeFloat,
-                        "Bool" => Token::TypeBoolean,
-                        "TrustedHTML" => Token::TypeTrustedHTML,
-                        "Array" => Token::TypeArray,
-                        "Option" => Token::TypeOption,
-                        _ => {
-                            let first_char = identifier.as_str().chars().next().unwrap();
-                            if first_char.is_ascii_uppercase() {
-                                Token::TypeName(identifier.to_string_span())
-                            } else {
-                                Token::Identifier(identifier.to_string_span())
-                            }
+            'A'..='Z' | 'a'..='z' | '_' => {
+                let identifier = start.extend(iter.peeking_take_while(
+                    |s| matches!(s.ch(), 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'),
+                ));
+                let t = match identifier.as_str() {
+                    // Wildcard
+                    "_" => Token::Underscore,
+                    // Keywords
+                    "in" => Token::In,
+                    "import" => Token::Import,
+                    "true" => Token::True,
+                    "false" => Token::False,
+                    "record" => Token::Record,
+                    "match" => Token::Match,
+                    "enum" => Token::Enum,
+                    "Some" => Token::Some,
+                    "None" => Token::None,
+                    // Types
+                    "String" => Token::TypeString,
+                    "Int" => Token::TypeInt,
+                    "Float" => Token::TypeFloat,
+                    "Bool" => Token::TypeBoolean,
+                    "TrustedHTML" => Token::TypeTrustedHTML,
+                    "Array" => Token::TypeArray,
+                    "Option" => Token::TypeOption,
+                    _ => {
+                        let first_char = identifier.as_str().chars().next().unwrap();
+                        if first_char.is_ascii_uppercase() {
+                            Token::TypeName(identifier.to_string_span())
+                        } else {
+                            Token::Identifier(identifier.to_string_span())
                         }
-                    };
-                    Ok((t, identifier))
-                }
-                ch if ch.is_ascii_digit() => {
-                    let mut number_string =
-                        start.extend(self.iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
-                    let has_decimal = if let Some(dot) = self.iter.next_if(|s| s.ch() == '.') {
-                        number_string = number_string.to(dot);
-                        number_string = number_string
-                            .extend(self.iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
-                        true
-                    } else {
-                        false
-                    };
-
-                    match serde_json::Number::from_str(number_string.as_str()) {
-                        Ok(n) => {
-                            if has_decimal {
-                                // If original string had a decimal point, treat as float
-                                let f = n.as_f64().unwrap();
-                                Ok((Token::FloatLiteral(f), number_string))
-                            } else if let Some(i) = n.as_i64() {
-                                Ok((Token::IntLiteral(i), number_string))
-                            } else {
-                                // Convert serde_json::Number to f64 for FloatLiteral
-                                let f = n.as_f64().unwrap();
-                                Ok((Token::FloatLiteral(f), number_string))
-                            }
-                        }
-                        Err(_) => Err(ParseError::InvalidNumberFormat {
-                            range: number_string,
-                        }),
                     }
-                }
-                ch => Err(ParseError::UnexpectedCharacter { ch, range: start }),
+                };
+                Ok((t, identifier))
             }
-        })
+            ch if ch.is_ascii_digit() => {
+                let mut number_string =
+                    start.extend(iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
+                let has_decimal = if let Some(dot) = iter.next_if(|s| s.ch() == '.') {
+                    number_string = number_string.to(dot);
+                    number_string =
+                        number_string.extend(iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
+                    true
+                } else {
+                    false
+                };
+
+                match serde_json::Number::from_str(number_string.as_str()) {
+                    Ok(n) => {
+                        if has_decimal {
+                            // If original string had a decimal point, treat as float
+                            let f = n.as_f64().unwrap();
+                            Ok((Token::FloatLiteral(f), number_string))
+                        } else if let Some(i) = n.as_i64() {
+                            Ok((Token::IntLiteral(i), number_string))
+                        } else {
+                            // Convert serde_json::Number to f64 for FloatLiteral
+                            let f = n.as_f64().unwrap();
+                            Ok((Token::FloatLiteral(f), number_string))
+                        }
+                    }
+                    Err(_) => Err(ParseError::InvalidNumberFormat {
+                        range: number_string,
+                    }),
+                }
+            }
+            ch => Err(ParseError::UnexpectedCharacter { ch, range: start }),
+        }
+    })
+}
+
+/// Returns the next non-comment token, skipping any comment tokens.
+pub fn next_skipping_comments(
+    iter: &mut Peekable<DocumentCursor>,
+) -> Option<Result<(Token, DocumentRange), ParseError>> {
+    loop {
+        match next(iter) {
+            Some(Ok((Token::Comment(_), _))) => continue,
+            other => return other,
+        }
     }
+}
+
+/// Peeks at the next non-comment token without consuming it.
+pub fn peek_skipping_comments(
+    iter: &Peekable<DocumentCursor>,
+) -> Option<Result<(Token, DocumentRange), ParseError>> {
+    let mut cloned = iter.clone();
+    next_skipping_comments(&mut cloned)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::document::{DocumentAnnotator, SimpleAnnotation, document_cursor::Ranged as _};
-
     use super::*;
+    use crate::document::{DocumentAnnotator, SimpleAnnotation, document_cursor::Ranged as _};
     use expect_test::{Expect, expect};
 
     fn check(input: &str, expected: Expect) {
-        let tokenizer = Tokenizer::from(input);
+        let mut cursor = DocumentCursor::new(input.to_string()).peekable();
         let mut annotations = Vec::new();
-        for t in tokenizer {
+        while let Some(t) = next(&mut cursor) {
             match t {
                 Ok((tok, range)) => {
                     annotations.push(SimpleAnnotation {
@@ -1628,4 +1593,5 @@ mod tests {
             "#]],
         );
     }
+
 }

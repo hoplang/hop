@@ -14,17 +14,17 @@ use super::parsed::{
     ParsedType,
 };
 use super::token::Token;
-use super::tokenizer::{CommentSkippingTokenizer, Tokenizer};
+use super::tokenizer;
 
 pub struct Parser {
-    iter: Peekable<CommentSkippingTokenizer>,
+    iter: Peekable<DocumentCursor>,
     range: DocumentRange,
 }
 
 impl From<DocumentRange> for Parser {
     fn from(range: DocumentRange) -> Self {
         Self {
-            iter: CommentSkippingTokenizer::from(Tokenizer::from(range.cursor())).peekable(),
+            iter: range.cursor().peekable(),
             range: range.clone(),
         }
     }
@@ -35,26 +35,43 @@ impl From<&str> for Parser {
         let cursor = DocumentCursor::new(input.to_string());
         let range = cursor.range();
         Self {
-            iter: CommentSkippingTokenizer::from(Tokenizer::from(cursor)).peekable(),
+            iter: cursor.peekable(),
             range,
         }
     }
 }
 
 impl Parser {
+    /// Returns the next token, skipping comments.
+    fn iter_next(&mut self) -> Option<Result<(Token, DocumentRange), ParseError>> {
+        tokenizer::next_skipping_comments(&mut self.iter)
+    }
+
+    /// Peeks at the next token without consuming it, skipping comments.
+    fn iter_peek(&self) -> Option<Result<(Token, DocumentRange), ParseError>> {
+        tokenizer::peek_skipping_comments(&self.iter)
+    }
+
+    /// Consumes and returns the next token if the predicate returns true.
+    fn iter_next_if<F>(&mut self, predicate: F) -> Option<Result<(Token, DocumentRange), ParseError>>
+    where
+        F: FnOnce(&Result<(Token, DocumentRange), ParseError>) -> bool,
+    {
+        match self.iter_peek() {
+            Some(ref result) if predicate(result) => self.iter_next(),
+            _ => None,
+        }
+    }
+
     fn advance_if(&mut self, token: Token) -> Option<DocumentRange> {
-        if let Some(Ok((_, range))) = self
-            .iter
-            .next_if(|res| res.as_ref().is_ok_and(|(t, _)| *t == token))
-        {
-            Some(range)
-        } else {
-            None
+        match self.iter_next_if(|res| res.as_ref().is_ok_and(|(t, _)| *t == token)) {
+            Some(Ok((_, range))) => Some(range),
+            _ => None,
         }
     }
 
     fn expect_token(&mut self, expected: &Token) -> Result<DocumentRange, ParseError> {
-        match self.iter.next().transpose()? {
+        match self.iter_next().transpose()? {
             Some((token, range)) if token == *expected => Ok(range),
             Some((actual, range)) => Err(ParseError::ExpectedTokenButGot {
                 expected: expected.clone(),
@@ -75,7 +92,7 @@ impl Parser {
     ) -> Result<DocumentRange, ParseError> {
         let expected = token.opposite_token();
 
-        match self.iter.next().transpose()? {
+        match self.iter_next().transpose()? {
             Some((actual, range)) if actual == expected => Ok(range),
             Some((actual, range)) => Err(ParseError::ExpectedTokenButGot {
                 expected,
@@ -90,7 +107,7 @@ impl Parser {
     }
 
     fn expect_variable_name(&mut self) -> Result<(VarName, DocumentRange), ParseError> {
-        match self.iter.next().transpose()? {
+        match self.iter_next().transpose()? {
             Some((Token::Identifier(name), range)) => {
                 let var_name = VarName::new(name.as_str()).map_err(|error| {
                     ParseError::InvalidVariableName {
@@ -109,7 +126,7 @@ impl Parser {
     }
 
     fn expect_field_name(&mut self) -> Result<(FieldName, DocumentRange), ParseError> {
-        match self.iter.next().transpose()? {
+        match self.iter_next().transpose()? {
             Some((Token::Identifier(name), range)) => {
                 let prop_name = FieldName::new(name.as_str()).map_err(|error| {
                     ParseError::InvalidFieldName {
@@ -131,7 +148,7 @@ impl Parser {
     }
 
     fn expect_type_name(&mut self) -> Result<(TypeName, DocumentRange), ParseError> {
-        match self.iter.next().transpose()? {
+        match self.iter_next().transpose()? {
             Some((Token::TypeName(name), range)) => {
                 let type_name =
                     TypeName::new(name.as_str()).map_err(|error| ParseError::InvalidTypeName {
@@ -148,7 +165,7 @@ impl Parser {
     }
 
     fn expect_eof(&mut self) -> Result<(), ParseError> {
-        match self.iter.next().transpose()? {
+        match self.iter_next().transpose()? {
             None => Ok(()),
             Some((token, range)) => Err(ParseError::UnexpectedToken {
                 token,
@@ -168,10 +185,10 @@ impl Parser {
         parse(self)?;
         while self.advance_if(Token::Comma).is_some() {
             let at_end = self
-                .iter
-                .peek()
-                .and_then(|r| r.as_ref().ok())
+                .iter_peek()
+                .and_then(|r| r.ok())
                 .map(|(t, _)| t)
+                .as_ref()
                 == end_token;
             if at_end {
                 break;
@@ -279,7 +296,7 @@ impl Parser {
     }
 
     pub fn parse_type(&mut self) -> Result<ParsedType, ParseError> {
-        match self.iter.next().transpose()? {
+        match self.iter_next().transpose()? {
             Some((Token::TypeString, range)) => Ok(ParsedType::String { range }),
             Some((Token::TypeInt, range)) => Ok(ParsedType::Int { range }),
             Some((Token::TypeFloat, range)) => Ok(ParsedType::Float { range }),
@@ -501,7 +518,7 @@ impl Parser {
         };
 
         while let Some(dot) = self.advance_if(Token::Dot) {
-            match self.iter.next().transpose()? {
+            match self.iter_next().transpose()? {
                 Some((Token::Identifier(field_ident), range)) => {
                     // Validate field name
                     let field_name = FieldName::new(field_ident.as_str()).map_err(|error| {
@@ -532,7 +549,7 @@ impl Parser {
     }
 
     fn parse_primary(&mut self) -> Result<ParsedExpr, ParseError> {
-        match self.iter.next().transpose()? {
+        match self.iter_next().transpose()? {
             Some((Token::Identifier(name), name_range)) => {
                 // Check for macro invocation: identifier!
                 if self.advance_if(Token::Not).is_some() {
@@ -542,11 +559,10 @@ impl Parser {
             }
             Some((Token::TypeName(name), name_range)) => {
                 let is_enum_variant = self
-                    .iter
-                    .peek()
-                    .and_then(|r| r.as_ref().ok())
+                    .iter_peek()
+                    .and_then(|r| r.ok())
                     .map(|(t, _)| t)
-                    == Some(&Token::ColonColon);
+                    == Some(Token::ColonColon);
                 if is_enum_variant {
                     self.parse_enum_literal(name, name_range)
                 } else {
@@ -730,8 +746,7 @@ impl Parser {
 
         // Check for TypeName patterns: either enum (TypeName::Variant) or record (TypeName(...))
         if let Some(Ok((Token::TypeName(type_name_str), type_name_range))) = self
-            .iter
-            .next_if(|res| matches!(res, Ok((Token::TypeName(_), _))))
+            .iter_next_if(|res| matches!(res, Ok((Token::TypeName(_), _))))
         {
             let type_name =
                 TypeName::new(&type_name_str).map_err(|error| ParseError::InvalidTypeName {
@@ -833,7 +848,7 @@ impl Parser {
 
         let mut path_segments: Vec<DocumentRange> = Vec::new();
 
-        let first_segment = match self.iter.next().transpose()? {
+        let first_segment = match self.iter_next().transpose()? {
             Some((Token::Identifier(_), range)) | Some((Token::TypeName(_), range)) => range,
             Some((_, range)) => {
                 return Err(ParseError::ExpectedModulePath { range });
@@ -847,7 +862,7 @@ impl Parser {
         path_segments.push(first_segment);
 
         while self.advance_if(Token::ColonColon).is_some() {
-            let segment = match self.iter.next().transpose()? {
+            let segment = match self.iter_next().transpose()? {
                 Some((Token::Identifier(_), range)) | Some((Token::TypeName(_), range)) => range,
                 Some((_, range)) => {
                     return Err(ParseError::ExpectedIdentifierAfterColonColon { range });
@@ -1033,7 +1048,7 @@ impl Parser {
         let mut declarations = Vec::new();
 
         loop {
-            match self.iter.peek() {
+            match self.iter_peek() {
                 Some(Ok((Token::Import, _))) => match self.parse_import_declaration() {
                     Ok(decl) => declarations.push(decl),
                     Err(err) => {
@@ -1056,13 +1071,11 @@ impl Parser {
                     }
                 },
                 Some(Ok((_, range))) => {
-                    errors.push(ParseError::ExpectedDeclaration {
-                        range: range.clone(),
-                    });
+                    errors.push(ParseError::ExpectedDeclaration { range });
                     break;
                 }
                 Some(Err(err)) => {
-                    errors.push(err.clone());
+                    errors.push(err);
                     break;
                 }
                 None => break,

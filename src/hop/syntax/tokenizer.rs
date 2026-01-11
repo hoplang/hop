@@ -169,11 +169,10 @@ impl Tokenizer {
     ///       ^
     ///
     /// Returns None if we reached EOF before finding the closing '}'.
-    fn find_expression_end(iter: Peekable<DocumentCursor>) -> Option<DocumentRange> {
-        let mut dop_tokenizer = dop::Tokenizer::from(iter);
+    fn find_expression_end(mut iter: Peekable<DocumentCursor>) -> Option<DocumentRange> {
         let mut open_braces = 1;
         loop {
-            let token = dop_tokenizer.next()?;
+            let token = dop::tokenizer::next(&mut iter)?;
             match token {
                 Ok((dop::Token::LeftBrace, _)) => {
                     open_braces += 1;
