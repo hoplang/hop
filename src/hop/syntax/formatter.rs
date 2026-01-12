@@ -648,10 +648,21 @@ fn format_expr<'a>(
             }
         }
         ParsedExpr::Match { subject, arms, .. } => {
-            if arms.is_empty() {
+            let end_position = expr.range().end();
+            let has_trailing_comments =
+                comments.front().is_some_and(|c| c.1.start() < end_position);
+
+            if arms.is_empty() && !has_trailing_comments {
                 BoxDoc::text("match ")
                     .append(format_expr(subject, comments))
                     .append(BoxDoc::text(" {}"))
+            } else if arms.is_empty() {
+                let trailing_comments = drain_comments_before(comments, end_position);
+                BoxDoc::text("match ")
+                    .append(format_expr(subject, comments))
+                    .append(BoxDoc::text(" {"))
+                    .append(BoxDoc::line_().append(trailing_comments).nest(2))
+                    .append(BoxDoc::text("}"))
             } else {
                 let mut arms_doc = BoxDoc::nil();
                 for (i, arm) in arms.iter().enumerate() {
@@ -660,10 +671,24 @@ fn format_expr<'a>(
                     }
                     arms_doc = arms_doc.append(format_match_arm(arm, comments));
                 }
+
+                let trailing_comments = drain_comments_before(comments, end_position);
+
+                let body = if has_trailing_comments {
+                    BoxDoc::line_()
+                        .append(arms_doc)
+                        .append(BoxDoc::text(","))
+                        .append(BoxDoc::line())
+                        .append(trailing_comments)
+                        .nest(2)
+                } else {
+                    soft_block(arms_doc)
+                };
+
                 BoxDoc::text("match ")
                     .append(format_expr(subject, comments))
                     .append(BoxDoc::text(" {"))
-                    .append(soft_block(arms_doc))
+                    .append(body)
                     .append(BoxDoc::text("}"))
             }
         }
@@ -2396,6 +2421,7 @@ mod tests {
                     Orientation::Horizontal => "horizontal",
                     // b
                     Orientation::Vertical => "vertical",
+                    // c
                   }}></div>
                 </Main>
             "#},
@@ -2413,6 +2439,7 @@ mod tests {
                         Orientation::Horizontal => "horizontal",
                         // b
                         Orientation::Vertical => "vertical",
+                        // c
                       }
                     }
                   >
