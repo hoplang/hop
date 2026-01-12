@@ -243,59 +243,6 @@ impl InlinedBuilder {
         });
     }
 
-    pub fn let_node<F>(&mut self, var: &str, value: TypedExpr, body_fn: F)
-    where
-        F: FnOnce(&mut Self),
-    {
-        let var_type = value.as_type().clone();
-        self.var_stack
-            .borrow_mut()
-            .push((var.to_string(), var_type));
-
-        let mut inner_builder = self.new_scoped();
-        body_fn(&mut inner_builder);
-        let children = inner_builder.children;
-
-        self.var_stack.borrow_mut().pop();
-
-        self.children.push(InlinedNode::Let {
-            var: VarName::try_from(var.to_string()).unwrap(),
-            value,
-            children,
-        });
-    }
-
-    pub fn bool_match_expr(
-        &self,
-        subject: TypedExpr,
-        true_value: &str,
-        false_value: &str,
-    ) -> TypedExpr {
-        use crate::dop::patterns::Match;
-
-        TypedExpr::Match {
-            match_: Match::Bool {
-                subject: extract_var_subject(&subject),
-                true_body: Box::new(TypedExpr::StringLiteral {
-                    value: true_value.to_string(),
-                }),
-                false_body: Box::new(TypedExpr::StringLiteral {
-                    value: false_value.to_string(),
-                }),
-            },
-            kind: Type::String,
-        }
-    }
-
-    pub fn string_lit(&self, value: &str) -> TypedExpr {
-        TypedExpr::StringLiteral {
-            value: value.to_string(),
-        }
-    }
-
-    pub fn bool_lit(&self, value: bool) -> TypedExpr {
-        TypedExpr::BooleanLiteral { value }
-    }
 }
 
 #[cfg(test)]

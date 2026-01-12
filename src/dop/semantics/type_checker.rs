@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use super::r#type::{NumericType, Type};
 use super::type_error::TypeError;
 use crate::document::document_cursor::DocumentRange;
@@ -1362,6 +1360,7 @@ mod tests {
     use crate::hop::symbols::module_name::ModuleName;
     use expect_test::{Expect, expect};
     use indoc::indoc;
+    use std::collections::VecDeque;
 
     fn check(declarations_str: &str, env_vars: &[(&str, &str)], expr_str: &str, expected: Expect) {
         let mut env = Environment::new();

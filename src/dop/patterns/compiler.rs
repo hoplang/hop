@@ -3,7 +3,7 @@
 //!
 //! Adapted from <https://github.com/yorickpeterse/pattern-matching-in-rust/>.
 //! Thanks to Yorick Peterse for the original implementation.
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 
 use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::syntax::parsed::{Constructor, ParsedMatchPattern};
@@ -748,6 +748,7 @@ mod tests {
     use crate::hop::symbols::module_name::ModuleName;
     use expect_test::{Expect, expect};
     use indoc::indoc;
+    use std::collections::VecDeque;
 
     fn check(subject_type: Type, expr_str: &str, expected: Expect) {
         let cursor = DocumentCursor::new(expr_str.to_string());
