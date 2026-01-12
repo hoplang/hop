@@ -310,8 +310,8 @@ pub fn parse_parameters(
         range,
         |iter, comments, range| {
             let param = parse_parameter(iter, comments, range)?;
-            let (var_name, var_name_range) = &param.0;
-            if !seen_names.insert(var_name.as_str().to_string()) {
+            let (_, var_name_range) = &param.0;
+            if !seen_names.insert(var_name_range.to_cheap_string()) {
                 return Err(ParseError::DuplicateParameter {
                     name: var_name_range.to_cheap_string(),
                     range: var_name_range.clone(),
@@ -1083,7 +1083,7 @@ fn parse_record_declaration(
             let (field_name, field_name_range) = expect_field_name(iter, comments, range)?;
             expect_token(iter, comments, range, &Token::Colon)?;
             let field_type = parse_type(iter, comments, range)?;
-            if !seen_names.insert(field_name.as_str().to_string()) {
+            if !seen_names.insert(field_name_range.to_cheap_string()) {
                 return Err(ParseError::DuplicateField {
                     name: field_name_range.to_cheap_string(),
                     range: field_name_range.clone(),
@@ -1123,7 +1123,7 @@ fn parse_enum_declaration(
         &left_brace,
         |iter, comments, range| {
             let (variant_name, variant_range) = expect_type_name(iter, comments, range)?;
-            if !seen_names.insert(variant_name.as_str().to_string()) {
+            if !seen_names.insert(variant_range.to_cheap_string()) {
                 return Err(ParseError::DuplicateVariant {
                     name: variant_range.to_cheap_string(),
                     range: variant_range.clone(),
@@ -1168,7 +1168,7 @@ fn parse_enum_variant_fields(
         expect_token(iter, comments, range, &Token::Colon)?;
         let field_type = parse_type(iter, comments, range)?;
 
-        if !seen_names.insert(field_name.as_str().to_string()) {
+        if !seen_names.insert(field_name_range.to_cheap_string()) {
             return Err(ParseError::DuplicateField {
                 name: field_name_range.to_cheap_string(),
                 range: field_name_range.clone(),
