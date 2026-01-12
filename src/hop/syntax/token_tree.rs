@@ -178,13 +178,16 @@ impl Display for TokenTree {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hop::syntax::tokenizer::Tokenizer;
+    use crate::{document::document_cursor::DocumentCursor, hop::syntax::tokenizer::Tokenizer};
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
     fn check(input: &str, expected: Expect) {
         let mut errors = ErrorCollector::new();
-        let trees = build_tree(Tokenizer::new(input.to_string()), &mut errors);
+        let trees = build_tree(
+            Tokenizer::new(DocumentCursor::new(input.to_string())),
+            &mut errors,
+        );
         if !errors.is_empty() {
             panic!("Expected errors to be empty");
         }

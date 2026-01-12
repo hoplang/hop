@@ -139,22 +139,9 @@ pub struct Tokenizer {
 }
 
 impl Tokenizer {
-    #[allow(dead_code)]
-    pub fn new(input: String) -> Self {
+    pub fn new(input: DocumentCursor) -> Self {
         Self {
-            iter: DocumentCursor::new(input).peekable(),
-            errors: Vec::new(),
-            raw_text_closing_tag: None,
-        }
-    }
-
-    /// Create a new tokenizer from an existing DocumentRange.
-    ///
-    /// This allows the tokenizer to produce ranges that point to the same
-    /// source document as the provided range.
-    pub fn from_range(range: DocumentRange) -> Self {
-        Self {
-            iter: range.cursor().peekable(),
+            iter: input.peekable(),
             errors: Vec::new(),
             raw_text_closing_tag: None,
         }
@@ -553,9 +540,8 @@ impl Tokenizer {
 
         // consume: '>'
         let Some(right_angle) = self.iter.next_if(|s| s.ch() == '>') else {
-            self.errors.push(ParseError::UnterminatedClosingTag {
-                range: tag_name,
-            });
+            self.errors
+                .push(ParseError::UnterminatedClosingTag { range: tag_name });
             return None;
         };
         Some(Token::ClosingTag {
@@ -643,9 +629,8 @@ impl Tokenizer {
             Some('/') => self.parse_closing_tag(left_angle),
             Some(ch) if ch.is_ascii_alphabetic() => self.parse_opening_tag(left_angle),
             _ => {
-                self.errors.push(ParseError::UnterminatedTagStart {
-                    range: left_angle,
-                });
+                self.errors
+                    .push(ParseError::UnterminatedTagStart { range: left_angle });
                 None
             }
         }
@@ -698,7 +683,7 @@ mod tests {
     use indoc::indoc;
 
     fn check(input: &str, expected: Expect) {
-        let tokenizer = Tokenizer::new(input.to_string());
+        let tokenizer = Tokenizer::new(DocumentCursor::new(input.to_string()));
         let result: Vec<_> = tokenizer.collect();
         let mut annotations = Vec::new();
         for (token, errors) in result {

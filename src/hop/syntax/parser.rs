@@ -129,10 +129,8 @@ pub fn parse(
     source: String,
     errors: &mut ErrorCollector<ParseError>,
 ) -> ParsedAst {
-    let source_range = DocumentCursor::new(source).range();
-
     // Build the token tree
-    let tokenizer = Tokenizer::from_range(source_range);
+    let tokenizer = Tokenizer::new(DocumentCursor::new(source));
     let trees = build_tree(tokenizer, errors);
 
     let mut declarations = Vec::new();
