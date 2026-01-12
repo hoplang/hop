@@ -208,10 +208,9 @@ impl Tokenizer {
             );
         };
         let Some(second_dash) = self.iter.next_if(|s| s.ch() == '-') else {
-            self.errors.push(ParseError::new(
-                "Invalid markup declaration".to_string(),
-                left_angle_to_bang.to(first_dash),
-            ));
+            self.errors.push(ParseError::InvalidMarkupDeclaration {
+                range: left_angle_to_bang.to(first_dash),
+            });
             return None;
         };
         // Count the number of seen '-' to find the end of the comment
@@ -234,10 +233,9 @@ impl Tokenizer {
                     count = 0;
                 }
                 None => {
-                    self.errors.push(ParseError::new(
-                        "Unterminated comment".to_string(),
-                        left_angle_to_bang.to(second_dash),
-                    ));
+                    self.errors.push(ParseError::UnterminatedComment {
+                        range: left_angle_to_bang.to(second_dash),
+                    });
                     return None;
                 }
             }
@@ -253,18 +251,16 @@ impl Tokenizer {
             .collect::<String>()
             .to_lowercase();
         if doctype != "doctype" {
-            self.errors.push(ParseError::new(
-                "Invalid markup declaration".to_string(),
-                left_angle_to_bang,
-            ));
+            self.errors.push(ParseError::InvalidMarkupDeclaration {
+                range: left_angle_to_bang,
+            });
             return None;
         }
         while self.iter.next_if(|s| s.ch() != '>').is_some() {}
         let Some(right_angle) = self.iter.next_if(|s| s.ch() == '>') else {
-            self.errors.push(ParseError::new(
-                "Invalid markup declaration".to_string(),
-                left_angle_to_bang,
-            ));
+            self.errors.push(ParseError::InvalidMarkupDeclaration {
+                range: left_angle_to_bang,
+            });
             return None;
         };
         Some(Token::Doctype {
@@ -289,10 +285,9 @@ impl Tokenizer {
             Some('-') => self.parse_comment(left_angle.to(bang)),
             Some('D' | 'd') => self.parse_doctype(left_angle.to(bang)),
             _ => {
-                self.errors.push(ParseError::new(
-                    "Invalid markup declaration".to_string(),
-                    left_angle.to(bang),
-                ));
+                self.errors.push(ParseError::InvalidMarkupDeclaration {
+                    range: left_angle.to(bang),
+                });
                 None
             }
         }
@@ -347,10 +342,9 @@ impl Tokenizer {
 
         // Parse string value (quoted)
         let Some(open_quote) = self.iter.next_if(|s| s.ch() == '"' || s.ch() == '\'') else {
-            self.errors.push(ParseError::new(
-                "Expected quoted attribute value or expression".to_string(),
-                attr_name.to(eq),
-            ));
+            self.errors.push(ParseError::ExpectedQuotedAttributeValue {
+                range: attr_name.to(eq),
+            });
             return None;
         };
 
@@ -416,10 +410,9 @@ impl Tokenizer {
                     self.iter.next().map(|s| s.ch())
                 );
             };
-            self.errors.push(ParseError::new(
-                "Empty expression".to_string(),
-                left_brace.to(right_brace),
-            ));
+            self.errors.push(ParseError::EmptyExpression {
+                range: left_brace.to(right_brace),
+            });
             return None;
         }
         let mut expr = self.iter.next().unwrap();
@@ -506,10 +499,9 @@ impl Tokenizer {
 
         // consume: '>'
         let Some(right_angle) = self.iter.next_if(|s| s.ch() == '>') else {
-            self.errors.push(ParseError::new(
-                "Unterminated opening tag".to_string(),
-                tag_name.clone(),
-            ));
+            self.errors.push(ParseError::UnterminatedOpeningTag {
+                range: tag_name.clone(),
+            });
             return None;
         };
 
@@ -545,10 +537,9 @@ impl Tokenizer {
 
         // consume: [a-zA-Z]
         let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
-            self.errors.push(ParseError::new(
-                "Unterminated closing tag".to_string(),
-                left_angle.to(slash),
-            ));
+            self.errors.push(ParseError::UnterminatedClosingTag {
+                range: left_angle.to(slash),
+            });
             return None;
         };
         // consume: ('-' | [a-zA-Z0-9])*
@@ -562,10 +553,9 @@ impl Tokenizer {
 
         // consume: '>'
         let Some(right_angle) = self.iter.next_if(|s| s.ch() == '>') else {
-            self.errors.push(ParseError::new(
-                "Unterminated closing tag".to_string(),
-                tag_name,
-            ));
+            self.errors.push(ParseError::UnterminatedClosingTag {
+                range: tag_name,
+            });
             return None;
         };
         Some(Token::ClosingTag {
@@ -653,10 +643,9 @@ impl Tokenizer {
             Some('/') => self.parse_closing_tag(left_angle),
             Some(ch) if ch.is_ascii_alphabetic() => self.parse_opening_tag(left_angle),
             _ => {
-                self.errors.push(ParseError::new(
-                    "Unterminated tag start".to_string(),
-                    left_angle,
-                ));
+                self.errors.push(ParseError::UnterminatedTagStart {
+                    range: left_angle,
+                });
                 None
             }
         }

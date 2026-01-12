@@ -424,10 +424,9 @@ fn construct_nodes(
                     // Check for empty expression
                     if iter.peek().map(|s| s.ch()) == Some('}') {
                         let right_brace = iter.next().unwrap();
-                        errors.push(ParseError::new(
-                            "Empty expression".to_string(),
-                            left_brace.to(right_brace),
-                        ));
+                        errors.push(ParseError::EmptyExpression {
+                            range: left_brace.to(right_brace),
+                        });
                         continue;
                     }
 
@@ -506,11 +505,8 @@ fn construct_nodes(
             // Handle <match> specially - process children as <case> tags
             if tag_name.as_str() == "match" {
                 errors.extend(validator.disallow_unrecognized());
-                let expr = expression.ok_or_else(|| {
-                    ParseError::new(
-                        "Missing expression in <match> tag".to_string(),
-                        opening_tag_range.clone(),
-                    )
+                let expr = expression.ok_or_else(|| ParseError::MissingMatchExpression {
+                    range: opening_tag_range.clone(),
                 });
                 let Some(subject) = errors.ok_or_add(expr.and_then(|e| {
                     let mut iter = e.cursor().peekable();
@@ -553,10 +549,9 @@ fn construct_nodes(
                             ..
                         } if case_tag_name.as_str() == "case" => {
                             let Some(pattern_range) = case_expression.clone() else {
-                                errors.push(ParseError::new(
-                                    "Missing pattern in <case> tag".to_string(),
-                                    case_opening_range.clone(),
-                                ));
+                                errors.push(ParseError::MissingCasePattern {
+                                    range: case_opening_range.clone(),
+                                });
                                 continue;
                             };
                             let Some(pattern) = errors.ok_or_add({
@@ -594,10 +589,9 @@ fn construct_nodes(
                         }
                         // Error on other nodes
                         _ => {
-                            errors.push(ParseError::new(
-                                "Only <case> tags are allowed inside <match>".to_string(),
-                                child_tree.range.clone(),
-                            ));
+                            errors.push(ParseError::InvalidMatchChild {
+                                range: child_tree.range.clone(),
+                            });
                         }
                     }
                 }
@@ -641,11 +635,8 @@ fn construct_nodes(
                 // <if {...}>
                 "if" => {
                     errors.extend(validator.disallow_unrecognized());
-                    let expr = expression.ok_or_else(|| {
-                        ParseError::new(
-                            "Missing expression in <if> tag".to_string(),
-                            opening_tag_range.clone(),
-                        )
+                    let expr = expression.ok_or_else(|| ParseError::MissingIfExpression {
+                        range: opening_tag_range.clone(),
                     });
                     let Some(condition) = errors.ok_or_add(expr.and_then(|e| {
                         let mut iter = e.cursor().peekable();
@@ -664,11 +655,8 @@ fn construct_nodes(
                 "for" => {
                     errors.extend(validator.disallow_unrecognized());
                     let parse_result = expression
-                        .ok_or_else(|| {
-                            ParseError::new(
-                                "Missing loop generator expression in <for> tag".to_string(),
-                                opening_tag_range.clone(),
-                            )
+                        .ok_or_else(|| ParseError::MissingForExpression {
+                            range: opening_tag_range.clone(),
                         })
                         .and_then(|e| {
                             let mut iter = e.cursor().peekable();
@@ -696,10 +684,9 @@ fn construct_nodes(
                 "let" => {
                     errors.extend(validator.disallow_unrecognized());
                     let Some(bindings_range) = expression else {
-                        errors.push(ParseError::new(
-                            "Missing binding in <let> tag".to_string(),
-                            opening_tag_range.clone(),
-                        ));
+                        errors.push(ParseError::MissingLetBinding {
+                            range: opening_tag_range.clone(),
+                        });
                         return vec![ParsedNode::Placeholder {
                             range: tree.range.clone(),
                             children,

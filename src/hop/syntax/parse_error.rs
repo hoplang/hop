@@ -52,11 +52,47 @@ pub enum ParseError {
         range: DocumentRange,
     },
 
-    #[error("{message}")]
-    GenericError {
-        message: String,
-        range: DocumentRange,
-    },
+    #[error("{err}")]
+    DopError { err: dop::ParseError },
+
+    #[error("Empty expression")]
+    EmptyExpression { range: DocumentRange },
+
+    #[error("Missing expression in <match> tag")]
+    MissingMatchExpression { range: DocumentRange },
+
+    #[error("Missing pattern in <case> tag")]
+    MissingCasePattern { range: DocumentRange },
+
+    #[error("Only <case> tags are allowed inside <match>")]
+    InvalidMatchChild { range: DocumentRange },
+
+    #[error("Missing expression in <if> tag")]
+    MissingIfExpression { range: DocumentRange },
+
+    #[error("Missing loop generator expression in <for> tag")]
+    MissingForExpression { range: DocumentRange },
+
+    #[error("Missing binding in <let> tag")]
+    MissingLetBinding { range: DocumentRange },
+
+    #[error("Invalid markup declaration")]
+    InvalidMarkupDeclaration { range: DocumentRange },
+
+    #[error("Unterminated comment")]
+    UnterminatedComment { range: DocumentRange },
+
+    #[error("Expected quoted attribute value or expression")]
+    ExpectedQuotedAttributeValue { range: DocumentRange },
+
+    #[error("Unterminated opening tag")]
+    UnterminatedOpeningTag { range: DocumentRange },
+
+    #[error("Unterminated closing tag")]
+    UnterminatedClosingTag { range: DocumentRange },
+
+    #[error("Unterminated tag start")]
+    UnterminatedTagStart { range: DocumentRange },
 
     #[error(
         "Invalid argument name '{name}' on <{tag_name}>: argument names cannot contain hyphens"
@@ -76,18 +112,9 @@ pub enum ParseError {
     },
 }
 
-impl ParseError {
-    pub fn new(message: String, range: DocumentRange) -> Self {
-        ParseError::GenericError { message, range }
-    }
-}
-
 impl From<dop::ParseError> for ParseError {
     fn from(err: dop::ParseError) -> Self {
-        Self::GenericError {
-            message: err.to_string(),
-            range: err.range().clone(),
-        }
+        Self::DopError { err }
     }
 }
 
@@ -102,9 +129,22 @@ impl Ranged for ParseError {
             | ParseError::TypeNameIsAlreadyDefined { range, .. }
             | ParseError::DuplicateAttribute { range, .. }
             | ParseError::UnrecognizedAttribute { range, .. }
-            | ParseError::GenericError { range, .. }
             | ParseError::InvalidArgumentName { range, .. }
-            | ParseError::UnexpectedComponentExpression { range, .. } => range,
+            | ParseError::UnexpectedComponentExpression { range, .. }
+            | ParseError::EmptyExpression { range }
+            | ParseError::MissingMatchExpression { range }
+            | ParseError::MissingCasePattern { range }
+            | ParseError::InvalidMatchChild { range }
+            | ParseError::MissingIfExpression { range }
+            | ParseError::MissingForExpression { range }
+            | ParseError::MissingLetBinding { range }
+            | ParseError::InvalidMarkupDeclaration { range }
+            | ParseError::UnterminatedComment { range }
+            | ParseError::ExpectedQuotedAttributeValue { range }
+            | ParseError::UnterminatedOpeningTag { range }
+            | ParseError::UnterminatedClosingTag { range }
+            | ParseError::UnterminatedTagStart { range } => range,
+            ParseError::DopError { err } => err.range(),
         }
     }
 }
