@@ -261,7 +261,7 @@ pub enum ParsedExpr {
 
     /// A record literal expression, e.g. User(name: "John", age: 30)
     RecordLiteral {
-        record_name: String,
+        record_name: CheapString,
         fields: Vec<(FieldName, Self)>,
         range: DocumentRange,
     },

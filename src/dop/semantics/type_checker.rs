@@ -627,7 +627,7 @@ pub fn typecheck_expr(
             let record_type = type_env
                 .lookup(record_name.as_str())
                 .ok_or_else(|| TypeError::UndefinedRecord {
-                    record_name: record_name.clone(),
+                    record_name: record_name.to_string(),
                     range: range.clone(),
                 })?
                 .clone();
@@ -637,7 +637,7 @@ pub fn typecheck_expr(
                 Type::Record { fields, .. } => fields,
                 _ => {
                     return Err(TypeError::UndefinedRecord {
-                        record_name: record_name.clone(),
+                        record_name: record_name.to_string(),
                         range: range.clone(),
                     });
                 }
@@ -661,7 +661,7 @@ pub fn typecheck_expr(
                 let expected_type = expected_fields.get(field_name_str).ok_or_else(|| {
                     TypeError::RecordUnknownField {
                         field_name: field_name_str.to_string(),
-                        record_name: record_name.clone(),
+                        record_name: record_name.to_string(),
                         range: field_value.range().clone(),
                     }
                 })?;
@@ -698,14 +698,14 @@ pub fn typecheck_expr(
                 .collect();
             if !missing_fields.is_empty() {
                 return Err(TypeError::RecordMissingFields {
-                    record_name: record_name.clone(),
+                    record_name: record_name.to_string(),
                     missing_fields,
                     range: range.clone(),
                 });
             }
 
             Ok(TypedExpr::RecordLiteral {
-                record_name: record_name.clone(),
+                record_name: record_name.to_string(),
                 fields: typed_fields,
                 kind: record_type,
             })

@@ -753,7 +753,7 @@ fn parse_record_literal(
         },
     )?;
     Ok(ParsedExpr::RecordLiteral {
-        record_name: name.as_str().to_string(),
+        record_name: CheapString::new(name.to_string()),
         fields,
         range: name_range.to(right_paren),
     })
