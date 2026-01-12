@@ -2279,10 +2279,11 @@ mod tests {
         check(
             indoc! {"
                 record User {
-                  // The name of the user
-                  name: String,
-                  // The age of the user
-                  age: Int,
+                // The name of the user
+                name: String,
+                // The age of the user
+                age: Int,
+                // End of fields
                 }
             "},
             expect![[r#"
@@ -2291,6 +2292,7 @@ mod tests {
                   name: String,
                   // The age of the user
                   age: Int,
+                  // End of fields
                 }
             "#]],
         );
@@ -2301,10 +2303,11 @@ mod tests {
         check(
             indoc! {"
                 enum Status {
-                  // User is active
-                  Active,
-                  // User is inactive
-                  Inactive,
+                // User is active
+                Active,
+                // User is inactive
+                Inactive,
+                // More statuses to come
                 }
             "},
             expect![[r#"
@@ -2313,44 +2316,7 @@ mod tests {
                   Active,
                   // User is inactive
                   Inactive,
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn trailing_comment_in_enum() {
-        check(
-            indoc! {"
-                enum Status {
-                  Active,
-                  Inactive,
                   // More statuses to come
-                }
-            "},
-            expect![[r#"
-                enum Status {
-                  Active,
-                  Inactive,
-                  // More statuses to come
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn trailing_comment_in_record() {
-        check(
-            indoc! {"
-                record User {
-                  name: String,
-                  // More fields to come
-                }
-            "},
-            expect![[r#"
-                record User {
-                  name: String,
-                  // More fields to come
                 }
             "#]],
         );
@@ -2466,6 +2432,7 @@ mod tests {
                     "flex",
                     // conditional style
                     "items-center",
+                    // more to come
                   )}></div>
                 </Main>
             "#},
@@ -2478,6 +2445,7 @@ mod tests {
                         "flex",
                         // conditional style
                         "items-center",
+                        // more to come
                       )
                     }
                   >
@@ -2497,6 +2465,7 @@ mod tests {
                     "flex items-center",
                     // conditional style
                     "justify-between gap-4",
+                    // more to come
                   )}></div>
                 </Main>
             "#},
@@ -2511,41 +2480,7 @@ mod tests {
                         // conditional style
                         "justify-between",
                         "gap-4",
-                      )
-                    }
-                  >
-                  </div>
-                </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn trailing_comment_in_macro() {
-        check(
-            indoc! {r#"
-                <Main {class: String}>
-                  <div class={classes!(
-                    "mx-auto",
-                    "flex",
-                    "w-full",
-                    "justify-center",
-                    class,
-                    // more to come!
-                  )}></div>
-                </Main>
-            "#},
-            expect![[r#"
-                <Main {class: String}>
-                  <div
-                    class={
-                      classes!(
-                        "mx-auto",
-                        "flex",
-                        "w-full",
-                        "justify-center",
-                        class,
-                        // more to come!
+                        // more to come
                       )
                     }
                   >
@@ -2564,6 +2499,7 @@ mod tests {
                     label: String,
                     // Whether the button is disabled
                     disabled: Bool = false,
+                    // More params to come
                 }>
                   {label}
                 </Button>
@@ -2573,29 +2509,6 @@ mod tests {
                   // The button label
                   label: String,
                   // Whether the button is disabled
-                  disabled: Bool = false,
-                }>
-                  {label}
-                </Button>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn trailing_comment_in_component_parameters() {
-        check(
-            indoc! {r#"
-                <Button {
-                    label: String,
-                    disabled: Bool = false,
-                    // More params to come
-                }>
-                  {label}
-                </Button>
-            "#},
-            expect![[r#"
-                <Button {
-                  label: String,
                   disabled: Bool = false,
                   // More params to come
                 }>
