@@ -390,8 +390,15 @@ fn format_node<'a>(
                 .append(BoxDoc::text("</for>"))
         }
         ParsedNode::Let {
-            bindings, children, ..
+            bindings,
+            bindings_range,
+            children,
+            ..
         } => {
+            let end_position = bindings_range.end();
+            let has_trailing_comments =
+                comments.front().is_some_and(|c| c.1.start() < end_position);
+
             let mut bindings_doc = BoxDoc::nil();
             for (i, binding) in bindings.iter().enumerate() {
                 if i > 0 {
@@ -401,9 +408,27 @@ fn format_node<'a>(
                 }
                 bindings_doc = bindings_doc.append(format_let_binding(binding, comments));
             }
+
+            let trailing_comments = drain_comments_before(comments, end_position);
+
+            let body = if bindings.is_empty() && !has_trailing_comments {
+                BoxDoc::nil()
+            } else if bindings.is_empty() {
+                BoxDoc::line_().append(trailing_comments).nest(2)
+            } else if has_trailing_comments {
+                BoxDoc::line_()
+                    .append(bindings_doc)
+                    .append(BoxDoc::text(","))
+                    .append(BoxDoc::line())
+                    .append(trailing_comments)
+                    .nest(2)
+            } else {
+                soft_block(bindings_doc)
+            };
+
             let children_doc = format_children(children, comments);
             BoxDoc::text("<let {")
-                .append(soft_block(bindings_doc))
+                .append(body)
                 .append(BoxDoc::text("}>"))
                 .append(children_doc)
                 .append(BoxDoc::text("</let>"))
@@ -517,7 +542,9 @@ fn format_let_binding<'a>(
     binding: &'a ParsedLetBinding,
     comments: &mut VecDeque<&'a (String, DocumentRange)>,
 ) -> BoxDoc<'a> {
-    BoxDoc::text(binding.var_name.as_str())
+    let leading_comments = drain_comments_before(comments, binding.var_name_range.start());
+    leading_comments
+        .append(BoxDoc::text(binding.var_name.as_str()))
         .append(BoxDoc::text(": "))
         .append(format_type(&binding.var_type))
         .append(BoxDoc::text(" = "))
@@ -2158,7 +2185,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Main>
-                  <let {first_name: String = "Hello", last_name: String = "World"}>
+                  <let {
+                    // a
+                    first_name: String = "Hello",
+                    // b
+                    last_name: String = "World",
+                    // c
+                  }>
                     {first_name} {last_name}
                   </let>
                 </Main>
@@ -2166,8 +2199,11 @@ mod tests {
             expect![[r#"
                 <Main>
                   <let {
+                    // a
                     first_name: String = "Hello",
+                    // b
                     last_name: String = "World",
+                    // c
                   }>
                     {first_name}
                     {last_name}

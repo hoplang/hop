@@ -695,18 +695,21 @@ fn construct_nodes(
                 // <let {...}>
                 "let" => {
                     errors.extend(validator.disallow_unrecognized());
-                    let parse_result = expression
-                        .ok_or_else(|| {
-                            ParseError::new(
-                                "Missing binding in <let> tag".to_string(),
-                                opening_tag_range.clone(),
-                            )
-                        })
-                        .and_then(|e| {
-                            let mut iter = e.cursor().peekable();
-                            dop::parser::parse_let_bindings(&mut iter, comments, &e)
-                                .map_err(|err| err.into())
-                        });
+                    let Some(bindings_range) = expression else {
+                        errors.push(ParseError::new(
+                            "Missing binding in <let> tag".to_string(),
+                            opening_tag_range.clone(),
+                        ));
+                        return vec![ParsedNode::Placeholder {
+                            range: tree.range.clone(),
+                            children,
+                        }];
+                    };
+                    let parse_result = {
+                        let mut iter = bindings_range.cursor().peekable();
+                        dop::parser::parse_let_bindings(&mut iter, comments, &bindings_range)
+                            .map_err(|err| err.into())
+                    };
                     let Some(parsed_bindings) = errors.ok_or_add(parse_result) else {
                         return vec![ParsedNode::Placeholder {
                             range: tree.range.clone(),
@@ -726,6 +729,7 @@ fn construct_nodes(
                         .collect();
                     vec![ParsedNode::Let {
                         bindings,
+                        bindings_range,
                         range: tree.range.clone(),
                         children,
                     }]

@@ -83,10 +83,12 @@ fn transform_node(node: ParsedNode) -> Vec<ParsedNode> {
         }],
         ParsedNode::Let {
             bindings,
+            bindings_range,
             children,
             range,
         } => vec![ParsedNode::Let {
             bindings,
+            bindings_range,
             children: transform_nodes(children),
             range,
         }],

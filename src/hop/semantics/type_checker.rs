@@ -609,7 +609,7 @@ fn typecheck_node(
         ParsedNode::Let {
             bindings,
             children,
-            range: _,
+            ..
         } => {
             // Process each binding: resolve type, typecheck value, push to scope
             let mut typed_bindings = Vec::new();

@@ -123,6 +123,7 @@ pub enum ParsedNode {
     /// E.g. <let {name: String = "World", count: Int = 0}>Hello {name}</let>
     Let {
         bindings: Vec<ParsedLetBinding>,
+        bindings_range: DocumentRange,
         children: Vec<ParsedNode>,
         range: DocumentRange,
     },
