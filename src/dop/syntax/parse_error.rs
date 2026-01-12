@@ -1,4 +1,4 @@
-use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::document::document_cursor::{DocumentRange, Ranged, CheapString};
 use crate::dop::symbols::field_name::InvalidFieldNameError;
 use crate::dop::symbols::type_name::InvalidTypeNameError;
 use crate::dop::symbols::var_name::InvalidVarNameError;
@@ -23,14 +23,14 @@ pub enum ParseError {
 
     #[error("Invalid variable name '{name}': {error}")]
     InvalidVariableName {
-        name: StringSpan,
+        name: CheapString,
         error: InvalidVarNameError,
         range: DocumentRange,
     },
 
     #[error("Invalid field name '{name}': {error}")]
     InvalidFieldName {
-        name: StringSpan,
+        name: CheapString,
         error: InvalidFieldNameError,
         range: DocumentRange,
     },
@@ -65,19 +65,19 @@ pub enum ParseError {
 
     #[error("Duplicate parameter '{name}'")]
     DuplicateParameter {
-        name: StringSpan,
+        name: CheapString,
         range: DocumentRange,
     },
 
     #[error("Duplicate field '{name}'")]
     DuplicateField {
-        name: StringSpan,
+        name: CheapString,
         range: DocumentRange,
     },
 
     #[error("Duplicate variant '{name}'")]
     DuplicateVariant {
-        name: StringSpan,
+        name: CheapString,
         range: DocumentRange,
     },
 
@@ -116,7 +116,7 @@ pub enum ParseError {
 
     #[error("Unknown macro '{name}'")]
     UnknownMacro {
-        name: StringSpan,
+        name: CheapString,
         range: DocumentRange,
     },
 }

@@ -1,7 +1,7 @@
 use std::collections::{HashSet, VecDeque};
 use std::iter::Peekable;
 
-use crate::document::document_cursor::{DocumentCursor, DocumentRange, StringSpan};
+use crate::document::document_cursor::{DocumentCursor, DocumentRange, CheapString};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
@@ -575,7 +575,7 @@ fn parse_field_access(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<(String, DocumentRange)>,
     _range: &DocumentRange,
-    identifier: StringSpan,
+    identifier: CheapString,
     id_range: DocumentRange,
 ) -> Result<ParsedExpr, ParseError> {
     let var_name =
@@ -698,7 +698,7 @@ fn parse_macro_invocation(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
-    macro_name: StringSpan,
+    macro_name: CheapString,
     name_range: DocumentRange,
 ) -> Result<ParsedExpr, ParseError> {
     let name_str = macro_name.as_str();
@@ -734,7 +734,7 @@ fn parse_record_literal(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
-    name: StringSpan,
+    name: CheapString,
     name_range: DocumentRange,
 ) -> Result<ParsedExpr, ParseError> {
     let left_paren = expect_token(iter, comments, range, &Token::LeftParen)?;
@@ -763,7 +763,7 @@ fn parse_enum_literal(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<(String, DocumentRange)>,
     range: &DocumentRange,
-    enum_name: StringSpan,
+    enum_name: CheapString,
     enum_name_range: DocumentRange,
 ) -> Result<ParsedExpr, ParseError> {
     expect_token(iter, comments, range, &Token::ColonColon)?;

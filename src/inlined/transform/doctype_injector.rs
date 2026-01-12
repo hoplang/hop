@@ -1,5 +1,5 @@
 use crate::{
-    document::document_cursor::StringSpan,
+    document::document_cursor::CheapString,
     inlined::{InlinedComponentDeclaration, InlinedNode},
 };
 
@@ -31,7 +31,7 @@ impl DoctypeInjector {
         if !Self::has_doctype(&entrypoint.children) {
             // Create a synthetic DOCTYPE node
             let doctype_node = InlinedNode::Doctype {
-                value: StringSpan::new("<!DOCTYPE html>".to_string()),
+                value: CheapString::new("<!DOCTYPE html>".to_string()),
             };
 
             // Always insert DOCTYPE at the beginning (position 0)

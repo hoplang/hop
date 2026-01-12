@@ -1,11 +1,11 @@
 use std::fmt;
 
-use crate::document::document_cursor::StringSpan;
+use crate::document::document_cursor::CheapString;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
-    Identifier(StringSpan),
-    TypeName(StringSpan),
+    Identifier(CheapString),
+    TypeName(CheapString),
     StringLiteral(String),
     IntLiteral(i64),
     FloatLiteral(f64),

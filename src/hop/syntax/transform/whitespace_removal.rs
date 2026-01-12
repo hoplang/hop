@@ -1,4 +1,4 @@
-use crate::document::document_cursor::{DocumentRange, StringSpan};
+use crate::document::document_cursor::{DocumentRange, CheapString};
 
 use crate::hop::syntax::parsed_ast::{ParsedAst, ParsedComponentDeclaration, ParsedDeclaration};
 use crate::hop::syntax::parsed_node::{ParsedMatchCase, ParsedNode};
@@ -130,14 +130,14 @@ fn transform_node(node: ParsedNode) -> Vec<ParsedNode> {
     }
 }
 
-fn split_text_node(value: &StringSpan, range: &DocumentRange) -> Vec<ParsedNode> {
+fn split_text_node(value: &CheapString, range: &DocumentRange) -> Vec<ParsedNode> {
     value
         .as_str()
         .split('\n')
         .map(|line| line.trim())
         .filter(|line| !line.is_empty())
         .map(|line| ParsedNode::Text {
-            value: StringSpan::new(line.to_string()),
+            value: CheapString::new(line.to_string()),
             range: range.clone(),
         })
         .collect()

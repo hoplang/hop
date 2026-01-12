@@ -180,9 +180,9 @@ impl DocumentRange {
         }
     }
 
-    /// Convert this DocumentRange into a StringSpan.
-    pub fn to_string_span(&self) -> StringSpan {
-        StringSpan {
+    /// Convert this DocumentRange into a CheapString.
+    pub fn to_string_span(&self) -> CheapString {
+        CheapString {
             source: self.source.clone(),
             start: self.start,
             end: self.end,
@@ -223,11 +223,11 @@ impl Ranged for DocumentRange {
     }
 }
 
-/// A StringSpan is an owned smart pointer to a string.
+/// A CheapString is an owned smart pointer to a string.
 /// It has the same semantics as an owned string but does not require
 /// a heap allocation.
 #[derive(Clone)]
-pub struct StringSpan {
+pub struct CheapString {
     /// The source info containing the document text and line starts.
     source: Arc<DocumentInfo>,
     /// the start byte offset for this span in the document (inclusive).
@@ -236,14 +236,14 @@ pub struct StringSpan {
     end: usize,
 }
 
-impl fmt::Debug for StringSpan {
+impl fmt::Debug for CheapString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Show a compact representation: just the text content
         write!(f, "{:?}", self.as_str())
     }
 }
 
-impl StringSpan {
+impl CheapString {
     pub fn new(s: String) -> Self {
         Self {
             end: s.len(),
@@ -257,39 +257,39 @@ impl StringSpan {
     }
 }
 
-impl Hash for StringSpan {
+impl Hash for CheapString {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.as_str().hash(state);
     }
 }
 
-impl fmt::Display for StringSpan {
+impl fmt::Display for CheapString {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }
 
-impl PartialEq for StringSpan {
+impl PartialEq for CheapString {
     fn eq(&self, other: &Self) -> bool {
         self.as_str() == other.as_str()
     }
 }
 
-impl Eq for StringSpan {}
+impl Eq for CheapString {}
 
-impl PartialOrd for StringSpan {
+impl PartialOrd for CheapString {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for StringSpan {
+impl Ord for CheapString {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.as_str().cmp(other.as_str())
     }
 }
 
-impl Deref for StringSpan {
+impl Deref for CheapString {
     type Target = str;
 
     fn deref(&self) -> &str {
@@ -297,7 +297,7 @@ impl Deref for StringSpan {
     }
 }
 
-impl Borrow<str> for StringSpan {
+impl Borrow<str> for CheapString {
     fn borrow(&self) -> &str {
         self.as_str()
     }

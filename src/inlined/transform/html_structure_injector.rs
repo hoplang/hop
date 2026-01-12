@@ -1,5 +1,5 @@
 use crate::{
-    document::document_cursor::StringSpan,
+    document::document_cursor::CheapString,
     inlined::{InlinedComponentDeclaration, InlinedNode},
 };
 use std::collections::BTreeMap;
@@ -75,7 +75,7 @@ impl HtmlStructureInjector {
     /// Create an empty HTML element
     fn create_html_element(tag_name: &str, children: Vec<InlinedNode>) -> InlinedNode {
         InlinedNode::Html {
-            tag_name: StringSpan::new(tag_name.to_string()),
+            tag_name: CheapString::new(tag_name.to_string()),
             attributes: BTreeMap::new(),
             children,
         }

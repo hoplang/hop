@@ -2,7 +2,7 @@ use super::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
     InlinedParameter,
 };
-use crate::document::document_cursor::StringSpan;
+use crate::document::document_cursor::CheapString;
 use crate::dop::Type;
 use crate::dop::TypedExpr;
 use crate::dop::VarName;
@@ -102,7 +102,7 @@ impl InlinedBuilder {
 
     pub fn text(&mut self, s: &str) {
         self.children.push(InlinedNode::Text {
-            value: StringSpan::new(s.to_string()),
+            value: CheapString::new(s.to_string()),
         });
     }
 
@@ -153,7 +153,7 @@ impl InlinedBuilder {
 
     pub fn doctype(&mut self, value: &str) {
         self.children.push(InlinedNode::Doctype {
-            value: StringSpan::new(value.to_string()),
+            value: CheapString::new(value.to_string()),
         });
     }
 
@@ -177,7 +177,7 @@ impl InlinedBuilder {
             .collect();
 
         self.children.push(InlinedNode::Html {
-            tag_name: StringSpan::new(tag_name.to_string()),
+            tag_name: CheapString::new(tag_name.to_string()),
             attributes: attr_map,
             children: inner_builder.children,
         });

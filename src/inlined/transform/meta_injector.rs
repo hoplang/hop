@@ -1,5 +1,5 @@
 use crate::{
-    document::document_cursor::StringSpan,
+    document::document_cursor::CheapString,
     inlined::{InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode},
 };
 use std::collections::BTreeMap;
@@ -25,13 +25,13 @@ impl MetaInjector {
         vec![
             // <meta charset="utf-8">
             InlinedNode::Html {
-                tag_name: StringSpan::new("meta".to_string()),
+                tag_name: CheapString::new("meta".to_string()),
                 attributes: BTreeMap::from([Self::create_attribute("charset", "utf-8")]),
                 children: vec![],
             },
             // <meta name="viewport" content="width=device-width,initial-scale=1">
             InlinedNode::Html {
-                tag_name: StringSpan::new("meta".to_string()),
+                tag_name: CheapString::new("meta".to_string()),
                 attributes: BTreeMap::from([
                     Self::create_attribute("name", "viewport"),
                     Self::create_attribute("content", "width=device-width, initial-scale=1"),

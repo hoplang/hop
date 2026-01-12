@@ -1,5 +1,5 @@
 use super::type_error::TypeError;
-use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::document::document_cursor::{DocumentRange, Ranged, CheapString};
 use crate::dop::patterns::compiler::Compiler as PatMatchCompiler;
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
@@ -1075,7 +1075,7 @@ fn typecheck_attributes(
             Some(ParsedAttributeValue::String(s)) => {
                 let string_span = match s {
                     Some(range) => range.to_string_span(),
-                    None => StringSpan::new("".to_string()),
+                    None => CheapString::new("".to_string()),
                 };
                 Some(TypedAttributeValue::String(string_span))
             }

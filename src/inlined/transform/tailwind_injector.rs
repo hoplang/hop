@@ -1,5 +1,5 @@
 use crate::{
-    document::document_cursor::StringSpan,
+    document::document_cursor::CheapString,
     inlined::{InlinedComponentDeclaration, InlinedNode},
 };
 use std::collections::BTreeMap;
@@ -12,11 +12,11 @@ impl TailwindInjector {
     /// Create a <style> element with the given CSS content
     fn create_style_element(css_content: &str) -> InlinedNode {
         let css_text = InlinedNode::Text {
-            value: StringSpan::new(css_content.to_string()),
+            value: CheapString::new(css_content.to_string()),
         };
 
         InlinedNode::Html {
-            tag_name: StringSpan::new("style".to_string()),
+            tag_name: CheapString::new("style".to_string()),
             attributes: BTreeMap::new(),
             children: vec![css_text],
         }

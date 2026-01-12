@@ -1,5 +1,5 @@
 use crate::{
-    document::document_cursor::{DocumentRange, Ranged, StringSpan},
+    document::document_cursor::{DocumentRange, Ranged, CheapString},
     dop,
 };
 use thiserror::Error;
@@ -8,19 +8,19 @@ use thiserror::Error;
 pub enum ParseError {
     #[error("Unmatched </{tag}>")]
     UnmatchedClosingTag {
-        tag: StringSpan,
+        tag: CheapString,
         range: DocumentRange,
     },
 
     #[error("Unclosed <{tag}>")]
     UnclosedTag {
-        tag: StringSpan,
+        tag: CheapString,
         range: DocumentRange,
     },
 
     #[error("<{tag}> should not be closed using a closing tag")]
     ClosedVoidTag {
-        tag: StringSpan,
+        tag: CheapString,
         range: DocumentRange,
     },
 
@@ -32,13 +32,13 @@ pub enum ParseError {
 
     #[error("{name} is already defined")]
     TypeNameIsAlreadyDefined {
-        name: StringSpan,
+        name: CheapString,
         range: DocumentRange,
     },
 
     #[error("Duplicate attribute '{name}'")]
     DuplicateAttribute {
-        name: StringSpan,
+        name: CheapString,
         range: DocumentRange,
     },
 
@@ -47,8 +47,8 @@ pub enum ParseError {
 
     #[error("Unrecognized attribute '{attr_name}' on <{tag_name}>")]
     UnrecognizedAttribute {
-        tag_name: StringSpan,
-        attr_name: StringSpan,
+        tag_name: CheapString,
+        attr_name: CheapString,
         range: DocumentRange,
     },
 
@@ -62,8 +62,8 @@ pub enum ParseError {
         "Invalid argument name '{name}' on <{tag_name}>: argument names cannot contain hyphens"
     )]
     InvalidArgumentName {
-        tag_name: StringSpan,
-        name: StringSpan,
+        tag_name: CheapString,
+        name: CheapString,
         range: DocumentRange,
     },
 
@@ -71,7 +71,7 @@ pub enum ParseError {
         "Unexpected expression on <{tag_name}>: use attribute syntax instead (e.g. attr={{value}})"
     )]
     UnexpectedComponentExpression {
-        tag_name: StringSpan,
+        tag_name: CheapString,
         range: DocumentRange,
     },
 }

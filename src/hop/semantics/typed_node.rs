@@ -1,4 +1,4 @@
-use crate::document::document_cursor::StringSpan;
+use crate::document::document_cursor::CheapString;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::{TypedExpr, VarName};
 use crate::hop::symbols::component_name::ComponentName;
@@ -8,7 +8,7 @@ use pretty::BoxDoc;
 #[derive(Debug, Clone)]
 pub enum TypedAttributeValue {
     Expression(TypedExpr),
-    String(StringSpan),
+    String(CheapString),
 }
 
 impl TypedAttributeValue {
@@ -41,7 +41,7 @@ impl TypedAttribute {
 #[derive(Debug, Clone)]
 pub enum TypedNode {
     Text {
-        value: StringSpan,
+        value: CheapString,
     },
 
     TextExpression {
@@ -77,11 +77,11 @@ pub enum TypedNode {
     },
 
     Doctype {
-        value: StringSpan,
+        value: CheapString,
     },
 
     Html {
-        tag_name: StringSpan,
+        tag_name: CheapString,
         attributes: Vec<TypedAttribute>,
         children: Vec<TypedNode>,
     },

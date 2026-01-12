@@ -3,7 +3,7 @@ use std::fmt::{self, Display};
 use pretty::BoxDoc;
 
 use crate::common::is_void_element;
-use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::document::document_cursor::{DocumentRange, Ranged, CheapString};
 use crate::dop::ParsedExpr;
 use crate::dop::VarName;
 use crate::dop::syntax::parsed::{ParsedMatchPattern, ParsedType};
@@ -62,7 +62,7 @@ pub enum ParsedNode {
     /// E.g. <div>hello world</div>
     ///           ^^^^^^^^^^^
     Text {
-        value: StringSpan,
+        value: CheapString,
         range: DocumentRange,
     },
 
@@ -130,7 +130,7 @@ pub enum ParsedNode {
 
     /// A Doctype node represents a doctype, e.g. a <!DOCTYPE html>
     Doctype {
-        value: StringSpan,
+        value: CheapString,
         range: DocumentRange,
     },
 

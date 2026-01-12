@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fmt};
 
-use crate::document::document_cursor::StringSpan;
+use crate::document::document_cursor::CheapString;
 use crate::dop::Type;
 use crate::dop::TypedExpr;
 use crate::dop::VarName;
@@ -39,7 +39,7 @@ pub struct InlinedComponentDeclaration {
 #[derive(Debug, Clone)]
 pub enum InlinedNode {
     Text {
-        value: StringSpan,
+        value: CheapString,
     },
     TextExpression {
         expression: TypedExpr,
@@ -54,10 +54,10 @@ pub enum InlinedNode {
         children: Vec<Self>,
     },
     Doctype {
-        value: StringSpan,
+        value: CheapString,
     },
     Html {
-        tag_name: StringSpan,
+        tag_name: CheapString,
         attributes: BTreeMap<String, InlinedAttribute>,
         children: Vec<Self>,
     },

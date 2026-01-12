@@ -1,5 +1,5 @@
 use crate::common::is_void_element;
-use crate::document::document_cursor::StringSpan;
+use crate::document::document_cursor::CheapString;
 use crate::dop::TypedExpr;
 use crate::dop::patterns::{EnumMatchArm, Match};
 use crate::dop::semantics::r#type::EquatableType;
@@ -308,7 +308,7 @@ impl Compiler {
 
     fn compile_html_node(
         &mut self,
-        tag_name: &StringSpan,
+        tag_name: &CheapString,
         attributes: BTreeMap<String, InlinedAttribute>,
         children: Vec<InlinedNode>,
         slot_content: Option<&Vec<IrStatement>>,

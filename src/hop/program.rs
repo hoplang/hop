@@ -1,5 +1,5 @@
 use crate::document::DocumentPosition;
-use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::document::document_cursor::{DocumentRange, Ranged, CheapString};
 use crate::dop::ParsedType;
 use crate::error_collector::ErrorCollector;
 use crate::hop::semantics::type_error::TypeError;
@@ -47,7 +47,7 @@ pub struct RenameLocation {
 
 /// A RenameableSymbol is a range in the document that is renameable.
 pub struct RenameableSymbol {
-    pub current_name: StringSpan,
+    pub current_name: CheapString,
     pub range: DocumentRange,
 }
 
