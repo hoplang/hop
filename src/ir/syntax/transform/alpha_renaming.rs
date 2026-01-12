@@ -553,8 +553,8 @@ impl Pass for AlphaRenamingPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dop::Type;
     use crate::ir::syntax::builder::build_ir;
+    use crate::{document::document_cursor::CheapString, dop::Type};
     use expect_test::{Expect, expect};
 
     fn check(input_entrypoint: IrComponentDeclaration, expected: Expect) {
@@ -811,14 +811,14 @@ mod tests {
         // Create a deeply nested left-leaning StringConcat tree
         let depth = 100;
         let mut expr = IrExpr::StringLiteral {
-            value: "start".to_string(),
+            value: CheapString::new("start".to_string()),
             id: 0,
         };
         for i in 0..depth {
             expr = IrExpr::StringConcat {
                 left: Box::new(expr),
                 right: Box::new(IrExpr::StringLiteral {
-                    value: format!("{}", i),
+                    value: CheapString::new(format!("{}", i)),
                     id: (i + 1) as u32,
                 }),
                 id: (i + 1000) as u32,

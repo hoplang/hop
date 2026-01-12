@@ -48,7 +48,7 @@ impl Compiler {
         // Create condition: EnvLookup("HOP_DEV_MODE") == "enabled"
         let env_lookup_expr = IrExpr::EnvLookup {
             key: Box::new(IrExpr::StringLiteral {
-                value: "HOP_DEV_MODE".to_string(),
+                value: CheapString::new("HOP_DEV_MODE".to_string()),
                 id: compiler.next_expr_id(),
             }),
             id: compiler.next_expr_id(),
@@ -57,7 +57,7 @@ impl Compiler {
         let condition_expr = IrExpr::Equals {
             left: Box::new(env_lookup_expr),
             right: Box::new(IrExpr::StringLiteral {
-                value: "enabled".to_string(),
+                value: CheapString::new("enabled".to_string()),
                 id: compiler.next_expr_id(),
             }),
             operand_types: EquatableType::String,
@@ -151,7 +151,7 @@ impl Compiler {
             id: self.next_node_id(),
             expr: IrExpr::EnvLookup {
                 key: Box::new(IrExpr::StringLiteral {
-                    value: "HOP_DEV_PORT".to_string(),
+                    value: CheapString::new("HOP_DEV_PORT".to_string()),
                     id: self.next_expr_id(),
                 }),
                 id: self.next_expr_id(),
@@ -1137,13 +1137,13 @@ mod tests {
         // Create a deeply nested left-leaning StringConcat tree
         let depth = 100;
         let mut expr = TypedExpr::StringLiteral {
-            value: "start".to_string(),
+            value: CheapString::new("start".to_string()),
         };
         for i in 0..depth {
             expr = TypedExpr::StringConcat {
                 left: Box::new(expr),
                 right: Box::new(TypedExpr::StringLiteral {
-                    value: format!("{}", i),
+                    value: CheapString::new(format!("{}", i)),
                 }),
             };
         }

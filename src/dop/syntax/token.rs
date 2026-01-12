@@ -6,7 +6,7 @@ use crate::document::document_cursor::CheapString;
 pub enum Token {
     Identifier(CheapString),
     TypeName(CheapString),
-    StringLiteral(String),
+    StringLiteral(CheapString),
     IntLiteral(i64),
     FloatLiteral(f64),
     Comment(CheapString),

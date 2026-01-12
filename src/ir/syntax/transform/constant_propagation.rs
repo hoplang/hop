@@ -1,4 +1,5 @@
 use super::Pass;
+use crate::document::document_cursor::CheapString;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::ir::{
     IrExpr,
@@ -47,7 +48,7 @@ impl Pass for ConstantPropagationPass {
                             initial_constants.push((expr.id(), Const::Bool(*value)));
                         }
                         IrExpr::StringLiteral { value, .. } => {
-                            initial_constants.push((expr.id(), Const::String(value.clone())));
+                            initial_constants.push((expr.id(), Const::String(value.to_string())));
                         }
                         IrExpr::BooleanNegation { operand, .. } => {
                             not_relations.push((operand.id(), expr.id()));
@@ -314,7 +315,7 @@ impl Pass for ConstantPropagationPass {
                                     id: e.id(),
                                 },
                                 Const::String(s) => IrExpr::StringLiteral {
-                                    value: s.clone(),
+                                    value: CheapString::new(s.clone()),
                                     id: e.id(),
                                 },
                                 Const::Enum {

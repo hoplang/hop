@@ -1,3 +1,4 @@
+use crate::document::document_cursor::CheapString;
 use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::dop::semantics::r#type::{ComparableType, EquatableType};
 use crate::dop::symbols::field_name::FieldName;
@@ -347,7 +348,7 @@ impl IrBuilder {
     // Expression builders
     pub fn str(&self, s: &str) -> IrExpr {
         IrExpr::StringLiteral {
-            value: s.to_string(),
+            value: CheapString::new(s.to_string()),
             id: self.next_expr_id(),
         }
     }

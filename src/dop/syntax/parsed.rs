@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 
-use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::document::document_cursor::{CheapString, DocumentRange, Ranged};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
@@ -242,7 +242,7 @@ pub enum ParsedExpr {
     },
 
     /// A string literal expression, e.g. "foo bar"
-    StringLiteral { value: String, range: DocumentRange },
+    StringLiteral { value: CheapString, range: DocumentRange },
 
     /// A boolean literal expression, e.g. true
     BooleanLiteral { value: bool, range: DocumentRange },

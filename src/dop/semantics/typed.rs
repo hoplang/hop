@@ -1,5 +1,6 @@
 use std::fmt::{self, Display};
 
+use crate::document::document_cursor::CheapString;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::var_name::VarName;
@@ -20,7 +21,7 @@ pub enum TypedExpr {
     },
 
     /// A string literal expression, e.g. "foo bar"
-    StringLiteral { value: String },
+    StringLiteral { value: CheapString },
 
     /// A boolean literal expression, e.g. true
     BooleanLiteral { value: bool },

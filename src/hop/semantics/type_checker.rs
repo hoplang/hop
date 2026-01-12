@@ -834,8 +834,8 @@ fn typecheck_node(
                             Some(ParsedAttributeValue::String(content)) => {
                                 let value = content
                                     .as_ref()
-                                    .map(|r| r.as_str().to_string())
-                                    .unwrap_or_default();
+                                    .map(|r| r.to_cheap_string())
+                                    .unwrap_or_else(|| CheapString::new(String::new()));
                                 dop::ParsedExpr::StringLiteral {
                                     value,
                                     range: arg.name.clone(),

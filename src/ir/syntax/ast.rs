@@ -1,3 +1,4 @@
+use crate::document::document_cursor::CheapString;
 use crate::dop::VarName;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, Type};
@@ -108,7 +109,7 @@ pub enum IrExpr {
     },
 
     /// A string literal expression, e.g. "foo bar"
-    StringLiteral { value: String, id: ExprId },
+    StringLiteral { value: CheapString, id: ExprId },
 
     /// A boolean literal expression, e.g. true
     BooleanLiteral { value: bool, id: ExprId },

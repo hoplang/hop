@@ -87,17 +87,20 @@ pub fn next(
                 _ => Ok((Token::Assign, start)),
             },
             '"' => {
-                let mut end_range = start.clone();
-                let mut result = String::new();
-                while let Some(s) = iter.next_if(|s| s.ch() != '"') {
-                    result.push(s.ch());
-                    end_range = s;
-                }
+                let content: Option<DocumentRange> =
+                    iter.peeking_take_while(|s| s.ch() != '"').collect();
                 match iter.next() {
                     None => Err(ParseError::UnterminatedStringLiteral {
-                        range: start.to(end_range),
+                        range: content
+                            .map(|c| start.clone().to(c))
+                            .unwrap_or(start),
                     }),
-                    Some(end) => Ok((Token::StringLiteral(result), start.to(end))),
+                    Some(end) => {
+                        let value = content
+                            .map(|c| c.to_cheap_string())
+                            .unwrap_or_else(|| CheapString::new(String::new()));
+                        Ok((Token::StringLiteral(value), start.to(end)))
+                    }
                 }
             }
             'A'..='Z' | 'a'..='z' | '_' => {

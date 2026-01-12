@@ -1,6 +1,6 @@
 use super::r#type::{NumericType, Type};
 use super::type_error::TypeError;
-use crate::document::document_cursor::DocumentRange;
+use crate::document::document_cursor::{CheapString, DocumentRange};
 use crate::dop::TypedExpr;
 use crate::dop::patterns::compiler::{Compiler, Decision};
 use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
@@ -888,7 +888,7 @@ fn expand_classes_macro(
 ) -> Result<TypedExpr, TypeError> {
     if args.is_empty() {
         return Ok(TypedExpr::StringLiteral {
-            value: String::new(),
+            value: CheapString::new(String::new()),
         });
     }
 
@@ -915,7 +915,7 @@ fn expand_classes_macro(
         result = TypedExpr::StringConcat {
             left: Box::new(result),
             right: Box::new(TypedExpr::StringLiteral {
-                value: " ".to_string(),
+                value: CheapString::new(" ".to_string()),
             }),
         };
         // Add next argument

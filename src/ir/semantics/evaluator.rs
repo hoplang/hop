@@ -193,7 +193,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 Ok(Value::Null)
             }
         }
-        IrExpr::StringLiteral { value: s, .. } => Ok(Value::String(s.clone())),
+        IrExpr::StringLiteral { value: s, .. } => Ok(Value::String(s.to_string())),
         IrExpr::BooleanLiteral { value: b, .. } => Ok(Value::Bool(*b)),
         IrExpr::FloatLiteral { value: f, .. } => {
             Ok(Value::Number(serde_json::Number::from_f64(*f).unwrap()))
