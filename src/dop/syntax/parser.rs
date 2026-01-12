@@ -933,7 +933,7 @@ pub fn parse_match_pattern(
 
     let (var_name, var_range) = expect_variable_name(iter, comments, range)?;
     Ok(ParsedMatchPattern::Binding {
-        name: var_name.to_string(),
+        name: CheapString::new(var_name.to_string()),
         range: var_range,
     })
 }

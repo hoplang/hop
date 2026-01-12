@@ -981,7 +981,7 @@ pub fn extract_bindings_from_pattern(
 ) -> Vec<(String, Type, DocumentRange)> {
     match pattern {
         ParsedMatchPattern::Binding { name, range } => {
-            vec![(name.clone(), subject_type.clone(), range.clone())]
+            vec![(name.to_string(), subject_type.clone(), range.clone())]
         }
         ParsedMatchPattern::Wildcard { .. } => vec![],
         ParsedMatchPattern::Constructor {

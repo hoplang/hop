@@ -143,7 +143,7 @@ pub enum ParsedMatchPattern {
     /// A wildcard pattern that matches anything, written as `_`
     Wildcard { range: DocumentRange },
     /// A binding pattern that matches anything and binds it to a name
-    Binding { name: String, range: DocumentRange },
+    Binding { name: CheapString, range: DocumentRange },
 }
 
 impl Ranged for ParsedMatchPattern {

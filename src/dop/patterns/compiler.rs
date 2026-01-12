@@ -283,7 +283,7 @@ impl Compiler {
                 ParsedMatchPattern::Wildcard { .. } => false,
                 ParsedMatchPattern::Binding { name, .. } => {
                     row.body.bindings.push(Binding::new(
-                        name.clone(),
+                        name.to_string(),
                         col.variable.name.clone(),
                         col.variable.typ.clone(),
                     ));
