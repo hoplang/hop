@@ -1247,7 +1247,7 @@ fn decision_to_typed_expr(
                                     (
                                         EnumPattern::Variant {
                                             enum_name: enum_name.to_string(),
-                                            variant_name: variant_name.clone(),
+                                            variant_name: variant_name.to_string(),
                                         },
                                         fields,
                                     )

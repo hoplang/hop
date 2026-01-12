@@ -94,7 +94,7 @@ pub enum Constructor {
     /// An enum variant pattern, e.g. `Color::Red`
     EnumVariant {
         enum_name: TypeName,
-        variant_name: String,
+        variant_name: CheapString,
     },
     /// A record pattern, e.g. `User(name: x, age: y)`
     Record { type_name: TypeName },

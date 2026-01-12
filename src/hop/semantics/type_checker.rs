@@ -1197,7 +1197,7 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
                                 } => {
                                     let pattern = EnumPattern::Variant {
                                         enum_name: enum_name.to_string(),
-                                        variant_name: variant_name.clone(),
+                                        variant_name: variant_name.to_string(),
                                     };
                                     // Get the variant's fields to create bindings
                                     let empty_fields = vec![];

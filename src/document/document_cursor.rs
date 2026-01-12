@@ -287,6 +287,12 @@ impl PartialEq<&str> for CheapString {
     }
 }
 
+impl PartialEq<CheapString> for str {
+    fn eq(&self, other: &CheapString) -> bool {
+        self == other.as_str()
+    }
+}
+
 impl Eq for CheapString {}
 
 impl PartialOrd for CheapString {

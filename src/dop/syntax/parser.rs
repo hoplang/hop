@@ -897,7 +897,7 @@ pub fn parse_match_pattern(
             return Ok(ParsedMatchPattern::Constructor {
                 constructor: Constructor::EnumVariant {
                     enum_name: type_name,
-                    variant_name: variant_name.as_str().to_string(),
+                    variant_name: CheapString::new(variant_name.to_string()),
                 },
                 args: Vec::new(),
                 fields,

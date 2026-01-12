@@ -5,7 +5,7 @@
 //! Thanks to Yorick Peterse for the original implementation.
 use std::collections::{HashMap, HashSet};
 
-use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::document::document_cursor::{CheapString, DocumentRange, Ranged};
 use crate::dop::syntax::parsed::{Constructor, ParsedMatchPattern};
 
 use crate::dop::semantics::r#type::Type;
@@ -332,7 +332,7 @@ impl Compiler {
                     (
                         Constructor::EnumVariant {
                             enum_name: name.clone(),
-                            variant_name: variant_name.to_string(),
+                            variant_name: CheapString::new(variant_name.to_string()),
                         },
                         field_vars,
                         Vec::new(),
@@ -609,7 +609,7 @@ impl Compiler {
                         None => {
                             return Err(TypeError::UndefinedEnumVariant {
                                 enum_name: pattern_enum_name.to_string(),
-                                variant_name: pattern_variant_name.clone(),
+                                variant_name: pattern_variant_name.to_string(),
                                 range: range.clone(),
                             });
                         }
@@ -627,7 +627,7 @@ impl Compiler {
                             None => {
                                 return Err(TypeError::EnumVariantUnknownField {
                                     enum_name: pattern_enum_name.to_string(),
-                                    variant_name: pattern_variant_name.clone(),
+                                    variant_name: pattern_variant_name.to_string(),
                                     field_name: field_name.to_string(),
                                     range: field_name_range.clone(),
                                 });
@@ -646,7 +646,7 @@ impl Compiler {
                             .collect();
                         return Err(TypeError::EnumVariantMissingFields {
                             enum_name: pattern_enum_name.to_string(),
-                            variant_name: pattern_variant_name.clone(),
+                            variant_name: pattern_variant_name.to_string(),
                             missing_fields,
                             range: constructor_range.clone(),
                         });
