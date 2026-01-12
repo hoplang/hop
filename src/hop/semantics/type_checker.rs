@@ -1,5 +1,5 @@
 use super::type_error::TypeError;
-use crate::document::document_cursor::{CheapString, DocumentRange, Ranged};
+use crate::document::document::{CheapString, Document, DocumentRange, Ranged};
 use crate::dop::patterns::compiler::Compiler as PatMatchCompiler;
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
@@ -1307,7 +1307,7 @@ mod tests {
             let mut parse_errors = ErrorCollector::new();
             let module_name = ModuleName::new(file.name.trim_end_matches(".hop")).unwrap();
             module_names.push(module_name.clone());
-            let ast = parse(module_name, source_code.to_string(), &mut parse_errors);
+            let ast = parse(module_name, Document::new(source_code.to_string()), &mut parse_errors);
 
             if !parse_errors.is_empty() {
                 panic!("Got parse errors: {:#?}", parse_errors);

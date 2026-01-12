@@ -1,4 +1,4 @@
-use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::document::document::{DocumentRange, Ranged};
 use crate::dop::{self, Type};
 use thiserror::Error;
 

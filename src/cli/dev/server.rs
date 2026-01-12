@@ -1,3 +1,4 @@
+use crate::document::document::Document;
 use crate::document::DocumentAnnotator;
 use crate::hop::program::Program;
 use crate::hop::symbols::component_name::ComponentName;
@@ -163,7 +164,7 @@ mod tests {
         let mut modules = HashMap::new();
         for file in archive.iter() {
             let module_name = ModuleName::new(&file.name.replace(".hop", "")).unwrap();
-            modules.insert(module_name, file.content.clone());
+            modules.insert(module_name, Document::new(file.content.clone()));
         }
         let program = Program::new(modules);
         let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);

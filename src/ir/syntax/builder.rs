@@ -1,4 +1,4 @@
-use crate::document::document_cursor::CheapString;
+use crate::document::document::CheapString;
 use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::dop::semantics::r#type::{ComparableType, EquatableType};
 use crate::dop::symbols::field_name::FieldName;

@@ -1,5 +1,5 @@
 pub mod document_annotator;
-pub mod document_cursor;
+pub mod document;
 pub mod document_info;
 pub mod document_position;
 

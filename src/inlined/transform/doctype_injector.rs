@@ -1,5 +1,5 @@
 use crate::{
-    document::document_cursor::CheapString,
+    document::document::CheapString,
     inlined::{InlinedComponentDeclaration, InlinedNode},
 };
 

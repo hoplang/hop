@@ -8,7 +8,7 @@ use super::parsed_ast::{
 };
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
 use super::token_tree::{TokenTree, build_tree};
-use crate::document::document_cursor::{CheapString, DocumentCursor, DocumentRange};
+use crate::document::document::{CheapString, Document, DocumentCursor, DocumentRange};
 use crate::dop;
 use crate::dop::ParsedDeclaration as DopParsedDeclaration;
 use crate::dop::VarName;
@@ -126,11 +126,11 @@ fn find_expression_end(mut iter: Peekable<DocumentCursor>) -> Option<DocumentRan
 
 pub fn parse(
     module_name: ModuleName,
-    source: String,
+    document: Document,
     errors: &mut ErrorCollector<ParseError>,
 ) -> ParsedAst {
     // Build the token tree
-    let tokenizer = Tokenizer::new(DocumentCursor::new(source));
+    let tokenizer = Tokenizer::new(document.cursor());
     let trees = build_tree(tokenizer, errors);
 
     let mut declarations = Vec::new();
@@ -831,7 +831,7 @@ mod tests {
         let mut errors = ErrorCollector::new();
         let module = parse(
             ModuleName::new("test").unwrap(),
-            input.to_string(),
+            Document::new(input.to_string()),
             &mut errors,
         );
 

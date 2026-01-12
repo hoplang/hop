@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use itertools::Itertools as _;
 
-use crate::document::document_cursor::{CheapString, DocumentCursor, DocumentRange};
+use crate::document::document::{CheapString, DocumentCursor, DocumentRange};
 
 use super::parse_error::ParseError;
 use super::token::Token;
@@ -202,7 +202,7 @@ pub fn peek_past_comments(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::{DocumentAnnotator, SimpleAnnotation, document_cursor::Ranged as _};
+    use crate::document::{DocumentAnnotator, SimpleAnnotation, document::Ranged as _};
     use expect_test::{Expect, expect};
 
     fn check(input: &str, expected: Expect) {

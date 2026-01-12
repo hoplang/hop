@@ -1,5 +1,5 @@
 use super::Pass;
-use crate::document::document_cursor::CheapString;
+use crate::document::document::CheapString;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::ir::{
     IrExpr,

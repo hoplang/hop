@@ -1,5 +1,5 @@
 use crate::document::DocumentPosition;
-use crate::document::document_cursor::{CheapString, DocumentRange, Ranged};
+use crate::document::document::{CheapString, Document, DocumentRange, Ranged};
 use crate::dop::ParsedType;
 use crate::error_collector::ErrorCollector;
 use crate::hop::semantics::type_error::TypeError;
@@ -60,10 +60,10 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn new(modules: HashMap<ModuleName, String>) -> Self {
+    pub fn new(modules: HashMap<ModuleName, Document>) -> Self {
         let mut program = Self::default();
-        for (module_name, source_code) in modules {
-            program.update_module(module_name, source_code);
+        for (module_name, document) in modules {
+            program.update_module(module_name, document);
         }
         program
     }
@@ -71,12 +71,12 @@ impl Program {
     pub fn update_module(
         &mut self,
         module_name: ModuleName,
-        source_code: String,
+        document: Document,
     ) -> Vec<ModuleName> {
         // Parse the module
         let parse_errors = self.parse_errors.entry(module_name.clone()).or_default();
         parse_errors.clear();
-        let module = parse(module_name.clone(), source_code, parse_errors);
+        let module = parse(module_name.clone(), document, parse_errors);
 
         // Get all modules that this module depends on
         let module_dependencies = module
@@ -600,7 +600,7 @@ mod tests {
         let mut map = HashMap::new();
         for file in archive.iter() {
             let module_name = ModuleName::new(&file.name.replace(".hop", "")).unwrap();
-            map.insert(module_name, file.content.clone());
+            map.insert(module_name, Document::new(file.content.clone()));
         }
         Program::new(map)
     }
@@ -609,7 +609,7 @@ mod tests {
         let mut map = HashMap::new();
         for file in archive.iter() {
             let module_name = ModuleName::new(&file.name.replace(".hop", "")).unwrap();
-            map.insert(module_name, file.content.clone());
+            map.insert(module_name, Document::new(file.content.clone()));
         }
         Program::new(map)
     }
@@ -1477,11 +1477,13 @@ mod tests {
         // Resolve cycle
         program.update_module(
             ModuleName::new("a").unwrap(),
-            indoc! {r#"
-                <AComp>
-                </AComp>
-            "#}
-            .to_string(),
+            Document::new(
+                indoc! {r#"
+                    <AComp>
+                    </AComp>
+                "#}
+                .to_string(),
+            ),
         );
         // Type errors should now be empty
         check_type_errors(&program, expect![""]);
@@ -1541,24 +1543,28 @@ mod tests {
         // Resolve cycle
         program.update_module(
             ModuleName::new("c").unwrap(),
-            indoc! {r#"
-                <CComp>
-                </CComp>
-            "#}
-            .to_string(),
+            Document::new(
+                indoc! {r#"
+                    <CComp>
+                    </CComp>
+                "#}
+                .to_string(),
+            ),
         );
         // Type errors should now be empty
         check_type_errors(&program, expect![""]);
         // Introduce new cycle a → b → a
         program.update_module(
             ModuleName::new("b").unwrap(),
-            indoc! {r#"
-                import a::AComp
-                <BComp>
-                  <AComp />
-                </BComp>
-            "#}
-            .to_string(),
+            Document::new(
+                indoc! {r#"
+                    import a::AComp
+                    <BComp>
+                      <AComp />
+                    </BComp>
+                "#}
+                .to_string(),
+            ),
         );
         check_type_errors(
             &program,
@@ -1577,11 +1583,13 @@ mod tests {
         // Resolve cycle
         program.update_module(
             ModuleName::new("b").unwrap(),
-            indoc! {r#"
-                <BComp>
-                </BComp>
-            "#}
-            .to_string(),
+            Document::new(
+                indoc! {r#"
+                    <BComp>
+                    </BComp>
+                "#}
+                .to_string(),
+            ),
         );
         // Type errors should now be empty
         check_type_errors(&program, expect![""]);

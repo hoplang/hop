@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fmt};
 
-use crate::document::document_cursor::CheapString;
+use crate::document::document::CheapString;
 use crate::dop::Type;
 use crate::dop::TypedExpr;
 use crate::dop::VarName;

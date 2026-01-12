@@ -9,6 +9,33 @@ use std::{
 
 use super::{DocumentPosition, document_info::DocumentInfo};
 
+/// A Document is a shared reference to a source string.
+#[derive(Clone, Debug)]
+pub struct Document {
+    source: Arc<DocumentInfo>,
+}
+
+impl Document {
+    pub fn new(text: String) -> Self {
+        Self {
+            source: Arc::new(DocumentInfo::new(text)),
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.source.text
+    }
+
+    pub fn cursor(&self) -> DocumentCursor {
+        let end = self.source.text.len();
+        DocumentCursor {
+            source: self.source.clone(),
+            offset: 0,
+            end,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct DocumentCursor {
     /// The source info containing text and line starts.

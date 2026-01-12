@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 
-use crate::document::document_cursor::CheapString;
+use crate::document::document::CheapString;
 use thiserror::Error;
 
 /// Error type for invalid field names

@@ -1,5 +1,5 @@
 use crate::document::DocumentPosition;
-use crate::document::document_cursor::DocumentRange;
+use crate::document::document::{Document, DocumentRange};
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
 use crate::hop::symbols::module_name::ModuleName;
@@ -130,8 +130,8 @@ impl LanguageServer for HopLanguageServer {
                 let names: Vec<ModuleName> = all_modules.keys().cloned().collect();
                 {
                     let mut server = self.program.write().await;
-                    for (module_name, content) in all_modules {
-                        server.update_module(module_name, content);
+                    for (module_name, document) in all_modules {
+                        server.update_module(module_name, document);
                     }
                 }
                 for module_name in names {
@@ -156,7 +156,7 @@ impl LanguageServer for HopLanguageServer {
                 let changed_modules: Vec<ModuleName>;
                 {
                     let mut server = self.program.write().await;
-                    changed_modules = server.update_module(module_name, change.text);
+                    changed_modules = server.update_module(module_name, Document::new(change.text));
                 }
                 for c in changed_modules {
                     let uri = Self::module_name_to_uri(&c, root);

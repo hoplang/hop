@@ -1,5 +1,7 @@
+use crate::document::document::Document;
 use crate::error_collector::ErrorCollector;
 use crate::filesystem::project_root::ProjectRoot;
+use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::syntax::format;
 use crate::hop::syntax::parser;
 use anyhow::Result;
@@ -11,10 +13,10 @@ pub struct FmtResult {
 }
 
 pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResult> {
-    let hop_modules = match file {
+    let hop_modules: Vec<(ModuleName, Document)> = match file {
         Some(file_path) => {
-            let (module_name, content) = project_root.load_hop_module(Path::new(file_path))?;
-            vec![(module_name, content)]
+            let (module_name, document) = project_root.load_hop_module(Path::new(file_path))?;
+            vec![(module_name, document)]
         }
         None => {
             let modules = project_root.load_all_hop_modules()?;
@@ -27,25 +29,25 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
 
     // First pass: parse all files and check for errors
     let mut parsed_modules = Vec::new();
-    for (module_name, source) in hop_modules {
+    for (module_name, document) in hop_modules {
         let mut errors = ErrorCollector::new();
-        let ast = parser::parse(module_name.clone(), source.clone(), &mut errors);
+        let ast = parser::parse(module_name.clone(), document.clone(), &mut errors);
 
         if !errors.is_empty() {
             anyhow::bail!("Parse errors in {}", module_name);
         }
 
-        parsed_modules.push((module_name, source, ast));
+        parsed_modules.push((module_name, document, ast));
     }
 
     // Second pass: format all files (only if all parsed successfully)
     let mut files_formatted = 0;
     let mut files_unchanged = 0;
 
-    for (module_name, source, ast) in parsed_modules {
+    for (module_name, document, ast) in parsed_modules {
         let formatted = format(ast);
 
-        if formatted != source {
+        if formatted != document.as_str() {
             let path = project_root.module_name_to_path(&module_name);
             std::fs::write(&path, &formatted)?;
             files_formatted += 1;

@@ -5,7 +5,7 @@
 //! Thanks to Yorick Peterse for the original implementation.
 use std::collections::{HashMap, HashSet};
 
-use crate::document::document_cursor::{CheapString, DocumentRange, Ranged};
+use crate::document::document::{CheapString, DocumentRange, Ranged};
 use crate::dop::syntax::parsed::{Constructor, ParsedMatchPattern};
 
 use crate::dop::semantics::r#type::Type;
@@ -740,7 +740,7 @@ impl Compiler {
 mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
-    use crate::document::document_cursor::DocumentCursor;
+    use crate::document::document::DocumentCursor;
     use crate::dop::parser;
     use crate::dop::symbols::field_name::FieldName;
     use crate::dop::symbols::type_name::TypeName;

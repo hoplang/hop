@@ -9,7 +9,7 @@ use super::parsed_ast::{
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
 use super::transform::whitespace_removal::remove_whitespace;
 use crate::common::is_void_element;
-use crate::document::document_cursor::{CheapString, DocumentRange, Ranged};
+use crate::document::document::{CheapString, DocumentRange, Ranged};
 use crate::dop::syntax::parsed::{
     Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern, ParsedType,
 };
@@ -902,6 +902,7 @@ mod tests {
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
+    use crate::document::document::Document;
     use crate::error_collector::ErrorCollector;
     use crate::hop::symbols::module_name::ModuleName;
     use crate::hop::syntax::parse_error::ParseError;
@@ -911,7 +912,7 @@ mod tests {
         let mut errors = ErrorCollector::<ParseError>::new();
         let ast = parser::parse(
             ModuleName::new("test").unwrap(),
-            source.to_string(),
+            Document::new(source.to_string()),
             &mut errors,
         );
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);

@@ -6,6 +6,7 @@ use std::{
 use tokio::fs as async_fs;
 
 use super::config::HopConfig;
+use crate::document::document::Document;
 use crate::hop::symbols::module_name::ModuleName;
 
 /// Check if a directory should be skipped during .hop file search
@@ -118,7 +119,7 @@ impl ProjectRoot {
     }
 
     /// Load all hop modules from this project root, returning a HashMap of module_name -> content
-    pub fn load_all_hop_modules(&self) -> anyhow::Result<HashMap<ModuleName, String>> {
+    pub fn load_all_hop_modules(&self) -> anyhow::Result<HashMap<ModuleName, Document>> {
         let all_hop_files = self.find_hop_files()?;
         let mut modules = HashMap::new();
 
@@ -126,14 +127,14 @@ impl ProjectRoot {
             let module_name = self.path_to_module_name(&path)?;
             let content = std::fs::read_to_string(&path)
                 .with_context(|| format!("Failed to read file {:?}", path))?;
-            modules.insert(module_name, content);
+            modules.insert(module_name, Document::new(content));
         }
 
         Ok(modules)
     }
 
-    /// Load a single hop module from a file path, returning module_name -> content
-    pub fn load_hop_module(&self, file_path: &Path) -> anyhow::Result<(ModuleName, String)> {
+    /// Load a single hop module from a file path, returning module_name -> document
+    pub fn load_hop_module(&self, file_path: &Path) -> anyhow::Result<(ModuleName, Document)> {
         let canonical_path = file_path
             .canonicalize()
             .with_context(|| format!("Failed to canonicalize path {:?}", file_path))?;
@@ -146,7 +147,7 @@ impl ProjectRoot {
         let content = std::fs::read_to_string(&canonical_path)
             .with_context(|| format!("Failed to read file {:?}", canonical_path))?;
 
-        Ok((module_name, content))
+        Ok((module_name, Document::new(content)))
     }
 
     /// Recursively find all .hop files in this project root
@@ -361,7 +362,7 @@ mod tests {
         let button_content = modules
             .get(&ModuleName::new("src/components/button").unwrap())
             .unwrap();
-        assert!(button_content.contains("<button-comp>Click me!</button-comp>"));
+        assert!(button_content.as_str().contains("<button-comp>Click me!</button-comp>"));
 
         // Clean up
         std::fs::remove_dir_all(&temp_dir).unwrap();

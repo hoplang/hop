@@ -554,7 +554,7 @@ impl Pass for AlphaRenamingPass {
 mod tests {
     use super::*;
     use crate::ir::syntax::builder::build_ir;
-    use crate::{document::document_cursor::CheapString, dop::Type};
+    use crate::{document::document::CheapString, dop::Type};
     use expect_test::{Expect, expect};
 
     fn check(input_entrypoint: IrComponentDeclaration, expected: Expect) {

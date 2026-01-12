@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::fmt::Display;
 
-use super::document_cursor::{DocumentRange, Ranged};
+use super::document::{DocumentRange, Ranged};
 
 /// Simple annotation implementation for basic use cases
 #[derive(Clone, Debug)]

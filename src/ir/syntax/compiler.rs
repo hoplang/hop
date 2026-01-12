@@ -1,5 +1,5 @@
 use crate::common::is_void_element;
-use crate::document::document_cursor::CheapString;
+use crate::document::document::CheapString;
 use crate::dop::TypedExpr;
 use crate::dop::patterns::{EnumMatchArm, Match};
 use crate::dop::semantics::r#type::EquatableType;

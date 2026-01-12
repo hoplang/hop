@@ -438,6 +438,7 @@ impl Inliner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document::document::Document;
     use crate::error_collector::ErrorCollector;
     use crate::hop::semantics::type_checker::TypeChecker;
     use crate::hop::symbols::module_name::ModuleName;
@@ -452,7 +453,7 @@ mod tests {
         let mut untyped_asts = HashMap::new();
         for (module_name_str, source) in sources {
             let module_name = ModuleName::new(module_name_str).unwrap();
-            let ast = parse(module_name.clone(), source.to_string(), &mut errors);
+            let ast = parse(module_name.clone(), Document::new(source.to_string()), &mut errors);
             let ast = remove_whitespace(ast);
             untyped_asts.insert(module_name, ast);
         }
