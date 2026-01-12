@@ -33,7 +33,7 @@ pub enum ParsedType {
         range: DocumentRange,
     },
     Named {
-        name: String,
+        name: CheapString,
         range: DocumentRange,
     },
 }
@@ -69,7 +69,7 @@ impl ParsedType {
                 .append(BoxDoc::text("Array["))
                 .append(element.to_doc())
                 .append(BoxDoc::text("]")),
-            ParsedType::Named { name, .. } => BoxDoc::text(name.clone()),
+            ParsedType::Named { name, .. } => BoxDoc::text(name.to_string()),
         }
     }
 }

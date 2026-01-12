@@ -563,7 +563,7 @@ fn format_type(ty: &ParsedType) -> BoxDoc<'_> {
         ParsedType::Array { element, .. } => BoxDoc::text("Array[")
             .append(format_type(element))
             .append(BoxDoc::text("]")),
-        ParsedType::Named { name, .. } => BoxDoc::text(name.clone()),
+        ParsedType::Named { name, .. } => BoxDoc::text(name.to_string()),
     }
 }
 

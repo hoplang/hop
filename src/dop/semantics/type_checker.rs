@@ -32,9 +32,9 @@ pub fn resolve_type(
         }
         ParsedType::Named { name, range } => {
             let record_type = type_env
-                .lookup(name)
+                .lookup(name.as_str())
                 .ok_or_else(|| TypeError::UndefinedType {
-                    type_name: name.clone(),
+                    type_name: name.to_string(),
                     range: range.clone(),
                 })?;
             Ok(record_type.clone())

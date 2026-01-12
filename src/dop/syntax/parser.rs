@@ -358,7 +358,7 @@ pub fn parse_type(
             })
         }
         Some((Token::TypeName(name), type_range)) => Ok(ParsedType::Named {
-            name: name.as_str().to_string(),
+            name,
             range: type_range,
         }),
         Some((actual, actual_range)) => Err(ParseError::ExpectedTypeNameButGot {
