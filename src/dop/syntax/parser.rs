@@ -724,7 +724,7 @@ fn parse_macro_invocation(
     )?;
 
     Ok(ParsedExpr::MacroInvocation {
-        name: name_str.to_string(),
+        name: macro_name,
         args,
         range: name_range.to(right_paren),
     })
