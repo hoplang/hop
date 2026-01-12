@@ -181,7 +181,7 @@ impl DocumentRange {
     }
 
     /// Convert this DocumentRange into a CheapString.
-    pub fn to_string_span(&self) -> CheapString {
+    pub fn to_cheap_string(&self) -> CheapString {
         CheapString {
             source: self.source.clone(),
             start: self.start,

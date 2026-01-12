@@ -461,7 +461,7 @@ impl Tokenizer {
                         .any(|a| a.name.as_str() == attr.name.as_str())
                     {
                         self.errors.push(ParseError::DuplicateAttribute {
-                            name: attr.name.to_string_span(),
+                            name: attr.name.to_cheap_string(),
                             range: attr.name.clone(),
                         });
                     } else {

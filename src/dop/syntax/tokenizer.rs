@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use itertools::Itertools as _;
 
-use crate::document::document_cursor::{DocumentCursor, DocumentRange};
+use crate::document::document_cursor::{CheapString, DocumentCursor, DocumentRange};
 
 use super::parse_error::ParseError;
 use super::token::Token;
@@ -52,14 +52,10 @@ pub fn next(
                 }),
             },
             '/' => match iter.next_if(|s| s.ch() == '/') {
-                Some(_) => {
-                    let comment = start.extend(iter.peeking_take_while(|s| s.ch() != '\n'));
-                    // Extract just the comment text (after the //)
-                    let text = comment
-                        .as_str()
-                        .strip_prefix("//")
-                        .unwrap_or("")
-                        .to_string();
+                Some(second_slash) => {
+                    let comment =
+                        start.to(second_slash).extend(iter.peeking_take_while(|s| s.ch() != '\n'));
+                    let text = comment.to_cheap_string();
                     Ok((Token::Comment(text), comment))
                 }
                 None => Err(ParseError::UnexpectedCharacter {
@@ -132,9 +128,9 @@ pub fn next(
                     _ => {
                         let first_char = identifier.as_str().chars().next().unwrap();
                         if first_char.is_ascii_uppercase() {
-                            Token::TypeName(identifier.to_string_span())
+                            Token::TypeName(identifier.to_cheap_string())
                         } else {
-                            Token::Identifier(identifier.to_string_span())
+                            Token::Identifier(identifier.to_cheap_string())
                         }
                     }
                 };
@@ -179,7 +175,7 @@ pub fn next(
 /// Returns the next non-comment token, collecting any comment tokens into the provided deque.
 pub fn next_collecting_comments(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<(String, DocumentRange)>,
+    comments: &mut VecDeque<(CheapString, DocumentRange)>,
 ) -> Option<Result<(Token, DocumentRange), ParseError>> {
     loop {
         match next(iter) {
@@ -1560,7 +1556,7 @@ mod tests {
             expect![[r#"
                 token: //
                 //
-                ^
+                ^^
             "#]],
         );
     }

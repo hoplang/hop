@@ -9,7 +9,7 @@ use super::parsed_ast::{
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
 use super::transform::whitespace_removal::remove_whitespace;
 use crate::common::is_void_element;
-use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::document::document_cursor::{CheapString, DocumentRange, Ranged};
 use crate::dop::syntax::parsed::{
     Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern, ParsedType,
 };
@@ -32,7 +32,7 @@ fn soft_block<'a>(items: BoxDoc<'a>) -> BoxDoc<'a> {
 }
 
 fn drain_comments_before<'a>(
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
     position: usize,
 ) -> BoxDoc<'a> {
     let mut doc = BoxDoc::nil();
@@ -40,7 +40,6 @@ fn drain_comments_before<'a>(
         if comment.1.start() < position {
             let comment = comments.pop_front().unwrap();
             doc = doc
-                .append(BoxDoc::text("//"))
                 .append(BoxDoc::text(comment.0.as_str()))
                 .append(BoxDoc::hardline());
         } else {
@@ -53,11 +52,11 @@ fn drain_comments_before<'a>(
 fn format_braced_list<'a, T, F>(
     items: &'a [T],
     mut format_item: F,
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
     end_position: usize,
 ) -> BoxDoc<'a>
 where
-    F: FnMut(&'a T, &mut VecDeque<&'a (String, DocumentRange)>) -> BoxDoc<'a>,
+    F: FnMut(&'a T, &mut VecDeque<&'a (CheapString, DocumentRange)>) -> BoxDoc<'a>,
 {
     let has_trailing_comments = comments.front().is_some_and(|c| c.1.start() < end_position);
     if items.is_empty() && !has_trailing_comments {
@@ -114,7 +113,7 @@ fn format_ast(ast: &ParsedAst) -> BoxDoc<'_> {
 
 fn format_declaration<'a>(
     decl: &'a ParsedDeclaration,
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
 ) -> BoxDoc<'a> {
     match decl {
         ParsedDeclaration::Import(import) => format_import_declaration(import, comments),
@@ -128,7 +127,7 @@ fn format_declaration<'a>(
 
 fn format_import_declaration<'a>(
     import: &'a ParsedImportDeclaration,
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
 ) -> BoxDoc<'a> {
     let leading_comments = drain_comments_before(comments, import.path.start());
     leading_comments
@@ -141,7 +140,7 @@ fn format_import_declaration<'a>(
 
 fn format_record_declaration<'a>(
     record: &'a ParsedRecordDeclaration,
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
 ) -> BoxDoc<'a> {
     let leading_comments = drain_comments_before(comments, record.name_range.start());
     leading_comments
@@ -161,7 +160,7 @@ fn format_record_declaration<'a>(
 
 fn format_record_declaration_field<'a>(
     field: &'a ParsedRecordDeclarationField,
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
 ) -> BoxDoc<'a> {
     let leading_comments = drain_comments_before(comments, field.name_range.start());
     leading_comments
@@ -172,7 +171,7 @@ fn format_record_declaration_field<'a>(
 
 fn format_enum_declaration<'a>(
     e: &'a ParsedEnumDeclaration,
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
 ) -> BoxDoc<'a> {
     let leading_comments = drain_comments_before(comments, e.name_range.start());
     leading_comments
@@ -192,7 +191,7 @@ fn format_enum_declaration<'a>(
 
 fn format_enum_declaration_variant<'a>(
     variant: &'a ParsedEnumDeclarationVariant,
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
 ) -> BoxDoc<'a> {
     let leading_comments = drain_comments_before(comments, variant.name_range.start());
     if variant.fields.is_empty() {
@@ -215,7 +214,7 @@ fn format_enum_declaration_variant<'a>(
 
 fn format_component_declaration<'a>(
     component: &'a ParsedComponentDeclaration,
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
 ) -> BoxDoc<'a> {
     let leading_comments = drain_comments_before(comments, component.range.start());
     let params_doc = match &component.params {
@@ -274,7 +273,7 @@ fn format_component_declaration<'a>(
 
 fn format_parameter<'a>(
     param: &'a ParsedParameter,
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
 ) -> BoxDoc<'a> {
     let leading_comments = drain_comments_before(comments, param.var_name_range.start());
     let base = BoxDoc::text(param.var_name.as_str())
@@ -291,7 +290,7 @@ fn format_parameter<'a>(
 
 fn format_attribute<'a>(
     attr: &'a ParsedAttribute,
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
 ) -> BoxDoc<'a> {
     let name_doc = BoxDoc::text(attr.name.as_str());
     match &attr.value {
@@ -304,7 +303,7 @@ fn format_attribute<'a>(
 
 fn format_attribute_value<'a>(
     value: &'a ParsedAttributeValue,
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
 ) -> BoxDoc<'a> {
     match value {
         ParsedAttributeValue::Expression(expr) => BoxDoc::text("{")
@@ -321,7 +320,7 @@ fn format_attribute_value<'a>(
 
 fn format_node<'a>(
     node: &'a ParsedNode,
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
 ) -> BoxDoc<'a> {
     match node {
         ParsedNode::Text { value, .. } => BoxDoc::text(value.as_str()),
@@ -510,7 +509,7 @@ fn format_node<'a>(
 
 fn format_children<'a>(
     children: &'a [ParsedNode],
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
 ) -> BoxDoc<'a> {
     if children.is_empty() {
         BoxDoc::nil()
@@ -528,7 +527,7 @@ fn format_children<'a>(
 
 fn format_match_case<'a>(
     case: &'a ParsedMatchCase,
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
 ) -> BoxDoc<'a> {
     let children_doc = format_children(&case.children, comments);
     BoxDoc::text("<case {")
@@ -540,7 +539,7 @@ fn format_match_case<'a>(
 
 fn format_let_binding<'a>(
     binding: &'a ParsedLetBinding,
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
 ) -> BoxDoc<'a> {
     let leading_comments = drain_comments_before(comments, binding.var_name_range.start());
     leading_comments
@@ -570,7 +569,7 @@ fn format_type(ty: &ParsedType) -> BoxDoc<'_> {
 
 fn format_expr<'a>(
     expr: &'a ParsedExpr,
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
 ) -> BoxDoc<'a> {
     match expr {
         ParsedExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
@@ -800,7 +799,7 @@ fn format_expr<'a>(
 fn format_expr_with_precedence<'a>(
     expr: &'a ParsedExpr,
     parent_precedence: u8,
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
 ) -> BoxDoc<'a> {
     match expr {
         ParsedExpr::BinaryOp { operator, .. } => {
@@ -837,7 +836,7 @@ fn is_atomic(expr: &ParsedExpr) -> bool {
 
 fn format_match_arm<'a>(
     arm: &'a ParsedMatchArm,
-    comments: &mut VecDeque<&'a (String, DocumentRange)>,
+    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
 ) -> BoxDoc<'a> {
     let leading_comments = drain_comments_before(comments, arm.pattern.range().start());
     leading_comments

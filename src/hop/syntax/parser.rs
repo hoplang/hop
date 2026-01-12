@@ -8,7 +8,7 @@ use super::parsed_ast::{
 };
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
 use super::token_tree::{TokenTree, build_tree};
-use crate::document::document_cursor::{DocumentCursor, DocumentRange};
+use crate::document::document_cursor::{CheapString, DocumentCursor, DocumentRange};
 use crate::dop;
 use crate::dop::ParsedDeclaration as DopParsedDeclaration;
 use crate::dop::VarName;
@@ -36,7 +36,7 @@ impl AttributeValidator {
 
     fn parse_attribute_value(
         value: &tokenizer::TokenizedAttributeValue,
-        comments: &mut VecDeque<(String, DocumentRange)>,
+        comments: &mut VecDeque<(CheapString, DocumentRange)>,
     ) -> Result<parsed_ast::ParsedAttributeValue, ParseError> {
         match value {
             tokenizer::TokenizedAttributeValue::String { content } => {
@@ -55,7 +55,7 @@ impl AttributeValidator {
     // Parse an attribute or return an error.
     fn parse(
         attr: &tokenizer::TokenizedAttribute,
-        comments: &mut VecDeque<(String, DocumentRange)>,
+        comments: &mut VecDeque<(CheapString, DocumentRange)>,
     ) -> Result<parsed_ast::ParsedAttribute, ParseError> {
         match &attr.value {
             Some(val) => Ok(parsed_ast::ParsedAttribute {
@@ -74,15 +74,15 @@ impl AttributeValidator {
             .iter()
             .filter(|attr| !self.handled_attributes.contains(attr.name.as_str()))
             .map(move |attr| ParseError::UnrecognizedAttribute {
-                tag_name: self.tag_name.to_string_span(),
-                attr_name: attr.name.to_string_span(),
+                tag_name: self.tag_name.to_cheap_string(),
+                attr_name: attr.name.to_cheap_string(),
                 range: attr.range.clone(),
             })
     }
 
     fn parse_unrecognized(
         &self,
-        comments: &mut VecDeque<(String, DocumentRange)>,
+        comments: &mut VecDeque<(CheapString, DocumentRange)>,
     ) -> Vec<Result<parsed_ast::ParsedAttribute, ParseError>> {
         self.attributes
             .iter()
@@ -174,7 +174,7 @@ pub fn parse(
                             let name_str = import.type_name.as_str();
                             if imported_components.contains_key(name_str) {
                                 errors.push(ParseError::TypeNameIsAlreadyDefined {
-                                    name: name_range.to_string_span(),
+                                    name: name_range.to_cheap_string(),
                                     range: name_range,
                                 });
                             } else {
@@ -211,7 +211,7 @@ pub fn parse(
                                 || imported_components.contains_key(name)
                             {
                                 errors.push(ParseError::TypeNameIsAlreadyDefined {
-                                    name: record.name_range.to_string_span(),
+                                    name: record.name_range.to_cheap_string(),
                                     range: record.name_range.clone(),
                                 });
                             } else {
@@ -247,7 +247,7 @@ pub fn parse(
                                 || imported_components.contains_key(name)
                             {
                                 errors.push(ParseError::TypeNameIsAlreadyDefined {
-                                    name: enum_decl.name_range.to_string_span(),
+                                    name: enum_decl.name_range.to_cheap_string(),
                                     range: enum_decl.name_range.clone(),
                                 });
                             } else {
@@ -287,7 +287,7 @@ pub fn parse(
                         || defined_enums.contains(name)
                     {
                         errors.push(ParseError::TypeNameIsAlreadyDefined {
-                            name: component.tag_name.to_string_span(),
+                            name: component.tag_name.to_cheap_string(),
                             range: component.tag_name.clone(),
                         });
                     } else {
@@ -309,7 +309,7 @@ pub fn parse(
 fn parse_component_declaration(
     tree: TokenTree,
     children: Vec<ParsedNode>,
-    comments: &mut VecDeque<(String, DocumentRange)>,
+    comments: &mut VecDeque<(CheapString, DocumentRange)>,
     errors: &mut ErrorCollector<ParseError>,
 ) -> Option<ParsedComponentDeclaration> {
     let Token::OpeningTag {
@@ -380,7 +380,7 @@ fn is_raw_text_element(tag_name: &str) -> bool {
 
 fn construct_nodes(
     tree: TokenTree,
-    comments: &mut VecDeque<(String, DocumentRange)>,
+    comments: &mut VecDeque<(CheapString, DocumentRange)>,
     errors: &mut ErrorCollector<ParseError>,
     module_name: &ModuleName,
     defined_components: &HashSet<String>,
@@ -397,7 +397,7 @@ fn construct_nodes(
         }
         Token::Doctype { range } => {
             vec![ParsedNode::Doctype {
-                value: range.to_string_span(),
+                value: range.to_cheap_string(),
                 range,
             }]
         }
@@ -413,7 +413,7 @@ fn construct_nodes(
                     // Flush accumulated text
                     if let Some(text_range) = text_start.take() {
                         nodes.push(ParsedNode::Text {
-                            value: text_range.to_string_span(),
+                            value: text_range.to_cheap_string(),
                             range: text_range,
                         });
                     }
@@ -487,7 +487,7 @@ fn construct_nodes(
             // Flush remaining text
             if let Some(text_range) = text_start {
                 nodes.push(ParsedNode::Text {
-                    value: text_range.to_string_span(),
+                    value: text_range.to_cheap_string(),
                     range: text_range,
                 });
             }
@@ -615,7 +615,7 @@ fn construct_nodes(
                     .into_iter()
                     .filter_map(|child| match child.token {
                         Token::Text { range, .. } => Some(ParsedNode::Text {
-                            value: range.to_string_span(),
+                            value: range.to_cheap_string(),
                             range,
                         }),
                         _ => unreachable!(),
@@ -751,7 +751,7 @@ fn construct_nodes(
                     // Error if bare expression {..} is present on component reference
                     if let Some(expr_range) = &expression {
                         errors.push(ParseError::UnexpectedComponentExpression {
-                            tag_name: tag_name.to_string_span(),
+                            tag_name: tag_name.to_cheap_string(),
                             range: expr_range.clone(),
                         });
                     }
@@ -763,8 +763,8 @@ fn construct_nodes(
                         // Validate attribute name is a valid variable name
                         if VarName::new(attr.name.as_str()).is_err() {
                             errors.push(ParseError::InvalidArgumentName {
-                                tag_name: tag_name.to_string_span(),
-                                name: attr.name.to_string_span(),
+                                tag_name: tag_name.to_cheap_string(),
+                                name: attr.name.to_cheap_string(),
                                 range: attr.name.clone(),
                             });
                             continue;

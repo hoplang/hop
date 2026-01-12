@@ -907,7 +907,7 @@ fn typecheck_node(
                 .collect();
 
             Some(TypedNode::Html {
-                tag_name: tag_name.to_string_span(),
+                tag_name: tag_name.to_cheap_string(),
                 attributes: typed_attributes,
                 children: typed_children,
             })
@@ -1074,7 +1074,7 @@ fn typecheck_attributes(
             }
             Some(ParsedAttributeValue::String(s)) => {
                 let string_span = match s {
-                    Some(range) => range.to_string_span(),
+                    Some(range) => range.to_cheap_string(),
                     None => CheapString::new("".to_string()),
                 };
                 Some(TypedAttributeValue::String(string_span))

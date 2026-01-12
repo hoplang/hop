@@ -278,7 +278,7 @@ impl Program {
         for record in ast.get_record_declarations() {
             if record.name_range.contains_position(position) {
                 return Some(RenameableSymbol {
-                    current_name: record.name_range.to_string_span(),
+                    current_name: record.name_range.to_cheap_string(),
                     range: record.name_range.clone(),
                 });
             }
@@ -290,7 +290,7 @@ impl Program {
                 .find(|r| r.contains_position(position))
             {
                 return Some(RenameableSymbol {
-                    current_name: range.to_string_span(),
+                    current_name: range.to_cheap_string(),
                     range: range.clone(),
                 });
             }
@@ -301,7 +301,7 @@ impl Program {
         node.tag_names()
             .find(|r| r.contains_position(position))
             .map(|range| RenameableSymbol {
-                current_name: range.to_string_span(),
+                current_name: range.to_cheap_string(),
                 range: range.clone(),
             })
     }
