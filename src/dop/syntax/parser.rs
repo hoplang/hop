@@ -1,7 +1,7 @@
 use std::collections::{HashSet, VecDeque};
 use std::iter::Peekable;
 
-use crate::document::document_cursor::{DocumentCursor, DocumentRange, CheapString};
+use crate::document::document_cursor::{CheapString, DocumentCursor, DocumentRange};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
@@ -103,12 +103,13 @@ fn expect_variable_name(
 ) -> Result<(VarName, DocumentRange), ParseError> {
     match next(iter, comments).transpose()? {
         Some((Token::Identifier(name), name_range)) => {
-            let var_name =
-                VarName::new(name.as_str()).map_err(|error| ParseError::InvalidVariableName {
+            let var_name = VarName::from_cheap_string(name.clone()).map_err(|error| {
+                ParseError::InvalidVariableName {
                     name,
                     error,
                     range: name_range.clone(),
-                })?;
+                }
+            })?;
             Ok((var_name, name_range))
         }
         Some((actual, actual_range)) => Err(ParseError::ExpectedVariableNameButGot {
@@ -128,12 +129,13 @@ fn expect_field_name(
 ) -> Result<(FieldName, DocumentRange), ParseError> {
     match next(iter, comments).transpose()? {
         Some((Token::Identifier(name), name_range)) => {
-            let prop_name =
-                FieldName::new(name.as_str()).map_err(|error| ParseError::InvalidFieldName {
+            let prop_name = FieldName::from_cheap_string(name.clone()).map_err(|error| {
+                ParseError::InvalidFieldName {
                     name,
                     error,
                     range: name_range.clone(),
-                })?;
+                }
+            })?;
             Ok((prop_name, name_range))
         }
         Some((token, token_range)) => Err(ParseError::ExpectedFieldNameButGot {
@@ -154,7 +156,7 @@ fn expect_type_name(
     match next(iter, comments).transpose()? {
         Some((Token::TypeName(name), name_range)) => {
             let type_name =
-                TypeName::new(name.as_str()).map_err(|error| ParseError::InvalidTypeName {
+                TypeName::from_cheap_string(name).map_err(|error| ParseError::InvalidTypeName {
                     error,
                     range: name_range.clone(),
                 })?;
@@ -578,12 +580,13 @@ fn parse_field_access(
     identifier: CheapString,
     id_range: DocumentRange,
 ) -> Result<ParsedExpr, ParseError> {
-    let var_name =
-        VarName::new(identifier.as_str()).map_err(|error| ParseError::InvalidVariableName {
+    let var_name = VarName::from_cheap_string(identifier.clone()).map_err(|error| {
+        ParseError::InvalidVariableName {
             name: identifier,
             error,
             range: id_range.clone(),
-        })?;
+        }
+    })?;
     let mut expr = ParsedExpr::Var {
         range: id_range,
         value: var_name,
@@ -593,13 +596,14 @@ fn parse_field_access(
         match next(iter, comments).transpose()? {
             Some((Token::Identifier(field_ident), field_range)) => {
                 // Validate field name
-                let field_name = FieldName::new(field_ident.as_str()).map_err(|error| {
-                    ParseError::InvalidFieldName {
-                        name: field_ident,
-                        error,
-                        range: field_range.clone(),
-                    }
-                })?;
+                let field_name =
+                    FieldName::from_cheap_string(field_ident.clone()).map_err(|error| {
+                        ParseError::InvalidFieldName {
+                            name: field_ident,
+                            error,
+                            range: field_range.clone(),
+                        }
+                    })?;
                 let new_range = expr.range().clone().to(field_range);
                 expr = ParsedExpr::FieldAccess {
                     record: Box::new(expr),
@@ -753,7 +757,7 @@ fn parse_record_literal(
         },
     )?;
     Ok(ParsedExpr::RecordLiteral {
-        record_name: CheapString::new(name.to_string()),
+        record_name: name,
         fields,
         range: name_range.to(right_paren),
     })
@@ -796,7 +800,7 @@ fn parse_enum_literal(
     };
 
     Ok(ParsedExpr::EnumLiteral {
-        enum_name: CheapString::new(enum_name.to_string()),
+        enum_name,
         variant_name: CheapString::new(variant_name.to_string()),
         fields,
         constructor_range,
@@ -861,11 +865,12 @@ pub fn parse_match_pattern(
             matches!(res, Ok((Token::TypeName(_), _)))
         })
     {
-        let type_name =
-            TypeName::new(&type_name_str).map_err(|error| ParseError::InvalidTypeName {
+        let type_name = TypeName::from_cheap_string(type_name_str).map_err(|error| {
+            ParseError::InvalidTypeName {
                 error,
                 range: type_name_range.clone(),
-            })?;
+            }
+        })?;
 
         if advance_if(iter, comments, Token::ColonColon).is_some() {
             let (variant_name, variant_range) = expect_type_name(iter, comments, range)?;
@@ -1019,9 +1024,11 @@ fn parse_import_declaration(
 
     let name_range = path_segments.pop().unwrap();
 
-    let name = TypeName::new(name_range.as_str()).map_err(|e| ParseError::InvalidTypeName {
-        error: e,
-        range: name_range.clone(),
+    let name = TypeName::from_cheap_string(name_range.to_cheap_string()).map_err(|e| {
+        ParseError::InvalidTypeName {
+            error: e,
+            range: name_range.clone(),
+        }
     })?;
 
     let module_path_str = path_segments

@@ -1,4 +1,6 @@
 use std::fmt::{self, Display};
+
+use crate::document::document_cursor::CheapString;
 use thiserror::Error;
 
 /// Error type for invalid field names
@@ -30,7 +32,7 @@ pub enum InvalidFieldNameError {
 /// Field names follow the same snake_case rules as variable names.
 #[derive(Debug, Clone)]
 pub struct FieldName {
-    value: String,
+    value: CheapString,
 }
 
 impl FieldName {
@@ -38,8 +40,14 @@ impl FieldName {
     pub fn new(name: &str) -> Result<Self, InvalidFieldNameError> {
         Self::validate(name)?;
         Ok(FieldName {
-            value: name.to_string(),
+            value: CheapString::new(name.to_string()),
         })
+    }
+
+    /// Create a new FieldName from a CheapString, validating it
+    pub fn from_cheap_string(name: CheapString) -> Result<Self, InvalidFieldNameError> {
+        Self::validate(name.as_str())?;
+        Ok(FieldName { value: name })
     }
 
     /// Validate a field name string (snake_case only)
@@ -91,12 +99,13 @@ impl FieldName {
     }
 
     pub fn as_str(&self) -> &str {
-        &self.value
+        self.value.as_str()
     }
 
     /// Convert the field name to PascalCase
     pub fn to_pascal_case(&self) -> String {
         self.value
+            .as_str()
             .split('_')
             .map(|segment| {
                 let mut chars = segment.chars();
@@ -115,7 +124,7 @@ impl FieldName {
 
 impl Display for FieldName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.value)
+        f.write_str(self.value.as_str())
     }
 }
 

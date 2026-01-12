@@ -3,7 +3,7 @@ use std::fmt::{self, Display};
 use pretty::BoxDoc;
 
 use crate::common::is_void_element;
-use crate::document::document_cursor::{DocumentRange, Ranged, CheapString};
+use crate::document::document_cursor::{CheapString, DocumentRange, Ranged};
 use crate::dop::ParsedExpr;
 use crate::dop::VarName;
 use crate::dop::syntax::parsed::{ParsedMatchPattern, ParsedType};

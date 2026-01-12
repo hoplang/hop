@@ -20,7 +20,11 @@ impl Pass for WriteExprSimplificationPass {
                 } = statement
                 {
                     // Apply HTML escaping if needed
-                    let content = if *escape { escape_html(s) } else { s.to_string() };
+                    let content = if *escape {
+                        escape_html(s)
+                    } else {
+                        s.to_string()
+                    };
                     *statement = IrStatement::Write { id: *id, content };
                 }
             });

@@ -1,4 +1,6 @@
 use std::fmt::{self, Display};
+
+use crate::document::document_cursor::CheapString;
 use thiserror::Error;
 
 /// Error type for invalid variable names
@@ -29,7 +31,7 @@ pub enum InvalidVarNameError {
 /// A VarName represents a validated variable name in dop.
 #[derive(Debug, Clone)]
 pub struct VarName {
-    value: String,
+    value: CheapString,
 }
 
 impl VarName {
@@ -37,8 +39,14 @@ impl VarName {
     pub fn new(name: &str) -> Result<Self, InvalidVarNameError> {
         Self::validate(name)?;
         Ok(VarName {
-            value: name.to_string(),
+            value: CheapString::new(name.to_string()),
         })
+    }
+
+    /// Create a new VarName from a CheapString, validating it
+    pub fn from_cheap_string(name: CheapString) -> Result<Self, InvalidVarNameError> {
+        Self::validate(name.as_str())?;
+        Ok(VarName { value: name })
     }
 
     /// Validate a variable name string (snake_case only)
@@ -89,12 +97,13 @@ impl VarName {
         Ok(())
     }
     pub fn as_str(&self) -> &str {
-        &self.value
+        self.value.as_str()
     }
 
     /// Convert the variable name to PascalCase
     pub fn to_pascal_case(&self) -> String {
         self.value
+            .as_str()
             .split('_')
             .map(|segment| {
                 let mut chars = segment.chars();
@@ -113,7 +122,7 @@ impl VarName {
 
 impl Display for VarName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.value)
+        f.write_str(self.value.as_str())
     }
 }
 

@@ -242,7 +242,6 @@ impl InlinedBuilder {
             },
         });
     }
-
 }
 
 #[cfg(test)]

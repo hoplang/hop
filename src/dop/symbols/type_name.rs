@@ -1,4 +1,6 @@
 use std::fmt::{self, Display};
+
+use crate::document::document_cursor::CheapString;
 use thiserror::Error;
 
 /// Error type for invalid type names
@@ -18,7 +20,7 @@ pub enum InvalidTypeNameError {
 /// Type names must be PascalCase (start with uppercase letter).
 #[derive(Debug, Clone)]
 pub struct TypeName {
-    value: String,
+    value: CheapString,
 }
 
 impl TypeName {
@@ -26,8 +28,14 @@ impl TypeName {
     pub fn new(name: &str) -> Result<Self, InvalidTypeNameError> {
         Self::validate(name)?;
         Ok(TypeName {
-            value: name.to_string(),
+            value: CheapString::new(name.to_string()),
         })
+    }
+
+    /// Create a new TypeName from a CheapString, validating it
+    pub fn from_cheap_string(name: CheapString) -> Result<Self, InvalidTypeNameError> {
+        Self::validate(name.as_str())?;
+        Ok(TypeName { value: name })
     }
 
     /// Validate a type name string (PascalCase)
@@ -55,13 +63,13 @@ impl TypeName {
     }
 
     pub fn as_str(&self) -> &str {
-        &self.value
+        self.value.as_str()
     }
 }
 
 impl Display for TypeName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.value)
+        f.write_str(self.value.as_str())
     }
 }
 

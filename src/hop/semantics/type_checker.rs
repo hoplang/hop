@@ -1,5 +1,5 @@
 use super::type_error::TypeError;
-use crate::document::document_cursor::{DocumentRange, Ranged, CheapString};
+use crate::document::document_cursor::{CheapString, DocumentRange, Ranged};
 use crate::dop::patterns::compiler::Compiler as PatMatchCompiler;
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
@@ -607,9 +607,7 @@ fn typecheck_node(
         }
 
         ParsedNode::Let {
-            bindings,
-            children,
-            ..
+            bindings, children, ..
         } => {
             // Process each binding: resolve type, typecheck value, push to scope
             let mut typed_bindings = Vec::new();

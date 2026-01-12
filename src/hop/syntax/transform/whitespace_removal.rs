@@ -1,4 +1,4 @@
-use crate::document::document_cursor::{DocumentRange, CheapString};
+use crate::document::document_cursor::{CheapString, DocumentRange};
 
 use crate::hop::syntax::parsed_ast::{ParsedAst, ParsedComponentDeclaration, ParsedDeclaration};
 use crate::hop::syntax::parsed_node::{ParsedMatchCase, ParsedNode};

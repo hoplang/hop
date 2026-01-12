@@ -1,5 +1,5 @@
 use crate::document::DocumentPosition;
-use crate::document::document_cursor::{DocumentRange, Ranged, CheapString};
+use crate::document::document_cursor::{CheapString, DocumentRange, Ranged};
 use crate::dop::ParsedType;
 use crate::error_collector::ErrorCollector;
 use crate::hop::semantics::type_error::TypeError;

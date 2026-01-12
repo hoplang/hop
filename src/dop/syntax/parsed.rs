@@ -143,7 +143,10 @@ pub enum ParsedMatchPattern {
     /// A wildcard pattern that matches anything, written as `_`
     Wildcard { range: DocumentRange },
     /// A binding pattern that matches anything and binds it to a name
-    Binding { name: CheapString, range: DocumentRange },
+    Binding {
+        name: CheapString,
+        range: DocumentRange,
+    },
 }
 
 impl Ranged for ParsedMatchPattern {
@@ -242,7 +245,10 @@ pub enum ParsedExpr {
     },
 
     /// A string literal expression, e.g. "foo bar"
-    StringLiteral { value: CheapString, range: DocumentRange },
+    StringLiteral {
+        value: CheapString,
+        range: DocumentRange,
+    },
 
     /// A boolean literal expression, e.g. true
     BooleanLiteral { value: bool, range: DocumentRange },

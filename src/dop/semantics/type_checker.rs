@@ -31,12 +31,13 @@ pub fn resolve_type(
             Ok(Type::Array(Box::new(elem_type)))
         }
         ParsedType::Named { name, range } => {
-            let record_type = type_env
-                .lookup(name.as_str())
-                .ok_or_else(|| TypeError::UndefinedType {
-                    type_name: name.to_string(),
-                    range: range.clone(),
-                })?;
+            let record_type =
+                type_env
+                    .lookup(name.as_str())
+                    .ok_or_else(|| TypeError::UndefinedType {
+                        type_name: name.to_string(),
+                        range: range.clone(),
+                    })?;
             Ok(record_type.clone())
         }
     }

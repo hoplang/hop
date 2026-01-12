@@ -53,8 +53,9 @@ pub fn next(
             },
             '/' => match iter.next_if(|s| s.ch() == '/') {
                 Some(second_slash) => {
-                    let comment =
-                        start.to(second_slash).extend(iter.peeking_take_while(|s| s.ch() != '\n'));
+                    let comment = start
+                        .to(second_slash)
+                        .extend(iter.peeking_take_while(|s| s.ch() != '\n'));
                     let text = comment.to_cheap_string();
                     Ok((Token::Comment(text), comment))
                 }
@@ -91,9 +92,7 @@ pub fn next(
                     iter.peeking_take_while(|s| s.ch() != '"').collect();
                 match iter.next() {
                     None => Err(ParseError::UnterminatedStringLiteral {
-                        range: content
-                            .map(|c| start.clone().to(c))
-                            .unwrap_or(start),
+                        range: content.map(|c| start.clone().to(c)).unwrap_or(start),
                     }),
                     Some(end) => {
                         let value = content

@@ -180,5 +180,4 @@ mod tests {
         let main_content = fs::read_to_string(temp_dir.join("main.hop")).unwrap();
         assert_eq!(main_content, "<Main><div>hello</div></Main>\n");
     }
-
 }
