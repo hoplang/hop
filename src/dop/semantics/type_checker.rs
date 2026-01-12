@@ -721,7 +721,7 @@ pub fn typecheck_expr(
             let enum_type = type_env
                 .lookup(enum_name.as_str())
                 .ok_or_else(|| TypeError::UndefinedEnum {
-                    enum_name: enum_name.clone(),
+                    enum_name: enum_name.to_string(),
                     range: range.clone(),
                 })?
                 .clone();
@@ -734,8 +734,8 @@ pub fn typecheck_expr(
                         Some((_, fields)) => fields.clone(),
                         None => {
                             return Err(TypeError::UndefinedEnumVariant {
-                                enum_name: enum_name.clone(),
-                                variant_name: variant_name.clone(),
+                                enum_name: enum_name.to_string(),
+                                variant_name: variant_name.to_string(),
                                 range: range.clone(),
                             });
                         }
@@ -743,7 +743,7 @@ pub fn typecheck_expr(
                 }
                 _ => {
                     return Err(TypeError::UndefinedEnum {
-                        enum_name: enum_name.clone(),
+                        enum_name: enum_name.to_string(),
                         range: range.clone(),
                     });
                 }
@@ -777,8 +777,8 @@ pub fn typecheck_expr(
                             let actual_type = typed_field_expr.as_type();
                             if actual_type != expected_type {
                                 return Err(TypeError::EnumVariantFieldTypeMismatch {
-                                    enum_name: enum_name.clone(),
-                                    variant_name: variant_name.clone(),
+                                    enum_name: enum_name.to_string(),
+                                    variant_name: variant_name.to_string(),
                                     field_name: field_name.as_str().to_string(),
                                     expected: expected_type.to_string(),
                                     found: actual_type.to_string(),
@@ -791,8 +791,8 @@ pub fn typecheck_expr(
                         }
                         None => {
                             return Err(TypeError::EnumVariantUnknownField {
-                                enum_name: enum_name.clone(),
-                                variant_name: variant_name.clone(),
+                                enum_name: enum_name.to_string(),
+                                variant_name: variant_name.to_string(),
                                 field_name: field_name.as_str().to_string(),
                                 range: field_name_range.clone(),
                             });
@@ -808,8 +808,8 @@ pub fn typecheck_expr(
                     .collect();
                 if !missing_fields.is_empty() {
                     return Err(TypeError::EnumVariantMissingFields {
-                        enum_name: enum_name.clone(),
-                        variant_name: variant_name.clone(),
+                        enum_name: enum_name.to_string(),
+                        variant_name: variant_name.to_string(),
                         missing_fields,
                         range: constructor_range.clone(),
                     });
@@ -819,8 +819,8 @@ pub fn typecheck_expr(
             };
 
             Ok(TypedExpr::EnumLiteral {
-                enum_name: enum_name.clone(),
-                variant_name: variant_name.clone(),
+                enum_name: enum_name.to_string(),
+                variant_name: variant_name.to_string(),
                 fields: typed_fields,
                 kind: enum_type,
             })

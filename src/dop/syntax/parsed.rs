@@ -268,8 +268,8 @@ pub enum ParsedExpr {
 
     /// An enum literal expression, e.g. Color::Red
     EnumLiteral {
-        enum_name: String,
-        variant_name: String,
+        enum_name: CheapString,
+        variant_name: CheapString,
         /// Field values for variants with fields (empty for unit variants)
         /// The tuple is (field_name, field_name_range, field_expr)
         fields: Vec<(FieldName, DocumentRange, Self)>,

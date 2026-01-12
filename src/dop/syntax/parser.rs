@@ -796,8 +796,8 @@ fn parse_enum_literal(
     };
 
     Ok(ParsedExpr::EnumLiteral {
-        enum_name: enum_name.as_str().to_string(),
-        variant_name: variant_name.as_str().to_string(),
+        enum_name: CheapString::new(enum_name.to_string()),
+        variant_name: CheapString::new(variant_name.to_string()),
         fields,
         constructor_range,
         range: enum_name_range.to(end_range),
