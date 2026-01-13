@@ -85,6 +85,8 @@ impl Pass for ConstantPropagationPass {
         let mut match_arms_relations = Vec::new();
         let mut initial_option_constants = Vec::new();
         let mut option_arms_relations: Vec<((ExprId, bool), ExprId)> = Vec::new();
+        let mut option_inner_ids: Vec<(ExprId, ExprId)> = Vec::new();
+        let mut option_binding_uses: Vec<(ExprId, ExprId)> = Vec::new();
 
         for stmt in &entrypoint.body {
             stmt.traverse_with_scope(&mut |s, scope| {
@@ -161,9 +163,9 @@ impl Pass for ConstantPropagationPass {
                             }
                             Match::Option {
                                 subject,
+                                some_arm_binding,
                                 some_arm_body,
                                 none_arm_body,
-                                ..
                             } => {
                                 // Look up the defining statement for the subject variable
                                 if let Some(defining_stmt) = scope.get(subject.0.as_str()) {
@@ -176,6 +178,17 @@ impl Pass for ConstantPropagationPass {
                                     // Key arms by (match_id, is_some) for direct joining
                                     option_arms_relations.push(((expr.id(), true), some_arm_body.id()));
                                     option_arms_relations.push(((expr.id(), false), none_arm_body.id()));
+
+                                    // If there's a binding, find uses of it in the Some arm body
+                                    if let Some(binding) = some_arm_binding {
+                                        some_arm_body.traverse(&mut |e| {
+                                            if let IrExpr::Var { value: name, .. } = e {
+                                                if name.as_str() == binding.as_str() {
+                                                    option_binding_uses.push((def_expr_id, e.id()));
+                                                }
+                                            }
+                                        });
+                                    }
                                 }
                             }
                         },
@@ -200,6 +213,10 @@ impl Pass for ConstantPropagationPass {
                             // Track the full Option constant with inner expression id
                             let inner_id = value.as_ref().map(|inner| inner.id());
                             initial_constants.push((expr.id(), Const::Option(inner_id)));
+                            // Track inner id for binding propagation
+                            if let Some(inner) = value {
+                                option_inner_ids.push((expr.id(), inner.id()));
+                            }
                         }
                         _ => {}
                     }
@@ -280,6 +297,16 @@ impl Pass for ConstantPropagationPass {
         // Option matches with known subjects: ((match_id, is_some) => match_id)
         let option_match_with_const =
             iteration.variable::<((ExprId, bool), ExprId)>("option_match_with_const");
+
+        // Option inner expression ids: (option_expr_id => inner_expr_id)
+        let option_inner = iteration.variable::<(ExprId, ExprId)>("option_inner");
+        option_inner.extend(option_inner_ids);
+
+        // Option binding uses: (subject_def_expr_id => binding_var_expr_id)
+        let option_binding_use = Relation::from_iter(option_binding_uses);
+
+        // Intermediate for 3-way join: (inner_id => binding_var_id)
+        let binding_inner_to_var = iteration.variable::<(ExprId, ExprId)>("binding_inner_to_var");
 
         while iteration.changed() {
             // Fold boolean negation
@@ -447,6 +474,14 @@ impl Pass for ConstantPropagationPass {
                 |_def_expr: &ExprId, is_some: &bool, var_expr: &ExprId| (*var_expr, *is_some),
             );
 
+            // Propagate option constants through match arm selection
+            // option_const(m, is_some) :- selected_arm(arm_body, m), option_const(arm_body, is_some).
+            option_const.from_join(
+                &option_const,
+                &selected_arm,
+                |_arm_body: &ExprId, is_some: &bool, match_id: &ExprId| (*match_id, *is_some),
+            );
+
             // Find option matches with constant subjects
             // option_match_with_const((m, is_some), m) :- option_const(s, is_some), match_subject(s, m).
             option_match_with_const.from_join(
@@ -465,6 +500,53 @@ impl Pass for ConstantPropagationPass {
                 |_key: &(ExprId, bool), match_id: &ExprId, body_id: &ExprId| {
                     (*body_id, *match_id)
                 },
+            );
+
+            // Propagate option_inner through variable references
+            // option_inner(var, inner) :- option_inner(def, inner), def_to_ref(def, var).
+            option_inner.from_join(
+                &option_inner,
+                &def_to_ref,
+                |_def: &ExprId, inner_id: &ExprId, var_id: &ExprId| (*var_id, *inner_id),
+            );
+
+            // Propagate option_inner through match arm selection
+            // option_inner(m, inner) :- selected_arm(arm_body, m), option_inner(arm_body, inner).
+            option_inner.from_join(
+                &option_inner,
+                &selected_arm,
+                |_arm_body: &ExprId, inner_id: &ExprId, match_id: &ExprId| (*match_id, *inner_id),
+            );
+
+            // Propagate constants through option bindings (3-way join)
+            // const_value(var, val) :- option_binding_use(subject, var), option_inner(subject, inner), const_value(inner, val).
+            // Step 1: Join option_inner with option_binding_use to get (inner_id => var_id)
+            binding_inner_to_var.from_join(
+                &option_inner,
+                &option_binding_use,
+                |_subject: &ExprId, inner_id: &ExprId, var_id: &ExprId| (*inner_id, *var_id),
+            );
+            // Step 2: Join with const_value to propagate the value
+            const_value.from_join(
+                &const_value,
+                &binding_inner_to_var,
+                |_inner: &ExprId, val: &Const, var_id: &ExprId| (*var_id, val.clone()),
+            );
+
+            // Propagate option_const through option bindings
+            // option_const(var, is_some) :- binding_inner_to_var(inner, var), option_const(inner, is_some).
+            option_const.from_join(
+                &option_const,
+                &binding_inner_to_var,
+                |_inner: &ExprId, is_some: &bool, var_id: &ExprId| (*var_id, *is_some),
+            );
+
+            // Propagate option_inner through option bindings
+            // option_inner(var, inner2) :- binding_inner_to_var(inner, var), option_inner(inner, inner2).
+            option_inner.from_join(
+                &option_inner,
+                &binding_inner_to_var,
+                |_inner: &ExprId, inner2_id: &ExprId, var_id: &ExprId| (*var_id, *inner2_id),
             );
         }
 
@@ -1569,6 +1651,190 @@ mod tests {
                   let x = Some("hello") in {
                     let y = Some("hello") in {
                       write_escaped("got some")
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_propagate_option_binding_value() {
+        use crate::dop::Type;
+
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("opt", t.some(t.str("hello")), |t| {
+                    t.write_expr_escaped(t.option_match_expr_with_binding(
+                        t.var("opt"),
+                        "inner",
+                        Type::String,
+                        |t| t.var("inner"),
+                        t.str("default"),
+                    ));
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let opt = Some("hello") in {
+                    write_escaped(match opt {
+                      Some(inner) => inner,
+                      None => "default",
+                    })
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let opt = Some("hello") in {
+                    write_escaped("hello")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_propagate_option_binding_in_nested_expression() {
+        use crate::dop::Type;
+
+        // Test that the binding value propagates into nested expressions
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("opt", t.some(t.str("hello")), |t| {
+                    t.write_expr_escaped(t.option_match_expr_with_binding(
+                        t.var("opt"),
+                        "inner",
+                        Type::String,
+                        |t| {
+                            // Use the binding in an equality check and string concat
+                            t.string_concat(t.var("inner"), t.str(" world"))
+                        },
+                        t.str("default"),
+                    ));
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let opt = Some("hello") in {
+                    write_escaped(match opt {
+                      Some(inner) => (inner + " world"),
+                      None => "default",
+                    })
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let opt = Some("hello") in {
+                    write_escaped("hello world")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_propagate_option_binding_in_equality() {
+        use crate::dop::Type;
+
+        // Test that the binding value propagates into equality comparisons
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("opt", t.some(t.str("hello")), |t| {
+                    t.if_stmt(
+                        t.option_match_expr_with_binding(
+                            t.var("opt"),
+                            "inner",
+                            Type::String,
+                            |t| t.eq(t.var("inner"), t.str("hello")),
+                            t.bool(false),
+                        ),
+                        |t| {
+                            t.write("matched hello");
+                        },
+                    );
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let opt = Some("hello") in {
+                    if match opt {
+                      Some(inner) => (inner == "hello"),
+                      None => false,
+                    } {
+                      write("matched hello")
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let opt = Some("hello") in {
+                    if true {
+                      write("matched hello")
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_propagate_through_nested_option_match() {
+        use crate::dop::Type;
+
+        // Test nested option matches using let statements to bind intermediate values
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("outer", t.some(t.some(t.str("nested"))), |t| {
+                    // First match extracts inner_opt from outer
+                    t.let_stmt(
+                        "inner_result",
+                        t.option_match_expr_with_binding(
+                            t.var("outer"),
+                            "inner_opt",
+                            Type::Option(Box::new(Type::String)),
+                            |t| t.var("inner_opt"),
+                            t.none(Type::String),
+                        ),
+                        |t| {
+                            // Second match extracts value from inner_result
+                            t.write_expr_escaped(t.option_match_expr_with_binding(
+                                t.var("inner_result"),
+                                "value",
+                                Type::String,
+                                |t| t.var("value"),
+                                t.str("inner none"),
+                            ));
+                        },
+                    );
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let outer = Some(Some("nested")) in {
+                    let inner_result = match outer {
+                      Some(inner_opt) => inner_opt,
+                      None => None,
+                    } in {
+                      write_escaped(match inner_result {
+                        Some(value) => value,
+                        None => "inner none",
+                      })
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let outer = Some(Some("nested")) in {
+                    let inner_result = Some("nested") in {
+                      write_escaped("nested")
                     }
                   }
                 }
