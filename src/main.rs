@@ -62,19 +62,13 @@ enum Commands {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    fn print_header(action: &str, elapsed: u128) {
-        use colored::*;
-        println!();
-        println!("  {} | {} in {} ms", "hop".bold(), action, elapsed);
-        println!();
-    }
-
     match &cli.command {
         Some(Commands::Lsp) => {
             cli::lsp::execute().await;
         }
         Some(Commands::Fmt { projectdir, file }) => {
-            use colored::*;
+            use std::time::Instant;
+            let start_time = Instant::now();
 
             let root = match projectdir {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
@@ -82,10 +76,9 @@ async fn main() -> anyhow::Result<()> {
             };
 
             let result = cli::fmt::execute(&root, file.as_deref())?;
+            let elapsed = start_time.elapsed();
 
-            println!();
-            println!("  {} | formatted", "hop".bold());
-            println!();
+            tui::print_header("formatted", elapsed.as_millis());
             println!(
                 "    {} file(s) formatted, {} unchanged",
                 result.files_formatted, result.files_unchanged
@@ -104,7 +97,7 @@ async fn main() -> anyhow::Result<()> {
             let mut result = cli::compile::execute(&root).await?;
             let elapsed = start_time.elapsed();
 
-            print_header("compiled", elapsed.as_millis());
+            tui::print_header("compiled", elapsed.as_millis());
 
             // Display output file path
             {
