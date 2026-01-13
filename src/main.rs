@@ -75,7 +75,7 @@ async fn main() -> anyhow::Result<()> {
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
 
-            let result = cli::fmt::execute(&root, file.as_deref())?;
+            let mut result = cli::fmt::execute(&root, file.as_deref())?;
             let elapsed = start_time.elapsed();
 
             tui::print_header("formatted", elapsed.as_millis());
@@ -83,6 +83,7 @@ async fn main() -> anyhow::Result<()> {
                 "    {} file(s) formatted, {} unchanged",
                 result.files_formatted, result.files_unchanged
             );
+            result.timer.print();
             println!();
         }
         Some(Commands::Compile { projectdir }) => {
@@ -102,26 +103,11 @@ async fn main() -> anyhow::Result<()> {
             // Display output file path
             {
                 use colored::*;
-                println!();
                 println!("  {}", "output".bold());
                 println!();
                 println!("    {}", result.output_path.display());
             }
 
-            if !result.entry_points.is_empty() {
-                println!();
-                use colored::*;
-                println!("  {}", "exported".bold());
-                println!();
-                for func_name in &result.entry_points {
-                    println!("    {}()", func_name);
-                }
-            } else {
-                use colored::*;
-                println!();
-                println!("  {} No entrypoint components found", "⚠".yellow());
-                println!("  Add 'entrypoint' attribute to components you want to export");
-            }
             result.timer.print();
             println!();
         }

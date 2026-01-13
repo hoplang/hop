@@ -12,7 +12,6 @@ use std::path::{Path, PathBuf};
 use tailwind_runner::{TailwindConfig, TailwindRunner};
 
 pub struct CompileResult {
-    pub entry_points: Vec<String>,
     pub timer: crate::tui::timing::TimingCollector,
     pub output_path: PathBuf,
 }
@@ -71,6 +70,7 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
     };
 
     // Load all .hop files
+    timer.start_phase("load modules");
     let hop_modules = project_root.load_all_hop_modules()?;
 
     if hop_modules.is_empty() {
@@ -166,17 +166,7 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
 
     let output_path = project_root.write_output(&generated_code).await?;
 
-    let entry_points: Vec<String> = ir_module
-        .components
-        .iter()
-        .map(|entrypoint| entrypoint.name.as_str().to_string())
-        .collect();
-
-    Ok(CompileResult {
-        entry_points,
-        timer,
-        output_path,
-    })
+    Ok(CompileResult { timer, output_path })
 }
 
 #[cfg(test)]

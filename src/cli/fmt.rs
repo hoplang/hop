@@ -4,15 +4,20 @@ use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::syntax::format;
 use crate::hop::syntax::parser;
+use crate::tui::timing::TimingCollector;
 use anyhow::Result;
 use std::path::Path;
 
 pub struct FmtResult {
     pub files_formatted: usize,
     pub files_unchanged: usize,
+    pub timer: TimingCollector,
 }
 
 pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResult> {
+    let mut timer = TimingCollector::new();
+
+    timer.start_phase("load modules");
     let hop_modules: Vec<(ModuleName, Document)> = match file {
         Some(file_path) => {
             let (module_name, document) = project_root.load_hop_module(Path::new(file_path))?;
@@ -28,6 +33,7 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
     };
 
     // First pass: parse all files and check for errors
+    timer.start_phase("parse");
     let mut parsed_modules = Vec::new();
     for (module_name, document) in hop_modules {
         let mut errors = ErrorCollector::new();
@@ -41,6 +47,7 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
     }
 
     // Second pass: format all files (only if all parsed successfully)
+    timer.start_phase("format");
     let mut files_formatted = 0;
     let mut files_unchanged = 0;
 
@@ -56,9 +63,12 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
         }
     }
 
+    timer.end_phase();
+
     Ok(FmtResult {
         files_formatted,
         files_unchanged,
+        timer,
     })
 }
 
