@@ -333,6 +333,22 @@ impl ParsedBinaryOp {
             ParsedBinaryOp::Multiply => 6,
         }
     }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ParsedBinaryOp::Eq => "==",
+            ParsedBinaryOp::NotEq => "!=",
+            ParsedBinaryOp::LessThan => "<",
+            ParsedBinaryOp::GreaterThan => ">",
+            ParsedBinaryOp::LessThanOrEqual => "<=",
+            ParsedBinaryOp::GreaterThanOrEqual => ">=",
+            ParsedBinaryOp::LogicalAnd => "&&",
+            ParsedBinaryOp::LogicalOr => "||",
+            ParsedBinaryOp::Plus => "+",
+            ParsedBinaryOp::Minus => "-",
+            ParsedBinaryOp::Multiply => "*",
+        }
+    }
 }
 
 impl ParsedExpr {
@@ -569,19 +585,7 @@ impl Display for ParsedExpr {
 
 impl Display for ParsedBinaryOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ParsedBinaryOp::Eq => write!(f, "=="),
-            ParsedBinaryOp::NotEq => write!(f, "!="),
-            ParsedBinaryOp::LessThan => write!(f, "<"),
-            ParsedBinaryOp::GreaterThan => write!(f, ">"),
-            ParsedBinaryOp::LessThanOrEqual => write!(f, "<="),
-            ParsedBinaryOp::GreaterThanOrEqual => write!(f, ">="),
-            ParsedBinaryOp::LogicalAnd => write!(f, "&&"),
-            ParsedBinaryOp::LogicalOr => write!(f, "||"),
-            ParsedBinaryOp::Plus => write!(f, "+"),
-            ParsedBinaryOp::Minus => write!(f, "-"),
-            ParsedBinaryOp::Multiply => write!(f, "*"),
-        }
+        f.write_str(self.as_str())
     }
 }
 

@@ -13,35 +13,41 @@ use crate::document::{CheapString, DocumentRange, Ranged};
 use crate::dop::syntax::parsed::{
     Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern, ParsedType,
 };
-use pretty::BoxDoc;
+use pretty::{Arena, DocAllocator, DocBuilder};
 
 pub fn format(ast: ParsedAst) -> String {
     let ast = remove_whitespace(ast);
-    format_ast(&ast).pretty(60).to_string()
+    let arena = Arena::new();
+    format_ast(&ast, &arena).pretty(60).to_string()
 }
 
 /// Wraps items in a grouped body with optional trailing comma: `{ items, }` or `( items )`
 /// Used for arrays, records, match arms, macros, etc.
-fn soft_block<'a>(items: BoxDoc<'a>) -> BoxDoc<'a> {
-    BoxDoc::line_()
+fn soft_block<'a>(
+    arena: &'a Arena<'a>,
+    items: DocBuilder<'a, Arena<'a>>,
+) -> DocBuilder<'a, Arena<'a>> {
+    arena
+        .line_()
         .append(items)
-        .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-        .append(BoxDoc::line_())
+        .append(arena.text(",").flat_alt(arena.nil()))
+        .append(arena.line_())
         .nest(2)
         .group()
 }
 
 fn drain_comments_before<'a>(
+    arena: &'a Arena<'a>,
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
     position: usize,
-) -> BoxDoc<'a> {
-    let mut doc = BoxDoc::nil();
+) -> DocBuilder<'a, Arena<'a>> {
+    let mut doc = arena.nil();
     while let Some(comment) = comments.front() {
         if comment.1.start() < position {
             let comment = comments.pop_front().unwrap();
             doc = doc
-                .append(BoxDoc::text(comment.0.as_str()))
-                .append(BoxDoc::hardline());
+                .append(arena.text(comment.0.as_str()))
+                .append(arena.hardline());
         } else {
             break;
         }
@@ -50,285 +56,314 @@ fn drain_comments_before<'a>(
 }
 
 fn format_braced_list<'a, T, F>(
+    arena: &'a Arena<'a>,
     items: &'a [T],
     mut format_item: F,
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
     end_position: usize,
-) -> BoxDoc<'a>
+) -> DocBuilder<'a, Arena<'a>>
 where
-    F: FnMut(&'a T, &mut VecDeque<&'a (CheapString, DocumentRange)>) -> BoxDoc<'a>,
+    F: FnMut(
+        &'a Arena<'a>,
+        &'a T,
+        &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    ) -> DocBuilder<'a, Arena<'a>>,
 {
     let has_trailing_comments = comments.front().is_some_and(|c| c.1.start() < end_position);
     if items.is_empty() && !has_trailing_comments {
-        return BoxDoc::nil();
+        return arena.nil();
     }
-    let mut items_doc = BoxDoc::nil();
+    let mut items_doc = arena.nil();
     for (i, item) in items.iter().enumerate() {
         if i > 0 {
-            items_doc = items_doc.append(BoxDoc::text(",")).append(BoxDoc::line());
+            items_doc = items_doc.append(arena.text(",")).append(arena.line());
         }
-        items_doc = items_doc.append(format_item(item, comments));
+        items_doc = items_doc.append(format_item(arena, item, comments));
     }
     if !items.is_empty() {
-        items_doc = items_doc.append(BoxDoc::text(","));
+        items_doc = items_doc.append(arena.text(","));
     }
-    let trailing_comments = drain_comments_before(comments, end_position);
+    let trailing_comments = drain_comments_before(arena, comments, end_position);
     let content = if items.is_empty() {
         trailing_comments
     } else if has_trailing_comments {
-        items_doc.append(BoxDoc::line()).append(trailing_comments)
+        items_doc.append(arena.line()).append(trailing_comments)
     } else {
         items_doc
     };
-    let body = BoxDoc::line().append(content).nest(2);
+    let body = arena.line().append(content).nest(2);
     if has_trailing_comments {
         body
     } else {
-        body.append(BoxDoc::line())
+        body.append(arena.line())
     }
 }
 
-fn format_ast(ast: &ParsedAst) -> BoxDoc<'_> {
+fn format_ast<'a>(ast: &'a ParsedAst, arena: &'a Arena<'a>) -> DocBuilder<'a, Arena<'a>> {
     let declarations = ast.get_declarations();
     let mut comments: VecDeque<_> = ast.comments().iter().collect();
     if declarations.is_empty() {
-        BoxDoc::nil()
+        arena.nil()
     } else {
-        let mut doc = BoxDoc::nil();
+        let mut doc = arena.nil();
         let mut prev_was_import = false;
         for (i, decl) in declarations.iter().enumerate() {
             if i > 0 {
-                doc = doc.append(BoxDoc::line());
+                doc = doc.append(arena.line());
                 let curr_is_import = matches!(decl, ParsedDeclaration::Import(_));
                 if !(prev_was_import && curr_is_import) {
-                    doc = doc.append(BoxDoc::line());
+                    doc = doc.append(arena.line());
                 }
             }
-            doc = doc.append(format_declaration(decl, &mut comments));
+            doc = doc.append(format_declaration(arena, decl, &mut comments));
             prev_was_import = matches!(decl, ParsedDeclaration::Import(_));
         }
-        doc.append(BoxDoc::line())
+        doc.append(arena.line())
     }
 }
 
 fn format_declaration<'a>(
+    arena: &'a Arena<'a>,
     decl: &'a ParsedDeclaration,
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
-) -> BoxDoc<'a> {
+) -> DocBuilder<'a, Arena<'a>> {
     match decl {
-        ParsedDeclaration::Import(import) => format_import_declaration(import, comments),
-        ParsedDeclaration::Record(record) => format_record_declaration(record, comments),
-        ParsedDeclaration::Enum(e) => format_enum_declaration(e, comments),
+        ParsedDeclaration::Import(import) => format_import_declaration(arena, import, comments),
+        ParsedDeclaration::Record(record) => format_record_declaration(arena, record, comments),
+        ParsedDeclaration::Enum(e) => format_enum_declaration(arena, e, comments),
         ParsedDeclaration::Component(component) => {
-            format_component_declaration(component, comments)
+            format_component_declaration(arena, component, comments)
         }
     }
 }
 
 fn format_import_declaration<'a>(
+    arena: &'a Arena<'a>,
     import: &'a ParsedImportDeclaration,
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
-) -> BoxDoc<'a> {
-    let leading_comments = drain_comments_before(comments, import.path.start());
+) -> DocBuilder<'a, Arena<'a>> {
+    let leading_comments = drain_comments_before(arena, comments, import.path.start());
     leading_comments
-        .append(BoxDoc::text("import"))
-        .append(BoxDoc::space())
-        .append(BoxDoc::text(import.module_name.to_string()))
-        .append(BoxDoc::text("::"))
-        .append(BoxDoc::text(import.type_name.as_str()))
+        .append(arena.text("import"))
+        .append(arena.space())
+        .append(arena.text(import.module_name.to_string()))
+        .append(arena.text("::"))
+        .append(arena.text(import.type_name.as_str()))
 }
 
 fn format_record_declaration<'a>(
+    arena: &'a Arena<'a>,
     record: &'a ParsedRecordDeclaration,
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
-) -> BoxDoc<'a> {
-    let leading_comments = drain_comments_before(comments, record.name_range.start());
+) -> DocBuilder<'a, Arena<'a>> {
+    let leading_comments = drain_comments_before(arena, comments, record.name_range.start());
     leading_comments
-        .append(BoxDoc::text("record"))
-        .append(BoxDoc::space())
-        .append(BoxDoc::text(record.name.as_str()))
-        .append(BoxDoc::space())
-        .append(BoxDoc::text("{"))
+        .append(arena.text("record"))
+        .append(arena.space())
+        .append(arena.text(record.name.as_str()))
+        .append(arena.space())
+        .append(arena.text("{"))
         .append(format_braced_list(
+            arena,
             &record.fields,
             format_record_declaration_field,
             comments,
             record.range.end(),
         ))
-        .append(BoxDoc::text("}"))
+        .append(arena.text("}"))
 }
 
 fn format_record_declaration_field<'a>(
+    arena: &'a Arena<'a>,
     field: &'a ParsedRecordDeclarationField,
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
-) -> BoxDoc<'a> {
-    let leading_comments = drain_comments_before(comments, field.name_range.start());
+) -> DocBuilder<'a, Arena<'a>> {
+    let leading_comments = drain_comments_before(arena, comments, field.name_range.start());
     leading_comments
-        .append(BoxDoc::text(field.name.as_str()))
-        .append(BoxDoc::text(": "))
-        .append(format_type(&field.field_type))
+        .append(arena.text(field.name.as_str()))
+        .append(arena.text(": "))
+        .append(format_type(arena, &field.field_type))
 }
 
 fn format_enum_declaration<'a>(
+    arena: &'a Arena<'a>,
     e: &'a ParsedEnumDeclaration,
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
-) -> BoxDoc<'a> {
-    let leading_comments = drain_comments_before(comments, e.name_range.start());
+) -> DocBuilder<'a, Arena<'a>> {
+    let leading_comments = drain_comments_before(arena, comments, e.name_range.start());
     leading_comments
-        .append(BoxDoc::text("enum"))
-        .append(BoxDoc::space())
-        .append(BoxDoc::text(e.name.as_str()))
-        .append(BoxDoc::space())
-        .append(BoxDoc::text("{"))
+        .append(arena.text("enum"))
+        .append(arena.space())
+        .append(arena.text(e.name.as_str()))
+        .append(arena.space())
+        .append(arena.text("{"))
         .append(format_braced_list(
+            arena,
             &e.variants,
             format_enum_declaration_variant,
             comments,
             e.range.end(),
         ))
-        .append(BoxDoc::text("}"))
+        .append(arena.text("}"))
 }
 
 fn format_enum_declaration_variant<'a>(
+    arena: &'a Arena<'a>,
     variant: &'a ParsedEnumDeclarationVariant,
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
-) -> BoxDoc<'a> {
-    let leading_comments = drain_comments_before(comments, variant.name_range.start());
+) -> DocBuilder<'a, Arena<'a>> {
+    let leading_comments = drain_comments_before(arena, comments, variant.name_range.start());
     if variant.fields.is_empty() {
-        leading_comments.append(BoxDoc::text(variant.name.as_str()))
+        leading_comments.append(arena.text(variant.name.as_str()))
     } else {
         leading_comments
-            .append(BoxDoc::text(variant.name.as_str()))
-            .append(BoxDoc::text("("))
-            .append(BoxDoc::intersperse(
+            .append(arena.text(variant.name.as_str()))
+            .append(arena.text("("))
+            .append(arena.intersperse(
                 variant.fields.iter().map(|(field_name, _, field_type)| {
-                    BoxDoc::text(field_name.to_string())
-                        .append(BoxDoc::text(": "))
-                        .append(format_type(field_type))
+                    arena
+                        .text(field_name.to_string())
+                        .append(arena.text(": "))
+                        .append(format_type(arena, field_type))
                 }),
-                BoxDoc::text(", "),
+                arena.text(", "),
             ))
-            .append(BoxDoc::text(")"))
+            .append(arena.text(")"))
     }
 }
 
 fn format_component_declaration<'a>(
+    arena: &'a Arena<'a>,
     component: &'a ParsedComponentDeclaration,
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
-) -> BoxDoc<'a> {
-    let leading_comments = drain_comments_before(comments, component.range.start());
+) -> DocBuilder<'a, Arena<'a>> {
+    let leading_comments = drain_comments_before(arena, comments, component.range.start());
     let params_doc = match &component.params {
         Some((params, params_range)) => {
-            let mut params_inner = BoxDoc::nil();
+            let mut params_inner = arena.nil();
             for (i, param) in params.iter().enumerate() {
                 if i > 0 {
-                    params_inner = params_inner
-                        .append(BoxDoc::text(","))
-                        .append(BoxDoc::line());
+                    params_inner = params_inner.append(arena.text(",")).append(arena.line());
                 }
-                params_inner = params_inner.append(format_parameter(param, comments));
+                params_inner = params_inner.append(format_parameter(arena, param, comments));
             }
             let has_trailing_comments = comments
                 .front()
                 .is_some_and(|c| c.1.start() < params_range.end());
-            let trailing_comments = drain_comments_before(comments, params_range.end());
+            let trailing_comments = drain_comments_before(arena, comments, params_range.end());
             if params.is_empty() && !has_trailing_comments {
-                BoxDoc::nil()
+                arena.nil()
             } else {
                 let body = if params.is_empty() {
-                    BoxDoc::line_().append(trailing_comments).nest(2)
+                    arena.line_().append(trailing_comments).nest(2)
                 } else if has_trailing_comments {
-                    BoxDoc::line_()
+                    arena
+                        .line_()
                         .append(params_inner)
-                        .append(BoxDoc::text(","))
-                        .append(BoxDoc::line())
+                        .append(arena.text(","))
+                        .append(arena.line())
                         .append(trailing_comments)
                         .nest(2)
                 } else {
-                    BoxDoc::line_()
+                    arena
+                        .line_()
                         .append(params_inner)
-                        .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                        .append(arena.text(",").flat_alt(arena.nil()))
                         .nest(2)
-                        .append(BoxDoc::line_())
+                        .append(arena.line_())
                 };
-                BoxDoc::text(" {")
+                arena
+                    .text(" {")
                     .append(body)
-                    .append(BoxDoc::text("}"))
+                    .append(arena.text("}"))
                     .group()
             }
         }
-        None => BoxDoc::nil(),
+        None => arena.nil(),
     };
 
     leading_comments
-        .append(BoxDoc::text("<"))
-        .append(BoxDoc::text(component.component_name.as_str()))
+        .append(arena.text("<"))
+        .append(arena.text(component.component_name.as_str()))
         .append(params_doc)
-        .append(BoxDoc::text(">"))
-        .append(format_children(&component.children, comments))
-        .append(BoxDoc::text("</"))
-        .append(BoxDoc::text(component.component_name.as_str()))
-        .append(BoxDoc::text(">"))
+        .append(arena.text(">"))
+        .append(format_children(arena, &component.children, comments))
+        .append(arena.text("</"))
+        .append(arena.text(component.component_name.as_str()))
+        .append(arena.text(">"))
 }
 
 fn format_parameter<'a>(
+    arena: &'a Arena<'a>,
     param: &'a ParsedParameter,
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
-) -> BoxDoc<'a> {
-    let leading_comments = drain_comments_before(comments, param.var_name_range.start());
-    let base = BoxDoc::text(param.var_name.as_str())
-        .append(BoxDoc::text(": "))
-        .append(format_type(&param.var_type));
+) -> DocBuilder<'a, Arena<'a>> {
+    let leading_comments = drain_comments_before(arena, comments, param.var_name_range.start());
+    let base = arena
+        .text(param.var_name.as_str())
+        .append(arena.text(": "))
+        .append(format_type(arena, &param.var_type));
     let param_doc = match &param.default_value {
         Some(default) => base
-            .append(BoxDoc::text(" = "))
-            .append(format_expr(default, comments)),
+            .append(arena.text(" = "))
+            .append(format_expr(arena, default, comments)),
         None => base,
     };
     leading_comments.append(param_doc)
 }
 
 fn format_attribute<'a>(
+    arena: &'a Arena<'a>,
     attr: &'a ParsedAttribute,
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
-) -> BoxDoc<'a> {
-    let name_doc = BoxDoc::text(attr.name.as_str());
+) -> DocBuilder<'a, Arena<'a>> {
+    let name_doc = arena.text(attr.name.as_str());
     match &attr.value {
         Some(value) => name_doc
-            .append(BoxDoc::text("="))
-            .append(format_attribute_value(value, comments)),
+            .append(arena.text("="))
+            .append(format_attribute_value(arena, value, comments)),
         None => name_doc,
     }
 }
 
 fn format_attribute_value<'a>(
+    arena: &'a Arena<'a>,
     value: &'a ParsedAttributeValue,
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
-) -> BoxDoc<'a> {
+) -> DocBuilder<'a, Arena<'a>> {
     match value {
-        ParsedAttributeValue::Expression(expr) => BoxDoc::text("{")
-            .append(BoxDoc::line_().append(format_expr(expr, comments)).nest(2))
-            .append(BoxDoc::line_())
-            .append(BoxDoc::text("}"))
+        ParsedAttributeValue::Expression(expr) => arena
+            .text("{")
+            .append(
+                arena
+                    .line_()
+                    .append(format_expr(arena, expr, comments))
+                    .nest(2),
+            )
+            .append(arena.line_())
+            .append(arena.text("}"))
             .group(),
         ParsedAttributeValue::String(range) => {
             let content = range.as_ref().map(|r| r.as_str()).unwrap_or("");
-            BoxDoc::text("\"")
-                .append(BoxDoc::text(content))
-                .append(BoxDoc::text("\""))
+            arena
+                .text("\"")
+                .append(arena.text(content))
+                .append(arena.text("\""))
         }
     }
 }
 
 fn format_node<'a>(
+    arena: &'a Arena<'a>,
     node: &'a ParsedNode,
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
-) -> BoxDoc<'a> {
+) -> DocBuilder<'a, Arena<'a>> {
     match node {
-        ParsedNode::Text { value, .. } => BoxDoc::text(value.as_str()),
-        ParsedNode::TextExpression { expression, .. } => BoxDoc::text("{")
-            .append(format_expr(expression, comments))
-            .append(BoxDoc::text("}")),
+        ParsedNode::Text { value, .. } => arena.text(value.as_str()),
+        ParsedNode::TextExpression { expression, .. } => arena
+            .text("{")
+            .append(format_expr(arena, expression, comments))
+            .append(arena.text("}")),
         ParsedNode::ComponentReference {
             component_name,
             args,
@@ -337,36 +372,38 @@ fn format_node<'a>(
         } => {
             let component_name_str = component_name.as_str();
             let opening_tag_doc = if args.is_empty() {
-                BoxDoc::text("<").append(BoxDoc::text(component_name_str))
+                arena.text("<").append(arena.text(component_name_str))
             } else if args.len() == 1 {
                 // Single attribute: keep on same line as tag
-                BoxDoc::text("<")
-                    .append(BoxDoc::text(component_name_str))
-                    .append(BoxDoc::text(" "))
-                    .append(format_attribute(&args[0], comments))
+                arena
+                    .text("<")
+                    .append(arena.text(component_name_str))
+                    .append(arena.text(" "))
+                    .append(format_attribute(arena, &args[0], comments))
             } else {
-                let mut args_doc = BoxDoc::nil();
+                let mut args_doc = arena.nil();
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 {
-                        args_doc = args_doc.append(BoxDoc::line());
+                        args_doc = args_doc.append(arena.line());
                     }
-                    args_doc = args_doc.append(format_attribute(arg, comments));
+                    args_doc = args_doc.append(format_attribute(arena, arg, comments));
                 }
-                BoxDoc::text("<")
-                    .append(BoxDoc::text(component_name_str))
-                    .append(BoxDoc::line().append(args_doc).nest(2))
-                    .append(BoxDoc::line_())
+                arena
+                    .text("<")
+                    .append(arena.text(component_name_str))
+                    .append(arena.line().append(args_doc).nest(2))
+                    .append(arena.line_())
                     .group()
             };
             if children.is_empty() {
-                opening_tag_doc.append(BoxDoc::text("/>"))
+                opening_tag_doc.append(arena.text("/>"))
             } else {
                 opening_tag_doc
-                    .append(BoxDoc::text(">"))
-                    .append(format_children(children, comments))
-                    .append(BoxDoc::text("</"))
-                    .append(BoxDoc::text(component_name_str))
-                    .append(BoxDoc::text(">"))
+                    .append(arena.text(">"))
+                    .append(format_children(arena, children, comments))
+                    .append(arena.text("</"))
+                    .append(arena.text(component_name_str))
+                    .append(arena.text(">"))
             }
         }
         ParsedNode::If {
@@ -374,12 +411,13 @@ fn format_node<'a>(
             children,
             ..
         } => {
-            let children_doc = format_children(children, comments);
-            BoxDoc::text("<if {")
-                .append(format_expr(condition, comments))
-                .append(BoxDoc::text("}>"))
+            let children_doc = format_children(arena, children, comments);
+            arena
+                .text("<if {")
+                .append(format_expr(arena, condition, comments))
+                .append(arena.text("}>"))
                 .append(children_doc)
-                .append(BoxDoc::text("</if>"))
+                .append(arena.text("</if>"))
         }
         ParsedNode::For {
             var_name,
@@ -387,14 +425,15 @@ fn format_node<'a>(
             children,
             ..
         } => {
-            let children_doc = format_children(children, comments);
-            BoxDoc::text("<for {")
-                .append(BoxDoc::text(var_name.as_str()))
-                .append(BoxDoc::text(" in "))
-                .append(format_expr(array_expr, comments))
-                .append(BoxDoc::text("}>"))
+            let children_doc = format_children(arena, children, comments);
+            arena
+                .text("<for {")
+                .append(arena.text(var_name.as_str()))
+                .append(arena.text(" in "))
+                .append(format_expr(arena, array_expr, comments))
+                .append(arena.text("}>"))
                 .append(children_doc)
-                .append(BoxDoc::text("</for>"))
+                .append(arena.text("</for>"))
         }
         ParsedNode::Let {
             bindings,
@@ -406,59 +445,60 @@ fn format_node<'a>(
             let has_trailing_comments =
                 comments.front().is_some_and(|c| c.1.start() < end_position);
 
-            let mut bindings_doc = BoxDoc::nil();
+            let mut bindings_doc = arena.nil();
             for (i, binding) in bindings.iter().enumerate() {
                 if i > 0 {
-                    bindings_doc = bindings_doc
-                        .append(BoxDoc::text(","))
-                        .append(BoxDoc::line());
+                    bindings_doc = bindings_doc.append(arena.text(",")).append(arena.line());
                 }
-                bindings_doc = bindings_doc.append(format_let_binding(binding, comments));
+                bindings_doc = bindings_doc.append(format_let_binding(arena, binding, comments));
             }
 
-            let trailing_comments = drain_comments_before(comments, end_position);
+            let trailing_comments = drain_comments_before(arena, comments, end_position);
 
             let body = if bindings.is_empty() && !has_trailing_comments {
-                BoxDoc::nil()
+                arena.nil()
             } else if bindings.is_empty() {
-                BoxDoc::line_().append(trailing_comments).nest(2)
+                arena.line_().append(trailing_comments).nest(2)
             } else if has_trailing_comments {
-                BoxDoc::line_()
+                arena
+                    .line_()
                     .append(bindings_doc)
-                    .append(BoxDoc::text(","))
-                    .append(BoxDoc::line())
+                    .append(arena.text(","))
+                    .append(arena.line())
                     .append(trailing_comments)
                     .nest(2)
             } else {
-                soft_block(bindings_doc)
+                soft_block(arena, bindings_doc)
             };
 
-            let children_doc = format_children(children, comments);
-            BoxDoc::text("<let {")
+            let children_doc = format_children(arena, children, comments);
+            arena
+                .text("<let {")
                 .append(body)
-                .append(BoxDoc::text("}>"))
+                .append(arena.text("}>"))
                 .append(children_doc)
-                .append(BoxDoc::text("</let>"))
+                .append(arena.text("</let>"))
         }
-        ParsedNode::Doctype { value, .. } => BoxDoc::text(value.as_str()),
+        ParsedNode::Doctype { value, .. } => arena.text(value.as_str()),
         ParsedNode::Match { subject, cases, .. } => {
             let cases_doc = if cases.is_empty() {
-                BoxDoc::nil()
+                arena.nil()
             } else {
-                let mut doc = BoxDoc::nil();
+                let mut doc = arena.nil();
                 for (i, case) in cases.iter().enumerate() {
                     if i > 0 {
-                        doc = doc.append(BoxDoc::line());
+                        doc = doc.append(arena.line());
                     }
-                    doc = doc.append(format_match_case(case, comments));
+                    doc = doc.append(format_match_case(arena, case, comments));
                 }
-                BoxDoc::line().append(doc).nest(2).append(BoxDoc::line())
+                arena.line().append(doc).nest(2).append(arena.line())
             };
-            BoxDoc::text("<match {")
-                .append(format_expr(subject, comments))
-                .append(BoxDoc::text("}>"))
+            arena
+                .text("<match {")
+                .append(format_expr(arena, subject, comments))
+                .append(arena.text("}>"))
                 .append(cases_doc)
-                .append(BoxDoc::text("</match>"))
+                .append(arena.text("</match>"))
         }
         ParsedNode::Html {
             tag_name,
@@ -468,29 +508,32 @@ fn format_node<'a>(
         } => {
             let tag_name_str = tag_name.as_str();
             let opening_tag_doc = if attributes.is_empty() {
-                BoxDoc::text("<")
-                    .append(BoxDoc::text(tag_name_str))
-                    .append(BoxDoc::text(">"))
+                arena
+                    .text("<")
+                    .append(arena.text(tag_name_str))
+                    .append(arena.text(">"))
             } else if attributes.len() == 1 {
                 // Single attribute: keep on same line as tag
-                BoxDoc::text("<")
-                    .append(BoxDoc::text(tag_name_str))
-                    .append(BoxDoc::text(" "))
-                    .append(format_attribute(&attributes[0], comments))
-                    .append(BoxDoc::text(">"))
+                arena
+                    .text("<")
+                    .append(arena.text(tag_name_str))
+                    .append(arena.text(" "))
+                    .append(format_attribute(arena, &attributes[0], comments))
+                    .append(arena.text(">"))
             } else {
-                let mut attrs_doc = BoxDoc::nil();
+                let mut attrs_doc = arena.nil();
                 for (i, attr) in attributes.iter().enumerate() {
                     if i > 0 {
-                        attrs_doc = attrs_doc.append(BoxDoc::line());
+                        attrs_doc = attrs_doc.append(arena.line());
                     }
-                    attrs_doc = attrs_doc.append(format_attribute(attr, comments));
+                    attrs_doc = attrs_doc.append(format_attribute(arena, attr, comments));
                 }
-                BoxDoc::text("<")
-                    .append(BoxDoc::text(tag_name_str))
-                    .append(BoxDoc::line().append(attrs_doc).nest(2))
-                    .append(BoxDoc::line_())
-                    .append(BoxDoc::text(">"))
+                arena
+                    .text("<")
+                    .append(arena.text(tag_name_str))
+                    .append(arena.line().append(attrs_doc).nest(2))
+                    .append(arena.line_())
+                    .append(arena.text(">"))
                     .group()
             };
 
@@ -498,125 +541,133 @@ fn format_node<'a>(
                 opening_tag_doc
             } else if children.is_empty() {
                 opening_tag_doc
-                    .append(BoxDoc::line())
-                    .append(BoxDoc::text("</"))
-                    .append(BoxDoc::text(tag_name_str))
-                    .append(BoxDoc::text(">"))
+                    .append(arena.line())
+                    .append(arena.text("</"))
+                    .append(arena.text(tag_name_str))
+                    .append(arena.text(">"))
             } else {
                 opening_tag_doc
-                    .append(format_children(children, comments))
-                    .append(BoxDoc::text("</"))
-                    .append(BoxDoc::text(tag_name_str))
-                    .append(BoxDoc::text(">"))
+                    .append(format_children(arena, children, comments))
+                    .append(arena.text("</"))
+                    .append(arena.text(tag_name_str))
+                    .append(arena.text(">"))
             }
         }
         ParsedNode::Placeholder { children, .. } => {
             if children.is_empty() {
-                BoxDoc::text("<placeholder />")
+                arena.text("<placeholder />")
             } else {
-                BoxDoc::text("<placeholder>")
-                    .append(format_children(children, comments))
-                    .append(BoxDoc::text("</placeholder>"))
+                arena
+                    .text("<placeholder>")
+                    .append(format_children(arena, children, comments))
+                    .append(arena.text("</placeholder>"))
             }
         }
     }
 }
 
 fn format_children<'a>(
+    arena: &'a Arena<'a>,
     children: &'a [ParsedNode],
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
-) -> BoxDoc<'a> {
+) -> DocBuilder<'a, Arena<'a>> {
     if children.is_empty() {
-        BoxDoc::nil()
+        arena.nil()
     } else {
-        let mut doc = BoxDoc::nil();
+        let mut doc = arena.nil();
         for (i, child) in children.iter().enumerate() {
             if i > 0 {
-                doc = doc.append(BoxDoc::line());
+                doc = doc.append(arena.line());
             }
-            doc = doc.append(format_node(child, comments));
+            doc = doc.append(format_node(arena, child, comments));
         }
-        BoxDoc::line().append(doc).nest(2).append(BoxDoc::line())
+        arena.line().append(doc).nest(2).append(arena.line())
     }
 }
 
 fn format_match_case<'a>(
+    arena: &'a Arena<'a>,
     case: &'a ParsedMatchCase,
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
-) -> BoxDoc<'a> {
-    let children_doc = format_children(&case.children, comments);
-    BoxDoc::text("<case {")
-        .append(format_match_pattern(&case.pattern))
-        .append(BoxDoc::text("}>"))
+) -> DocBuilder<'a, Arena<'a>> {
+    let children_doc = format_children(arena, &case.children, comments);
+    arena
+        .text("<case {")
+        .append(format_match_pattern(arena, &case.pattern))
+        .append(arena.text("}>"))
         .append(children_doc)
-        .append(BoxDoc::text("</case>"))
+        .append(arena.text("</case>"))
 }
 
 fn format_let_binding<'a>(
+    arena: &'a Arena<'a>,
     binding: &'a ParsedLetBinding,
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
-) -> BoxDoc<'a> {
-    let leading_comments = drain_comments_before(comments, binding.var_name_range.start());
+) -> DocBuilder<'a, Arena<'a>> {
+    let leading_comments = drain_comments_before(arena, comments, binding.var_name_range.start());
     leading_comments
-        .append(BoxDoc::text(binding.var_name.as_str()))
-        .append(BoxDoc::text(": "))
-        .append(format_type(&binding.var_type))
-        .append(BoxDoc::text(" = "))
-        .append(format_expr(&binding.value_expr, comments))
+        .append(arena.text(binding.var_name.as_str()))
+        .append(arena.text(": "))
+        .append(format_type(arena, &binding.var_type))
+        .append(arena.text(" = "))
+        .append(format_expr(arena, &binding.value_expr, comments))
 }
 
-fn format_type(ty: &ParsedType) -> BoxDoc<'_> {
+fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Arena<'a>> {
     match ty {
-        ParsedType::String { .. } => BoxDoc::text("String"),
-        ParsedType::Bool { .. } => BoxDoc::text("Bool"),
-        ParsedType::Int { .. } => BoxDoc::text("Int"),
-        ParsedType::Float { .. } => BoxDoc::text("Float"),
-        ParsedType::TrustedHTML { .. } => BoxDoc::text("TrustedHTML"),
-        ParsedType::Option { element, .. } => BoxDoc::text("Option[")
-            .append(format_type(element))
-            .append(BoxDoc::text("]")),
-        ParsedType::Array { element, .. } => BoxDoc::text("Array[")
-            .append(format_type(element))
-            .append(BoxDoc::text("]")),
-        ParsedType::Named { name, .. } => BoxDoc::text(name.to_string()),
+        ParsedType::String { .. } => arena.text("String"),
+        ParsedType::Bool { .. } => arena.text("Bool"),
+        ParsedType::Int { .. } => arena.text("Int"),
+        ParsedType::Float { .. } => arena.text("Float"),
+        ParsedType::TrustedHTML { .. } => arena.text("TrustedHTML"),
+        ParsedType::Option { element, .. } => arena
+            .text("Option[")
+            .append(format_type(arena, element))
+            .append(arena.text("]")),
+        ParsedType::Array { element, .. } => arena
+            .text("Array[")
+            .append(format_type(arena, element))
+            .append(arena.text("]")),
+        ParsedType::Named { name, .. } => arena.text(name.to_string()),
     }
 }
 
 fn format_expr<'a>(
+    arena: &'a Arena<'a>,
     expr: &'a ParsedExpr,
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
-) -> BoxDoc<'a> {
+) -> DocBuilder<'a, Arena<'a>> {
     match expr {
-        ParsedExpr::Var { value, .. } => BoxDoc::text(value.as_str()),
+        ParsedExpr::Var { value, .. } => arena.text(value.as_str()),
         ParsedExpr::FieldAccess {
             record: object,
             field,
             ..
-        } => format_expr(object, comments)
-            .append(BoxDoc::text("."))
-            .append(BoxDoc::text(field.as_str())),
-        ParsedExpr::StringLiteral { value, .. } => BoxDoc::text("\"")
-            .append(BoxDoc::text(value.as_str()))
-            .append(BoxDoc::text("\"")),
-        ParsedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
-        ParsedExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
-        ParsedExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
+        } => format_expr(arena, object, comments)
+            .append(arena.text("."))
+            .append(arena.text(field.as_str())),
+        ParsedExpr::StringLiteral { value, .. } => arena
+            .text("\"")
+            .append(arena.text(value.as_str()))
+            .append(arena.text("\"")),
+        ParsedExpr::BooleanLiteral { value, .. } => arena.text(value.to_string()),
+        ParsedExpr::IntLiteral { value, .. } => arena.text(value.to_string()),
+        ParsedExpr::FloatLiteral { value, .. } => arena.text(value.to_string()),
         ParsedExpr::ArrayLiteral { elements, .. } => {
             if elements.is_empty() {
-                BoxDoc::text("[]")
+                arena.text("[]")
             } else {
-                let mut elements_doc = BoxDoc::nil();
+                let mut elements_doc = arena.nil();
                 for (i, elem) in elements.iter().enumerate() {
                     if i > 0 {
-                        elements_doc = elements_doc
-                            .append(BoxDoc::text(","))
-                            .append(BoxDoc::line());
+                        elements_doc = elements_doc.append(arena.text(",")).append(arena.line());
                     }
-                    elements_doc = elements_doc.append(format_expr(elem, comments));
+                    elements_doc = elements_doc.append(format_expr(arena, elem, comments));
                 }
-                BoxDoc::text("[")
-                    .append(soft_block(elements_doc))
-                    .append(BoxDoc::text("]"))
+                arena
+                    .text("[")
+                    .append(soft_block(arena, elements_doc))
+                    .append(arena.text("]"))
             }
         }
         ParsedExpr::RecordLiteral {
@@ -625,22 +676,23 @@ fn format_expr<'a>(
             ..
         } => {
             if fields.is_empty() {
-                BoxDoc::text(record_name.as_str()).append(BoxDoc::text("()"))
+                arena.text(record_name.as_str()).append(arena.text("()"))
             } else {
-                let mut fields_doc = BoxDoc::nil();
+                let mut fields_doc = arena.nil();
                 for (i, (key, value)) in fields.iter().enumerate() {
                     if i > 0 {
-                        fields_doc = fields_doc.append(BoxDoc::text(",")).append(BoxDoc::line());
+                        fields_doc = fields_doc.append(arena.text(",")).append(arena.line());
                     }
                     fields_doc = fields_doc
-                        .append(BoxDoc::text(key.as_str()))
-                        .append(BoxDoc::text(": "))
-                        .append(format_expr(value, comments));
+                        .append(arena.text(key.as_str()))
+                        .append(arena.text(": "))
+                        .append(format_expr(arena, value, comments));
                 }
-                BoxDoc::text(record_name.as_str())
-                    .append(BoxDoc::text("("))
-                    .append(soft_block(fields_doc))
-                    .append(BoxDoc::text(")"))
+                arena
+                    .text(record_name.as_str())
+                    .append(arena.text("("))
+                    .append(soft_block(arena, fields_doc))
+                    .append(arena.text(")"))
             }
         }
         ParsedExpr::BinaryOp {
@@ -650,17 +702,22 @@ fn format_expr<'a>(
             ..
         } => {
             let prec = operator.precedence();
-            format_expr_with_precedence(left, prec, comments)
-                .append(BoxDoc::text(format!(" {} ", operator)))
-                .append(format_expr_with_precedence(right, prec, comments))
+            format_expr_with_precedence(arena, left, prec, comments)
+                .append(arena.text(" "))
+                .append(arena.text(operator.as_str()))
+                .append(arena.text(" "))
+                .append(format_expr_with_precedence(arena, right, prec, comments))
         }
         ParsedExpr::Negation { operand, .. } => {
             if is_atomic(operand) {
-                BoxDoc::text("!").append(format_expr(operand, comments))
+                arena
+                    .text("!")
+                    .append(format_expr(arena, operand, comments))
             } else {
-                BoxDoc::text("!(")
-                    .append(format_expr(operand, comments))
-                    .append(BoxDoc::text(")"))
+                arena
+                    .text("!(")
+                    .append(format_expr(arena, operand, comments))
+                    .append(arena.text(")"))
             }
         }
         ParsedExpr::EnumLiteral {
@@ -669,25 +726,26 @@ fn format_expr<'a>(
             fields,
             ..
         } => {
-            let base = BoxDoc::text(enum_name.as_str())
-                .append(BoxDoc::text("::"))
-                .append(BoxDoc::text(variant_name.as_str()));
+            let base = arena
+                .text(enum_name.as_str())
+                .append(arena.text("::"))
+                .append(arena.text(variant_name.as_str()));
             if fields.is_empty() {
                 base
             } else {
-                let mut fields_doc = BoxDoc::nil();
+                let mut fields_doc = arena.nil();
                 for (i, (field_name, _, field_value)) in fields.iter().enumerate() {
                     if i > 0 {
-                        fields_doc = fields_doc.append(BoxDoc::text(", "));
+                        fields_doc = fields_doc.append(arena.text(", "));
                     }
                     fields_doc = fields_doc
-                        .append(BoxDoc::text(field_name.to_string()))
-                        .append(BoxDoc::text(": "))
-                        .append(format_expr(field_value, comments));
+                        .append(arena.text(field_name.to_string()))
+                        .append(arena.text(": "))
+                        .append(format_expr(arena, field_value, comments));
                 }
-                base.append(BoxDoc::text("("))
+                base.append(arena.text("("))
                     .append(fields_doc)
-                    .append(BoxDoc::text(")"))
+                    .append(arena.text(")"))
             }
         }
         ParsedExpr::Match { subject, arms, .. } => {
@@ -696,63 +754,70 @@ fn format_expr<'a>(
                 comments.front().is_some_and(|c| c.1.start() < end_position);
 
             if arms.is_empty() && !has_trailing_comments {
-                BoxDoc::text("match ")
-                    .append(format_expr(subject, comments))
-                    .append(BoxDoc::text(" {}"))
+                arena
+                    .text("match ")
+                    .append(format_expr(arena, subject, comments))
+                    .append(arena.text(" {}"))
             } else if arms.is_empty() {
-                let trailing_comments = drain_comments_before(comments, end_position);
-                BoxDoc::text("match ")
-                    .append(format_expr(subject, comments))
-                    .append(BoxDoc::text(" {"))
-                    .append(BoxDoc::line_().append(trailing_comments).nest(2))
-                    .append(BoxDoc::text("}"))
+                let trailing_comments = drain_comments_before(arena, comments, end_position);
+                arena
+                    .text("match ")
+                    .append(format_expr(arena, subject, comments))
+                    .append(arena.text(" {"))
+                    .append(arena.line_().append(trailing_comments).nest(2))
+                    .append(arena.text("}"))
             } else {
-                let mut arms_doc = BoxDoc::nil();
+                let mut arms_doc = arena.nil();
                 for (i, arm) in arms.iter().enumerate() {
                     if i > 0 {
-                        arms_doc = arms_doc.append(BoxDoc::text(",")).append(BoxDoc::line());
+                        arms_doc = arms_doc.append(arena.text(",")).append(arena.line());
                     }
-                    arms_doc = arms_doc.append(format_match_arm(arm, comments));
+                    arms_doc = arms_doc.append(format_match_arm(arena, arm, comments));
                 }
 
-                let trailing_comments = drain_comments_before(comments, end_position);
+                let trailing_comments = drain_comments_before(arena, comments, end_position);
 
                 let body = if has_trailing_comments {
-                    BoxDoc::line_()
+                    arena
+                        .line_()
                         .append(arms_doc)
-                        .append(BoxDoc::text(","))
-                        .append(BoxDoc::line())
+                        .append(arena.text(","))
+                        .append(arena.line())
                         .append(trailing_comments)
                         .nest(2)
                 } else {
-                    soft_block(arms_doc)
+                    soft_block(arena, arms_doc)
                 };
 
-                BoxDoc::text("match ")
-                    .append(format_expr(subject, comments))
-                    .append(BoxDoc::text(" {"))
+                arena
+                    .text("match ")
+                    .append(format_expr(arena, subject, comments))
+                    .append(arena.text(" {"))
                     .append(body)
-                    .append(BoxDoc::text("}"))
+                    .append(arena.text("}"))
             }
         }
         ParsedExpr::OptionLiteral { value, .. } => match value {
-            Some(inner) => BoxDoc::text("Some(")
-                .append(format_expr(inner, comments))
-                .append(BoxDoc::text(")")),
-            None => BoxDoc::text("None"),
+            Some(inner) => arena
+                .text("Some(")
+                .append(format_expr(arena, inner, comments))
+                .append(arena.text(")")),
+            None => arena.text("None"),
         },
         ParsedExpr::MacroInvocation { name, args, .. } => {
-            let mut expanded_docs: Vec<BoxDoc<'a>> = Vec::new();
+            let mut expanded_docs: Vec<DocBuilder<'a, Arena<'a>>> = Vec::new();
             if name == "classes" {
                 for e in args.iter() {
-                    let leading_comments = drain_comments_before(comments, e.range().start());
+                    let leading_comments =
+                        drain_comments_before(arena, comments, e.range().start());
                     match e {
                         ParsedExpr::StringLiteral { value, .. } => {
                             let parts: Vec<_> = value.split_whitespace().collect();
                             for (i, part) in parts.iter().enumerate() {
-                                let quoted = BoxDoc::text("\"")
-                                    .append(BoxDoc::text(*part))
-                                    .append(BoxDoc::text("\""));
+                                let quoted = arena
+                                    .text("\"")
+                                    .append(arena.text(*part))
+                                    .append(arena.text("\""));
                                 if i == 0 {
                                     expanded_docs.push(leading_comments.clone().append(quoted));
                                 } else {
@@ -760,75 +825,82 @@ fn format_expr<'a>(
                                 }
                             }
                         }
-                        _ => expanded_docs.push(leading_comments.append(format_expr(e, comments))),
+                        _ => expanded_docs
+                            .push(leading_comments.append(format_expr(arena, e, comments))),
                     }
                 }
             } else {
                 for e in args.iter() {
-                    let leading_comments = drain_comments_before(comments, e.range().start());
-                    expanded_docs.push(leading_comments.append(format_expr(e, comments)));
+                    let leading_comments =
+                        drain_comments_before(arena, comments, e.range().start());
+                    expanded_docs.push(leading_comments.append(format_expr(arena, e, comments)));
                 }
             }
 
             let end_position = expr.range().end();
             let has_trailing_comments =
                 comments.front().is_some_and(|c| c.1.start() < end_position);
-            let trailing_comments = drain_comments_before(comments, end_position);
+            let trailing_comments = drain_comments_before(arena, comments, end_position);
 
             if expanded_docs.is_empty() && !has_trailing_comments {
-                BoxDoc::text(name.as_str()).append(BoxDoc::text("!()"))
+                arena.text(name.as_str()).append(arena.text("!()"))
             } else if expanded_docs.is_empty() {
-                BoxDoc::text(name.as_str())
-                    .append(BoxDoc::text("!("))
-                    .append(BoxDoc::line_().append(trailing_comments).nest(2))
-                    .append(BoxDoc::text(")"))
+                arena
+                    .text(name.as_str())
+                    .append(arena.text("!("))
+                    .append(arena.line_().append(trailing_comments).nest(2))
+                    .append(arena.text(")"))
             } else {
-                let mut args_doc = BoxDoc::nil();
+                let mut args_doc = arena.nil();
                 for (i, doc) in expanded_docs.into_iter().enumerate() {
                     if i > 0 {
-                        args_doc = args_doc.append(BoxDoc::text(",")).append(BoxDoc::line());
+                        args_doc = args_doc.append(arena.text(",")).append(arena.line());
                     }
                     args_doc = args_doc.append(doc);
                 }
 
                 let body = if has_trailing_comments {
-                    BoxDoc::line_()
+                    arena
+                        .line_()
                         .append(args_doc)
-                        .append(BoxDoc::text(","))
-                        .append(BoxDoc::line())
+                        .append(arena.text(","))
+                        .append(arena.line())
                         .append(trailing_comments)
                         .nest(2)
                         .group()
                 } else {
-                    soft_block(args_doc)
+                    soft_block(arena, args_doc)
                 };
 
-                BoxDoc::text(name.as_str())
-                    .append(BoxDoc::text("!("))
+                arena
+                    .text(name.as_str())
+                    .append(arena.text("!("))
                     .append(body)
-                    .append(BoxDoc::text(")"))
+                    .append(arena.text(")"))
             }
         }
     }
 }
 
 fn format_expr_with_precedence<'a>(
+    arena: &'a Arena<'a>,
     expr: &'a ParsedExpr,
     parent_precedence: u8,
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
-) -> BoxDoc<'a> {
+) -> DocBuilder<'a, Arena<'a>> {
     match expr {
         ParsedExpr::BinaryOp { operator, .. } => {
             let needs_parens = operator.precedence() < parent_precedence;
             if needs_parens {
-                BoxDoc::text("(")
-                    .append(format_expr(expr, comments))
-                    .append(BoxDoc::text(")"))
+                arena
+                    .text("(")
+                    .append(format_expr(arena, expr, comments))
+                    .append(arena.text(")"))
             } else {
-                format_expr(expr, comments)
+                format_expr(arena, expr, comments)
             }
         }
-        _ => format_expr(expr, comments),
+        _ => format_expr(arena, expr, comments),
     }
 }
 
@@ -851,17 +923,21 @@ fn is_atomic(expr: &ParsedExpr) -> bool {
 }
 
 fn format_match_arm<'a>(
+    arena: &'a Arena<'a>,
     arm: &'a ParsedMatchArm,
     comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
-) -> BoxDoc<'a> {
-    let leading_comments = drain_comments_before(comments, arm.pattern.range().start());
+) -> DocBuilder<'a, Arena<'a>> {
+    let leading_comments = drain_comments_before(arena, comments, arm.pattern.range().start());
     leading_comments
-        .append(format_match_pattern(&arm.pattern))
-        .append(BoxDoc::text(" => "))
-        .append(format_expr(&arm.body, comments))
+        .append(format_match_pattern(arena, &arm.pattern))
+        .append(arena.text(" => "))
+        .append(format_expr(arena, &arm.body, comments))
 }
 
-fn format_match_pattern(pattern: &ParsedMatchPattern) -> BoxDoc<'_> {
+fn format_match_pattern<'a>(
+    arena: &'a Arena<'a>,
+    pattern: &'a ParsedMatchPattern,
+) -> DocBuilder<'a, Arena<'a>> {
     match pattern {
         ParsedMatchPattern::Constructor {
             constructor,
@@ -869,47 +945,54 @@ fn format_match_pattern(pattern: &ParsedMatchPattern) -> BoxDoc<'_> {
             fields,
             ..
         } => {
-            let base = format_constructor(constructor);
+            let base = format_constructor(arena, constructor);
             if !fields.is_empty() {
-                let fields_doc = BoxDoc::intersperse(
+                let fields_doc = arena.intersperse(
                     fields.iter().map(|(name, _, pat)| {
-                        BoxDoc::text(name.as_str())
-                            .append(BoxDoc::text(": "))
-                            .append(format_match_pattern(pat))
+                        arena
+                            .text(name.as_str())
+                            .append(arena.text(": "))
+                            .append(format_match_pattern(arena, pat))
                     }),
-                    BoxDoc::text(", "),
+                    arena.text(", "),
                 );
-                base.append(BoxDoc::text("("))
+                base.append(arena.text("("))
                     .append(fields_doc)
-                    .append(BoxDoc::text(")"))
+                    .append(arena.text(")"))
             } else if args.is_empty() {
                 base
             } else {
-                let args_doc =
-                    BoxDoc::intersperse(args.iter().map(format_match_pattern), BoxDoc::text(", "));
-                base.append(BoxDoc::text("("))
+                let args_doc = arena.intersperse(
+                    args.iter().map(|p| format_match_pattern(arena, p)),
+                    arena.text(", "),
+                );
+                base.append(arena.text("("))
                     .append(args_doc)
-                    .append(BoxDoc::text(")"))
+                    .append(arena.text(")"))
             }
         }
-        ParsedMatchPattern::Wildcard { .. } => BoxDoc::text("_"),
-        ParsedMatchPattern::Binding { name, .. } => BoxDoc::text(name.as_str()),
+        ParsedMatchPattern::Wildcard { .. } => arena.text("_"),
+        ParsedMatchPattern::Binding { name, .. } => arena.text(name.as_str()),
     }
 }
 
-fn format_constructor(constructor: &Constructor) -> BoxDoc<'_> {
+fn format_constructor<'a>(
+    arena: &'a Arena<'a>,
+    constructor: &'a Constructor,
+) -> DocBuilder<'a, Arena<'a>> {
     match constructor {
         Constructor::EnumVariant {
             enum_name,
             variant_name,
-        } => BoxDoc::text(enum_name.as_str())
-            .append(BoxDoc::text("::"))
-            .append(BoxDoc::text(variant_name.as_str())),
-        Constructor::BooleanTrue => BoxDoc::text("true"),
-        Constructor::BooleanFalse => BoxDoc::text("false"),
-        Constructor::OptionSome => BoxDoc::text("Some"),
-        Constructor::OptionNone => BoxDoc::text("None"),
-        Constructor::Record { type_name } => BoxDoc::text(type_name.as_str()),
+        } => arena
+            .text(enum_name.as_str())
+            .append(arena.text("::"))
+            .append(arena.text(variant_name.as_str())),
+        Constructor::BooleanTrue => arena.text("true"),
+        Constructor::BooleanFalse => arena.text("false"),
+        Constructor::OptionSome => arena.text("Some"),
+        Constructor::OptionNone => arena.text("None"),
+        Constructor::Record { type_name } => arena.text(type_name.as_str()),
     }
 }
 
