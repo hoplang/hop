@@ -46,8 +46,7 @@ impl Pass for ConstantPropagationPass {
         let mut match_arms_relations = Vec::new();
         let mut initial_option_constants = Vec::new();
         let mut option_match_subjects = Vec::new();
-        let mut option_match_some_arms = Vec::new();
-        let mut option_match_none_arms = Vec::new();
+        let mut option_arms_relations: Vec<((ExprId, bool), ExprId)> = Vec::new();
 
         for stmt in &entrypoint.body {
             stmt.traverse_with_scope(&mut |s, scope| {
@@ -136,8 +135,9 @@ impl Pass for ConstantPropagationPass {
                                         _ => 0,
                                     };
                                     option_match_subjects.push((def_expr_id, expr.id()));
-                                    option_match_some_arms.push((expr.id(), some_arm_body.id()));
-                                    option_match_none_arms.push((expr.id(), none_arm_body.id()));
+                                    // Key arms by (match_id, is_some) for direct joining
+                                    option_arms_relations.push(((expr.id(), true), some_arm_body.id()));
+                                    option_arms_relations.push(((expr.id(), false), none_arm_body.id()));
                                 }
                             }
                         },
@@ -238,17 +238,12 @@ impl Pass for ConstantPropagationPass {
         // Option match subject expressions: (subject_id => match_id)
         let option_match_subject = Relation::from_iter(option_match_subjects);
 
-        // Option match Some arms: (match_id => some_arm_body_id)
-        let option_some_arm = Relation::from_iter(option_match_some_arms);
+        // Option match arms keyed by (match_id, is_some): ((match_id, is_some) => body_id)
+        let option_arms = Relation::from_iter(option_arms_relations);
 
-        // Option match None arms: (match_id => none_arm_body_id)
-        let option_none_arm = Relation::from_iter(option_match_none_arms);
-
-        // Option matches where subject is Some: (match_id => match_id)
-        let option_match_is_some = iteration.variable::<(ExprId, ExprId)>("option_match_is_some");
-
-        // Option matches where subject is None: (match_id => match_id)
-        let option_match_is_none = iteration.variable::<(ExprId, ExprId)>("option_match_is_none");
+        // Option matches with known constant subjects: ((match_id, is_some) => match_id)
+        let option_match_with_const =
+            iteration.variable::<((ExprId, bool), ExprId)>("option_match_with_const");
 
         // Selected arm bodies for option matches: (arm_body_id => match_id)
         let option_selected_arm = iteration.variable::<(ExprId, ExprId)>("option_selected_arm");
@@ -409,51 +404,23 @@ impl Pass for ConstantPropagationPass {
                 |_def_expr: &ExprId, is_some: &bool, var_expr: &ExprId| (*var_expr, *is_some),
             );
 
-            // Find option match expressions whose subject is Some
-            // option_match_is_some(m, m) :- option_match_subject(s, m), option_const(s, true).
-            option_match_is_some.from_join(
+            // Find option matches with constant subjects, keyed by (match_id, is_some)
+            // option_match_with_const((m, is_some), m) :- option_const(s, is_some), option_match_subject(s, m).
+            option_match_with_const.from_join(
                 &option_const,
                 &option_match_subject,
                 |_subject: &ExprId, is_some: &bool, match_id: &ExprId| {
-                    if *is_some {
-                        (*match_id, *match_id)
-                    } else {
-                        (0, 0) // Won't match anything
-                    }
+                    ((*match_id, *is_some), *match_id)
                 },
             );
 
-            // Find option match expressions whose subject is None
-            // option_match_is_none(m, m) :- option_match_subject(s, m), option_const(s, false).
-            option_match_is_none.from_join(
-                &option_const,
-                &option_match_subject,
-                |_subject: &ExprId, is_some: &bool, match_id: &ExprId| {
-                    if !*is_some {
-                        (*match_id, *match_id)
-                    } else {
-                        (0, 0) // Won't match anything
-                    }
-                },
-            );
-
-            // Select Some arm when subject is Some
-            // option_selected_arm(some_body, m) :- option_match_is_some(m, m), option_some_arm(m, some_body).
+            // Select the appropriate arm by joining on (match_id, is_some)
+            // option_selected_arm(body, m) :- option_match_with_const((m, is_some), m), option_arms((m, is_some), body).
             option_selected_arm.from_join(
-                &option_match_is_some,
-                &option_some_arm,
-                |_match_id: &ExprId, match_id2: &ExprId, some_body: &ExprId| {
-                    (*some_body, *match_id2)
-                },
-            );
-
-            // Select None arm when subject is None
-            // option_selected_arm(none_body, m) :- option_match_is_none(m, m), option_none_arm(m, none_body).
-            option_selected_arm.from_join(
-                &option_match_is_none,
-                &option_none_arm,
-                |_match_id: &ExprId, match_id2: &ExprId, none_body: &ExprId| {
-                    (*none_body, *match_id2)
+                &option_match_with_const,
+                &option_arms,
+                |_key: &(ExprId, bool), match_id: &ExprId, body_id: &ExprId| {
+                    (*body_id, *match_id)
                 },
             );
 
