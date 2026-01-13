@@ -154,7 +154,7 @@ pub enum IrExpr {
 
     /// A match expression (enum, bool, or option)
     Match {
-        match_: Match<Self>,
+        match_: Match<IrExpr>,
         kind: Type,
         id: ExprId,
     },

@@ -157,7 +157,14 @@ impl Pass for ConstantPropagationPass {
                     IrStatement::For { var, array, .. } => {
                         var_bindings.insert(var.to_string(), array.id());
                     }
-                    _ => {}
+                    IrStatement::Match { .. } => {
+                        // Not yet implemented
+                    }
+                    IrStatement::If { .. }
+                    | IrStatement::Write { .. }
+                    | IrStatement::WriteExpr { .. } => {
+                        // No bindings
+                    }
                 }
 
                 let Some(primary_expr) = s.expr() else {
@@ -166,6 +173,45 @@ impl Pass for ConstantPropagationPass {
 
                 primary_expr.traverse(&mut |expr| {
                     match expr {
+                        IrExpr::EnvLookup { .. } | IrExpr::JsonEncode { .. } => {
+                            // Runtime only
+                        }
+                        IrExpr::LessThanOrEqual { .. } => {
+                            // Not yet implemented
+                        }
+                        IrExpr::LessThan { .. } => {
+                            // Not yet implemented
+                        }
+                        IrExpr::BooleanLogicalOr { .. } => {
+                            // Not yet implemented
+                        }
+                        IrExpr::BooleanLogicalAnd { .. } => {
+                            // Not yet implemented
+                        }
+                        IrExpr::NumericAdd { .. } => {
+                            // Not yet implemented
+                        }
+                        IrExpr::NumericSubtract { .. } => {
+                            // Not yet implemented
+                        }
+                        IrExpr::NumericMultiply { .. } => {
+                            // Not yet implemented
+                        }
+                        IrExpr::RecordLiteral { .. } => {
+                            // Not yet implemented
+                        }
+                        IrExpr::IntLiteral { .. } => {
+                            // Not yet implemented
+                        }
+                        IrExpr::ArrayLiteral { .. } => {
+                            // Not yet implemented
+                        }
+                        IrExpr::FloatLiteral { .. } => {
+                            // Not yet implemented
+                        }
+                        IrExpr::FieldAccess { .. } => {
+                            // Not yet implemented
+                        }
                         IrExpr::BooleanLiteral { value, .. } => {
                             initial_constants.push((expr.id(), Const::Bool(*value)));
                         }
@@ -313,7 +359,6 @@ impl Pass for ConstantPropagationPass {
                             // Keyed by body_id for joining with const_value
                             let_expr_bodies.push((body.id(), expr.id()));
                         }
-                        _ => {}
                     }
                 });
             });
