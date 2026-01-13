@@ -671,6 +671,28 @@ impl Compiler {
                 kind: kind.clone(),
                 id: expr_id,
             },
+            TypedExpr::MergeClasses { args } => {
+                if args.is_empty() {
+                    // Empty classes!() -> empty string
+                    IrExpr::StringLiteral {
+                        value: CheapString::new(String::new()),
+                        id: expr_id,
+                    }
+                } else {
+                    // Fold N-ary to binary right-associatively: classes!(a, b, c) -> MergeClasses(a, MergeClasses(b, c))
+                    let mut iter = args.iter().rev();
+                    let mut result = self.compile_expr(iter.next().unwrap());
+                    for arg in iter {
+                        let left = self.compile_expr(arg);
+                        result = IrExpr::MergeClasses {
+                            left: Box::new(left),
+                            right: Box::new(result),
+                            id: self.next_expr_id(),
+                        };
+                    }
+                    result
+                }
+            }
         }
     }
 }

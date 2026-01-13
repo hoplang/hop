@@ -442,6 +442,11 @@ impl AlphaRenamingPass {
                 kind: kind.clone(),
                 id: *id,
             },
+            IrExpr::MergeClasses { left, right, id } => IrExpr::MergeClasses {
+                left: Box::new(self.rename_expr(left)),
+                right: Box::new(self.rename_expr(right)),
+                id: *id,
+            },
         }
     }
 

@@ -172,6 +172,13 @@ pub enum IrExpr {
         id: ExprId,
     },
 
+    /// Binary merge of CSS classes, produced by folding classes!(a, b, c, ...) left-to-right
+    MergeClasses {
+        left: Box<IrExpr>,
+        right: Box<IrExpr>,
+        id: ExprId,
+    },
+
     /// Numeric addition expression for adding numeric values
     NumericAdd {
         left: Box<IrExpr>,
@@ -684,6 +691,7 @@ impl IrExpr {
             | IrExpr::JsonEncode { id, .. }
             | IrExpr::EnvLookup { id, .. }
             | IrExpr::StringConcat { id, .. }
+            | IrExpr::MergeClasses { id, .. }
             | IrExpr::NumericAdd { id, .. }
             | IrExpr::NumericSubtract { id, .. }
             | IrExpr::NumericMultiply { id, .. }
@@ -720,6 +728,7 @@ impl IrExpr {
             IrExpr::JsonEncode { .. }
             | IrExpr::EnvLookup { .. }
             | IrExpr::StringConcat { .. }
+            | IrExpr::MergeClasses { .. }
             | IrExpr::StringLiteral { .. } => &STRING_TYPE,
 
             IrExpr::NumericAdd { operand_types, .. }
@@ -1023,6 +1032,11 @@ impl IrExpr {
                 .append(value.to_doc())
                 .append(BoxDoc::text(" in "))
                 .append(body.to_doc()),
+            IrExpr::MergeClasses { left, right, .. } => BoxDoc::text("tw_merge(")
+                .append(left.to_doc())
+                .append(BoxDoc::text(", "))
+                .append(right.to_doc())
+                .append(BoxDoc::text(")")),
         }
     }
 
@@ -1109,6 +1123,10 @@ impl IrExpr {
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
             | IrExpr::IntLiteral { .. } => {}
+            IrExpr::MergeClasses { left, right, .. } => {
+                left.traverse(f);
+                right.traverse(f);
+            }
         }
     }
 
@@ -1195,6 +1213,10 @@ impl IrExpr {
             | IrExpr::BooleanLiteral { .. }
             | IrExpr::FloatLiteral { .. }
             | IrExpr::IntLiteral { .. } => {}
+            IrExpr::MergeClasses { left, right, .. } => {
+                left.traverse_mut(f);
+                right.traverse_mut(f);
+            }
         }
     }
 }

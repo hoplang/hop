@@ -165,6 +165,7 @@ pub trait ExpressionTranspiler {
         value: &'a IrExpr,
         body: &'a IrExpr,
     ) -> BoxDoc<'a>;
+    fn transpile_merge_classes<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_expr<'a>(&self, expr: &'a IrExpr) -> BoxDoc<'a> {
         match expr {
             IrExpr::Var { value, .. } => self.transpile_var(value.as_str()),
@@ -271,6 +272,7 @@ pub trait ExpressionTranspiler {
             IrExpr::Let {
                 var, value, body, ..
             } => self.transpile_let(var, value, body),
+            IrExpr::MergeClasses { left, right, .. } => self.transpile_merge_classes(left, right),
         }
     }
 }

@@ -143,6 +143,9 @@ pub enum TypedExpr {
         body: Box<Self>,
         kind: Type,
     },
+
+    /// Merge CSS classes expression, e.g. classes!(a, b, c)
+    MergeClasses { args: Vec<Self> },
 }
 
 impl TypedExpr {
@@ -165,7 +168,9 @@ impl TypedExpr {
             TypedExpr::FloatLiteral { .. } => &FLOAT_TYPE,
             TypedExpr::IntLiteral { .. } => &INT_TYPE,
 
-            TypedExpr::StringConcat { .. } | TypedExpr::StringLiteral { .. } => &STRING_TYPE,
+            TypedExpr::StringConcat { .. }
+            | TypedExpr::StringLiteral { .. }
+            | TypedExpr::MergeClasses { .. } => &STRING_TYPE,
 
             TypedExpr::NumericAdd { operand_types, .. }
             | TypedExpr::NumericSubtract { operand_types, .. }
@@ -464,6 +469,25 @@ impl TypedExpr {
                 .append(value.to_doc())
                 .append(BoxDoc::text(" in "))
                 .append(body.to_doc()),
+            TypedExpr::MergeClasses { args } => {
+                if args.is_empty() {
+                    BoxDoc::text("classes!()")
+                } else {
+                    BoxDoc::text("classes!(")
+                        .append(
+                            BoxDoc::line_()
+                                .append(BoxDoc::intersperse(
+                                    args.iter().map(|e| e.to_doc()),
+                                    BoxDoc::text(",").append(BoxDoc::line()),
+                                ))
+                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
+                                .append(BoxDoc::line_())
+                                .nest(2)
+                                .group(),
+                        )
+                        .append(BoxDoc::text(")"))
+                }
+            }
         }
     }
 }

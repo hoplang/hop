@@ -554,6 +554,18 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             let _ = env.pop();
             Ok(result)
         }
+        IrExpr::MergeClasses { left, right, .. } => {
+            let left_val = evaluate_expr(left, env)?;
+            let right_val = evaluate_expr(right, env)?;
+            match (left_val, right_val) {
+                (Value::String(l), Value::String(r)) => {
+                    let combined = format!("{} {}", l, r);
+                    let merged = tailwind_merge::tw_merge(&combined);
+                    Ok(Value::String(merged))
+                }
+                _ => Err(anyhow!("MergeClasses requires string arguments")),
+            }
+        }
     }
 }
 

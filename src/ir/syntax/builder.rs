@@ -810,6 +810,27 @@ impl IrBuilder {
         }
     }
 
+    pub fn merge_classes(&self, args: Vec<IrExpr>) -> IrExpr {
+        if args.is_empty() {
+            IrExpr::StringLiteral {
+                value: CheapString::new(String::new()),
+                id: self.next_expr_id(),
+            }
+        } else {
+            // Fold right-associatively: classes!(a, b, c) -> MergeClasses(a, MergeClasses(b, c))
+            let mut iter = args.into_iter().rev();
+            let mut result = iter.next().unwrap();
+            for left in iter {
+                result = IrExpr::MergeClasses {
+                    left: Box::new(left),
+                    right: Box::new(result),
+                    id: self.next_expr_id(),
+                };
+            }
+            result
+        }
+    }
+
     pub fn add(&self, left: IrExpr, right: IrExpr) -> IrExpr {
         use crate::dop::semantics::r#type::NumericType;
         match (left.as_type(), right.as_type()) {

@@ -1010,6 +1010,10 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(self.transpile_expr(value))
             .append(BoxDoc::text(")"))
     }
+
+    fn transpile_merge_classes<'a>(&self, _left: &'a IrExpr, _right: &'a IrExpr) -> BoxDoc<'a> {
+        panic!("MergeClasses is not yet supported in Python transpiler")
+    }
 }
 
 impl TypeTranspiler for PythonTranspiler {

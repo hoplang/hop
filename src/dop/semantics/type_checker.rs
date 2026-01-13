@@ -879,7 +879,7 @@ pub fn typecheck_expr(
     }
 }
 
-/// Expand a `classes!` macro invocation to a chain of StringConcat operations.
+/// Expand a `classes!` macro invocation to a MergeClasses expression.
 fn expand_classes_macro(
     args: &[ParsedExpr],
     _range: &DocumentRange,
@@ -887,12 +887,6 @@ fn expand_classes_macro(
     type_env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> Result<TypedExpr, TypeError> {
-    if args.is_empty() {
-        return Ok(TypedExpr::StringLiteral {
-            value: CheapString::new(String::new()),
-        });
-    }
-
     // Type-check all arguments, expecting String
     let mut typed_args = Vec::new();
     for arg in args {
@@ -909,24 +903,7 @@ fn expand_classes_macro(
         typed_args.push(typed);
     }
 
-    // Build: arg0 + " " + arg1 + " " + arg2 + ...
-    let mut result = typed_args.remove(0);
-    for arg in typed_args {
-        // Add " " separator
-        result = TypedExpr::StringConcat {
-            left: Box::new(result),
-            right: Box::new(TypedExpr::StringLiteral {
-                value: CheapString::new(" ".to_string()),
-            }),
-        };
-        // Add next argument
-        result = TypedExpr::StringConcat {
-            left: Box::new(result),
-            right: Box::new(arg),
-        };
-    }
-
-    Ok(result)
+    Ok(TypedExpr::MergeClasses { args: typed_args })
 }
 
 // Typecheck a match expression and compile it to a TypedExpr.

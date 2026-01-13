@@ -8,6 +8,7 @@ use crate::ir::{
 };
 use datafrog::{Iteration, Relation};
 use std::collections::HashMap;
+use tailwind_merge::tw_merge;
 
 /// Constant values that can be tracked during constant folding
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -33,6 +34,8 @@ impl Pass for ConstantPropagationPass {
         let mut eq_right_relations = Vec::new();
         let mut concat_left_relations = Vec::new();
         let mut concat_right_relations = Vec::new();
+        let mut merge_left_relations = Vec::new();
+        let mut merge_right_relations = Vec::new();
         let mut var_references = Vec::new();
         let mut match_subjects = Vec::new();
         let mut match_arms_relations = Vec::new();
@@ -125,6 +128,10 @@ impl Pass for ConstantPropagationPass {
                                 var_references.push((def_expr_id, expr.id()));
                             }
                         }
+                        IrExpr::MergeClasses { left, right, .. } => {
+                            merge_left_relations.push((left.id(), expr.id()));
+                            merge_right_relations.push((right.id(), expr.id()));
+                        }
                         _ => {}
                     }
                 });
@@ -161,6 +168,18 @@ impl Pass for ConstantPropagationPass {
 
         // String concat operations - right operand: (right_operand_id => expr_id)
         let concat_right = Relation::from_iter(concat_right_relations);
+
+        // MergeClasses operations - left operand: (left_operand_id => expr_id)
+        let merge_left = Relation::from_iter(merge_left_relations);
+
+        // MergeClasses operations - right operand: (right_operand_id => expr_id)
+        let merge_right = Relation::from_iter(merge_right_relations);
+
+        // Values of left operands in merge expressions: (merge_expr_id => left_value)
+        let merge_left_value = iteration.variable::<(ExprId, Const)>("merge_left_value");
+
+        // Values of right operands in merge expressions: (merge_expr_id => right_value)
+        let merge_right_value = iteration.variable::<(ExprId, Const)>("merge_right_value");
 
         // Variable bindings: (defining_expr_id => referencing_expr_id)
         let def_to_ref = Relation::from_iter(var_references);
@@ -250,6 +269,40 @@ impl Pass for ConstantPropagationPass {
                 },
             );
 
+            // merge_left_value(merge_expr, left_val) :- merge_left(left_op, merge_expr), const_value(left_op, left_val).
+            merge_left_value.from_join(
+                &const_value,
+                &merge_left,
+                |_: &ExprId, const_val: &Const, merge_expr: &ExprId| {
+                    (*merge_expr, const_val.clone())
+                },
+            );
+
+            // merge_right_value(merge_expr, right_val) :- merge_right(right_op, merge_expr), const_value(right_op, right_val).
+            merge_right_value.from_join(
+                &const_value,
+                &merge_right,
+                |_: &ExprId, const_val: &Const, merge_expr: &ExprId| {
+                    (*merge_expr, const_val.clone())
+                },
+            );
+
+            // const_value(merge, String(tw_merge(lv + " " + rv))) :- merge_left_value(merge, String(lv)), merge_right_value(merge, String(rv)).
+            const_value.from_join(
+                &merge_left_value,
+                &merge_right_value,
+                |merge_expr: &ExprId, left_val: &Const, right_val: &Const| match (
+                    left_val, right_val,
+                ) {
+                    (Const::String(l), Const::String(r)) => {
+                        let combined = format!("{} {}", l, r);
+                        let merged = tw_merge(&combined);
+                        (*merge_expr, Const::String(merged))
+                    }
+                    _ => unreachable!("MergeClasses can only have string operands"),
+                },
+            );
+
             // Propagate constants through variable bindings
             // const_value(referencing_expr, val) :- const_value(defining_expr, val), def_to_ref(defining_expr, referencing_expr).
             const_value.from_join(
@@ -297,11 +350,11 @@ impl Pass for ConstantPropagationPass {
             );
         }
 
-        let const_map = const_value
+        let const_map: HashMap<ExprId, Const> = const_value
             .complete()
             .iter()
             .cloned()
-            .collect::<HashMap<_, _>>();
+            .collect();
 
         let mut result = entrypoint;
         for stmt in &mut result.body {
@@ -1113,6 +1166,202 @@ mod tests {
                 -- after --
                 Test() {
                   let x = Msg::Say(text: "hi") in {}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_merge_classes_with_constant_strings() {
+        check(
+            build_ir("Test", [], |t| {
+                t.write_expr_escaped(t.merge_classes(vec![
+                    t.str("flex"),
+                    t.str("items-center"),
+                    t.str("gap-4"),
+                ]));
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  write_escaped(tw_merge("flex", tw_merge("items-center", "gap-4")))
+                }
+
+                -- after --
+                Test() {
+                  write_escaped("flex items-center gap-4")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_merge_classes_with_tailwind_conflicts() {
+        check(
+            build_ir("Test", [], |t| {
+                t.write_expr_escaped(t.merge_classes(vec![
+                    t.str("px-4"),
+                    t.str("py-2"),
+                    t.str("p-6"),
+                ]));
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  write_escaped(tw_merge("px-4", tw_merge("py-2", "p-6")))
+                }
+
+                -- after --
+                Test() {
+                  write_escaped("p-6")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_merge_classes_with_propagated_variables() {
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("base", t.str("flex items-center"), |t| {
+                    t.let_stmt("extra", t.str("gap-4 text-red-500"), |t| {
+                        t.write_expr_escaped(t.merge_classes(vec![t.var("base"), t.var("extra")]));
+                    });
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let base = "flex items-center" in {
+                    let extra = "gap-4 text-red-500" in {
+                      write_escaped(tw_merge(base, extra))
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let base = "flex items-center" in {
+                    let extra = "gap-4 text-red-500" in {
+                      write_escaped("flex items-center gap-4 text-red-500")
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_empty_merge_classes() {
+        check(
+            build_ir("Test", [], |t| {
+                t.write_expr_escaped(t.merge_classes(vec![]));
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  write_escaped("")
+                }
+
+                -- after --
+                Test() {
+                  write_escaped("")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_nested_merge_classes() {
+        check(
+            build_ir("Test", [], |t| {
+                t.write_expr_escaped(t.merge_classes(vec![
+                    t.str("px-4"),
+                    t.merge_classes(vec![t.str("px-2"), t.str("p-3")]),
+                ]));
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  write_escaped(tw_merge("px-4", tw_merge("px-2", "p-3")))
+                }
+
+                -- after --
+                Test() {
+                  write_escaped("p-3")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_merge_classes_with_enum_match() {
+        check(
+            build_ir_with_enums("Test", [], vec![("Size", vec!["Small", "Large"])], |t| {
+                t.let_stmt("size", t.enum_variant("Size", "Large"), |t| {
+                    t.write_expr_escaped(t.merge_classes(vec![
+                        t.str("px-4"),
+                        t.match_expr(
+                            t.var("size"),
+                            vec![("Small", t.str("text-sm")), ("Large", t.str("text-lg"))],
+                        ),
+                    ]));
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let size = Size::Large in {
+                    write_escaped(tw_merge("px-4", match size {
+                      Size::Small => "text-sm",
+                      Size::Large => "text-lg",
+                    }))
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let size = Size::Large in {
+                    write_escaped("px-4 text-lg")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_merge_classes_with_enum_match_containing_merge_classes() {
+        check(
+            build_ir_with_enums("Test", [], vec![("Size", vec!["Small", "Large"])], |t| {
+                t.let_stmt("size", t.enum_variant("Size", "Large"), |t| {
+                    t.write_expr_escaped(t.merge_classes(vec![
+                        t.str("flex"),
+                        t.match_expr(
+                            t.var("size"),
+                            vec![
+                                ("Small", t.merge_classes(vec![t.str("p-2"), t.str("text-sm")])),
+                                ("Large", t.merge_classes(vec![t.str("p-4"), t.str("text-lg")])),
+                            ],
+                        ),
+                    ]));
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let size = Size::Large in {
+                    write_escaped(tw_merge("flex", match size {
+                      Size::Small => tw_merge("p-2", "text-sm"),
+                      Size::Large => tw_merge("p-4", "text-lg"),
+                    }))
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let size = Size::Large in {
+                    write_escaped("flex p-4 text-lg")
+                  }
                 }
             "#]],
         );
