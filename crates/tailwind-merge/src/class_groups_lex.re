@@ -1,5 +1,5 @@
 // re2c lexer for Tailwind CSS class group detection
-// Generate with: re2c --lang rust -o class_groups_lex.rs class_groups_lex.re
+// Generate with: re2c -W -Werror --lang rust -o class_groups_lex.rs class_groups_lex.re
 
 #![allow(unused_unsafe, unused_assignments)]
 
