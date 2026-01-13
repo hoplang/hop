@@ -55,7 +55,7 @@ pub struct RenameableSymbol {
 pub struct Program {
     topo_sorter: TopoSorter<ModuleName>,
     parse_errors: HashMap<ModuleName, ErrorCollector<ParseError>>,
-    modules: HashMap<ModuleName, ParsedAst>,
+    parsed_asts: HashMap<ModuleName, ParsedAst>,
     type_checker: TypeChecker,
 }
 
@@ -76,16 +76,16 @@ impl Program {
         // Parse the module
         let parse_errors = self.parse_errors.entry(module_name.clone()).or_default();
         parse_errors.clear();
-        let module = parse(module_name.clone(), document, parse_errors);
+        let parsed_ast = parse(module_name.clone(), document, parse_errors);
 
         // Get all modules that this module depends on
-        let module_dependencies = module
+        let module_dependencies = parsed_ast
             .get_import_declarations()
             .map(|import_node| import_node.imported_module().clone())
             .collect::<HashSet<ModuleName>>();
 
         // Store the AST
-        self.modules.insert(module_name.clone(), module);
+        self.parsed_asts.insert(module_name.clone(), parsed_ast);
 
         // Typecheck the module along with all dependent modules (grouped
         // into strongly connected components).
@@ -95,7 +95,7 @@ impl Program {
         for names in &grouped_modules {
             let modules = names
                 .iter()
-                .filter_map(|name| self.modules.get(name))
+                .filter_map(|name| self.parsed_asts.get(name))
                 .collect::<Vec<_>>();
             self.type_checker.typecheck(&modules);
         }
@@ -113,7 +113,7 @@ impl Program {
     }
 
     pub fn get_parsed_ast(&self, module_name: &ModuleName) -> Option<&ParsedAst> {
-        self.modules.get(module_name)
+        self.parsed_asts.get(module_name)
     }
 
     pub fn get_hover_info(
@@ -137,7 +137,7 @@ impl Program {
         module_name: &ModuleName,
         position: DocumentPosition,
     ) -> Option<DefinitionLocation> {
-        let ast = self.modules.get(module_name)?;
+        let ast = self.parsed_asts.get(module_name)?;
 
         // First check if we're on an import node's path (module::path::Component)
         for import in ast.get_import_declarations() {
@@ -145,7 +145,7 @@ impl Program {
                 let target_module = &import.module_name;
                 let imported_name = import.type_name.as_str();
 
-                let target_ast = self.modules.get(target_module)?;
+                let target_ast = self.parsed_asts.get(target_module)?;
 
                 // Check if it's a component declaration
                 if let Some(component_def) = target_ast.get_component_declaration(imported_name) {
@@ -195,7 +195,7 @@ impl Program {
             } => {
                 let module_name = definition_module.as_ref()?;
                 let component_def = self
-                    .modules
+                    .parsed_asts
                     .get(module_name)?
                     .get_component_declaration(component_name.as_str())?;
                 Some(DefinitionLocation {
@@ -219,7 +219,7 @@ impl Program {
         module_name: &ModuleName,
         position: DocumentPosition,
     ) -> Option<Vec<RenameLocation>> {
-        let ast = self.modules.get(module_name)?;
+        let ast = self.parsed_asts.get(module_name)?;
 
         // Check if cursor is on a record declaration name
         for record in ast.get_record_declarations() {
@@ -276,7 +276,7 @@ impl Program {
         module_name: &ModuleName,
         position: DocumentPosition,
     ) -> Option<RenameableSymbol> {
-        let ast = self.modules.get(module_name)?;
+        let ast = self.parsed_asts.get(module_name)?;
 
         // Check if cursor is on a record declaration name
         for record in ast.get_record_declarations() {
@@ -321,7 +321,7 @@ impl Program {
     ) -> Vec<RenameLocation> {
         let mut locations = Vec::new();
 
-        if let Some(module) = self.modules.get(definition_module) {
+        if let Some(module) = self.parsed_asts.get(definition_module) {
             if let Some(component_node) = module.get_component_declaration(component_name.as_str())
             {
                 // Add the definition's opening tag name
@@ -340,7 +340,7 @@ impl Program {
             }
         }
 
-        for (module_name, ast) in &self.modules {
+        for (module_name, ast) in &self.parsed_asts {
             // Find all import statements that import this component
             locations.extend(
                 ast.get_import_declarations()
@@ -392,7 +392,7 @@ impl Program {
         let mut locations = Vec::new();
 
         // Add the record declaration itself
-        if let Some(module) = self.modules.get(definition_module) {
+        if let Some(module) = self.parsed_asts.get(definition_module) {
             if let Some(record) = module.get_record_declaration(record_name) {
                 locations.push(RenameLocation {
                     module: definition_module.clone(),
@@ -402,7 +402,7 @@ impl Program {
         }
 
         // Search all modules for references to this record
-        for (module_name, ast) in &self.modules {
+        for (module_name, ast) in &self.parsed_asts {
             // Find all import statements that import this record
             locations.extend(
                 ast.get_import_declarations()
@@ -448,7 +448,7 @@ impl Program {
                 // For local references (same module), just match by name
                 // For imported references, we need to verify the import points to the right module
                 let is_local = current_module == definition_module && name == record_name;
-                let is_imported = self.modules.get(current_module).is_some_and(|ast| {
+                let is_imported = self.parsed_asts.get(current_module).is_some_and(|ast| {
                     ast.get_import_declarations().any(|import| {
                         import.imports_type(record_name)
                             && import.imports_from(definition_module)
@@ -565,11 +565,7 @@ impl Program {
 
         // Use orchestrate to handle inlining and compilation
         let pages = vec![(module_name.clone(), component_name.clone())];
-        let ir_module = orchestrate(
-            self.get_typed_modules(),
-            generated_tailwind_css,
-            &pages,
-        )?;
+        let ir_module = orchestrate(self.get_typed_modules(), generated_tailwind_css, &pages)?;
 
         // Get the entrypoint (should be the only one)
         let entrypoint = ir_module.components.first().ok_or_else(|| {

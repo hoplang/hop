@@ -133,11 +133,7 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
         .collect::<Result<Vec<_>>>()?;
 
     // Use orchestrate to handle inlining, compilation, and optimization
-    let ir_module = orchestrate(
-        program.get_typed_modules(),
-        tailwind_css.as_deref(),
-        &pages,
-    )?;
+    let ir_module = orchestrate(program.get_typed_modules(), tailwind_css.as_deref(), &pages)?;
 
     // Generate code based on target language
     let generated_code = match resolved.target {

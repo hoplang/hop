@@ -493,8 +493,8 @@ mod tests {
                 )
             })
             .collect();
-        let inlined_entrypoints =
-            Inliner::inline_entrypoints(&typed_asts, &pages_owned).expect("Inlining should succeed");
+        let inlined_entrypoints = Inliner::inline_entrypoints(&typed_asts, &pages_owned)
+            .expect("Inlining should succeed");
 
         // Format using Display implementation for better readability
         let output = inlined_entrypoints
