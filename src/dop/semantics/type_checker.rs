@@ -1,6 +1,6 @@
 use super::r#type::{NumericType, Type};
 use super::type_error::TypeError;
-use crate::document::document::{CheapString, DocumentRange};
+use crate::document::document::DocumentRange;
 use crate::dop::TypedExpr;
 use crate::dop::patterns::compiler::{Compiler, Decision};
 use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
