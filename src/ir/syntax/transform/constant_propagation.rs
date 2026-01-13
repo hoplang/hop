@@ -2,6 +2,7 @@ use super::Pass;
 use crate::document::document::CheapString;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
+use crate::dop::symbols::field_name::FieldName;
 use crate::ir::{
     IrExpr,
     ast::ExprId,
@@ -19,6 +20,9 @@ enum Const {
     Enum {
         enum_name: String,
         variant_name: String,
+        /// Field expression IDs for reconstructing the enum literal.
+        /// Empty for unit variants.
+        fields: Vec<(String, ExprId)>,
     },
     Option(Option<ExprId>),
 }
@@ -41,13 +45,38 @@ impl Const {
             Const::Enum {
                 enum_name,
                 variant_name,
-            } => IrExpr::EnumLiteral {
-                enum_name: enum_name.clone(),
-                variant_name: variant_name.clone(),
-                fields: vec![],
-                kind: kind.clone(),
-                id,
-            },
+                fields,
+            } => {
+                // Reconstruct field expressions from const_map
+                let Type::Enum { variants, .. } = kind else {
+                    return None;
+                };
+                let variant_fields = variants
+                    .iter()
+                    .find(|(v, _)| v.as_str() == variant_name)
+                    .map(|(_, f)| f)?;
+
+                let reconstructed_fields: Option<Vec<_>> = fields
+                    .iter()
+                    .map(|(field_name, field_id)| {
+                        let field_type = variant_fields
+                            .iter()
+                            .find(|(f, _)| f.as_str() == field_name)
+                            .map(|(_, t)| t)?;
+                        let field_const = const_map.get(field_id)?;
+                        let field_expr = field_const.to_expr(*field_id, field_type, const_map)?;
+                        Some((FieldName::new(field_name).ok()?, field_expr))
+                    })
+                    .collect();
+
+                IrExpr::EnumLiteral {
+                    enum_name: enum_name.clone(),
+                    variant_name: variant_name.clone(),
+                    fields: reconstructed_fields?,
+                    kind: kind.clone(),
+                    id,
+                }
+            }
             Const::Option(inner_id) => {
                 let inner_expr = match inner_id {
                     None => None,
@@ -92,6 +121,10 @@ impl Pass for ConstantPropagationPass {
         let mut option_inner_ids: Vec<(ExprId, ExprId)> = Vec::new();
         let mut option_binding_uses: Vec<(ExprId, ExprId)> = Vec::new();
         let mut let_body_relations: Vec<(ExprId, ExprId)> = Vec::new();
+        // Enum field values: (enum_expr_id => (field_name, field_expr_id))
+        let mut enum_field_ids: Vec<(ExprId, (String, ExprId))> = Vec::new();
+        // Enum binding uses: ((subject_def_id, field_name) => binding_var_expr_id)
+        let mut enum_binding_uses: Vec<((ExprId, String), ExprId)> = Vec::new();
 
         // SSA form guarantees unique variable names, so we can collect all bindings
         // into a single HashMap without worrying about shadowing or scoping.
@@ -101,6 +134,11 @@ impl Pass for ConstantPropagationPass {
         // These are handled separately because the binding refers to the inner value,
         // not the Option itself.
         let mut option_bindings: HashMap<String, ExprId> = HashMap::new();
+
+        // Enum match bindings map binding name -> (subject's defining expression id, field name).
+        // These are handled separately because the binding refers to a field value,
+        // not the enum itself.
+        let mut enum_bindings: HashMap<String, (ExprId, String)> = HashMap::new();
 
         for stmt in &entrypoint.body {
             stmt.traverse(&mut |s| {
@@ -143,20 +181,39 @@ impl Pass for ConstantPropagationPass {
                             variant_name,
                             fields,
                             ..
-                        } if fields.is_empty() => {
-                            // Only unit variants (no fields) can be treated as constants
+                        } => {
+                            // Track enum as constant (variant info for match selection + field IDs for reconstruction)
+                            let field_ids: Vec<(String, ExprId)> = fields
+                                .iter()
+                                .map(|(name, expr)| (name.as_str().to_string(), expr.id()))
+                                .collect();
                             initial_constants.push((
                                 expr.id(),
                                 Const::Enum {
                                     enum_name: enum_name.clone(),
                                     variant_name: variant_name.clone(),
+                                    fields: field_ids.clone(),
                                 },
                             ));
+                            // Track field values for binding propagation
+                            for (field_name, field_id) in field_ids {
+                                enum_field_ids.push((expr.id(), (field_name, field_id)));
+                            }
                         }
                         IrExpr::Match { match_, .. } => match match_ {
                             Match::Enum { subject, arms } => {
                                 if let Some(def_expr_id) = var_bindings.get(subject.0.as_str()) {
                                     enum_match_subjects.push((*def_expr_id, expr.id()));
+
+                                    // Record bindings from match arms
+                                    for arm in arms {
+                                        for (field_name, binding_name) in &arm.bindings {
+                                            enum_bindings.insert(
+                                                binding_name.as_str().to_string(),
+                                                (*def_expr_id, field_name.as_str().to_string()),
+                                            );
+                                        }
+                                    }
                                 }
                                 for arm in arms {
                                     match &arm.pattern {
@@ -207,6 +264,13 @@ impl Pass for ConstantPropagationPass {
                             } else if let Some(subject_def_id) = option_bindings.get(name.as_str())
                             {
                                 option_binding_uses.push((*subject_def_id, expr.id()));
+                            } else if let Some((subject_def_id, field_name)) =
+                                enum_bindings.get(name.as_str())
+                            {
+                                enum_binding_uses.push((
+                                    (*subject_def_id, field_name.clone()),
+                                    expr.id(),
+                                ));
                             }
                         }
                         IrExpr::MergeClasses { left, right, .. } => {
@@ -310,6 +374,24 @@ impl Pass for ConstantPropagationPass {
 
         // Option binding uses: (subject_def_expr_id => binding_var_expr_id)
         let option_binding_use = Relation::from_iter(option_binding_uses);
+
+        // Enum field expression ids: (enum_expr_id => (field_name, field_expr_id))
+        // Used for propagating through variable bindings
+        let enum_field = iteration.variable::<(ExprId, (String, ExprId))>("enum_field");
+        enum_field.extend(enum_field_ids.clone());
+
+        // Enum field keyed by (expr_id, field_name): ((enum_expr_id, field_name) => field_expr_id)
+        // Used for joining with binding uses
+        let enum_field_keyed =
+            iteration.variable::<((ExprId, String), ExprId)>("enum_field_keyed");
+        enum_field_keyed.extend(
+            enum_field_ids
+                .into_iter()
+                .map(|(expr_id, (field_name, field_id))| ((expr_id, field_name), field_id)),
+        );
+
+        // Enum binding uses: ((subject_def_expr_id, field_name) => binding_var_expr_id)
+        let enum_binding_use = Relation::from_iter(enum_binding_uses);
 
         // Unified propagation relation: (source_expr_id => target_expr_id)
         // Covers both variable references and option binding inner values.
@@ -463,6 +545,32 @@ impl Pass for ConstantPropagationPass {
                 |_source: &ExprId, inner_id: &ExprId, target: &ExprId| (*target, *inner_id),
             );
 
+            // Extend propagate_to with enum binding edges
+            // propagate_to(field_id, binding_use) :- enum_field_keyed((subject, field_name), field_id), enum_binding_use((subject, field_name), binding_use)
+            propagate_to.from_join(
+                &enum_field_keyed,
+                &enum_binding_use,
+                |_key: &(ExprId, String), field_id: &ExprId, binding_use_id: &ExprId| {
+                    (*field_id, *binding_use_id)
+                },
+            );
+
+            // Propagate enum_field through variable bindings
+            // enum_field(target, (field_name, field_id)) :- enum_field(source, (field_name, field_id)), propagate_to(source, target).
+            enum_field.from_join(
+                &enum_field,
+                &propagate_to,
+                |_source: &ExprId,
+                 (field_name, field_id): &(String, ExprId),
+                 target: &ExprId| { (*target, (field_name.clone(), *field_id)) },
+            );
+
+            // Keep enum_field_keyed in sync with enum_field
+            // enum_field_keyed((target, field_name), field_id) :- enum_field(target, (field_name, field_id))
+            enum_field_keyed.from_map(&enum_field, |&(target, (ref field_name, field_id))| {
+                ((target, field_name.clone()), field_id)
+            });
+
             // Find match expressions whose subject is a constant enum
             // match_with_enum((m, e, v), m) :- const_value(s, Enum(e, v)), enum_match_subject(s, m).
             match_with_enum.from_join(
@@ -472,6 +580,7 @@ impl Pass for ConstantPropagationPass {
                     Const::Enum {
                         enum_name,
                         variant_name,
+                        ..
                     } => (
                         (*match_id, enum_name.clone(), variant_name.clone()),
                         *match_id,
@@ -523,6 +632,18 @@ impl Pass for ConstantPropagationPass {
                 &option_inner,
                 &selected_arm,
                 |_arm_body: &ExprId, inner_id: &ExprId, match_id: &ExprId| (*match_id, *inner_id),
+            );
+
+            // Propagate enum_field through match arm selection
+            // enum_field(m, (field_name, field_id)) :- selected_arm(arm_body, m), enum_field(arm_body, (field_name, field_id))
+            // This ensures that when a match expression selects an arm returning an enum literal,
+            // subsequent matches on the result can access the field bindings.
+            enum_field.from_join(
+                &enum_field,
+                &selected_arm,
+                |_arm_body: &ExprId,
+                 (field_name, field_id): &(String, ExprId),
+                 match_id: &ExprId| { (*match_id, (field_name.clone(), *field_id)) },
             );
         }
 
@@ -1864,6 +1985,377 @@ mod tests {
                 Test() {
                   let outer = Some(Some("nested")) in {
                     write_escaped("nested")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_propagate_enum_binding_value() {
+        use crate::dop::Type;
+        use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+
+        let module = IrModuleBuilder::new()
+            .enum_with_fields("Msg", |e| {
+                e.variant_with_fields("Say", vec![("text", Type::String)]);
+            })
+            .component("Test", [], |t| {
+                t.let_stmt(
+                    "msg",
+                    t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hello"))]),
+                    |t| {
+                        t.write_expr_escaped(t.match_expr_with_bindings(
+                            t.var("msg"),
+                            vec![("Say", vec![("text", "t")], Box::new(|t: &IrBuilder| t.var("t")))],
+                        ));
+                    },
+                );
+            })
+            .build();
+
+        check(
+            module.components.into_iter().next().unwrap(),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let msg = Msg::Say(text: "hello") in {
+                    write_escaped(match msg {Msg::Say(text: t) => t})
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let msg = Msg::Say(text: "hello") in {
+                    write_escaped("hello")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_propagate_enum_binding_in_string_concat() {
+        use crate::dop::Type;
+        use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+
+        let module = IrModuleBuilder::new()
+            .enum_with_fields("Msg", |e| {
+                e.variant_with_fields("Say", vec![("text", Type::String)]);
+            })
+            .component("Test", [], |t| {
+                t.let_stmt(
+                    "msg",
+                    t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("world"))]),
+                    |t| {
+                        t.write_expr_escaped(t.match_expr_with_bindings(
+                            t.var("msg"),
+                            vec![(
+                                "Say",
+                                vec![("text", "t")],
+                                Box::new(|t: &IrBuilder| t.string_concat(t.str("hello "), t.var("t"))),
+                            )],
+                        ));
+                    },
+                );
+            })
+            .build();
+
+        check(
+            module.components.into_iter().next().unwrap(),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let msg = Msg::Say(text: "world") in {
+                    write_escaped(match msg {
+                      Msg::Say(text: t) => ("hello " + t),
+                    })
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let msg = Msg::Say(text: "world") in {
+                    write_escaped("hello world")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_propagate_enum_binding_in_equality() {
+        use crate::dop::Type;
+        use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+
+        let module = IrModuleBuilder::new()
+            .enum_with_fields("Msg", |e| {
+                e.variant_with_fields("Say", vec![("text", Type::String)]);
+            })
+            .component("Test", [], |t| {
+                t.let_stmt(
+                    "msg",
+                    t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hello"))]),
+                    |t| {
+                        t.if_stmt(
+                            t.match_expr_with_bindings(
+                                t.var("msg"),
+                                vec![(
+                                    "Say",
+                                    vec![("text", "t")],
+                                    Box::new(|t: &IrBuilder| t.eq(t.var("t"), t.str("hello"))),
+                                )],
+                            ),
+                            |t| {
+                                t.write("matched hello");
+                            },
+                        );
+                    },
+                );
+            })
+            .build();
+
+        check(
+            module.components.into_iter().next().unwrap(),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let msg = Msg::Say(text: "hello") in {
+                    if match msg {Msg::Say(text: t) => (t == "hello")} {
+                      write("matched hello")
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let msg = Msg::Say(text: "hello") in {
+                    if true {
+                      write("matched hello")
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_propagate_enum_binding_through_variable() {
+        use crate::dop::Type;
+        use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+
+        // Test that enum bindings work when the subject is propagated through a variable
+        let module = IrModuleBuilder::new()
+            .enum_with_fields("Msg", |e| {
+                e.variant_with_fields("Say", vec![("text", Type::String)]);
+            })
+            .component("Test", [], |t| {
+                t.let_stmt(
+                    "x",
+                    t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hello"))]),
+                    |t| {
+                        t.let_stmt("y", t.var("x"), |t| {
+                            t.write_expr_escaped(t.match_expr_with_bindings(
+                                t.var("y"),
+                                vec![("Say", vec![("text", "t")], Box::new(|t: &IrBuilder| t.var("t")))],
+                            ));
+                        });
+                    },
+                );
+            })
+            .build();
+
+        check(
+            module.components.into_iter().next().unwrap(),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let x = Msg::Say(text: "hello") in {
+                    let y = x in {
+                      write_escaped(match y {Msg::Say(text: t) => t})
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let x = Msg::Say(text: "hello") in {
+                    let y = Msg::Say(text: "hello") in {
+                      write_escaped("hello")
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_propagate_multiple_enum_bindings() {
+        use crate::dop::Type;
+        use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+
+        // Test multiple field bindings in a single variant
+        let module = IrModuleBuilder::new()
+            .enum_with_fields("Pair", |e| {
+                e.variant_with_fields(
+                    "Values",
+                    vec![("first", Type::String), ("second", Type::String)],
+                );
+            })
+            .component("Test", [], |t| {
+                t.let_stmt(
+                    "pair",
+                    t.enum_variant_with_fields(
+                        "Pair",
+                        "Values",
+                        vec![("first", t.str("hello")), ("second", t.str("world"))],
+                    ),
+                    |t| {
+                        t.write_expr_escaped(t.match_expr_with_bindings(
+                            t.var("pair"),
+                            vec![(
+                                "Values",
+                                vec![("first", "a"), ("second", "b")],
+                                Box::new(|t: &IrBuilder| t.string_concat(t.var("a"), t.string_concat(t.str(" "), t.var("b")))),
+                            )],
+                        ));
+                    },
+                );
+            })
+            .build();
+
+        check(
+            module.components.into_iter().next().unwrap(),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let pair = Pair::Values(first: "hello", second: "world") in {
+                    write_escaped(match pair {
+                      Pair::Values(first: a, second: b) => (a + (" " + b)),
+                    })
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let pair = Pair::Values(first: "hello", second: "world") in {
+                    write_escaped("hello world")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_enum_match_selecting_correct_arm_with_bindings() {
+        use crate::dop::Type;
+        use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+
+        // Test that when we have multiple variants, we select the correct arm
+        let module = IrModuleBuilder::new()
+            .enum_with_fields("Result", |e| {
+                e.variant_with_fields("Ok", vec![("value", Type::String)]);
+                e.variant_with_fields("Err", vec![("msg", Type::String)]);
+            })
+            .component("Test", [], |t| {
+                t.let_stmt(
+                    "result",
+                    t.enum_variant_with_fields("Result", "Ok", vec![("value", t.str("success"))]),
+                    |t| {
+                        t.write_expr_escaped(t.match_expr_with_bindings(
+                            t.var("result"),
+                            vec![
+                                ("Ok", vec![("value", "v")], Box::new(|t: &IrBuilder| t.var("v"))),
+                                (
+                                    "Err",
+                                    vec![("msg", "m")],
+                                    Box::new(|t: &IrBuilder| t.string_concat(t.str("error: "), t.var("m"))),
+                                ),
+                            ],
+                        ));
+                    },
+                );
+            })
+            .build();
+
+        check(
+            module.components.into_iter().next().unwrap(),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let result = Result::Ok(value: "success") in {
+                    write_escaped(match result {
+                      Result::Ok(value: v) => v,
+                      Result::Err(msg: m) => ("error: " + m),
+                    })
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let result = Result::Ok(value: "success") in {
+                    write_escaped("success")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_propagate_enum_binding_through_match_arm_selection() {
+        use crate::dop::Type;
+        use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+
+        // When a match expression selects an arm that returns an enum with fields,
+        // those field values should propagate to subsequent matches on the result.
+        let module = IrModuleBuilder::new()
+            .enum_decl("Choice", ["A", "B"])
+            .enum_with_fields("Msg", |e| {
+                e.variant_with_fields("Say", vec![("text", Type::String)]);
+            })
+            .component("Test", [], |t| {
+                t.let_stmt("choice", t.enum_variant("Choice", "A"), |t| {
+                    t.let_stmt(
+                        "x",
+                        t.match_expr(
+                            t.var("choice"),
+                            vec![
+                                ("A", t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hello"))])),
+                                ("B", t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("world"))])),
+                            ],
+                        ),
+                        |t| {
+                            t.write_expr_escaped(t.match_expr_with_bindings(
+                                t.var("x"),
+                                vec![("Say", vec![("text", "t")], Box::new(|t: &IrBuilder| t.var("t")))],
+                            ));
+                        },
+                    );
+                });
+            })
+            .build();
+
+        check(
+            module.components.into_iter().next().unwrap(),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let choice = Choice::A in {
+                    let x = match choice {
+                      Choice::A => Msg::Say(text: "hello"),
+                      Choice::B => Msg::Say(text: "world"),
+                    } in {
+                      write_escaped(match x {Msg::Say(text: t) => t})
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let choice = Choice::A in {
+                    let x = Msg::Say(text: "hello") in {
+                      write_escaped("hello")
+                    }
                   }
                 }
             "#]],

@@ -739,6 +739,85 @@ impl IrBuilder {
         }
     }
 
+    /// Create a match expression over an enum value with field bindings.
+    /// Each arm is a tuple of (variant_name, field_bindings, body_fn).
+    /// field_bindings is a list of (field_name, binding_name) pairs.
+    pub fn match_expr_with_bindings(
+        &self,
+        subject: IrExpr,
+        arms: Vec<(&str, Vec<(&str, &str)>, Box<dyn FnOnce(&Self) -> IrExpr>)>,
+    ) -> IrExpr {
+        let Type::Enum { name, variants, .. } = subject.as_type() else {
+            panic!("Match subject must be an enum type")
+        };
+        let enum_name = name.as_str().to_string();
+
+        // Use the type of the first arm's body as the result type (computed after building arms)
+        let mut result_type: Option<Type> = None;
+
+        let ir_arms: Vec<EnumMatchArm<IrExpr>> = arms
+            .into_iter()
+            .map(|(variant_name, field_bindings, body_fn)| {
+                // Look up the variant to get field types
+                let variant_fields = variants
+                    .iter()
+                    .find(|(v, _)| v.as_str() == variant_name)
+                    .map(|(_, fields)| fields)
+                    .expect("Variant not found in enum");
+
+                // Create binding names and push variables to scope
+                let bindings: Vec<(FieldName, VarName)> = field_bindings
+                    .iter()
+                    .map(|(field_name, binding_name)| {
+                        // Add bound variable to scope
+                        let field_type = variant_fields
+                            .iter()
+                            .find(|(f, _)| f.as_str() == *field_name)
+                            .map(|(_, t)| t.clone())
+                            .expect("Field not found in variant");
+                        self.var_stack
+                            .borrow_mut()
+                            .push((binding_name.to_string(), field_type));
+
+                        (
+                            FieldName::new(field_name).unwrap(),
+                            VarName::new(binding_name).unwrap(),
+                        )
+                    })
+                    .collect();
+
+                let body = body_fn(self);
+
+                // Pop bindings from scope
+                for _ in &bindings {
+                    self.var_stack.borrow_mut().pop();
+                }
+
+                if result_type.is_none() {
+                    result_type = Some(body.as_type().clone());
+                }
+
+                EnumMatchArm {
+                    pattern: EnumPattern::Variant {
+                        enum_name: enum_name.clone(),
+                        variant_name: variant_name.to_string(),
+                    },
+                    bindings,
+                    body,
+                }
+            })
+            .collect();
+
+        IrExpr::Match {
+            match_: Match::Enum {
+                subject: extract_var_subject(&subject),
+                arms: ir_arms,
+            },
+            kind: result_type.unwrap_or(Type::String),
+            id: self.next_expr_id(),
+        }
+    }
+
     pub fn field_access(&self, object: IrExpr, field_str: &str) -> IrExpr {
         let field_name = FieldName::new(field_str).unwrap();
         let field_type = match object.as_type() {
