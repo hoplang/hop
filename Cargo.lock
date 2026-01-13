@@ -675,6 +675,7 @@ dependencies = [
  "serde",
  "serde_json",
  "simple_txtar",
+ "tailwind-merge",
  "tailwind-runner",
  "tempfile",
  "thiserror",
@@ -1755,6 +1756,10 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "tailwind-merge"
+version = "0.1.0"
 
 [[package]]
 name = "tailwind-runner"

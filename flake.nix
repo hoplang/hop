@@ -19,6 +19,7 @@
             pkgs.typescript-language-server
 			pkgs.bun
 			pkgs.typescript
+			pkgs.re2c
 			pkgs.python3
 			pkgs.python3Packages.build
 			pkgs.python3Packages.twine
