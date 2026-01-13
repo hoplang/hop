@@ -122,7 +122,7 @@ impl Pass for ConstantPropagationPass {
         let mut bool_match_subjects: Vec<(ExprId, ExprId)> = Vec::new();
         let mut bool_arms_relations: Vec<((ExprId, bool), ExprId)> = Vec::new();
         let mut option_binding_uses: Vec<(ExprId, ExprId)> = Vec::new();
-        let mut let_body_relations: Vec<(ExprId, ExprId)> = Vec::new();
+        let mut let_expr_body_relations: Vec<(ExprId, ExprId)> = Vec::new();
         // Enum field values: (enum_expr_id => (field_name, field_expr_id))
         let mut enum_field_ids: Vec<(ExprId, (String, ExprId))> = Vec::new();
         // Enum binding uses: ((subject_def_id, field_name) => binding_var_expr_id)
@@ -243,10 +243,8 @@ impl Pass for ConstantPropagationPass {
                                 if let Some(def_expr_id) = var_bindings.get(subject.0.as_str()) {
                                     bool_match_subjects.push((*def_expr_id, expr.id()));
                                     // Key arms by (match_id, is_true) for direct joining
-                                    bool_arms_relations
-                                        .push(((expr.id(), true), true_body.id()));
-                                    bool_arms_relations
-                                        .push(((expr.id(), false), false_body.id()));
+                                    bool_arms_relations.push(((expr.id(), true), true_body.id()));
+                                    bool_arms_relations.push(((expr.id(), false), false_body.id()));
                                 }
                             }
                             Match::Option {
@@ -280,10 +278,8 @@ impl Pass for ConstantPropagationPass {
                             } else if let Some((subject_def_id, field_name)) =
                                 enum_bindings.get(name.as_str())
                             {
-                                enum_binding_uses.push((
-                                    (*subject_def_id, field_name.clone()),
-                                    expr.id(),
-                                ));
+                                enum_binding_uses
+                                    .push(((*subject_def_id, field_name.clone()), expr.id()));
                             }
                         }
                         IrExpr::MergeClasses { left, right, .. } => {
@@ -304,7 +300,7 @@ impl Pass for ConstantPropagationPass {
                         } => {
                             var_bindings.insert(var.as_str().to_string(), value.id());
                             // Keyed by body_id for joining with const_value
-                            let_body_relations.push((body.id(), expr.id()));
+                            let_expr_body_relations.push((body.id(), expr.id()));
                         }
                         _ => {}
                     }
@@ -355,9 +351,6 @@ impl Pass for ConstantPropagationPass {
         // Values of right operands in merge expressions: (merge_expr_id => right_value)
         let merge_right_value = iteration.variable::<(ExprId, Const)>("merge_right_value");
 
-        // Let expression bodies: (body_expr_id => let_expr_id)
-        let let_body = Relation::from_iter(let_body_relations);
-
         // Enum match subject expressions: (subject_id => match_id)
         let enum_match_subject = Relation::from_iter(enum_match_subjects);
 
@@ -405,8 +398,7 @@ impl Pass for ConstantPropagationPass {
 
         // Enum field keyed by (expr_id, field_name): ((enum_expr_id, field_name) => field_expr_id)
         // Used for joining with binding uses
-        let enum_field_keyed =
-            iteration.variable::<((ExprId, String), ExprId)>("enum_field_keyed");
+        let enum_field_keyed = iteration.variable::<((ExprId, String), ExprId)>("enum_field_keyed");
         enum_field_keyed.extend(
             enum_field_ids
                 .into_iter()
@@ -416,11 +408,10 @@ impl Pass for ConstantPropagationPass {
         // Enum binding uses: ((subject_def_expr_id, field_name) => binding_var_expr_id)
         let enum_binding_use = Relation::from_iter(enum_binding_uses);
 
-        // Unified propagation relation: (source_expr_id => target_expr_id)
-        // Covers both variable references and option binding inner values.
-        // "propagate_to(x, y)" means "y has the same value as x"
+        // Value equivalence: `propagate_to(x, y)` means "y computes the same value as x".
         let propagate_to = iteration.variable::<(ExprId, ExprId)>("propagate_to");
         propagate_to.extend(var_references);
+        propagate_to.extend(let_expr_body_relations);
 
         while iteration.changed() {
             // Fold boolean negation
@@ -534,16 +525,13 @@ impl Pass for ConstantPropagationPass {
                 },
             );
 
-            // Propagate constants through variable bindings and option bindings
-            // const_value(target, val) :- const_value(source, val), propagate_to(source, target).
             const_value.from_join(
                 &const_value,
                 &propagate_to,
                 |_source: &ExprId, val: &Const, target: &ExprId| (*target, val.clone()),
             );
 
-            // Extend propagate_to with option binding edges
-            // propagate_to(inner, binding_use) :- option_inner(subject, inner), option_binding_use(subject, binding_use)
+            // Option bindings: `match opt { Some(x) => ... }` makes x equivalent to opt's inner value.
             propagate_to.from_join(
                 &option_inner,
                 &option_binding_use,
@@ -552,24 +540,13 @@ impl Pass for ConstantPropagationPass {
                 },
             );
 
-            // Propagate constants through let expression bodies
-            // const_value(let_expr, val) :- const_value(body, val), let_body(body, let_expr).
-            const_value.from_join(
-                &const_value,
-                &let_body,
-                |_body: &ExprId, val: &Const, let_expr: &ExprId| (*let_expr, val.clone()),
-            );
-
-            // Propagate option_inner through variable bindings and option bindings
-            // option_inner(target, inner) :- option_inner(source, inner), propagate_to(source, target).
             option_inner.from_join(
                 &option_inner,
                 &propagate_to,
                 |_source: &ExprId, inner_id: &ExprId, target: &ExprId| (*target, *inner_id),
             );
 
-            // Extend propagate_to with enum binding edges
-            // propagate_to(field_id, binding_use) :- enum_field_keyed((subject, field_name), field_id), enum_binding_use((subject, field_name), binding_use)
+            // Enum bindings: `match e { V(f: x) => ... }` makes x equivalent to e's field value.
             propagate_to.from_join(
                 &enum_field_keyed,
                 &enum_binding_use,
@@ -578,14 +555,12 @@ impl Pass for ConstantPropagationPass {
                 },
             );
 
-            // Propagate enum_field through variable bindings
-            // enum_field(target, (field_name, field_id)) :- enum_field(source, (field_name, field_id)), propagate_to(source, target).
             enum_field.from_join(
                 &enum_field,
                 &propagate_to,
-                |_source: &ExprId,
-                 (field_name, field_id): &(String, ExprId),
-                 target: &ExprId| { (*target, (field_name.clone(), *field_id)) },
+                |_source: &ExprId, (field_name, field_id): &(String, ExprId), target: &ExprId| {
+                    (*target, (field_name.clone(), *field_id))
+                },
             );
 
             // Keep enum_field_keyed in sync with enum_field
@@ -620,14 +595,6 @@ impl Pass for ConstantPropagationPass {
                 |_key: &(ExprId, String, String), match_id: &ExprId, arm_body: &ExprId| {
                     (*arm_body, *match_id)
                 },
-            );
-
-            // Propagate arm body's constant value to the match expression
-            // const_value(m, val) :- selected_arm(arm_body, m), const_value(arm_body, val).
-            const_value.from_join(
-                &const_value,
-                &selected_arm,
-                |_arm_body: &ExprId, val: &Const, match_id: &ExprId| (*match_id, val.clone()),
             );
 
             // Find option matches with constant subjects
@@ -668,25 +635,8 @@ impl Pass for ConstantPropagationPass {
                 |_key: &(ExprId, bool), match_id: &ExprId, body_id: &ExprId| (*body_id, *match_id),
             );
 
-            // Propagate option_inner through match arm selection
-            // option_inner(m, inner) :- selected_arm(arm_body, m), option_inner(arm_body, inner).
-            option_inner.from_join(
-                &option_inner,
-                &selected_arm,
-                |_arm_body: &ExprId, inner_id: &ExprId, match_id: &ExprId| (*match_id, *inner_id),
-            );
-
-            // Propagate enum_field through match arm selection
-            // enum_field(m, (field_name, field_id)) :- selected_arm(arm_body, m), enum_field(arm_body, (field_name, field_id))
-            // This ensures that when a match expression selects an arm returning an enum literal,
-            // subsequent matches on the result can access the field bindings.
-            enum_field.from_join(
-                &enum_field,
-                &selected_arm,
-                |_arm_body: &ExprId,
-                 (field_name, field_id): &(String, ExprId),
-                 match_id: &ExprId| { (*match_id, (field_name.clone(), *field_id)) },
-            );
+            // Selected arms: match expression is equivalent to its selected arm body.
+            propagate_to.from_map(&selected_arm, |&(arm_body, match_id)| (arm_body, match_id));
         }
 
         let const_map: HashMap<ExprId, Const> = const_value.complete().iter().cloned().collect();
@@ -2049,7 +1999,11 @@ mod tests {
                     |t| {
                         t.write_expr_escaped(t.match_expr_with_bindings(
                             t.var("msg"),
-                            vec![("Say", vec![("text", "t")], Box::new(|t: &IrBuilder| t.var("t")))],
+                            vec![(
+                                "Say",
+                                vec![("text", "t")],
+                                Box::new(|t: &IrBuilder| t.var("t")),
+                            )],
                         ));
                     },
                 );
@@ -2095,7 +2049,9 @@ mod tests {
                             vec![(
                                 "Say",
                                 vec![("text", "t")],
-                                Box::new(|t: &IrBuilder| t.string_concat(t.str("hello "), t.var("t"))),
+                                Box::new(|t: &IrBuilder| {
+                                    t.string_concat(t.str("hello "), t.var("t"))
+                                }),
                             )],
                         ));
                     },
@@ -2199,7 +2155,11 @@ mod tests {
                         t.let_stmt("y", t.var("x"), |t| {
                             t.write_expr_escaped(t.match_expr_with_bindings(
                                 t.var("y"),
-                                vec![("Say", vec![("text", "t")], Box::new(|t: &IrBuilder| t.var("t")))],
+                                vec![(
+                                    "Say",
+                                    vec![("text", "t")],
+                                    Box::new(|t: &IrBuilder| t.var("t")),
+                                )],
                             ));
                         });
                     },
@@ -2258,7 +2218,12 @@ mod tests {
                             vec![(
                                 "Values",
                                 vec![("first", "a"), ("second", "b")],
-                                Box::new(|t: &IrBuilder| t.string_concat(t.var("a"), t.string_concat(t.str(" "), t.var("b")))),
+                                Box::new(|t: &IrBuilder| {
+                                    t.string_concat(
+                                        t.var("a"),
+                                        t.string_concat(t.str(" "), t.var("b")),
+                                    )
+                                }),
                             )],
                         ));
                     },
@@ -2307,11 +2272,17 @@ mod tests {
                         t.write_expr_escaped(t.match_expr_with_bindings(
                             t.var("result"),
                             vec![
-                                ("Ok", vec![("value", "v")], Box::new(|t: &IrBuilder| t.var("v"))),
+                                (
+                                    "Ok",
+                                    vec![("value", "v")],
+                                    Box::new(|t: &IrBuilder| t.var("v")),
+                                ),
                                 (
                                     "Err",
                                     vec![("msg", "m")],
-                                    Box::new(|t: &IrBuilder| t.string_concat(t.str("error: "), t.var("m"))),
+                                    Box::new(|t: &IrBuilder| {
+                                        t.string_concat(t.str("error: "), t.var("m"))
+                                    }),
                                 ),
                             ],
                         ));
@@ -2362,14 +2333,32 @@ mod tests {
                         t.match_expr(
                             t.var("choice"),
                             vec![
-                                ("A", t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("hello"))])),
-                                ("B", t.enum_variant_with_fields("Msg", "Say", vec![("text", t.str("world"))])),
+                                (
+                                    "A",
+                                    t.enum_variant_with_fields(
+                                        "Msg",
+                                        "Say",
+                                        vec![("text", t.str("hello"))],
+                                    ),
+                                ),
+                                (
+                                    "B",
+                                    t.enum_variant_with_fields(
+                                        "Msg",
+                                        "Say",
+                                        vec![("text", t.str("world"))],
+                                    ),
+                                ),
                             ],
                         ),
                         |t| {
                             t.write_expr_escaped(t.match_expr_with_bindings(
                                 t.var("x"),
-                                vec![("Say", vec![("text", "t")], Box::new(|t: &IrBuilder| t.var("t")))],
+                                vec![(
+                                    "Say",
+                                    vec![("text", "t")],
+                                    Box::new(|t: &IrBuilder| t.var("t")),
+                                )],
                             ));
                         },
                     );
@@ -2527,6 +2516,91 @@ mod tests {
                 Test() {
                   let flag = true in {
                     write_escaped("was true")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_binding_through_let_in_match_arm() {
+        use crate::dop::Type;
+        use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+
+        // Test that enum_field propagates through let expressions in match arm bodies.
+        // When a match arm body is `let x = Enum(...) in x`, the field information should
+        // flow from the enum literal -> let body -> let expr -> match expr.
+        let module = IrModuleBuilder::new()
+            .enum_decl("Choice", ["A", "B"])
+            .enum_with_fields("Msg", |e| {
+                e.variant_with_fields("Say", vec![("text", Type::String)]);
+            })
+            .component("Test", [], |t| {
+                t.let_stmt("choice", t.enum_variant("Choice", "A"), |t| {
+                    t.let_stmt(
+                        "y",
+                        t.match_expr(
+                            t.var("choice"),
+                            vec![
+                                // Arm body is a let expression, not a direct enum literal
+                                (
+                                    "A",
+                                    t.let_expr(
+                                        "x",
+                                        t.enum_variant_with_fields(
+                                            "Msg",
+                                            "Say",
+                                            vec![("text", t.str("hello"))],
+                                        ),
+                                        |t| t.var("x"),
+                                    ),
+                                ),
+                                (
+                                    "B",
+                                    t.enum_variant_with_fields(
+                                        "Msg",
+                                        "Say",
+                                        vec![("text", t.str("world"))],
+                                    ),
+                                ),
+                            ],
+                        ),
+                        |t| {
+                            t.write_expr_escaped(t.match_expr_with_bindings(
+                                t.var("y"),
+                                vec![(
+                                    "Say",
+                                    vec![("text", "txt")],
+                                    Box::new(|t: &IrBuilder| t.var("txt")),
+                                )],
+                            ));
+                        },
+                    );
+                });
+            })
+            .build();
+
+        check(
+            module.components.into_iter().next().unwrap(),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let choice = Choice::A in {
+                    let y = match choice {
+                      Choice::A => let x = Msg::Say(text: "hello") in x,
+                      Choice::B => Msg::Say(text: "world"),
+                    } in {
+                      write_escaped(match y {Msg::Say(text: txt) => txt})
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let choice = Choice::A in {
+                    let y = Msg::Say(text: "hello") in {
+                      write_escaped("hello")
+                    }
                   }
                 }
             "#]],
