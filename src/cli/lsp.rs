@@ -3,6 +3,7 @@ use crate::document::{Document, DocumentRange};
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
 use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::syntax::format;
 use std::collections::HashMap;
 use tokio::sync::{OnceCell, RwLock};
 use tower_lsp_server::jsonrpc::Result;
@@ -115,6 +116,7 @@ impl LanguageServer for HopLanguageServer {
                     prepare_provider: Some(true),
                     work_done_progress_options: WorkDoneProgressOptions::default(),
                 })),
+                document_formatting_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -263,6 +265,45 @@ impl LanguageServer for HopLanguageServer {
                     changes: Some(changes),
                     ..Default::default()
                 }))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
+        let uri = params.text_document.uri;
+        if let Some(root) = self.root.get() {
+            let module_name = Self::uri_to_module_name(&uri, root);
+
+            let program = self.program.read().await;
+
+            // Don't format if there are parse errors
+            if let Some(errors) = program.get_parse_errors().get(&module_name) {
+                if !errors.is_empty() {
+                    return Ok(None);
+                }
+            }
+
+            if let Some(ast) = program.get_parsed_ast(&module_name) {
+                let formatted = format(ast.clone());
+
+                // Replace the entire document
+                Ok(Some(vec![TextEdit {
+                    range: lsp_types::Range {
+                        start: lsp_types::Position {
+                            line: 0,
+                            character: 0,
+                        },
+                        end: lsp_types::Position {
+                            line: u32::MAX,
+                            character: 0,
+                        },
+                    },
+                    new_text: formatted,
+                }]))
             } else {
                 Ok(None)
             }

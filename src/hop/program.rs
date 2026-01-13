@@ -112,6 +112,10 @@ impl Program {
         &self.type_checker.type_errors
     }
 
+    pub fn get_parsed_ast(&self, module_name: &ModuleName) -> Option<&ParsedAst> {
+        self.modules.get(module_name)
+    }
+
     pub fn get_hover_info(
         &self,
         module_name: &ModuleName,
