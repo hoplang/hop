@@ -73,7 +73,7 @@ impl Inliner {
     /// # Returns
     /// Result containing the list of inlined entrypoints or an error if a page doesn't exist
     pub fn inline_entrypoints(
-        asts: HashMap<ModuleName, TypedAst>,
+        asts: &HashMap<ModuleName, TypedAst>,
         pages: &[(ModuleName, ComponentName)],
     ) -> Result<Vec<InlinedComponentDeclaration>> {
         // Validate that all requested pages exist
@@ -104,7 +104,7 @@ impl Inliner {
 
         let mut result = Vec::new();
 
-        for (module_name, ast) in &asts {
+        for (module_name, ast) in asts {
             for component in ast.get_component_declarations() {
                 let included = pages
                     .iter()
@@ -494,7 +494,7 @@ mod tests {
             })
             .collect();
         let inlined_entrypoints =
-            Inliner::inline_entrypoints(typed_asts, &pages_owned).expect("Inlining should succeed");
+            Inliner::inline_entrypoints(&typed_asts, &pages_owned).expect("Inlining should succeed");
 
         // Format using Display implementation for better readability
         let output = inlined_entrypoints

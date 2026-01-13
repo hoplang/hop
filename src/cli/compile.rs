@@ -134,7 +134,7 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
 
     // Use orchestrate to handle inlining, compilation, and optimization
     let ir_module = orchestrate(
-        program.get_typed_modules().clone(),
+        program.get_typed_modules(),
         tailwind_css.as_deref(),
         &pages,
     )?;

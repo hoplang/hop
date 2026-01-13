@@ -7,7 +7,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 
 pub fn orchestrate(
-    typed_asts: HashMap<ModuleName, TypedAst>,
+    typed_asts: &HashMap<ModuleName, TypedAst>,
     generated_tailwind_css: Option<&str>,
     pages: &[(ModuleName, ComponentName)],
 ) -> Result<IrModule> {

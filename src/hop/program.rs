@@ -566,7 +566,7 @@ impl Program {
         // Use orchestrate to handle inlining and compilation
         let pages = vec![(module_name.clone(), component_name.clone())];
         let ir_module = orchestrate(
-            self.get_typed_modules().clone(),
+            self.get_typed_modules(),
             generated_tailwind_css,
             &pages,
         )?;
