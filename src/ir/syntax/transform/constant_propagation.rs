@@ -119,6 +119,8 @@ impl Pass for ConstantPropagationPass {
         let mut option_match_subjects = Vec::new();
         let mut option_arms_relations: Vec<((ExprId, bool), ExprId)> = Vec::new();
         let mut option_inner_ids: Vec<(ExprId, ExprId)> = Vec::new();
+        let mut bool_match_subjects: Vec<(ExprId, ExprId)> = Vec::new();
+        let mut bool_arms_relations: Vec<((ExprId, bool), ExprId)> = Vec::new();
         let mut option_binding_uses: Vec<(ExprId, ExprId)> = Vec::new();
         let mut let_body_relations: Vec<(ExprId, ExprId)> = Vec::new();
         // Enum field values: (enum_expr_id => (field_name, field_expr_id))
@@ -233,8 +235,19 @@ impl Pass for ConstantPropagationPass {
                                     }
                                 }
                             }
-                            Match::Bool { .. } => {
-                                // Boolean patterns are not currently constant-folded
+                            Match::Bool {
+                                subject,
+                                true_body,
+                                false_body,
+                            } => {
+                                if let Some(def_expr_id) = var_bindings.get(subject.0.as_str()) {
+                                    bool_match_subjects.push((*def_expr_id, expr.id()));
+                                    // Key arms by (match_id, is_true) for direct joining
+                                    bool_arms_relations
+                                        .push(((expr.id(), true), true_body.id()));
+                                    bool_arms_relations
+                                        .push(((expr.id(), false), false_body.id()));
+                                }
                             }
                             Match::Option {
                                 subject,
@@ -367,6 +380,16 @@ impl Pass for ConstantPropagationPass {
         // Option matches with known subjects: ((match_id, is_some) => match_id)
         let option_match_with_const =
             iteration.variable::<((ExprId, bool), ExprId)>("option_match_with_const");
+
+        // Bool match subject expressions: (subject_id => match_id)
+        let bool_match_subject = Relation::from_iter(bool_match_subjects);
+
+        // Bool match arms: ((match_id, is_true) => body_id)
+        let bool_arms = Relation::from_iter(bool_arms_relations);
+
+        // Bool matches with known subjects: ((match_id, is_true) => match_id)
+        let bool_match_with_const =
+            iteration.variable::<((ExprId, bool), ExprId)>("bool_match_with_const");
 
         // Option inner expression ids: (option_expr_id => inner_expr_id)
         let option_inner = iteration.variable::<(ExprId, ExprId)>("option_inner");
@@ -623,6 +646,25 @@ impl Pass for ConstantPropagationPass {
             selected_arm.from_join(
                 &option_match_with_const,
                 &option_arms,
+                |_key: &(ExprId, bool), match_id: &ExprId, body_id: &ExprId| (*body_id, *match_id),
+            );
+
+            // Find bool matches with constant subjects
+            // bool_match_with_const((m, is_true), m) :- const_value(s, Bool(b)), bool_match_subject(s, m).
+            bool_match_with_const.from_join(
+                &const_value,
+                &bool_match_subject,
+                |_subject: &ExprId, const_val: &Const, match_id: &ExprId| match const_val {
+                    Const::Bool(b) => ((*match_id, *b), *match_id),
+                    _ => unreachable!("bool match subject must have bool constant"),
+                },
+            );
+
+            // Select the appropriate bool arm by joining on (match_id, is_true)
+            // selected_arm(body, m) :- bool_match_with_const((m, is_true), m), bool_arms((m, is_true), body).
+            selected_arm.from_join(
+                &bool_match_with_const,
+                &bool_arms,
                 |_key: &(ExprId, bool), match_id: &ExprId, body_id: &ExprId| (*body_id, *match_id),
             );
 
@@ -2356,6 +2398,135 @@ mod tests {
                     let x = Msg::Say(text: "hello") in {
                       write_escaped("hello")
                     }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_bool_match_with_true() {
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("flag", t.bool(true), |t| {
+                    t.write_expr_escaped(t.bool_match_expr(
+                        t.var("flag"),
+                        t.str("yes"),
+                        t.str("no"),
+                    ));
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let flag = true in {
+                    write_escaped(match flag {true => "yes", false => "no"})
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let flag = true in {
+                    write_escaped("yes")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_bool_match_with_false() {
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("flag", t.bool(false), |t| {
+                    t.write_expr_escaped(t.bool_match_expr(
+                        t.var("flag"),
+                        t.str("yes"),
+                        t.str("no"),
+                    ));
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let flag = false in {
+                    write_escaped(match flag {true => "yes", false => "no"})
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let flag = false in {
+                    write_escaped("no")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_propagate_bool_constant_through_variables_in_match() {
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("x", t.bool(true), |t| {
+                    t.let_stmt("y", t.var("x"), |t| {
+                        t.write_expr_escaped(t.bool_match_expr(
+                            t.var("y"),
+                            t.str("yes"),
+                            t.str("no"),
+                        ));
+                    });
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let x = true in {
+                    let y = x in {
+                      write_escaped(match y {true => "yes", false => "no"})
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let x = true in {
+                    let y = true in {
+                      write_escaped("yes")
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_bool_match_with_negated_subject() {
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("flag", t.not(t.bool(false)), |t| {
+                    t.write_expr_escaped(t.bool_match_expr(
+                        t.var("flag"),
+                        t.str("was true"),
+                        t.str("was false"),
+                    ));
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let flag = (!false) in {
+                    write_escaped(match flag {
+                      true => "was true",
+                      false => "was false",
+                    })
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let flag = true in {
+                    write_escaped("was true")
                   }
                 }
             "#]],
