@@ -313,7 +313,9 @@ fn format_attribute_value<'a>(
             .group(),
         ParsedAttributeValue::String(range) => {
             let content = range.as_ref().map(|r| r.as_str()).unwrap_or("");
-            BoxDoc::text(format!("\"{}\"", content))
+            BoxDoc::text("\"")
+                .append(BoxDoc::text(content))
+                .append(BoxDoc::text("\""))
         }
     }
 }
@@ -593,7 +595,9 @@ fn format_expr<'a>(
         } => format_expr(object, comments)
             .append(BoxDoc::text("."))
             .append(BoxDoc::text(field.as_str())),
-        ParsedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
+        ParsedExpr::StringLiteral { value, .. } => BoxDoc::text("\"")
+            .append(BoxDoc::text(value.as_str()))
+            .append(BoxDoc::text("\"")),
         ParsedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
         ParsedExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
         ParsedExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
@@ -746,14 +750,13 @@ fn format_expr<'a>(
                         ParsedExpr::StringLiteral { value, .. } => {
                             let parts: Vec<_> = value.split_whitespace().collect();
                             for (i, part) in parts.iter().enumerate() {
+                                let quoted = BoxDoc::text("\"")
+                                    .append(BoxDoc::text(*part))
+                                    .append(BoxDoc::text("\""));
                                 if i == 0 {
-                                    expanded_docs.push(
-                                        leading_comments
-                                            .clone()
-                                            .append(BoxDoc::text(format!("\"{}\"", part))),
-                                    );
+                                    expanded_docs.push(leading_comments.clone().append(quoted));
                                 } else {
-                                    expanded_docs.push(BoxDoc::text(format!("\"{}\"", part)));
+                                    expanded_docs.push(quoted);
                                 }
                             }
                         }
