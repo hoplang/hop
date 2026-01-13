@@ -3,7 +3,7 @@ use std::fmt::Display;
 
 use itertools::Itertools as _;
 
-use super::document::{DocumentCursor, DocumentRange, Ranged};
+use super::{DocumentCursor, DocumentRange, Ranged};
 
 /// Annotator that can display source code with annotations
 pub struct DocumentAnnotator {

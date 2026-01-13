@@ -1,4 +1,4 @@
-use crate::document::document::{DocumentRange, Ranged};
+use crate::document::{DocumentRange, Ranged};
 use crate::dop::symbols::type_name::TypeName;
 
 use super::r#type::Type;

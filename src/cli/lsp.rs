@@ -1,5 +1,5 @@
 use crate::document::DocumentPosition;
-use crate::document::document::{Document, DocumentRange};
+use crate::document::{Document, DocumentRange};
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
 use crate::hop::symbols::module_name::ModuleName;

@@ -1,5 +1,5 @@
 use crate::{
-    document::document::{CheapString, DocumentRange, Ranged},
+    document::{CheapString, DocumentRange, Ranged},
     dop,
 };
 use thiserror::Error;

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use super::{DocumentPosition, document::DocumentCursor};
+use super::{DocumentCursor, DocumentPosition};
 
 /// Extracts a single position marked with `^` from the source.
 ///

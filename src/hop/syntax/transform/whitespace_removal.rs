@@ -1,4 +1,4 @@
-use crate::document::document::{CheapString, DocumentRange};
+use crate::document::{CheapString, DocumentRange};
 
 use crate::hop::syntax::parsed_ast::{ParsedAst, ParsedComponentDeclaration, ParsedDeclaration};
 use crate::hop::syntax::parsed_node::{ParsedMatchCase, ParsedNode};
@@ -148,7 +148,7 @@ mod tests {
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
-    use crate::document::document::Document;
+    use crate::document::Document;
     use crate::error_collector::ErrorCollector;
     use crate::hop::symbols::module_name::ModuleName;
     use crate::hop::syntax::parse_error::ParseError;

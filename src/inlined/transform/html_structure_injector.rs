@@ -1,5 +1,5 @@
 use crate::{
-    document::document::CheapString,
+    document::CheapString,
     inlined::{InlinedComponentDeclaration, InlinedNode},
 };
 use std::collections::BTreeMap;

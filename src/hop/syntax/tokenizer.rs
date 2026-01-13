@@ -5,7 +5,7 @@ use std::mem;
 use itertools::Itertools as _;
 
 use super::parse_error::ParseError;
-use crate::document::document::{DocumentCursor, DocumentRange, Ranged};
+use crate::document::{DocumentCursor, DocumentRange, Ranged};
 use crate::dop;
 
 #[derive(Debug, Clone)]

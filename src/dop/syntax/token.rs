@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::document::document::CheapString;
+use crate::document::CheapString;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {

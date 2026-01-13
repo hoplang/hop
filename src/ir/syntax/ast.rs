@@ -1,4 +1,4 @@
-use crate::document::document::CheapString;
+use crate::document::CheapString;
 use crate::dop::VarName;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, Type};

@@ -1,6 +1,6 @@
 use super::r#type::{NumericType, Type};
 use super::type_error::TypeError;
-use crate::document::document::DocumentRange;
+use crate::document::DocumentRange;
 use crate::dop::TypedExpr;
 use crate::dop::patterns::compiler::{Compiler, Decision};
 use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
@@ -1330,7 +1330,7 @@ fn decision_to_typed_expr(
 mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
-    use crate::document::document::DocumentCursor;
+    use crate::document::DocumentCursor;
     use crate::dop::ParsedDeclaration;
     use crate::dop::parser;
     use crate::dop::symbols::type_name::TypeName;

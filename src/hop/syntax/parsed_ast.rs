@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::fmt::{self, Display};
 
-use crate::document::document::{CheapString, DocumentRange, Ranged};
+use crate::document::{CheapString, DocumentRange, Ranged};
 use crate::dop::ParsedExpr;
 use crate::dop::ParsedType;
 use crate::dop::VarName;

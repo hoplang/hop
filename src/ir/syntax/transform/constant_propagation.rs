@@ -1,5 +1,5 @@
 use super::Pass;
-use crate::document::document::CheapString;
+use crate::document::CheapString;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;

@@ -1,4 +1,3 @@
-use crate::document::document::Document;
 use crate::document::DocumentAnnotator;
 use crate::hop::program::Program;
 use crate::hop::symbols::component_name::ComponentName;
@@ -153,7 +152,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::hop::symbols::module_name::ModuleName;
+    use crate::{document::Document, hop::symbols::module_name::ModuleName};
     use axum_test::TestServer;
     use expect_test::expect;
     use serde_json::json;

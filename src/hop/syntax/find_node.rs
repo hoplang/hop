@@ -1,5 +1,5 @@
 use crate::document::DocumentPosition;
-use crate::document::document::Ranged;
+use crate::document::Ranged;
 
 use super::parsed_ast::ParsedAst;
 use super::parsed_node::ParsedNode;
@@ -57,8 +57,8 @@ mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
     use crate::document::SimpleAnnotation;
-    use crate::document::document::{Document, Ranged};
     use crate::document::extract_position::extract_position;
+    use crate::document::{Document, Ranged};
     use crate::error_collector::ErrorCollector;
     use crate::hop::symbols::module_name::ModuleName;
     use crate::hop::syntax::parser::parse;
@@ -68,7 +68,11 @@ mod tests {
     fn check_find_node_at_position(input: &str, expected: Expect) {
         let (source, position) = extract_position(input).expect("Position marker not found");
         let mut errors = ErrorCollector::new();
-        let ast = parse(ModuleName::new("test").unwrap(), Document::new(source), &mut errors);
+        let ast = parse(
+            ModuleName::new("test").unwrap(),
+            Document::new(source),
+            &mut errors,
+        );
 
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
 

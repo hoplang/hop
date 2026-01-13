@@ -1,4 +1,4 @@
-use crate::document::document::{CheapString, DocumentRange, Ranged};
+use crate::document::{CheapString, DocumentRange, Ranged};
 use crate::dop::symbols::field_name::InvalidFieldNameError;
 use crate::dop::symbols::type_name::InvalidTypeNameError;
 use crate::dop::symbols::var_name::InvalidVarNameError;

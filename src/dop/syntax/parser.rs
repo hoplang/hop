@@ -1,7 +1,7 @@
 use std::collections::{HashSet, VecDeque};
 use std::iter::Peekable;
 
-use crate::document::document::{CheapString, DocumentCursor, DocumentRange};
+use crate::document::{CheapString, DocumentCursor, DocumentRange};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
@@ -1242,7 +1242,7 @@ pub fn parse_declarations(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::{DocumentAnnotator, SimpleAnnotation, document::Ranged as _};
+    use crate::document::{DocumentAnnotator, Ranged as _, SimpleAnnotation};
     use expect_test::{Expect, expect};
     use indoc::indoc;
 

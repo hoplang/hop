@@ -1,4 +1,4 @@
-use crate::document::document::Document;
+use crate::document::Document;
 use crate::error_collector::ErrorCollector;
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::symbols::module_name::ModuleName;

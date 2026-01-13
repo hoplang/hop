@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 
-use crate::document::document::{CheapString, DocumentRange, Ranged};
+use crate::document::{CheapString, DocumentRange, Ranged};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;

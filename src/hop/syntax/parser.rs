@@ -8,7 +8,7 @@ use super::parsed_ast::{
 };
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
 use super::token_tree::{TokenTree, build_tree};
-use crate::document::document::{CheapString, Document, DocumentCursor, DocumentRange};
+use crate::document::{CheapString, Document, DocumentCursor, DocumentRange};
 use crate::dop;
 use crate::dop::ParsedDeclaration as DopParsedDeclaration;
 use crate::dop::VarName;

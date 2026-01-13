@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 
-use crate::document::document::CheapString;
+use crate::document::CheapString;
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::var_name::VarName;

@@ -1,7 +1,7 @@
 // re2c lexer for Tailwind CSS class group detection
 // Generate with: re2c -W -Werror --lang rust -o class_groups_lex.rs class_groups_lex.re
 
-#![allow(unused_unsafe, unused_assignments)]
+#![allow(unused_unsafe, unused_assignments, clippy::all)]
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ClassGroup {
@@ -318,6 +318,7 @@ pub enum ClassGroup {
     ZIndex,
 }
 
+#[rust_analyzer::skip]
 pub fn get_class_group(input: &str) -> Option<ClassGroup> {
     // Append null sentinel
     let mut bytes = input.as_bytes().to_vec();

@@ -6,7 +6,7 @@ use std::{
 use tokio::fs as async_fs;
 
 use super::config::HopConfig;
-use crate::document::document::Document;
+use crate::document::Document;
 use crate::hop::symbols::module_name::ModuleName;
 
 /// Check if a directory should be skipped during .hop file search
@@ -362,7 +362,11 @@ mod tests {
         let button_content = modules
             .get(&ModuleName::new("src/components/button").unwrap())
             .unwrap();
-        assert!(button_content.as_str().contains("<button-comp>Click me!</button-comp>"));
+        assert!(
+            button_content
+                .as_str()
+                .contains("<button-comp>Click me!</button-comp>")
+        );
 
         // Clean up
         std::fs::remove_dir_all(&temp_dir).unwrap();
