@@ -26,7 +26,12 @@ enum Const {
 impl Const {
     /// Convert a Const to an IrExpr. Returns None if conversion is not possible
     /// (e.g., inner value of an Option is not in const_map).
-    fn to_expr(&self, id: ExprId, kind: &Type, const_map: &HashMap<ExprId, Const>) -> Option<IrExpr> {
+    fn to_expr(
+        &self,
+        id: ExprId,
+        kind: &Type,
+        const_map: &HashMap<ExprId, Const>,
+    ) -> Option<IrExpr> {
         Some(match self {
             Const::Bool(b) => IrExpr::BooleanLiteral { value: *b, id },
             Const::String(s) => IrExpr::StringLiteral {
@@ -72,7 +77,6 @@ impl Pass for ConstantPropagationPass {
         let mut iteration = Iteration::new();
 
         let mut initial_constants = Vec::new();
-        let mut initial_enum_constants = Vec::new();
         let mut not_relations = Vec::new();
         let mut eq_left_relations = Vec::new();
         let mut eq_right_relations = Vec::new();
@@ -81,18 +85,40 @@ impl Pass for ConstantPropagationPass {
         let mut merge_left_relations = Vec::new();
         let mut merge_right_relations = Vec::new();
         let mut var_references = Vec::new();
-        let mut match_subjects = Vec::new();
+        let mut enum_match_subjects = Vec::new();
         let mut match_arms_relations = Vec::new();
-        let mut initial_option_constants = Vec::new();
+        let mut option_match_subjects = Vec::new();
         let mut option_arms_relations: Vec<((ExprId, bool), ExprId)> = Vec::new();
         let mut option_inner_ids: Vec<(ExprId, ExprId)> = Vec::new();
         let mut option_binding_uses: Vec<(ExprId, ExprId)> = Vec::new();
+        let mut let_body_relations: Vec<(ExprId, ExprId)> = Vec::new();
+
+        // SSA form guarantees unique variable names, so we can collect all bindings
+        // into a single HashMap without worrying about shadowing or scoping.
+        let mut var_bindings: HashMap<String, ExprId> = HashMap::new();
+
+        // Option match bindings map binding name -> subject's defining expression id.
+        // These are handled separately because the binding refers to the inner value,
+        // not the Option itself.
+        let mut option_bindings: HashMap<String, ExprId> = HashMap::new();
 
         for stmt in &entrypoint.body {
-            stmt.traverse_with_scope(&mut |s, scope| {
+            stmt.traverse(&mut |s| {
+                // Collect statement-level bindings
+                match s {
+                    IrStatement::Let { var, value, .. } => {
+                        var_bindings.insert(var.to_string(), value.id());
+                    }
+                    IrStatement::For { var, array, .. } => {
+                        var_bindings.insert(var.to_string(), array.id());
+                    }
+                    _ => {}
+                }
+
                 let Some(primary_expr) = s.expr() else {
                     return;
                 };
+
                 primary_expr.traverse(&mut |expr| {
                     match expr {
                         IrExpr::BooleanLiteral { value, .. } => {
@@ -126,19 +152,11 @@ impl Pass for ConstantPropagationPass {
                                     variant_name: variant_name.clone(),
                                 },
                             ));
-                            initial_enum_constants
-                                .push((expr.id(), (enum_name.clone(), variant_name.clone())));
                         }
                         IrExpr::Match { match_, .. } => match match_ {
                             Match::Enum { subject, arms } => {
-                                // Look up the defining statement for the subject variable
-                                if let Some(defining_stmt) = scope.get(subject.0.as_str()) {
-                                    let def_expr_id = match defining_stmt {
-                                        IrStatement::Let { value, .. } => value.id(),
-                                        IrStatement::For { array, .. } => array.id(),
-                                        _ => 0,
-                                    };
-                                    match_subjects.push((def_expr_id, expr.id()));
+                                if let Some(def_expr_id) = var_bindings.get(subject.0.as_str()) {
+                                    enum_match_subjects.push((*def_expr_id, expr.id()));
                                 }
                                 for arm in arms {
                                     match &arm.pattern {
@@ -167,40 +185,28 @@ impl Pass for ConstantPropagationPass {
                                 some_arm_body,
                                 none_arm_body,
                             } => {
-                                // Look up the defining statement for the subject variable
-                                if let Some(defining_stmt) = scope.get(subject.0.as_str()) {
-                                    let def_expr_id = match defining_stmt {
-                                        IrStatement::Let { value, .. } => value.id(),
-                                        IrStatement::For { array, .. } => array.id(),
-                                        _ => 0,
-                                    };
-                                    match_subjects.push((def_expr_id, expr.id()));
+                                if let Some(def_expr_id) = var_bindings.get(subject.0.as_str()) {
+                                    option_match_subjects.push((*def_expr_id, expr.id()));
                                     // Key arms by (match_id, is_some) for direct joining
-                                    option_arms_relations.push(((expr.id(), true), some_arm_body.id()));
-                                    option_arms_relations.push(((expr.id(), false), none_arm_body.id()));
+                                    option_arms_relations
+                                        .push(((expr.id(), true), some_arm_body.id()));
+                                    option_arms_relations
+                                        .push(((expr.id(), false), none_arm_body.id()));
 
-                                    // If there's a binding, find uses of it in the Some arm body
+                                    // Record the binding - uses will be found when we visit Var expressions
                                     if let Some(binding) = some_arm_binding {
-                                        some_arm_body.traverse(&mut |e| {
-                                            if let IrExpr::Var { value: name, .. } = e {
-                                                if name.as_str() == binding.as_str() {
-                                                    option_binding_uses.push((def_expr_id, e.id()));
-                                                }
-                                            }
-                                        });
+                                        option_bindings
+                                            .insert(binding.as_str().to_string(), *def_expr_id);
                                     }
                                 }
                             }
                         },
                         IrExpr::Var { value: name, .. } => {
-                            // Check if this variable is defined by a Let or For statement
-                            if let Some(defining_stmt) = scope.get(&name.to_string()) {
-                                let def_expr_id = match defining_stmt {
-                                    IrStatement::Let { value, .. } => value.id(),
-                                    IrStatement::For { array, .. } => array.id(),
-                                    _ => return,
-                                };
-                                var_references.push((def_expr_id, expr.id()));
+                            if let Some(def_expr_id) = var_bindings.get(name.as_str()) {
+                                var_references.push((*def_expr_id, expr.id()));
+                            } else if let Some(subject_def_id) = option_bindings.get(name.as_str())
+                            {
+                                option_binding_uses.push((*subject_def_id, expr.id()));
                             }
                         }
                         IrExpr::MergeClasses { left, right, .. } => {
@@ -208,8 +214,6 @@ impl Pass for ConstantPropagationPass {
                             merge_right_relations.push((right.id(), expr.id()));
                         }
                         IrExpr::OptionLiteral { value, .. } => {
-                            let is_some = value.is_some();
-                            initial_option_constants.push((expr.id(), is_some));
                             // Track the full Option constant with inner expression id
                             let inner_id = value.as_ref().map(|inner| inner.id());
                             initial_constants.push((expr.id(), Const::Option(inner_id)));
@@ -217,6 +221,13 @@ impl Pass for ConstantPropagationPass {
                             if let Some(inner) = value {
                                 option_inner_ids.push((expr.id(), inner.id()));
                             }
+                        }
+                        IrExpr::Let {
+                            var, value, body, ..
+                        } => {
+                            var_bindings.insert(var.as_str().to_string(), value.id());
+                            // Keyed by body_id for joining with const_value
+                            let_body_relations.push((body.id(), expr.id()));
                         }
                         _ => {}
                     }
@@ -267,18 +278,14 @@ impl Pass for ConstantPropagationPass {
         // Values of right operands in merge expressions: (merge_expr_id => right_value)
         let merge_right_value = iteration.variable::<(ExprId, Const)>("merge_right_value");
 
-        // Variable bindings: (defining_expr_id => referencing_expr_id)
-        let def_to_ref = Relation::from_iter(var_references);
+        // Let expression bodies: (body_expr_id => let_expr_id)
+        let let_body = Relation::from_iter(let_body_relations);
 
-        // Match subject expressions for all match types: (subject_id => match_id)
-        let match_subject = Relation::from_iter(match_subjects);
+        // Enum match subject expressions: (subject_id => match_id)
+        let enum_match_subject = Relation::from_iter(enum_match_subjects);
 
         // Enum match arms: ((match_id, enum_name, variant_name) => arm_body_id)
         let match_arm_rel = Relation::from_iter(match_arms_relations);
-
-        // Enum constant values for match folding: (expr_id => (enum_name, variant_name))
-        let enum_const = iteration.variable::<(ExprId, (String, String))>("enum_const");
-        enum_const.extend(initial_enum_constants);
 
         // Enum matches with known subjects: ((match_id, enum_name, variant_name) => match_id)
         let match_with_enum =
@@ -287,9 +294,8 @@ impl Pass for ConstantPropagationPass {
         // Selected arm bodies for all match types: (arm_body_id => match_id)
         let selected_arm = iteration.variable::<(ExprId, ExprId)>("selected_arm");
 
-        // Option constant values for match folding: (expr_id => is_some)
-        let option_const = iteration.variable::<(ExprId, bool)>("option_const");
-        option_const.extend(initial_option_constants);
+        // Option match subject expressions: (subject_id => match_id)
+        let option_match_subject = Relation::from_iter(option_match_subjects);
 
         // Option match arms: ((match_id, is_some) => body_id)
         let option_arms = Relation::from_iter(option_arms_relations);
@@ -305,8 +311,11 @@ impl Pass for ConstantPropagationPass {
         // Option binding uses: (subject_def_expr_id => binding_var_expr_id)
         let option_binding_use = Relation::from_iter(option_binding_uses);
 
-        // Intermediate for 3-way join: (inner_id => binding_var_id)
-        let binding_inner_to_var = iteration.variable::<(ExprId, ExprId)>("binding_inner_to_var");
+        // Unified propagation relation: (source_expr_id => target_expr_id)
+        // Covers both variable references and option binding inner values.
+        // "propagate_to(x, y)" means "y has the same value as x"
+        let propagate_to = iteration.variable::<(ExprId, ExprId)>("propagate_to");
+        propagate_to.extend(var_references);
 
         while iteration.changed() {
             // Fold boolean negation
@@ -316,7 +325,7 @@ impl Pass for ConstantPropagationPass {
                 &not_rel,
                 |_: &ExprId, const_val: &Const, expr_id: &ExprId| match const_val {
                     Const::Bool(b) => (*expr_id, Const::Bool(!b)),
-                    _ => unreachable!(),
+                    _ => unreachable!("Boolean negation can only have boolean operands"),
                 },
             );
 
@@ -420,31 +429,54 @@ impl Pass for ConstantPropagationPass {
                 },
             );
 
-            // Propagate constants through variable bindings
-            // const_value(var, val) :- const_value(def, val), def_to_ref(def, var).
+            // Propagate constants through variable bindings and option bindings
+            // const_value(target, val) :- const_value(source, val), propagate_to(source, target).
             const_value.from_join(
                 &const_value,
-                &def_to_ref,
-                |_def_expr: &ExprId, val: &Const, var_expr: &ExprId| (*var_expr, val.clone()),
+                &propagate_to,
+                |_source: &ExprId, val: &Const, target: &ExprId| (*target, val.clone()),
             );
 
-            // Propagate enum constants through variable bindings
-            // enum_const(var, (e, v)) :- enum_const(def, (e, v)), def_to_ref(def, var).
-            enum_const.from_join(
-                &enum_const,
-                &def_to_ref,
-                |_def_expr: &ExprId, ev: &(String, String), var_expr: &ExprId| {
-                    (*var_expr, ev.clone())
+            // Extend propagate_to with option binding edges
+            // propagate_to(inner, binding_use) :- option_inner(subject, inner), option_binding_use(subject, binding_use)
+            propagate_to.from_join(
+                &option_inner,
+                &option_binding_use,
+                |_subject: &ExprId, inner_id: &ExprId, binding_use_id: &ExprId| {
+                    (*inner_id, *binding_use_id)
                 },
             );
 
+            // Propagate constants through let expression bodies
+            // const_value(let_expr, val) :- const_value(body, val), let_body(body, let_expr).
+            const_value.from_join(
+                &const_value,
+                &let_body,
+                |_body: &ExprId, val: &Const, let_expr: &ExprId| (*let_expr, val.clone()),
+            );
+
+            // Propagate option_inner through variable bindings and option bindings
+            // option_inner(target, inner) :- option_inner(source, inner), propagate_to(source, target).
+            option_inner.from_join(
+                &option_inner,
+                &propagate_to,
+                |_source: &ExprId, inner_id: &ExprId, target: &ExprId| (*target, *inner_id),
+            );
+
             // Find match expressions whose subject is a constant enum
-            // match_with_enum((m, e, v), m) :- match_subject(s, m), enum_const(s, (e, v)).
+            // match_with_enum((m, e, v), m) :- const_value(s, Enum(e, v)), enum_match_subject(s, m).
             match_with_enum.from_join(
-                &enum_const,
-                &match_subject,
-                |_subject: &ExprId, (e, v): &(String, String), match_id: &ExprId| {
-                    ((*match_id, e.clone(), v.clone()), *match_id)
+                &const_value,
+                &enum_match_subject,
+                |_subject: &ExprId, const_val: &Const, match_id: &ExprId| match const_val {
+                    Const::Enum {
+                        enum_name,
+                        variant_name,
+                    } => (
+                        (*match_id, enum_name.clone(), variant_name.clone()),
+                        *match_id,
+                    ),
+                    _ => unreachable!("enum match subject must have enum constant"),
                 },
             );
 
@@ -466,29 +498,14 @@ impl Pass for ConstantPropagationPass {
                 |_arm_body: &ExprId, val: &Const, match_id: &ExprId| (*match_id, val.clone()),
             );
 
-            // Propagate option constants through variable bindings
-            // option_const(var, is_some) :- option_const(def, is_some), def_to_ref(def, var).
-            option_const.from_join(
-                &option_const,
-                &def_to_ref,
-                |_def_expr: &ExprId, is_some: &bool, var_expr: &ExprId| (*var_expr, *is_some),
-            );
-
-            // Propagate option constants through match arm selection
-            // option_const(m, is_some) :- selected_arm(arm_body, m), option_const(arm_body, is_some).
-            option_const.from_join(
-                &option_const,
-                &selected_arm,
-                |_arm_body: &ExprId, is_some: &bool, match_id: &ExprId| (*match_id, *is_some),
-            );
-
             // Find option matches with constant subjects
-            // option_match_with_const((m, is_some), m) :- option_const(s, is_some), match_subject(s, m).
+            // option_match_with_const((m, is_some), m) :- const_value(s, Option(inner)), option_match_subject(s, m).
             option_match_with_const.from_join(
-                &option_const,
-                &match_subject,
-                |_subject: &ExprId, is_some: &bool, match_id: &ExprId| {
-                    ((*match_id, *is_some), *match_id)
+                &const_value,
+                &option_match_subject,
+                |_subject: &ExprId, const_val: &Const, match_id: &ExprId| match const_val {
+                    Const::Option(inner) => ((*match_id, inner.is_some()), *match_id),
+                    _ => unreachable!("option match subject must have option constant"),
                 },
             );
 
@@ -497,17 +514,7 @@ impl Pass for ConstantPropagationPass {
             selected_arm.from_join(
                 &option_match_with_const,
                 &option_arms,
-                |_key: &(ExprId, bool), match_id: &ExprId, body_id: &ExprId| {
-                    (*body_id, *match_id)
-                },
-            );
-
-            // Propagate option_inner through variable references
-            // option_inner(var, inner) :- option_inner(def, inner), def_to_ref(def, var).
-            option_inner.from_join(
-                &option_inner,
-                &def_to_ref,
-                |_def: &ExprId, inner_id: &ExprId, var_id: &ExprId| (*var_id, *inner_id),
+                |_key: &(ExprId, bool), match_id: &ExprId, body_id: &ExprId| (*body_id, *match_id),
             );
 
             // Propagate option_inner through match arm selection
@@ -516,37 +523,6 @@ impl Pass for ConstantPropagationPass {
                 &option_inner,
                 &selected_arm,
                 |_arm_body: &ExprId, inner_id: &ExprId, match_id: &ExprId| (*match_id, *inner_id),
-            );
-
-            // Propagate constants through option bindings (3-way join)
-            // const_value(var, val) :- option_binding_use(subject, var), option_inner(subject, inner), const_value(inner, val).
-            // Step 1: Join option_inner with option_binding_use to get (inner_id => var_id)
-            binding_inner_to_var.from_join(
-                &option_inner,
-                &option_binding_use,
-                |_subject: &ExprId, inner_id: &ExprId, var_id: &ExprId| (*inner_id, *var_id),
-            );
-            // Step 2: Join with const_value to propagate the value
-            const_value.from_join(
-                &const_value,
-                &binding_inner_to_var,
-                |_inner: &ExprId, val: &Const, var_id: &ExprId| (*var_id, val.clone()),
-            );
-
-            // Propagate option_const through option bindings
-            // option_const(var, is_some) :- binding_inner_to_var(inner, var), option_const(inner, is_some).
-            option_const.from_join(
-                &option_const,
-                &binding_inner_to_var,
-                |_inner: &ExprId, is_some: &bool, var_id: &ExprId| (*var_id, *is_some),
-            );
-
-            // Propagate option_inner through option bindings
-            // option_inner(var, inner2) :- binding_inner_to_var(inner, var), option_inner(inner, inner2).
-            option_inner.from_join(
-                &option_inner,
-                &binding_inner_to_var,
-                |_inner: &ExprId, inner2_id: &ExprId, var_id: &ExprId| (*var_id, *inner2_id),
             );
         }
 
@@ -1836,6 +1812,58 @@ mod tests {
                     let inner_result = Some("nested") in {
                       write_escaped("nested")
                     }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_nested_option_match_with_inline_let() {
+        use crate::dop::Type;
+
+        // Test nested option match where inner match is inside a let expression in the Some arm
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("outer", t.some(t.some(t.str("nested"))), |t| {
+                    t.write_expr_escaped(t.option_match_expr_with_binding(
+                        t.var("outer"),
+                        "inner_opt",
+                        Type::Option(Box::new(Type::String)),
+                        |t| {
+                            // let inner_opt_var = inner_opt in match inner_opt_var { ... }
+                            t.let_expr("inner_opt_var", t.var("inner_opt"), |t| {
+                                t.option_match_expr_with_binding(
+                                    t.var("inner_opt_var"),
+                                    "value",
+                                    Type::String,
+                                    |t| t.var("value"),
+                                    t.str("inner none"),
+                                )
+                            })
+                        },
+                        t.str("outer none"),
+                    ));
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let outer = Some(Some("nested")) in {
+                    write_escaped(match outer {
+                      Some(inner_opt) => let inner_opt_var = inner_opt in match inner_opt_var {
+                        Some(value) => value,
+                        None => "inner none",
+                      },
+                      None => "outer none",
+                    })
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let outer = Some(Some("nested")) in {
+                    write_escaped("nested")
                   }
                 }
             "#]],
