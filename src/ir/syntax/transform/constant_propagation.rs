@@ -1,6 +1,7 @@
 use super::Pass;
 use crate::document::document::CheapString;
 use crate::dop::patterns::{EnumPattern, Match};
+use crate::dop::semantics::r#type::Type;
 use crate::ir::{
     IrExpr,
     ast::ExprId,
@@ -19,9 +20,47 @@ enum Const {
         enum_name: String,
         variant_name: String,
     },
-    /// Option constant - true means Some, false means None
-    Option(bool),
+    Option(Option<ExprId>),
 }
+
+impl Const {
+    /// Convert a Const to an IrExpr. Returns None if conversion is not possible
+    /// (e.g., inner value of an Option is not in const_map).
+    fn to_expr(&self, id: ExprId, kind: &Type, const_map: &HashMap<ExprId, Const>) -> Option<IrExpr> {
+        Some(match self {
+            Const::Bool(b) => IrExpr::BooleanLiteral { value: *b, id },
+            Const::String(s) => IrExpr::StringLiteral {
+                value: CheapString::new(s.clone()),
+                id,
+            },
+            Const::Enum {
+                enum_name,
+                variant_name,
+            } => IrExpr::EnumLiteral {
+                enum_name: enum_name.clone(),
+                variant_name: variant_name.clone(),
+                fields: vec![],
+                kind: kind.clone(),
+                id,
+            },
+            Const::Option(inner_id) => {
+                let inner_expr = match inner_id {
+                    None => None,
+                    Some(id) => {
+                        let inner_const = const_map.get(id)?;
+                        Some(Box::new(inner_const.to_expr(*id, kind, const_map)?))
+                    }
+                };
+                IrExpr::OptionLiteral {
+                    value: inner_expr,
+                    kind: kind.clone(),
+                    id,
+                }
+            }
+        })
+    }
+}
+
 /// A datafrog-based constant propagation pass that tracks and propagates
 /// constant values.
 ///
@@ -45,7 +84,6 @@ impl Pass for ConstantPropagationPass {
         let mut match_subjects = Vec::new();
         let mut match_arms_relations = Vec::new();
         let mut initial_option_constants = Vec::new();
-        let mut option_match_subjects = Vec::new();
         let mut option_arms_relations: Vec<((ExprId, bool), ExprId)> = Vec::new();
 
         for stmt in &entrypoint.body {
@@ -134,7 +172,7 @@ impl Pass for ConstantPropagationPass {
                                         IrStatement::For { array, .. } => array.id(),
                                         _ => 0,
                                     };
-                                    option_match_subjects.push((def_expr_id, expr.id()));
+                                    match_subjects.push((def_expr_id, expr.id()));
                                     // Key arms by (match_id, is_some) for direct joining
                                     option_arms_relations.push(((expr.id(), true), some_arm_body.id()));
                                     option_arms_relations.push(((expr.id(), false), none_arm_body.id()));
@@ -157,10 +195,11 @@ impl Pass for ConstantPropagationPass {
                             merge_right_relations.push((right.id(), expr.id()));
                         }
                         IrExpr::OptionLiteral { value, .. } => {
-                            // Track whether this is Some (true) or None (false)
                             let is_some = value.is_some();
                             initial_option_constants.push((expr.id(), is_some));
-                            initial_constants.push((expr.id(), Const::Option(is_some)));
+                            // Track the full Option constant with inner expression id
+                            let inner_id = value.as_ref().map(|inner| inner.id());
+                            initial_constants.push((expr.id(), Const::Option(inner_id)));
                         }
                         _ => {}
                     }
@@ -214,42 +253,37 @@ impl Pass for ConstantPropagationPass {
         // Variable bindings: (defining_expr_id => referencing_expr_id)
         let def_to_ref = Relation::from_iter(var_references);
 
-        // Match subject expressions: (subject_id => match_id)
+        // Match subject expressions for all match types: (subject_id => match_id)
         let match_subject = Relation::from_iter(match_subjects);
 
-        // Match arms: ((match_id, enum_name, variant_name) => arm_body_id)
+        // Enum match arms: ((match_id, enum_name, variant_name) => arm_body_id)
         let match_arm_rel = Relation::from_iter(match_arms_relations);
 
-        // Enum constant values tracked separately for match folding: (expr_id => (enum_name, variant_name))
+        // Enum constant values for match folding: (expr_id => (enum_name, variant_name))
         let enum_const = iteration.variable::<(ExprId, (String, String))>("enum_const");
         enum_const.extend(initial_enum_constants);
 
-        // Match expressions with known enum subjects: ((match_id, enum_name, variant_name) => match_id)
+        // Enum matches with known subjects: ((match_id, enum_name, variant_name) => match_id)
         let match_with_enum =
             iteration.variable::<((ExprId, String, String), ExprId)>("match_with_enum");
 
-        // Selected arm bodies for matches with constant subjects: (arm_body_id => match_id)
+        // Selected arm bodies for all match types: (arm_body_id => match_id)
         let selected_arm = iteration.variable::<(ExprId, ExprId)>("selected_arm");
 
-        // Option constant values: (expr_id => is_some)
+        // Option constant values for match folding: (expr_id => is_some)
         let option_const = iteration.variable::<(ExprId, bool)>("option_const");
         option_const.extend(initial_option_constants);
 
-        // Option match subject expressions: (subject_id => match_id)
-        let option_match_subject = Relation::from_iter(option_match_subjects);
-
-        // Option match arms keyed by (match_id, is_some): ((match_id, is_some) => body_id)
+        // Option match arms: ((match_id, is_some) => body_id)
         let option_arms = Relation::from_iter(option_arms_relations);
 
-        // Option matches with known constant subjects: ((match_id, is_some) => match_id)
+        // Option matches with known subjects: ((match_id, is_some) => match_id)
         let option_match_with_const =
             iteration.variable::<((ExprId, bool), ExprId)>("option_match_with_const");
 
-        // Selected arm bodies for option matches: (arm_body_id => match_id)
-        let option_selected_arm = iteration.variable::<(ExprId, ExprId)>("option_selected_arm");
-
         while iteration.changed() {
-            // const_value(exp, !b) :- not_rel(op, exp), const_value(op, Bool(b)).
+            // Fold boolean negation
+            // const_value(e, !b) :- const_value(op, Bool(b)), not_rel(op, e).
             const_value.from_join(
                 &const_value,
                 &not_rel,
@@ -259,20 +293,23 @@ impl Pass for ConstantPropagationPass {
                 },
             );
 
-            // eq_left_value(eq_expr, left_val) :- eq_left(left_op, eq_expr), const_value(left_op, left_val).
+            // Collect left operand values for equality expressions
+            // eq_left_value(eq, lv) :- const_value(l, lv), eq_left(l, eq).
             eq_left_value.from_join(
                 &const_value,
                 &eq_left,
                 |_: &ExprId, const_val: &Const, eq_expr: &ExprId| (*eq_expr, const_val.clone()),
             );
 
-            // eq_right_value(eq_expr, right_val) :- eq_right(right_op, eq_expr), const_value(right_op, right_val).
+            // Collect right operand values for equality expressions
+            // eq_right_value(eq, rv) :- const_value(r, rv), eq_right(r, eq).
             eq_right_value.from_join(
                 &const_value,
                 &eq_right,
                 |_: &ExprId, const_val: &Const, eq_expr: &ExprId| (*eq_expr, const_val.clone()),
             );
 
+            // Fold equality comparison
             // const_value(eq, Bool(lv == rv)) :- eq_left_value(eq, lv), eq_right_value(eq, rv).
             const_value.from_join(
                 &eq_left_value,
@@ -282,7 +319,8 @@ impl Pass for ConstantPropagationPass {
                 },
             );
 
-            // concat_left_value(concat_expr, left_val) :- concat_left(left_op, concat_expr), const_value(left_op, left_val).
+            // Collect left operand values for string concat expressions
+            // concat_left_value(c, lv) :- const_value(l, lv), concat_left(l, c).
             concat_left_value.from_join(
                 &const_value,
                 &concat_left,
@@ -291,7 +329,8 @@ impl Pass for ConstantPropagationPass {
                 },
             );
 
-            // concat_right_value(concat_expr, right_val) :- concat_right(right_op, concat_expr), const_value(right_op, right_val).
+            // Collect right operand values for string concat expressions
+            // concat_right_value(c, rv) :- const_value(r, rv), concat_right(r, c).
             concat_right_value.from_join(
                 &const_value,
                 &concat_right,
@@ -300,7 +339,8 @@ impl Pass for ConstantPropagationPass {
                 },
             );
 
-            // const_value(concat, String(lv + rv)) :- concat_left_value(concat, String(lv)), concat_right_value(concat, String(rv)).
+            // Fold string concatenation
+            // const_value(c, String(lv + rv)) :- concat_left_value(c, lv), concat_right_value(c, rv).
             const_value.from_join(
                 &concat_left_value,
                 &concat_right_value,
@@ -316,7 +356,8 @@ impl Pass for ConstantPropagationPass {
                 },
             );
 
-            // merge_left_value(merge_expr, left_val) :- merge_left(left_op, merge_expr), const_value(left_op, left_val).
+            // Collect left operand values for merge expressions
+            // merge_left_value(m, lv) :- const_value(l, lv), merge_left(l, m).
             merge_left_value.from_join(
                 &const_value,
                 &merge_left,
@@ -325,7 +366,8 @@ impl Pass for ConstantPropagationPass {
                 },
             );
 
-            // merge_right_value(merge_expr, right_val) :- merge_right(right_op, merge_expr), const_value(right_op, right_val).
+            // Collect right operand values for merge expressions
+            // merge_right_value(m, rv) :- const_value(r, rv), merge_right(r, m).
             merge_right_value.from_join(
                 &const_value,
                 &merge_right,
@@ -334,7 +376,8 @@ impl Pass for ConstantPropagationPass {
                 },
             );
 
-            // const_value(merge, String(tw_merge(lv + " " + rv))) :- merge_left_value(merge, String(lv)), merge_right_value(merge, String(rv)).
+            // Fold tailwind class merge
+            // const_value(m, String(tw_merge(lv, rv))) :- merge_left_value(m, lv), merge_right_value(m, rv).
             const_value.from_join(
                 &merge_left_value,
                 &merge_right_value,
@@ -351,7 +394,7 @@ impl Pass for ConstantPropagationPass {
             );
 
             // Propagate constants through variable bindings
-            // const_value(referencing_expr, val) :- const_value(defining_expr, val), def_to_ref(defining_expr, referencing_expr).
+            // const_value(var, val) :- const_value(def, val), def_to_ref(def, var).
             const_value.from_join(
                 &const_value,
                 &def_to_ref,
@@ -404,32 +447,24 @@ impl Pass for ConstantPropagationPass {
                 |_def_expr: &ExprId, is_some: &bool, var_expr: &ExprId| (*var_expr, *is_some),
             );
 
-            // Find option matches with constant subjects, keyed by (match_id, is_some)
-            // option_match_with_const((m, is_some), m) :- option_const(s, is_some), option_match_subject(s, m).
+            // Find option matches with constant subjects
+            // option_match_with_const((m, is_some), m) :- option_const(s, is_some), match_subject(s, m).
             option_match_with_const.from_join(
                 &option_const,
-                &option_match_subject,
+                &match_subject,
                 |_subject: &ExprId, is_some: &bool, match_id: &ExprId| {
                     ((*match_id, *is_some), *match_id)
                 },
             );
 
-            // Select the appropriate arm by joining on (match_id, is_some)
-            // option_selected_arm(body, m) :- option_match_with_const((m, is_some), m), option_arms((m, is_some), body).
-            option_selected_arm.from_join(
+            // Select the appropriate option arm by joining on (match_id, is_some)
+            // selected_arm(body, m) :- option_match_with_const((m, is_some), m), option_arms((m, is_some), body).
+            selected_arm.from_join(
                 &option_match_with_const,
                 &option_arms,
                 |_key: &(ExprId, bool), match_id: &ExprId, body_id: &ExprId| {
                     (*body_id, *match_id)
                 },
-            );
-
-            // Propagate option arm body's constant value to the match expression
-            // const_value(m, val) :- option_selected_arm(arm_body, m), const_value(arm_body, val).
-            const_value.from_join(
-                &const_value,
-                &option_selected_arm,
-                |_arm_body: &ExprId, val: &Const, match_id: &ExprId| (*match_id, val.clone()),
             );
         }
 
@@ -441,36 +476,8 @@ impl Pass for ConstantPropagationPass {
                 if let Some(expr) = s.expr_mut() {
                     expr.traverse_mut(&mut |e| {
                         if let Some(const_val) = const_map.get(&e.id()) {
-                            match const_val {
-                                Const::Bool(b) => {
-                                    *e = IrExpr::BooleanLiteral {
-                                        value: *b,
-                                        id: e.id(),
-                                    };
-                                }
-                                Const::String(s) => {
-                                    *e = IrExpr::StringLiteral {
-                                        value: CheapString::new(s.clone()),
-                                        id: e.id(),
-                                    };
-                                }
-                                Const::Enum {
-                                    enum_name,
-                                    variant_name,
-                                } => {
-                                    *e = IrExpr::EnumLiteral {
-                                        enum_name: enum_name.clone(),
-                                        variant_name: variant_name.clone(),
-                                        // Constants are only for unit variants (no fields)
-                                        fields: vec![],
-                                        kind: e.as_type().clone(),
-                                        id: e.id(),
-                                    };
-                                }
-                                Const::Option(_) => {
-                                    // Option constants are only used to track Some/None
-                                    // for match folding - don't replace the literal itself
-                                }
+                            if let Some(expr) = const_val.to_expr(e.id(), e.as_type(), &const_map) {
+                                *e = expr;
                             }
                         }
                     });
@@ -1560,7 +1567,7 @@ mod tests {
                 -- after --
                 Test() {
                   let x = Some("hello") in {
-                    let y = x in {
+                    let y = Some("hello") in {
                       write_escaped("got some")
                     }
                   }
