@@ -336,6 +336,12 @@ fn format_node<'a>(
             let component_name_str = component_name.as_str();
             let opening_tag_doc = if args.is_empty() {
                 BoxDoc::text("<").append(BoxDoc::text(component_name_str))
+            } else if args.len() == 1 {
+                // Single attribute: keep on same line as tag
+                BoxDoc::text("<")
+                    .append(BoxDoc::text(component_name_str))
+                    .append(BoxDoc::text(" "))
+                    .append(format_attribute(&args[0], comments))
             } else {
                 let mut args_doc = BoxDoc::nil();
                 for (i, arg) in args.iter().enumerate() {
@@ -462,6 +468,13 @@ fn format_node<'a>(
             let opening_tag_doc = if attributes.is_empty() {
                 BoxDoc::text("<")
                     .append(BoxDoc::text(tag_name_str))
+                    .append(BoxDoc::text(">"))
+            } else if attributes.len() == 1 {
+                // Single attribute: keep on same line as tag
+                BoxDoc::text("<")
+                    .append(BoxDoc::text(tag_name_str))
+                    .append(BoxDoc::text(" "))
+                    .append(format_attribute(&attributes[0], comments))
                     .append(BoxDoc::text(">"))
             } else {
                 let mut attrs_doc = BoxDoc::nil();
@@ -1057,15 +1070,13 @@ mod tests {
                 }
 
                 <Main {color: Color}>
-                  <div
-                    class={
-                      match color {
-                        Color::Red => "red",
-                        Color::Green => "green",
-                        Color::Blue => "blue",
-                      }
+                  <div class={
+                    match color {
+                      Color::Red => "red",
+                      Color::Green => "green",
+                      Color::Blue => "blue",
                     }
-                  >
+                  }>
                   </div>
                 </Main>
             "#]],
@@ -1647,11 +1658,9 @@ mod tests {
                   variant_class: String,
                   custom_class: String,
                 }>
-                  <button
-                    class={
-                      classes!(size_class, variant_class, custom_class)
-                    }
-                  >
+                  <button class={
+                    classes!(size_class, variant_class, custom_class)
+                  }>
                     Click
                   </button>
                 </Button>
@@ -1674,16 +1683,14 @@ mod tests {
                   interactive_styles: String,
                   custom_overrides: String,
                 }>
-                  <div
-                    class={
-                      classes!(
-                        base_styles,
-                        responsive_styles,
-                        interactive_styles,
-                        custom_overrides,
-                      )
-                    }
-                  >
+                  <div class={
+                    classes!(
+                      base_styles,
+                      responsive_styles,
+                      interactive_styles,
+                      custom_overrides,
+                    )
+                  }>
                   </div>
                 </Component>
             "#]],
@@ -1734,9 +1741,9 @@ mod tests {
             "#},
             expect![[r#"
                 <Card {a: String, b: String, c: String}>
-                  <div
-                    class={classes!(a, "foo", "bar", b, "baz", "qux", c)}
-                  >
+                  <div class={
+                    classes!(a, "foo", "bar", b, "baz", "qux", c)
+                  }>
                   </div>
                 </Card>
             "#]],
@@ -2468,17 +2475,15 @@ mod tests {
                 }
 
                 <Main {orientation: Orientation}>
-                  <div
-                    class={
-                      match orientation {
-                        // a
-                        Orientation::Horizontal => "horizontal",
-                        // b
-                        Orientation::Vertical => "vertical",
-                        // c
-                      }
+                  <div class={
+                    match orientation {
+                      // a
+                      Orientation::Horizontal => "horizontal",
+                      // b
+                      Orientation::Vertical => "vertical",
+                      // c
                     }
-                  >
+                  }>
                   </div>
                 </Main>
             "#]],
@@ -2501,17 +2506,15 @@ mod tests {
             "#},
             expect![[r#"
                 <Main>
-                  <div
-                    class={
-                      classes!(
-                        // base styles
-                        "flex",
-                        // conditional style
-                        "items-center",
-                        // more to come
-                      )
-                    }
-                  >
+                  <div class={
+                    classes!(
+                      // base styles
+                      "flex",
+                      // conditional style
+                      "items-center",
+                      // more to come
+                    )
+                  }>
                   </div>
                 </Main>
             "#]],
@@ -2534,19 +2537,17 @@ mod tests {
             "#},
             expect![[r#"
                 <Main>
-                  <div
-                    class={
-                      classes!(
-                        // base styles
-                        "flex",
-                        "items-center",
-                        // conditional style
-                        "justify-between",
-                        "gap-4",
-                        // more to come
-                      )
-                    }
-                  >
+                  <div class={
+                    classes!(
+                      // base styles
+                      "flex",
+                      "items-center",
+                      // conditional style
+                      "justify-between",
+                      "gap-4",
+                      // more to come
+                    )
+                  }>
                   </div>
                 </Main>
             "#]],
@@ -2599,6 +2600,56 @@ mod tests {
                 }>
                   {x}
                 </X>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn classes_macro_with_multiple_string_literals() {
+        check(
+            indoc! {r#"
+                <Main>
+                  <h1 class={classes!("text-4xl", "font-bold", "tracking-tight", "dark:hover:text-blue-300")}>Hello</h1>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main>
+                  <h1 class={
+                    classes!(
+                      "text-4xl",
+                      "font-bold",
+                      "tracking-tight",
+                      "dark:hover:text-blue-300",
+                    )
+                  }>
+                    Hello
+                  </h1>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn component_reference_with_single_long_attribute() {
+        check(
+            indoc! {r#"
+                <Main>
+                  <Button class={classes!("text-4xl", "font-bold", "tracking-tight", "dark:hover:text-blue-300")}>Click me</Button>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main>
+                  <Button class={
+                    classes!(
+                      "text-4xl",
+                      "font-bold",
+                      "tracking-tight",
+                      "dark:hover:text-blue-300",
+                    )
+                  }>
+                    Click me
+                  </Button>
+                </Main>
             "#]],
         );
     }
