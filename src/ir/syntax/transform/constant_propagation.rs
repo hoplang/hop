@@ -19,8 +19,13 @@ enum Const {
         enum_name: String,
         variant_name: String,
     },
+    /// Option constant - true means Some, false means None
+    Option(bool),
 }
-/// A datafrog-based constant propagation pass that tracks and propagates constant values
+/// A datafrog-based constant propagation pass that tracks and propagates
+/// constant values.
+///
+/// This pass assumes that the input is in SSA form.
 pub struct ConstantPropagationPass;
 
 impl Pass for ConstantPropagationPass {
@@ -39,6 +44,10 @@ impl Pass for ConstantPropagationPass {
         let mut var_references = Vec::new();
         let mut match_subjects = Vec::new();
         let mut match_arms_relations = Vec::new();
+        let mut initial_option_constants = Vec::new();
+        let mut option_match_subjects = Vec::new();
+        let mut option_match_some_arms = Vec::new();
+        let mut option_match_none_arms = Vec::new();
 
         for stmt in &entrypoint.body {
             stmt.traverse_with_scope(&mut |s, scope| {
@@ -113,8 +122,23 @@ impl Pass for ConstantPropagationPass {
                             Match::Bool { .. } => {
                                 // Boolean patterns are not currently constant-folded
                             }
-                            Match::Option { .. } => {
-                                // Option patterns are not currently constant-folded
+                            Match::Option {
+                                subject,
+                                some_arm_body,
+                                none_arm_body,
+                                ..
+                            } => {
+                                // Look up the defining statement for the subject variable
+                                if let Some(defining_stmt) = scope.get(subject.0.as_str()) {
+                                    let def_expr_id = match defining_stmt {
+                                        IrStatement::Let { value, .. } => value.id(),
+                                        IrStatement::For { array, .. } => array.id(),
+                                        _ => 0,
+                                    };
+                                    option_match_subjects.push((def_expr_id, expr.id()));
+                                    option_match_some_arms.push((expr.id(), some_arm_body.id()));
+                                    option_match_none_arms.push((expr.id(), none_arm_body.id()));
+                                }
                             }
                         },
                         IrExpr::Var { value: name, .. } => {
@@ -131,6 +155,12 @@ impl Pass for ConstantPropagationPass {
                         IrExpr::MergeClasses { left, right, .. } => {
                             merge_left_relations.push((left.id(), expr.id()));
                             merge_right_relations.push((right.id(), expr.id()));
+                        }
+                        IrExpr::OptionLiteral { value, .. } => {
+                            // Track whether this is Some (true) or None (false)
+                            let is_some = value.is_some();
+                            initial_option_constants.push((expr.id(), is_some));
+                            initial_constants.push((expr.id(), Const::Option(is_some)));
                         }
                         _ => {}
                     }
@@ -200,6 +230,28 @@ impl Pass for ConstantPropagationPass {
 
         // Selected arm bodies for matches with constant subjects: (arm_body_id => match_id)
         let selected_arm = iteration.variable::<(ExprId, ExprId)>("selected_arm");
+
+        // Option constant values: (expr_id => is_some)
+        let option_const = iteration.variable::<(ExprId, bool)>("option_const");
+        option_const.extend(initial_option_constants);
+
+        // Option match subject expressions: (subject_id => match_id)
+        let option_match_subject = Relation::from_iter(option_match_subjects);
+
+        // Option match Some arms: (match_id => some_arm_body_id)
+        let option_some_arm = Relation::from_iter(option_match_some_arms);
+
+        // Option match None arms: (match_id => none_arm_body_id)
+        let option_none_arm = Relation::from_iter(option_match_none_arms);
+
+        // Option matches where subject is Some: (match_id => match_id)
+        let option_match_is_some = iteration.variable::<(ExprId, ExprId)>("option_match_is_some");
+
+        // Option matches where subject is None: (match_id => match_id)
+        let option_match_is_none = iteration.variable::<(ExprId, ExprId)>("option_match_is_none");
+
+        // Selected arm bodies for option matches: (arm_body_id => match_id)
+        let option_selected_arm = iteration.variable::<(ExprId, ExprId)>("option_selected_arm");
 
         while iteration.changed() {
             // const_value(exp, !b) :- not_rel(op, exp), const_value(op, Bool(b)).
@@ -348,13 +400,73 @@ impl Pass for ConstantPropagationPass {
                 &selected_arm,
                 |_arm_body: &ExprId, val: &Const, match_id: &ExprId| (*match_id, val.clone()),
             );
+
+            // Propagate option constants through variable bindings
+            // option_const(var, is_some) :- option_const(def, is_some), def_to_ref(def, var).
+            option_const.from_join(
+                &option_const,
+                &def_to_ref,
+                |_def_expr: &ExprId, is_some: &bool, var_expr: &ExprId| (*var_expr, *is_some),
+            );
+
+            // Find option match expressions whose subject is Some
+            // option_match_is_some(m, m) :- option_match_subject(s, m), option_const(s, true).
+            option_match_is_some.from_join(
+                &option_const,
+                &option_match_subject,
+                |_subject: &ExprId, is_some: &bool, match_id: &ExprId| {
+                    if *is_some {
+                        (*match_id, *match_id)
+                    } else {
+                        (0, 0) // Won't match anything
+                    }
+                },
+            );
+
+            // Find option match expressions whose subject is None
+            // option_match_is_none(m, m) :- option_match_subject(s, m), option_const(s, false).
+            option_match_is_none.from_join(
+                &option_const,
+                &option_match_subject,
+                |_subject: &ExprId, is_some: &bool, match_id: &ExprId| {
+                    if !*is_some {
+                        (*match_id, *match_id)
+                    } else {
+                        (0, 0) // Won't match anything
+                    }
+                },
+            );
+
+            // Select Some arm when subject is Some
+            // option_selected_arm(some_body, m) :- option_match_is_some(m, m), option_some_arm(m, some_body).
+            option_selected_arm.from_join(
+                &option_match_is_some,
+                &option_some_arm,
+                |_match_id: &ExprId, match_id2: &ExprId, some_body: &ExprId| {
+                    (*some_body, *match_id2)
+                },
+            );
+
+            // Select None arm when subject is None
+            // option_selected_arm(none_body, m) :- option_match_is_none(m, m), option_none_arm(m, none_body).
+            option_selected_arm.from_join(
+                &option_match_is_none,
+                &option_none_arm,
+                |_match_id: &ExprId, match_id2: &ExprId, none_body: &ExprId| {
+                    (*none_body, *match_id2)
+                },
+            );
+
+            // Propagate option arm body's constant value to the match expression
+            // const_value(m, val) :- option_selected_arm(arm_body, m), const_value(arm_body, val).
+            const_value.from_join(
+                &const_value,
+                &option_selected_arm,
+                |_arm_body: &ExprId, val: &Const, match_id: &ExprId| (*match_id, val.clone()),
+            );
         }
 
-        let const_map: HashMap<ExprId, Const> = const_value
-            .complete()
-            .iter()
-            .cloned()
-            .collect();
+        let const_map: HashMap<ExprId, Const> = const_value.complete().iter().cloned().collect();
 
         let mut result = entrypoint;
         for stmt in &mut result.body {
@@ -362,27 +474,37 @@ impl Pass for ConstantPropagationPass {
                 if let Some(expr) = s.expr_mut() {
                     expr.traverse_mut(&mut |e| {
                         if let Some(const_val) = const_map.get(&e.id()) {
-                            *e = match const_val {
-                                Const::Bool(b) => IrExpr::BooleanLiteral {
-                                    value: *b,
-                                    id: e.id(),
-                                },
-                                Const::String(s) => IrExpr::StringLiteral {
-                                    value: CheapString::new(s.clone()),
-                                    id: e.id(),
-                                },
+                            match const_val {
+                                Const::Bool(b) => {
+                                    *e = IrExpr::BooleanLiteral {
+                                        value: *b,
+                                        id: e.id(),
+                                    };
+                                }
+                                Const::String(s) => {
+                                    *e = IrExpr::StringLiteral {
+                                        value: CheapString::new(s.clone()),
+                                        id: e.id(),
+                                    };
+                                }
                                 Const::Enum {
                                     enum_name,
                                     variant_name,
-                                } => IrExpr::EnumLiteral {
-                                    enum_name: enum_name.clone(),
-                                    variant_name: variant_name.clone(),
-                                    // Constants are only for unit variants (no fields)
-                                    fields: vec![],
-                                    kind: e.as_type().clone(),
-                                    id: e.id(),
-                                },
-                            };
+                                } => {
+                                    *e = IrExpr::EnumLiteral {
+                                        enum_name: enum_name.clone(),
+                                        variant_name: variant_name.clone(),
+                                        // Constants are only for unit variants (no fields)
+                                        fields: vec![],
+                                        kind: e.as_type().clone(),
+                                        id: e.id(),
+                                    };
+                                }
+                                Const::Option(_) => {
+                                    // Option constants are only used to track Some/None
+                                    // for match folding - don't replace the literal itself
+                                }
+                            }
                         }
                     });
                 }
@@ -1339,8 +1461,14 @@ mod tests {
                         t.match_expr(
                             t.var("size"),
                             vec![
-                                ("Small", t.merge_classes(vec![t.str("p-2"), t.str("text-sm")])),
-                                ("Large", t.merge_classes(vec![t.str("p-4"), t.str("text-lg")])),
+                                (
+                                    "Small",
+                                    t.merge_classes(vec![t.str("p-2"), t.str("text-sm")]),
+                                ),
+                                (
+                                    "Large",
+                                    t.merge_classes(vec![t.str("p-4"), t.str("text-lg")]),
+                                ),
                             ],
                         ),
                     ]));
@@ -1361,6 +1489,113 @@ mod tests {
                 Test() {
                   let size = Size::Large in {
                     write_escaped("flex p-4 text-lg")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_option_match_with_some() {
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("opt", t.some(t.str("hello")), |t| {
+                    t.write_expr_escaped(t.option_match_expr(
+                        t.var("opt"),
+                        t.str("got some"),
+                        t.str("got none"),
+                    ));
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let opt = Some("hello") in {
+                    write_escaped(match opt {
+                      Some(_) => "got some",
+                      None => "got none",
+                    })
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let opt = Some("hello") in {
+                    write_escaped("got some")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_option_match_with_none() {
+        use crate::dop::Type;
+
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("opt", t.none(Type::String), |t| {
+                    t.write_expr_escaped(t.option_match_expr(
+                        t.var("opt"),
+                        t.str("got some"),
+                        t.str("got none"),
+                    ));
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let opt = None in {
+                    write_escaped(match opt {
+                      Some(_) => "got some",
+                      None => "got none",
+                    })
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let opt = None in {
+                    write_escaped("got none")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_propagate_option_constant_through_variables() {
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("x", t.some(t.str("hello")), |t| {
+                    t.let_stmt("y", t.var("x"), |t| {
+                        t.write_expr_escaped(t.option_match_expr(
+                            t.var("y"),
+                            t.str("got some"),
+                            t.str("got none"),
+                        ));
+                    });
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let x = Some("hello") in {
+                    let y = x in {
+                      write_escaped(match y {
+                        Some(_) => "got some",
+                        None => "got none",
+                      })
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let x = Some("hello") in {
+                    let y = x in {
+                      write_escaped("got some")
+                    }
                   }
                 }
             "#]],
