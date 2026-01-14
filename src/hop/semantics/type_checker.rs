@@ -523,7 +523,7 @@ fn typecheck_node(
             component_name,
             component_name_opening_range: tag_name,
             declaring_module: _definition_module,
-            component_name_closing_range: _closing_tag_name,
+            component_name_closing_range,
             args,
             children,
             range: _,
@@ -554,11 +554,24 @@ fn typecheck_node(
                 range: tag_name.clone(),
                 typ: Type::Component {
                     module: component_module.clone(),
-                    name: component_type_name,
+                    name: component_type_name.clone(),
                     parameters: component_params.clone(),
                 },
                 name: component_name.as_str().to_string(),
             });
+
+            // Add type annotation for the closing tag if present
+            if let Some(closing_range) = component_name_closing_range {
+                annotations.push(TypeAnnotation {
+                    range: closing_range.clone(),
+                    typ: Type::Component {
+                        module: component_module.clone(),
+                        name: component_type_name,
+                        parameters: component_params.clone(),
+                    },
+                    name: component_name.as_str().to_string(),
+                });
+            }
 
             // Check if component accepts children (has a `children` parameter)
             let accepts_children = component_params
