@@ -52,6 +52,13 @@ pub enum Token {
     Text {
         range: DocumentRange,
     },
+    RawTextTag {
+        tag_name: DocumentRange,
+        attributes: Vec<TokenizedAttribute>,
+        expression: Option<DocumentRange>,
+        content: Option<DocumentRange>,
+        range: DocumentRange,
+    },
 }
 
 impl Ranged for Token {
@@ -61,7 +68,8 @@ impl Ranged for Token {
             | Token::Comment { range }
             | Token::OpeningTag { range, .. }
             | Token::ClosingTag { range, .. }
-            | Token::Text { range } => range,
+            | Token::Text { range }
+            | Token::RawTextTag { range, .. } => range,
         }
     }
 }
@@ -126,6 +134,48 @@ impl Display for Token {
             Token::Comment { .. } => {
                 write!(f, "Comment")
             }
+            Token::RawTextTag {
+                tag_name,
+                attributes,
+                expression,
+                content,
+                ..
+            } => {
+                writeln!(f, "RawTextTag(")?;
+                writeln!(f, "  tag_name: {:?},", tag_name.to_string())?;
+                write!(f, "  attributes: {{")?;
+                if attributes.is_empty() {
+                    writeln!(f, "}},")?;
+                } else {
+                    writeln!(f)?;
+                    for attr in attributes {
+                        let value_str = match &attr.value {
+                            Some(TokenizedAttributeValue::String { content }) => {
+                                let val =
+                                    content.as_ref().map(|r| r.to_string()).unwrap_or_default();
+                                format!("String({:?})", val)
+                            }
+                            Some(TokenizedAttributeValue::Expression(val)) => {
+                                format!("Expression({:?})", val.to_string())
+                            }
+                            None => "None".to_string(),
+                        };
+                        writeln!(f, "    {}: {},", attr.name, value_str)?;
+                    }
+                    writeln!(f, "  }},")?;
+                }
+                let expr_str = match expression {
+                    Some(expr) => format!("Some({:?})", expr.to_string()),
+                    None => "None".to_string(),
+                };
+                writeln!(f, "  expression: {},", expr_str)?;
+                let content_str = match content {
+                    Some(c) => format!("Some({:?})", c.to_string()),
+                    None => "None".to_string(),
+                };
+                writeln!(f, "  content: {},", content_str)?;
+                write!(f, ")")
+            }
         }
     }
 }
@@ -136,9 +186,6 @@ pub struct Tokenizer {
     /// The error vector contains the errors that occured during tokenization
     /// of the current token. It is returned together with the token.
     errors: Vec<ParseError>,
-    /// The current raw text closing tag we're looking for, if any.
-    /// E.g. </script>
-    raw_text_closing_tag: Option<DocumentRange>,
 }
 
 impl Tokenizer {
@@ -146,7 +193,6 @@ impl Tokenizer {
         Self {
             iter: input.peekable(),
             errors: Vec::new(),
-            raw_text_closing_tag: None,
         }
     }
 
@@ -495,8 +541,9 @@ impl Tokenizer {
             return None;
         };
 
-        if is_tag_name_with_raw_content(tag_name.as_str()) {
-            self.raw_text_closing_tag = Some(tag_name.clone());
+        // For raw text tags (script, style), parse the entire element including content and closing tag
+        if is_tag_name_with_raw_content(tag_name.as_str()) && !self_closing {
+            return self.parse_raw_text_element(left_angle, tag_name, attributes, expression);
         }
 
         Some(Token::OpeningTag {
@@ -589,16 +636,79 @@ impl Tokenizer {
         true
     }
 
-    fn parse_rawtext(&mut self, tag_name: DocumentRange) -> Option<Token> {
+    fn parse_rawtext_content(&mut self, tag_name: &DocumentRange) -> Option<DocumentRange> {
         let mut raw_text: Option<DocumentRange> = None;
         loop {
-            if self.iter.peek().is_none() || self.iter_peek_rawtext_closing_tag(&tag_name) {
-                return raw_text.map(|s| Token::Text { range: s });
+            if self.iter.peek().is_none() || self.iter_peek_rawtext_closing_tag(tag_name) {
+                return raw_text;
             }
             if let Some(ch) = self.iter.next() {
                 raw_text = raw_text.into_iter().chain(Some(ch)).collect();
             }
         }
+    }
+
+    /// Consume the closing tag for a raw text element.
+    ///
+    /// E.g. </script>
+    ///      ^^^^^^^^^
+    /// Expects that iter_peek_rawtext_closing_tag returned true.
+    /// Returns the range of the '>' character.
+    fn consume_rawtext_closing_tag(&mut self, tag_name: &DocumentRange) -> DocumentRange {
+        // consume: '<'
+        self.iter.next();
+        // consume: '/'
+        self.iter.next();
+        // consume: whitespace
+        while self.iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
+            self.iter.next();
+        }
+        // consume: tag name
+        for _ in tag_name.as_str().chars() {
+            self.iter.next();
+        }
+        // consume: whitespace
+        while self.iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
+            self.iter.next();
+        }
+        // consume: '>'
+        self.iter.next().expect("Expected '>' in consume_rawtext_closing_tag")
+    }
+
+    /// Parse a raw text element (script or style).
+    ///
+    /// E.g. <script>alert(1)</script>
+    ///      ^^^^^^^^^^^^^^^^^^^^^^^^^
+    /// This method is called after the opening tag has been parsed up to '>'.
+    /// It parses the content and closing tag, returning a RawTextTag token.
+    fn parse_raw_text_element(
+        &mut self,
+        left_angle: DocumentRange,
+        tag_name: DocumentRange,
+        attributes: Vec<TokenizedAttribute>,
+        expression: Option<DocumentRange>,
+    ) -> Option<Token> {
+        // Parse content until closing tag
+        let content = self.parse_rawtext_content(&tag_name);
+
+        // Check for EOF
+        if self.iter.peek().is_none() {
+            self.errors.push(ParseError::UnterminatedOpeningTag {
+                range: tag_name.clone(),
+            });
+            return None;
+        }
+
+        // Consume the closing tag
+        let closing_end = self.consume_rawtext_closing_tag(&tag_name);
+
+        Some(Token::RawTextTag {
+            tag_name,
+            attributes,
+            expression,
+            content,
+            range: left_angle.to(closing_end),
+        })
     }
 
     /// Parse a text token.
@@ -640,17 +750,6 @@ impl Tokenizer {
     }
 
     fn step(&mut self) -> Option<Token> {
-        // if we have a raw text closing tag stored
-        // we need to parse all content as raw text
-        // until we find a matching closing tag
-        if let Some(tag_name) = self.raw_text_closing_tag.take() {
-            // note that we should only return if parse_raw_text
-            // returns an actual token
-            if let Some(token) = self.parse_rawtext(tag_name) {
-                return Some(token);
-            }
-        }
-
         match self.iter.peek().map(|s| s.ch()) {
             Some('<') => self.parse_tag(),
             Some(_) => self.parse_text(),
@@ -852,22 +951,16 @@ mod tests {
         check(
             r#"<script src="https://example.com/script.js"></script>"#,
             expect![[r#"
-                OpeningTag(
+                RawTextTag(
                   tag_name: "script",
                   attributes: {
                     src: String("https://example.com/script.js"),
                   },
                   expression: None,
-                  self_closing: false,
+                  content: None,
                 )
                 <script src="https://example.com/script.js"></script>
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                ClosingTag(
-                  tag_name: "script",
-                )
-                <script src="https://example.com/script.js"></script>
-                                                            ^^^^^^^^^
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -1218,26 +1311,18 @@ mod tests {
                 </style>
             "},
             expect![[r#"
-                OpeningTag(
+                RawTextTag(
                   tag_name: "style",
                   attributes: {},
                   expression: None,
-                  self_closing: false,
+                  content: Some("\n  body { color: red; }\n  .class { font-size: 12px; }\n"),
                 )
                 <style>
                 ^^^^^^^
-
-                Text [54 byte, "\n  body { color: red; }\n  .class { font-size: 12px; }\n"]
-                <style>
                   body { color: red; }
                 ^^^^^^^^^^^^^^^^^^^^^^
                   .class { font-size: 12px; }
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                </style>
-
-                ClosingTag(
-                  tag_name: "style",
-                )
                 </style>
                 ^^^^^^^^
 
@@ -1292,26 +1377,18 @@ mod tests {
                 </script>
             "#},
             expect![[r#"
-                OpeningTag(
+                RawTextTag(
                   tag_name: "script",
                   attributes: {},
                   expression: None,
-                  self_closing: false,
+                  content: Some("\n  const html = \"<title>Nested</title>\";\n  document.write(html);\n"),
                 )
                 <script>
                 ^^^^^^^^
-
-                Text [65 byte, "\n  const html = \"<title>Nested</title>\";\n  document.write(html);\n"]
-                <script>
                   const html = "<title>Nested</title>";
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                   document.write(html);
                 ^^^^^^^^^^^^^^^^^^^^^^^
-                </script>
-
-                ClosingTag(
-                  tag_name: "script",
-                )
                 </script>
                 ^^^^^^^^^
 
@@ -1338,24 +1415,16 @@ mod tests {
                 </ script  >
             "#},
             expect![[r#"
-                OpeningTag(
+                RawTextTag(
                   tag_name: "script",
                   attributes: {},
                   expression: None,
-                  self_closing: false,
+                  content: Some("\n  const html = \"\";\n"),
                 )
                 <script>
                 ^^^^^^^^
-
-                Text [20 byte, "\n  const html = \"\";\n"]
-                <script>
                   const html = "";
                 ^^^^^^^^^^^^^^^^^^
-                </ script>
-
-                ClosingTag(
-                  tag_name: "script",
-                )
                 </ script>
                 ^^^^^^^^^^
 
@@ -1364,24 +1433,16 @@ mod tests {
 
                 <script>
 
-                OpeningTag(
+                RawTextTag(
                   tag_name: "script",
                   attributes: {},
                   expression: None,
-                  self_closing: false,
+                  content: Some("\n  const html = \"\";\n"),
                 )
                 <script>
                 ^^^^^^^^
-
-                Text [20 byte, "\n  const html = \"\";\n"]
-                <script>
                   const html = "";
                 ^^^^^^^^^^^^^^^^^^
-                </script  >
-
-                ClosingTag(
-                  tag_name: "script",
-                )
                 </script  >
                 ^^^^^^^^^^^
 
@@ -1390,24 +1451,16 @@ mod tests {
 
                 <script>
 
-                OpeningTag(
+                RawTextTag(
                   tag_name: "script",
                   attributes: {},
                   expression: None,
-                  self_closing: false,
+                  content: Some("\n  const html = \"\";\n"),
                 )
                 <script>
                 ^^^^^^^^
-
-                Text [20 byte, "\n  const html = \"\";\n"]
-                <script>
                   const html = "";
                 ^^^^^^^^^^^^^^^^^^
-                </ script  >
-
-                ClosingTag(
-                  tag_name: "script",
-                )
                 </ script  >
                 ^^^^^^^^^^^^
 
@@ -2047,24 +2100,14 @@ mod tests {
         check(
             r#"<script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>"#,
             expect![[r#"
-                OpeningTag(
+                RawTextTag(
                   tag_name: "script",
                   attributes: {},
                   expression: None,
-                  self_closing: false,
+                  content: Some("</scri</<<</div></div><</scrip</scrip></cript></script</script"),
                 )
                 <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
-                ^^^^^^^^
-
-                Text [62 byte, "</scri</<<</div></div><</scrip</scrip></cript></script</script"]
-                <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
-                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                ClosingTag(
-                  tag_name: "script",
-                )
-                <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
-                                                                                      ^^^^^^^^^
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 OpeningTag(
                   tag_name: "div",

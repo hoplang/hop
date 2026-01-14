@@ -491,6 +491,38 @@ fn construct_nodes(
 
             nodes
         }
+        Token::RawTextTag {
+            tag_name,
+            attributes,
+            content,
+            range,
+            ..
+        } => {
+            let validator = AttributeValidator::new(attributes, tag_name.clone());
+            let attributes = validator
+                .parse_unrecognized(comments)
+                .into_iter()
+                .filter_map(|attr| errors.ok_or_add(attr))
+                .collect();
+
+            // Convert content to a Text child if present
+            let children = content
+                .map(|c| {
+                    vec![ParsedNode::Text {
+                        value: c.to_cheap_string(),
+                        range: c,
+                    }]
+                })
+                .unwrap_or_default();
+
+            vec![ParsedNode::Html {
+                tag_name,
+                closing_tag_name: None,
+                attributes,
+                range,
+                children,
+            }]
+        }
         Token::OpeningTag {
             tag_name,
             expression,
