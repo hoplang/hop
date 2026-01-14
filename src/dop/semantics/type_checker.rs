@@ -9,7 +9,7 @@ use crate::dop::syntax::parsed::{
     Constructor, ParsedBinaryOp, ParsedExpr, ParsedMatchArm, ParsedMatchPattern, ParsedType,
 };
 use crate::environment::Environment;
-use crate::hop::semantics::type_checker::TypeAnnotation;
+use crate::hop::semantics::type_annotation::TypeAnnotation;
 
 /// Resolve a parsed Type to a semantic Type.
 pub fn resolve_type(
