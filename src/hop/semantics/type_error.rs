@@ -1,5 +1,5 @@
 use crate::document::{DocumentRange, Ranged};
-use crate::dop::{self, Type};
+use crate::dop::{self, Type, VarName};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
@@ -62,7 +62,7 @@ pub enum TypeError {
     ExpectedBooleanCondition { found: String, range: DocumentRange },
 
     #[error("Missing required parameter '{param}'")]
-    MissingRequiredParameter { param: String, range: DocumentRange },
+    MissingRequiredParameter { param: VarName, range: DocumentRange },
 
     #[error("Component requires arguments: {args}")]
     MissingArguments { args: String, range: DocumentRange },
@@ -136,7 +136,7 @@ impl TypeError {
     }
 
     pub fn missing_arguments(
-        params: &[(String, crate::dop::Type, bool)],
+        params: &[(VarName, crate::dop::Type, bool)],
         range: DocumentRange,
     ) -> Self {
         // Only list required (non-default) parameters

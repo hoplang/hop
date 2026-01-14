@@ -44,7 +44,7 @@ impl Display for TypeAnnotation {
 #[derive(Debug, Clone)]
 struct ComponentTypeInformation {
     /// Parameters: (name, type, has_default)
-    parameters: Vec<(String, Type, bool)>,
+    parameters: Vec<(VarName, Type, bool)>,
 }
 
 #[derive(Debug, Clone)]
@@ -66,7 +66,7 @@ struct ModuleTypeInformation {
 }
 
 impl ModuleTypeInformation {
-    fn get_parameter_types(&self, component_name: &str) -> Option<&[(String, Type, bool)]> {
+    fn get_parameter_types(&self, component_name: &str) -> Option<&[(VarName, Type, bool)]> {
         let params = &self.components.get(component_name)?.parameters;
         if params.is_empty() {
             None
@@ -79,7 +79,7 @@ impl ModuleTypeInformation {
     fn component_accepts_children(&self, component_name: &str) -> bool {
         self.components
             .get(component_name)
-            .is_some_and(|c| c.parameters.iter().any(|(name, _, _)| name == "children"))
+            .is_some_and(|c| c.parameters.iter().any(|(name, _, _)| name.as_str() == "children"))
     }
 
     /// Get the children parameter's type and has_default flag if present
@@ -88,7 +88,7 @@ impl ModuleTypeInformation {
             .get(component_name)?
             .parameters
             .iter()
-            .find(|(name, _, _)| name == "children")
+            .find(|(name, _, _)| name.as_str() == "children")
             .map(|(_, typ, has_default)| (typ, *has_default))
     }
 
@@ -395,7 +395,7 @@ fn typecheck_module(
         } = component_def;
 
         let mut pushed_params: Vec<&ParsedParameter> = Vec::new();
-        let mut resolved_param_types: Vec<(String, Type, bool)> = Vec::new();
+        let mut resolved_param_types: Vec<(VarName, Type, bool)> = Vec::new();
         let mut typed_params: Vec<(VarName, Type, Option<TypedExpr>)> = Vec::new();
         if let Some((params, _)) = params {
             for param in params {
@@ -450,7 +450,7 @@ fn typecheck_module(
                         let _ = env.push(param.var_name.to_string(), param_type.clone());
                         pushed_params.push(param);
                         resolved_param_types.push((
-                            param.var_name.to_string(),
+                            param.var_name.clone(),
                             param_type.clone(),
                             has_default,
                         ));
@@ -758,7 +758,7 @@ fn typecheck_node(
                 .map(|params| {
                     params
                         .iter()
-                        .filter(|(name, _, _)| name != "children")
+                        .filter(|(name, _, _)| name.as_str() != "children")
                         .cloned()
                         .collect()
                 });
