@@ -1406,6 +1406,29 @@ mod tests {
         );
     }
 
+    #[test]
+    fn should_show_hover_info_for_component_reference() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                <Greeting {name: String}>
+                  <h1>Hello {name}!</h1>
+                </Greeting>
+
+                <Main>
+                  <Greeting name="World" />
+                   ^
+                </Main>
+            "#},
+            expect![[r#"
+                `Greeting`: `main::Greeting`
+                  --> main.hop (line 6, col 4)
+                6 |   <Greeting name="World" />
+                  |    ^^^^^^^^
+            "#]],
+        );
+    }
+
     ///////////////////////////////////////////////////////////////////////////
     // ERROR DIAGNOSTICS                                                     //
     ///////////////////////////////////////////////////////////////////////////

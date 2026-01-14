@@ -611,13 +611,13 @@ fn typecheck_node(
                 .collect();
 
             // Look up the component type from type_env
-            let (component_module, component_params) =
+            let (component_module, component_type_name, component_params) =
                 match type_env.lookup(component_name.as_str()) {
                     Some(Type::Component {
                         module,
+                        name,
                         parameters,
-                        ..
-                    }) => (module.clone(), parameters.clone()),
+                    }) => (module.clone(), name.clone(), parameters.clone()),
                     _ => {
                         errors.push(TypeError::UndefinedComponent {
                             tag_name: tag_name.clone(),
@@ -625,6 +625,17 @@ fn typecheck_node(
                         return None;
                     }
                 };
+
+            // Add type annotation for the component reference
+            annotations.push(TypeAnnotation {
+                range: tag_name.clone(),
+                typ: Type::Component {
+                    module: component_module.clone(),
+                    name: component_type_name,
+                    parameters: component_params.clone(),
+                },
+                name: component_name.as_str().to_string(),
+            });
 
             // Check if component accepts children (has a `children` parameter)
             let accepts_children = component_params
