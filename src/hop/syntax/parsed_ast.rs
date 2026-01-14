@@ -170,14 +170,6 @@ impl ParsedAst {
         })
     }
 
-    /// Returns an iterator over all enum declarations in the AST.
-    pub fn get_enum_declarations(&self) -> impl Iterator<Item = &ParsedEnumDeclaration> {
-        self.declarations.iter().filter_map(|d| match d {
-            ParsedDeclaration::Enum(e) => Some(e),
-            _ => None,
-        })
-    }
-
     /// Returns an iterator over all nodes in the AST, iterating depth-first.
     pub fn iter_all_nodes(&self) -> impl Iterator<Item = &ParsedNode> {
         self.get_component_declarations()
@@ -226,9 +218,6 @@ pub struct ParsedImportDeclaration {
 impl ParsedImportDeclaration {
     pub fn imported_module(&self) -> &ModuleName {
         &self.module_name
-    }
-    pub fn imported_type_name(&self) -> &TypeName {
-        &self.type_name
     }
     pub fn type_name_range(&self) -> &DocumentRange {
         &self.type_name_range

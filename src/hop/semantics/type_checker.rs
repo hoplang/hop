@@ -10,8 +10,11 @@ use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{self, Type, TypedExpr, VarName, resolve_type};
 use crate::environment::Environment;
 use crate::error_collector::ErrorCollector;
-use crate::hop::syntax::parsed_ast::ParsedParameter;
-use crate::hop::syntax::parsed_ast::{ParsedAttribute, ParsedComponentDeclaration};
+use crate::hop::syntax::parsed_ast::{
+    ParsedAttribute, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedImportDeclaration,
+    ParsedRecordDeclaration,
+};
+use crate::hop::syntax::parsed_ast::{ParsedDeclaration, ParsedParameter};
 use std::collections::HashMap;
 
 use crate::dop::patterns::compiler::Decision;
@@ -71,13 +74,13 @@ impl TypeChecker {
 }
 
 fn typecheck_module(
-    module: &ParsedAst,
+    parsed_ast: &ParsedAst,
     state: &mut HashMap<ModuleName, ModuleTypeInformation>,
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> TypedAst {
     state.insert(
-        module.name.clone(),
+        parsed_ast.name.clone(),
         ModuleTypeInformation {
             components: HashMap::new(),
             records: HashMap::new(),
@@ -85,267 +88,284 @@ fn typecheck_module(
         },
     );
 
-    let mut type_env: Environment<Type> = Environment::new();
+    let mut type_env = Environment::new();
+    let mut var_env = Environment::new();
 
-    for import in module.get_import_declarations() {
-        let imported_module = import.imported_module();
-        let imported_name = import.imported_type_name();
-        let Some(module_state) = state.get(imported_module) else {
-            errors.push(TypeError::ModuleNotFound {
-                module: imported_module.to_string(),
-                range: import.path.clone(),
-            });
-            continue;
-        };
-
-        let is_component = module_state.component_is_declared(imported_name.as_str());
-        let is_record = module_state.record_is_declared(imported_name.as_str());
-        let is_enum = module_state.enum_is_declared(imported_name.as_str());
-
-        if !is_component && !is_record && !is_enum {
-            errors.push(TypeError::UndeclaredComponent {
-                module: imported_module.to_string(),
-                component: imported_name.to_string(),
-                range: import.type_name_range().clone(),
-            });
-        }
-
-        if let Some(record) = module_state.get_typed_record(imported_name.as_str()) {
-            let _ = type_env.push(
-                imported_name.as_str().to_string(),
-                Type::Record {
-                    module: imported_module.clone(),
-                    name: TypeName::new(imported_name.as_str()).unwrap(),
-                    fields: record.fields.clone(),
-                },
-            );
-        }
-
-        if let Some(enum_info) = module_state.get_typed_enum(imported_name.as_str()) {
-            let _ = type_env.push(
-                imported_name.as_str().to_string(),
-                Type::Enum {
-                    module: imported_module.clone(),
-                    name: TypeName::new(imported_name.as_str()).unwrap(),
-                    variants: enum_info.variants.clone(),
-                },
-            );
-        }
-    }
-
-    let mut typed_enums: Vec<TypedEnumDeclaration> = Vec::new();
-    for enum_decl in module.get_enum_declarations() {
-        let enum_name = enum_decl.name();
-
-        // Resolve variant fields
-        let mut typed_variants: Vec<(TypeName, Vec<(FieldName, Type)>)> = Vec::new();
-        let mut has_errors = false;
-
-        for variant in &enum_decl.variants {
-            let mut typed_fields: Vec<(FieldName, Type)> = Vec::new();
-            for (field_name, _, field_type) in &variant.fields {
-                match resolve_type(field_type, &mut type_env) {
-                    Ok(resolved_type) => {
-                        typed_fields.push((field_name.clone(), resolved_type));
-                    }
-                    Err(e) => {
-                        errors.push(e.into());
-                        has_errors = true;
-                    }
-                }
-            }
-            typed_variants.push((variant.name.clone(), typed_fields));
-        }
-
-        if has_errors {
-            continue;
-        }
-
-        let enum_type = Type::Enum {
-            module: module.name.clone(),
-            name: TypeName::new(enum_name).unwrap(),
-            variants: typed_variants.clone(),
-        };
-        let _ = type_env.push(enum_name.to_string(), enum_type);
-
-        state
-            .entry(module.name.clone())
-            .or_default()
-            .set_typed_enum(
-                enum_name,
-                EnumTypeInformation {
-                    variants: typed_variants.clone(),
-                },
-            );
-
-        typed_enums.push(TypedEnumDeclaration {
-            name: enum_decl.name.clone(),
-            variants: typed_variants,
-        });
-    }
-
-    let mut typed_records: Vec<TypedRecordDeclaration> = Vec::new();
-    for record in module.get_record_declarations() {
-        let record_name = record.name();
-        let mut typed_fields = Vec::new();
-        let mut has_errors = false;
-
-        for field in &record.fields {
-            match resolve_type(&field.field_type, &mut type_env) {
-                Ok(resolved_type) => {
-                    typed_fields.push((field.name.clone(), resolved_type));
-                }
-                Err(e) => {
-                    errors.push(e.into());
-                    has_errors = true;
-                }
-            }
-        }
-
-        if !has_errors {
-            let typed_record = TypedRecordDeclaration {
-                name: record.name.clone(),
-                fields: typed_fields.clone(),
-            };
-            state
-                .entry(module.name.clone())
-                .or_default()
-                .set_typed_record(
-                    record.name(),
-                    RecordTypeInformation {
-                        fields: typed_fields.clone(),
-                    },
-                );
-            typed_records.push(typed_record);
-            let _ = type_env.push(
-                record_name.to_string(),
-                Type::Record {
-                    module: module.name.clone(),
-                    name: TypeName::new(record_name).unwrap(),
-                    fields: typed_fields,
-                },
-            );
-        }
-    }
-
-    let mut env = Environment::new();
-
+    let mut typed_records = Vec::new();
+    let mut typed_enums = Vec::new();
     let mut typed_component_declarations = Vec::new();
 
-    for component_def in module.get_component_declarations() {
-        let ParsedComponentDeclaration {
-            component_name,
-            tag_name: name,
-            params,
-            children,
-            range: _,
-            closing_tag_name: _,
-        } = component_def;
+    for decl in parsed_ast.get_declarations() {
+        match decl {
+            ParsedDeclaration::Import(ParsedImportDeclaration {
+                module_name: imported_module,
+                type_name_range: imported_name_range,
+                type_name: imported_name,
+                path: import_path,
+                ..
+            }) => {
+                let Some(imported_module_type_info) = state.get(imported_module) else {
+                    errors.push(TypeError::ModuleNotFound {
+                        module: imported_module.to_string(),
+                        range: import_path.clone(),
+                    });
+                    continue;
+                };
 
-        let mut pushed_params: Vec<&ParsedParameter> = Vec::new();
-        let mut resolved_param_types: Vec<(VarName, Type, bool)> = Vec::new();
-        let mut typed_params: Vec<(VarName, Type, Option<TypedExpr>)> = Vec::new();
-        if let Some((params, _)) = params {
-            for param in params {
-                match resolve_type(&param.var_type, &mut type_env) {
-                    Ok(param_type) => {
-                        // Validate that Option[TrustedHTML] children must have a default
-                        if param.var_name.as_str() == "children" {
-                            if let Type::Option(inner) = &param_type {
-                                if **inner == Type::TrustedHTML && param.default_value.is_none() {
-                                    errors.push(TypeError::OptionalChildrenRequiresDefault {
-                                        range: param.var_name_range.clone(),
-                                    });
-                                }
-                            }
-                        }
+                let is_component =
+                    imported_module_type_info.component_is_declared(imported_name.as_str());
+                let is_record =
+                    imported_module_type_info.record_is_declared(imported_name.as_str());
+                let is_enum = imported_module_type_info.enum_is_declared(imported_name.as_str());
 
-                        // Type-check default value if present
-                        let has_default = param.default_value.is_some();
-                        let mut typed_default_value: Option<TypedExpr> = None;
-                        if let Some(default_expr) = &param.default_value {
-                            match dop::typecheck_expr(
-                                default_expr,
-                                &mut env,
-                                &mut type_env,
-                                annotations,
-                                Some(&param_type),
-                            ) {
-                                Ok(typed_default) => {
-                                    let default_type = typed_default.as_type();
-                                    if *default_type != param_type {
-                                        errors.push(TypeError::DefaultValueTypeMismatch {
-                                            param_name: param.var_name.to_string(),
-                                            expected: param_type.clone(),
-                                            found: default_type.clone(),
-                                            range: default_expr.range().clone(),
-                                        });
-                                    } else {
-                                        typed_default_value = Some(typed_default);
-                                    }
-                                }
-                                Err(e) => {
-                                    errors.push(e.into());
-                                }
-                            }
-                        }
+                if !is_component && !is_record && !is_enum {
+                    errors.push(TypeError::UndeclaredType {
+                        module: imported_module.to_string(),
+                        typ: imported_name.to_string(),
+                        range: imported_name_range.clone(),
+                    });
+                }
 
-                        annotations.push(TypeAnnotation {
-                            range: param.var_name_range.clone(),
-                            typ: param_type.clone(),
-                            name: param.var_name.to_string(),
-                        });
-                        let _ = env.push(param.var_name.to_string(), param_type.clone());
-                        pushed_params.push(param);
-                        resolved_param_types.push((
-                            param.var_name.clone(),
-                            param_type.clone(),
-                            has_default,
-                        ));
-                        typed_params.push((
-                            param.var_name.clone(),
-                            param_type,
-                            typed_default_value,
-                        ));
-                    }
-                    Err(e) => {
-                        errors.push(e.into());
-                    }
+                if let Some(record) =
+                    imported_module_type_info.get_typed_record(imported_name.as_str())
+                {
+                    let _ = type_env.push(
+                        imported_name.as_str().to_string(),
+                        Type::Record {
+                            module: imported_module.clone(),
+                            name: TypeName::new(imported_name.as_str()).unwrap(),
+                            fields: record.fields.clone(),
+                        },
+                    );
+                }
+
+                if let Some(enum_info) =
+                    imported_module_type_info.get_typed_enum(imported_name.as_str())
+                {
+                    let _ = type_env.push(
+                        imported_name.as_str().to_string(),
+                        Type::Enum {
+                            module: imported_module.clone(),
+                            name: TypeName::new(imported_name.as_str()).unwrap(),
+                            variants: enum_info.variants.clone(),
+                        },
+                    );
                 }
             }
-        }
+            ParsedDeclaration::Component(ParsedComponentDeclaration {
+                params,
+                children,
+                component_name,
+                ..
+            }) => {
+                let mut pushed_params: Vec<&ParsedParameter> = Vec::new();
+                let mut resolved_param_types: Vec<(VarName, Type, bool)> = Vec::new();
+                let mut typed_params: Vec<(VarName, Type, Option<TypedExpr>)> = Vec::new();
+                if let Some((params, _)) = params {
+                    for param in params {
+                        if let Some(param_type) = errors.ok_or_add(
+                            resolve_type(&param.var_type, &mut type_env).map_err(|e| e.into()),
+                        ) {
+                            // Validate that Option[TrustedHTML] children must have a default
+                            if param.var_name.as_str() == "children" {
+                                if let Type::Option(inner) = &param_type {
+                                    if **inner == Type::TrustedHTML && param.default_value.is_none()
+                                    {
+                                        errors.push(TypeError::OptionalChildrenRequiresDefault {
+                                            range: param.var_name_range.clone(),
+                                        });
+                                    }
+                                }
+                            }
 
-        let typed_children: Vec<_> = children
-            .iter()
-            .filter_map(|child| {
-                typecheck_node(child, state, &mut env, annotations, errors, &mut type_env)
-            })
-            .collect();
+                            // Type-check default value if present
+                            let has_default = param.default_value.is_some();
+                            let mut typed_default_value: Option<TypedExpr> = None;
+                            if let Some(default_expr) = &param.default_value {
+                                match dop::typecheck_expr(
+                                    default_expr,
+                                    &mut var_env,
+                                    &mut type_env,
+                                    annotations,
+                                    Some(&param_type),
+                                ) {
+                                    Ok(typed_default) => {
+                                        let default_type = typed_default.as_type();
+                                        if *default_type != param_type {
+                                            errors.push(TypeError::DefaultValueTypeMismatch {
+                                                param_name: param.var_name.to_string(),
+                                                expected: param_type.clone(),
+                                                found: default_type.clone(),
+                                                range: default_expr.range().clone(),
+                                            });
+                                        } else {
+                                            typed_default_value = Some(typed_default);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        errors.push(e.into());
+                                    }
+                                }
+                            }
 
-        for param in pushed_params.iter().rev() {
-            let (_, _, accessed) = env.pop();
-            if !accessed {
-                errors.push(TypeError::UnusedVariable {
-                    var_name: param.var_name_range.clone(),
-                })
+                            annotations.push(TypeAnnotation {
+                                range: param.var_name_range.clone(),
+                                typ: param_type.clone(),
+                                name: param.var_name.to_string(),
+                            });
+                            let _ = var_env.push(param.var_name.to_string(), param_type.clone());
+                            pushed_params.push(param);
+                            resolved_param_types.push((
+                                param.var_name.clone(),
+                                param_type.clone(),
+                                has_default,
+                            ));
+                            typed_params.push((
+                                param.var_name.clone(),
+                                param_type,
+                                typed_default_value,
+                            ));
+                        }
+                    }
+                }
+
+                let typed_children: Vec<_> = children
+                    .iter()
+                    .filter_map(|child| {
+                        typecheck_node(
+                            child,
+                            state,
+                            &mut var_env,
+                            annotations,
+                            errors,
+                            &mut type_env,
+                        )
+                    })
+                    .collect();
+
+                for param in pushed_params.iter().rev() {
+                    let (_, _, accessed) = var_env.pop();
+                    if !accessed {
+                        errors.push(TypeError::UnusedVariable {
+                            var_name: param.var_name_range.clone(),
+                        })
+                    }
+                }
+
+                state
+                    .entry(parsed_ast.name.clone())
+                    .or_default()
+                    .set_component_type_info(
+                        component_name.as_str(),
+                        ComponentTypeInformation {
+                            parameters: resolved_param_types,
+                        },
+                    );
+
+                typed_component_declarations.push(TypedComponentDeclaration {
+                    component_name: component_name.clone(),
+                    params: typed_params,
+                    children: typed_children,
+                });
+            }
+            ParsedDeclaration::Record(ParsedRecordDeclaration {
+                name: record_name,
+                fields,
+                ..
+            }) => {
+                let mut typed_fields = Vec::new();
+                let mut has_errors = false;
+
+                for field in fields {
+                    match resolve_type(&field.field_type, &mut type_env) {
+                        Ok(resolved_type) => {
+                            typed_fields.push((field.name.clone(), resolved_type));
+                        }
+                        Err(e) => {
+                            errors.push(e.into());
+                            has_errors = true;
+                        }
+                    }
+                }
+
+                if !has_errors {
+                    let typed_record = TypedRecordDeclaration {
+                        name: record_name.clone(),
+                        fields: typed_fields.clone(),
+                    };
+                    state
+                        .entry(parsed_ast.name.clone())
+                        .or_default()
+                        .set_typed_record(
+                            record_name.as_str(),
+                            RecordTypeInformation {
+                                fields: typed_fields.clone(),
+                            },
+                        );
+                    typed_records.push(typed_record);
+                    let _ = type_env.push(
+                        record_name.to_string(),
+                        Type::Record {
+                            module: parsed_ast.name.clone(),
+                            name: record_name.clone(),
+                            fields: typed_fields,
+                        },
+                    );
+                }
+            }
+            ParsedDeclaration::Enum(ParsedEnumDeclaration {
+                name: enum_name,
+                variants,
+                ..
+            }) => {
+                //
+                // Resolve variant fields
+                let mut typed_variants: Vec<(TypeName, Vec<(FieldName, Type)>)> = Vec::new();
+                let mut has_errors = false;
+
+                for variant in variants {
+                    let mut typed_fields: Vec<(FieldName, Type)> = Vec::new();
+                    for (field_name, _, field_type) in &variant.fields {
+                        match resolve_type(field_type, &mut type_env) {
+                            Ok(resolved_type) => {
+                                typed_fields.push((field_name.clone(), resolved_type));
+                            }
+                            Err(e) => {
+                                errors.push(e.into());
+                                has_errors = true;
+                            }
+                        }
+                    }
+                    typed_variants.push((variant.name.clone(), typed_fields));
+                }
+
+                if has_errors {
+                    continue;
+                }
+
+                let enum_type = Type::Enum {
+                    module: parsed_ast.name.clone(),
+                    name: enum_name.clone(),
+                    variants: typed_variants.clone(),
+                };
+                let _ = type_env.push(enum_name.to_string(), enum_type);
+
+                state
+                    .entry(parsed_ast.name.clone())
+                    .or_default()
+                    .set_typed_enum(
+                        enum_name.as_str(),
+                        EnumTypeInformation {
+                            variants: typed_variants.clone(),
+                        },
+                    );
+
+                typed_enums.push(TypedEnumDeclaration {
+                    name: enum_name.clone(),
+                    variants: typed_variants,
+                });
             }
         }
-
-        state
-            .entry(module.name.clone())
-            .or_default()
-            .set_component_type_info(
-                name.as_str(),
-                ComponentTypeInformation {
-                    parameters: resolved_param_types,
-                },
-            );
-
-        typed_component_declarations.push(TypedComponentDeclaration {
-            component_name: component_name.clone(),
-            params: typed_params,
-            children: typed_children,
-        });
     }
 
     TypedAst::new(typed_component_declarations, typed_records, typed_enums)
@@ -354,7 +374,7 @@ fn typecheck_module(
 fn typecheck_node(
     node: &ParsedNode,
     state: &HashMap<ModuleName, ModuleTypeInformation>,
-    env: &mut Environment<Type>,
+    var_env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
     type_env: &mut Environment<Type>,
@@ -368,12 +388,12 @@ fn typecheck_node(
             let typed_children = children
                 .iter()
                 .filter_map(|child| {
-                    typecheck_node(child, state, env, annotations, errors, type_env)
+                    typecheck_node(child, state, var_env, annotations, errors, type_env)
                 })
                 .collect();
 
             let typed_condition = errors.ok_or_add(
-                dop::typecheck_expr(condition, env, type_env, annotations, None)
+                dop::typecheck_expr(condition, var_env, type_env, annotations, None)
                     .map_err(Into::into),
             )?;
 
@@ -399,7 +419,7 @@ fn typecheck_node(
             range: _,
         } => {
             let typed_array = errors.ok_or_add(
-                dop::typecheck_expr(array_expr, env, type_env, annotations, None)
+                dop::typecheck_expr(array_expr, var_env, type_env, annotations, None)
                     .map_err(Into::into),
             )?;
             let array_type = typed_array.as_type();
@@ -415,7 +435,7 @@ fn typecheck_node(
             };
 
             // Push the loop variable into scope
-            let pushed = match env.push(var_name.to_string(), element_type.clone()) {
+            let pushed = match var_env.push(var_name.to_string(), element_type.clone()) {
                 Ok(_) => {
                     annotations.push(TypeAnnotation {
                         range: var_name_range.clone(),
@@ -436,12 +456,12 @@ fn typecheck_node(
             let typed_children = children
                 .iter()
                 .filter_map(|child| {
-                    typecheck_node(child, state, env, annotations, errors, type_env)
+                    typecheck_node(child, state, var_env, annotations, errors, type_env)
                 })
                 .collect();
 
             if pushed {
-                let (_, _, accessed) = env.pop();
+                let (_, _, accessed) = var_env.pop();
                 if !accessed {
                     errors.push(TypeError::UnusedVariable {
                         var_name: var_name_range.clone(),
@@ -476,7 +496,7 @@ fn typecheck_node(
                 let Some(typed_value) = errors.ok_or_add(
                     dop::typecheck_expr(
                         &binding.value_expr,
-                        env,
+                        var_env,
                         type_env,
                         annotations,
                         Some(&resolved_type),
@@ -497,7 +517,8 @@ fn typecheck_node(
                 }
 
                 // Push the variable into scope
-                let pushed = match env.push(binding.var_name.to_string(), resolved_type.clone()) {
+                let pushed = match var_env.push(binding.var_name.to_string(), resolved_type.clone())
+                {
                     Ok(_) => {
                         annotations.push(TypeAnnotation {
                             range: binding.var_name_range.clone(),
@@ -522,14 +543,14 @@ fn typecheck_node(
             let typed_children: Vec<TypedNode> = children
                 .iter()
                 .filter_map(|child| {
-                    typecheck_node(child, state, env, annotations, errors, type_env)
+                    typecheck_node(child, state, var_env, annotations, errors, type_env)
                 })
                 .collect();
 
             // Pop variables in reverse order and check for unused
             for (binding, _, pushed) in typed_bindings.iter().rev() {
                 if *pushed {
-                    let (_, _, accessed) = env.pop();
+                    let (_, _, accessed) = var_env.pop();
                     if !accessed {
                         errors.push(TypeError::UnusedVariable {
                             var_name: binding.var_name_range.clone(),
@@ -565,14 +586,11 @@ fn typecheck_node(
             let typed_children = children
                 .iter()
                 .filter_map(|child| {
-                    typecheck_node(child, state, env, annotations, errors, type_env)
+                    typecheck_node(child, state, var_env, annotations, errors, type_env)
                 })
                 .collect();
 
-            let module_info = match definition_module
-                .as_ref()
-                .and_then(|name| state.get(name))
-            {
+            let module_info = match definition_module.as_ref().and_then(|name| state.get(name)) {
                 Some(module_info) => module_info,
                 None => {
                     errors.push(TypeError::UndefinedComponent {
@@ -697,7 +715,7 @@ fn typecheck_node(
 
                         let typed_expr = match dop::typecheck_expr(
                             &arg_expr,
-                            env,
+                            var_env,
                             type_env,
                             annotations,
                             Some(param_type),
@@ -745,12 +763,12 @@ fn typecheck_node(
             range: _,
         } => {
             let typed_attributes =
-                typecheck_attributes(attributes, env, annotations, errors, type_env);
+                typecheck_attributes(attributes, var_env, annotations, errors, type_env);
 
             let typed_children = children
                 .iter()
                 .filter_map(|child| {
-                    typecheck_node(child, state, env, annotations, errors, type_env)
+                    typecheck_node(child, state, var_env, annotations, errors, type_env)
                 })
                 .collect();
 
@@ -766,7 +784,7 @@ fn typecheck_node(
             range: _,
         } => {
             if let Some(typed_expr) = errors.ok_or_add(
-                dop::typecheck_expr(expression, env, type_env, annotations, None)
+                dop::typecheck_expr(expression, var_env, type_env, annotations, None)
                     .map_err(Into::into),
             ) {
                 let expr_type = typed_expr.as_type();
@@ -790,7 +808,8 @@ fn typecheck_node(
             range,
         } => {
             let typed_subject = errors.ok_or_add(
-                dop::typecheck_expr(subject, env, type_env, annotations, None).map_err(Into::into),
+                dop::typecheck_expr(subject, var_env, type_env, annotations, None)
+                    .map_err(Into::into),
             )?;
             let subject_type = typed_subject.as_type().clone();
 
@@ -822,7 +841,7 @@ fn typecheck_node(
                     // Push bindings into scope
                     let mut pushed_count = 0;
                     for (name, typ, bind_range) in &bindings {
-                        match env.push(name.clone(), typ.clone()) {
+                        match var_env.push(name.clone(), typ.clone()) {
                             Ok(_) => {
                                 annotations.push(TypeAnnotation {
                                     range: bind_range.clone(),
@@ -845,13 +864,13 @@ fn typecheck_node(
                         .children
                         .iter()
                         .filter_map(|child| {
-                            typecheck_node(child, state, env, annotations, errors, type_env)
+                            typecheck_node(child, state, var_env, annotations, errors, type_env)
                         })
                         .collect::<Vec<_>>();
 
                     // Pop bindings and check for unused
                     for _ in 0..pushed_count {
-                        let (name, _, accessed) = env.pop();
+                        let (name, _, accessed) = var_env.pop();
                         if !accessed {
                             if let Some((_, _, bind_range)) =
                                 bindings.iter().find(|(n, _, _)| *n == name)
@@ -894,10 +913,10 @@ fn typecheck_node(
 
 fn typecheck_attributes(
     attributes: &[ParsedAttribute],
-    env: &mut Environment<Type>,
+    var_env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
-    records: &mut Environment<Type>,
+    type_env: &mut Environment<Type>,
 ) -> Vec<TypedAttribute> {
     let mut typed_attributes = Vec::new();
 
@@ -905,7 +924,8 @@ fn typecheck_attributes(
         let typed_value = match &attr.value {
             Some(ParsedAttributeValue::Expression(expr)) => {
                 if let Some(typed_expr) = errors.ok_or_add(
-                    dop::typecheck_expr(expr, env, records, annotations, None).map_err(Into::into),
+                    dop::typecheck_expr(expr, var_env, type_env, annotations, None)
+                        .map_err(Into::into),
                 ) {
                     // Check that attributes evaluate to strings or booleans
                     let expr_type = typed_expr.as_type();
@@ -1296,7 +1316,7 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                error: Module other does not declare a component named Foo
+                error: Module other does not declare a type Foo
                   --> main.hop (line 1, col 15)
                 1 | import other::Foo
                   |               ^^^
@@ -1316,7 +1336,7 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                error: Module other does not declare a component named Foo
+                error: Module other does not declare a type Foo
                   --> main.hop (line 1, col 15)
                 1 | import other::Foo
                   |               ^^^
@@ -2774,7 +2794,7 @@ mod tests {
                 </Baz>
             "#},
             expect![[r#"
-                error: Module bar does not declare a component named User
+                error: Module bar does not declare a type User
                   --> baz.hop (line 1, col 13)
                 1 | import bar::User
                   |             ^^^^

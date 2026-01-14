@@ -7,10 +7,10 @@ pub enum TypeError {
     #[error("Component {tag_name} is not defined")]
     UndefinedComponent { tag_name: DocumentRange },
 
-    #[error("Module {module} does not declare a component named {component}")]
-    UndeclaredComponent {
+    #[error("Module {module} does not declare a type {typ}")]
+    UndeclaredType {
         module: String,
-        component: String,
+        typ: String,
         range: DocumentRange,
     },
 
@@ -62,7 +62,10 @@ pub enum TypeError {
     ExpectedBooleanCondition { found: String, range: DocumentRange },
 
     #[error("Missing required parameter '{param}'")]
-    MissingRequiredParameter { param: VarName, range: DocumentRange },
+    MissingRequiredParameter {
+        param: VarName,
+        range: DocumentRange,
+    },
 
     #[error("Component requires arguments: {args}")]
     MissingArguments { args: String, range: DocumentRange },
@@ -154,7 +157,7 @@ impl Ranged for TypeError {
     fn range(&self) -> &DocumentRange {
         match self {
             TypeError::UndefinedComponent { tag_name: range }
-            | TypeError::UndeclaredComponent { range, .. }
+            | TypeError::UndeclaredType { range, .. }
             | TypeError::UnusedVariable { var_name: range }
             | TypeError::ModuleNotFound { range, .. }
             | TypeError::VariableIsAlreadyDefined { range, .. }
