@@ -1,6 +1,5 @@
 use super::type_annotation::TypeAnnotation;
 use super::type_error::TypeError;
-use super::type_information::ModuleTypeInformation;
 use crate::document::CheapString;
 use crate::dop::patterns::compiler::Compiler as PatMatchCompiler;
 use crate::dop::symbols::field_name::FieldName;
@@ -28,7 +27,7 @@ use crate::hop::syntax::parsed_node::ParsedNode;
 
 #[derive(Default, Debug)]
 pub struct TypeChecker {
-    state: HashMap<ModuleName, ModuleTypeInformation>,
+    state: HashMap<ModuleName, HashMap<String, Type>>,
     pub type_errors: HashMap<ModuleName, ErrorCollector<TypeError>>,
     pub type_annotations: HashMap<ModuleName, Vec<TypeAnnotation>>,
     pub typed_asts: HashMap<ModuleName, TypedAst>,
@@ -73,14 +72,11 @@ impl TypeChecker {
 
 fn typecheck_module(
     parsed_ast: &ParsedAst,
-    state: &mut HashMap<ModuleName, ModuleTypeInformation>,
+    state: &mut HashMap<ModuleName, HashMap<String, Type>>,
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> TypedAst {
-    state.insert(
-        parsed_ast.name.clone(),
-        ModuleTypeInformation::default(),
-    );
+    state.insert(parsed_ast.name.clone(), HashMap::new());
 
     let mut type_env = Environment::new();
     let mut var_env = Environment::new();
@@ -224,7 +220,7 @@ fn typecheck_module(
                 state
                     .entry(parsed_ast.name.clone())
                     .or_default()
-                    .insert(component_name.as_str(), component_type.clone());
+                    .insert(component_name.to_string(), component_type.clone());
                 let _ = type_env.push(component_name.to_string(), component_type);
 
                 typed_component_declarations.push(TypedComponentDeclaration {
@@ -266,7 +262,7 @@ fn typecheck_module(
                     state
                         .entry(parsed_ast.name.clone())
                         .or_default()
-                        .insert(record_name.as_str(), record_type.clone());
+                        .insert(record_name.to_string(), record_type.clone());
                     typed_records.push(typed_record);
                     let _ = type_env.push(record_name.to_string(), record_type);
                 }
@@ -309,7 +305,7 @@ fn typecheck_module(
                 state
                     .entry(parsed_ast.name.clone())
                     .or_default()
-                    .insert(enum_name.as_str(), enum_type.clone());
+                    .insert(enum_name.to_string(), enum_type.clone());
                 let _ = type_env.push(enum_name.to_string(), enum_type);
 
                 typed_enums.push(TypedEnumDeclaration {
