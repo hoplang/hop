@@ -1492,6 +1492,25 @@ mod tests {
         );
     }
 
+    #[test]
+    fn should_show_hover_info_for_variable_in_text_expression() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                <Greeting {name: String}>
+                  <div>{name}</div>
+                        ^
+                </Greeting>
+            "#},
+            expect![[r#"
+                `name`: `String`
+                  --> main.hop (line 2, col 9)
+                2 |   <div>{name}</div>
+                  |         ^^^^
+            "#]],
+        );
+    }
+
     ///////////////////////////////////////////////////////////////////////////
     // ERROR DIAGNOSTICS                                                     //
     ///////////////////////////////////////////////////////////////////////////
