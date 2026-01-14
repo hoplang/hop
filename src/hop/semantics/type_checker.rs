@@ -2,16 +2,15 @@ use super::type_annotation::TypeAnnotation;
 use super::type_error::TypeError;
 use crate::document::CheapString;
 use crate::dop::patterns::compiler::Compiler as PatMatchCompiler;
-use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{self, Type, TypedExpr, VarName, resolve_type};
 use crate::environment::Environment;
 use crate::error_collector::ErrorCollector;
+use crate::hop::syntax::parsed_ast::ParsedDeclaration;
 use crate::hop::syntax::parsed_ast::{
     ParsedAttribute, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedImportDeclaration,
     ParsedRecordDeclaration,
 };
-use crate::hop::syntax::parsed_ast::{ParsedDeclaration, ParsedParameter};
 use std::collections::HashMap;
 
 use crate::dop::patterns::compiler::Decision;
@@ -34,8 +33,6 @@ pub struct TypeChecker {
 }
 
 impl TypeChecker {
-    // TODO: Return a bool here indicating whether the state for these modules
-    // were changed
     pub fn typecheck(&mut self, modules: &[&ParsedAst]) {
         for module in modules {
             let type_errors = self.type_errors.entry(module.name.clone()).or_default();
@@ -76,8 +73,6 @@ fn typecheck_module(
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> TypedAst {
-    state.insert(parsed_ast.name.clone(), HashMap::new());
-
     let mut type_env = Environment::new();
     let mut var_env = Environment::new();
 
@@ -119,89 +114,87 @@ fn typecheck_module(
                 component_name,
                 ..
             }) => {
-                let mut pushed_params: Vec<&ParsedParameter> = Vec::new();
-                let mut resolved_param_types: Vec<(VarName, Type, bool)> = Vec::new();
-                let mut typed_params: Vec<(VarName, Type, Option<TypedExpr>)> = Vec::new();
+                let mut pushed_params = Vec::new();
+                let mut resolved_param_types = Vec::new();
+                let mut typed_params = Vec::new();
                 if let Some((params, _)) = params {
                     for param in params {
-                        if let Some(param_type) = errors.ok_or_add(
+                        let Some(param_type) = errors.ok_or_add(
                             resolve_type(&param.var_type, &mut type_env).map_err(|e| e.into()),
-                        ) {
-                            // Validate that Option[TrustedHTML] children must have a default
-                            if param.var_name.as_str() == "children" {
-                                if let Type::Option(inner) = &param_type {
-                                    if **inner == Type::TrustedHTML && param.default_value.is_none()
-                                    {
-                                        errors.push(TypeError::OptionalChildrenRequiresDefault {
-                                            range: param.var_name_range.clone(),
-                                        });
-                                    }
+                        ) else {
+                            continue;
+                        };
+
+                        // Validate that Option[TrustedHTML] children must have a default value
+                        if param.var_name.as_str() == "children" {
+                            if let Type::Option(inner) = &param_type {
+                                if **inner == Type::TrustedHTML && param.default_value.is_none() {
+                                    errors.push(TypeError::OptionalChildrenRequiresDefault {
+                                        range: param.var_name_range.clone(),
+                                    });
                                 }
                             }
-
-                            // Type-check default value if present
-                            let has_default = param.default_value.is_some();
-                            let mut typed_default_value: Option<TypedExpr> = None;
-                            if let Some(default_expr) = &param.default_value {
-                                match dop::typecheck_expr(
-                                    default_expr,
-                                    &mut var_env,
-                                    &mut type_env,
-                                    annotations,
-                                    Some(&param_type),
-                                ) {
-                                    Ok(typed_default) => {
-                                        let default_type = typed_default.as_type();
-                                        if *default_type != param_type {
-                                            errors.push(TypeError::DefaultValueTypeMismatch {
-                                                param_name: param.var_name.to_string(),
-                                                expected: param_type.clone(),
-                                                found: default_type.clone(),
-                                                range: default_expr.range().clone(),
-                                            });
-                                        } else {
-                                            typed_default_value = Some(typed_default);
-                                        }
-                                    }
-                                    Err(e) => {
-                                        errors.push(e.into());
-                                    }
-                                }
-                            }
-
-                            annotations.push(TypeAnnotation {
-                                range: param.var_name_range.clone(),
-                                typ: param_type.clone(),
-                                name: param.var_name.to_string(),
-                            });
-                            let _ = var_env.push(param.var_name.to_string(), param_type.clone());
-                            pushed_params.push(param);
-                            resolved_param_types.push((
-                                param.var_name.clone(),
-                                param_type.clone(),
-                                has_default,
-                            ));
-                            typed_params.push((
-                                param.var_name.clone(),
-                                param_type,
-                                typed_default_value,
-                            ));
                         }
+
+                        // Typecheck default value
+                        let typed_default_value = {
+                            if let Some(default_expr) = &param.default_value {
+                                if let Some(typed_default) = errors.ok_or_add(
+                                    dop::typecheck_expr(
+                                        default_expr,
+                                        &mut var_env,
+                                        &mut type_env,
+                                        annotations,
+                                        Some(&param_type),
+                                    )
+                                    .map_err(|e| e.into()),
+                                ) {
+                                    let default_type = typed_default.as_type();
+                                    if *default_type != param_type {
+                                        errors.push(TypeError::DefaultValueTypeMismatch {
+                                            param_name: param.var_name.to_string(),
+                                            expected: param_type.clone(),
+                                            found: default_type.clone(),
+                                            range: default_expr.range().clone(),
+                                        });
+                                        None
+                                    } else {
+                                        Some(typed_default)
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        };
+
+                        annotations.push(TypeAnnotation {
+                            range: param.var_name_range.clone(),
+                            typ: param_type.clone(),
+                            name: param.var_name.to_string(),
+                        });
+                        let _ = var_env.push(param.var_name.to_string(), param_type.clone());
+                        pushed_params.push(param);
+                        resolved_param_types.push((
+                            param.var_name.clone(),
+                            param_type.clone(),
+                            param.default_value.is_some(),
+                        ));
+                        typed_params.push((
+                            param.var_name.clone(),
+                            param_type,
+                            typed_default_value,
+                        ));
                     }
                 }
 
-                let typed_children: Vec<_> = children
+                let typed_children = children
                     .iter()
                     .filter_map(|child| {
-                        typecheck_node(
-                            child,
-                            &mut var_env,
-                            annotations,
-                            errors,
-                            &mut type_env,
-                        )
+                        typecheck_node(child, &mut var_env, annotations, errors, &mut type_env)
                     })
-                    .collect();
+                    .collect::<Vec<_>>();
 
                 for param in pushed_params.iter().rev() {
                     let (_, _, accessed) = var_env.pop();
@@ -212,16 +205,14 @@ fn typecheck_module(
                     }
                 }
 
-                let component_type = Type::Component {
-                    module: parsed_ast.name.clone(),
-                    name: TypeName::new(component_name.as_str()).unwrap(),
-                    parameters: resolved_param_types,
-                };
-                state
-                    .entry(parsed_ast.name.clone())
-                    .or_default()
-                    .insert(component_name.to_string(), component_type.clone());
-                let _ = type_env.push(component_name.to_string(), component_type);
+                let _ = type_env.push(
+                    component_name.to_string(),
+                    Type::Component {
+                        module: parsed_ast.name.clone(),
+                        name: TypeName::new(component_name.as_str()).unwrap(),
+                        parameters: resolved_param_types,
+                    },
+                );
 
                 typed_component_declarations.push(TypedComponentDeclaration {
                     component_name: component_name.clone(),
@@ -249,36 +240,33 @@ fn typecheck_module(
                     }
                 }
 
-                if !has_errors {
-                    let typed_record = TypedRecordDeclaration {
-                        name: record_name.clone(),
-                        fields: typed_fields.clone(),
-                    };
-                    let record_type = Type::Record {
+                if has_errors {
+                    continue;
+                }
+
+                typed_records.push(TypedRecordDeclaration {
+                    name: record_name.clone(),
+                    fields: typed_fields.clone(),
+                });
+                let _ = type_env.push(
+                    record_name.to_string(),
+                    Type::Record {
                         module: parsed_ast.name.clone(),
                         name: record_name.clone(),
                         fields: typed_fields,
-                    };
-                    state
-                        .entry(parsed_ast.name.clone())
-                        .or_default()
-                        .insert(record_name.to_string(), record_type.clone());
-                    typed_records.push(typed_record);
-                    let _ = type_env.push(record_name.to_string(), record_type);
-                }
+                    },
+                );
             }
             ParsedDeclaration::Enum(ParsedEnumDeclaration {
                 name: enum_name,
                 variants,
                 ..
             }) => {
-                //
-                // Resolve variant fields
-                let mut typed_variants: Vec<(TypeName, Vec<(FieldName, Type)>)> = Vec::new();
+                let mut typed_variants = Vec::new();
                 let mut has_errors = false;
 
                 for variant in variants {
-                    let mut typed_fields: Vec<(FieldName, Type)> = Vec::new();
+                    let mut typed_fields = Vec::new();
                     for (field_name, _, field_type) in &variant.fields {
                         match resolve_type(field_type, &mut type_env) {
                             Ok(resolved_type) => {
@@ -297,16 +285,14 @@ fn typecheck_module(
                     continue;
                 }
 
-                let enum_type = Type::Enum {
-                    module: parsed_ast.name.clone(),
-                    name: enum_name.clone(),
-                    variants: typed_variants.clone(),
-                };
-                state
-                    .entry(parsed_ast.name.clone())
-                    .or_default()
-                    .insert(enum_name.to_string(), enum_type.clone());
-                let _ = type_env.push(enum_name.to_string(), enum_type);
+                let _ = type_env.push(
+                    enum_name.to_string(),
+                    Type::Enum {
+                        module: parsed_ast.name.clone(),
+                        name: enum_name.clone(),
+                        variants: typed_variants.clone(),
+                    },
+                );
 
                 typed_enums.push(TypedEnumDeclaration {
                     name: enum_name.clone(),
@@ -315,6 +301,25 @@ fn typecheck_module(
             }
         }
     }
+
+    // Build module type map from locally declared types
+    let mut module_types = HashMap::new();
+    for comp in &typed_component_declarations {
+        if let Some(typ) = type_env.lookup(comp.component_name.as_str()) {
+            module_types.insert(comp.component_name.to_string(), typ.clone());
+        }
+    }
+    for rec in &typed_records {
+        if let Some(typ) = type_env.lookup(rec.name.as_str()) {
+            module_types.insert(rec.name.to_string(), typ.clone());
+        }
+    }
+    for enm in &typed_enums {
+        if let Some(typ) = type_env.lookup(enm.name.as_str()) {
+            module_types.insert(enm.name.to_string(), typ.clone());
+        }
+    }
+    state.insert(parsed_ast.name.clone(), module_types);
 
     TypedAst::new(typed_component_declarations, typed_records, typed_enums)
 }
@@ -334,9 +339,7 @@ fn typecheck_node(
         } => {
             let typed_children = children
                 .iter()
-                .filter_map(|child| {
-                    typecheck_node(child, var_env, annotations, errors, type_env)
-                })
+                .filter_map(|child| typecheck_node(child, var_env, annotations, errors, type_env))
                 .collect();
 
             let typed_condition = errors.ok_or_add(
@@ -402,9 +405,7 @@ fn typecheck_node(
 
             let typed_children = children
                 .iter()
-                .filter_map(|child| {
-                    typecheck_node(child, var_env, annotations, errors, type_env)
-                })
+                .filter_map(|child| typecheck_node(child, var_env, annotations, errors, type_env))
                 .collect();
 
             if pushed {
@@ -489,9 +490,7 @@ fn typecheck_node(
             // Type-check children with all variables in scope
             let typed_children: Vec<TypedNode> = children
                 .iter()
-                .filter_map(|child| {
-                    typecheck_node(child, var_env, annotations, errors, type_env)
-                })
+                .filter_map(|child| typecheck_node(child, var_env, annotations, errors, type_env))
                 .collect();
 
             // Pop variables in reverse order and check for unused
@@ -529,12 +528,9 @@ fn typecheck_node(
             children,
             range: _,
         } => {
-            // Transform children
             let typed_children = children
                 .iter()
-                .filter_map(|child| {
-                    typecheck_node(child, var_env, annotations, errors, type_env)
-                })
+                .filter_map(|child| typecheck_node(child, var_env, annotations, errors, type_env))
                 .collect();
 
             // Look up the component type from type_env
@@ -648,17 +644,19 @@ fn typecheck_node(
                             continue;
                         }
 
-                        let (_, param_type, _) =
-                            match all_params.iter().find(|(name, _, _)| name.as_str() == arg_name) {
-                                None => {
-                                    errors.push(TypeError::UnexpectedArgument {
-                                        arg: arg_name.to_string(),
-                                        range: arg.name.clone(),
-                                    });
-                                    continue;
-                                }
-                                Some(param) => param,
-                            };
+                        let (_, param_type, _) = match all_params
+                            .iter()
+                            .find(|(name, _, _)| name.as_str() == arg_name)
+                        {
+                            None => {
+                                errors.push(TypeError::UnexpectedArgument {
+                                    arg: arg_name.to_string(),
+                                    range: arg.name.clone(),
+                                });
+                                continue;
+                            }
+                            Some(param) => param,
+                        };
 
                         // Convert ParsedAttribute value to expression for type checking
                         let arg_expr = match &arg.value {
@@ -733,9 +731,7 @@ fn typecheck_node(
 
             let typed_children = children
                 .iter()
-                .filter_map(|child| {
-                    typecheck_node(child, var_env, annotations, errors, type_env)
-                })
+                .filter_map(|child| typecheck_node(child, var_env, annotations, errors, type_env))
                 .collect();
 
             Some(TypedNode::Html {
@@ -1171,11 +1167,7 @@ mod tests {
         } else {
             for module_name in &module_names {
                 if let Some(typed_ast) = typechecker.typed_asts.get(module_name) {
-                    ast_output.push(format!(
-                        "-- {}.hop --\n{}",
-                        module_name,
-                        typed_ast.to_string()
-                    ));
+                    ast_output.push(format!("-- {}.hop --\n{}", module_name, typed_ast));
                 }
             }
             expected.assert_eq(&ast_output.join("\n"));
