@@ -112,6 +112,8 @@ fn typecheck_module(
                 params,
                 children,
                 component_name,
+                tag_name,
+                closing_tag_name,
                 ..
             }) => {
                 let mut pushed_params = Vec::new();
@@ -205,14 +207,29 @@ fn typecheck_module(
                     }
                 }
 
-                let _ = type_env.push(
-                    component_name.to_string(),
-                    Type::Component {
-                        module: parsed_ast.name.clone(),
-                        name: TypeName::new(component_name.as_str()).unwrap(),
-                        parameters: resolved_param_types,
-                    },
-                );
+                let component_type = Type::Component {
+                    module: parsed_ast.name.clone(),
+                    name: TypeName::new(component_name.as_str()).unwrap(),
+                    parameters: resolved_param_types,
+                };
+
+                let _ = type_env.push(component_name.to_string(), component_type.clone());
+
+                // Add type annotation for the component definition opening tag
+                annotations.push(TypeAnnotation {
+                    range: tag_name.clone(),
+                    typ: component_type.clone(),
+                    name: component_name.as_str().to_string(),
+                });
+
+                // Add type annotation for the closing tag if present
+                if let Some(closing_range) = closing_tag_name {
+                    annotations.push(TypeAnnotation {
+                        range: closing_range.clone(),
+                        typ: component_type,
+                        name: component_name.as_str().to_string(),
+                    });
+                }
 
                 typed_component_declarations.push(TypedComponentDeclaration {
                     component_name: component_name.clone(),

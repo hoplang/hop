@@ -1454,6 +1454,44 @@ mod tests {
         );
     }
 
+    #[test]
+    fn should_show_hover_info_for_component_definition_opening_tag() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                <Greeting {name: String}>
+                  ^
+                  <h1>Hello {name}!</h1>
+                </Greeting>
+            "#},
+            expect![[r#"
+                `Greeting`: `main::Greeting`
+                  --> main.hop (line 1, col 2)
+                1 | <Greeting {name: String}>
+                  |  ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_show_hover_info_for_component_definition_closing_tag() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                <Greeting {name: String}>
+                  <h1>Hello {name}!</h1>
+                </Greeting>
+                   ^
+            "#},
+            expect![[r#"
+                `Greeting`: `main::Greeting`
+                  --> main.hop (line 3, col 3)
+                3 | </Greeting>
+                  |   ^^^^^^^^
+            "#]],
+        );
+    }
+
     ///////////////////////////////////////////////////////////////////////////
     // ERROR DIAGNOSTICS                                                     //
     ///////////////////////////////////////////////////////////////////////////
