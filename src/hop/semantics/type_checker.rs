@@ -1,8 +1,6 @@
 use super::type_annotation::TypeAnnotation;
 use super::type_error::TypeError;
-use super::type_information::{
-    ComponentTypeInformation, EnumTypeInformation, ModuleTypeInformation, RecordTypeInformation,
-};
+use super::type_information::ModuleTypeInformation;
 use crate::document::CheapString;
 use crate::dop::patterns::compiler::Compiler as PatMatchCompiler;
 use crate::dop::symbols::field_name::FieldName;
@@ -81,11 +79,7 @@ fn typecheck_module(
 ) -> TypedAst {
     state.insert(
         parsed_ast.name.clone(),
-        ModuleTypeInformation {
-            components: HashMap::new(),
-            records: HashMap::new(),
-            enums: HashMap::new(),
-        },
+        ModuleTypeInformation::default(),
     );
 
     let mut type_env = Environment::new();
@@ -112,58 +106,16 @@ fn typecheck_module(
                     continue;
                 };
 
-                let is_component =
-                    imported_module_type_info.component_is_declared(imported_name.as_str());
-                let is_record =
-                    imported_module_type_info.record_is_declared(imported_name.as_str());
-                let is_enum = imported_module_type_info.enum_is_declared(imported_name.as_str());
-
-                if !is_component && !is_record && !is_enum {
+                let Some(typ) = imported_module_type_info.get(imported_name.as_str()) else {
                     errors.push(TypeError::UndeclaredType {
                         module: imported_module.to_string(),
                         typ: imported_name.to_string(),
                         range: imported_name_range.clone(),
                     });
-                }
+                    continue;
+                };
 
-                if let Some(record) =
-                    imported_module_type_info.get_typed_record(imported_name.as_str())
-                {
-                    let _ = type_env.push(
-                        imported_name.as_str().to_string(),
-                        Type::Record {
-                            module: imported_module.clone(),
-                            name: TypeName::new(imported_name.as_str()).unwrap(),
-                            fields: record.fields.clone(),
-                        },
-                    );
-                }
-
-                if let Some(enum_info) =
-                    imported_module_type_info.get_typed_enum(imported_name.as_str())
-                {
-                    let _ = type_env.push(
-                        imported_name.as_str().to_string(),
-                        Type::Enum {
-                            module: imported_module.clone(),
-                            name: TypeName::new(imported_name.as_str()).unwrap(),
-                            variants: enum_info.variants.clone(),
-                        },
-                    );
-                }
-
-                if let Some(component_info) =
-                    imported_module_type_info.get_component_type_info(imported_name.as_str())
-                {
-                    let _ = type_env.push(
-                        imported_name.as_str().to_string(),
-                        Type::Component {
-                            module: imported_module.clone(),
-                            name: TypeName::new(imported_name.as_str()).unwrap(),
-                            parameters: component_info.parameters.clone(),
-                        },
-                    );
-                }
+                let _ = type_env.push(imported_name.as_str().to_string(), typ.clone());
             }
             ParsedDeclaration::Component(ParsedComponentDeclaration {
                 params,
@@ -264,24 +216,16 @@ fn typecheck_module(
                     }
                 }
 
+                let component_type = Type::Component {
+                    module: parsed_ast.name.clone(),
+                    name: TypeName::new(component_name.as_str()).unwrap(),
+                    parameters: resolved_param_types,
+                };
                 state
                     .entry(parsed_ast.name.clone())
                     .or_default()
-                    .set_component_type_info(
-                        component_name.as_str(),
-                        ComponentTypeInformation {
-                            parameters: resolved_param_types.clone(),
-                        },
-                    );
-
-                let _ = type_env.push(
-                    component_name.to_string(),
-                    Type::Component {
-                        module: parsed_ast.name.clone(),
-                        name: TypeName::new(component_name.as_str()).unwrap(),
-                        parameters: resolved_param_types,
-                    },
-                );
+                    .insert(component_name.as_str(), component_type.clone());
+                let _ = type_env.push(component_name.to_string(), component_type);
 
                 typed_component_declarations.push(TypedComponentDeclaration {
                     component_name: component_name.clone(),
@@ -314,24 +258,17 @@ fn typecheck_module(
                         name: record_name.clone(),
                         fields: typed_fields.clone(),
                     };
+                    let record_type = Type::Record {
+                        module: parsed_ast.name.clone(),
+                        name: record_name.clone(),
+                        fields: typed_fields,
+                    };
                     state
                         .entry(parsed_ast.name.clone())
                         .or_default()
-                        .set_typed_record(
-                            record_name.as_str(),
-                            RecordTypeInformation {
-                                fields: typed_fields.clone(),
-                            },
-                        );
+                        .insert(record_name.as_str(), record_type.clone());
                     typed_records.push(typed_record);
-                    let _ = type_env.push(
-                        record_name.to_string(),
-                        Type::Record {
-                            module: parsed_ast.name.clone(),
-                            name: record_name.clone(),
-                            fields: typed_fields,
-                        },
-                    );
+                    let _ = type_env.push(record_name.to_string(), record_type);
                 }
             }
             ParsedDeclaration::Enum(ParsedEnumDeclaration {
@@ -369,17 +306,11 @@ fn typecheck_module(
                     name: enum_name.clone(),
                     variants: typed_variants.clone(),
                 };
-                let _ = type_env.push(enum_name.to_string(), enum_type);
-
                 state
                     .entry(parsed_ast.name.clone())
                     .or_default()
-                    .set_typed_enum(
-                        enum_name.as_str(),
-                        EnumTypeInformation {
-                            variants: typed_variants.clone(),
-                        },
-                    );
+                    .insert(enum_name.as_str(), enum_type.clone());
+                let _ = type_env.push(enum_name.to_string(), enum_type);
 
                 typed_enums.push(TypedEnumDeclaration {
                     name: enum_name.clone(),
