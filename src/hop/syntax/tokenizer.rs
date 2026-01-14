@@ -81,7 +81,9 @@ impl Display for Token {
                 write!(f, "Doctype")
             }
             Token::ClosingTag { tag_name, .. } => {
-                write!(f, "ClosingTag </{}>", tag_name)
+                writeln!(f, "ClosingTag(")?;
+                writeln!(f, "  tag_name: {:?},", tag_name.to_string())?;
+                write!(f, ")")
             }
             Token::OpeningTag {
                 tag_name,
@@ -90,35 +92,36 @@ impl Display for Token {
                 self_closing,
                 ..
             } => {
-                write!(f, "OpeningTag <{}", tag_name)?;
-
-                if !attributes.is_empty() {
-                    write!(f, " ")?;
-                    let attr_strs: Vec<String> = attributes
-                        .iter()
-                        .map(|attr| match &attr.value {
+                writeln!(f, "OpeningTag(")?;
+                writeln!(f, "  tag_name: {:?},", tag_name.to_string())?;
+                write!(f, "  attributes: {{")?;
+                if attributes.is_empty() {
+                    writeln!(f, "}},")?;
+                } else {
+                    writeln!(f)?;
+                    for attr in attributes {
+                        let value_str = match &attr.value {
                             Some(TokenizedAttributeValue::String { content }) => {
                                 let val =
                                     content.as_ref().map(|r| r.to_string()).unwrap_or_default();
-                                format!("{}={:#?}", attr.name, val)
+                                format!("String({:?})", val)
                             }
                             Some(TokenizedAttributeValue::Expression(val)) => {
-                                format!("{}={{{:#?}}}", attr.name, val.to_string())
+                                format!("Expression({:?})", val.to_string())
                             }
-                            None => attr.name.to_string(),
-                        })
-                        .collect();
-                    write!(f, "{}", attr_strs.join(" "))?;
+                            None => "None".to_string(),
+                        };
+                        writeln!(f, "    {}: {},", attr.name, value_str)?;
+                    }
+                    writeln!(f, "  }},")?;
                 }
-
-                if let Some(expr) = expression {
-                    write!(f, " expr={:#?}", expr.to_string())?;
-                }
-
-                if *self_closing {
-                    write!(f, "/")?;
-                }
-                write!(f, ">")
+                let expr_str = match expression {
+                    Some(expr) => format!("Some({:?})", expr.to_string()),
+                    None => "None".to_string(),
+                };
+                writeln!(f, "  expression: {},", expr_str)?;
+                writeln!(f, "  self_closing: {},", self_closing)?;
+                write!(f, ")")
             }
             Token::Comment { .. } => {
                 write!(f, "Comment")
@@ -701,7 +704,11 @@ mod tests {
             }
         }
 
-        expected.assert_eq(&DocumentAnnotator::new().annotate(None, annotations));
+        expected.assert_eq(
+            &DocumentAnnotator::new()
+                .without_line_numbers()
+                .annotate(None, annotations),
+        );
     }
 
     #[test]
@@ -710,41 +717,37 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_expression_attribute() {
+    fn should_accept_if_with_expression() {
         check(
-            r#"<div class={user.theme}>Hello</div>"#,
+            "<if {foo}>",
             expect![[r#"
-                OpeningTag <div class={"user.theme"}>
-                1 | <div class={user.theme}>Hello</div>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Text [5 byte, "Hello"]
-                1 | <div class={user.theme}>Hello</div>
-                  |                         ^^^^^
-
-                ClosingTag </div>
-                1 | <div class={user.theme}>Hello</div>
-                  |                              ^^^^^^
+                OpeningTag(
+                  tag_name: "if",
+                  attributes: {},
+                  expression: Some("foo"),
+                  self_closing: false,
+                )
+                <if {foo}>
+                ^^^^^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn should_accept_expression_attribute_with_comma_separated_values() {
+    fn should_accept_expression_in_attribute() {
         check(
-            r#"<div class={user.theme, user.classes}>Hello</div>"#,
+            r#"<div class={user.theme}>"#,
             expect![[r#"
-                OpeningTag <div class={"user.theme, user.classes"}>
-                1 | <div class={user.theme, user.classes}>Hello</div>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Text [5 byte, "Hello"]
-                1 | <div class={user.theme, user.classes}>Hello</div>
-                  |                                       ^^^^^
-
-                ClosingTag </div>
-                1 | <div class={user.theme, user.classes}>Hello</div>
-                  |                                            ^^^^^^
+                OpeningTag(
+                  tag_name: "div",
+                  attributes: {
+                    class: Expression("user.theme"),
+                  },
+                  expression: None,
+                  self_closing: false,
+                )
+                <div class={user.theme}>
+                ^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -752,19 +755,19 @@ mod tests {
     #[test]
     fn should_accept_mixed_attributes() {
         check(
-            r#"<a href={user.url} target="_blank">Link</a>"#,
+            r#"<a href={user.url} target="_blank">"#,
             expect![[r#"
-                OpeningTag <a href={"user.url"} target="_blank">
-                1 | <a href={user.url} target="_blank">Link</a>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Text [4 byte, "Link"]
-                1 | <a href={user.url} target="_blank">Link</a>
-                  |                                    ^^^^
-
-                ClosingTag </a>
-                1 | <a href={user.url} target="_blank">Link</a>
-                  |                                        ^^^^
+                OpeningTag(
+                  tag_name: "a",
+                  attributes: {
+                    href: Expression("user.url"),
+                    target: String("_blank"),
+                  },
+                  expression: None,
+                  self_closing: false,
+                )
+                <a href={user.url} target="_blank">
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -774,9 +777,18 @@ mod tests {
         check(
             r#"<input type="" value="" disabled="">"#,
             expect![[r#"
-                OpeningTag <input type="" value="" disabled="">
-                1 | <input type="" value="" disabled="">
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                OpeningTag(
+                  tag_name: "input",
+                  attributes: {
+                    type: String(""),
+                    value: String(""),
+                    disabled: String(""),
+                  },
+                  expression: None,
+                  self_closing: false,
+                )
+                <input type="" value="" disabled="">
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -786,9 +798,17 @@ mod tests {
         check(
             r#"<h1 foo="bar"x="y">"#,
             expect![[r#"
-                OpeningTag <h1 foo="bar" x="y">
-                1 | <h1 foo="bar"x="y">
-                  | ^^^^^^^^^^^^^^^^^^^
+                OpeningTag(
+                  tag_name: "h1",
+                  attributes: {
+                    foo: String("bar"),
+                    x: String("y"),
+                  },
+                  expression: None,
+                  self_closing: false,
+                )
+                <h1 foo="bar"x="y">
+                ^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -799,14 +819,14 @@ mod tests {
             "this\ntext\nspans\nmultiple lines",
             expect![[r#"
                 Text [30 byte, "this\ntext\nspans\nmultiple lines"]
-                1 | this
-                  | ^^^^
-                2 | text
-                  | ^^^^
-                3 | spans
-                  | ^^^^^
-                4 | multiple lines
-                  | ^^^^^^^^^^^^^^
+                this
+                ^^^^
+                text
+                ^^^^
+                spans
+                ^^^^^
+                multiple lines
+                ^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -817,12 +837,12 @@ mod tests {
             "<div!>",
             expect![[r#"
                 Unterminated opening tag
-                1 | <div!>
-                  |  ^^^
+                <div!>
+                 ^^^
 
                 Text [2 byte, "!>"]
-                1 | <div!>
-                  |     ^^
+                <div!>
+                    ^^
             "#]],
         );
     }
@@ -830,47 +850,24 @@ mod tests {
     #[test]
     fn should_accept_script_with_src() {
         check(
-            r#"<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>"#,
+            r#"<script src="https://example.com/script.js"></script>"#,
             expect![[r#"
-                OpeningTag <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4">
-                1 | <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                OpeningTag(
+                  tag_name: "script",
+                  attributes: {
+                    src: String("https://example.com/script.js"),
+                  },
+                  expression: None,
+                  self_closing: false,
+                )
+                <script src="https://example.com/script.js"></script>
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-                ClosingTag </script>
-                1 | <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-                  |                                                                   ^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_raw_text_with_tricky_content() {
-        check(
-            r#"<script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>"#,
-            expect![[r#"
-                OpeningTag <script>
-                1 | <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
-                  | ^^^^^^^^
-
-                Text [62 byte, "</scri</<<</div></div><</scrip</scrip></cript></script</script"]
-                1 | <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
-                  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                ClosingTag </script>
-                1 | <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
-                  |                                                                       ^^^^^^^^^
-
-                OpeningTag <div>
-                1 | <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
-                  |                                                                                ^^^^^
-
-                Text [6 byte, "works!"]
-                1 | <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
-                  |                                                                                     ^^^^^^
-
-                OpeningTag <div>
-                1 | <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
-                  |                                                                                           ^^^^^
+                ClosingTag(
+                  tag_name: "script",
+                )
+                <script src="https://example.com/script.js"></script>
+                                                            ^^^^^^^^^
             "#]],
         );
     }
@@ -880,9 +877,14 @@ mod tests {
         check(
             "<h1 />",
             expect![[r#"
-                OpeningTag <h1/>
-                1 | <h1 />
-                  | ^^^^^^
+                OpeningTag(
+                  tag_name: "h1",
+                  attributes: {},
+                  expression: None,
+                  self_closing: true,
+                )
+                <h1 />
+                ^^^^^^
             "#]],
         );
     }
@@ -892,9 +894,17 @@ mod tests {
         check(
             "<h1 foo bar/>",
             expect![[r#"
-                OpeningTag <h1 foo bar/>
-                1 | <h1 foo bar/>
-                  | ^^^^^^^^^^^^^
+                OpeningTag(
+                  tag_name: "h1",
+                  attributes: {
+                    foo: None,
+                    bar: None,
+                  },
+                  expression: None,
+                  self_closing: true,
+                )
+                <h1 foo bar/>
+                ^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -904,9 +914,17 @@ mod tests {
         check(
             "<h1 {foo: String} foo bar/>",
             expect![[r#"
-                OpeningTag <h1 foo bar expr="foo: String"/>
-                1 | <h1 {foo: String} foo bar/>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                OpeningTag(
+                  tag_name: "h1",
+                  attributes: {
+                    foo: None,
+                    bar: None,
+                  },
+                  expression: Some("foo: String"),
+                  self_closing: true,
+                )
+                <h1 {foo: String} foo bar/>
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -916,17 +934,24 @@ mod tests {
         check(
             "<p><!-- --></p>",
             expect![[r#"
-                OpeningTag <p>
-                1 | <p><!-- --></p>
-                  | ^^^
+                OpeningTag(
+                  tag_name: "p",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <p><!-- --></p>
+                ^^^
 
                 Comment
-                1 | <p><!-- --></p>
-                  |    ^^^^^^^^
+                <p><!-- --></p>
+                   ^^^^^^^^
 
-                ClosingTag </p>
-                1 | <p><!-- --></p>
-                  |            ^^^^
+                ClosingTag(
+                  tag_name: "p",
+                )
+                <p><!-- --></p>
+                           ^^^^
             "#]],
         );
     }
@@ -939,24 +964,31 @@ mod tests {
                 </p>
             "},
             expect![[r#"
-                OpeningTag <p>
-                1 | <p><!-- -->
-                  | ^^^
+                OpeningTag(
+                  tag_name: "p",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <p><!-- -->
+                ^^^
 
                 Comment
-                1 | <p><!-- -->
-                  |    ^^^^^^^^
+                <p><!-- -->
+                   ^^^^^^^^
 
                 Text [1 byte, "\n"]
-                1 | <p><!-- -->
-                2 | </p>
+                <p><!-- -->
+                </p>
 
-                ClosingTag </p>
-                2 | </p>
-                  | ^^^^
+                ClosingTag(
+                  tag_name: "p",
+                )
+                </p>
+                ^^^^
 
                 Text [1 byte, "\n"]
-                2 | </p>
+                </p>
             "#]],
         );
     }
@@ -967,8 +999,8 @@ mod tests {
             "<!-- Comment with -- dashes -- inside -->",
             expect![[r#"
                 Comment
-                1 | <!-- Comment with -- dashes -- inside -->
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                <!-- Comment with -- dashes -- inside -->
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -984,28 +1016,35 @@ mod tests {
                 lines --></p>
             "},
             expect![[r#"
-                OpeningTag <p>
-                1 | <p><!--
-                  | ^^^
+                OpeningTag(
+                  tag_name: "p",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <p><!--
+                ^^^
 
                 Comment
-                1 | <p><!--
-                  |    ^^^^
-                2 | A comment
-                  | ^^^^^^^^^
-                3 | that stretches
-                  | ^^^^^^^^^^^^^^
-                4 | over several
-                  | ^^^^^^^^^^^^
-                5 | lines --></p>
-                  | ^^^^^^^^^
+                <p><!--
+                   ^^^^
+                A comment
+                ^^^^^^^^^
+                that stretches
+                ^^^^^^^^^^^^^^
+                over several
+                ^^^^^^^^^^^^
+                lines --></p>
+                ^^^^^^^^^
 
-                ClosingTag </p>
-                5 | lines --></p>
-                  |          ^^^^
+                ClosingTag(
+                  tag_name: "p",
+                )
+                lines --></p>
+                         ^^^^
 
                 Text [1 byte, "\n"]
-                5 | lines --></p>
+                lines --></p>
             "#]],
         );
     }
@@ -1016,8 +1055,8 @@ mod tests {
             r#"<!-- This comment has <tags> and "quotes" and 'apostrophes' -->"#,
             expect![[r#"
                 Comment
-                1 | <!-- This comment has <tags> and "quotes" and 'apostrophes' -->
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                <!-- This comment has <tags> and "quotes" and 'apostrophes' -->
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -1030,27 +1069,27 @@ mod tests {
             "},
             expect![[r#"
                 Comment
-                1 | <!-- ---><!-- ----><!----><!-----><!-- ---->
-                  | ^^^^^^^^^
+                <!-- ---><!-- ----><!----><!-----><!-- ---->
+                ^^^^^^^^^
 
                 Comment
-                1 | <!-- ---><!-- ----><!----><!-----><!-- ---->
-                  |          ^^^^^^^^^^
+                <!-- ---><!-- ----><!----><!-----><!-- ---->
+                         ^^^^^^^^^^
 
                 Comment
-                1 | <!-- ---><!-- ----><!----><!-----><!-- ---->
-                  |                    ^^^^^^^
+                <!-- ---><!-- ----><!----><!-----><!-- ---->
+                                   ^^^^^^^
 
                 Comment
-                1 | <!-- ---><!-- ----><!----><!-----><!-- ---->
-                  |                           ^^^^^^^^
+                <!-- ---><!-- ----><!----><!-----><!-- ---->
+                                          ^^^^^^^^
 
                 Comment
-                1 | <!-- ---><!-- ----><!----><!-----><!-- ---->
-                  |                                   ^^^^^^^^^^
+                <!-- ---><!-- ----><!----><!-----><!-- ---->
+                                                  ^^^^^^^^^^
 
                 Text [1 byte, "\n"]
-                1 | <!-- ---><!-- ----><!----><!-----><!-- ---->
+                <!-- ---><!-- ----><!----><!-----><!-- ---->
             "#]],
         );
     }
@@ -1064,33 +1103,47 @@ mod tests {
                 </textarea>
             "},
             expect![[r#"
-                OpeningTag <textarea>
-                1 | <textarea>
-                  | ^^^^^^^^^^
+                OpeningTag(
+                  tag_name: "textarea",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <textarea>
+                ^^^^^^^^^^
 
                 Text [2 byte, "\n\t"]
-                1 | <textarea>
-                2 |     <div></div>
-                  | ^^^^
+                <textarea>
+                    <div></div>
+                ^^^^
 
-                OpeningTag <div>
-                2 |     <div></div>
-                  |     ^^^^^
+                OpeningTag(
+                  tag_name: "div",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                    <div></div>
+                    ^^^^^
 
-                ClosingTag </div>
-                2 |     <div></div>
-                  |          ^^^^^^
+                ClosingTag(
+                  tag_name: "div",
+                )
+                    <div></div>
+                         ^^^^^^
 
                 Text [1 byte, "\n"]
-                2 |     <div></div>
-                3 | </textarea>
+                    <div></div>
+                </textarea>
 
-                ClosingTag </textarea>
-                3 | </textarea>
-                  | ^^^^^^^^^^^
+                ClosingTag(
+                  tag_name: "textarea",
+                )
+                </textarea>
+                ^^^^^^^^^^^
 
                 Text [1 byte, "\n"]
-                3 | </textarea>
+                </textarea>
             "#]],
         );
     }
@@ -1101,8 +1154,8 @@ mod tests {
             "<!DOCTYPE   html>",
             expect![[r#"
                 Doctype
-                1 | <!DOCTYPE   html>
-                  | ^^^^^^^^^^^^^^^^^
+                <!DOCTYPE   html>
+                ^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -1112,9 +1165,11 @@ mod tests {
         check(
             "</div >",
             expect![[r#"
-                ClosingTag </div>
-                1 | </div >
-                  | ^^^^^^^
+                ClosingTag(
+                  tag_name: "div",
+                )
+                </div >
+                ^^^^^^^
             "#]],
         );
     }
@@ -1124,9 +1179,14 @@ mod tests {
         check(
             "<h1/>",
             expect![[r#"
-                OpeningTag <h1/>
-                1 | <h1/>
-                  | ^^^^^
+                OpeningTag(
+                  tag_name: "h1",
+                  attributes: {},
+                  expression: None,
+                  self_closing: true,
+                )
+                <h1/>
+                ^^^^^
             "#]],
         );
     }
@@ -1136,9 +1196,14 @@ mod tests {
         check(
             "<h1 />",
             expect![[r#"
-                OpeningTag <h1/>
-                1 | <h1 />
-                  | ^^^^^^
+                OpeningTag(
+                  tag_name: "h1",
+                  attributes: {},
+                  expression: None,
+                  self_closing: true,
+                )
+                <h1 />
+                ^^^^^^
             "#]],
         );
     }
@@ -1153,110 +1218,31 @@ mod tests {
                 </style>
             "},
             expect![[r#"
-                OpeningTag <style>
-                1 | <style>
-                  | ^^^^^^^
+                OpeningTag(
+                  tag_name: "style",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <style>
+                ^^^^^^^
 
                 Text [54 byte, "\n  body { color: red; }\n  .class { font-size: 12px; }\n"]
-                1 | <style>
-                2 |   body { color: red; }
-                  | ^^^^^^^^^^^^^^^^^^^^^^
-                3 |   .class { font-size: 12px; }
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                4 | </style>
+                <style>
+                  body { color: red; }
+                ^^^^^^^^^^^^^^^^^^^^^^
+                  .class { font-size: 12px; }
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                </style>
 
-                ClosingTag </style>
-                4 | </style>
-                  | ^^^^^^^^
-
-                Text [1 byte, "\n"]
-                4 | </style>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_heading_tags() {
-        check(
-            indoc! {"
-                <h1></h1>
-                <h2></h2>
-                <h3></h3>
-                <h4></h4>
-                <h5></h5>
-                <h6></h6>
-            "},
-            expect![[r#"
-                OpeningTag <h1>
-                1 | <h1></h1>
-                  | ^^^^
-
-                ClosingTag </h1>
-                1 | <h1></h1>
-                  |     ^^^^^
+                ClosingTag(
+                  tag_name: "style",
+                )
+                </style>
+                ^^^^^^^^
 
                 Text [1 byte, "\n"]
-                1 | <h1></h1>
-                2 | <h2></h2>
-
-                OpeningTag <h2>
-                2 | <h2></h2>
-                  | ^^^^
-
-                ClosingTag </h2>
-                2 | <h2></h2>
-                  |     ^^^^^
-
-                Text [1 byte, "\n"]
-                2 | <h2></h2>
-                3 | <h3></h3>
-
-                OpeningTag <h3>
-                3 | <h3></h3>
-                  | ^^^^
-
-                ClosingTag </h3>
-                3 | <h3></h3>
-                  |     ^^^^^
-
-                Text [1 byte, "\n"]
-                3 | <h3></h3>
-                4 | <h4></h4>
-
-                OpeningTag <h4>
-                4 | <h4></h4>
-                  | ^^^^
-
-                ClosingTag </h4>
-                4 | <h4></h4>
-                  |     ^^^^^
-
-                Text [1 byte, "\n"]
-                4 | <h4></h4>
-                5 | <h5></h5>
-
-                OpeningTag <h5>
-                5 | <h5></h5>
-                  | ^^^^
-
-                ClosingTag </h5>
-                5 | <h5></h5>
-                  |     ^^^^^
-
-                Text [1 byte, "\n"]
-                5 | <h5></h5>
-                6 | <h6></h6>
-
-                OpeningTag <h6>
-                6 | <h6></h6>
-                  | ^^^^
-
-                ClosingTag </h6>
-                6 | <h6></h6>
-                  |     ^^^^^
-
-                Text [1 byte, "\n"]
-                6 | <h6></h6>
+                </style>
             "#]],
         );
     }
@@ -1269,35 +1255,35 @@ mod tests {
                   class="multiline"
                   id="test"
                   data-value="something">
-                </div>
             "#},
             expect![[r#"
-                OpeningTag <div class="multiline" id="test" data-value="something">
-                1 | <div
-                  | ^^^^
-                2 |   class="multiline"
-                  | ^^^^^^^^^^^^^^^^^^^
-                3 |   id="test"
-                  | ^^^^^^^^^^^
-                4 |   data-value="something">
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^
+                OpeningTag(
+                  tag_name: "div",
+                  attributes: {
+                    class: String("multiline"),
+                    id: String("test"),
+                    data-value: String("something"),
+                  },
+                  expression: None,
+                  self_closing: false,
+                )
+                <div
+                ^^^^
+                  class="multiline"
+                ^^^^^^^^^^^^^^^^^^^
+                  id="test"
+                ^^^^^^^^^^^
+                  data-value="something">
+                ^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 Text [1 byte, "\n"]
-                4 |   data-value="something">
-                5 | </div>
-
-                ClosingTag </div>
-                5 | </div>
-                  | ^^^^^^
-
-                Text [1 byte, "\n"]
-                5 | </div>
+                  data-value="something">
             "#]],
         );
     }
 
     #[test]
-    fn should_accept_script_with_content() {
+    fn should_accept_script_with_html_content() {
         check(
             indoc! {r#"
                 <script>
@@ -1306,24 +1292,31 @@ mod tests {
                 </script>
             "#},
             expect![[r#"
-                OpeningTag <script>
-                1 | <script>
-                  | ^^^^^^^^
+                OpeningTag(
+                  tag_name: "script",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <script>
+                ^^^^^^^^
 
                 Text [65 byte, "\n  const html = \"<title>Nested</title>\";\n  document.write(html);\n"]
-                1 | <script>
-                2 |   const html = "<title>Nested</title>";
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                3 |   document.write(html);
-                  | ^^^^^^^^^^^^^^^^^^^^^^^
-                4 | </script>
+                <script>
+                  const html = "<title>Nested</title>";
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                  document.write(html);
+                ^^^^^^^^^^^^^^^^^^^^^^^
+                </script>
 
-                ClosingTag </script>
-                4 | </script>
-                  | ^^^^^^^^^
+                ClosingTag(
+                  tag_name: "script",
+                )
+                </script>
+                ^^^^^^^^^
 
                 Text [1 byte, "\n"]
-                4 | </script>
+                </script>
             "#]],
         );
     }
@@ -1333,266 +1326,93 @@ mod tests {
         check(
             indoc! {r#"
                 <script>
-                  const html = "<title>Nested</title>";
-                  document.write(html);
+                  const html = "";
                 </ script>
 
                 <script>
-                  const html = "<title>Nested</title>";
-                  document.write(html);
+                  const html = "";
                 </script  >
 
                 <script>
-                  const html = "<title>Nested</title>";
-                  document.write(html);
+                  const html = "";
                 </ script  >
             "#},
             expect![[r#"
-                OpeningTag <script>
-                 1 | <script>
-                   | ^^^^^^^^
+                OpeningTag(
+                  tag_name: "script",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <script>
+                ^^^^^^^^
 
-                Text [65 byte, "\n  const html = \"<title>Nested</title>\";\n  document.write(html);\n"]
-                 1 | <script>
-                 2 |   const html = "<title>Nested</title>";
-                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                 3 |   document.write(html);
-                   | ^^^^^^^^^^^^^^^^^^^^^^^
-                 4 | </ script>
+                Text [20 byte, "\n  const html = \"\";\n"]
+                <script>
+                  const html = "";
+                ^^^^^^^^^^^^^^^^^^
+                </ script>
 
-                ClosingTag </script>
-                 4 | </ script>
-                   | ^^^^^^^^^^
-
-                Text [2 byte, "\n\n"]
-                 4 | </ script>
-                 5 | 
-                 6 | <script>
-
-                OpeningTag <script>
-                 6 | <script>
-                   | ^^^^^^^^
-
-                Text [65 byte, "\n  const html = \"<title>Nested</title>\";\n  document.write(html);\n"]
-                 6 | <script>
-                 7 |   const html = "<title>Nested</title>";
-                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                 8 |   document.write(html);
-                   | ^^^^^^^^^^^^^^^^^^^^^^^
-                 9 | </script  >
-
-                ClosingTag </script>
-                 9 | </script  >
-                   | ^^^^^^^^^^^
+                ClosingTag(
+                  tag_name: "script",
+                )
+                </ script>
+                ^^^^^^^^^^
 
                 Text [2 byte, "\n\n"]
-                 9 | </script  >
-                10 | 
-                11 | <script>
+                </ script>
 
-                OpeningTag <script>
-                11 | <script>
-                   | ^^^^^^^^
+                <script>
 
-                Text [65 byte, "\n  const html = \"<title>Nested</title>\";\n  document.write(html);\n"]
-                11 | <script>
-                12 |   const html = "<title>Nested</title>";
-                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                13 |   document.write(html);
-                   | ^^^^^^^^^^^^^^^^^^^^^^^
-                14 | </ script  >
+                OpeningTag(
+                  tag_name: "script",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <script>
+                ^^^^^^^^
 
-                ClosingTag </script>
-                14 | </ script  >
-                   | ^^^^^^^^^^^^
+                Text [20 byte, "\n  const html = \"\";\n"]
+                <script>
+                  const html = "";
+                ^^^^^^^^^^^^^^^^^^
+                </script  >
 
-                Text [1 byte, "\n"]
-                14 | </ script  >
-            "#]],
-        );
-    }
+                ClosingTag(
+                  tag_name: "script",
+                )
+                </script  >
+                ^^^^^^^^^^^
 
-    #[test]
-    fn should_accept_adjacent_elements() {
-        check(
-            "<p></p><p></p>",
-            expect![[r#"
-                OpeningTag <p>
-                1 | <p></p><p></p>
-                  | ^^^
+                Text [2 byte, "\n\n"]
+                </script  >
 
-                ClosingTag </p>
-                1 | <p></p><p></p>
-                  |    ^^^^
+                <script>
 
-                OpeningTag <p>
-                1 | <p></p><p></p>
-                  |        ^^^
+                OpeningTag(
+                  tag_name: "script",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <script>
+                ^^^^^^^^
 
-                ClosingTag </p>
-                1 | <p></p><p></p>
-                  |           ^^^^
-            "#]],
-        );
-    }
+                Text [20 byte, "\n  const html = \"\";\n"]
+                <script>
+                  const html = "";
+                ^^^^^^^^^^^^^^^^^^
+                </ script  >
 
-    #[test]
-    fn should_accept_component_with_script_tag() {
-        check(
-            indoc! {r#"
-                <Main {foo}>
-                	<script>
-                		const x = "<div></div>";
-                	</script>
-                </Main>
-            "#},
-            expect![[r#"
-                OpeningTag <Main expr="foo">
-                1 | <Main {foo}>
-                  | ^^^^^^^^^^^^
-
-                Text [2 byte, "\n\t"]
-                1 | <Main {foo}>
-                2 |     <script>
-                  | ^^^^
-
-                OpeningTag <script>
-                2 |     <script>
-                  |     ^^^^^^^^
-
-                Text [29 byte, "\n\t\tconst x = \"<div></div>\";\n\t"]
-                2 |     <script>
-                3 |         const x = "<div></div>";
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                4 |     </script>
-                  | ^^^^
-
-                ClosingTag </script>
-                4 |     </script>
-                  |     ^^^^^^^^^
+                ClosingTag(
+                  tag_name: "script",
+                )
+                </ script  >
+                ^^^^^^^^^^^^
 
                 Text [1 byte, "\n"]
-                4 |     </script>
-                5 | </Main>
-
-                ClosingTag </Main>
-                5 | </Main>
-                  | ^^^^^^^
-
-                Text [1 byte, "\n"]
-                5 | </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_full_html_document() {
-        check(
-            indoc! {r#"
-                <!DOCTYPE html>
-                <html>
-                <head>
-                  <title>My Page</title>
-                </head>
-                <body>
-                  <div class="container">
-                    Hello, world!
-                  </div>
-                </body>
-                </html>
-            "#},
-            expect![[r#"
-                Doctype
-                 1 | <!DOCTYPE html>
-                   | ^^^^^^^^^^^^^^^
-
-                Text [1 byte, "\n"]
-                 1 | <!DOCTYPE html>
-                 2 | <html>
-
-                OpeningTag <html>
-                 2 | <html>
-                   | ^^^^^^
-
-                Text [1 byte, "\n"]
-                 2 | <html>
-                 3 | <head>
-
-                OpeningTag <head>
-                 3 | <head>
-                   | ^^^^^^
-
-                Text [3 byte, "\n  "]
-                 3 | <head>
-                 4 |   <title>My Page</title>
-                   | ^^
-
-                OpeningTag <title>
-                 4 |   <title>My Page</title>
-                   |   ^^^^^^^
-
-                Text [7 byte, "My Page"]
-                 4 |   <title>My Page</title>
-                   |          ^^^^^^^
-
-                ClosingTag </title>
-                 4 |   <title>My Page</title>
-                   |                 ^^^^^^^^
-
-                Text [1 byte, "\n"]
-                 4 |   <title>My Page</title>
-                 5 | </head>
-
-                ClosingTag </head>
-                 5 | </head>
-                   | ^^^^^^^
-
-                Text [1 byte, "\n"]
-                 5 | </head>
-                 6 | <body>
-
-                OpeningTag <body>
-                 6 | <body>
-                   | ^^^^^^
-
-                Text [3 byte, "\n  "]
-                 6 | <body>
-                 7 |   <div class="container">
-                   | ^^
-
-                OpeningTag <div class="container">
-                 7 |   <div class="container">
-                   |   ^^^^^^^^^^^^^^^^^^^^^^^
-
-                Text [21 byte, "\n    Hello, world!\n  "]
-                 7 |   <div class="container">
-                 8 |     Hello, world!
-                   | ^^^^^^^^^^^^^^^^^
-                 9 |   </div>
-                   | ^^
-
-                ClosingTag </div>
-                 9 |   </div>
-                   |   ^^^^^^
-
-                Text [1 byte, "\n"]
-                 9 |   </div>
-                10 | </body>
-
-                ClosingTag </body>
-                10 | </body>
-                   | ^^^^^^^
-
-                Text [1 byte, "\n"]
-                10 | </body>
-                11 | </html>
-
-                ClosingTag </html>
-                11 | </html>
-                   | ^^^^^^^
-
-                Text [1 byte, "\n"]
-                11 | </html>
+                </ script  >
             "#]],
         );
     }
@@ -1609,242 +1429,127 @@ mod tests {
                 </svg>
             "#},
             expect![[r#"
-                OpeningTag <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                1 | <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                OpeningTag(
+                  tag_name: "svg",
+                  attributes: {
+                    xmlns: String("http://www.w3.org/2000/svg"),
+                    width: String("24"),
+                    height: String("24"),
+                    viewBox: String("0 0 24 24"),
+                    fill: String("none"),
+                    stroke: String("currentColor"),
+                    stroke-width: String("2"),
+                    stroke-linecap: String("round"),
+                    stroke-linejoin: String("round"),
+                  },
+                  expression: None,
+                  self_closing: false,
+                )
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 Text [1 byte, "\n"]
-                1 | <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                2 | <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
 
-                OpeningTag <line x1="16.5" y1="9.4" x2="7.5" y2="4.21">
-                2 | <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                OpeningTag(
+                  tag_name: "line",
+                  attributes: {
+                    x1: String("16.5"),
+                    y1: String("9.4"),
+                    x2: String("7.5"),
+                    y2: String("4.21"),
+                  },
+                  expression: None,
+                  self_closing: false,
+                )
+                <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-                ClosingTag </line>
-                2 | <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
-                  |                                             ^^^^^^^
-
-                Text [1 byte, "\n"]
-                2 | <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
-                3 | <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-
-                OpeningTag <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
-                3 | <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                ClosingTag </path>
-                3 | <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                  |                                                                                                                                     ^^^^^^^
-
-                Text [1 byte, "\n"]
-                3 | <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                4 | <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-
-                OpeningTag <polyline points="3.27 6.96 12 12.01 20.73 6.96">
-                4 | <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                ClosingTag </polyline>
-                4 | <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                  |                                                  ^^^^^^^^^^^
+                ClosingTag(
+                  tag_name: "line",
+                )
+                <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
+                                                            ^^^^^^^
 
                 Text [1 byte, "\n"]
-                4 | <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                5 | <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
 
-                OpeningTag <line x1="12" y1="22.08" x2="12" y2="12">
-                5 | <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                OpeningTag(
+                  tag_name: "path",
+                  attributes: {
+                    d: String("M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"),
+                  },
+                  expression: None,
+                  self_closing: false,
+                )
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-                ClosingTag </line>
-                5 | <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                  |                                          ^^^^^^^
+                ClosingTag(
+                  tag_name: "path",
+                )
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                                                                                                                                                    ^^^^^^^
 
                 Text [1 byte, "\n"]
-                5 | <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                6 | </svg>
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
 
-                ClosingTag </svg>
-                6 | </svg>
-                  | ^^^^^^
+                OpeningTag(
+                  tag_name: "polyline",
+                  attributes: {
+                    points: String("3.27 6.96 12 12.01 20.73 6.96"),
+                  },
+                  expression: None,
+                  self_closing: false,
+                )
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                ClosingTag(
+                  tag_name: "polyline",
+                )
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                                                                 ^^^^^^^^^^^
 
                 Text [1 byte, "\n"]
-                6 | </svg>
-            "#]],
-        );
-    }
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                <line x1="12" y1="22.08" x2="12" y2="12"></line>
 
-    #[test]
-    fn should_accept_nested_svg() {
-        check(
-            indoc! {r#"
-                <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" version="1.1" viewBox="0 0 128 128" class="size-12">
-                	<g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
-                		<path d="M20.04 38 64 22l43.96 16L64 54Z"></path>
-                		<path d="M17.54 47.09v48l35.099 12.775"></path>
-                		<path d="M64 112V64l46.46-16.91v48L77.988 106.91"></path>
-                	</g>
+                OpeningTag(
+                  tag_name: "line",
+                  attributes: {
+                    x1: String("12"),
+                    y1: String("22.08"),
+                    x2: String("12"),
+                    y2: String("12"),
+                  },
+                  expression: None,
+                  self_closing: false,
+                )
+                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                ClosingTag(
+                  tag_name: "line",
+                )
+                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                                                         ^^^^^^^
+
+                Text [1 byte, "\n"]
+                <line x1="12" y1="22.08" x2="12" y2="12"></line>
                 </svg>
-            "#},
-            expect![[r#"
-                OpeningTag <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" version="1.1" viewBox="0 0 128 128" class="size-12">
-                1 | <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" version="1.1" viewBox="0 0 128 128" class="size-12">
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-                Text [2 byte, "\n\t"]
-                1 | <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" version="1.1" viewBox="0 0 128 128" class="size-12">
-                2 |     <g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
-                  | ^^^^
-
-                OpeningTag <g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
-                2 |     <g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
-                  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Text [3 byte, "\n\t\t"]
-                2 |     <g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
-                3 |         <path d="M20.04 38 64 22l43.96 16L64 54Z"></path>
-                  | ^^^^^^^^
-
-                OpeningTag <path d="M20.04 38 64 22l43.96 16L64 54Z">
-                3 |         <path d="M20.04 38 64 22l43.96 16L64 54Z"></path>
-                  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                ClosingTag </path>
-                3 |         <path d="M20.04 38 64 22l43.96 16L64 54Z"></path>
-                  |                                                   ^^^^^^^
-
-                Text [3 byte, "\n\t\t"]
-                3 |         <path d="M20.04 38 64 22l43.96 16L64 54Z"></path>
-                4 |         <path d="M17.54 47.09v48l35.099 12.775"></path>
-                  | ^^^^^^^^
-
-                OpeningTag <path d="M17.54 47.09v48l35.099 12.775">
-                4 |         <path d="M17.54 47.09v48l35.099 12.775"></path>
-                  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                ClosingTag </path>
-                4 |         <path d="M17.54 47.09v48l35.099 12.775"></path>
-                  |                                                 ^^^^^^^
-
-                Text [3 byte, "\n\t\t"]
-                4 |         <path d="M17.54 47.09v48l35.099 12.775"></path>
-                5 |         <path d="M64 112V64l46.46-16.91v48L77.988 106.91"></path>
-                  | ^^^^^^^^
-
-                OpeningTag <path d="M64 112V64l46.46-16.91v48L77.988 106.91">
-                5 |         <path d="M64 112V64l46.46-16.91v48L77.988 106.91"></path>
-                  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                ClosingTag </path>
-                5 |         <path d="M64 112V64l46.46-16.91v48L77.988 106.91"></path>
-                  |                                                           ^^^^^^^
-
-                Text [2 byte, "\n\t"]
-                5 |         <path d="M64 112V64l46.46-16.91v48L77.988 106.91"></path>
-                6 |     </g>
-                  | ^^^^
-
-                ClosingTag </g>
-                6 |     </g>
-                  |     ^^^^
+                ClosingTag(
+                  tag_name: "svg",
+                )
+                </svg>
+                ^^^^^^
 
                 Text [1 byte, "\n"]
-                6 |     </g>
-                7 | </svg>
-
-                ClosingTag </svg>
-                7 | </svg>
-                  | ^^^^^^
-
-                Text [1 byte, "\n"]
-                7 | </svg>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_form_with_input() {
-        check(
-            indoc! {r#"
-                <Main>
-                	<form id="form">
-                		<input type="text" required>
-                		<button type="submit">Send</button>
-                	</form>
-                </Main>
-            "#},
-            expect![[r#"
-                OpeningTag <Main>
-                1 | <Main>
-                  | ^^^^^^
-
-                Text [2 byte, "\n\t"]
-                1 | <Main>
-                2 |     <form id="form">
-                  | ^^^^
-
-                OpeningTag <form id="form">
-                2 |     <form id="form">
-                  |     ^^^^^^^^^^^^^^^^
-
-                Text [3 byte, "\n\t\t"]
-                2 |     <form id="form">
-                3 |         <input type="text" required>
-                  | ^^^^^^^^
-
-                OpeningTag <input type="text" required>
-                3 |         <input type="text" required>
-                  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Text [3 byte, "\n\t\t"]
-                3 |         <input type="text" required>
-                4 |         <button type="submit">Send</button>
-                  | ^^^^^^^^
-
-                OpeningTag <button type="submit">
-                4 |         <button type="submit">Send</button>
-                  |         ^^^^^^^^^^^^^^^^^^^^^^
-
-                Text [4 byte, "Send"]
-                4 |         <button type="submit">Send</button>
-                  |                               ^^^^
-
-                ClosingTag </button>
-                4 |         <button type="submit">Send</button>
-                  |                                   ^^^^^^^^^
-
-                Text [2 byte, "\n\t"]
-                4 |         <button type="submit">Send</button>
-                5 |     </form>
-                  | ^^^^
-
-                ClosingTag </form>
-                5 |     </form>
-                  |     ^^^^^^^
-
-                Text [1 byte, "\n"]
-                5 |     </form>
-                6 | </Main>
-
-                ClosingTag </Main>
-                6 | </Main>
-                  | ^^^^^^^
-
-                Text [1 byte, "\n"]
-                6 | </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_if_with_expression() {
-        check(
-            "<if {foo}>",
-            expect![[r#"
-                OpeningTag <if expr="foo">
-                1 | <if {foo}>
-                  | ^^^^^^^^^^
+                </svg>
             "#]],
         );
     }
@@ -1852,143 +1557,23 @@ mod tests {
     #[test]
     fn should_accept_div_with_class_and_expression() {
         check(
-            "<div class=\"test\" {bar}>",
+            indoc! {r#"
+                <div class="test" {bar}>
+            "#},
             expect![[r#"
-                OpeningTag <div class="test" expr="bar">
-                1 | <div class="test" {bar}>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
+                OpeningTag(
+                  tag_name: "div",
+                  attributes: {
+                    class: String("test"),
+                  },
+                  expression: Some("bar"),
+                  self_closing: false,
+                )
+                <div class="test" {bar}>
+                ^^^^^^^^^^^^^^^^^^^^^^^^
 
-    #[test]
-    fn should_accept_if_with_equality_expression() {
-        check(
-            "<if {user.name == 'John'}>",
-            expect![[r#"
-                OpeningTag <if expr="user.name == 'John'">
-                1 | <if {user.name == 'John'}>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_component_with_field_access() {
-        check(
-            "<component {obj.prop.subprop}>",
-            expect![[r#"
-                OpeningTag <component expr="obj.prop.subprop">
-                1 | <component {obj.prop.subprop}>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_button_with_attribute_and_expression() {
-        check(
-            "<button disabled {enabled == 'yes'}>",
-            expect![[r#"
-                OpeningTag <button disabled expr="enabled == 'yes'">
-                1 | <button disabled {enabled == 'yes'}>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_input_with_variable_name() {
-        check(
-            "<input {variable_name_123}>",
-            expect![[r#"
-                OpeningTag <input expr="variable_name_123">
-                1 | <input {variable_name_123}>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_div_with_spaced_expression() {
-        check(
-            "<div class=\"test\" {  user.name  }>",
-            expect![[r#"
-                OpeningTag <div class="test" expr="  user.name  ">
-                1 | <div class="test" {  user.name  }>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_span_with_string_expression() {
-        check(
-            "<span {'hello world'}>",
-            expect![[r#"
-                OpeningTag <span expr="'hello world'">
-                1 | <span {'hello world'}>
-                  | ^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_form_with_parenthesized_expression() {
-        check(
-            "<form {(user.role == 'admin')}>",
-            expect![[r#"
-                OpeningTag <form expr="(user.role == 'admin')">
-                1 | <form {(user.role == 'admin')}>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_section_with_chained_equality() {
-        check(
-            "<section {a == b == c}>",
-            expect![[r#"
-                OpeningTag <section expr="a == b == c">
-                1 | <section {a == b == c}>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_for_with_in_expression() {
-        check(
-            "<for {user in users}>",
-            expect![[r#"
-                OpeningTag <for expr="user in users">
-                1 | <for {user in users}>
-                  | ^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_for_with_field_access() {
-        check(
-            "<for {item in user.items}>",
-            expect![[r#"
-                OpeningTag <for expr="item in user.items">
-                1 | <for {item in user.items}>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_div_with_in_expression() {
-        check(
-            "<div {foo in bars}>",
-            expect![[r#"
-                OpeningTag <div expr="foo in bars">
-                1 | <div {foo in bars}>
-                  | ^^^^^^^^^^^^^^^^^^^
+                Text [1 byte, "\n"]
+                <div class="test" {bar}>
             "#]],
         );
     }
@@ -1998,29 +1583,24 @@ mod tests {
         check(
             "<h1>Hello {name}!</h1>",
             expect![[r#"
-                OpeningTag <h1>
-                1 | <h1>Hello {name}!</h1>
-                  | ^^^^
+                OpeningTag(
+                  tag_name: "h1",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <h1>Hello {name}!</h1>
+                ^^^^
 
                 Text [13 byte, "Hello {name}!"]
-                1 | <h1>Hello {name}!</h1>
-                  |     ^^^^^^^^^^^^^
+                <h1>Hello {name}!</h1>
+                    ^^^^^^^^^^^^^
 
-                ClosingTag </h1>
-                1 | <h1>Hello {name}!</h1>
-                  |                  ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_text_with_unrecognized_expressions() {
-        check(
-            "{ ~ } {{ ~ }} {{{{   }}}{}{{}}}",
-            expect![[r#"
-                Text [31 byte, "{ ~ } {{ ~ }} {{{{   }}}{}{{}}}"]
-                1 | { ~ } {{ ~ }} {{{{   }}}{}{{}}}
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                ClosingTag(
+                  tag_name: "h1",
+                )
+                <h1>Hello {name}!</h1>
+                                 ^^^^^
             "#]],
         );
     }
@@ -2030,17 +1610,24 @@ mod tests {
         check(
             "<p>User {user.name} has {user.count} items</p>",
             expect![[r#"
-                OpeningTag <p>
-                1 | <p>User {user.name} has {user.count} items</p>
-                  | ^^^
+                OpeningTag(
+                  tag_name: "p",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <p>User {user.name} has {user.count} items</p>
+                ^^^
 
                 Text [39 byte, "User {user.name} has {user.count} items"]
-                1 | <p>User {user.name} has {user.count} items</p>
-                  |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                <p>User {user.name} has {user.count} items</p>
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-                ClosingTag </p>
-                1 | <p>User {user.name} has {user.count} items</p>
-                  |                                           ^^^^
+                ClosingTag(
+                  tag_name: "p",
+                )
+                <p>User {user.name} has {user.count} items</p>
+                                                          ^^^^
             "#]],
         );
     }
@@ -2050,17 +1637,24 @@ mod tests {
         check(
             "<span>{greeting} world!</span>",
             expect![[r#"
-                OpeningTag <span>
-                1 | <span>{greeting} world!</span>
-                  | ^^^^^^
+                OpeningTag(
+                  tag_name: "span",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <span>{greeting} world!</span>
+                ^^^^^^
 
                 Text [17 byte, "{greeting} world!"]
-                1 | <span>{greeting} world!</span>
-                  |       ^^^^^^^^^^^^^^^^^
+                <span>{greeting} world!</span>
+                      ^^^^^^^^^^^^^^^^^
 
-                ClosingTag </span>
-                1 | <span>{greeting} world!</span>
-                  |                        ^^^^^^^
+                ClosingTag(
+                  tag_name: "span",
+                )
+                <span>{greeting} world!</span>
+                                       ^^^^^^^
             "#]],
         );
     }
@@ -2070,17 +1664,24 @@ mod tests {
         check(
             "<div>Price: {price}</div>",
             expect![[r#"
-                OpeningTag <div>
-                1 | <div>Price: {price}</div>
-                  | ^^^^^
+                OpeningTag(
+                  tag_name: "div",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <div>Price: {price}</div>
+                ^^^^^
 
                 Text [14 byte, "Price: {price}"]
-                1 | <div>Price: {price}</div>
-                  |      ^^^^^^^^^^^^^^
+                <div>Price: {price}</div>
+                     ^^^^^^^^^^^^^^
 
-                ClosingTag </div>
-                1 | <div>Price: {price}</div>
-                  |                    ^^^^^^
+                ClosingTag(
+                  tag_name: "div",
+                )
+                <div>Price: {price}</div>
+                                   ^^^^^^
             "#]],
         );
     }
@@ -2090,17 +1691,24 @@ mod tests {
         check(
             "<div>Price: {{k: v}}</div>",
             expect![[r#"
-                OpeningTag <div>
-                1 | <div>Price: {{k: v}}</div>
-                  | ^^^^^
+                OpeningTag(
+                  tag_name: "div",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <div>Price: {{k: v}}</div>
+                ^^^^^
 
                 Text [15 byte, "Price: {{k: v}}"]
-                1 | <div>Price: {{k: v}}</div>
-                  |      ^^^^^^^^^^^^^^^
+                <div>Price: {{k: v}}</div>
+                     ^^^^^^^^^^^^^^^
 
-                ClosingTag </div>
-                1 | <div>Price: {{k: v}}</div>
-                  |                     ^^^^^^
+                ClosingTag(
+                  tag_name: "div",
+                )
+                <div>Price: {{k: v}}</div>
+                                    ^^^^^^
             "#]],
         );
     }
@@ -2110,77 +1718,24 @@ mod tests {
         check(
             "<h2>{title}</h2>",
             expect![[r#"
-                OpeningTag <h2>
-                1 | <h2>{title}</h2>
-                  | ^^^^
+                OpeningTag(
+                  tag_name: "h2",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <h2>{title}</h2>
+                ^^^^
 
                 Text [7 byte, "{title}"]
-                1 | <h2>{title}</h2>
-                  |     ^^^^^^^
+                <h2>{title}</h2>
+                    ^^^^^^^
 
-                ClosingTag </h2>
-                1 | <h2>{title}</h2>
-                  |            ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_complex_expression_in_text() {
-        check(
-            "<p>Status: {user.profile.status == 'active'}</p>",
-            expect![[r#"
-                OpeningTag <p>
-                1 | <p>Status: {user.profile.status == 'active'}</p>
-                  | ^^^
-
-                Text [41 byte, "Status: {user.profile.status == 'active'}"]
-                1 | <p>Status: {user.profile.status == 'active'}</p>
-                  |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                ClosingTag </p>
-                1 | <p>Status: {user.profile.status == 'active'}</p>
-                  |                                             ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_expression_with_field_access() {
-        check(
-            "<span>Item: {item.title}</span>",
-            expect![[r#"
-                OpeningTag <span>
-                1 | <span>Item: {item.title}</span>
-                  | ^^^^^^
-
-                Text [18 byte, "Item: {item.title}"]
-                1 | <span>Item: {item.title}</span>
-                  |       ^^^^^^^^^^^^^^^^^^
-
-                ClosingTag </span>
-                1 | <span>Item: {item.title}</span>
-                  |                         ^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_mixed_tag_and_text_expressions() {
-        check(
-            "<div {className}>Content: {content}</div>",
-            expect![[r#"
-                OpeningTag <div expr="className">
-                1 | <div {className}>Content: {content}</div>
-                  | ^^^^^^^^^^^^^^^^^
-
-                Text [18 byte, "Content: {content}"]
-                1 | <div {className}>Content: {content}</div>
-                  |                  ^^^^^^^^^^^^^^^^^^
-
-                ClosingTag </div>
-                1 | <div {className}>Content: {content}</div>
-                  |                                    ^^^^^^
+                ClosingTag(
+                  tag_name: "h2",
+                )
+                <h2>{title}</h2>
+                           ^^^^^
             "#]],
         );
     }
@@ -2190,17 +1745,26 @@ mod tests {
         check(
             r#"<div class="foo" class="bar"></div>"#,
             expect![[r#"
-                OpeningTag <div class="foo">
-                1 | <div class="foo" class="bar"></div>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                OpeningTag(
+                  tag_name: "div",
+                  attributes: {
+                    class: String("foo"),
+                  },
+                  expression: None,
+                  self_closing: false,
+                )
+                <div class="foo" class="bar"></div>
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 Duplicate attribute 'class'
-                1 | <div class="foo" class="bar"></div>
-                  |                  ^^^^^
+                <div class="foo" class="bar"></div>
+                                 ^^^^^
 
-                ClosingTag </div>
-                1 | <div class="foo" class="bar"></div>
-                  |                              ^^^^^^
+                ClosingTag(
+                  tag_name: "div",
+                )
+                <div class="foo" class="bar"></div>
+                                             ^^^^^^
             "#]],
         );
     }
@@ -2210,13 +1774,20 @@ mod tests {
         check(
             r#"<input type="text" type='number'/>"#,
             expect![[r#"
-                OpeningTag <input type="text"/>
-                1 | <input type="text" type='number'/>
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                OpeningTag(
+                  tag_name: "input",
+                  attributes: {
+                    type: String("text"),
+                  },
+                  expression: None,
+                  self_closing: true,
+                )
+                <input type="text" type='number'/>
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 Duplicate attribute 'type'
-                1 | <input type="text" type='number'/>
-                  |                    ^^^^
+                <input type="text" type='number'/>
+                                   ^^^^
             "#]],
         );
     }
@@ -2226,81 +1797,20 @@ mod tests {
         check(
             r#"<input required required />"#,
             expect![[r#"
-                OpeningTag <input required/>
-                1 | <input required required />
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                OpeningTag(
+                  tag_name: "input",
+                  attributes: {
+                    required: None,
+                  },
+                  expression: None,
+                  self_closing: true,
+                )
+                <input required required />
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 Duplicate attribute 'required'
-                1 | <input required required />
-                  |                 ^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_empty_expression() {
-        check(
-            r#"{}"#,
-            expect![[r#"
-                Text [2 byte, "{}"]
-                1 | {}
-                  | ^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_reject_unterminated_expression() {
-        check(
-            r#"{"#,
-            expect![[r#"
-                Text [1 byte, "{"]
-                1 | {
-                  | ^
-            "#]],
-        );
-        check(
-            r#"hello {"#,
-            expect![[r#"
-                Text [7 byte, "hello {"]
-                1 | hello {
-                  | ^^^^^^^
-            "#]],
-        );
-        check(
-            r#"hello {foo"#,
-            expect![[r#"
-                Text [10 byte, "hello {foo"]
-                1 | hello {foo
-                  | ^^^^^^^^^^
-            "#]],
-        );
-        check(
-            r#"hello {{{foo}}"#,
-            expect![[r#"
-                Text [14 byte, "hello {{{foo}}"]
-                1 | hello {{{foo}}
-                  | ^^^^^^^^^^^^^^
-            "#]],
-        );
-        check(
-            r#"<div {>"#,
-            expect![[r#"
-                OpeningTag <div>
-                1 | <div {>
-                  | ^^^^^^^
-
-                Unmatched {
-                1 | <div {>
-                  |      ^
-            "#]],
-        );
-        check(
-            r#"{{{}}{{{}}}{{{}}}{}"#,
-            expect![[r#"
-                Text [19 byte, "{{{}}{{{}}}{{{}}}{}"]
-                1 | {{{}}{{{}}}{{{}}}{}
-                  | ^^^^^^^^^^^^^^^^^^^
+                <input required required />
+                                ^^^^^^^^
             "#]],
         );
     }
@@ -2311,16 +1821,16 @@ mod tests {
             r#"<!--"#,
             expect![[r#"
                 Unterminated comment
-                1 | <!--
-                  | ^^^^
+                <!--
+                ^^^^
             "#]],
         );
         check(
             r#"<!-- foo bar"#,
             expect![[r#"
                 Unterminated comment
-                1 | <!-- foo bar
-                  | ^^^^
+                <!-- foo bar
+                ^^^^
             "#]],
         );
     }
@@ -2331,84 +1841,94 @@ mod tests {
             r#"<div <div>"#,
             expect![[r#"
                 Unterminated opening tag
-                1 | <div <div>
-                  |  ^^^
+                <div <div>
+                 ^^^
 
-                OpeningTag <div>
-                1 | <div <div>
-                  |      ^^^^^
+                OpeningTag(
+                  tag_name: "div",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <div <div>
+                     ^^^^^
             "#]],
         );
         check(
             r#"<div class="foo" <div>"#,
             expect![[r#"
                 Unterminated opening tag
-                1 | <div class="foo" <div>
-                  |  ^^^
+                <div class="foo" <div>
+                 ^^^
 
-                OpeningTag <div>
-                1 | <div class="foo" <div>
-                  |                  ^^^^^
+                OpeningTag(
+                  tag_name: "div",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <div class="foo" <div>
+                                 ^^^^^
             "#]],
         );
         check(
             r#"<div"#,
             expect![[r#"
-            Unterminated opening tag
-            1 | <div
-              |  ^^^
-        "#]],
+                Unterminated opening tag
+                <div
+                 ^^^
+            "#]],
         );
         check(
             r#"<div foo"#,
             expect![[r#"
-            Unterminated opening tag
-            1 | <div foo
-              |  ^^^
-        "#]],
+                Unterminated opening tag
+                <div foo
+                 ^^^
+            "#]],
         );
         check(
             r#"<div foo="#,
             expect![[r#"
                 Expected quoted attribute value or expression
-                1 | <div foo=
-                  |      ^^^^
+                <div foo=
+                     ^^^^
 
                 Unterminated opening tag
-                1 | <div foo=
-                  |  ^^^
+                <div foo=
+                 ^^^
             "#]],
         );
         check(
             r#"<div foo="""#,
             expect![[r#"
                 Unterminated opening tag
-                1 | <div foo=""
-                  |  ^^^
+                <div foo=""
+                 ^^^
             "#]],
         );
         check(
             r#"<div foo=""#,
             expect![[r#"
                 Unmatched "
-                1 | <div foo="
-                  |          ^
+                <div foo="
+                         ^
 
                 Unterminated opening tag
-                1 | <div foo="
-                  |  ^^^
+                <div foo="
+                 ^^^
             "#]],
         );
         check(
             r#"<div foo="bar"#,
             expect![[r#"
                 Unmatched "
-                1 | <div foo="bar
-                  |          ^
+                <div foo="bar
+                         ^
 
                 Unterminated opening tag
-                1 | <div foo="bar
-                  |  ^^^
+                <div foo="bar
+                 ^^^
             "#]],
         );
     }
@@ -2419,96 +1939,154 @@ mod tests {
             r#"</div </div>"#,
             expect![[r#"
                 Unterminated closing tag
-                1 | </div </div>
-                  |   ^^^
+                </div </div>
+                  ^^^
 
-                ClosingTag </div>
-                1 | </div </div>
-                  |       ^^^^^^
+                ClosingTag(
+                  tag_name: "div",
+                )
+                </div </div>
+                      ^^^^^^
             "#]],
         );
         check(
             r#"</div> </div"#,
             expect![[r#"
-                ClosingTag </div>
-                1 | </div> </div
-                  | ^^^^^^
+                ClosingTag(
+                  tag_name: "div",
+                )
+                </div> </div
+                ^^^^^^
 
                 Text [1 byte, " "]
-                1 | </div> </div
-                  |       ^
+                </div> </div
+                      ^
 
                 Unterminated closing tag
-                1 | </div> </div
-                  |          ^^^
+                </div> </div
+                         ^^^
             "#]],
         );
         check(
             r#"</di<div>"#,
             expect![[r#"
                 Unterminated closing tag
-                1 | </di<div>
-                  |   ^^
+                </di<div>
+                  ^^
 
-                OpeningTag <div>
-                1 | </di<div>
-                  |     ^^^^^
+                OpeningTag(
+                  tag_name: "div",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                </di<div>
+                    ^^^^^
             "#]],
         );
         check(
             r#"</</div"#,
             expect![[r#"
                 Unterminated closing tag
-                1 | </</div
-                  | ^^
+                </</div
+                ^^
 
                 Unterminated closing tag
-                1 | </</div
-                  |     ^^^
+                </</div
+                    ^^^
             "#]],
         );
         check(
             r#"<div foo="#,
             expect![[r#"
                 Expected quoted attribute value or expression
-                1 | <div foo=
-                  |      ^^^^
+                <div foo=
+                     ^^^^
 
                 Unterminated opening tag
-                1 | <div foo=
-                  |  ^^^
+                <div foo=
+                 ^^^
             "#]],
         );
         check(
             r#"<div foo="""#,
             expect![[r#"
                 Unterminated opening tag
-                1 | <div foo=""
-                  |  ^^^
+                <div foo=""
+                 ^^^
             "#]],
         );
         check(
             r#"<div foo=""#,
             expect![[r#"
                 Unmatched "
-                1 | <div foo="
-                  |          ^
+                <div foo="
+                         ^
 
                 Unterminated opening tag
-                1 | <div foo="
-                  |  ^^^
+                <div foo="
+                 ^^^
             "#]],
         );
         check(
             r#"<div foo="bar"#,
             expect![[r#"
                 Unmatched "
-                1 | <div foo="bar
-                  |          ^
+                <div foo="bar
+                         ^
 
                 Unterminated opening tag
-                1 | <div foo="bar
-                  |  ^^^
+                <div foo="bar
+                 ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_raw_text_with_tricky_content() {
+        check(
+            r#"<script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>"#,
+            expect![[r#"
+                OpeningTag(
+                  tag_name: "script",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
+                ^^^^^^^^
+
+                Text [62 byte, "</scri</<<</div></div><</scrip</scrip></cript></script</script"]
+                <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                ClosingTag(
+                  tag_name: "script",
+                )
+                <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
+                                                                                      ^^^^^^^^^
+
+                OpeningTag(
+                  tag_name: "div",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
+                                                                                               ^^^^^
+
+                Text [6 byte, "works!"]
+                <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
+                                                                                                    ^^^^^^
+
+                OpeningTag(
+                  tag_name: "div",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
+                                                                                                          ^^^^^
             "#]],
         );
     }

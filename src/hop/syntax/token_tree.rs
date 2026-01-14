@@ -152,22 +152,34 @@ impl Display for TokenTree {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fn fmt_tree(tree: &TokenTree, f: &mut fmt::Formatter<'_>, indent: usize) -> fmt::Result {
             let indent_str = "  ".repeat(indent);
-            write!(f, "{}{}", indent_str, tree.token)?;
+            writeln!(f, "{}TokenTree(", indent_str)?;
 
-            if let Some(ref closing_name) = tree.closing_tag_name {
-                write!(f, " [has closing: {}]", closing_name)?;
+            // Write token with proper indentation for each line
+            let token_str = tree.token.to_string();
+            for line in token_str.lines() {
+                writeln!(f, "{}  {}", indent_str, line)?;
             }
 
-            if !tree.children.is_empty() {
+            // Write closing_tag_name
+            let closing_str = match &tree.closing_tag_name {
+                Some(name) => format!("Some({:?})", name.to_string()),
+                None => "None".to_string(),
+            };
+            writeln!(f, "{}  closing_tag_name: {},", indent_str, closing_str)?;
+
+            // Write children
+            write!(f, "{}  children: [", indent_str)?;
+            if tree.children.is_empty() {
+                writeln!(f, "],")?;
+            } else {
                 writeln!(f)?;
-                for (i, child) in tree.children.iter().enumerate() {
-                    fmt_tree(child, f, indent + 1)?;
-                    if i < tree.children.len() - 1 {
-                        writeln!(f)?;
-                    }
+                for child in &tree.children {
+                    fmt_tree(child, f, indent + 2)?;
                 }
+                writeln!(f, "{}  ],", indent_str)?;
             }
 
+            writeln!(f, "{})", indent_str)?;
             Ok(())
         }
 
@@ -209,9 +221,29 @@ mod tests {
                 <div>Hello</div>
             "},
             expect![[r#"
-                OpeningTag <div> [has closing: div]
-                  Text [5 byte, "Hello"]
-                Text [1 byte, "\n"]
+                TokenTree(
+                  OpeningTag(
+                    tag_name: "div",
+                    attributes: {},
+                    expression: None,
+                    self_closing: false,
+                  )
+                  closing_tag_name: Some("div"),
+                  children: [
+                    TokenTree(
+                      Text [5 byte, "Hello"]
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                  ],
+                )
+
+                TokenTree(
+                  Text [1 byte, "\n"]
+                  closing_tag_name: None,
+                  children: [],
+                )
+
             "#]],
         );
     }
@@ -226,13 +258,59 @@ mod tests {
                 </div>
             "},
             expect![[r#"
-                OpeningTag <div> [has closing: div]
-                  Text [5 byte, "\n    "]
-                  OpeningTag <br>
-                  Text [5 byte, "\n    "]
-                  OpeningTag <hr/>
+                TokenTree(
+                  OpeningTag(
+                    tag_name: "div",
+                    attributes: {},
+                    expression: None,
+                    self_closing: false,
+                  )
+                  closing_tag_name: Some("div"),
+                  children: [
+                    TokenTree(
+                      Text [5 byte, "\n    "]
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                    TokenTree(
+                      OpeningTag(
+                        tag_name: "br",
+                        attributes: {},
+                        expression: None,
+                        self_closing: false,
+                      )
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                    TokenTree(
+                      Text [5 byte, "\n    "]
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                    TokenTree(
+                      OpeningTag(
+                        tag_name: "hr",
+                        attributes: {},
+                        expression: None,
+                        self_closing: true,
+                      )
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                    TokenTree(
+                      Text [1 byte, "\n"]
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                  ],
+                )
+
+                TokenTree(
                   Text [1 byte, "\n"]
-                Text [1 byte, "\n"]
+                  closing_tag_name: None,
+                  children: [],
+                )
+
             "#]],
         );
     }
@@ -247,15 +325,71 @@ mod tests {
                 </div>
             "},
             expect![[r#"
-                OpeningTag <div> [has closing: div]
-                  Text [5 byte, "\n    "]
-                  OpeningTag <p> [has closing: p]
-                    Text [5 byte, "Hello"]
-                  Text [5 byte, "\n    "]
-                  OpeningTag <span> [has closing: span]
-                    Text [5 byte, "World"]
+                TokenTree(
+                  OpeningTag(
+                    tag_name: "div",
+                    attributes: {},
+                    expression: None,
+                    self_closing: false,
+                  )
+                  closing_tag_name: Some("div"),
+                  children: [
+                    TokenTree(
+                      Text [5 byte, "\n    "]
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                    TokenTree(
+                      OpeningTag(
+                        tag_name: "p",
+                        attributes: {},
+                        expression: None,
+                        self_closing: false,
+                      )
+                      closing_tag_name: Some("p"),
+                      children: [
+                        TokenTree(
+                          Text [5 byte, "Hello"]
+                          closing_tag_name: None,
+                          children: [],
+                        )
+                      ],
+                    )
+                    TokenTree(
+                      Text [5 byte, "\n    "]
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                    TokenTree(
+                      OpeningTag(
+                        tag_name: "span",
+                        attributes: {},
+                        expression: None,
+                        self_closing: false,
+                      )
+                      closing_tag_name: Some("span"),
+                      children: [
+                        TokenTree(
+                          Text [5 byte, "World"]
+                          closing_tag_name: None,
+                          children: [],
+                        )
+                      ],
+                    )
+                    TokenTree(
+                      Text [1 byte, "\n"]
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                  ],
+                )
+
+                TokenTree(
                   Text [1 byte, "\n"]
-                Text [1 byte, "\n"]
+                  closing_tag_name: None,
+                  children: [],
+                )
+
             "#]],
         );
     }
