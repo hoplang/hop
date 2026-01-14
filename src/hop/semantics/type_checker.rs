@@ -25,52 +25,9 @@ use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::syntax::parsed_ast::{ParsedAst, ParsedAttributeValue};
 use crate::hop::syntax::parsed_node::ParsedNode;
 
-#[derive(Debug, Default)]
-struct State {
-    modules: HashMap<ModuleName, ModuleTypeInformation>,
-}
-
-impl State {
-    fn set_component_type_info(
-        &mut self,
-        module_name: &ModuleName,
-        component_name: &str,
-        type_info: ComponentTypeInformation,
-    ) {
-        self.modules
-            .entry(module_name.clone())
-            .or_default()
-            .set_component_type_info(component_name, type_info);
-    }
-
-    fn set_record_type_info(
-        &mut self,
-        module_name: &ModuleName,
-        record_name: &str,
-        type_info: RecordTypeInformation,
-    ) {
-        self.modules
-            .entry(module_name.clone())
-            .or_default()
-            .set_typed_record(record_name, type_info);
-    }
-
-    fn set_enum_type_info(
-        &mut self,
-        module_name: &ModuleName,
-        enum_name: &str,
-        type_info: EnumTypeInformation,
-    ) {
-        self.modules
-            .entry(module_name.clone())
-            .or_default()
-            .set_typed_enum(enum_name, type_info);
-    }
-}
-
 #[derive(Default, Debug)]
 pub struct TypeChecker {
-    state: State,
+    state: HashMap<ModuleName, ModuleTypeInformation>,
     pub type_errors: HashMap<ModuleName, ErrorCollector<TypeError>>,
     pub type_annotations: HashMap<ModuleName, Vec<TypeAnnotation>>,
     pub typed_asts: HashMap<ModuleName, TypedAst>,
@@ -115,11 +72,11 @@ impl TypeChecker {
 
 fn typecheck_module(
     module: &ParsedAst,
-    state: &mut State,
+    state: &mut HashMap<ModuleName, ModuleTypeInformation>,
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
 ) -> TypedAst {
-    state.modules.insert(
+    state.insert(
         module.name.clone(),
         ModuleTypeInformation {
             components: HashMap::new(),
@@ -133,7 +90,7 @@ fn typecheck_module(
     for import in module.get_import_declarations() {
         let imported_module = import.imported_module();
         let imported_name = import.imported_type_name();
-        let Some(module_state) = state.modules.get(imported_module) else {
+        let Some(module_state) = state.get(imported_module) else {
             errors.push(TypeError::ModuleNotFound {
                 module: imported_module.to_string(),
                 range: import.path.clone(),
@@ -211,13 +168,15 @@ fn typecheck_module(
         };
         let _ = type_env.push(enum_name.to_string(), enum_type);
 
-        state.set_enum_type_info(
-            &module.name,
-            enum_name,
-            EnumTypeInformation {
-                variants: typed_variants.clone(),
-            },
-        );
+        state
+            .entry(module.name.clone())
+            .or_default()
+            .set_typed_enum(
+                enum_name,
+                EnumTypeInformation {
+                    variants: typed_variants.clone(),
+                },
+            );
 
         typed_enums.push(TypedEnumDeclaration {
             name: enum_decl.name.clone(),
@@ -248,13 +207,15 @@ fn typecheck_module(
                 name: record.name.clone(),
                 fields: typed_fields.clone(),
             };
-            state.set_record_type_info(
-                &module.name,
-                record.name(),
-                RecordTypeInformation {
-                    fields: typed_fields.clone(),
-                },
-            );
+            state
+                .entry(module.name.clone())
+                .or_default()
+                .set_typed_record(
+                    record.name(),
+                    RecordTypeInformation {
+                        fields: typed_fields.clone(),
+                    },
+                );
             typed_records.push(typed_record);
             let _ = type_env.push(
                 record_name.to_string(),
@@ -370,13 +331,15 @@ fn typecheck_module(
             }
         }
 
-        state.set_component_type_info(
-            &module.name,
-            name.as_str(),
-            ComponentTypeInformation {
-                parameters: resolved_param_types,
-            },
-        );
+        state
+            .entry(module.name.clone())
+            .or_default()
+            .set_component_type_info(
+                name.as_str(),
+                ComponentTypeInformation {
+                    parameters: resolved_param_types,
+                },
+            );
 
         typed_component_declarations.push(TypedComponentDeclaration {
             component_name: component_name.clone(),
@@ -390,7 +353,7 @@ fn typecheck_module(
 
 fn typecheck_node(
     node: &ParsedNode,
-    state: &State,
+    state: &HashMap<ModuleName, ModuleTypeInformation>,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
@@ -608,7 +571,7 @@ fn typecheck_node(
 
             let module_info = match definition_module
                 .as_ref()
-                .and_then(|name| state.modules.get(name))
+                .and_then(|name| state.get(name))
             {
                 Some(module_info) => module_info,
                 None => {
