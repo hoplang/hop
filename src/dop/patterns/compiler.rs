@@ -353,7 +353,12 @@ impl Compiler {
                     Vec::new(),
                 )]
             }
-            Type::String | Type::Int | Type::Float | Type::TrustedHTML | Type::Array(_) => {
+            Type::String
+            | Type::Int
+            | Type::Float
+            | Type::TrustedHTML
+            | Type::Array(_)
+            | Type::Component { .. } => {
                 panic!("pattern matching not supported for this type")
             }
         };

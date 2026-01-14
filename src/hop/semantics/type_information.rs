@@ -28,40 +28,6 @@ pub struct ModuleTypeInformation {
 }
 
 impl ModuleTypeInformation {
-    pub fn get_parameter_types(&self, component_name: &str) -> Option<&[(VarName, Type, bool)]> {
-        let params = &self.components.get(component_name)?.parameters;
-        if params.is_empty() {
-            None
-        } else {
-            Some(params.as_slice())
-        }
-    }
-
-    /// Check if the component accepts children (has a `children` parameter)
-    pub fn component_accepts_children(&self, component_name: &str) -> bool {
-        self.components
-            .get(component_name)
-            .is_some_and(|c| c.parameters.iter().any(|(name, _, _)| name.as_str() == "children"))
-    }
-
-    /// Get the children parameter's type and has_default flag if present
-    pub fn get_children_param(&self, component_name: &str) -> Option<(&Type, bool)> {
-        self.components
-            .get(component_name)?
-            .parameters
-            .iter()
-            .find(|(name, _, _)| name.as_str() == "children")
-            .map(|(_, typ, has_default)| (typ, *has_default))
-    }
-
-    /// Check if children are required (TrustedHTML without default)
-    pub fn children_are_required(&self, component_name: &str) -> bool {
-        matches!(
-            self.get_children_param(component_name),
-            Some((Type::TrustedHTML, false))
-        )
-    }
-
     pub fn component_is_declared(&self, component_name: &str) -> bool {
         self.components.contains_key(component_name)
     }
@@ -73,6 +39,13 @@ impl ModuleTypeInformation {
     ) {
         self.components
             .insert(component_name.to_string(), type_info);
+    }
+
+    pub fn get_component_type_info(
+        &self,
+        component_name: &str,
+    ) -> Option<&ComponentTypeInformation> {
+        self.components.get(component_name)
     }
 
     pub fn record_is_declared(&self, record_name: &str) -> bool {

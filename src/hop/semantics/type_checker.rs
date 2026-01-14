@@ -151,6 +151,19 @@ fn typecheck_module(
                         },
                     );
                 }
+
+                if let Some(component_info) =
+                    imported_module_type_info.get_component_type_info(imported_name.as_str())
+                {
+                    let _ = type_env.push(
+                        imported_name.as_str().to_string(),
+                        Type::Component {
+                            module: imported_module.clone(),
+                            name: TypeName::new(imported_name.as_str()).unwrap(),
+                            parameters: component_info.parameters.clone(),
+                        },
+                    );
+                }
             }
             ParsedDeclaration::Component(ParsedComponentDeclaration {
                 params,
@@ -234,7 +247,6 @@ fn typecheck_module(
                     .filter_map(|child| {
                         typecheck_node(
                             child,
-                            state,
                             &mut var_env,
                             annotations,
                             errors,
@@ -258,9 +270,18 @@ fn typecheck_module(
                     .set_component_type_info(
                         component_name.as_str(),
                         ComponentTypeInformation {
-                            parameters: resolved_param_types,
+                            parameters: resolved_param_types.clone(),
                         },
                     );
+
+                let _ = type_env.push(
+                    component_name.to_string(),
+                    Type::Component {
+                        module: parsed_ast.name.clone(),
+                        name: TypeName::new(component_name.as_str()).unwrap(),
+                        parameters: resolved_param_types,
+                    },
+                );
 
                 typed_component_declarations.push(TypedComponentDeclaration {
                     component_name: component_name.clone(),
@@ -373,7 +394,6 @@ fn typecheck_module(
 
 fn typecheck_node(
     node: &ParsedNode,
-    state: &HashMap<ModuleName, ModuleTypeInformation>,
     var_env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
@@ -388,7 +408,7 @@ fn typecheck_node(
             let typed_children = children
                 .iter()
                 .filter_map(|child| {
-                    typecheck_node(child, state, var_env, annotations, errors, type_env)
+                    typecheck_node(child, var_env, annotations, errors, type_env)
                 })
                 .collect();
 
@@ -456,7 +476,7 @@ fn typecheck_node(
             let typed_children = children
                 .iter()
                 .filter_map(|child| {
-                    typecheck_node(child, state, var_env, annotations, errors, type_env)
+                    typecheck_node(child, var_env, annotations, errors, type_env)
                 })
                 .collect();
 
@@ -543,7 +563,7 @@ fn typecheck_node(
             let typed_children: Vec<TypedNode> = children
                 .iter()
                 .filter_map(|child| {
-                    typecheck_node(child, state, var_env, annotations, errors, type_env)
+                    typecheck_node(child, var_env, annotations, errors, type_env)
                 })
                 .collect();
 
@@ -576,7 +596,7 @@ fn typecheck_node(
         ParsedNode::ComponentReference {
             component_name,
             component_name_opening_range: tag_name,
-            declaring_module: definition_module,
+            declaring_module: _definition_module,
             component_name_closing_range: _closing_tag_name,
             args,
             children,
@@ -586,24 +606,33 @@ fn typecheck_node(
             let typed_children = children
                 .iter()
                 .filter_map(|child| {
-                    typecheck_node(child, state, var_env, annotations, errors, type_env)
+                    typecheck_node(child, var_env, annotations, errors, type_env)
                 })
                 .collect();
 
-            let module_info = match definition_module.as_ref().and_then(|name| state.get(name)) {
-                Some(module_info) => module_info,
-                None => {
-                    errors.push(TypeError::UndefinedComponent {
-                        tag_name: tag_name.clone(),
-                    });
-                    return None;
-                }
-            };
+            // Look up the component type from type_env
+            let (component_module, component_params) =
+                match type_env.lookup(component_name.as_str()) {
+                    Some(Type::Component {
+                        module,
+                        parameters,
+                        ..
+                    }) => (module.clone(), parameters.clone()),
+                    _ => {
+                        errors.push(TypeError::UndefinedComponent {
+                            tag_name: tag_name.clone(),
+                        });
+                        return None;
+                    }
+                };
+
+            // Check if component accepts children (has a `children` parameter)
+            let accepts_children = component_params
+                .iter()
+                .any(|(name, _, _)| name.as_str() == "children");
 
             // Validate that content is only passed to components with children: TrustedHTML parameter
-            if !children.is_empty()
-                && !module_info.component_accepts_children(component_name.as_str())
-            {
+            if !children.is_empty() && !accepts_children {
                 errors.push(TypeError::ComponentDoesNotAcceptChildren {
                     component: component_name.as_str().to_string(),
                     range: tag_name.clone(),
@@ -612,7 +641,12 @@ fn typecheck_node(
 
             // Check if children are required (TrustedHTML without default) but not provided
             // Note: Option[TrustedHTML] children are optional and don't require being passed
-            if module_info.children_are_required(component_name.as_str()) && children.is_empty() {
+            let children_required = component_params
+                .iter()
+                .find(|(name, _, _)| name.as_str() == "children")
+                .is_some_and(|(_, typ, has_default)| *typ == Type::TrustedHTML && !has_default);
+
+            if children_required && children.is_empty() {
                 errors.push(TypeError::MissingChildren {
                     component: component_name.as_str().to_string(),
                     range: tag_name.clone(),
@@ -621,25 +655,20 @@ fn typecheck_node(
 
             // Validate arguments and build typed versions
             // Filter out children parameter - it's handled separately via component children
-            let params_without_children: Option<Vec<_>> = module_info
-                .get_parameter_types(component_name.as_str())
-                .map(|params| {
-                    params
-                        .iter()
-                        .filter(|(name, _, _)| name.as_str() != "children")
-                        .cloned()
-                        .collect()
-                });
+            let params_without_children: Vec<_> = component_params
+                .iter()
+                .filter(|(name, _, _)| name.as_str() != "children")
+                .cloned()
+                .collect();
 
             // Check if there are any required (non-default) params
             let has_required_params = params_without_children
-                .as_ref()
-                .map(|params| params.iter().any(|(_, _, has_default)| !has_default))
-                .unwrap_or(false);
+                .iter()
+                .any(|(_, _, has_default)| !has_default);
 
-            let typed_args = match (params_without_children.as_deref(), args.as_slice()) {
-                (None | Some([]), []) => Vec::new(),
-                (None | Some([]), args) => {
+            let typed_args = match (params_without_children.as_slice(), args.as_slice()) {
+                ([], []) => Vec::new(),
+                ([], args) => {
                     for arg in args {
                         errors.push(TypeError::UnexpectedArgument {
                             arg: arg.name.as_str().to_string(),
@@ -648,12 +677,12 @@ fn typecheck_node(
                     }
                     Vec::new()
                 }
-                (Some(params), []) if has_required_params => {
+                (params, []) if has_required_params => {
                     errors.push(TypeError::missing_arguments(params, tag_name.clone()));
                     Vec::new()
                 }
-                (Some(_), []) => Vec::new(), // no required params, args optional
-                (Some(params), args) => {
+                (_, []) => Vec::new(), // no required params, args optional
+                (params, args) => {
                     let mut typed_arguments = Vec::new();
                     // Only check for missing params that don't have defaults
                     for (param_name, _, has_default) in params {
@@ -667,8 +696,8 @@ fn typecheck_node(
                         }
                     }
 
-                    // Get all params (including children) for type checking provided args
-                    let all_params = module_info.get_parameter_types(component_name.as_str());
+                    // Use all params (including children) for type checking provided args
+                    let all_params = &component_params;
 
                     for arg in args {
                         let arg_name = arg.name.as_str();
@@ -681,18 +710,17 @@ fn typecheck_node(
                             continue;
                         }
 
-                        let (_, param_type, _) = match all_params
-                            .and_then(|p| p.iter().find(|(name, _, _)| name.as_str() == arg_name))
-                        {
-                            None => {
-                                errors.push(TypeError::UnexpectedArgument {
-                                    arg: arg_name.to_string(),
-                                    range: arg.name.clone(),
-                                });
-                                continue;
-                            }
-                            Some(param) => param,
-                        };
+                        let (_, param_type, _) =
+                            match all_params.iter().find(|(name, _, _)| name.as_str() == arg_name) {
+                                None => {
+                                    errors.push(TypeError::UnexpectedArgument {
+                                        arg: arg_name.to_string(),
+                                        range: arg.name.clone(),
+                                    });
+                                    continue;
+                                }
+                                Some(param) => param,
+                            };
 
                         // Convert ParsedAttribute value to expression for type checking
                         let arg_expr = match &arg.value {
@@ -749,7 +777,7 @@ fn typecheck_node(
 
             Some(TypedNode::ComponentReference {
                 component_name: component_name.clone(),
-                declaring_module: definition_module.clone(),
+                declaring_module: Some(component_module),
                 args: typed_args,
                 children: typed_children,
             })
@@ -768,7 +796,7 @@ fn typecheck_node(
             let typed_children = children
                 .iter()
                 .filter_map(|child| {
-                    typecheck_node(child, state, var_env, annotations, errors, type_env)
+                    typecheck_node(child, var_env, annotations, errors, type_env)
                 })
                 .collect();
 
@@ -864,7 +892,7 @@ fn typecheck_node(
                         .children
                         .iter()
                         .filter_map(|child| {
-                            typecheck_node(child, state, var_env, annotations, errors, type_env)
+                            typecheck_node(child, var_env, annotations, errors, type_env)
                         })
                         .collect::<Vec<_>>();
 

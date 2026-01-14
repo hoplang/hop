@@ -96,6 +96,7 @@ pub trait TypeTranspiler {
             Type::Option(inner) => self.transpile_option_type(inner),
             Type::Record { name, .. } => self.transpile_named_type(name.as_str()),
             Type::Enum { name, .. } => self.transpile_enum_type(name.as_str()),
+            Type::Component { name, .. } => self.transpile_named_type(name.as_str()),
         }
     }
 }

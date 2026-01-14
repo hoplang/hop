@@ -4,6 +4,7 @@ use pretty::BoxDoc;
 
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
+use crate::dop::symbols::var_name::VarName;
 use crate::hop::symbols::module_name::ModuleName;
 
 /// An EquatableType is a type where its values can be compared
@@ -55,6 +56,12 @@ pub enum Type {
         /// Empty fields Vec for unit variants
         variants: Vec<(TypeName, Vec<(FieldName, Type)>)>,
     },
+    Component {
+        module: ModuleName,
+        name: TypeName,
+        /// Parameters: (name, type, has_default)
+        parameters: Vec<(VarName, Type, bool)>,
+    },
 }
 
 impl Type {
@@ -72,7 +79,7 @@ impl Type {
                 let inner_equatable = inner.as_equatable_type()?;
                 Some(EquatableType::Option(Box::new(inner_equatable)))
             }
-            Type::TrustedHTML | Type::Array(_) | Type::Record { .. } => None,
+            Type::TrustedHTML | Type::Array(_) | Type::Record { .. } | Type::Component { .. } => None,
         }
     }
 
@@ -86,7 +93,8 @@ impl Type {
             | Type::Array(_)
             | Type::Option(_)
             | Type::Record { .. }
-            | Type::Enum { .. } => None,
+            | Type::Enum { .. }
+            | Type::Component { .. } => None,
         }
     }
 }
@@ -125,6 +133,18 @@ impl PartialEq for Type {
                     ..
                 },
             ) => left_module == right_module && left_name == right_name,
+            (
+                Type::Component {
+                    module: left_module,
+                    name: left_name,
+                    ..
+                },
+                Type::Component {
+                    module: right_module,
+                    name: right_name,
+                    ..
+                },
+            ) => left_module == right_module && left_name == right_name,
             _ => false,
         }
     }
@@ -154,6 +174,7 @@ impl<'a> Type {
                 .append(BoxDoc::text("]")),
             Type::Record { module, name, .. } => BoxDoc::text(format!("{}::{}", module, name)),
             Type::Enum { module, name, .. } => BoxDoc::text(format!("{}::{}", module, name)),
+            Type::Component { module, name, .. } => BoxDoc::text(format!("{}::{}", module, name)),
         }
     }
 }
