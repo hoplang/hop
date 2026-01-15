@@ -53,11 +53,13 @@ fn disallow_attributes<'a>(
     attributes: &'a [tokenizer::TokenizedAttribute],
     tag_name: &'a DocumentRange,
 ) -> impl Iterator<Item = ParseError> + 'a {
-    attributes.iter().map(move |attr| ParseError::UnrecognizedAttribute {
-        tag_name: tag_name.to_cheap_string(),
-        attr_name: attr.name.to_cheap_string(),
-        range: attr.range.clone(),
-    })
+    attributes
+        .iter()
+        .map(move |attr| ParseError::UnrecognizedAttribute {
+            tag_name: tag_name.to_cheap_string(),
+            attr_name: attr.name.to_cheap_string(),
+            range: attr.range.clone(),
+        })
 }
 
 /// Parse a hop document into a ParsedAst.
@@ -311,8 +313,8 @@ fn parse_component_declaration(
 
     let children: Vec<ParsedNode> = tree_children
         .into_iter()
-        .flat_map(|child| {
-            construct_nodes(
+        .filter_map(|child| {
+            construct_node(
                 child,
                 comments,
                 errors,
@@ -333,44 +335,38 @@ fn parse_component_declaration(
     })
 }
 
-fn construct_nodes(
+fn construct_node(
     tree: TokenTree,
     comments: &mut VecDeque<(CheapString, DocumentRange)>,
     errors: &mut ErrorCollector<ParseError>,
     module_name: &ModuleName,
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, ModuleName>,
-) -> Vec<ParsedNode> {
+) -> Option<ParsedNode> {
     match tree.token {
         Token::Comment { .. } => {
             // Skip comments
-            vec![]
+            None
         }
         Token::ClosingTag { .. } => {
             // ClosingTags are not present in the token tree
             unreachable!()
         }
-        Token::Doctype { range } => {
-            vec![ParsedNode::Doctype {
-                value: range.to_cheap_string(),
-                range,
-            }]
-        }
-        Token::Text { range } => {
-            vec![ParsedNode::Text {
-                value: range.to_cheap_string(),
-                range,
-            }]
-        }
+        Token::Doctype { range } => Some(ParsedNode::Doctype {
+            value: range.to_cheap_string(),
+            range,
+        }),
+        Token::Text { range } => Some(ParsedNode::Text {
+            value: range.to_cheap_string(),
+            range,
+        }),
         Token::TextExpression { content, range } => {
             let mut iter = content.cursor().peekable();
             match dop::parser::parse_expr(&mut iter, comments, &content) {
-                Ok(expression) => {
-                    vec![ParsedNode::TextExpression { expression, range }]
-                }
+                Ok(expression) => Some(ParsedNode::TextExpression { expression, range }),
                 Err(err) => {
                     errors.push(err.into());
-                    vec![]
+                    None
                 }
             }
         }
@@ -396,13 +392,13 @@ fn construct_nodes(
                 })
                 .unwrap_or_default();
 
-            vec![ParsedNode::Html {
+            Some(ParsedNode::Html {
                 tag_name,
                 closing_tag_name: None,
                 attributes,
                 range,
                 children,
-            }]
+            })
         }
         Token::OpeningTag {
             tag_name,
@@ -425,8 +421,8 @@ fn construct_nodes(
                     let children: Vec<_> = tree
                         .children
                         .into_iter()
-                        .flat_map(|child| {
-                            construct_nodes(
+                        .filter_map(|child| {
+                            construct_node(
                                 child,
                                 comments,
                                 errors,
@@ -436,10 +432,10 @@ fn construct_nodes(
                             )
                         })
                         .collect();
-                    return vec![ParsedNode::Placeholder {
+                    return Some(ParsedNode::Placeholder {
                         range: tree.range.clone(),
                         children,
-                    }];
+                    });
                 };
 
                 // Process children as <case> tags
@@ -478,8 +474,8 @@ fn construct_nodes(
                             let case_children: Vec<_> = child_tree
                                 .children
                                 .into_iter()
-                                .flat_map(|c| {
-                                    construct_nodes(
+                                .filter_map(|c| {
+                                    construct_node(
                                         c,
                                         comments,
                                         errors,
@@ -505,18 +501,18 @@ fn construct_nodes(
                     }
                 }
 
-                return vec![ParsedNode::Match {
+                return Some(ParsedNode::Match {
                     subject,
                     cases,
                     range: tree.range,
-                }];
+                });
             }
 
             let children: Vec<_> = tree
                 .children
                 .into_iter()
-                .flat_map(|child| {
-                    construct_nodes(
+                .filter_map(|child| {
+                    construct_node(
                         child,
                         comments,
                         errors,
@@ -534,17 +530,15 @@ fn construct_nodes(
                     let expr = expression.ok_or_else(|| ParseError::MissingIfExpression {
                         range: opening_tag_range.clone(),
                     });
-                    let Some(condition) = errors.ok_or_add(expr.and_then(|e| {
+                    let condition = errors.ok_or_add(expr.and_then(|e| {
                         let mut iter = e.cursor().peekable();
                         dop::parser::parse_expr(&mut iter, comments, &e).map_err(|err| err.into())
-                    })) else {
-                        return vec![];
-                    };
-                    vec![ParsedNode::If {
+                    }))?;
+                    Some(ParsedNode::If {
                         condition,
                         range: tree.range.clone(),
                         children,
-                    }]
+                    })
                 }
 
                 // <for {...}>
@@ -562,18 +556,18 @@ fn construct_nodes(
                     let Some((var_name, var_name_range, array_expr)) =
                         errors.ok_or_add(parse_result)
                     else {
-                        return vec![ParsedNode::Placeholder {
+                        return Some(ParsedNode::Placeholder {
                             range: tree.range.clone(),
                             children,
-                        }];
+                        });
                     };
-                    vec![ParsedNode::For {
+                    Some(ParsedNode::For {
                         var_name,
                         var_name_range,
                         array_expr,
                         range: tree.range.clone(),
                         children,
-                    }]
+                    })
                 }
 
                 // <let {...}>
@@ -583,10 +577,10 @@ fn construct_nodes(
                         errors.push(ParseError::MissingLetBinding {
                             range: opening_tag_range.clone(),
                         });
-                        return vec![ParsedNode::Placeholder {
+                        return Some(ParsedNode::Placeholder {
                             range: tree.range.clone(),
                             children,
-                        }];
+                        });
                     };
                     let parse_result = {
                         let mut iter = bindings_range.cursor().peekable();
@@ -594,10 +588,10 @@ fn construct_nodes(
                             .map_err(|err| err.into())
                     };
                     let Some(parsed_bindings) = errors.ok_or_add(parse_result) else {
-                        return vec![ParsedNode::Placeholder {
+                        return Some(ParsedNode::Placeholder {
                             range: tree.range.clone(),
                             children,
-                        }];
+                        });
                     };
                     let bindings = parsed_bindings
                         .into_iter()
@@ -610,12 +604,12 @@ fn construct_nodes(
                             },
                         )
                         .collect();
-                    vec![ParsedNode::Let {
+                    Some(ParsedNode::Let {
                         bindings,
                         bindings_range,
                         range: tree.range.clone(),
                         children,
-                    }]
+                    })
                 }
 
                 // <ComponentReference> - PascalCase indicates a component
@@ -627,7 +621,7 @@ fn construct_nodes(
                                 error,
                                 range: tag_name.clone(),
                             });
-                            return vec![];
+                            return None;
                         }
                     };
 
@@ -684,7 +678,7 @@ fn construct_nodes(
                         imported_components.get(component_name.as_str()).cloned()
                     };
 
-                    vec![ParsedNode::ComponentReference {
+                    Some(ParsedNode::ComponentReference {
                         component_name,
                         component_name_opening_range: tag_name,
                         component_name_closing_range: tree.closing_tag_name,
@@ -692,7 +686,7 @@ fn construct_nodes(
                         args: parsed_args,
                         range: tree.range,
                         children,
-                    }]
+                    })
                 }
 
                 _ => {
@@ -702,13 +696,13 @@ fn construct_nodes(
                         .filter_map(|attr| errors.ok_or_add(attr))
                         .collect();
 
-                    vec![ParsedNode::Html {
+                    Some(ParsedNode::Html {
                         tag_name,
                         closing_tag_name: tree.closing_tag_name,
                         attributes,
                         range: tree.range,
                         children,
-                    }]
+                    })
                 }
             }
         }
