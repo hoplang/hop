@@ -9,7 +9,7 @@ use super::parsed_ast::{
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
 use super::transform::whitespace_removal::remove_whitespace;
 use crate::common::is_void_element;
-use crate::document::{CheapString, DocumentRange, Ranged};
+use crate::document::{DocumentRange, Ranged};
 use crate::dop::syntax::parsed::{
     Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern, ParsedType,
 };
@@ -38,15 +38,15 @@ fn soft_block<'a>(
 
 fn drain_comments_before<'a>(
     arena: &'a Arena<'a>,
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
     position: usize,
 ) -> DocBuilder<'a, Arena<'a>> {
     let mut doc = arena.nil();
     while let Some(comment) = comments.front() {
-        if comment.1.start() < position {
+        if comment.start() < position {
             let comment = comments.pop_front().unwrap();
             doc = doc
-                .append(arena.text(comment.0.as_str()))
+                .append(arena.text(comment.as_str()))
                 .append(arena.hardline());
         } else {
             break;
@@ -59,17 +59,17 @@ fn format_braced_list<'a, T, F>(
     arena: &'a Arena<'a>,
     items: &'a [T],
     mut format_item: F,
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
     end_position: usize,
 ) -> DocBuilder<'a, Arena<'a>>
 where
     F: FnMut(
         &'a Arena<'a>,
         &'a T,
-        &mut VecDeque<&'a (CheapString, DocumentRange)>,
+        &mut VecDeque<&'a DocumentRange>,
     ) -> DocBuilder<'a, Arena<'a>>,
 {
-    let has_trailing_comments = comments.front().is_some_and(|c| c.1.start() < end_position);
+    let has_trailing_comments = comments.front().is_some_and(|c| c.start() < end_position);
     if items.is_empty() && !has_trailing_comments {
         return arena.nil();
     }
@@ -125,7 +125,7 @@ fn format_ast<'a>(ast: &'a ParsedAst, arena: &'a Arena<'a>) -> DocBuilder<'a, Ar
 fn format_declaration<'a>(
     arena: &'a Arena<'a>,
     decl: &'a ParsedDeclaration,
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     match decl {
         ParsedDeclaration::Import(import) => format_import_declaration(arena, import, comments),
@@ -140,7 +140,7 @@ fn format_declaration<'a>(
 fn format_import_declaration<'a>(
     arena: &'a Arena<'a>,
     import: &'a ParsedImportDeclaration,
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, import.path.start());
     leading_comments
@@ -154,7 +154,7 @@ fn format_import_declaration<'a>(
 fn format_record_declaration<'a>(
     arena: &'a Arena<'a>,
     record: &'a ParsedRecordDeclaration,
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, record.name_range.start());
     leading_comments
@@ -176,7 +176,7 @@ fn format_record_declaration<'a>(
 fn format_record_declaration_field<'a>(
     arena: &'a Arena<'a>,
     field: &'a ParsedRecordDeclarationField,
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, field.name_range.start());
     leading_comments
@@ -188,7 +188,7 @@ fn format_record_declaration_field<'a>(
 fn format_enum_declaration<'a>(
     arena: &'a Arena<'a>,
     e: &'a ParsedEnumDeclaration,
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, e.name_range.start());
     leading_comments
@@ -210,7 +210,7 @@ fn format_enum_declaration<'a>(
 fn format_enum_declaration_variant<'a>(
     arena: &'a Arena<'a>,
     variant: &'a ParsedEnumDeclarationVariant,
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, variant.name_range.start());
     if variant.fields.is_empty() {
@@ -235,7 +235,7 @@ fn format_enum_declaration_variant<'a>(
 fn format_component_declaration<'a>(
     arena: &'a Arena<'a>,
     component: &'a ParsedComponentDeclaration,
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, component.range.start());
     let params_doc = match &component.params {
@@ -249,7 +249,7 @@ fn format_component_declaration<'a>(
             }
             let has_trailing_comments = comments
                 .front()
-                .is_some_and(|c| c.1.start() < params_range.end());
+                .is_some_and(|c| c.start() < params_range.end());
             let trailing_comments = drain_comments_before(arena, comments, params_range.end());
             if params.is_empty() && !has_trailing_comments {
                 arena.nil()
@@ -296,7 +296,7 @@ fn format_component_declaration<'a>(
 fn format_parameter<'a>(
     arena: &'a Arena<'a>,
     param: &'a ParsedParameter,
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, param.var_name_range.start());
     let base = arena
@@ -315,7 +315,7 @@ fn format_parameter<'a>(
 fn format_attribute<'a>(
     arena: &'a Arena<'a>,
     attr: &'a ParsedAttribute,
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let name_doc = arena.text(attr.name.as_str());
     match &attr.value {
@@ -329,7 +329,7 @@ fn format_attribute<'a>(
 fn format_attribute_value<'a>(
     arena: &'a Arena<'a>,
     value: &'a ParsedAttributeValue,
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     match value {
         ParsedAttributeValue::Expression(expr) => arena
@@ -356,7 +356,7 @@ fn format_attribute_value<'a>(
 fn format_node<'a>(
     arena: &'a Arena<'a>,
     node: &'a ParsedNode,
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     match node {
         ParsedNode::Text { value, .. } => arena.text(value.as_str()),
@@ -443,7 +443,7 @@ fn format_node<'a>(
         } => {
             let end_position = bindings_range.end();
             let has_trailing_comments =
-                comments.front().is_some_and(|c| c.1.start() < end_position);
+                comments.front().is_some_and(|c| c.start() < end_position);
 
             let mut bindings_doc = arena.nil();
             for (i, binding) in bindings.iter().enumerate() {
@@ -569,7 +569,7 @@ fn format_node<'a>(
 fn format_children<'a>(
     arena: &'a Arena<'a>,
     children: &'a [ParsedNode],
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     if children.is_empty() {
         arena.nil()
@@ -588,7 +588,7 @@ fn format_children<'a>(
 fn format_match_case<'a>(
     arena: &'a Arena<'a>,
     case: &'a ParsedMatchCase,
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let children_doc = format_children(arena, &case.children, comments);
     arena
@@ -602,7 +602,7 @@ fn format_match_case<'a>(
 fn format_let_binding<'a>(
     arena: &'a Arena<'a>,
     binding: &'a ParsedLetBinding,
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, binding.var_name_range.start());
     leading_comments
@@ -635,7 +635,7 @@ fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Aren
 fn format_expr<'a>(
     arena: &'a Arena<'a>,
     expr: &'a ParsedExpr,
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     match expr {
         ParsedExpr::Var { value, .. } => arena.text(value.as_str()),
@@ -751,7 +751,7 @@ fn format_expr<'a>(
         ParsedExpr::Match { subject, arms, .. } => {
             let end_position = expr.range().end();
             let has_trailing_comments =
-                comments.front().is_some_and(|c| c.1.start() < end_position);
+                comments.front().is_some_and(|c| c.start() < end_position);
 
             if arms.is_empty() && !has_trailing_comments {
                 arena
@@ -839,7 +839,7 @@ fn format_expr<'a>(
 
             let end_position = expr.range().end();
             let has_trailing_comments =
-                comments.front().is_some_and(|c| c.1.start() < end_position);
+                comments.front().is_some_and(|c| c.start() < end_position);
             let trailing_comments = drain_comments_before(arena, comments, end_position);
 
             if expanded_docs.is_empty() && !has_trailing_comments {
@@ -886,7 +886,7 @@ fn format_expr_with_precedence<'a>(
     arena: &'a Arena<'a>,
     expr: &'a ParsedExpr,
     parent_precedence: u8,
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     match expr {
         ParsedExpr::BinaryOp { operator, .. } => {
@@ -925,7 +925,7 @@ fn is_atomic(expr: &ParsedExpr) -> bool {
 fn format_match_arm<'a>(
     arena: &'a Arena<'a>,
     arm: &'a ParsedMatchArm,
-    comments: &mut VecDeque<&'a (CheapString, DocumentRange)>,
+    comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, arm.pattern.range().start());
     leading_comments

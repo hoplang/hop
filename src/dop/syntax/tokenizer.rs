@@ -177,12 +177,12 @@ pub fn next(
 /// Returns the next non-comment token, collecting any comment tokens into the provided deque.
 pub fn next_collecting_comments(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<(CheapString, DocumentRange)>,
+    comments: &mut VecDeque<DocumentRange>,
 ) -> Option<Result<(Token, DocumentRange), ParseError>> {
     loop {
         match next(iter) {
-            Some(Ok((Token::Comment(text), range))) => {
-                comments.push_back((text, range));
+            Some(Ok((Token::Comment(_), range))) => {
+                comments.push_back(range);
                 continue;
             }
             other => return other,

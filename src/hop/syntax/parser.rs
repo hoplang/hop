@@ -8,7 +8,7 @@ use super::parsed_ast::{
 };
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
 use super::token_tree::{TokenTree, parse_tree};
-use crate::document::{CheapString, Document, DocumentCursor, DocumentRange};
+use crate::document::{Document, DocumentCursor, DocumentRange};
 use crate::dop;
 use crate::dop::VarName;
 use crate::error_collector::ErrorCollector;
@@ -20,7 +20,7 @@ use super::tokenizer::{self, Token};
 
 fn parse_attribute(
     attr: &tokenizer::TokenizedAttribute,
-    comments: &mut VecDeque<(CheapString, DocumentRange)>,
+    comments: &mut VecDeque<DocumentRange>,
 ) -> Result<parsed_ast::ParsedAttribute, ParseError> {
     let value = match &attr.value {
         Some(tokenizer::TokenizedAttributeValue::String { content }) => {
@@ -41,7 +41,7 @@ fn parse_attribute(
 
 fn parse_attributes(
     attributes: &[tokenizer::TokenizedAttribute],
-    comments: &mut VecDeque<(CheapString, DocumentRange)>,
+    comments: &mut VecDeque<DocumentRange>,
 ) -> Vec<Result<parsed_ast::ParsedAttribute, ParseError>> {
     attributes
         .iter()
@@ -194,10 +194,10 @@ pub fn parse(
                     }
                     match dop::tokenizer::peek(&iter) {
                         Some(Ok((dop::Token::Comment(_), _))) => {
-                            if let Some(Ok((dop::Token::Comment(text), range))) =
+                            if let Some(Ok((dop::Token::Comment(_), range))) =
                                 dop::tokenizer::next(&mut iter)
                             {
-                                comments.push_back((text, range));
+                                comments.push_back(range);
                             }
                         }
                         _ => break,
@@ -251,7 +251,7 @@ pub fn parse(
 /// - The tag name is not a valid component name (PascalCase)
 fn parse_component_declaration(
     iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<(CheapString, DocumentRange)>,
+    comments: &mut VecDeque<DocumentRange>,
     errors: &mut ErrorCollector<ParseError>,
     module_name: &ModuleName,
     defined_components: &HashSet<String>,
@@ -337,7 +337,7 @@ fn parse_component_declaration(
 
 fn construct_node(
     tree: TokenTree,
-    comments: &mut VecDeque<(CheapString, DocumentRange)>,
+    comments: &mut VecDeque<DocumentRange>,
     errors: &mut ErrorCollector<ParseError>,
     module_name: &ModuleName,
     defined_components: &HashSet<String>,
