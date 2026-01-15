@@ -18,81 +18,46 @@ use crate::hop::symbols::module_name::ModuleName;
 use super::parse_error::ParseError;
 use super::tokenizer::{self, Token};
 
-struct AttributeValidator {
-    attributes: Vec<tokenizer::TokenizedAttribute>,
-    tag_name: DocumentRange,
-    handled_attributes: HashSet<String>,
+fn parse_attribute(
+    attr: &tokenizer::TokenizedAttribute,
+    comments: &mut VecDeque<(CheapString, DocumentRange)>,
+) -> Result<parsed_ast::ParsedAttribute, ParseError> {
+    let value = match &attr.value {
+        Some(tokenizer::TokenizedAttributeValue::String { content }) => {
+            Some(parsed_ast::ParsedAttributeValue::String(content.clone()))
+        }
+        Some(tokenizer::TokenizedAttributeValue::Expression(range)) => {
+            let mut iter = range.cursor().peekable();
+            let expr = dop::parser::parse_expr(&mut iter, comments, range)?;
+            Some(parsed_ast::ParsedAttributeValue::Expression(expr))
+        }
+        None => None,
+    };
+    Ok(parsed_ast::ParsedAttribute {
+        name: attr.name.clone(),
+        value,
+    })
 }
 
-impl AttributeValidator {
-    fn new(attributes: Vec<tokenizer::TokenizedAttribute>, tag_name: DocumentRange) -> Self {
-        Self {
-            attributes,
-            tag_name,
-            handled_attributes: HashSet::new(),
-        }
-    }
+fn parse_attributes(
+    attributes: &[tokenizer::TokenizedAttribute],
+    comments: &mut VecDeque<(CheapString, DocumentRange)>,
+) -> Vec<Result<parsed_ast::ParsedAttribute, ParseError>> {
+    attributes
+        .iter()
+        .map(|attr| parse_attribute(attr, comments))
+        .collect()
+}
 
-    fn parse_attribute_value(
-        value: &tokenizer::TokenizedAttributeValue,
-        comments: &mut VecDeque<(CheapString, DocumentRange)>,
-    ) -> Result<parsed_ast::ParsedAttributeValue, ParseError> {
-        match value {
-            tokenizer::TokenizedAttributeValue::String { content } => {
-                Ok(parsed_ast::ParsedAttributeValue::String(content.clone()))
-            }
-            tokenizer::TokenizedAttributeValue::Expression(range) => {
-                let mut iter = range.cursor().peekable();
-                match dop::parser::parse_expr(&mut iter, comments, range) {
-                    Ok(expr) => Ok(parsed_ast::ParsedAttributeValue::Expression(expr)),
-                    Err(err) => Err(err.into()),
-                }
-            }
-        }
-    }
-
-    // Parse an attribute or return an error.
-    fn parse(
-        attr: &tokenizer::TokenizedAttribute,
-        comments: &mut VecDeque<(CheapString, DocumentRange)>,
-    ) -> Result<parsed_ast::ParsedAttribute, ParseError> {
-        match &attr.value {
-            Some(val) => Ok(parsed_ast::ParsedAttribute {
-                name: attr.name.clone(),
-                value: Some(Self::parse_attribute_value(val, comments)?),
-            }),
-            None => Ok(parsed_ast::ParsedAttribute {
-                name: attr.name.clone(),
-                value: None,
-            }),
-        }
-    }
-
-    fn disallow_unrecognized(&self) -> impl Iterator<Item = ParseError> + '_ {
-        self.attributes
-            .iter()
-            .filter(|attr| !self.handled_attributes.contains(attr.name.as_str()))
-            .map(move |attr| ParseError::UnrecognizedAttribute {
-                tag_name: self.tag_name.to_cheap_string(),
-                attr_name: attr.name.to_cheap_string(),
-                range: attr.range.clone(),
-            })
-    }
-
-    fn parse_unrecognized(
-        &self,
-        comments: &mut VecDeque<(CheapString, DocumentRange)>,
-    ) -> Vec<Result<parsed_ast::ParsedAttribute, ParseError>> {
-        self.attributes
-            .iter()
-            .filter(|attr| !self.handled_attributes.contains(attr.name.as_str()))
-            .map(|attr| Self::parse(attr, comments))
-            .collect()
-    }
-
-    fn get_all_attributes(&self) -> impl Iterator<Item = &tokenizer::TokenizedAttribute> {
-        self.attributes.iter()
-    }
+fn disallow_attributes<'a>(
+    attributes: &'a [tokenizer::TokenizedAttribute],
+    tag_name: &'a DocumentRange,
+) -> impl Iterator<Item = ParseError> + 'a {
+    attributes.iter().map(move |attr| ParseError::UnrecognizedAttribute {
+        tag_name: tag_name.to_cheap_string(),
+        attr_name: attr.name.to_cheap_string(),
+        range: attr.range.clone(),
+    })
 }
 
 /// Parse a hop document into a ParsedAst.
@@ -320,8 +285,6 @@ fn parse_component_declaration(
         }
     };
 
-    let validator = AttributeValidator::new(attributes, tag_name.clone());
-
     let params = expression.as_ref().and_then(|expr| {
         let mut expr_iter = expr.cursor().peekable();
         errors.ok_or_add(
@@ -344,9 +307,7 @@ fn parse_component_declaration(
         )
     });
 
-    for error in validator.disallow_unrecognized() {
-        errors.push(error);
-    }
+    errors.extend(disallow_attributes(&attributes, &tag_name));
 
     let children: Vec<ParsedNode> = tree_children
         .into_iter()
@@ -370,11 +331,6 @@ fn parse_component_declaration(
         range,
         children,
     })
-}
-
-/// Check if a tag name is one that should have raw text content (no expression parsing).
-fn is_raw_text_element(tag_name: &str) -> bool {
-    matches!(tag_name, "script" | "style")
 }
 
 fn construct_nodes(
@@ -425,9 +381,7 @@ fn construct_nodes(
             range,
             ..
         } => {
-            let validator = AttributeValidator::new(attributes, tag_name.clone());
-            let attributes = validator
-                .parse_unrecognized(comments)
+            let attributes = parse_attributes(&attributes, comments)
                 .into_iter()
                 .filter_map(|attr| errors.ok_or_add(attr))
                 .collect();
@@ -457,11 +411,9 @@ fn construct_nodes(
             range: opening_tag_range,
             ..
         } => {
-            let validator = AttributeValidator::new(attributes, tag_name.clone());
-
             // Handle <match> specially - process children as <case> tags
             if tag_name.as_str() == "match" {
-                errors.extend(validator.disallow_unrecognized());
+                errors.extend(disallow_attributes(&attributes, &tag_name));
                 let expr = expression.ok_or_else(|| ParseError::MissingMatchExpression {
                     range: opening_tag_range.clone(),
                 });
@@ -560,38 +512,25 @@ fn construct_nodes(
                 }];
             }
 
-            // Process children - raw text elements (script/style) don't parse expressions
-            let children: Vec<_> = if is_raw_text_element(tag_name.as_str()) {
-                tree.children
-                    .into_iter()
-                    .filter_map(|child| match child.token {
-                        Token::Text { range, .. } => Some(ParsedNode::Text {
-                            value: range.to_cheap_string(),
-                            range,
-                        }),
-                        _ => unreachable!(),
-                    })
-                    .collect()
-            } else {
-                tree.children
-                    .into_iter()
-                    .flat_map(|child| {
-                        construct_nodes(
-                            child,
-                            comments,
-                            errors,
-                            module_name,
-                            defined_components,
-                            imported_components,
-                        )
-                    })
-                    .collect()
-            };
+            let children: Vec<_> = tree
+                .children
+                .into_iter()
+                .flat_map(|child| {
+                    construct_nodes(
+                        child,
+                        comments,
+                        errors,
+                        module_name,
+                        defined_components,
+                        imported_components,
+                    )
+                })
+                .collect();
 
             match tag_name.as_str() {
                 // <if {...}>
                 "if" => {
-                    errors.extend(validator.disallow_unrecognized());
+                    errors.extend(disallow_attributes(&attributes, &tag_name));
                     let expr = expression.ok_or_else(|| ParseError::MissingIfExpression {
                         range: opening_tag_range.clone(),
                     });
@@ -610,7 +549,7 @@ fn construct_nodes(
 
                 // <for {...}>
                 "for" => {
-                    errors.extend(validator.disallow_unrecognized());
+                    errors.extend(disallow_attributes(&attributes, &tag_name));
                     let parse_result = expression
                         .ok_or_else(|| ParseError::MissingForExpression {
                             range: opening_tag_range.clone(),
@@ -639,7 +578,7 @@ fn construct_nodes(
 
                 // <let {...}>
                 "let" => {
-                    errors.extend(validator.disallow_unrecognized());
+                    errors.extend(disallow_attributes(&attributes, &tag_name));
                     let Some(bindings_range) = expression else {
                         errors.push(ParseError::MissingLetBinding {
                             range: opening_tag_range.clone(),
@@ -681,7 +620,7 @@ fn construct_nodes(
 
                 // <ComponentReference> - PascalCase indicates a component
                 name if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
-                    let component_name = match ComponentName::new(tag_name.as_str().to_string()) {
+                    let component_name = match ComponentName::new(name.to_string()) {
                         Ok(name) => name,
                         Err(error) => {
                             errors.push(ParseError::InvalidComponentName {
@@ -703,7 +642,7 @@ fn construct_nodes(
                     // Parse arguments from attributes
                     let mut parsed_args: Vec<parsed_ast::ParsedAttribute> = Vec::new();
 
-                    for attr in validator.get_all_attributes() {
+                    for attr in &attributes {
                         // Validate attribute name is a valid variable name
                         if VarName::new(attr.name.as_str()).is_err() {
                             errors.push(ParseError::InvalidArgumentName {
@@ -758,8 +697,7 @@ fn construct_nodes(
 
                 _ => {
                     // Default case: treat as HTML
-                    let attributes = validator
-                        .parse_unrecognized(comments)
+                    let attributes = parse_attributes(&attributes, comments)
                         .into_iter()
                         .filter_map(|attr| errors.ok_or_add(attr))
                         .collect();
