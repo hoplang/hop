@@ -800,8 +800,15 @@ fn format_expr<'a>(
         ParsedExpr::OptionLiteral { value, .. } => match value {
             Some(inner) => arena
                 .text("Some(")
-                .append(format_expr(arena, inner, comments))
-                .append(arena.text(")")),
+                .append(
+                    arena
+                        .line_()
+                        .append(format_expr(arena, inner, comments))
+                        .nest(2),
+                )
+                .append(arena.line_())
+                .append(arena.text(")"))
+                .group(),
             None => arena.text("None"),
         },
         ParsedExpr::MacroInvocation { name, args, .. } => {
@@ -1655,6 +1662,39 @@ mod tests {
                 }
 
                 <Badge {status: Status = Status::Active}></Badge>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn some_literal_stays_on_one_line_when_short() {
+        check(
+            indoc! {r#"
+                <Main>
+                  <let {x: Option[String] = Some("short")}></let>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main>
+                  <let {x: Option[String] = Some("short")}></let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn some_literal_inserts_soft_lines_when_long() {
+        check(
+            indoc! {r#"
+                <Main {x: Option[String] = Some("this is a very long string that causes a line break because Some uses soft lines")}>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main {
+                  x: Option[String] = Some(
+                    "this is a very long string that causes a line break because Some uses soft lines"
+                  ),
+                }></Main>
             "#]],
         );
     }
