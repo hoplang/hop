@@ -1190,6 +1190,22 @@ fn parse_enum_variant_fields(
     Ok(fields)
 }
 
+/// Parse a single declaration (import, record, or enum).
+pub fn parse_declaration(
+    iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<(CheapString, DocumentRange)>,
+    range: &DocumentRange,
+) -> Result<ParsedDeclaration, ParseError> {
+    match peek(iter) {
+        Some(Ok((Token::Import, _))) => parse_import_declaration(iter, comments, range),
+        Some(Ok((Token::Record, _))) => parse_record_declaration(iter, comments, range),
+        Some(Ok((Token::Enum, _))) => parse_enum_declaration(iter, comments, range),
+        Some(Ok((_, token_range))) => Err(ParseError::ExpectedDeclaration { range: token_range }),
+        Some(Err(err)) => Err(err),
+        None => Err(ParseError::UnexpectedEof { range: range.clone() }),
+    }
+}
+
 pub fn parse_declarations(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<(CheapString, DocumentRange)>,

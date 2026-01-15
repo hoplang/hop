@@ -10,7 +10,6 @@ use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
 use super::token_tree::{TokenTree, parse_tree};
 use crate::document::{CheapString, Document, DocumentCursor, DocumentRange};
 use crate::dop;
-use crate::dop::ParsedDeclaration as DopParsedDeclaration;
 use crate::dop::VarName;
 use crate::error_collector::ErrorCollector;
 use crate::hop::symbols::component_name::ComponentName;
@@ -115,13 +114,9 @@ pub fn parse(
 
     loop {
         match dop::tokenizer::peek_past_comments(&iter) {
-            Some(Ok((dop::Token::Import, _))) => {
-                match dop::parser::parse_import_declaration(
-                    &mut iter,
-                    &mut comments,
-                    &document_range,
-                ) {
-                    Ok(DopParsedDeclaration::Import {
+            Some(Ok((dop::Token::Import | dop::Token::Record | dop::Token::Enum, _))) => {
+                match dop::parser::parse_declaration(&mut iter, &mut comments, &document_range) {
+                    Ok(dop::ParsedDeclaration::Import {
                         name,
                         name_range,
                         path,
@@ -146,20 +141,7 @@ pub fn parse(
                         }
                         declarations.push(ParsedDeclaration::Import(import));
                     }
-                    Ok(_) => unreachable!("parse_import_declaration returned non-Import"),
-                    Err(err) => {
-                        errors.push(err.into());
-                        break;
-                    }
-                }
-            }
-            Some(Ok((dop::Token::Record, _))) => {
-                match dop::parser::parse_record_declaration(
-                    &mut iter,
-                    &mut comments,
-                    &document_range,
-                ) {
-                    Ok(DopParsedDeclaration::Record {
+                    Ok(dop::ParsedDeclaration::Record {
                         name,
                         name_range,
                         fields,
@@ -195,17 +177,7 @@ pub fn parse(
                         }
                         declarations.push(ParsedDeclaration::Record(record));
                     }
-                    Ok(_) => unreachable!("parse_record_declaration returned non-Record"),
-                    Err(err) => {
-                        errors.push(err.into());
-                        break;
-                    }
-                }
-            }
-            Some(Ok((dop::Token::Enum, _))) => {
-                match dop::parser::parse_enum_declaration(&mut iter, &mut comments, &document_range)
-                {
-                    Ok(DopParsedDeclaration::Enum {
+                    Ok(dop::ParsedDeclaration::Enum {
                         name,
                         name_range,
                         variants,
@@ -239,7 +211,6 @@ pub fn parse(
                         }
                         declarations.push(ParsedDeclaration::Enum(enum_decl));
                     }
-                    Ok(_) => unreachable!("parse_enum_declaration returned non-Enum"),
                     Err(err) => {
                         errors.push(err.into());
                         break;
