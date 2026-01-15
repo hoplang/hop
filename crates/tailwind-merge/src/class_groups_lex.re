@@ -341,6 +341,11 @@ pub fn get_class_group(input: &str) -> Option<ClassGroup> {
         d = [0-9];
         any = [^\x00];
 
+        // Arbitrary length value pattern: matches 3px, 0.5rem, 10%, 50vw, etc.
+        // CSS length units: px, em, rem, %, vw, vh, vmin, vmax, ch, ex, cap, lh, rlh, cqw, cqh, cqi, cqb, cqmin, cqmax, dvw, dvh, svw, svh, lvw, lvh, cm, mm, in, pc, pt
+        length_unit = "px" | "em" | "rem" | "%" | "vw" | "vh" | "vmin" | "vmax" | "ch" | "ex" | "cap" | "lh" | "rlh" | "cqw" | "cqh" | "cqi" | "cqb" | "cqmin" | "cqmax" | "dvw" | "dvh" | "svw" | "svh" | "lvw" | "lvh" | "cm" | "mm" | "in" | "pc" | "pt" | "fr";
+        arbitrary_length = "-"? d+ ("." d+)? length_unit;
+
         // Size helpers
         shadow_size = "3xs" | "2xs" | "xs" | "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "6xl" | "7xl" | "8xl" | "9xl" | "none" | "inner";
         font_size = "xs" | "sm" | "base" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "6xl" | "7xl" | "8xl" | "9xl" | d+ "." d+ "xl";
@@ -395,6 +400,7 @@ pub fn get_class_group(input: &str) -> Option<ClassGroup> {
 
         // Inset ring (must be before general inset)
         "inset-ring-" d+ [\x00] { return Some(ClassGroup::InsetRingW); }
+        "inset-ring-[" arbitrary_length "]" [\x00] { return Some(ClassGroup::InsetRingW); }
         "inset-ring-" any+ [\x00] { return Some(ClassGroup::InsetRingColor); }
 
         // Inset shadow (must be before general inset)
@@ -734,9 +740,11 @@ pub fn get_class_group(input: &str) -> Option<ClassGroup> {
 
         // Ring
         "ring-offset-" d+ [\x00] { return Some(ClassGroup::RingOffsetW); }
+        "ring-offset-[" arbitrary_length "]" [\x00] { return Some(ClassGroup::RingOffsetW); }
         "ring-offset-" any+ [\x00] { return Some(ClassGroup::RingOffsetColor); }
         "ring-inset" [\x00] { return Some(ClassGroup::RingWInset); }
         "ring-" d+ [\x00] { return Some(ClassGroup::RingW); }
+        "ring-[" arbitrary_length "]" [\x00] { return Some(ClassGroup::RingW); }
         "ring" [\x00] { return Some(ClassGroup::RingW); }
         "ring-" any+ [\x00] { return Some(ClassGroup::RingColor); }
 
@@ -749,6 +757,7 @@ pub fn get_class_group(input: &str) -> Option<ClassGroup> {
         "outline-offset-" any+ [\x00] { return Some(ClassGroup::OutlineOffset); }
         ("outline-solid" | "outline-dashed" | "outline-dotted" | "outline-double" | "outline-none" | "outline-hidden") [\x00] { return Some(ClassGroup::OutlineStyle); }
         "outline-" d+ [\x00] { return Some(ClassGroup::OutlineW); }
+        "outline-[" arbitrary_length "]" [\x00] { return Some(ClassGroup::OutlineW); }
         "outline" [\x00] { return Some(ClassGroup::OutlineW); }
         "outline-" any+ [\x00] { return Some(ClassGroup::OutlineColor); }
 

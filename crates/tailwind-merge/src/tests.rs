@@ -4465,3 +4465,80 @@ fn test_636() {
         "inset-shadow-blue-500"
     );
 }
+
+#[test]
+fn test_637_ring_arbitrary_width_vs_preset() {
+    // Arbitrary ring width should conflict with preset ring width
+    // ring-[3px] is a width value, not a color, so it should conflict with ring-0
+    assert_eq!(tw_merge("ring-[3px] ring-0"), "ring-0");
+}
+
+#[test]
+fn test_638_ring_preset_vs_arbitrary_width() {
+    // Preset ring width should conflict with arbitrary ring width (reverse order)
+    assert_eq!(tw_merge("ring-0 ring-[3px]"), "ring-[3px]");
+}
+
+#[test]
+fn test_639_ring_arbitrary_width_with_modifiers() {
+    // Same issue with modifiers
+    assert_eq!(
+        tw_merge("focus-visible:ring-[3px] focus-visible:ring-0"),
+        "focus-visible:ring-0"
+    );
+}
+
+#[test]
+fn test_640_ring_arbitrary_widths_conflict() {
+    // Two arbitrary ring widths should conflict with each other
+    assert_eq!(tw_merge("ring-[3px] ring-[5px]"), "ring-[5px]");
+}
+
+#[test]
+fn test_641_ring_arbitrary_width_vs_ring_keyword() {
+    // Arbitrary ring width should conflict with the `ring` keyword (which sets default width)
+    assert_eq!(tw_merge("ring ring-[3px]"), "ring-[3px]");
+}
+
+#[test]
+fn test_642_ring_arbitrary_width_vs_color_no_conflict() {
+    // Arbitrary ring WIDTH should NOT conflict with ring COLOR
+    // ring-[3px] is a width, ring-red-500 is a color - they're different properties
+    assert_eq!(
+        tw_merge("ring-[3px] ring-red-500"),
+        "ring-[3px] ring-red-500"
+    );
+}
+
+#[test]
+fn test_643_ring_arbitrary_width_decimal_units() {
+    // Decimal values with different units should also be recognized as widths
+    assert_eq!(tw_merge("ring-[0.5rem] ring-2"), "ring-2");
+    assert_eq!(tw_merge("ring-4 ring-[1.5em]"), "ring-[1.5em]");
+}
+
+#[test]
+fn test_644_ring_offset_arbitrary_width() {
+    // ring-offset should have the same behavior
+    assert_eq!(tw_merge("ring-offset-[3px] ring-offset-2"), "ring-offset-2");
+    assert_eq!(
+        tw_merge("ring-offset-[3px] ring-offset-red-500"),
+        "ring-offset-[3px] ring-offset-red-500"
+    );
+}
+
+#[test]
+fn test_645_outline_arbitrary_width() {
+    // outline should have the same behavior
+    assert_eq!(tw_merge("outline-[3px] outline-2"), "outline-2");
+    assert_eq!(
+        tw_merge("outline-[3px] outline-red-500"),
+        "outline-[3px] outline-red-500"
+    );
+}
+
+#[test]
+fn test_646_inset_ring_arbitrary_width() {
+    // inset-ring should have the same behavior
+    assert_eq!(tw_merge("inset-ring-[3px] inset-ring-2"), "inset-ring-2");
+}
