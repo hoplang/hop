@@ -58,46 +58,94 @@ impl TokenTree {
     }
 }
 
-/// Build a TokenTree from a tokenizer.
+/// Build a single TokenTree from a tokenizer.
+///
+/// Returns `None` if the document cursor is exhausted, otherwise returns
+/// the next top-level token tree. The cursor is left positioned after
+/// the consumed tokens, allowing the caller to parse additional trees.
 ///
 /// We do our best here to construct as much of the tree as possible even
 /// when we encounter errors.
-pub fn build_tree(
+pub fn parse_tree(
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut ErrorCollector<ParseError>,
-) -> Vec<TokenTree> {
-    struct StackElement {
-        tree: TokenTree,
-        tag_name: DocumentRange,
-    }
-
-    let mut stack: Vec<StackElement> = Vec::new();
-    let mut top_level_nodes: Vec<TokenTree> = Vec::new();
-
-    while let Some(token) = tokenizer::next(iter, errors) {
+) -> Option<TokenTree> {
+    loop {
+        let token = tokenizer::next(iter, errors)?;
 
         match token {
+            // Leaf tokens - return immediately as single-node trees
             Token::Comment { .. }
             | Token::Doctype { .. }
             | Token::Text { .. }
-            | Token::RawTextTag { .. } => {
-                if let Some(parent) = stack.last_mut() {
-                    parent.tree.append_node(token);
-                } else {
-                    top_level_nodes.push(TokenTree::new(token));
-                }
-            }
+            | Token::RawTextTag { .. } => return Some(TokenTree::new(token)),
+
             Token::OpeningTag {
                 ref tag_name,
                 self_closing,
                 ..
             } => {
                 if is_void_element(tag_name.as_str()) || self_closing {
-                    if let Some(parent) = stack.last_mut() {
-                        parent.tree.append_node(token);
-                    } else {
-                        top_level_nodes.push(TokenTree::new(token));
-                    }
+                    return Some(TokenTree::new(token));
+                }
+                let tag_name = tag_name.clone();
+                return Some(parse_nested_tree(token, tag_name, iter, errors));
+            }
+
+            Token::ClosingTag { ref tag_name, .. } => {
+                // Top-level closing tag is always an error - report and continue loop
+                if is_void_element(tag_name.as_str()) {
+                    errors.push(ParseError::ClosedVoidTag {
+                        tag: tag_name.to_cheap_string(),
+                        range: token.range().clone(),
+                    });
+                } else {
+                    errors.push(ParseError::UnmatchedClosingTag {
+                        tag: tag_name.to_cheap_string(),
+                        range: token.range().clone(),
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Build a tree for a non-void, non-self-closing opening tag.
+///
+/// Uses a stack-based approach to handle nested content until the
+/// matching closing tag is found.
+fn parse_nested_tree(
+    opening_token: Token,
+    opening_tag_name: DocumentRange,
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut ErrorCollector<ParseError>,
+) -> TokenTree {
+    struct StackElement {
+        tree: TokenTree,
+        tag_name: DocumentRange,
+    }
+
+    let mut stack: Vec<StackElement> = vec![StackElement {
+        tree: TokenTree::new(opening_token),
+        tag_name: opening_tag_name,
+    }];
+
+    while let Some(token) = tokenizer::next(iter, errors) {
+        match token {
+            Token::Comment { .. }
+            | Token::Doctype { .. }
+            | Token::Text { .. }
+            | Token::RawTextTag { .. } => {
+                stack.last_mut().unwrap().tree.append_node(token);
+            }
+
+            Token::OpeningTag {
+                ref tag_name,
+                self_closing,
+                ..
+            } => {
+                if is_void_element(tag_name.as_str()) || self_closing {
+                    stack.last_mut().unwrap().tree.append_node(token);
                 } else {
                     stack.push(StackElement {
                         tag_name: tag_name.clone(),
@@ -105,6 +153,7 @@ pub fn build_tree(
                     });
                 }
             }
+
             Token::ClosingTag { ref tag_name, .. } => {
                 if is_void_element(tag_name.as_str()) {
                     errors.push(ParseError::ClosedVoidTag {
@@ -120,6 +169,7 @@ pub fn build_tree(
                         range: token.range().clone(),
                     });
                 } else {
+                    // Pop until we find the matching tag
                     while stack.last().unwrap().tag_name.as_str() != tag_name.as_str() {
                         let unclosed = stack.pop().unwrap();
                         errors.push(ParseError::UnclosedTag {
@@ -128,26 +178,36 @@ pub fn build_tree(
                         });
                         stack.last_mut().unwrap().tree.append_tree(unclosed.tree);
                     }
+
                     let mut completed = stack.pop().unwrap();
                     completed.tree.set_closing_tag(token);
-                    if let Some(parent) = stack.last_mut() {
-                        parent.tree.append_tree(completed.tree);
+
+                    if stack.is_empty() {
+                        return completed.tree;
                     } else {
-                        top_level_nodes.push(completed.tree);
+                        stack.last_mut().unwrap().tree.append_tree(completed.tree);
                     }
                 }
             }
         }
     }
 
-    for unclosed in stack {
+    // EOF with unclosed tags - collapse everything onto the root
+    while stack.len() > 1 {
+        let unclosed = stack.pop().unwrap();
         errors.push(ParseError::UnclosedTag {
             tag: unclosed.tag_name.to_cheap_string(),
             range: unclosed.tag_name.clone(),
         });
+        stack.last_mut().unwrap().tree.append_tree(unclosed.tree);
     }
 
-    top_level_nodes
+    let unclosed = stack.pop().unwrap();
+    errors.push(ParseError::UnclosedTag {
+        tag: unclosed.tag_name.to_cheap_string(),
+        range: unclosed.tag_name.clone(),
+    });
+    unclosed.tree
 }
 
 impl Display for TokenTree {
@@ -198,7 +258,12 @@ mod tests {
     fn check(input: &str, expected: Expect) {
         let mut errors = ErrorCollector::new();
         let mut iter = DocumentCursor::new(input.to_string()).peekable();
-        let trees = build_tree(&mut iter, &mut errors);
+
+        let mut trees = Vec::new();
+        while let Some(tree) = parse_tree(&mut iter, &mut errors) {
+            trees.push(tree);
+        }
+
         if !errors.is_empty() {
             panic!("Expected errors to be empty");
         }

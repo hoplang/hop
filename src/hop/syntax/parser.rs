@@ -7,7 +7,7 @@ use super::parsed_ast::{
     ParsedRecordDeclarationField,
 };
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
-use super::token_tree::{TokenTree, build_tree};
+use super::token_tree::{TokenTree, parse_tree};
 use crate::document::{CheapString, Document, DocumentCursor, DocumentRange};
 use crate::dop;
 use crate::dop::ParsedDeclaration as DopParsedDeclaration;
@@ -129,9 +129,7 @@ pub fn parse(
     document: Document,
     errors: &mut ErrorCollector<ParseError>,
 ) -> ParsedAst {
-    // Build the token tree
     let mut iter = document.cursor().peekable();
-    let trees = build_tree(&mut iter, errors);
 
     let mut declarations = Vec::new();
 
@@ -143,8 +141,8 @@ pub fn parse(
     // Collect all comments from parsed expressions
     let mut comments = VecDeque::new();
 
-    // Process token trees
-    for mut tree in trees {
+    // Process token trees one at a time
+    while let Some(mut tree) = parse_tree(&mut iter, errors) {
         match &tree.token {
             Token::Text { range } => {
                 let mut decl_errors = ErrorCollector::new();
