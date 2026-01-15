@@ -52,6 +52,10 @@ pub enum Token {
     Text {
         range: DocumentRange,
     },
+    TextExpression {
+        content: DocumentRange,
+        range: DocumentRange,
+    },
     RawTextTag {
         tag_name: DocumentRange,
         attributes: Vec<TokenizedAttribute>,
@@ -69,6 +73,7 @@ impl Ranged for Token {
             | Token::OpeningTag { range, .. }
             | Token::ClosingTag { range, .. }
             | Token::Text { range }
+            | Token::TextExpression { range, .. }
             | Token::RawTextTag { range, .. } => range,
         }
     }
@@ -134,6 +139,9 @@ impl Display for Token {
             Token::Comment { .. } => {
                 write!(f, "Comment")
             }
+            Token::TextExpression { content, .. } => {
+                write!(f, "TextExpression({:?})", content.to_string())
+            }
             Token::RawTextTag {
                 tag_name,
                 attributes,
@@ -192,6 +200,13 @@ pub fn next(
         match iter.peek().map(|s| s.ch()) {
             Some('<') => {
                 if let Some(token) = parse_tag(iter, errors) {
+                    return Some(token);
+                } else {
+                    continue;
+                }
+            }
+            Some('{') => {
+                if let Some(token) = parse_text_expression(iter, errors) {
                     return Some(token);
                 } else {
                     continue;
@@ -489,6 +504,19 @@ fn parse_expression(
     Some((expr, left_brace.to(right_brace)))
 }
 
+/// Parse a text expression.
+///
+/// E.g. <div>Hello {name}!</div>
+///                 ^^^^^^
+/// Expects that the iterator points to the initial '{'.
+fn parse_text_expression(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut ErrorCollector<ParseError>,
+) -> Option<Token> {
+    let (content, range) = parse_expression(iter, errors)?;
+    Some(Token::TextExpression { content, range })
+}
+
 /// Parse tag content (attributes and expressions).
 ///
 /// E.g. <div foo="bar" {x: String}>
@@ -754,16 +782,12 @@ fn parse_raw_text_element(
 /// E.g. <div>hello</div>
 ///           ^^^^^
 /// Expects that the iterator points to the initial char.
-///
-/// Note: Text tokens may contain `{...}` expressions. The parser is
-/// responsible for splitting these into separate Text and TextExpression
-/// nodes.
 fn parse_text(iter: &mut Peekable<DocumentCursor>) -> Token {
     let Some(initial) = iter.next() else {
         panic!("Expected an initial char in parse_text but got None");
     };
     Token::Text {
-        range: initial.extend(iter.peeking_take_while(|s| s.ch() != '<')),
+        range: initial.extend(iter.peeking_take_while(|s| s.ch() != '<' && s.ch() != '{')),
     }
 }
 
@@ -1706,9 +1730,17 @@ mod tests {
                 <h1>Hello {name}!</h1>
                 ^^^^
 
-                Text [13 byte, "Hello {name}!"]
+                Text [6 byte, "Hello "]
                 <h1>Hello {name}!</h1>
-                    ^^^^^^^^^^^^^
+                    ^^^^^^
+
+                TextExpression("name")
+                <h1>Hello {name}!</h1>
+                          ^^^^^^
+
+                Text [1 byte, "!"]
+                <h1>Hello {name}!</h1>
+                                ^
 
                 ClosingTag(
                   tag_name: "h1",
@@ -1734,9 +1766,25 @@ mod tests {
                 <p>User {user.name} has {user.count} items</p>
                 ^^^
 
-                Text [39 byte, "User {user.name} has {user.count} items"]
+                Text [5 byte, "User "]
                 <p>User {user.name} has {user.count} items</p>
-                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                   ^^^^^
+
+                TextExpression("user.name")
+                <p>User {user.name} has {user.count} items</p>
+                        ^^^^^^^^^^^
+
+                Text [5 byte, " has "]
+                <p>User {user.name} has {user.count} items</p>
+                                   ^^^^^
+
+                TextExpression("user.count")
+                <p>User {user.name} has {user.count} items</p>
+                                        ^^^^^^^^^^^^
+
+                Text [6 byte, " items"]
+                <p>User {user.name} has {user.count} items</p>
+                                                    ^^^^^^
 
                 ClosingTag(
                   tag_name: "p",
@@ -1762,9 +1810,13 @@ mod tests {
                 <span>{greeting} world!</span>
                 ^^^^^^
 
-                Text [17 byte, "{greeting} world!"]
+                TextExpression("greeting")
                 <span>{greeting} world!</span>
-                      ^^^^^^^^^^^^^^^^^
+                      ^^^^^^^^^^
+
+                Text [7 byte, " world!"]
+                <span>{greeting} world!</span>
+                                ^^^^^^^
 
                 ClosingTag(
                   tag_name: "span",
@@ -1790,9 +1842,13 @@ mod tests {
                 <div>Price: {price}</div>
                 ^^^^^
 
-                Text [14 byte, "Price: {price}"]
+                Text [7 byte, "Price: "]
                 <div>Price: {price}</div>
-                     ^^^^^^^^^^^^^^
+                     ^^^^^^^
+
+                TextExpression("price")
+                <div>Price: {price}</div>
+                            ^^^^^^^
 
                 ClosingTag(
                   tag_name: "div",
@@ -1818,9 +1874,13 @@ mod tests {
                 <div>Price: {{k: v}}</div>
                 ^^^^^
 
-                Text [15 byte, "Price: {{k: v}}"]
+                Text [7 byte, "Price: "]
                 <div>Price: {{k: v}}</div>
-                     ^^^^^^^^^^^^^^^
+                     ^^^^^^^
+
+                TextExpression("{k: v}")
+                <div>Price: {{k: v}}</div>
+                            ^^^^^^^^
 
                 ClosingTag(
                   tag_name: "div",
@@ -1846,7 +1906,7 @@ mod tests {
                 <h2>{title}</h2>
                 ^^^^
 
-                Text [7 byte, "{title}"]
+                TextExpression("title")
                 <h2>{title}</h2>
                     ^^^^^^^
 

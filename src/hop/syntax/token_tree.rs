@@ -78,6 +78,7 @@ pub fn parse_tree(
             Token::Comment { .. }
             | Token::Doctype { .. }
             | Token::Text { .. }
+            | Token::TextExpression { .. }
             | Token::RawTextTag { .. } => return Some(TokenTree::new(token)),
 
             Token::OpeningTag {
@@ -135,6 +136,7 @@ fn parse_nested_tree(
             Token::Comment { .. }
             | Token::Doctype { .. }
             | Token::Text { .. }
+            | Token::TextExpression { .. }
             | Token::RawTextTag { .. } => {
                 stack.last_mut().unwrap().tree.append_node(token);
             }

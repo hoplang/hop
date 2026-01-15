@@ -96,34 +96,6 @@ impl AttributeValidator {
     }
 }
 
-/// Find the end of an expression using the dop tokenizer.
-///
-/// Expects the current char iterator be on the first character
-/// of a dop expression.
-///
-/// E.g. {x + 2}
-///       ^
-///
-/// Returns None if we reached EOF before finding the closing '}'.
-fn find_expression_end(mut iter: Peekable<DocumentCursor>) -> Option<DocumentRange> {
-    let mut open_braces = 1;
-    loop {
-        let token = dop::tokenizer::next(&mut iter)?;
-        match token {
-            Ok((dop::Token::LeftBrace, _)) => {
-                open_braces += 1;
-            }
-            Ok((dop::Token::RightBrace, range)) => {
-                open_braces -= 1;
-                if open_braces == 0 {
-                    return Some(range);
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
 /// Parse a hop document into a ParsedAst.
 pub fn parse(
     module_name: ModuleName,
@@ -457,97 +429,23 @@ fn construct_nodes(
                 range,
             }]
         }
-        Token::Text { range, .. } => {
-            // Parse text content, splitting into Text and TextExpression nodes
-            let mut nodes = Vec::new();
-            let mut iter = range.cursor().peekable();
-            let mut text_start: Option<DocumentRange> = None;
-
-            while iter.peek().is_some() {
-                let ch = iter.peek().unwrap();
-                if ch.ch() == '{' {
-                    // Flush accumulated text
-                    if let Some(text_range) = text_start.take() {
-                        nodes.push(ParsedNode::Text {
-                            value: text_range.to_cheap_string(),
-                            range: text_range,
-                        });
-                    }
-
-                    // Parse expression
-                    let left_brace = iter.next().unwrap();
-
-                    // Check for empty expression
-                    if iter.peek().map(|s| s.ch()) == Some('}') {
-                        let right_brace = iter.next().unwrap();
-                        errors.push(ParseError::EmptyExpression {
-                            range: left_brace.to(right_brace),
-                        });
-                        continue;
-                    }
-
-                    // Find the end of the expression
-                    if let Some(right_brace) = find_expression_end(iter.clone()) {
-                        // Collect the expression content (everything between braces)
-                        let mut expr_range: Option<DocumentRange> = None;
-                        while iter.peek().map(|s| s.start()) != Some(right_brace.start()) {
-                            let ch_range = iter.next().unwrap();
-                            expr_range = Some(
-                                expr_range
-                                    .map(|r| r.to(ch_range.clone()))
-                                    .unwrap_or(ch_range),
-                            );
-                        }
-                        // Consume the closing brace
-                        iter.next();
-
-                        if let Some(expr_range) = expr_range {
-                            // Parse the expression
-                            let mut iter = expr_range.cursor().peekable();
-                            match dop::parser::parse_expr(&mut iter, comments, &expr_range) {
-                                Ok(expression) => {
-                                    nodes.push(ParsedNode::TextExpression {
-                                        expression,
-                                        range: left_brace.to(right_brace),
-                                    });
-                                }
-                                Err(err) => {
-                                    errors.push(err.into());
-                                }
-                            }
-                        }
-                    } else {
-                        // Unmatched brace - report error, treat as text
-                        errors.push(ParseError::UnmatchedCharacter {
-                            ch: '{',
-                            range: left_brace.clone(),
-                        });
-                        text_start = Some(
-                            text_start
-                                .map(|r| r.to(left_brace.clone()))
-                                .unwrap_or(left_brace),
-                        );
-                    }
-                } else {
-                    // Accumulate text
-                    let ch_range = iter.next().unwrap();
-                    text_start = Some(
-                        text_start
-                            .map(|r| r.to(ch_range.clone()))
-                            .unwrap_or(ch_range),
-                    );
+        Token::Text { range } => {
+            vec![ParsedNode::Text {
+                value: range.to_cheap_string(),
+                range,
+            }]
+        }
+        Token::TextExpression { content, range } => {
+            let mut iter = content.cursor().peekable();
+            match dop::parser::parse_expr(&mut iter, comments, &content) {
+                Ok(expression) => {
+                    vec![ParsedNode::TextExpression { expression, range }]
+                }
+                Err(err) => {
+                    errors.push(err.into());
+                    vec![]
                 }
             }
-
-            // Flush remaining text
-            if let Some(text_range) = text_start {
-                nodes.push(ParsedNode::Text {
-                    value: text_range.to_cheap_string(),
-                    range: text_range,
-                });
-            }
-
-            nodes
         }
         Token::RawTextTag {
             tag_name,
@@ -1980,6 +1878,20 @@ mod tests {
                     {first}
                     {second}
                   </span>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_text_expression_with_string_containing_html() {
+        check(
+            r#"<Main><div>{"<div></div>"}</div></Main>"#,
+            expect![[r#"
+                <Main>
+                  <div>
+                    {"<div></div>"}
+                  </div>
                 </Main>
             "#]],
         );
