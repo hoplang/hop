@@ -1014,8 +1014,19 @@ mod tests {
             Document::new(source.to_string()),
             &mut errors,
         );
-        assert!(errors.is_empty(), "Parse errors: {:?}", errors);
-        expected.assert_eq(&super::format(ast));
+        if !errors.is_empty() {
+            panic!("Parse errors: {:?}", errors);
+        }
+        let formatted = super::format(ast);
+        expected.assert_eq(&formatted);
+
+        // Check idempotency: formatting the output should give the same result
+        let formatted_twice = super::format(parser::parse(
+            ModuleName::new("test").unwrap(),
+            Document::new(formatted.clone()),
+            &mut errors,
+        ));
+        assert_eq!(formatted, formatted_twice, "Formatter is not idempotent");
     }
 
     #[test]
