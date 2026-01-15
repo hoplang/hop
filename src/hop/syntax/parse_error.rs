@@ -1,6 +1,7 @@
 use crate::{
     document::{CheapString, DocumentRange, Ranged},
     dop,
+    hop::symbols::component_name::InvalidComponentNameError,
 };
 use thiserror::Error;
 
@@ -26,7 +27,7 @@ pub enum ParseError {
 
     #[error("{error}")]
     InvalidComponentName {
-        error: crate::hop::symbols::component_name::InvalidComponentNameError,
+        error: InvalidComponentNameError,
         range: DocumentRange,
     },
 
