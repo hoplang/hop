@@ -975,7 +975,7 @@ fn parse_match_expr(
     })
 }
 
-fn parse_import_declaration(
+pub fn parse_import_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<(CheapString, DocumentRange)>,
     range: &DocumentRange,
@@ -1062,7 +1062,7 @@ fn parse_import_declaration(
     })
 }
 
-fn parse_record_declaration(
+pub fn parse_record_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<(CheapString, DocumentRange)>,
     range: &DocumentRange,
@@ -1104,7 +1104,7 @@ fn parse_record_declaration(
     })
 }
 
-fn parse_enum_declaration(
+pub fn parse_enum_declaration(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<(CheapString, DocumentRange)>,
     range: &DocumentRange,
@@ -1232,9 +1232,6 @@ pub fn parse_declarations(
             None => break,
         }
     }
-
-    // TODO: Expect eof?
-    next(iter, comments);
 
     declarations
 }

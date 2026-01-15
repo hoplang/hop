@@ -124,158 +124,183 @@ fn find_expression_end(mut iter: Peekable<DocumentCursor>) -> Option<DocumentRan
     }
 }
 
+/// Parse a hop document into a ParsedAst.
 pub fn parse(
     module_name: ModuleName,
     document: Document,
     errors: &mut ErrorCollector<ParseError>,
 ) -> ParsedAst {
-    let mut iter = document.cursor().peekable();
-
+    let cursor = document.cursor();
+    let document_range = cursor.range();
+    let mut iter = cursor.peekable();
     let mut declarations = Vec::new();
+    let mut comments = VecDeque::new();
 
     let mut defined_components = HashSet::new();
     let mut imported_components = HashMap::new();
     let mut defined_records = HashSet::new();
     let mut defined_enums = HashSet::new();
 
-    // Collect all comments from parsed expressions
-    let mut comments = VecDeque::new();
-
-    // Process token trees one at a time
-    while let Some(mut tree) = parse_tree(&mut iter, errors) {
-        match &tree.token {
-            Token::Text { range } => {
-                let mut decl_errors = ErrorCollector::new();
-                let mut iter = range.cursor().peekable();
-                for decl in dop::parser::parse_declarations(
+    loop {
+        match dop::tokenizer::peek_past_comments(&iter) {
+            Some(Ok((dop::Token::Import, _))) => {
+                match dop::parser::parse_import_declaration(
                     &mut iter,
                     &mut comments,
-                    range,
-                    &mut decl_errors,
+                    &document_range,
                 ) {
-                    match decl {
-                        DopParsedDeclaration::Import {
-                            name,
-                            name_range,
+                    Ok(DopParsedDeclaration::Import {
+                        name,
+                        name_range,
+                        path,
+                        module_name,
+                        ..
+                    }) => {
+                        let import = ParsedImportDeclaration {
+                            type_name: name,
+                            type_name_range: name_range.clone(),
                             path,
                             module_name,
-                            ..
-                        } => {
-                            let import = ParsedImportDeclaration {
-                                type_name: name,
-                                type_name_range: name_range.clone(),
-                                path,
-                                module_name,
-                            };
-                            let name_str = import.type_name.as_str();
-                            if imported_components.contains_key(name_str) {
-                                errors.push(ParseError::TypeNameIsAlreadyDefined {
-                                    name: name_range.to_cheap_string(),
-                                    range: name_range,
-                                });
-                            } else {
-                                imported_components
-                                    .insert(name_str.to_string(), import.module_name.clone());
-                            }
-                            declarations.push(ParsedDeclaration::Import(import));
+                        };
+                        let name_str = import.type_name.as_str();
+                        if imported_components.contains_key(name_str) {
+                            errors.push(ParseError::TypeNameIsAlreadyDefined {
+                                name: name_range.to_cheap_string(),
+                                range: name_range,
+                            });
+                        } else {
+                            imported_components
+                                .insert(name_str.to_string(), import.module_name.clone());
                         }
-                        DopParsedDeclaration::Record {
-                            name,
-                            name_range,
-                            fields,
-                            range,
-                        } => {
-                            let record = ParsedRecordDeclaration {
-                                name: name.clone(),
-                                name_range: name_range.clone(),
-                                range: range.clone(),
-                                fields: fields
-                                    .iter()
-                                    .map(|(field_name, field_name_range, field_type)| {
-                                        ParsedRecordDeclarationField {
-                                            name: field_name.clone(),
-                                            name_range: field_name_range.clone(),
-                                            field_type: field_type.clone(),
-                                        }
-                                    })
-                                    .collect(),
-                            };
-                            let name = record.name();
-                            if defined_records.contains(name)
-                                || defined_enums.contains(name)
-                                || defined_components.contains(name)
-                                || imported_components.contains_key(name)
-                            {
-                                errors.push(ParseError::TypeNameIsAlreadyDefined {
-                                    name: record.name_range.to_cheap_string(),
-                                    range: record.name_range.clone(),
-                                });
-                            } else {
-                                defined_records.insert(name.to_string());
-                            }
-                            declarations.push(ParsedDeclaration::Record(record));
-                        }
-                        DopParsedDeclaration::Enum {
-                            name,
-                            name_range,
-                            variants,
-                            range,
-                        } => {
-                            let enum_decl = ParsedEnumDeclaration {
-                                name: name.clone(),
-                                name_range: name_range.clone(),
-                                range: range.clone(),
-                                variants: variants
-                                    .iter()
-                                    .map(|(name, name_range, fields)| {
-                                        ParsedEnumDeclarationVariant {
-                                            name: name.clone(),
-                                            name_range: name_range.clone(),
-                                            fields: fields.clone(),
-                                        }
-                                    })
-                                    .collect(),
-                            };
-                            let name = enum_decl.name();
-                            if defined_enums.contains(name)
-                                || defined_records.contains(name)
-                                || defined_components.contains(name)
-                                || imported_components.contains_key(name)
-                            {
-                                errors.push(ParseError::TypeNameIsAlreadyDefined {
-                                    name: enum_decl.name_range.to_cheap_string(),
-                                    range: enum_decl.name_range.clone(),
-                                });
-                            } else {
-                                defined_enums.insert(name.to_string());
-                            }
-                            declarations.push(ParsedDeclaration::Enum(enum_decl));
-                        }
+                        declarations.push(ParsedDeclaration::Import(import));
+                    }
+                    Ok(_) => unreachable!("parse_import_declaration returned non-Import"),
+                    Err(err) => {
+                        errors.push(err.into());
+                        break;
                     }
                 }
-                // Convert dop parse errors to hop parse errors
-                for err in decl_errors.iter().cloned() {
-                    errors.push(err.into());
+            }
+            Some(Ok((dop::Token::Record, _))) => {
+                match dop::parser::parse_record_declaration(
+                    &mut iter,
+                    &mut comments,
+                    &document_range,
+                ) {
+                    Ok(DopParsedDeclaration::Record {
+                        name,
+                        name_range,
+                        fields,
+                        range,
+                    }) => {
+                        let record = ParsedRecordDeclaration {
+                            name: name.clone(),
+                            name_range: name_range.clone(),
+                            range: range.clone(),
+                            fields: fields
+                                .iter()
+                                .map(|(field_name, field_name_range, field_type)| {
+                                    ParsedRecordDeclarationField {
+                                        name: field_name.clone(),
+                                        name_range: field_name_range.clone(),
+                                        field_type: field_type.clone(),
+                                    }
+                                })
+                                .collect(),
+                        };
+                        let name = record.name();
+                        if defined_records.contains(name)
+                            || defined_enums.contains(name)
+                            || defined_components.contains(name)
+                            || imported_components.contains_key(name)
+                        {
+                            errors.push(ParseError::TypeNameIsAlreadyDefined {
+                                name: record.name_range.to_cheap_string(),
+                                range: record.name_range.clone(),
+                            });
+                        } else {
+                            defined_records.insert(name.to_string());
+                        }
+                        declarations.push(ParsedDeclaration::Record(record));
+                    }
+                    Ok(_) => unreachable!("parse_record_declaration returned non-Record"),
+                    Err(err) => {
+                        errors.push(err.into());
+                        break;
+                    }
                 }
             }
-            _ => {
-                let children: Vec<ParsedNode> = std::mem::take(&mut tree.children)
-                    .into_iter()
-                    .flat_map(|child| {
-                        construct_nodes(
-                            child,
-                            &mut comments,
-                            errors,
-                            &module_name,
-                            &defined_components,
-                            &imported_components,
-                        )
-                    })
-                    .collect();
-
-                if let Some(component) =
-                    parse_component_declaration(tree, children, &mut comments, errors)
+            Some(Ok((dop::Token::Enum, _))) => {
+                match dop::parser::parse_enum_declaration(&mut iter, &mut comments, &document_range)
                 {
+                    Ok(DopParsedDeclaration::Enum {
+                        name,
+                        name_range,
+                        variants,
+                        range,
+                    }) => {
+                        let enum_decl = ParsedEnumDeclaration {
+                            name: name.clone(),
+                            name_range: name_range.clone(),
+                            range: range.clone(),
+                            variants: variants
+                                .iter()
+                                .map(|(name, name_range, fields)| ParsedEnumDeclarationVariant {
+                                    name: name.clone(),
+                                    name_range: name_range.clone(),
+                                    fields: fields.clone(),
+                                })
+                                .collect(),
+                        };
+                        let name = enum_decl.name();
+                        if defined_enums.contains(name)
+                            || defined_records.contains(name)
+                            || defined_components.contains(name)
+                            || imported_components.contains_key(name)
+                        {
+                            errors.push(ParseError::TypeNameIsAlreadyDefined {
+                                name: enum_decl.name_range.to_cheap_string(),
+                                range: enum_decl.name_range.clone(),
+                            });
+                        } else {
+                            defined_enums.insert(name.to_string());
+                        }
+                        declarations.push(ParsedDeclaration::Enum(enum_decl));
+                    }
+                    Ok(_) => unreachable!("parse_enum_declaration returned non-Enum"),
+                    Err(err) => {
+                        errors.push(err.into());
+                        break;
+                    }
+                }
+            }
+            Some(Ok((dop::Token::LessThan, _))) => {
+                // Component declaration - delegate to hop parser
+                // First, consume whitespace and comments using dop tokenizer
+                // (peek_past_comments discards them, so we need to actually consume them)
+                loop {
+                    while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
+                        iter.next();
+                    }
+                    match dop::tokenizer::peek(&iter) {
+                        Some(Ok((dop::Token::Comment(_), _))) => {
+                            if let Some(Ok((dop::Token::Comment(text), range))) =
+                                dop::tokenizer::next(&mut iter)
+                            {
+                                comments.push_back((text, range));
+                            }
+                        }
+                        _ => break,
+                    }
+                }
+                if let Some(component) = parse_component_declaration(
+                    &mut iter,
+                    &mut comments,
+                    errors,
+                    &module_name,
+                    &defined_components,
+                    &imported_components,
+                ) {
                     let name = component.tag_name.as_str();
                     if defined_components.contains(name)
                         || imported_components.contains_key(name)
@@ -292,33 +317,54 @@ pub fn parse(
                     declarations.push(ParsedDeclaration::Component(component));
                 }
             }
+            Some(Ok((_, token_range))) => {
+                // Unexpected token at top level
+                errors.push(ParseError::UnexpectedTopLevelText { range: token_range });
+                break;
+            }
+            Some(Err(err)) => {
+                errors.push(err.into());
+                break;
+            }
+            None => break, // EOF
         }
     }
 
     ParsedAst::new(module_name, declarations, comments)
 }
 
-/// Try to parse a token tree as a component declaration.
+/// Parse a component declaration from a document cursor.
 ///
-/// Returns `Some(component)` if the tree is an opening tag (component declaration),
-/// or `None` for other token types (text, comments, etc.).
+/// Returns `None` if:
+/// - The cursor is exhausted
+/// - The next token is not an opening tag
+/// - The tag name is not a valid component name (PascalCase)
 fn parse_component_declaration(
-    tree: TokenTree,
-    children: Vec<ParsedNode>,
+    iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<(CheapString, DocumentRange)>,
     errors: &mut ErrorCollector<ParseError>,
+    module_name: &ModuleName,
+    defined_components: &HashSet<String>,
+    imported_components: &HashMap<String, ModuleName>,
 ) -> Option<ParsedComponentDeclaration> {
+    let tree = parse_tree(iter, errors)?;
+
+    let TokenTree {
+        token,
+        closing_tag_name,
+        children: tree_children,
+        range,
+    } = tree;
+
     let Token::OpeningTag {
         tag_name,
         attributes,
         expression,
         ..
-    } = tree.token
+    } = token
     else {
         return None;
     };
-
-    let validator = AttributeValidator::new(attributes, tag_name.clone());
 
     let component_name = match ComponentName::new(tag_name.to_string()) {
         Ok(name) => name,
@@ -331,11 +377,12 @@ fn parse_component_declaration(
         }
     };
 
-    // Parse parameters
+    let validator = AttributeValidator::new(attributes, tag_name.clone());
+
     let params = expression.as_ref().and_then(|expr| {
-        let mut iter = expr.cursor().peekable();
+        let mut expr_iter = expr.cursor().peekable();
         errors.ok_or_add(
-            dop::parser::parse_parameters(&mut iter, comments, expr)
+            dop::parser::parse_parameters(&mut expr_iter, comments, expr)
                 .map(|parsed_params| {
                     let params = parsed_params
                         .into_iter()
@@ -354,17 +401,30 @@ fn parse_component_declaration(
         )
     });
 
-    // Disallow any unrecognized attributes on component declarations
     for error in validator.disallow_unrecognized() {
         errors.push(error);
     }
 
+    let children: Vec<ParsedNode> = tree_children
+        .into_iter()
+        .flat_map(|child| {
+            construct_nodes(
+                child,
+                comments,
+                errors,
+                module_name,
+                defined_components,
+                imported_components,
+            )
+        })
+        .collect();
+
     Some(ParsedComponentDeclaration {
         component_name,
-        tag_name: tag_name.clone(),
-        closing_tag_name: tree.closing_tag_name,
+        tag_name,
+        closing_tag_name,
         params,
-        range: tree.range.clone(),
+        range,
         children,
     })
 }
@@ -880,6 +940,22 @@ mod tests {
     #[test]
     fn should_accept_empty_file() {
         check("", expect![[""]]);
+    }
+
+    #[test]
+    fn should_accept_comment_between_components() {
+        check(
+            indoc! {"
+                <First></First>
+                // This is a comment
+                <Second></Second>
+            "},
+            expect![[r#"
+                <First></First>
+
+                <Second></Second>
+            "#]],
+        );
     }
 
     #[test]
@@ -1918,10 +1994,10 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                error: Expected type name but got end of file
+                error: Expected type name but got <
                 1 | record
-                  | ^^^^^^
                 2 | <Main>
+                  | ^
             "#]],
         );
     }
@@ -1935,7 +2011,7 @@ mod tests {
                 </Main>
             "},
             expect![[r#"
-                error: Expected declaration (import, record, or enum)
+                error: Unexpected text at top level
                 1 | foo
                   | ^^^
             "#]],
@@ -2835,6 +2911,18 @@ mod tests {
                     Last
                   </div>
                 </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_top_level_html_element() {
+        check(
+            "<div></div>",
+            expect![[r#"
+                error: Component name must start with an uppercase letter
+                1 | <div></div>
+                  |  ^^^
             "#]],
         );
     }

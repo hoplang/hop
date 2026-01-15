@@ -110,6 +110,9 @@ pub enum ParseError {
         tag_name: CheapString,
         range: DocumentRange,
     },
+
+    #[error("Unexpected text at top level")]
+    UnexpectedTopLevelText { range: DocumentRange },
 }
 
 impl From<dop::ParseError> for ParseError {
@@ -143,7 +146,8 @@ impl Ranged for ParseError {
             | ParseError::ExpectedQuotedAttributeValue { range }
             | ParseError::UnterminatedOpeningTag { range }
             | ParseError::UnterminatedClosingTag { range }
-            | ParseError::UnterminatedTagStart { range } => range,
+            | ParseError::UnterminatedTagStart { range }
+            | ParseError::UnexpectedTopLevelText { range } => range,
             ParseError::DopError { err } => err.range(),
         }
     }
