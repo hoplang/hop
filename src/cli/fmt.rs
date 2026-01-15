@@ -4,20 +4,23 @@ use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::syntax::format;
 use crate::hop::syntax::parser;
-use crate::tui::timing::TimingCollector;
 use anyhow::Result;
+use rayon::prelude::*;
 use std::path::Path;
 
 pub struct FmtResult {
     pub files_formatted: usize,
     pub files_unchanged: usize,
-    pub timer: TimingCollector,
+}
+
+struct FormattedModule {
+    module_name: ModuleName,
+    original: Document,
+    formatted: String,
+    has_errors: bool,
 }
 
 pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResult> {
-    let mut timer = TimingCollector::new();
-
-    timer.start_phase("load modules");
     let hop_modules: Vec<(ModuleName, Document)> = match file {
         Some(file_path) => {
             let (module_name, document) = project_root.load_hop_module(Path::new(file_path))?;
@@ -32,43 +35,45 @@ pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResu
         }
     };
 
-    // First pass: parse all files and check for errors
-    timer.start_phase("parse");
-    let mut parsed_modules = Vec::new();
-    for (module_name, document) in hop_modules {
-        let mut errors = ErrorCollector::new();
-        let ast = parser::parse(module_name.clone(), document.clone(), &mut errors);
+    // Parse and format all files in parallel
+    let results: Vec<FormattedModule> = hop_modules
+        .into_par_iter()
+        .map(|(module_name, document)| {
+            let mut errors = ErrorCollector::new();
+            let ast = parser::parse(module_name.clone(), document.clone(), &mut errors);
+            let formatted = format(ast);
 
-        if !errors.is_empty() {
-            anyhow::bail!("Parse errors in {}", module_name);
-        }
+            FormattedModule {
+                module_name,
+                original: document,
+                formatted,
+                has_errors: !errors.is_empty(),
+            }
+        })
+        .collect();
 
-        parsed_modules.push((module_name, document, ast));
+    // Check for parse errors
+    if let Some(result) = results.iter().find(|r| r.has_errors) {
+        anyhow::bail!("Parse errors in {}", result.module_name);
     }
 
-    // Second pass: format all files (only if all parsed successfully)
-    timer.start_phase("format");
+    // Write all results to disk (only if all parsed successfully)
     let mut files_formatted = 0;
     let mut files_unchanged = 0;
 
-    for (module_name, document, ast) in parsed_modules {
-        let formatted = format(ast);
-
-        if formatted != document.as_str() {
-            let path = project_root.module_name_to_path(&module_name);
-            std::fs::write(&path, &formatted)?;
+    for result in results {
+        if result.formatted != result.original.as_str() {
+            let path = project_root.module_name_to_path(&result.module_name);
+            std::fs::write(&path, &result.formatted)?;
             files_formatted += 1;
         } else {
             files_unchanged += 1;
         }
     }
 
-    timer.end_phase();
-
     Ok(FmtResult {
         files_formatted,
         files_unchanged,
-        timer,
     })
 }
 
