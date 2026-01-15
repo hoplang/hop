@@ -1,10 +1,11 @@
-use super::parse_error::ParseError;
-use super::tokenizer::Token;
-use super::tokenizer::Tokenizer;
-use crate::common::is_void_element;
-use crate::document::{DocumentRange, Ranged as _};
-use crate::error_collector::ErrorCollector;
 use std::fmt::{self, Display};
+use std::iter::Peekable;
+
+use super::parse_error::ParseError;
+use super::tokenizer::{self, Token};
+use crate::common::is_void_element;
+use crate::document::{DocumentCursor, DocumentRange, Ranged as _};
+use crate::error_collector::ErrorCollector;
 
 /// A TokenTree represents a tree of tokens.
 ///
@@ -61,7 +62,10 @@ impl TokenTree {
 ///
 /// We do our best here to construct as much of the tree as possible even
 /// when we encounter errors.
-pub fn build_tree(tokenizer: Tokenizer, errors: &mut ErrorCollector<ParseError>) -> Vec<TokenTree> {
+pub fn build_tree(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut ErrorCollector<ParseError>,
+) -> Vec<TokenTree> {
     struct StackElement {
         tree: TokenTree,
         tag_name: DocumentRange,
@@ -70,12 +74,7 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut ErrorCollector<ParseError>)
     let mut stack: Vec<StackElement> = Vec::new();
     let mut top_level_nodes: Vec<TokenTree> = Vec::new();
 
-    for (token, err) in tokenizer {
-        errors.extend(err);
-
-        let Some(token) = token else {
-            continue;
-        };
+    while let Some(token) = tokenizer::next(iter, errors) {
 
         match token {
             Token::Comment { .. }
@@ -193,16 +192,13 @@ impl Display for TokenTree {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{document::DocumentCursor, hop::syntax::tokenizer::Tokenizer};
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
     fn check(input: &str, expected: Expect) {
         let mut errors = ErrorCollector::new();
-        let trees = build_tree(
-            Tokenizer::new(DocumentCursor::new(input.to_string())),
-            &mut errors,
-        );
+        let mut iter = DocumentCursor::new(input.to_string()).peekable();
+        let trees = build_tree(&mut iter, &mut errors);
         if !errors.is_empty() {
             panic!("Expected errors to be empty");
         }

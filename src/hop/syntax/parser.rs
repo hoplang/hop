@@ -17,7 +17,7 @@ use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 
 use super::parse_error::ParseError;
-use super::tokenizer::{self, Token, Tokenizer};
+use super::tokenizer::{self, Token};
 
 struct AttributeValidator {
     attributes: Vec<tokenizer::TokenizedAttribute>,
@@ -130,8 +130,8 @@ pub fn parse(
     errors: &mut ErrorCollector<ParseError>,
 ) -> ParsedAst {
     // Build the token tree
-    let tokenizer = Tokenizer::new(document.cursor());
-    let trees = build_tree(tokenizer, errors);
+    let mut iter = document.cursor().peekable();
+    let trees = build_tree(&mut iter, errors);
 
     let mut declarations = Vec::new();
 

@@ -1,12 +1,12 @@
 use std::fmt::{self, Display};
 use std::iter::Peekable;
-use std::mem;
 
 use itertools::Itertools as _;
 
 use super::parse_error::ParseError;
 use crate::document::{DocumentCursor, DocumentRange, Ranged};
 use crate::dop;
+use crate::error_collector::ErrorCollector;
 
 #[derive(Debug, Clone)]
 pub enum TokenizedAttributeValue {
@@ -180,594 +180,611 @@ impl Display for Token {
     }
 }
 
-pub struct Tokenizer {
-    /// The string cursor for the document we're tokenizing.
-    iter: Peekable<DocumentCursor>,
-    /// The error vector contains the errors that occured during tokenization
-    /// of the current token. It is returned together with the token.
-    errors: Vec<ParseError>,
+/// Parse the next token from the input.
+///
+/// Returns `Some(token)` if a token was parsed, `None` at end of input.
+/// Errors are collected in the `errors` collector.
+pub fn next(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut ErrorCollector<ParseError>,
+) -> Option<Token> {
+    loop {
+        match iter.peek().map(|s| s.ch()) {
+            Some('<') => {
+                if let Some(token) = parse_tag(iter, errors) {
+                    return Some(token);
+                } else {
+                    continue;
+                }
+            }
+            Some(_) => return Some(parse_text(iter)),
+            None => return None,
+        }
+    }
 }
 
-impl Tokenizer {
-    pub fn new(input: DocumentCursor) -> Self {
-        Self {
-            iter: input.peekable(),
-            errors: Vec::new(),
-        }
-    }
-
-    /// Find the end of an expression using the dop tokenizer.
-    ///
-    /// Expects the current char iterator be on the first character
-    /// of a dop expression.
-    ///
-    /// E.g. {x + 2}
-    ///       ^
-    ///
-    /// Returns None if we reached EOF before finding the closing '}'.
-    fn find_expression_end(mut iter: Peekable<DocumentCursor>) -> Option<DocumentRange> {
-        let mut open_braces = 1;
-        loop {
-            let token = dop::tokenizer::next(&mut iter)?;
-            match token {
-                Ok((dop::Token::LeftBrace, _)) => {
-                    open_braces += 1;
-                }
-                Ok((dop::Token::RightBrace, range)) => {
-                    open_braces -= 1;
-                    if open_braces == 0 {
-                        return Some(range);
-                    }
-                }
-                _ => {}
+/// Find the end of an expression using the dop tokenizer.
+///
+/// Expects the current char iterator be on the first character
+/// of a dop expression.
+///
+/// E.g. {x + 2}
+///       ^
+///
+/// Returns None if we reached EOF before finding the closing '}'.
+fn find_expression_end(mut iter: Peekable<DocumentCursor>) -> Option<DocumentRange> {
+    let mut open_braces = 1;
+    loop {
+        let token = dop::tokenizer::next(&mut iter)?;
+        match token {
+            Ok((dop::Token::LeftBrace, _)) => {
+                open_braces += 1;
             }
+            Ok((dop::Token::RightBrace, range)) => {
+                open_braces -= 1;
+                if open_braces == 0 {
+                    return Some(range);
+                }
+            }
+            _ => {}
         }
     }
+}
 
-    fn skip_whitespace(&mut self) {
-        while self.iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
-            self.iter.next();
-        }
+fn skip_whitespace(iter: &mut Peekable<DocumentCursor>) {
+    while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
+        iter.next();
     }
+}
 
-    // Parse a comment.
-    //
-    // E.g. <!-- hello -->
-    //        ^^^^^^^^^^^^
-    // Expects that the iterator points to the initial '-'.
-    //
-    fn parse_comment(&mut self, left_angle_to_bang: DocumentRange) -> Option<Token> {
-        let Some(first_dash) = self.iter.next_if(|s| s.ch() == '-') else {
-            panic!(
-                "Expected '-' in parse_comment but got {:?}",
-                self.iter.next().map(|s| s.ch())
-            );
-        };
-        let Some(second_dash) = self.iter.next_if(|s| s.ch() == '-') else {
-            self.errors.push(ParseError::InvalidMarkupDeclaration {
-                range: left_angle_to_bang.to(first_dash),
-            });
-            return None;
-        };
-        // Count the number of seen '-' to find the end of the comment
-        let mut count = 0;
-        loop {
-            match self.iter.next() {
-                Some(s) if s.ch() == '-' => {
-                    count += 1;
-                }
-                Some(s) if s.ch() == '>' => {
-                    if count >= 2 {
-                        return Some(Token::Comment {
-                            range: left_angle_to_bang.to(s),
-                        });
-                    } else {
-                        count = 0;
-                    }
-                }
-                Some(_) => {
+// Parse a comment.
+//
+// E.g. <!-- hello -->
+//        ^^^^^^^^^^^^
+// Expects that the iterator points to the initial '-'.
+//
+fn parse_comment(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut ErrorCollector<ParseError>,
+    left_angle_to_bang: DocumentRange,
+) -> Option<Token> {
+    let Some(first_dash) = iter.next_if(|s| s.ch() == '-') else {
+        panic!(
+            "Expected '-' in parse_comment but got {:?}",
+            iter.next().map(|s| s.ch())
+        );
+    };
+    let Some(second_dash) = iter.next_if(|s| s.ch() == '-') else {
+        errors.push(ParseError::InvalidMarkupDeclaration {
+            range: left_angle_to_bang.to(first_dash),
+        });
+        return None;
+    };
+    // Count the number of seen '-' to find the end of the comment
+    let mut count = 0;
+    loop {
+        match iter.next() {
+            Some(s) if s.ch() == '-' => {
+                count += 1;
+            }
+            Some(s) if s.ch() == '>' => {
+                if count >= 2 {
+                    return Some(Token::Comment {
+                        range: left_angle_to_bang.to(s),
+                    });
+                } else {
                     count = 0;
                 }
-                None => {
-                    self.errors.push(ParseError::UnterminatedComment {
-                        range: left_angle_to_bang.to(second_dash),
-                    });
-                    return None;
-                }
             }
-        }
-    }
-
-    fn parse_doctype(&mut self, left_angle_to_bang: DocumentRange) -> Option<Token> {
-        let doctype = self
-            .iter
-            .clone()
-            .map(|s| s.ch())
-            .take(7)
-            .collect::<String>()
-            .to_lowercase();
-        if doctype != "doctype" {
-            self.errors.push(ParseError::InvalidMarkupDeclaration {
-                range: left_angle_to_bang,
-            });
-            return None;
-        }
-        while self.iter.next_if(|s| s.ch() != '>').is_some() {}
-        let Some(right_angle) = self.iter.next_if(|s| s.ch() == '>') else {
-            self.errors.push(ParseError::InvalidMarkupDeclaration {
-                range: left_angle_to_bang,
-            });
-            return None;
-        };
-        Some(Token::Doctype {
-            range: left_angle_to_bang.to(right_angle),
-        })
-    }
-
-    // Parse a markup declaration from the iterator.
-    //
-    // E.g. <!-- hello -->
-    //       ^^^^^^^^^^^^^
-    // Expects that the iterator points to the initial '!'.
-    //
-    fn parse_markup_declaration(&mut self, left_angle: DocumentRange) -> Option<Token> {
-        let Some(bang) = self.iter.next_if(|s| s.ch() == '!') else {
-            panic!(
-                "Expected '!' in parse_markup_declaration but got {:?}",
-                self.iter.next().map(|s| s.ch())
-            );
-        };
-        match self.iter.peek().map(|s| s.ch()) {
-            Some('-') => self.parse_comment(left_angle.to(bang)),
-            Some('D' | 'd') => self.parse_doctype(left_angle.to(bang)),
-            _ => {
-                self.errors.push(ParseError::InvalidMarkupDeclaration {
-                    range: left_angle.to(bang),
+            Some(_) => {
+                count = 0;
+            }
+            None => {
+                errors.push(ParseError::UnterminatedComment {
+                    range: left_angle_to_bang.to(second_dash),
                 });
-                None
+                return None;
             }
         }
     }
+}
 
-    // Parse an attribute from the iterator.
-    //
-    // E.g. <div foo="bar">
-    //           ^^^^^^^^^
-    // Expects that the iterator points to the initial alphabetic char.
-    //
-    // Returns None if a valid attribute could not be parsed from the iterator.
-    fn parse_attribute(&mut self) -> Option<TokenizedAttribute> {
-        // consume: [a-zA-Z]
-        let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
-            panic!(
-                "Expected [a-zA-Z] in parse_attribute but got {:?}",
-                self.iter.next().map(|s| s.ch())
-            );
-        };
+fn parse_doctype(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut ErrorCollector<ParseError>,
+    left_angle_to_bang: DocumentRange,
+) -> Option<Token> {
+    let doctype = iter
+        .clone()
+        .map(|s| s.ch())
+        .take(7)
+        .collect::<String>()
+        .to_lowercase();
+    if doctype != "doctype" {
+        errors.push(ParseError::InvalidMarkupDeclaration {
+            range: left_angle_to_bang,
+        });
+        return None;
+    }
+    while iter.next_if(|s| s.ch() != '>').is_some() {}
+    let Some(right_angle) = iter.next_if(|s| s.ch() == '>') else {
+        errors.push(ParseError::InvalidMarkupDeclaration {
+            range: left_angle_to_bang,
+        });
+        return None;
+    };
+    Some(Token::Doctype {
+        range: left_angle_to_bang.to(right_angle),
+    })
+}
 
-        // consume: ('-' | '_' | [a-zA-Z0-9])*
-        let attr_name = initial.extend(self.iter.peeking_take_while(|s| {
+// Parse a markup declaration from the iterator.
+//
+// E.g. <!-- hello -->
+//       ^^^^^^^^^^^^^
+// Expects that the iterator points to the initial '!'.
+//
+fn parse_markup_declaration(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut ErrorCollector<ParseError>,
+    left_angle: DocumentRange,
+) -> Option<Token> {
+    let Some(bang) = iter.next_if(|s| s.ch() == '!') else {
+        panic!(
+            "Expected '!' in parse_markup_declaration but got {:?}",
+            iter.next().map(|s| s.ch())
+        );
+    };
+    match iter.peek().map(|s| s.ch()) {
+        Some('-') => parse_comment(iter, errors, left_angle.to(bang)),
+        Some('D' | 'd') => parse_doctype(iter, errors, left_angle.to(bang)),
+        _ => {
+            errors.push(ParseError::InvalidMarkupDeclaration {
+                range: left_angle.to(bang),
+            });
+            None
+        }
+    }
+}
+
+// Parse an attribute from the iterator.
+//
+// E.g. <div foo="bar">
+//           ^^^^^^^^^
+// Expects that the iterator points to the initial alphabetic char.
+//
+// Returns None if a valid attribute could not be parsed from the iterator.
+fn parse_attribute(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut ErrorCollector<ParseError>,
+) -> Option<TokenizedAttribute> {
+    // consume: [a-zA-Z]
+    let Some(initial) = iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
+        panic!(
+            "Expected [a-zA-Z] in parse_attribute but got {:?}",
+            iter.next().map(|s| s.ch())
+        );
+    };
+
+    // consume: ('-' | '_' | [a-zA-Z0-9])*
+    let attr_name =
+        initial.extend(iter.peeking_take_while(|s| {
             s.ch() == '-' || s.ch() == '_' || s.ch().is_ascii_alphanumeric()
         }));
 
-        // consume: whitespace
-        self.skip_whitespace();
+    // consume: whitespace
+    skip_whitespace(iter);
 
-        // consume: '='
-        let Some(eq) = self.iter.next_if(|s| s.ch() == '=') else {
-            return Some(TokenizedAttribute {
-                name: attr_name.clone(),
-                value: None,
-                range: attr_name,
-            });
-        };
-
-        // consume: whitespace
-        self.skip_whitespace();
-
-        // Check if value is an expression
-        if self.iter.peek().map(|s| s.ch()) == Some('{') {
-            // Parse expression value
-            let (expr, expr_range) = self.parse_expression()?;
-            return Some(TokenizedAttribute {
-                name: attr_name.clone(),
-                value: Some(TokenizedAttributeValue::Expression(expr)),
-                range: attr_name.to(expr_range),
-            });
-        }
-
-        // Parse string value (quoted)
-        let Some(open_quote) = self.iter.next_if(|s| s.ch() == '"' || s.ch() == '\'') else {
-            self.errors.push(ParseError::ExpectedQuotedAttributeValue {
-                range: attr_name.to(eq),
-            });
-            return None;
-        };
-
-        // consume: attribute value
-        let attr_value: Option<DocumentRange> = self
-            .iter
-            .peeking_take_while(|s| s.ch() != open_quote.ch())
-            .collect();
-
-        // consume: " or '
-        let Some(close_quote) = self.iter.next_if(|s| s.ch() == open_quote.ch()) else {
-            self.errors.push(ParseError::UnmatchedCharacter {
-                ch: open_quote.ch(),
-                range: open_quote,
-            });
-            return None;
-        };
-
-        // For empty strings like a="", we still want to return Some(String(...))
-        // to distinguish from valueless attributes like `disabled`
-        let value = Some(TokenizedAttributeValue::String {
-            content: attr_value,
-        });
-
-        Some(TokenizedAttribute {
+    // consume: '='
+    let Some(eq) = iter.next_if(|s| s.ch() == '=') else {
+        return Some(TokenizedAttribute {
             name: attr_name.clone(),
-            value,
-            range: attr_name.to(close_quote),
-        })
+            value: None,
+            range: attr_name,
+        });
+    };
+
+    // consume: whitespace
+    skip_whitespace(iter);
+
+    // Check if value is an expression
+    if iter.peek().map(|s| s.ch()) == Some('{') {
+        // Parse expression value
+        let (expr, expr_range) = parse_expression(iter, errors)?;
+        return Some(TokenizedAttribute {
+            name: attr_name.clone(),
+            value: Some(TokenizedAttributeValue::Expression(expr)),
+            range: attr_name.to(expr_range),
+        });
     }
 
-    /// Parse an expression.
-    ///
-    /// E.g. <div foo="bar" {x: String}>
-    ///                     ^^^^^^^^^^^
-    /// Expects that the iterator points to the initial '{'.
-    ///
-    /// Returns None if we reached EOF or if the expression was empty.
-    /// Returns Some((expr,range)) if we managed to parse the expression
-    /// where expr is the inner range for the expression and range is the
-    /// outer (containing the braces).
-    fn parse_expression(&mut self) -> Option<(DocumentRange, DocumentRange)> {
-        // consume '{'
-        let Some(left_brace) = self.iter.next_if(|s| s.ch() == '{') else {
-            panic!(
-                "Expected '{{' in parse_expression but got {:?}",
-                self.iter.next().map(|s| s.ch())
-            );
-        };
-        let clone = self.iter.clone();
-        let Some(found_right_brace) = Self::find_expression_end(clone) else {
-            self.errors.push(ParseError::UnmatchedCharacter {
-                ch: left_brace.ch(),
-                range: left_brace,
-            });
-            return None;
-        };
-        // handle empty expression
-        if left_brace.end() == found_right_brace.start() {
-            let Some(right_brace) = self.iter.next_if(|s| s.ch() == '}') else {
-                panic!(
-                    "Expected '}}' in parse_expression but got {:?}",
-                    self.iter.next().map(|s| s.ch())
-                );
-            };
-            self.errors.push(ParseError::EmptyExpression {
-                range: left_brace.to(right_brace),
-            });
-            return None;
-        }
-        let mut expr = self.iter.next().unwrap();
-        while self.iter.peek().unwrap().start() != found_right_brace.start() {
-            expr = expr.to(self.iter.next()?);
-        }
-        // consume: '}'
-        let Some(right_brace) = self.iter.next_if(|s| s.ch() == '}') else {
+    // Parse string value (quoted)
+    let Some(open_quote) = iter.next_if(|s| s.ch() == '"' || s.ch() == '\'') else {
+        errors.push(ParseError::ExpectedQuotedAttributeValue {
+            range: attr_name.to(eq),
+        });
+        return None;
+    };
+
+    // consume: attribute value
+    let attr_value: Option<DocumentRange> = iter
+        .peeking_take_while(|s| s.ch() != open_quote.ch())
+        .collect();
+
+    // consume: " or '
+    let Some(close_quote) = iter.next_if(|s| s.ch() == open_quote.ch()) else {
+        errors.push(ParseError::UnmatchedCharacter {
+            ch: open_quote.ch(),
+            range: open_quote,
+        });
+        return None;
+    };
+
+    // For empty strings like a="", we still want to return Some(String(...))
+    // to distinguish from valueless attributes like `disabled`
+    let value = Some(TokenizedAttributeValue::String {
+        content: attr_value,
+    });
+
+    Some(TokenizedAttribute {
+        name: attr_name.clone(),
+        value,
+        range: attr_name.to(close_quote),
+    })
+}
+
+/// Parse an expression.
+///
+/// E.g. <div foo="bar" {x: String}>
+///                     ^^^^^^^^^^^
+/// Expects that the iterator points to the initial '{'.
+///
+/// Returns None if we reached EOF or if the expression was empty.
+/// Returns Some((expr,range)) if we managed to parse the expression
+/// where expr is the inner range for the expression and range is the
+/// outer (containing the braces).
+fn parse_expression(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut ErrorCollector<ParseError>,
+) -> Option<(DocumentRange, DocumentRange)> {
+    // consume '{'
+    let Some(left_brace) = iter.next_if(|s| s.ch() == '{') else {
+        panic!(
+            "Expected '{{' in parse_expression but got {:?}",
+            iter.next().map(|s| s.ch())
+        );
+    };
+    let clone = iter.clone();
+    let Some(found_right_brace) = find_expression_end(clone) else {
+        errors.push(ParseError::UnmatchedCharacter {
+            ch: left_brace.ch(),
+            range: left_brace,
+        });
+        return None;
+    };
+    // handle empty expression
+    if left_brace.end() == found_right_brace.start() {
+        let Some(right_brace) = iter.next_if(|s| s.ch() == '}') else {
             panic!(
                 "Expected '}}' in parse_expression but got {:?}",
-                self.iter.next().map(|s| s.ch())
+                iter.next().map(|s| s.ch())
             );
         };
-        Some((expr, left_brace.to(right_brace)))
+        errors.push(ParseError::EmptyExpression {
+            range: left_brace.to(right_brace),
+        });
+        return None;
     }
-
-    /// Parse tag content (attributes and expressions).
-    ///
-    /// E.g. <div foo="bar" {x: String}>
-    ///           ^^^^^^^^^^^^^^^^^^^^^
-    fn parse_tag_content(&mut self) -> (Vec<TokenizedAttribute>, Option<DocumentRange>) {
-        let mut attributes: Vec<TokenizedAttribute> = Vec::new();
-        let mut expression: Option<DocumentRange> = None;
-        loop {
-            self.skip_whitespace();
-            match self.iter.peek().map(|s| s.ch()) {
-                Some('{') => {
-                    let Some((expr, _)) = self.parse_expression() else {
-                        continue;
-                    };
-                    expression = Some(expr);
-                }
-                Some(ch) if ch.is_ascii_alphabetic() => {
-                    let Some(attr) = self.parse_attribute() else {
-                        continue;
-                    };
-                    if attributes
-                        .iter()
-                        .any(|a| a.name.as_str() == attr.name.as_str())
-                    {
-                        self.errors.push(ParseError::DuplicateAttribute {
-                            name: attr.name.to_cheap_string(),
-                            range: attr.name.clone(),
-                        });
-                    } else {
-                        attributes.push(attr);
-                    }
-                }
-                _ => {
-                    return (attributes, expression);
-                }
-            }
-        }
+    let mut expr = iter.next().unwrap();
+    while iter.peek().unwrap().start() != found_right_brace.start() {
+        expr = expr.to(iter.next()?);
     }
-
-    /// Parse an opening tag.
-    ///
-    /// E.g. <div foo="bar" {x: String}>
-    ///       ^^^^^^^^^^^^^^^^^^^^^^^^^^
-    /// Expects that the iterator points to the initial alphabetic char.
-    ///
-    fn parse_opening_tag(&mut self, left_angle: DocumentRange) -> Option<Token> {
-        // consume: [a-zA-Z]
-        let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
-            panic!(
-                "Expected [a-zA-Z] in parse_opening_tag but got {:?}",
-                self.iter.next().map(|s| s.ch())
-            );
-        };
-
-        // consume: ('-' | [a-zA-Z0-9])*
-        let tag_name = initial.extend(
-            self.iter
-                .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
+    // consume: '}'
+    let Some(right_brace) = iter.next_if(|s| s.ch() == '}') else {
+        panic!(
+            "Expected '}}' in parse_expression but got {:?}",
+            iter.next().map(|s| s.ch())
         );
-        // consume: tag content
-        let (attributes, expression) = self.parse_tag_content();
+    };
+    Some((expr, left_brace.to(right_brace)))
+}
 
-        // consume: whitespace
-        self.skip_whitespace();
-
-        // consume: '/'
-        let self_closing = self.iter.next_if(|s| s.ch() == '/').is_some();
-
-        // consume: '>'
-        let Some(right_angle) = self.iter.next_if(|s| s.ch() == '>') else {
-            self.errors.push(ParseError::UnterminatedOpeningTag {
-                range: tag_name.clone(),
-            });
-            return None;
-        };
-
-        // For raw text tags (script, style), parse the entire element including content and closing tag
-        if is_tag_name_with_raw_content(tag_name.as_str()) && !self_closing {
-            return self.parse_raw_text_element(left_angle, tag_name, attributes, expression);
-        }
-
-        Some(Token::OpeningTag {
-            self_closing,
-            tag_name,
-            attributes,
-            expression,
-            range: left_angle.to(right_angle),
-        })
-    }
-
-    /// Parse a closing tag.
-    ///
-    /// E.g. <div></div>
-    ///            ^^^^^
-    /// Expects that the iterator points to the initial '/'.
-    ///
-    fn parse_closing_tag(&mut self, left_angle: DocumentRange) -> Option<Token> {
-        let Some(slash) = self.iter.next_if(|s| s.ch() == '/') else {
-            panic!(
-                "Expected '/' in parse_closing_tag but got {:?}",
-                self.iter.next().map(|s| s.ch())
-            );
-        };
-
-        // consume: whitespace
-        self.skip_whitespace();
-
-        // consume: [a-zA-Z]
-        let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
-            self.errors.push(ParseError::UnterminatedClosingTag {
-                range: left_angle.to(slash),
-            });
-            return None;
-        };
-        // consume: ('-' | [a-zA-Z0-9])*
-        let tag_name = initial.extend(
-            self.iter
-                .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
-        );
-
-        // consume: whitespace
-        self.skip_whitespace();
-
-        // consume: '>'
-        let Some(right_angle) = self.iter.next_if(|s| s.ch() == '>') else {
-            self.errors
-                .push(ParseError::UnterminatedClosingTag { range: tag_name });
-            return None;
-        };
-        Some(Token::ClosingTag {
-            tag_name,
-            range: left_angle.to(right_angle),
-        })
-    }
-
-    fn iter_peek_rawtext_closing_tag(&self, tag_name: &DocumentRange) -> bool {
-        let mut iter = self.iter.clone();
-        // consume: '<'
-        if iter.next().is_none_or(|s| s.ch() != '<') {
-            return false;
-        }
-
-        // consume: '/'
-        if iter.next().is_none_or(|s| s.ch() != '/') {
-            return false;
-        }
-
-        // consume: whitespace
-        while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
-            iter.next();
-        }
-
-        // consume: tag name
-        for ch in tag_name.as_str().chars() {
-            if iter.next().is_none_or(|s| s.ch() != ch) {
-                return false;
+/// Parse tag content (attributes and expressions).
+///
+/// E.g. <div foo="bar" {x: String}>
+///           ^^^^^^^^^^^^^^^^^^^^^
+fn parse_tag_content(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut ErrorCollector<ParseError>,
+) -> (Vec<TokenizedAttribute>, Option<DocumentRange>) {
+    let mut attributes: Vec<TokenizedAttribute> = Vec::new();
+    let mut expression: Option<DocumentRange> = None;
+    loop {
+        skip_whitespace(iter);
+        match iter.peek().map(|s| s.ch()) {
+            Some('{') => {
+                let Some((expr, _)) = parse_expression(iter, errors) else {
+                    continue;
+                };
+                expression = Some(expr);
             }
-        }
-
-        // consume: whitespace
-        while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
-            iter.next();
-        }
-
-        // consume: '>'
-        if iter.next().is_none_or(|s| s.ch() != '>') {
-            return false;
-        }
-        true
-    }
-
-    fn parse_rawtext_content(&mut self, tag_name: &DocumentRange) -> Option<DocumentRange> {
-        let mut raw_text: Option<DocumentRange> = None;
-        loop {
-            if self.iter.peek().is_none() || self.iter_peek_rawtext_closing_tag(tag_name) {
-                return raw_text;
+            Some(ch) if ch.is_ascii_alphabetic() => {
+                let Some(attr) = parse_attribute(iter, errors) else {
+                    continue;
+                };
+                if attributes
+                    .iter()
+                    .any(|a| a.name.as_str() == attr.name.as_str())
+                {
+                    errors.push(ParseError::DuplicateAttribute {
+                        name: attr.name.to_cheap_string(),
+                        range: attr.name.clone(),
+                    });
+                } else {
+                    attributes.push(attr);
+                }
             }
-            if let Some(ch) = self.iter.next() {
-                raw_text = raw_text.into_iter().chain(Some(ch)).collect();
-            }
-        }
-    }
-
-    /// Consume the closing tag for a raw text element.
-    ///
-    /// E.g. </script>
-    ///      ^^^^^^^^^
-    /// Expects that iter_peek_rawtext_closing_tag returned true.
-    /// Returns the range of the '>' character.
-    fn consume_rawtext_closing_tag(&mut self, tag_name: &DocumentRange) -> DocumentRange {
-        // consume: '<'
-        self.iter.next();
-        // consume: '/'
-        self.iter.next();
-        // consume: whitespace
-        while self.iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
-            self.iter.next();
-        }
-        // consume: tag name
-        for _ in tag_name.as_str().chars() {
-            self.iter.next();
-        }
-        // consume: whitespace
-        while self.iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
-            self.iter.next();
-        }
-        // consume: '>'
-        self.iter.next().expect("Expected '>' in consume_rawtext_closing_tag")
-    }
-
-    /// Parse a raw text element (script or style).
-    ///
-    /// E.g. <script>alert(1)</script>
-    ///      ^^^^^^^^^^^^^^^^^^^^^^^^^
-    /// This method is called after the opening tag has been parsed up to '>'.
-    /// It parses the content and closing tag, returning a RawTextTag token.
-    fn parse_raw_text_element(
-        &mut self,
-        left_angle: DocumentRange,
-        tag_name: DocumentRange,
-        attributes: Vec<TokenizedAttribute>,
-        expression: Option<DocumentRange>,
-    ) -> Option<Token> {
-        // Parse content until closing tag
-        let content = self.parse_rawtext_content(&tag_name);
-
-        // Check for EOF
-        if self.iter.peek().is_none() {
-            self.errors.push(ParseError::UnterminatedOpeningTag {
-                range: tag_name.clone(),
-            });
-            return None;
-        }
-
-        // Consume the closing tag
-        let closing_end = self.consume_rawtext_closing_tag(&tag_name);
-
-        Some(Token::RawTextTag {
-            tag_name,
-            attributes,
-            expression,
-            content,
-            range: left_angle.to(closing_end),
-        })
-    }
-
-    /// Parse a text token.
-    ///
-    /// E.g. <div>hello</div>
-    ///           ^^^^^
-    /// Expects that the iterator points to the initial char.
-    ///
-    /// Note: Text tokens may contain `{...}` expressions. The parser is
-    /// responsible for splitting these into separate Text and TextExpression
-    /// nodes.
-    fn parse_text(&mut self) -> Option<Token> {
-        let Some(initial) = self.iter.next() else {
-            panic!("Expected an initial char in parse_text but got None");
-        };
-        Some(Token::Text {
-            range: initial.extend(self.iter.peeking_take_while(|s| s.ch() != '<')),
-        })
-    }
-
-    fn parse_tag(&mut self) -> Option<Token> {
-        let Some(left_angle) = self.iter.next() else {
-            panic!(
-                "Expected '<' in parse_tag but got {:?}",
-                self.iter.next().map(|s| s.ch())
-            );
-        };
-
-        match self.iter.peek().map(|s| s.ch()) {
-            Some('!') => self.parse_markup_declaration(left_angle),
-            Some('/') => self.parse_closing_tag(left_angle),
-            Some(ch) if ch.is_ascii_alphabetic() => self.parse_opening_tag(left_angle),
             _ => {
-                self.errors
-                    .push(ParseError::UnterminatedTagStart { range: left_angle });
-                None
+                return (attributes, expression);
             }
-        }
-    }
-
-    fn step(&mut self) -> Option<Token> {
-        match self.iter.peek().map(|s| s.ch()) {
-            Some('<') => self.parse_tag(),
-            Some(_) => self.parse_text(),
-            None => None,
         }
     }
 }
 
-impl Iterator for Tokenizer {
-    type Item = (Option<Token>, Vec<ParseError>);
+/// Parse an opening tag.
+///
+/// E.g. <div foo="bar" {x: String}>
+///       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+/// Expects that the iterator points to the initial alphabetic char.
+///
+fn parse_opening_tag(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut ErrorCollector<ParseError>,
+    left_angle: DocumentRange,
+) -> Option<Token> {
+    // consume: [a-zA-Z]
+    let Some(initial) = iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
+        panic!(
+            "Expected [a-zA-Z] in parse_opening_tag but got {:?}",
+            iter.next().map(|s| s.ch())
+        );
+    };
 
-    fn next(&mut self) -> Option<Self::Item> {
-        let token = self.step();
-        let errors = mem::take(&mut self.errors);
-        if token.is_none() && errors.is_empty() {
+    // consume: ('-' | [a-zA-Z0-9])*
+    let tag_name = initial
+        .extend(iter.peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()));
+    // consume: tag content
+    let (attributes, expression) = parse_tag_content(iter, errors);
+
+    // consume: whitespace
+    skip_whitespace(iter);
+
+    // consume: '/'
+    let self_closing = iter.next_if(|s| s.ch() == '/').is_some();
+
+    // consume: '>'
+    let Some(right_angle) = iter.next_if(|s| s.ch() == '>') else {
+        errors.push(ParseError::UnterminatedOpeningTag {
+            range: tag_name.clone(),
+        });
+        return None;
+    };
+
+    // For raw text tags (script, style), parse the entire element including content and closing tag
+    if is_tag_name_with_raw_content(tag_name.as_str()) && !self_closing {
+        return parse_raw_text_element(iter, errors, left_angle, tag_name, attributes, expression);
+    }
+
+    Some(Token::OpeningTag {
+        self_closing,
+        tag_name,
+        attributes,
+        expression,
+        range: left_angle.to(right_angle),
+    })
+}
+
+/// Parse a closing tag.
+///
+/// E.g. <div></div>
+///            ^^^^^
+/// Expects that the iterator points to the initial '/'.
+///
+fn parse_closing_tag(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut ErrorCollector<ParseError>,
+    left_angle: DocumentRange,
+) -> Option<Token> {
+    let Some(slash) = iter.next_if(|s| s.ch() == '/') else {
+        panic!(
+            "Expected '/' in parse_closing_tag but got {:?}",
+            iter.next().map(|s| s.ch())
+        );
+    };
+
+    // consume: whitespace
+    skip_whitespace(iter);
+
+    // consume: [a-zA-Z]
+    let Some(initial) = iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
+        errors.push(ParseError::UnterminatedClosingTag {
+            range: left_angle.to(slash),
+        });
+        return None;
+    };
+    // consume: ('-' | [a-zA-Z0-9])*
+    let tag_name = initial
+        .extend(iter.peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()));
+
+    // consume: whitespace
+    skip_whitespace(iter);
+
+    // consume: '>'
+    let Some(right_angle) = iter.next_if(|s| s.ch() == '>') else {
+        errors.push(ParseError::UnterminatedClosingTag { range: tag_name });
+        return None;
+    };
+    Some(Token::ClosingTag {
+        tag_name,
+        range: left_angle.to(right_angle),
+    })
+}
+
+fn peek_rawtext_closing_tag(iter: &Peekable<DocumentCursor>, tag_name: &DocumentRange) -> bool {
+    let mut iter = iter.clone();
+    // consume: '<'
+    if iter.next().is_none_or(|s| s.ch() != '<') {
+        return false;
+    }
+
+    // consume: '/'
+    if iter.next().is_none_or(|s| s.ch() != '/') {
+        return false;
+    }
+
+    // consume: whitespace
+    while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
+        iter.next();
+    }
+
+    // consume: tag name
+    for ch in tag_name.as_str().chars() {
+        if iter.next().is_none_or(|s| s.ch() != ch) {
+            return false;
+        }
+    }
+
+    // consume: whitespace
+    while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
+        iter.next();
+    }
+
+    // consume: '>'
+    if iter.next().is_none_or(|s| s.ch() != '>') {
+        return false;
+    }
+    true
+}
+
+fn parse_rawtext_content(
+    iter: &mut Peekable<DocumentCursor>,
+    tag_name: &DocumentRange,
+) -> Option<DocumentRange> {
+    let mut raw_text: Option<DocumentRange> = None;
+    loop {
+        if iter.peek().is_none() || peek_rawtext_closing_tag(iter, tag_name) {
+            return raw_text;
+        }
+        if let Some(ch) = iter.next() {
+            raw_text = raw_text.into_iter().chain(Some(ch)).collect();
+        }
+    }
+}
+
+/// Consume the closing tag for a raw text element.
+///
+/// E.g. </script>
+///      ^^^^^^^^^
+/// Expects that peek_rawtext_closing_tag returned true.
+/// Returns the range of the '>' character.
+fn consume_rawtext_closing_tag(
+    iter: &mut Peekable<DocumentCursor>,
+    tag_name: &DocumentRange,
+) -> DocumentRange {
+    // consume: '<'
+    iter.next();
+    // consume: '/'
+    iter.next();
+    // consume: whitespace
+    while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
+        iter.next();
+    }
+    // consume: tag name
+    for _ in tag_name.as_str().chars() {
+        iter.next();
+    }
+    // consume: whitespace
+    while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
+        iter.next();
+    }
+    // consume: '>'
+    iter.next()
+        .expect("Expected '>' in consume_rawtext_closing_tag")
+}
+
+/// Parse a raw text element (script or style).
+///
+/// E.g. <script>alert(1)</script>
+///      ^^^^^^^^^^^^^^^^^^^^^^^^^
+/// This method is called after the opening tag has been parsed up to '>'.
+/// It parses the content and closing tag, returning a RawTextTag token.
+fn parse_raw_text_element(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut ErrorCollector<ParseError>,
+    left_angle: DocumentRange,
+    tag_name: DocumentRange,
+    attributes: Vec<TokenizedAttribute>,
+    expression: Option<DocumentRange>,
+) -> Option<Token> {
+    // Parse content until closing tag
+    let content = parse_rawtext_content(iter, &tag_name);
+
+    // Check for EOF
+    if iter.peek().is_none() {
+        errors.push(ParseError::UnterminatedOpeningTag {
+            range: tag_name.clone(),
+        });
+        return None;
+    }
+
+    // Consume the closing tag
+    let closing_end = consume_rawtext_closing_tag(iter, &tag_name);
+
+    Some(Token::RawTextTag {
+        tag_name,
+        attributes,
+        expression,
+        content,
+        range: left_angle.to(closing_end),
+    })
+}
+
+/// Parse a text token.
+///
+/// E.g. <div>hello</div>
+///           ^^^^^
+/// Expects that the iterator points to the initial char.
+///
+/// Note: Text tokens may contain `{...}` expressions. The parser is
+/// responsible for splitting these into separate Text and TextExpression
+/// nodes.
+fn parse_text(iter: &mut Peekable<DocumentCursor>) -> Token {
+    let Some(initial) = iter.next() else {
+        panic!("Expected an initial char in parse_text but got None");
+    };
+    Token::Text {
+        range: initial.extend(iter.peeking_take_while(|s| s.ch() != '<')),
+    }
+}
+
+fn parse_tag(
+    iter: &mut Peekable<DocumentCursor>,
+    errors: &mut ErrorCollector<ParseError>,
+) -> Option<Token> {
+    let Some(left_angle) = iter.next() else {
+        panic!(
+            "Expected '<' in parse_tag but got {:?}",
+            iter.next().map(|s| s.ch())
+        );
+    };
+
+    match iter.peek().map(|s| s.ch()) {
+        Some('!') => parse_markup_declaration(iter, errors, left_angle),
+        Some('/') => parse_closing_tag(iter, errors, left_angle),
+        Some(ch) if ch.is_ascii_alphabetic() => parse_opening_tag(iter, errors, left_angle),
+        _ => {
+            errors.push(ParseError::UnterminatedTagStart { range: left_angle });
             None
-        } else {
-            Some((token, errors))
         }
     }
 }
@@ -785,29 +802,44 @@ mod tests {
     use indoc::indoc;
 
     fn check(input: &str, expected: Expect) {
-        let tokenizer = Tokenizer::new(DocumentCursor::new(input.to_string()));
-        let result: Vec<_> = tokenizer.collect();
-        let mut annotations = Vec::new();
-        for (token, errors) in result {
-            if let Some(t) = token {
-                annotations.push(SimpleAnnotation {
-                    message: t.to_string(),
-                    range: t.range().clone(),
-                });
-            }
-            for err in errors {
-                annotations.push(SimpleAnnotation {
+        let mut iter = DocumentCursor::new(input.to_string()).peekable();
+        let mut token_annotations = Vec::new();
+        let mut error_annotations = Vec::new();
+        let mut errors = ErrorCollector::new();
+
+        while let Some(token) = next(&mut iter, &mut errors) {
+            token_annotations.push(SimpleAnnotation {
+                message: token.to_string(),
+                range: token.range().clone(),
+            });
+            for err in &errors {
+                error_annotations.push(SimpleAnnotation {
                     message: err.to_string(),
                     range: err.range().clone(),
                 });
             }
+            errors.clear();
+        }
+        for err in &errors {
+            error_annotations.push(SimpleAnnotation {
+                message: err.to_string(),
+                range: err.range().clone(),
+            });
         }
 
-        expected.assert_eq(
-            &DocumentAnnotator::new()
-                .without_line_numbers()
-                .annotate(None, annotations),
-        );
+        let annotator = DocumentAnnotator::new().without_line_numbers();
+        let mut output = String::new();
+
+        if !error_annotations.is_empty() {
+            output.push_str("-- errors --\n");
+            output.push_str(&annotator.annotate(None, error_annotations));
+        }
+        if !token_annotations.is_empty() {
+            output.push_str("-- tokens --\n");
+            output.push_str(&annotator.annotate(None, token_annotations));
+        }
+
+        expected.assert_eq(&output);
     }
 
     #[test]
@@ -820,6 +852,7 @@ mod tests {
         check(
             "<if {foo}>",
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "if",
                   attributes: {},
@@ -837,6 +870,7 @@ mod tests {
         check(
             r#"<div class={user.theme}>"#,
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "div",
                   attributes: {
@@ -856,6 +890,7 @@ mod tests {
         check(
             r#"<a href={user.url} target="_blank">"#,
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "a",
                   attributes: {
@@ -876,6 +911,7 @@ mod tests {
         check(
             r#"<input type="" value="" disabled="">"#,
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "input",
                   attributes: {
@@ -897,6 +933,7 @@ mod tests {
         check(
             r#"<h1 foo="bar"x="y">"#,
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "h1",
                   attributes: {
@@ -917,6 +954,7 @@ mod tests {
         check(
             "this\ntext\nspans\nmultiple lines",
             expect![[r#"
+                -- tokens --
                 Text [30 byte, "this\ntext\nspans\nmultiple lines"]
                 this
                 ^^^^
@@ -935,10 +973,11 @@ mod tests {
         check(
             "<div!>",
             expect![[r#"
+                -- errors --
                 Unterminated opening tag
                 <div!>
                  ^^^
-
+                -- tokens --
                 Text [2 byte, "!>"]
                 <div!>
                     ^^
@@ -951,6 +990,7 @@ mod tests {
         check(
             r#"<script src="https://example.com/script.js"></script>"#,
             expect![[r#"
+                -- tokens --
                 RawTextTag(
                   tag_name: "script",
                   attributes: {
@@ -970,6 +1010,7 @@ mod tests {
         check(
             "<h1 />",
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "h1",
                   attributes: {},
@@ -987,6 +1028,7 @@ mod tests {
         check(
             "<h1 foo bar/>",
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "h1",
                   attributes: {
@@ -1007,6 +1049,7 @@ mod tests {
         check(
             "<h1 {foo: String} foo bar/>",
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "h1",
                   attributes: {
@@ -1027,6 +1070,7 @@ mod tests {
         check(
             "<p><!-- --></p>",
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "p",
                   attributes: {},
@@ -1057,6 +1101,7 @@ mod tests {
                 </p>
             "},
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "p",
                   attributes: {},
@@ -1091,6 +1136,7 @@ mod tests {
         check(
             "<!-- Comment with -- dashes -- inside -->",
             expect![[r#"
+                -- tokens --
                 Comment
                 <!-- Comment with -- dashes -- inside -->
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1109,6 +1155,7 @@ mod tests {
                 lines --></p>
             "},
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "p",
                   attributes: {},
@@ -1147,6 +1194,7 @@ mod tests {
         check(
             r#"<!-- This comment has <tags> and "quotes" and 'apostrophes' -->"#,
             expect![[r#"
+                -- tokens --
                 Comment
                 <!-- This comment has <tags> and "quotes" and 'apostrophes' -->
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1161,6 +1209,7 @@ mod tests {
                 <!-- ---><!-- ----><!----><!-----><!-- ---->
             "},
             expect![[r#"
+                -- tokens --
                 Comment
                 <!-- ---><!-- ----><!----><!-----><!-- ---->
                 ^^^^^^^^^
@@ -1196,6 +1245,7 @@ mod tests {
                 </textarea>
             "},
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "textarea",
                   attributes: {},
@@ -1246,6 +1296,7 @@ mod tests {
         check(
             "<!DOCTYPE   html>",
             expect![[r#"
+                -- tokens --
                 Doctype
                 <!DOCTYPE   html>
                 ^^^^^^^^^^^^^^^^^
@@ -1258,6 +1309,7 @@ mod tests {
         check(
             "</div >",
             expect![[r#"
+                -- tokens --
                 ClosingTag(
                   tag_name: "div",
                 )
@@ -1272,6 +1324,7 @@ mod tests {
         check(
             "<h1/>",
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "h1",
                   attributes: {},
@@ -1289,6 +1342,7 @@ mod tests {
         check(
             "<h1 />",
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "h1",
                   attributes: {},
@@ -1311,6 +1365,7 @@ mod tests {
                 </style>
             "},
             expect![[r#"
+                -- tokens --
                 RawTextTag(
                   tag_name: "style",
                   attributes: {},
@@ -1342,6 +1397,7 @@ mod tests {
                   data-value="something">
             "#},
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "div",
                   attributes: {
@@ -1377,6 +1433,7 @@ mod tests {
                 </script>
             "#},
             expect![[r#"
+                -- tokens --
                 RawTextTag(
                   tag_name: "script",
                   attributes: {},
@@ -1415,6 +1472,7 @@ mod tests {
                 </ script  >
             "#},
             expect![[r#"
+                -- tokens --
                 RawTextTag(
                   tag_name: "script",
                   attributes: {},
@@ -1482,6 +1540,7 @@ mod tests {
                 </svg>
             "#},
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "svg",
                   attributes: {
@@ -1614,6 +1673,7 @@ mod tests {
                 <div class="test" {bar}>
             "#},
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "div",
                   attributes: {
@@ -1636,6 +1696,7 @@ mod tests {
         check(
             "<h1>Hello {name}!</h1>",
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "h1",
                   attributes: {},
@@ -1663,6 +1724,7 @@ mod tests {
         check(
             "<p>User {user.name} has {user.count} items</p>",
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "p",
                   attributes: {},
@@ -1690,6 +1752,7 @@ mod tests {
         check(
             "<span>{greeting} world!</span>",
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "span",
                   attributes: {},
@@ -1717,6 +1780,7 @@ mod tests {
         check(
             "<div>Price: {price}</div>",
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "div",
                   attributes: {},
@@ -1744,6 +1808,7 @@ mod tests {
         check(
             "<div>Price: {{k: v}}</div>",
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "div",
                   attributes: {},
@@ -1771,6 +1836,7 @@ mod tests {
         check(
             "<h2>{title}</h2>",
             expect![[r#"
+                -- tokens --
                 OpeningTag(
                   tag_name: "h2",
                   attributes: {},
@@ -1798,6 +1864,11 @@ mod tests {
         check(
             r#"<div class="foo" class="bar"></div>"#,
             expect![[r#"
+                -- errors --
+                Duplicate attribute 'class'
+                <div class="foo" class="bar"></div>
+                                 ^^^^^
+                -- tokens --
                 OpeningTag(
                   tag_name: "div",
                   attributes: {
@@ -1808,10 +1879,6 @@ mod tests {
                 )
                 <div class="foo" class="bar"></div>
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Duplicate attribute 'class'
-                <div class="foo" class="bar"></div>
-                                 ^^^^^
 
                 ClosingTag(
                   tag_name: "div",
@@ -1827,6 +1894,11 @@ mod tests {
         check(
             r#"<input type="text" type='number'/>"#,
             expect![[r#"
+                -- errors --
+                Duplicate attribute 'type'
+                <input type="text" type='number'/>
+                                   ^^^^
+                -- tokens --
                 OpeningTag(
                   tag_name: "input",
                   attributes: {
@@ -1837,10 +1909,6 @@ mod tests {
                 )
                 <input type="text" type='number'/>
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Duplicate attribute 'type'
-                <input type="text" type='number'/>
-                                   ^^^^
             "#]],
         );
     }
@@ -1850,6 +1918,11 @@ mod tests {
         check(
             r#"<input required required />"#,
             expect![[r#"
+                -- errors --
+                Duplicate attribute 'required'
+                <input required required />
+                                ^^^^^^^^
+                -- tokens --
                 OpeningTag(
                   tag_name: "input",
                   attributes: {
@@ -1860,10 +1933,6 @@ mod tests {
                 )
                 <input required required />
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Duplicate attribute 'required'
-                <input required required />
-                                ^^^^^^^^
             "#]],
         );
     }
@@ -1873,6 +1942,7 @@ mod tests {
         check(
             r#"<!--"#,
             expect![[r#"
+                -- errors --
                 Unterminated comment
                 <!--
                 ^^^^
@@ -1881,6 +1951,7 @@ mod tests {
         check(
             r#"<!-- foo bar"#,
             expect![[r#"
+                -- errors --
                 Unterminated comment
                 <!-- foo bar
                 ^^^^
@@ -1893,10 +1964,11 @@ mod tests {
         check(
             r#"<div <div>"#,
             expect![[r#"
+                -- errors --
                 Unterminated opening tag
                 <div <div>
                  ^^^
-
+                -- tokens --
                 OpeningTag(
                   tag_name: "div",
                   attributes: {},
@@ -1910,10 +1982,11 @@ mod tests {
         check(
             r#"<div class="foo" <div>"#,
             expect![[r#"
+                -- errors --
                 Unterminated opening tag
                 <div class="foo" <div>
                  ^^^
-
+                -- tokens --
                 OpeningTag(
                   tag_name: "div",
                   attributes: {},
@@ -1927,6 +2000,7 @@ mod tests {
         check(
             r#"<div"#,
             expect![[r#"
+                -- errors --
                 Unterminated opening tag
                 <div
                  ^^^
@@ -1935,6 +2009,7 @@ mod tests {
         check(
             r#"<div foo"#,
             expect![[r#"
+                -- errors --
                 Unterminated opening tag
                 <div foo
                  ^^^
@@ -1943,6 +2018,7 @@ mod tests {
         check(
             r#"<div foo="#,
             expect![[r#"
+                -- errors --
                 Expected quoted attribute value or expression
                 <div foo=
                      ^^^^
@@ -1955,6 +2031,7 @@ mod tests {
         check(
             r#"<div foo="""#,
             expect![[r#"
+                -- errors --
                 Unterminated opening tag
                 <div foo=""
                  ^^^
@@ -1963,6 +2040,7 @@ mod tests {
         check(
             r#"<div foo=""#,
             expect![[r#"
+                -- errors --
                 Unmatched "
                 <div foo="
                          ^
@@ -1975,6 +2053,7 @@ mod tests {
         check(
             r#"<div foo="bar"#,
             expect![[r#"
+                -- errors --
                 Unmatched "
                 <div foo="bar
                          ^
@@ -1991,10 +2070,11 @@ mod tests {
         check(
             r#"</div </div>"#,
             expect![[r#"
+                -- errors --
                 Unterminated closing tag
                 </div </div>
                   ^^^
-
+                -- tokens --
                 ClosingTag(
                   tag_name: "div",
                 )
@@ -2005,6 +2085,11 @@ mod tests {
         check(
             r#"</div> </div"#,
             expect![[r#"
+                -- errors --
+                Unterminated closing tag
+                </div> </div
+                         ^^^
+                -- tokens --
                 ClosingTag(
                   tag_name: "div",
                 )
@@ -2014,19 +2099,16 @@ mod tests {
                 Text [1 byte, " "]
                 </div> </div
                       ^
-
-                Unterminated closing tag
-                </div> </div
-                         ^^^
             "#]],
         );
         check(
             r#"</di<div>"#,
             expect![[r#"
+                -- errors --
                 Unterminated closing tag
                 </di<div>
                   ^^
-
+                -- tokens --
                 OpeningTag(
                   tag_name: "div",
                   attributes: {},
@@ -2040,6 +2122,7 @@ mod tests {
         check(
             r#"</</div"#,
             expect![[r#"
+                -- errors --
                 Unterminated closing tag
                 </</div
                 ^^
@@ -2052,6 +2135,7 @@ mod tests {
         check(
             r#"<div foo="#,
             expect![[r#"
+                -- errors --
                 Expected quoted attribute value or expression
                 <div foo=
                      ^^^^
@@ -2064,6 +2148,7 @@ mod tests {
         check(
             r#"<div foo="""#,
             expect![[r#"
+                -- errors --
                 Unterminated opening tag
                 <div foo=""
                  ^^^
@@ -2072,6 +2157,7 @@ mod tests {
         check(
             r#"<div foo=""#,
             expect![[r#"
+                -- errors --
                 Unmatched "
                 <div foo="
                          ^
@@ -2084,6 +2170,7 @@ mod tests {
         check(
             r#"<div foo="bar"#,
             expect![[r#"
+                -- errors --
                 Unmatched "
                 <div foo="bar
                          ^
@@ -2100,6 +2187,7 @@ mod tests {
         check(
             r#"<script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>"#,
             expect![[r#"
+                -- tokens --
                 RawTextTag(
                   tag_name: "script",
                   attributes: {},
