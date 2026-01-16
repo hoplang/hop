@@ -267,6 +267,12 @@ pub enum IrExpr {
 
     /// Int to string conversion, e.g. count.to_string()
     IntToString { value: Box<IrExpr>, id: ExprId },
+
+    /// Float to int conversion, e.g. price.to_int()
+    FloatToInt { value: Box<IrExpr>, id: ExprId },
+
+    /// Float to string conversion, e.g. price.to_string()
+    FloatToString { value: Box<IrExpr>, id: ExprId },
 }
 
 impl IrStatement {
@@ -733,7 +739,9 @@ impl IrExpr {
             | IrExpr::LessThanOrEqual { id, .. }
             | IrExpr::Let { id, .. }
             | IrExpr::ArrayLength { id, .. }
-            | IrExpr::IntToString { id, .. } => *id,
+            | IrExpr::IntToString { id, .. }
+            | IrExpr::FloatToInt { id, .. }
+            | IrExpr::FloatToString { id, .. } => *id,
         }
     }
 
@@ -762,7 +770,8 @@ impl IrExpr {
             | IrExpr::StringConcat { .. }
             | IrExpr::MergeClasses { .. }
             | IrExpr::StringLiteral { .. }
-            | IrExpr::IntToString { .. } => &STRING_TYPE,
+            | IrExpr::IntToString { .. }
+            | IrExpr::FloatToString { .. } => &STRING_TYPE,
 
             IrExpr::NumericAdd { operand_types, .. }
             | IrExpr::NumericSubtract { operand_types, .. }
@@ -779,7 +788,7 @@ impl IrExpr {
             | IrExpr::BooleanLogicalAnd { .. }
             | IrExpr::BooleanLogicalOr { .. } => &BOOL_TYPE,
 
-            IrExpr::ArrayLength { .. } => &INT_TYPE,
+            IrExpr::ArrayLength { .. } | IrExpr::FloatToInt { .. } => &INT_TYPE,
         }
     }
 
@@ -1078,6 +1087,12 @@ impl IrExpr {
             IrExpr::IntToString { value, .. } => value
                 .to_doc()
                 .append(BoxDoc::text(".to_string()")),
+            IrExpr::FloatToInt { value, .. } => value
+                .to_doc()
+                .append(BoxDoc::text(".to_int()")),
+            IrExpr::FloatToString { value, .. } => value
+                .to_doc()
+                .append(BoxDoc::text(".to_string()")),
         }
     }
 
@@ -1174,6 +1189,12 @@ impl IrExpr {
             IrExpr::IntToString { value, .. } => {
                 value.traverse(f);
             }
+            IrExpr::FloatToInt { value, .. } => {
+                value.traverse(f);
+            }
+            IrExpr::FloatToString { value, .. } => {
+                value.traverse(f);
+            }
         }
     }
 
@@ -1268,6 +1289,12 @@ impl IrExpr {
                 array.traverse_mut(f);
             }
             IrExpr::IntToString { value, .. } => {
+                value.traverse_mut(f);
+            }
+            IrExpr::FloatToInt { value, .. } => {
+                value.traverse_mut(f);
+            }
+            IrExpr::FloatToString { value, .. } => {
                 value.traverse_mut(f);
             }
         }

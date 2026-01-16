@@ -462,6 +462,14 @@ impl AlphaRenamingPass {
                 value: Box::new(self.rename_expr(value)),
                 id: *id,
             },
+            IrExpr::FloatToInt { value, id } => IrExpr::FloatToInt {
+                value: Box::new(self.rename_expr(value)),
+                id: *id,
+            },
+            IrExpr::FloatToString { value, id } => IrExpr::FloatToString {
+                value: Box::new(self.rename_expr(value)),
+                id: *id,
+            },
         }
     }
 

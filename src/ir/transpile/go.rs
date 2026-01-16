@@ -46,6 +46,9 @@ impl GoTranspiler {
                         IrExpr::IntToString { .. } => {
                             imports.insert("strconv".to_string());
                         }
+                        IrExpr::FloatToString { .. } => {
+                            imports.insert("strconv".to_string());
+                        }
                         _ => {}
                     });
                 }
@@ -1243,6 +1246,18 @@ impl ExpressionTranspiler for GoTranspiler {
         BoxDoc::text("strconv.Itoa(")
             .append(self.transpile_expr(value))
             .append(BoxDoc::text(")"))
+    }
+
+    fn transpile_float_to_int<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("int(")
+            .append(self.transpile_expr(value))
+            .append(BoxDoc::text(")"))
+    }
+
+    fn transpile_float_to_string<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("strconv.FormatFloat(")
+            .append(self.transpile_expr(value))
+            .append(BoxDoc::text(", 'f', -1, 64)"))
     }
 }
 

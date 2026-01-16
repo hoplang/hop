@@ -360,6 +360,12 @@ impl Pass for ConstantPropagationPass {
                         IrExpr::IntToString { .. } => {
                             // Not yet implemented
                         }
+                        IrExpr::FloatToInt { .. } => {
+                            // Not yet implemented
+                        }
+                        IrExpr::FloatToString { .. } => {
+                            // Not yet implemented
+                        }
                         IrExpr::OptionLiteral { value, .. } => {
                             // Track the full Option constant with inner expression id
                             let inner_id = value.as_ref().map(|inner| inner.id());

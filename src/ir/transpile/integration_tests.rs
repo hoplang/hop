@@ -3048,4 +3048,165 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn float_to_int_simple() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.let_stmt("price", t.float(3.7), |t| {
+                        let int_price = t.float_to_int(t.var("price"));
+                        t.write_expr(int_price, false);
+                    });
+                })
+                .build(),
+            "3",
+            expect![[r#"
+                -- input --
+                Test() {
+                  let price = 3.7 in {
+                    write_expr(price.to_int())
+                  }
+                }
+                -- expected output --
+                3
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn float_to_int_negative() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.let_stmt("temp", t.float(-2.9), |t| {
+                        let int_temp = t.float_to_int(t.var("temp"));
+                        t.write_expr(int_temp, false);
+                    });
+                })
+                .build(),
+            "-2",
+            expect![[r#"
+                -- input --
+                Test() {
+                  let temp = -2.9 in {
+                    write_expr(temp.to_int())
+                  }
+                }
+                -- expected output --
+                -2
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn float_to_int_whole_number() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.let_stmt("val", t.float(5.0), |t| {
+                        let int_val = t.float_to_int(t.var("val"));
+                        t.write_expr(int_val, false);
+                    });
+                })
+                .build(),
+            "5",
+            expect![[r#"
+                -- input --
+                Test() {
+                  let val = 5 in {
+                    write_expr(val.to_int())
+                  }
+                }
+                -- expected output --
+                5
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn float_to_string_simple() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.let_stmt("price", t.float(19.99), |t| {
+                        let str_price = t.float_to_string(t.var("price"));
+                        t.write_expr(str_price, false);
+                    });
+                })
+                .build(),
+            "19.99",
+            expect![[r#"
+                -- input --
+                Test() {
+                  let price = 19.99 in {
+                    write_expr(price.to_string())
+                  }
+                }
+                -- expected output --
+                19.99
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn float_to_string_concat() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.let_stmt("price", t.float(9.99), |t| {
+                        let str_price = t.float_to_string(t.var("price"));
+                        let message = t.string_concat(t.str("$"), str_price);
+                        t.write_expr(message, false);
+                    });
+                })
+                .build(),
+            "$9.99",
+            expect![[r#"
+                -- input --
+                Test() {
+                  let price = 9.99 in {
+                    write_expr(("$" + price.to_string()))
+                  }
+                }
+                -- expected output --
+                $9.99
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
 }

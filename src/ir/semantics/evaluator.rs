@@ -596,6 +596,23 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 _ => Err(anyhow!("IntToString requires an integer argument")),
             }
         }
+        IrExpr::FloatToInt { value, .. } => {
+            let float_val = evaluate_expr(value, env)?;
+            match float_val {
+                Value::Number(n) => {
+                    let int_val = n.as_f64().unwrap_or(0.0) as i64;
+                    Ok(Value::Number(serde_json::Number::from(int_val)))
+                }
+                _ => Err(anyhow!("FloatToInt requires a float argument")),
+            }
+        }
+        IrExpr::FloatToString { value, .. } => {
+            let float_val = evaluate_expr(value, env)?;
+            match float_val {
+                Value::Number(n) => Ok(Value::String(n.to_string())),
+                _ => Err(anyhow!("FloatToString requires a float argument")),
+            }
+        }
     }
 }
 

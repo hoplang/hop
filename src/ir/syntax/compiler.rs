@@ -711,6 +711,14 @@ impl Compiler {
                 value: Box::new(self.compile_expr(value)),
                 id: expr_id,
             },
+            TypedExpr::FloatToInt { value } => IrExpr::FloatToInt {
+                value: Box::new(self.compile_expr(value)),
+                id: expr_id,
+            },
+            TypedExpr::FloatToString { value } => IrExpr::FloatToString {
+                value: Box::new(self.compile_expr(value)),
+                id: expr_id,
+            },
         }
     }
 }

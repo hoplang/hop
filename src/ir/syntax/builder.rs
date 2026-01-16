@@ -531,6 +531,20 @@ impl IrBuilder {
         }
     }
 
+    pub fn float_to_int(&self, value: IrExpr) -> IrExpr {
+        IrExpr::FloatToInt {
+            value: Box::new(value),
+            id: self.next_expr_id(),
+        }
+    }
+
+    pub fn float_to_string(&self, value: IrExpr) -> IrExpr {
+        IrExpr::FloatToString {
+            value: Box::new(value),
+            id: self.next_expr_id(),
+        }
+    }
+
     pub fn record(&self, record_name: &str, fields: Vec<(&str, IrExpr)>) -> IrExpr {
         let record_fields = self
             .records

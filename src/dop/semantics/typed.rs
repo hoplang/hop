@@ -152,6 +152,12 @@ pub enum TypedExpr {
 
     /// Int to string conversion, e.g. count.to_string()
     IntToString { value: Box<Self> },
+
+    /// Float to int conversion, e.g. price.to_int()
+    FloatToInt { value: Box<Self> },
+
+    /// Float to string conversion, e.g. price.to_string()
+    FloatToString { value: Box<Self> },
 }
 
 impl TypedExpr {
@@ -177,7 +183,8 @@ impl TypedExpr {
             TypedExpr::StringConcat { .. }
             | TypedExpr::StringLiteral { .. }
             | TypedExpr::MergeClasses { .. }
-            | TypedExpr::IntToString { .. } => &STRING_TYPE,
+            | TypedExpr::IntToString { .. }
+            | TypedExpr::FloatToString { .. } => &STRING_TYPE,
 
             TypedExpr::NumericAdd { operand_types, .. }
             | TypedExpr::NumericSubtract { operand_types, .. }
@@ -197,7 +204,7 @@ impl TypedExpr {
             | TypedExpr::BooleanLogicalAnd { .. }
             | TypedExpr::BooleanLogicalOr { .. } => &BOOL_TYPE,
 
-            TypedExpr::ArrayLength { .. } => &INT_TYPE,
+            TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => &INT_TYPE,
         }
     }
 
@@ -501,6 +508,12 @@ impl TypedExpr {
                 .to_doc()
                 .append(BoxDoc::text(".len()")),
             TypedExpr::IntToString { value } => value
+                .to_doc()
+                .append(BoxDoc::text(".to_string()")),
+            TypedExpr::FloatToInt { value } => value
+                .to_doc()
+                .append(BoxDoc::text(".to_int()")),
+            TypedExpr::FloatToString { value } => value
                 .to_doc()
                 .append(BoxDoc::text(".to_string()")),
         }

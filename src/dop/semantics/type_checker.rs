@@ -891,6 +891,12 @@ pub fn typecheck_expr(
                 (Type::Int, "to_string") => Ok(TypedExpr::IntToString {
                     value: Box::new(typed_receiver),
                 }),
+                (Type::Float, "to_int") => Ok(TypedExpr::FloatToInt {
+                    value: Box::new(typed_receiver),
+                }),
+                (Type::Float, "to_string") => Ok(TypedExpr::FloatToString {
+                    value: Box::new(typed_receiver),
+                }),
                 _ => Err(TypeError::MethodNotAvailable {
                     method: method.as_str().to_string(),
                     typ: receiver_type.to_string(),
@@ -4380,6 +4386,78 @@ mod tests {
                 items.to_string()
                 ^^^^^^^^^^^^^^^^^
             "#]],
+        );
+    }
+
+    // Float to_int tests
+
+    #[test]
+    fn should_accept_to_int_on_float() {
+        check(
+            "",
+            &[("price", "Float")],
+            "price.to_int()",
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_accept_to_int_in_comparison() {
+        check(
+            "",
+            &[("price", "Float")],
+            "price.to_int() == 5",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_reject_to_int_on_int() {
+        check(
+            "",
+            &[("count", "Int")],
+            "count.to_int()",
+            expect![[r#"
+                error: Method 'to_int' is not available on type Int
+                count.to_int()
+                ^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_to_int_on_string() {
+        check(
+            "",
+            &[("name", "String")],
+            "name.to_int()",
+            expect![[r#"
+                error: Method 'to_int' is not available on type String
+                name.to_int()
+                ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    // Float to_string tests
+
+    #[test]
+    fn should_accept_to_string_on_float() {
+        check(
+            "",
+            &[("price", "Float")],
+            "price.to_string()",
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_float_to_string_in_concat() {
+        check(
+            "",
+            &[("price", "Float")],
+            r#""Price: " + price.to_string()"#,
+            expect!["String"],
         );
     }
 }

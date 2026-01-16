@@ -1041,6 +1041,18 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(self.transpile_expr(value))
             .append(BoxDoc::text(")"))
     }
+
+    fn transpile_float_to_int<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("int(")
+            .append(self.transpile_expr(value))
+            .append(BoxDoc::text(")"))
+    }
+
+    fn transpile_float_to_string<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("str(")
+            .append(self.transpile_expr(value))
+            .append(BoxDoc::text(")"))
+    }
 }
 
 impl TypeTranspiler for PythonTranspiler {

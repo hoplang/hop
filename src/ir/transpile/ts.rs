@@ -1170,6 +1170,17 @@ impl ExpressionTranspiler for TsTranspiler {
         self.transpile_expr(value)
             .append(BoxDoc::text(".toString()"))
     }
+
+    fn transpile_float_to_int<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("Math.trunc(")
+            .append(self.transpile_expr(value))
+            .append(BoxDoc::text(")"))
+    }
+
+    fn transpile_float_to_string<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+        self.transpile_expr(value)
+            .append(BoxDoc::text(".toString()"))
+    }
 }
 
 impl TypeTranspiler for TsTranspiler {
