@@ -6,7 +6,7 @@ use crate::common::is_void_element;
 use crate::document::{CheapString, DocumentRange, Ranged};
 use crate::dop::ParsedExpr;
 use crate::dop::VarName;
-use crate::dop::syntax::parsed::{ParsedMatchPattern, ParsedType};
+use crate::dop::syntax::parsed::{ParsedLoopSource, ParsedMatchPattern, ParsedType};
 
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
@@ -99,11 +99,11 @@ pub enum ParsedNode {
     },
 
     /// A For node contains content that is evaluated once for each item of
-    /// an array.
+    /// an array or each value in a range.
     For {
         var_name: VarName,
         var_name_range: DocumentRange,
-        array_expr: ParsedExpr,
+        source: ParsedLoopSource,
         children: Vec<ParsedNode>,
         range: DocumentRange,
     },
@@ -292,26 +292,35 @@ impl ParsedNode {
                 .append(BoxDoc::text("</if>")),
             ParsedNode::For {
                 var_name,
-                array_expr,
+                source,
                 children,
                 ..
-            } => BoxDoc::text("<for {")
-                .append(BoxDoc::text(var_name.as_str()))
-                .append(BoxDoc::text(" in "))
-                .append(array_expr.to_doc())
-                .append(BoxDoc::text("}>"))
-                .append(if children.is_empty() {
-                    BoxDoc::nil()
-                } else {
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            children.iter().map(|c| c.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .nest(2)
-                        .append(BoxDoc::line())
-                })
-                .append(BoxDoc::text("</for>")),
+            } => {
+                let source_doc = match source {
+                    ParsedLoopSource::Array(expr) => expr.to_doc(),
+                    ParsedLoopSource::RangeInclusive { start, end } => start
+                        .to_doc()
+                        .append(BoxDoc::text("..="))
+                        .append(end.to_doc()),
+                };
+                BoxDoc::text("<for {")
+                    .append(BoxDoc::text(var_name.as_str()))
+                    .append(BoxDoc::text(" in "))
+                    .append(source_doc)
+                    .append(BoxDoc::text("}>"))
+                    .append(if children.is_empty() {
+                        BoxDoc::nil()
+                    } else {
+                        BoxDoc::line()
+                            .append(BoxDoc::intersperse(
+                                children.iter().map(|c| c.to_doc()),
+                                BoxDoc::line(),
+                            ))
+                            .nest(2)
+                            .append(BoxDoc::line())
+                    })
+                    .append(BoxDoc::text("</for>"))
+            }
             ParsedNode::Let {
                 bindings, children, ..
             } => {

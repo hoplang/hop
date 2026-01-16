@@ -5,6 +5,7 @@ use crate::dop::Type;
 use crate::dop::TypedExpr;
 use crate::dop::VarName;
 use crate::dop::patterns::{EnumPattern, Match};
+use crate::hop::semantics::typed_node::TypedLoopSource;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use pretty::BoxDoc;
@@ -50,7 +51,7 @@ pub enum InlinedNode {
     },
     For {
         var_name: VarName,
-        array_expr: TypedExpr,
+        source: TypedLoopSource,
         children: Vec<Self>,
     },
     Doctype {
@@ -163,25 +164,34 @@ impl InlinedNode {
                 .append(BoxDoc::text("</if>")),
             InlinedNode::For {
                 var_name,
-                array_expr,
+                source,
                 children,
-            } => BoxDoc::text("<for {")
-                .append(BoxDoc::text(var_name.as_str()))
-                .append(BoxDoc::text(" in "))
-                .append(array_expr.to_doc())
-                .append(BoxDoc::text("}>"))
-                .append(if children.is_empty() {
-                    BoxDoc::nil()
-                } else {
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            children.iter().map(|child| child.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .append(BoxDoc::line())
-                        .nest(2)
-                })
-                .append(BoxDoc::text("</for>")),
+            } => {
+                let source_doc = match source {
+                    TypedLoopSource::Array(expr) => expr.to_doc(),
+                    TypedLoopSource::RangeInclusive { start, end } => start
+                        .to_doc()
+                        .append(BoxDoc::text("..="))
+                        .append(end.to_doc()),
+                };
+                BoxDoc::text("<for {")
+                    .append(BoxDoc::text(var_name.as_str()))
+                    .append(BoxDoc::text(" in "))
+                    .append(source_doc)
+                    .append(BoxDoc::text("}>"))
+                    .append(if children.is_empty() {
+                        BoxDoc::nil()
+                    } else {
+                        BoxDoc::line()
+                            .append(BoxDoc::intersperse(
+                                children.iter().map(|child| child.to_doc()),
+                                BoxDoc::line(),
+                            ))
+                            .append(BoxDoc::line())
+                            .nest(2)
+                    })
+                    .append(BoxDoc::text("</for>"))
+            }
             InlinedNode::Doctype { value } => BoxDoc::text(value.as_str()),
             InlinedNode::Html {
                 tag_name,

@@ -6,7 +6,7 @@ use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrModule, IrStatement};
+use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement};
 use std::collections::BTreeSet;
 
 pub struct GoTranspiler {
@@ -21,10 +21,15 @@ impl GoTranspiler {
     fn scan_for_imports(imports: &mut BTreeSet<String>, entrypoint: &IrComponentDeclaration) {
         // Use visitor pattern to scan statements for imports
         for stmt in &entrypoint.body {
-            // Check for HTML escaping in WriteExpr statements
+            // Check for HTML escaping and Int types in WriteExpr statements
             stmt.traverse(&mut |s| {
-                if let IrStatement::WriteExpr { escape: true, .. } = s {
-                    imports.insert("html".to_string());
+                if let IrStatement::WriteExpr { escape, expr, .. } = s {
+                    if *escape {
+                        imports.insert("html".to_string());
+                    }
+                    if matches!(expr.as_type(), Type::Int) {
+                        imports.insert("strconv".to_string());
+                    }
                 }
             });
 
@@ -459,15 +464,19 @@ impl StatementTranspiler for GoTranspiler {
                 .append(self.transpile_expr(expr))
                 .append(BoxDoc::text("))"))
         } else {
-            // Check if the expression is TrustedHTML - needs conversion to string
-            let needs_conversion = matches!(expr.as_type(), Type::TrustedHTML);
+            // Check if the expression needs conversion to string
+            let expr_type = expr.as_type();
+            let needs_trusted_html_conversion = matches!(expr_type, Type::TrustedHTML);
+            let needs_int_conversion = matches!(expr_type, Type::Int);
 
             let mut doc = BoxDoc::text("io.WriteString(w, ");
-            if needs_conversion {
+            if needs_trusted_html_conversion {
                 doc = doc.append(BoxDoc::text("string("));
+            } else if needs_int_conversion {
+                doc = doc.append(BoxDoc::text("strconv.Itoa("));
             }
             doc = doc.append(self.transpile_expr(expr));
-            if needs_conversion {
+            if needs_trusted_html_conversion || needs_int_conversion {
                 doc = doc.append(BoxDoc::text(")"));
             }
             doc.append(BoxDoc::text(")"))
@@ -510,21 +519,41 @@ impl StatementTranspiler for GoTranspiler {
     fn transpile_for<'a>(
         &self,
         var: &'a str,
-        array: &'a IrExpr,
+        source: &'a IrForSource,
         body: &'a [IrStatement],
     ) -> BoxDoc<'a> {
-        BoxDoc::text("for _, ")
-            .append(BoxDoc::text(var))
-            .append(BoxDoc::text(" := range "))
-            .append(self.transpile_expr(array))
-            .append(BoxDoc::text(" {"))
-            .append(
-                BoxDoc::line()
-                    .append(self.transpile_statements(body))
-                    .nest(1),
-            )
-            .append(BoxDoc::line())
-            .append(BoxDoc::text("}"))
+        match source {
+            IrForSource::Array(array) => BoxDoc::text("for _, ")
+                .append(BoxDoc::text(var))
+                .append(BoxDoc::text(" := range "))
+                .append(self.transpile_expr(array))
+                .append(BoxDoc::text(" {"))
+                .append(
+                    BoxDoc::line()
+                        .append(self.transpile_statements(body))
+                        .nest(1),
+                )
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("}")),
+            IrForSource::RangeInclusive { start, end } => BoxDoc::text("for ")
+                .append(BoxDoc::text(var))
+                .append(BoxDoc::text(" := "))
+                .append(self.transpile_expr(start))
+                .append(BoxDoc::text("; "))
+                .append(BoxDoc::text(var))
+                .append(BoxDoc::text(" <= "))
+                .append(self.transpile_expr(end))
+                .append(BoxDoc::text("; "))
+                .append(BoxDoc::text(var))
+                .append(BoxDoc::text("++ {"))
+                .append(
+                    BoxDoc::line()
+                        .append(self.transpile_statements(body))
+                        .nest(1),
+                )
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("}")),
+        }
     }
 
     fn transpile_let_statement<'a>(
@@ -1453,6 +1482,44 @@ mod tests {
                 		io.WriteString(w, "<li>")
                 		io.WriteString(w, html.EscapeString(item))
                 		io.WriteString(w, "</li>\n")
+                	}
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn for_loop_with_range() {
+        check(
+            IrModuleBuilder::new()
+                .component("Counter", [], |t| {
+                    t.for_range("i", t.int(1), t.int(3), |t| {
+                        t.write_expr(t.var("i"), false);
+                        t.write(" ");
+                    });
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                Counter() {
+                  for i in 1..=3 {
+                    write_expr(i)
+                    write(" ")
+                  }
+                }
+
+                -- after --
+                package components
+
+                import (
+                	"io"
+                	"strconv"
+                )
+
+                func Counter(w io.Writer) {
+                	for i := 1; i <= 3; i++ {
+                		io.WriteString(w, strconv.Itoa(i))
+                		io.WriteString(w, " ")
                 	}
                 }
             "#]],

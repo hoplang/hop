@@ -553,7 +553,7 @@ fn construct_node(
                             dop::parser::parse_loop_header(&mut iter, comments, &e)
                                 .map_err(|err| err.into())
                         });
-                    let Some((var_name, var_name_range, array_expr)) =
+                    let Some((var_name, var_name_range, source)) =
                         errors.ok_or_add(parse_result)
                     else {
                         return Some(ParsedNode::Placeholder {
@@ -564,7 +564,7 @@ fn construct_node(
                     Some(ParsedNode::For {
                         var_name,
                         var_name_range,
-                        array_expr,
+                        source,
                         range: tree.range.clone(),
                         children,
                     })

@@ -69,7 +69,7 @@ impl WriteCoalescingPass {
                 IrStatement::For {
                     id,
                     var,
-                    array,
+                    source,
                     body,
                 } => {
                     // Flush any pending write before a control flow statement
@@ -83,7 +83,7 @@ impl WriteCoalescingPass {
                     result.push(IrStatement::For {
                         id,
                         var,
-                        array,
+                        source,
                         body: self.transform_statements(body),
                     });
                 }

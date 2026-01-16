@@ -6,7 +6,7 @@ use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{Type, VarName};
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
-use crate::ir::ast::{ExprId, IrExpr, IrStatement, StatementId};
+use crate::ir::ast::{ExprId, IrExpr, IrForSource, IrStatement, StatementId};
 use crate::ir::ast::{IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -984,8 +984,8 @@ impl IrBuilder {
 
     pub fn write_expr(&mut self, expr: IrExpr, escape: bool) {
         assert!(
-            matches!(expr.as_type(), Type::String | Type::TrustedHTML),
-            "WriteExpr expects String or TrustedHTML, got: {}",
+            matches!(expr.as_type(), Type::String | Type::TrustedHTML | Type::Int),
+            "WriteExpr expects String, TrustedHTML, or Int, got: {}",
             expr
         );
         self.statements.push(IrStatement::WriteExpr {
@@ -1056,7 +1056,30 @@ impl IrBuilder {
         self.statements.push(IrStatement::For {
             id: self.next_node_id(),
             var: VarName::try_from(var.to_string()).unwrap(),
-            array,
+            source: IrForSource::Array(array),
+            body: inner_builder.statements,
+        });
+    }
+
+    /// Create a for loop over an inclusive range (start..=end)
+    pub fn for_range<F>(&mut self, var: &str, start: IrExpr, end: IrExpr, body_fn: F)
+    where
+        F: FnOnce(&mut Self),
+    {
+        // Range loops iterate over integers
+        self.var_stack
+            .borrow_mut()
+            .push((var.to_string(), Type::Int));
+
+        let mut inner_builder = self.new_scoped();
+        body_fn(&mut inner_builder);
+
+        self.var_stack.borrow_mut().pop();
+
+        self.statements.push(IrStatement::For {
+            id: self.next_node_id(),
+            var: VarName::try_from(var.to_string()).unwrap(),
+            source: IrForSource::RangeInclusive { start, end },
             body: inner_builder.statements,
         });
     }

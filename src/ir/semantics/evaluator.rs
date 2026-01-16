@@ -9,7 +9,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 use crate::dop::patterns::{EnumPattern, Match};
-use crate::ir::syntax::ast::{IrComponentDeclaration, IrStatement};
+use crate::ir::syntax::ast::{IrComponentDeclaration, IrForSource, IrStatement};
 
 /// Evaluate an IR entrypoint with the given arguments
 pub fn evaluate_component(
@@ -88,16 +88,32 @@ fn eval_statement(
         IrStatement::For {
             id: _,
             var,
-            array,
+            source,
             body,
         } => {
-            let array_value = evaluate_expr(array, env)?;
-            let items = array_value.as_array().cloned().unwrap_or_default();
+            match source {
+                IrForSource::Array(array) => {
+                    let array_value = evaluate_expr(array, env)?;
+                    let items = array_value.as_array().cloned().unwrap_or_default();
 
-            for item in items {
-                let _ = env.push(var.to_string(), item);
-                eval_statements(body, env, output)?;
-                let _ = env.pop();
+                    for item in items {
+                        let _ = env.push(var.to_string(), item);
+                        eval_statements(body, env, output)?;
+                        let _ = env.pop();
+                    }
+                }
+                IrForSource::RangeInclusive { start, end } => {
+                    let start_value = evaluate_expr(start, env)?;
+                    let end_value = evaluate_expr(end, env)?;
+                    let start_int = start_value.as_i64().unwrap_or(0);
+                    let end_int = end_value.as_i64().unwrap_or(0);
+
+                    for i in start_int..=end_int {
+                        let _ = env.push(var.to_string(), Value::Number(i.into()));
+                        eval_statements(body, env, output)?;
+                        let _ = env.pop();
+                    }
+                }
             }
             Ok(())
         }

@@ -14,6 +14,15 @@ pub type ExprId = u32;
 /// Unique identifier for each statement in the IR
 pub type StatementId = u32;
 
+/// The source of iteration in a for loop - either an array or an inclusive range.
+#[derive(Debug, Clone, PartialEq)]
+pub enum IrForSource {
+    /// Iterate over elements of an array
+    Array(IrExpr),
+    /// Iterate over an inclusive integer range
+    RangeInclusive { start: IrExpr, end: IrExpr },
+}
+
 #[derive(Debug, Clone)]
 pub struct IrModule {
     pub components: Vec<IrComponentDeclaration>,
@@ -67,11 +76,11 @@ pub enum IrStatement {
         else_body: Option<Vec<IrStatement>>,
     },
 
-    /// Loop over an array.
+    /// Loop over an array or range.
     For {
         id: StatementId,
         var: VarName,
-        array: IrExpr,
+        source: IrForSource,
         body: Vec<IrStatement>,
     },
 
@@ -261,7 +270,10 @@ impl IrStatement {
             IrStatement::Write { .. } => None,
             IrStatement::WriteExpr { expr, .. } => Some(expr),
             IrStatement::If { condition, .. } => Some(condition),
-            IrStatement::For { array, .. } => Some(array),
+            IrStatement::For { source, .. } => match source {
+                IrForSource::Array(array) => Some(array),
+                IrForSource::RangeInclusive { .. } => None,
+            },
             IrStatement::Let { value, .. } => Some(value),
             IrStatement::Match { .. } => None, // subject is a variable reference, not an expression
         }
@@ -273,7 +285,10 @@ impl IrStatement {
             IrStatement::Write { .. } => None,
             IrStatement::WriteExpr { expr, .. } => Some(expr),
             IrStatement::If { condition, .. } => Some(condition),
-            IrStatement::For { array, .. } => Some(array),
+            IrStatement::For { source, .. } => match source {
+                IrForSource::Array(array) => Some(array),
+                IrForSource::RangeInclusive { .. } => None,
+            },
             IrStatement::Let { value, .. } => Some(value),
             IrStatement::Match { .. } => None, // subject is a variable reference, not an expression
         }
@@ -523,24 +538,33 @@ impl IrStatement {
                 doc
             }
             IrStatement::For {
-                var, array, body, ..
-            } => BoxDoc::text("for ")
-                .append(BoxDoc::text(var.as_str()))
-                .append(BoxDoc::text(" in "))
-                .append(array.to_doc())
-                .append(BoxDoc::text(" {"))
-                .append(if body.is_empty() {
-                    BoxDoc::nil()
-                } else {
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            body.iter().map(|stmt| stmt.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .append(BoxDoc::line())
-                        .nest(2)
-                })
-                .append(BoxDoc::text("}")),
+                var, source, body, ..
+            } => {
+                let source_doc = match source {
+                    IrForSource::Array(array) => array.to_doc(),
+                    IrForSource::RangeInclusive { start, end } => start
+                        .to_doc()
+                        .append(BoxDoc::text("..="))
+                        .append(end.to_doc()),
+                };
+                BoxDoc::text("for ")
+                    .append(BoxDoc::text(var.as_str()))
+                    .append(BoxDoc::text(" in "))
+                    .append(source_doc)
+                    .append(BoxDoc::text(" {"))
+                    .append(if body.is_empty() {
+                        BoxDoc::nil()
+                    } else {
+                        BoxDoc::line()
+                            .append(BoxDoc::intersperse(
+                                body.iter().map(|stmt| stmt.to_doc()),
+                                BoxDoc::line(),
+                            ))
+                            .append(BoxDoc::line())
+                            .nest(2)
+                    })
+                    .append(BoxDoc::text("}"))
+            }
             IrStatement::Let {
                 var, value, body, ..
             } => BoxDoc::text("let ")

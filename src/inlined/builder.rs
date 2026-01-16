@@ -6,6 +6,7 @@ use crate::document::CheapString;
 use crate::dop::Type;
 use crate::dop::TypedExpr;
 use crate::dop::VarName;
+use crate::hop::semantics::typed_node::TypedLoopSource;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use std::cell::RefCell;
@@ -146,7 +147,7 @@ impl InlinedBuilder {
 
         self.children.push(InlinedNode::For {
             var_name: VarName::try_from(var.to_string()).unwrap(),
-            array_expr: array,
+            source: TypedLoopSource::Array(array),
             children,
         });
     }

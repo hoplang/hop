@@ -214,6 +214,18 @@ pub struct ParsedMatchArm {
     pub body: ParsedExpr,
 }
 
+/// The source of iteration in a for loop - either an array or an inclusive range.
+#[derive(Debug, Clone)]
+pub enum ParsedLoopSource {
+    /// Iterate over elements of an array, e.g. `item in items`
+    Array(ParsedExpr),
+    /// Iterate over an inclusive integer range, e.g. `i in 0..=5`
+    RangeInclusive {
+        start: ParsedExpr,
+        end: ParsedExpr,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParsedBinaryOp {
     Eq,

@@ -15,7 +15,7 @@ use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, 
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::var_name::VarName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrModule, IrStatement};
+use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement};
 
 pub trait Transpiler {
     fn transpile_entrypoint<'a>(
@@ -38,7 +38,7 @@ pub trait StatementTranspiler {
     fn transpile_for<'a>(
         &self,
         var: &'a str,
-        array: &'a IrExpr,
+        source: &'a IrForSource,
         body: &'a [IrStatement],
     ) -> BoxDoc<'a>;
     fn transpile_let_statement<'a>(
@@ -59,8 +59,8 @@ pub trait StatementTranspiler {
                 ..
             } => self.transpile_if(condition, body, else_body.as_deref()),
             IrStatement::For {
-                var, array, body, ..
-            } => self.transpile_for(var.as_str(), array, body),
+                var, source, body, ..
+            } => self.transpile_for(var.as_str(), source, body),
             IrStatement::Let {
                 var, value, body, ..
             } => self.transpile_let_statement(var.as_str(), value, body),

@@ -11,7 +11,7 @@ use super::transform::whitespace_removal::remove_whitespace;
 use crate::common::is_void_element;
 use crate::document::{DocumentRange, Ranged};
 use crate::dop::syntax::parsed::{
-    Constructor, ParsedExpr, ParsedMatchArm, ParsedMatchPattern, ParsedType,
+    Constructor, ParsedExpr, ParsedLoopSource, ParsedMatchArm, ParsedMatchPattern, ParsedType,
 };
 use pretty::{Arena, DocAllocator, DocBuilder};
 
@@ -421,16 +421,22 @@ fn format_node<'a>(
         }
         ParsedNode::For {
             var_name,
-            array_expr,
+            source,
             children,
             ..
         } => {
             let children_doc = format_children(arena, children, comments);
+            let source_doc = match source {
+                ParsedLoopSource::Array(expr) => format_expr(arena, expr, comments),
+                ParsedLoopSource::RangeInclusive { start, end } => format_expr(arena, start, comments)
+                    .append(arena.text("..="))
+                    .append(format_expr(arena, end, comments)),
+            };
             arena
                 .text("<for {")
                 .append(arena.text(var_name.as_str()))
                 .append(arena.text(" in "))
-                .append(format_expr(arena, array_expr, comments))
+                .append(source_doc)
                 .append(arena.text("}>"))
                 .append(children_doc)
                 .append(arena.text("</for>"))

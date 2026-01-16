@@ -10,8 +10,8 @@ use crate::hop::symbols::module_name::ModuleName;
 
 use super::parse_error::ParseError;
 use super::parsed::{
-    Constructor, ParsedBinaryOp, ParsedDeclaration, ParsedExpr, ParsedMatchArm, ParsedMatchPattern,
-    ParsedType,
+    Constructor, ParsedBinaryOp, ParsedDeclaration, ParsedExpr, ParsedLoopSource, ParsedMatchArm,
+    ParsedMatchPattern, ParsedType,
 };
 use super::token::Token;
 use super::tokenizer;
@@ -248,12 +248,23 @@ pub fn parse_loop_header(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     range: &DocumentRange,
-) -> Result<(VarName, DocumentRange, ParsedExpr), ParseError> {
+) -> Result<(VarName, DocumentRange, ParsedLoopSource), ParseError> {
     let (var_name, var_name_range) = expect_variable_name(iter, comments, range)?;
     expect_token(iter, comments, range, &Token::In)?;
-    let array_expr = parse_logical(iter, comments, range)?;
+    // Parse the start expression (could be array or start of range)
+    let start_expr = parse_logical(iter, comments, range)?;
+    // Check if this is a range expression (..=)
+    let source = if advance_if(iter, comments, Token::DotDotEq).is_some() {
+        let end_expr = parse_logical(iter, comments, range)?;
+        ParsedLoopSource::RangeInclusive {
+            start: start_expr,
+            end: end_expr,
+        }
+    } else {
+        ParsedLoopSource::Array(start_expr)
+    };
     expect_eof(iter, comments)?;
-    Ok((var_name, var_name_range, array_expr))
+    Ok((var_name, var_name_range, source))
 }
 
 pub fn parse_let_bindings(
@@ -1202,7 +1213,9 @@ pub fn parse_declaration(
         Some(Ok((Token::Enum, _))) => parse_enum_declaration(iter, comments, range),
         Some(Ok((_, token_range))) => Err(ParseError::ExpectedDeclaration { range: token_range }),
         Some(Err(err)) => Err(err),
-        None => Err(ParseError::UnexpectedEof { range: range.clone() }),
+        None => Err(ParseError::UnexpectedEof {
+            range: range.clone(),
+        }),
     }
 }
 
@@ -3414,6 +3427,70 @@ mod tests {
                 error: Unexpected token 'second'
                 first: String = "a" second: String = "b"
                                     ^^^^^^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // LOOP HEADERS                                                          //
+    ///////////////////////////////////////////////////////////////////////////
+
+    fn check_parse_loop_header(input: &str, expected: Expect) {
+        let cursor = DocumentCursor::new(input.to_string());
+        let range = cursor.range();
+        let mut iter = cursor.peekable();
+        let mut comments = VecDeque::new();
+        let actual = match parse_loop_header(&mut iter, &mut comments, &range) {
+            Ok((var_name, _range, source)) => {
+                let source_str = match source {
+                    ParsedLoopSource::Array(expr) => format!("{}", expr),
+                    ParsedLoopSource::RangeInclusive { start, end } => {
+                        format!("{}..={}", start, end)
+                    }
+                };
+                format!("{} in {}\n", var_name, source_str)
+            }
+            Err(err) => annotate_error(err),
+        };
+        expected.assert_eq(&actual);
+    }
+
+    #[test]
+    fn should_parse_for_loop_with_array() {
+        check_parse_loop_header(
+            "item in items",
+            expect![[r#"
+                item in items
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_for_loop_with_inclusive_range() {
+        check_parse_loop_header(
+            "i in 0..=5",
+            expect![[r#"
+                i in 0..=5
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_for_loop_with_variable_range_bounds() {
+        check_parse_loop_header(
+            "x in start..=end",
+            expect![[r#"
+                x in start..=end
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_for_loop_with_expression_range_bounds() {
+        check_parse_loop_header(
+            "i in 1..=count + 1",
+            expect![[r#"
+                i in 1..=count + 1
             "#]],
         );
     }

@@ -5,6 +5,15 @@ use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use pretty::BoxDoc;
 
+/// The source of iteration in a for loop - either an array or an inclusive range.
+#[derive(Debug, Clone)]
+pub enum TypedLoopSource {
+    /// Iterate over elements of an array
+    Array(TypedExpr),
+    /// Iterate over an inclusive integer range
+    RangeInclusive { start: TypedExpr, end: TypedExpr },
+}
+
 #[derive(Debug, Clone)]
 pub enum TypedAttributeValue {
     Expression(TypedExpr),
@@ -62,7 +71,7 @@ pub enum TypedNode {
 
     For {
         var_name: VarName,
-        array_expr: TypedExpr,
+        source: TypedLoopSource,
         children: Vec<TypedNode>,
     },
 
@@ -162,13 +171,20 @@ impl TypedNode {
             }
             TypedNode::For {
                 var_name,
-                array_expr,
+                source,
                 children,
             } => {
+                let source_doc = match source {
+                    TypedLoopSource::Array(expr) => expr.to_doc(),
+                    TypedLoopSource::RangeInclusive { start, end } => start
+                        .to_doc()
+                        .append(BoxDoc::text("..="))
+                        .append(end.to_doc()),
+                };
                 let tag = BoxDoc::text("<for {")
                     .append(BoxDoc::text(var_name.as_str()))
                     .append(BoxDoc::text(" in "))
-                    .append(array_expr.to_doc())
+                    .append(source_doc)
                     .append(BoxDoc::text("}>"));
                 if children.is_empty() {
                     tag.append(BoxDoc::text("</for>"))

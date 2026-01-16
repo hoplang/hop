@@ -445,6 +445,113 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn for_loop_with_range() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.for_range("i", t.int(1), t.int(3), |t| {
+                        t.write_expr(t.var("i"), false);
+                        t.write(",");
+                    });
+                })
+                .build(),
+            "1,2,3,",
+            expect![[r#"
+                -- input --
+                Test() {
+                  for i in 1..=3 {
+                    write_expr(i)
+                    write(",")
+                  }
+                }
+                -- expected output --
+                1,2,3,
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn for_loop_with_range_zero_to_five() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.for_range("x", t.int(0), t.int(5), |t| {
+                        t.write_expr(t.var("x"), false);
+                    });
+                })
+                .build(),
+            "012345",
+            expect![[r#"
+                -- input --
+                Test() {
+                  for x in 0..=5 {
+                    write_expr(x)
+                  }
+                }
+                -- expected output --
+                012345
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn for_loop_with_range_nested() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.for_range("i", t.int(1), t.int(2), |t| {
+                        t.for_range("j", t.int(1), t.int(2), |t| {
+                            t.write("(");
+                            t.write_expr(t.var("i"), false);
+                            t.write(",");
+                            t.write_expr(t.var("j"), false);
+                            t.write(")");
+                        });
+                    });
+                })
+                .build(),
+            "(1,1)(1,2)(2,1)(2,2)",
+            expect![[r#"
+                -- input --
+                Test() {
+                  for i in 1..=2 {
+                    for j in 1..=2 {
+                      write("(")
+                      write_expr(i)
+                      write(",")
+                      write_expr(j)
+                      write(")")
+                    }
+                  }
+                }
+                -- expected output --
+                (1,1)(1,2)(2,1)(2,2)
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn html_escaping() {
         check(
             IrModuleBuilder::new()

@@ -79,11 +79,11 @@ impl MetaInjector {
                 },
                 InlinedNode::For {
                     var_name,
-                    array_expr,
+                    source,
                     children,
                 } => InlinedNode::For {
                     var_name,
-                    array_expr,
+                    source,
                     children: Self::inject_meta_into_head(children),
                 },
                 InlinedNode::Let {

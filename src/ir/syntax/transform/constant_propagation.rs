@@ -6,7 +6,7 @@ use crate::dop::symbols::field_name::FieldName;
 use crate::ir::{
     IrExpr,
     ast::ExprId,
-    ast::{IrComponentDeclaration, IrStatement},
+    ast::{IrComponentDeclaration, IrForSource, IrStatement},
 };
 use datafrog::{Iteration, Relation};
 use std::collections::HashMap;
@@ -156,8 +156,11 @@ impl Pass for ConstantPropagationPass {
                     IrStatement::Let { var, value, .. } => {
                         var_bindings.insert(var.to_string(), value.id());
                     }
-                    IrStatement::For { var, array, .. } => {
-                        var_bindings.insert(var.to_string(), array.id());
+                    IrStatement::For { var, source, .. } => {
+                        // Only track array bindings, not range bindings
+                        if let IrForSource::Array(array) = source {
+                            var_bindings.insert(var.to_string(), array.id());
+                        }
                     }
                     IrStatement::Match { .. } => {
                         // Not yet implemented

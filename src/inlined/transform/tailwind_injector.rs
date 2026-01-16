@@ -62,11 +62,11 @@ impl TailwindInjector {
                     },
                     InlinedNode::For {
                         var_name,
-                        array_expr,
+                        source,
                         children,
                     } => InlinedNode::For {
                         var_name,
-                        array_expr,
+                        source,
                         children: Self::inject_css_into_head(children, css_content),
                     },
                     InlinedNode::Let {

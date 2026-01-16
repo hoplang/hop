@@ -4,12 +4,13 @@ use crate::dop::TypedExpr;
 use crate::dop::patterns::{EnumMatchArm, Match};
 use crate::dop::semantics::r#type::EquatableType;
 use crate::dop::{Type, VarName};
+use crate::hop::semantics::typed_node::TypedLoopSource;
 use crate::inlined::{
     InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
 };
 use std::collections::BTreeMap;
 
-use super::ast::{ExprId, IrComponentDeclaration, IrExpr, IrStatement, StatementId};
+use super::ast::{ExprId, IrComponentDeclaration, IrExpr, IrForSource, IrStatement, StatementId};
 
 pub struct Compiler {
     // Expression ID generation
@@ -226,14 +227,23 @@ impl Compiler {
 
             InlinedNode::For {
                 var_name,
-                array_expr,
+                source,
                 children,
                 ..
             } => {
+                let ir_source = match source {
+                    TypedLoopSource::Array(array_expr) => {
+                        IrForSource::Array(self.compile_expr(&array_expr))
+                    }
+                    TypedLoopSource::RangeInclusive { start, end } => IrForSource::RangeInclusive {
+                        start: self.compile_expr(&start),
+                        end: self.compile_expr(&end),
+                    },
+                };
                 output.push(IrStatement::For {
                     id: self.next_node_id(),
                     var: var_name,
-                    array: self.compile_expr(&array_expr),
+                    source: ir_source,
                     body: self.compile_nodes(children, slot_content.cloned()),
                 });
             }

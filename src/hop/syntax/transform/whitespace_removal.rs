@@ -71,13 +71,13 @@ fn transform_node(node: ParsedNode) -> Vec<ParsedNode> {
         ParsedNode::For {
             var_name,
             var_name_range,
-            array_expr,
+            source,
             children,
             range,
         } => vec![ParsedNode::For {
             var_name,
             var_name_range,
-            array_expr,
+            source,
             children: transform_nodes(children),
             range,
         }],

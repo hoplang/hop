@@ -302,11 +302,11 @@ impl Inliner {
 
             TypedNode::For {
                 var_name,
-                array_expr,
+                source,
                 children,
             } => vec![InlinedNode::For {
                 var_name: var_name.clone(),
-                array_expr: array_expr.clone(),
+                source: source.clone(),
                 children: Self::inline_nodes_with_ctx(children, ctx),
             }],
 

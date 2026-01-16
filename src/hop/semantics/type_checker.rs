@@ -15,11 +15,13 @@ use std::collections::HashMap;
 
 use crate::dop::patterns::compiler::Decision;
 use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
-use crate::dop::syntax::parsed::Constructor;
+use crate::dop::syntax::parsed::{Constructor, ParsedLoopSource};
 use crate::hop::semantics::typed_ast::{
     TypedAst, TypedComponentDeclaration, TypedEnumDeclaration, TypedRecordDeclaration,
 };
-use crate::hop::semantics::typed_node::{TypedAttribute, TypedAttributeValue, TypedNode};
+use crate::hop::semantics::typed_node::{
+    TypedAttribute, TypedAttributeValue, TypedLoopSource, TypedNode,
+};
 use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::syntax::parsed_ast::{ParsedAst, ParsedAttributeValue};
 use crate::hop::syntax::parsed_node::{ParsedLetBinding, ParsedNode};
@@ -381,23 +383,61 @@ fn typecheck_node(
         ParsedNode::For {
             var_name,
             var_name_range,
-            array_expr,
+            source,
             children,
             range: _,
         } => {
-            let typed_array = errors.ok_or_add(
-                dop::typecheck_expr(array_expr, var_env, type_env, annotations, None)
-                    .map_err(Into::into),
-            )?;
-            let array_type = typed_array.as_type();
-            let element_type = match &array_type {
-                Type::Array(inner) => (**inner).clone(),
-                _ => {
-                    errors.push(TypeError::CannotIterateOver {
-                        typ: array_type.to_string(),
-                        range: array_expr.range().clone(),
-                    });
-                    return None;
+            // Type check the loop source and determine element type
+            let (typed_source, element_type) = match source {
+                ParsedLoopSource::Array(array_expr) => {
+                    let typed_array = errors.ok_or_add(
+                        dop::typecheck_expr(array_expr, var_env, type_env, annotations, None)
+                            .map_err(Into::into),
+                    )?;
+                    let array_type = typed_array.as_type();
+                    let element_type = match &array_type {
+                        Type::Array(inner) => (**inner).clone(),
+                        _ => {
+                            errors.push(TypeError::CannotIterateOver {
+                                typ: array_type.to_string(),
+                                range: array_expr.range().clone(),
+                            });
+                            return None;
+                        }
+                    };
+                    (TypedLoopSource::Array(typed_array), element_type)
+                }
+                ParsedLoopSource::RangeInclusive { start, end } => {
+                    let typed_start = errors.ok_or_add(
+                        dop::typecheck_expr(start, var_env, type_env, annotations, None)
+                            .map_err(Into::into),
+                    )?;
+                    let typed_end = errors.ok_or_add(
+                        dop::typecheck_expr(end, var_env, type_env, annotations, None)
+                            .map_err(Into::into),
+                    )?;
+
+                    // Both bounds must be Int
+                    if *typed_start.as_type() != Type::Int {
+                        errors.push(TypeError::RangeBoundTypeMismatch {
+                            found: typed_start.as_type().to_string(),
+                            range: start.range().clone(),
+                        });
+                    }
+                    if *typed_end.as_type() != Type::Int {
+                        errors.push(TypeError::RangeBoundTypeMismatch {
+                            found: typed_end.as_type().to_string(),
+                            range: end.range().clone(),
+                        });
+                    }
+
+                    (
+                        TypedLoopSource::RangeInclusive {
+                            start: typed_start,
+                            end: typed_end,
+                        },
+                        Type::Int,
+                    )
                 }
             };
 
@@ -436,7 +476,7 @@ fn typecheck_node(
 
             Some(TypedNode::For {
                 var_name: var_name.clone(),
-                array_expr: typed_array,
+                source: typed_source,
                 children: typed_children,
             })
         }

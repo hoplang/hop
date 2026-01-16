@@ -201,11 +201,11 @@ impl HtmlStructureInjector {
                     },
                     InlinedNode::For {
                         var_name,
-                        array_expr,
+                        source,
                         children,
                     } => InlinedNode::For {
                         var_name,
-                        array_expr,
+                        source,
                         children: Self::ensure_head_and_body_in_html(children),
                     },
                     InlinedNode::Let {

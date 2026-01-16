@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::dop::VarName;
 
 use crate::dop::patterns::{EnumMatchArm, Match};
-use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrStatement};
+use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrForSource, IrStatement};
 
 use super::Pass;
 
@@ -76,9 +76,16 @@ impl AlphaRenamingPass {
             IrStatement::For {
                 id,
                 var,
-                array,
+                source,
                 body,
             } => {
+                let renamed_source = match source {
+                    IrForSource::Array(array) => IrForSource::Array(self.rename_expr(&array)),
+                    IrForSource::RangeInclusive { start, end } => IrForSource::RangeInclusive {
+                        start: self.rename_expr(&start),
+                        end: self.rename_expr(&end),
+                    },
+                };
                 self.push_scope();
                 let renamed_var = self.bind_var(&var);
                 let renamed_body = self.rename_statements(body);
@@ -87,7 +94,7 @@ impl AlphaRenamingPass {
                 IrStatement::For {
                     id,
                     var: renamed_var,
-                    array: self.rename_expr(&array),
+                    source: renamed_source,
                     body: renamed_body,
                 }
             }

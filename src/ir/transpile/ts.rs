@@ -5,7 +5,7 @@ use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrModule, IrStatement};
+use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement};
 
 pub struct TsTranspiler {
     /// Internal flag to use template literals instead of double quotes
@@ -450,23 +450,45 @@ impl StatementTranspiler for TsTranspiler {
     fn transpile_for<'a>(
         &self,
         var: &'a str,
-        array: &'a IrExpr,
+        source: &'a IrForSource,
         body: &'a [IrStatement],
     ) -> BoxDoc<'a> {
-        BoxDoc::nil()
-            .append(BoxDoc::text("for (const "))
-            .append(BoxDoc::text(var))
-            .append(BoxDoc::text(" of "))
-            .append(self.transpile_expr(array))
-            .append(BoxDoc::text(") {"))
-            .append(
-                BoxDoc::nil()
-                    .append(BoxDoc::hardline())
-                    .append(self.transpile_statements(body))
-                    .append(BoxDoc::hardline())
-                    .nest(4),
-            )
-            .append(BoxDoc::text("}"))
+        match source {
+            IrForSource::Array(array) => BoxDoc::nil()
+                .append(BoxDoc::text("for (const "))
+                .append(BoxDoc::text(var))
+                .append(BoxDoc::text(" of "))
+                .append(self.transpile_expr(array))
+                .append(BoxDoc::text(") {"))
+                .append(
+                    BoxDoc::nil()
+                        .append(BoxDoc::hardline())
+                        .append(self.transpile_statements(body))
+                        .append(BoxDoc::hardline())
+                        .nest(4),
+                )
+                .append(BoxDoc::text("}")),
+            IrForSource::RangeInclusive { start, end } => BoxDoc::nil()
+                .append(BoxDoc::text("for (let "))
+                .append(BoxDoc::text(var))
+                .append(BoxDoc::text(" = "))
+                .append(self.transpile_expr(start))
+                .append(BoxDoc::text("; "))
+                .append(BoxDoc::text(var))
+                .append(BoxDoc::text(" <= "))
+                .append(self.transpile_expr(end))
+                .append(BoxDoc::text("; "))
+                .append(BoxDoc::text(var))
+                .append(BoxDoc::text("++) {"))
+                .append(
+                    BoxDoc::nil()
+                        .append(BoxDoc::hardline())
+                        .append(self.transpile_statements(body))
+                        .append(BoxDoc::hardline())
+                        .nest(4),
+                )
+                .append(BoxDoc::text("}")),
+        }
     }
 
     fn transpile_let_statement<'a>(
@@ -1426,6 +1448,52 @@ mod tests {
                             output += "</li>\n";
                         }
                         output += "</ul>\n";
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn for_loop_with_range() {
+        check(
+            IrModuleBuilder::new()
+                .component("Counter", [], |t| {
+                    t.for_range("i", t.int(1), t.int(3), |t| {
+                        t.write_expr(t.var("i"), false);
+                        t.write(" ");
+                    });
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                Counter() {
+                  for i in 1..=3 {
+                    write_expr(i)
+                    write(" ")
+                  }
+                }
+
+                -- after --
+                export namespace Option {
+                    export type Option<T> = { readonly tag: "None" } | { readonly tag: "Some", value: T };
+
+                    export function some<T>(value: T): Option<T> {
+                        return { tag: "Some", value };
+                    }
+                    export function none<T>(): Option<T> {
+                        return { tag: "None" };
+                    }
+                }
+
+                export default {
+                    counter: (): string => {
+                        let output: string = "";
+                        for (let i = 1; i <= 3; i++) {
+                            output += i;
+                            output += " ";
+                        }
                         return output;
                     }
                 }
