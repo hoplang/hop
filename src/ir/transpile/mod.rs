@@ -171,6 +171,7 @@ pub trait ExpressionTranspiler {
     fn transpile_int_to_string<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_to_int<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_float_to_string<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_int_to_float<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_expr<'a>(&self, expr: &'a IrExpr) -> BoxDoc<'a> {
         match expr {
             IrExpr::Var { value, .. } => self.transpile_var(value.as_str()),
@@ -282,6 +283,7 @@ pub trait ExpressionTranspiler {
             IrExpr::IntToString { value, .. } => self.transpile_int_to_string(value),
             IrExpr::FloatToInt { value, .. } => self.transpile_float_to_int(value),
             IrExpr::FloatToString { value, .. } => self.transpile_float_to_string(value),
+            IrExpr::IntToFloat { value, .. } => self.transpile_int_to_float(value),
         }
     }
 }

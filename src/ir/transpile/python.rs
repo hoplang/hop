@@ -1053,6 +1053,12 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(self.transpile_expr(value))
             .append(BoxDoc::text(")"))
     }
+
+    fn transpile_int_to_float<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("float(")
+            .append(self.transpile_expr(value))
+            .append(BoxDoc::text(")"))
+    }
 }
 
 impl TypeTranspiler for PythonTranspiler {

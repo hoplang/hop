@@ -158,6 +158,9 @@ pub enum TypedExpr {
 
     /// Float to string conversion, e.g. price.to_string()
     FloatToString { value: Box<Self> },
+
+    /// Int to float conversion, e.g. count.to_float()
+    IntToFloat { value: Box<Self> },
 }
 
 impl TypedExpr {
@@ -177,7 +180,7 @@ impl TypedExpr {
             | TypedExpr::Match { kind, .. }
             | TypedExpr::Let { kind, .. } => kind,
 
-            TypedExpr::FloatLiteral { .. } => &FLOAT_TYPE,
+            TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => &FLOAT_TYPE,
             TypedExpr::IntLiteral { .. } => &INT_TYPE,
 
             TypedExpr::StringConcat { .. }
@@ -516,6 +519,9 @@ impl TypedExpr {
             TypedExpr::FloatToString { value } => value
                 .to_doc()
                 .append(BoxDoc::text(".to_string()")),
+            TypedExpr::IntToFloat { value } => value
+                .to_doc()
+                .append(BoxDoc::text(".to_float()")),
         }
     }
 }

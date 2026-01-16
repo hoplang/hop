@@ -1259,6 +1259,12 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(self.transpile_expr(value))
             .append(BoxDoc::text(", 'f', -1, 64)"))
     }
+
+    fn transpile_int_to_float<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("float64(")
+            .append(self.transpile_expr(value))
+            .append(BoxDoc::text(")"))
+    }
 }
 
 impl TypeTranspiler for GoTranspiler {

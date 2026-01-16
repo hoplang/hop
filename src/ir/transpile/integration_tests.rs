@@ -3209,4 +3209,73 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn int_to_float_simple() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.let_stmt("count", t.int(42), |t| {
+                        let float_count = t.int_to_float(t.var("count"));
+                        t.write_expr(float_count, false);
+                    });
+                })
+                .build(),
+            "42",
+            expect![[r#"
+                -- input --
+                Test() {
+                  let count = 42 in {
+                    write_expr(count.to_float())
+                  }
+                }
+                -- expected output --
+                42
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn int_to_float_in_addition() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.let_stmt("count", t.int(5), |t| {
+                        t.let_stmt("rate", t.float(0.5), |t| {
+                            let float_count = t.int_to_float(t.var("count"));
+                            let result = t.add(float_count, t.var("rate"));
+                            t.write_expr(result, false);
+                        });
+                    });
+                })
+                .build(),
+            "5.5",
+            expect![[r#"
+                -- input --
+                Test() {
+                  let count = 5 in {
+                    let rate = 0.5 in {
+                      write_expr((count.to_float() + rate))
+                    }
+                  }
+                }
+                -- expected output --
+                5.5
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
 }

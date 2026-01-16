@@ -891,6 +891,9 @@ pub fn typecheck_expr(
                 (Type::Int, "to_string") => Ok(TypedExpr::IntToString {
                     value: Box::new(typed_receiver),
                 }),
+                (Type::Int, "to_float") => Ok(TypedExpr::IntToFloat {
+                    value: Box::new(typed_receiver),
+                }),
                 (Type::Float, "to_int") => Ok(TypedExpr::FloatToInt {
                     value: Box::new(typed_receiver),
                 }),
@@ -4458,6 +4461,56 @@ mod tests {
             &[("price", "Float")],
             r#""Price: " + price.to_string()"#,
             expect!["String"],
+        );
+    }
+
+    // Int to_float tests
+
+    #[test]
+    fn should_accept_to_float_on_int() {
+        check(
+            "",
+            &[("count", "Int")],
+            "count.to_float()",
+            expect!["Float"],
+        );
+    }
+
+    #[test]
+    fn should_accept_to_float_in_arithmetic() {
+        check(
+            "",
+            &[("count", "Int"), ("rate", "Float")],
+            "count.to_float() + rate",
+            expect!["Float"],
+        );
+    }
+
+    #[test]
+    fn should_reject_to_float_on_float() {
+        check(
+            "",
+            &[("price", "Float")],
+            "price.to_float()",
+            expect![[r#"
+                error: Method 'to_float' is not available on type Float
+                price.to_float()
+                ^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_to_float_on_string() {
+        check(
+            "",
+            &[("name", "String")],
+            "name.to_float()",
+            expect![[r#"
+                error: Method 'to_float' is not available on type String
+                name.to_float()
+                ^^^^^^^^^^^^^^^
+            "#]],
         );
     }
 }

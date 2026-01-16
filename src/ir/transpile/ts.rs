@@ -1181,6 +1181,11 @@ impl ExpressionTranspiler for TsTranspiler {
         self.transpile_expr(value)
             .append(BoxDoc::text(".toString()"))
     }
+
+    fn transpile_int_to_float<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+        // In JavaScript, all numbers are floats, so no conversion needed
+        self.transpile_expr(value)
+    }
 }
 
 impl TypeTranspiler for TsTranspiler {

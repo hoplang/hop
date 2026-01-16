@@ -273,6 +273,9 @@ pub enum IrExpr {
 
     /// Float to string conversion, e.g. price.to_string()
     FloatToString { value: Box<IrExpr>, id: ExprId },
+
+    /// Int to float conversion, e.g. count.to_float()
+    IntToFloat { value: Box<IrExpr>, id: ExprId },
 }
 
 impl IrStatement {
@@ -741,7 +744,8 @@ impl IrExpr {
             | IrExpr::ArrayLength { id, .. }
             | IrExpr::IntToString { id, .. }
             | IrExpr::FloatToInt { id, .. }
-            | IrExpr::FloatToString { id, .. } => *id,
+            | IrExpr::FloatToString { id, .. }
+            | IrExpr::IntToFloat { id, .. } => *id,
         }
     }
 
@@ -762,7 +766,7 @@ impl IrExpr {
             | IrExpr::Match { kind, .. }
             | IrExpr::Let { kind, .. } => kind,
 
-            IrExpr::FloatLiteral { .. } => &FLOAT_TYPE,
+            IrExpr::FloatLiteral { .. } | IrExpr::IntToFloat { .. } => &FLOAT_TYPE,
             IrExpr::IntLiteral { .. } => &INT_TYPE,
 
             IrExpr::JsonEncode { .. }
@@ -1093,6 +1097,9 @@ impl IrExpr {
             IrExpr::FloatToString { value, .. } => value
                 .to_doc()
                 .append(BoxDoc::text(".to_string()")),
+            IrExpr::IntToFloat { value, .. } => value
+                .to_doc()
+                .append(BoxDoc::text(".to_float()")),
         }
     }
 
@@ -1195,6 +1202,9 @@ impl IrExpr {
             IrExpr::FloatToString { value, .. } => {
                 value.traverse(f);
             }
+            IrExpr::IntToFloat { value, .. } => {
+                value.traverse(f);
+            }
         }
     }
 
@@ -1295,6 +1305,9 @@ impl IrExpr {
                 value.traverse_mut(f);
             }
             IrExpr::FloatToString { value, .. } => {
+                value.traverse_mut(f);
+            }
+            IrExpr::IntToFloat { value, .. } => {
                 value.traverse_mut(f);
             }
         }
