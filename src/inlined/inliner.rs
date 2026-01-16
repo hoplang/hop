@@ -586,7 +586,7 @@ mod tests {
                 <Main>
                   <let {name = "World"}>
                     <p>
-                      Hello,
+                      Hello, 
                       {name}
                       !
                     </p>
@@ -616,7 +616,7 @@ mod tests {
                 <Main>
                   <let {name = "Alice"}>
                     <p>
-                      Hello,
+                      Hello, 
                       {name}
                       !
                     </p>

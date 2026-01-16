@@ -952,6 +952,11 @@ fn typecheck_node(
         ParsedNode::Doctype { value, range: _ } => Some(TypedNode::Doctype {
             value: value.clone(),
         }),
+
+        // LineBreak is a formatting-only node created during whitespace removal.
+        // It should not appear in parsed ASTs that reach the type checker,
+        // but we handle it gracefully by returning None.
+        ParsedNode::LineBreak { .. } => None,
     }
 }
 
@@ -3311,7 +3316,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 <Greeting {name: String = "World"}>
-                  Hello,
+                  Hello, 
                   {name}
                   !
                 </Greeting>
@@ -3338,7 +3343,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 <Greeting {name: String = "World"}>
-                  Hello,
+                  Hello, 
                   {name}
                   !
                 </Greeting>
@@ -3366,7 +3371,7 @@ mod tests {
                 -- main.hop --
                 <UserCard {name: String, role: String = "user"}>
                   {name}
-                  (
+                   (
                   {role}
                   )
                 </UserCard>
@@ -3690,7 +3695,7 @@ mod tests {
                     <match {match_subject}>
                       <case {Some(v0)}>
                         <let {y = v0}>
-                          found
+                          found 
                           {y}
                         </let>
                       </case>
@@ -4605,7 +4610,7 @@ mod tests {
                 <Main>
                   <let {name = "World"}>
                     <div>
-                      Hello
+                      Hello 
                       {name}
                     </div>
                   </let>
@@ -4750,6 +4755,7 @@ mod tests {
                     <let {second = "World"}>
                       <div>
                         {first}
+         
                         {second}
                       </div>
                     </let>

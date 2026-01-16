@@ -799,6 +799,7 @@ mod tests {
                       <if {k}></if>
                     </for>
                   </for>
+  
                   <for {p in i}>
                     <for {k in p.s.t}>
                       <for {item in k}></for>
@@ -828,9 +829,12 @@ mod tests {
                 <Main>
                   <script>
                     // note that the <div> inside here is not
+    
                     // parsed as html
+    
                     console.log("<div>test</div>");
                   </script>
+  
                   <style>
                     body { color: red; }
                   </style>
@@ -854,6 +858,7 @@ mod tests {
                 <Main>
                   <form id="form">
                     <input type="text" required>
+    
                     <button type="submit">
                       Send
                     </button>
@@ -941,7 +946,9 @@ mod tests {
 
                 <Main>
                   <hr>
+  
                   <br>
+  
                   <input>
                 </Main>
 
@@ -966,6 +973,7 @@ mod tests {
             expect![[r#"
                 <Main {foo: String}>
                   <!DOCTYPE html>
+  
                   <html>
                     <body>
                       <div>
@@ -1320,6 +1328,7 @@ mod tests {
             expect![[r#"
                 <Main {p: String}>
                   <Foo/>
+  
                   <Foo/>
                 </Main>
             "#]],
@@ -1350,6 +1359,7 @@ mod tests {
 
                 <Main {data: Data}>
                   <Foo a={data}/>
+  
                   <Bar b={data.user}/>
                 </Main>
             "#]],
@@ -1481,12 +1491,15 @@ mod tests {
                       >
                         <path d="M20.04 38 64 22l43.96 16L64 54Z">
                         </path>
+        
                         <path d="M17.54 47.09v48l35.099 12.775">
                         </path>
+        
                         <path d="M64 112V64l46.46-16.91v48L77.988 106.91">
                         </path>
                       </g>
                     </svg>
+    
                     <ul>
                       <li>
                         <a href="/">
@@ -1540,6 +1553,7 @@ mod tests {
                   <h1>
                     Hello World
                   </h1>
+  
                   <p>
                     {data.message}
                   </p>
@@ -1599,6 +1613,7 @@ mod tests {
                     <h1>
                       {section.title}
                     </h1>
+    
                     <for {item in section.items}>
                       <div>
                         {item}
@@ -1617,7 +1632,7 @@ mod tests {
             expect![[r#"
                 <Main>
                   <h1>
-                    Hello
+                    Hello 
                     {name}
                     !
                   </h1>
@@ -1633,11 +1648,11 @@ mod tests {
             expect![[r#"
                 <Main>
                   <p>
-                    User
+                    User 
                     {user.name}
-                    has
+                     has 
                     {user.count}
-                    items
+                     items
                   </p>
                 </Main>
             "#]],
@@ -1652,7 +1667,7 @@ mod tests {
                 <Main>
                   <span>
                     {greeting}
-                    world!
+                     world!
                   </span>
                 </Main>
             "#]],
@@ -1666,7 +1681,7 @@ mod tests {
             expect![[r#"
                 <Main>
                   <div>
-                    Price:
+                    Price: 
                     {price}
                   </div>
                 </Main>
@@ -1703,6 +1718,7 @@ mod tests {
                 <Main>
                   <script>
                     const x = "{not_an_expression}";
+    
                     const obj = {key: "value"};
                   </script>
                 </Main>
@@ -1725,6 +1741,7 @@ mod tests {
                 <Main>
                   <style>
                     body { color: red; }
+    
                     .class { font-size: 12px; }
                   </style>
                 </Main>
@@ -1763,7 +1780,7 @@ mod tests {
             expect![[r#"
                 <Main>
                   <p>
-                    Status:
+                    Status: 
                     {user.profile.status == "active"}
                   </p>
                 </Main>
@@ -2197,7 +2214,7 @@ mod tests {
                 <Main {x: Option[String]}>
                   <match {x}>
                     <case {Some(y)}>
-                      found
+                      found 
                       {y}
                     </case>
                     <case {None}>
@@ -2271,11 +2288,11 @@ mod tests {
                 <Main {r: Result}>
                   <match {r}>
                     <case {Result::Ok(value: v)}>
-                      Success:
+                      Success: 
                       {v}
                     </case>
                     <case {Result::Err(message: m)}>
-                      Error:
+                      Error: 
                       {m}
                     </case>
                   </match>
@@ -2435,7 +2452,7 @@ mod tests {
                 <Main>
                   <let {name: String = "World"}>
                     <div>
-                      Hello
+                      Hello 
                       {name}
                     </div>
                   </let>
@@ -2511,7 +2528,7 @@ mod tests {
                     <let {b: Int = 2}>
                       <div>
                         {a}
-                        +
+                         + 
                         {b}
                       </div>
                     </let>
@@ -2593,6 +2610,7 @@ mod tests {
                   <let {first: String = "Hello", second: String = "World"}>
                     <div>
                       {first}
+       
                       {second}
                     </div>
                   </let>
@@ -2616,9 +2634,9 @@ mod tests {
                   <let {a: Int = 1, b: Int = 2, c: Int = 3}>
                     <div>
                       {a}
-                      +
+                       + 
                       {b}
-                      +
+                       + 
                       {c}
                     </div>
                   </let>
@@ -2641,7 +2659,7 @@ mod tests {
                 <Main>
                   <let {name: String = "World"}>
                     <div>
-                      Hello
+                      Hello 
                       {name}
                     </div>
                   </let>
@@ -2668,6 +2686,7 @@ mod tests {
                   <let {a: String = "Hello"}>
                     {a}
                   </let>
+  
                   <let {b: String = "World"}>
                     {b}
                   </let>
@@ -2692,9 +2711,10 @@ mod tests {
                   <div>
                     First
                   </div>
+  
                   <let {name: String = "World"}>
                     <div>
-                      Hello
+                      Hello 
                       {name}
                     </div>
                   </let>
@@ -2718,10 +2738,11 @@ mod tests {
                 <Main>
                   <let {name: String = "World"}>
                     <div>
-                      Hello
+                      Hello 
                       {name}
                     </div>
                   </let>
+  
                   <div>
                     Last
                   </div>

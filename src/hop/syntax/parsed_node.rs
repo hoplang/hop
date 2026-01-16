@@ -155,6 +155,11 @@ pub enum ParsedNode {
         children: Vec<ParsedNode>,
         range: DocumentRange,
     },
+
+    /// A LineBreak node represents a line break in formatted output.
+    /// It is inserted by whitespace removal to indicate where line breaks should occur.
+    /// LineBreak nodes are only created during formatting, never by the parser.
+    LineBreak { range: DocumentRange },
 }
 
 impl ParsedNode {
@@ -171,6 +176,7 @@ impl ParsedNode {
             ParsedNode::Doctype { .. } => &[],
             ParsedNode::Text { .. } => &[],
             ParsedNode::TextExpression { .. } => &[],
+            ParsedNode::LineBreak { .. } => &[],
         }
     }
 
@@ -446,6 +452,11 @@ impl ParsedNode {
                         .append(BoxDoc::text("</placeholder>"))
                 }
             }
+            ParsedNode::LineBreak { .. } => {
+                // LineBreak is a formatting marker, rendered as nothing in to_doc
+                // (the formatter handles it specially)
+                BoxDoc::nil()
+            }
         }
     }
 }
@@ -462,7 +473,8 @@ impl Ranged for ParsedNode {
             | ParsedNode::Match { range, .. }
             | ParsedNode::Html { range, .. }
             | ParsedNode::Placeholder { range, .. }
-            | ParsedNode::Doctype { range, .. } => range,
+            | ParsedNode::Doctype { range, .. }
+            | ParsedNode::LineBreak { range } => range,
         }
     }
 }

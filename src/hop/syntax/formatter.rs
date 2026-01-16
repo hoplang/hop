@@ -573,6 +573,10 @@ fn format_node<'a>(
                     .append(arena.text("</placeholder>"))
             }
         }
+        ParsedNode::LineBreak { .. } => {
+            // LineBreaks are handled by format_children, shouldn't appear here directly
+            arena.nil()
+        }
     }
 }
 
@@ -582,17 +586,40 @@ fn format_children<'a>(
     comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     if children.is_empty() {
-        arena.nil()
-    } else {
-        let mut doc = arena.nil();
-        for (i, child) in children.iter().enumerate() {
-            if i > 0 {
-                doc = doc.append(arena.line());
-            }
+        return arena.nil();
+    }
+
+    // Group children by LineBreak nodes.
+    // Each group is a sequence of nodes that should stay on the same line.
+    let mut lines: Vec<Vec<&ParsedNode>> = vec![vec![]];
+    for child in children {
+        if matches!(child, ParsedNode::LineBreak { .. }) {
+            lines.push(vec![]);
+        } else {
+            lines.last_mut().unwrap().push(child);
+        }
+    }
+
+    // Filter out empty lines
+    let lines: Vec<_> = lines.into_iter().filter(|l| !l.is_empty()).collect();
+
+    if lines.is_empty() {
+        return arena.nil();
+    }
+
+    // Format each line
+    let mut doc = arena.nil();
+    for (i, line) in lines.iter().enumerate() {
+        if i > 0 {
+            doc = doc.append(arena.line());
+        }
+        // Format all children on this line together (no separators - spaces are in Text nodes)
+        for child in line {
             doc = doc.append(format_node(arena, child, comments));
         }
-        arena.line().append(doc).nest(2).append(arena.line())
     }
+
+    arena.line().append(doc).nest(2).append(arena.line())
 }
 
 fn format_match_case<'a>(
@@ -1556,9 +1583,7 @@ mod tests {
             "#},
             expect![[r#"
                 <Greeting {name: String = "World"}>
-                  Hello,
-                  {name}
-                  !
+                  Hello, {name}!
                 </Greeting>
             "#]],
         );
@@ -2076,9 +2101,7 @@ mod tests {
             expect![[r#"
                 <Main>
                   <let {name: String = "World"}>
-                    Hello,
-                    {name}
-                    !
+                    Hello, {name}!
                   </let>
                 </Main>
             "#]],
@@ -2140,8 +2163,7 @@ mod tests {
             expect![[r#"
                 <Main>
                   <let {first: String = "Hello", second: String = "World"}>
-                    {first}
-                    {second}
+                    {first} {second}
                   </let>
                 </Main>
             "#]],
@@ -2162,11 +2184,7 @@ mod tests {
                 <Main>
                   <let {a: Int = 1, b: Int = 2, c: Int = 3}>
                     <div>
-                      {a}
-                      +
-                      {b}
-                      +
-                      {c}
+                      {a} + {b} + {c}
                     </div>
                   </let>
                 </Main>
@@ -2239,8 +2257,7 @@ mod tests {
                 <Main>
                   <let {a: String = "outer"}>
                     <let {b: String = "inner"}>
-                      {a}
-                      {b}
+                      {a} {b}
                     </let>
                   </let>
                 </Main>
@@ -2365,8 +2382,7 @@ mod tests {
                     last_name: String = "World",
                     // c
                   }>
-                    {first_name}
-                    {last_name}
+                    {first_name} {last_name}
                   </let>
                 </Main>
             "#]],
