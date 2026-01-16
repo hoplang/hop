@@ -615,12 +615,25 @@ fn parse_field_access(
                             range: field_range.clone(),
                         }
                     })?;
-                let new_range = expr.range().clone().to(field_range);
-                expr = ParsedExpr::FieldAccess {
-                    record: Box::new(expr),
-                    field: field_name,
-                    range: new_range,
-                };
+
+                // Check for method call: identifier()
+                if let Some(left_paren) = advance_if(iter, comments, Token::LeftParen) {
+                    let right_paren =
+                        expect_opposite(iter, comments, &Token::LeftParen, &left_paren)?;
+                    let new_range = expr.range().clone().to(right_paren);
+                    expr = ParsedExpr::MethodCall {
+                        receiver: Box::new(expr),
+                        method: field_name,
+                        range: new_range,
+                    };
+                } else {
+                    let new_range = expr.range().clone().to(field_range);
+                    expr = ParsedExpr::FieldAccess {
+                        record: Box::new(expr),
+                        field: field_name,
+                        range: new_range,
+                    };
+                }
             }
             Some((_, token_range)) => {
                 return Err(ParseError::ExpectedIdentifierAfterDot { range: token_range });
@@ -1879,6 +1892,102 @@ mod tests {
             "app.user.profile.settings.theme",
             expect![[r#"
                 app.user.profile.settings.theme
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // METHOD CALLS                                                          //
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_simple_method_call() {
+        check_parse_expr(
+            "x.foo()",
+            expect![[r#"
+                x.foo()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_chained_method_calls() {
+        check_parse_expr(
+            "x.foo().bar()",
+            expect![[r#"
+                x.foo().bar()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_triple_chained_method_calls() {
+        check_parse_expr(
+            "x.foo().bar().baz()",
+            expect![[r#"
+                x.foo().bar().baz()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_field_access_then_method_call() {
+        check_parse_expr(
+            "x.field.method()",
+            expect![[r#"
+                x.field.method()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_method_call_then_field_access() {
+        check_parse_expr(
+            "x.method().field",
+            expect![[r#"
+                x.method().field
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_mixed_field_and_method_chain() {
+        check_parse_expr(
+            "x.a.b().c.d()",
+            expect![[r#"
+                x.a.b().c.d()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_method_call_in_equality() {
+        check_parse_expr(
+            "x.foo() == y.bar()",
+            expect![[r#"
+                x.foo() == y.bar()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_method_call_in_logical_expression() {
+        check_parse_expr(
+            "x.valid() && y.ready()",
+            expect![[r#"
+                x.valid() && y.ready()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_method_call_with_missing_closing_paren() {
+        check_parse_expr(
+            "x.foo(",
+            expect![[r#"
+                error: Unmatched '('
+                x.foo(
+                     ^
             "#]],
         );
     }

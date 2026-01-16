@@ -652,6 +652,12 @@ fn format_expr<'a>(
         } => format_expr(arena, object, comments)
             .append(arena.text("."))
             .append(arena.text(field.as_str())),
+        ParsedExpr::MethodCall {
+            receiver, method, ..
+        } => format_expr(arena, receiver, comments)
+            .append(arena.text("."))
+            .append(arena.text(method.as_str()))
+            .append(arena.text("()")),
         ParsedExpr::StringLiteral { value, .. } => arena
             .text("\"")
             .append(arena.text(value.as_str()))
@@ -2792,6 +2798,78 @@ mod tests {
                   }>
                     Click me
                   </Button>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn simple_method_call_to_doc() {
+        check(
+            indoc! {"
+                <Main {x: String}>
+                  <div>{x.foo()}</div>
+                </Main>
+            "},
+            expect![[r#"
+                <Main {x: String}>
+                  <div>
+                    {x.foo()}
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn chained_method_calls_to_doc() {
+        check(
+            indoc! {"
+                <Main {x: String}>
+                  <div>{x.foo().bar().baz()}</div>
+                </Main>
+            "},
+            expect![[r#"
+                <Main {x: String}>
+                  <div>
+                    {x.foo().bar().baz()}
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn mixed_field_access_and_method_call_to_doc() {
+        check(
+            indoc! {"
+                <Main {x: String}>
+                  <div>{x.field.method()}</div>
+                </Main>
+            "},
+            expect![[r#"
+                <Main {x: String}>
+                  <div>
+                    {x.field.method()}
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn method_call_then_field_access_to_doc() {
+        check(
+            indoc! {"
+                <Main {x: String}>
+                  <div>{x.method().field}</div>
+                </Main>
+            "},
+            expect![[r#"
+                <Main {x: String}>
+                  <div>
+                    {x.method().field}
+                  </div>
                 </Main>
             "#]],
         );

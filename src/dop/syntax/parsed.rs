@@ -256,6 +256,13 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
+    /// A method call expression, e.g. foo.bar()
+    MethodCall {
+        receiver: Box<Self>,
+        method: FieldName,
+        range: DocumentRange,
+    },
+
     /// A string literal expression, e.g. "foo bar"
     StringLiteral {
         value: CheapString,
@@ -368,6 +375,7 @@ impl ParsedExpr {
         match self {
             ParsedExpr::Var { range, .. }
             | ParsedExpr::FieldAccess { range, .. }
+            | ParsedExpr::MethodCall { range, .. }
             | ParsedExpr::StringLiteral { range, .. }
             | ParsedExpr::BooleanLiteral { range, .. }
             | ParsedExpr::IntLiteral { range, .. }
@@ -389,6 +397,7 @@ impl ParsedExpr {
             self,
             ParsedExpr::Var { .. }
                 | ParsedExpr::FieldAccess { .. }
+                | ParsedExpr::MethodCall { .. }
                 | ParsedExpr::StringLiteral { .. }
                 | ParsedExpr::BooleanLiteral { .. }
                 | ParsedExpr::IntLiteral { .. }
@@ -430,6 +439,13 @@ impl ParsedExpr {
                 .to_doc()
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(field.as_str())),
+            ParsedExpr::MethodCall {
+                receiver, method, ..
+            } => receiver
+                .to_doc()
+                .append(BoxDoc::text("."))
+                .append(BoxDoc::text(method.as_str()))
+                .append(BoxDoc::text("()")),
             ParsedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
             ParsedExpr::BooleanLiteral { value, .. } => BoxDoc::text(value.to_string()),
             ParsedExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),

@@ -876,6 +876,9 @@ pub fn typecheck_expr(
             "classes" => expand_classes_macro(args, range, var_env, type_env, annotations),
             _ => unreachable!("Unknown macro '{}' should be caught at parse time", name),
         },
+        ParsedExpr::MethodCall { .. } => {
+            todo!("Method call type checking is not yet implemented")
+        }
     }
 }
 
