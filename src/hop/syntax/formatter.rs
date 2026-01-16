@@ -3051,4 +3051,20 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn text_with_method_calls_and_parens_to_doc() {
+        check(
+            indoc! {"
+                <Main {rating: Float, total_reviews: Int}>
+                  {rating.to_string()} ({total_reviews.to_string()} reviews)
+                </Main>
+            "},
+            expect![[r#"
+                <Main {rating: Float, total_reviews: Int}>
+                  {rating.to_string()} ({total_reviews.to_string()} reviews)
+                </Main>
+            "#]],
+        );
+    }
 }
