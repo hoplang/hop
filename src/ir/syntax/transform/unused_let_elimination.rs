@@ -2,7 +2,7 @@ use super::Pass;
 use crate::dop::patterns::Match;
 use crate::ir::{
     IrExpr,
-    ast::{IrComponentDeclaration, IrStatement, StatementId},
+    ast::{IrComponentDeclaration, IrForSource, IrStatement, StatementId},
 };
 use std::collections::HashSet;
 
@@ -43,7 +43,7 @@ impl UnusedLetEliminationPass {
 
                 // Process only the primary expression of this statement (not nested ones)
                 // This avoids O(n²) behavior from traverse_exprs
-                if let Some(primary_expr) = s.expr() {
+                let mut check_expr = |primary_expr: &IrExpr| {
                     primary_expr.traverse(&mut |expr| {
                         // Check for direct variable references
                         if let IrExpr::Var { value: name, .. } = expr {
@@ -66,6 +66,16 @@ impl UnusedLetEliminationPass {
                             }
                         }
                     });
+                };
+
+                if let Some(primary_expr) = s.expr() {
+                    check_expr(primary_expr);
+                }
+
+                // Also check for loop range expressions (not covered by s.expr())
+                if let IrStatement::For { source: IrForSource::RangeInclusive { start, end }, .. } = s {
+                    check_expr(start);
+                    check_expr(end);
                 }
             });
         }
@@ -381,6 +391,102 @@ mod tests {
                   let items = ["a", "b"] in {
                     for item in items {
                       write_expr(item)
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_preserve_let_statement_when_variable_is_used_in_for_range_end() {
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("count", t.int(3), |t| {
+                    t.for_range("i", t.int(1), t.var("count"), |t| {
+                        t.write_expr(t.var("i"), false);
+                    });
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let count = 3 in {
+                    for i in 1..=count {
+                      write_expr(i)
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let count = 3 in {
+                    for i in 1..=count {
+                      write_expr(i)
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_preserve_let_statement_when_variable_is_used_in_for_range_start() {
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("start", t.int(1), |t| {
+                    t.for_range("i", t.var("start"), t.int(5), |t| {
+                        t.write_expr(t.var("i"), false);
+                    });
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let start = 1 in {
+                    for i in start..=5 {
+                      write_expr(i)
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let start = 1 in {
+                    for i in start..=5 {
+                      write_expr(i)
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_preserve_let_statement_when_variable_is_used_in_discarded_for_range() {
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("count", t.int(3), |t| {
+                    t.for_range_discarded(t.int(1), t.var("count"), |t| {
+                        t.write("x");
+                    });
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let count = 3 in {
+                    for _ in 1..=count {
+                      write("x")
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let count = 3 in {
+                    for _ in 1..=count {
+                      write("x")
                     }
                   }
                 }

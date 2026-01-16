@@ -77,9 +77,10 @@ pub enum IrStatement {
     },
 
     /// Loop over an array or range.
+    /// When var is None, the loop variable is discarded (underscore syntax).
     For {
         id: StatementId,
-        var: VarName,
+        var: Option<VarName>,
         source: IrForSource,
         body: Vec<IrStatement>,
     },
@@ -382,14 +383,16 @@ impl IrStatement {
                 }
             }
             IrStatement::For { var, body, .. } => {
-                let prev_value = scope.insert(var.to_string(), self);
+                let prev_value = var.as_ref().map(|v| scope.insert(v.to_string(), self));
                 for stmt in body {
                     stmt.traverse_with_scope_impl(scope, f);
                 }
-                if let Some(prev) = prev_value {
-                    scope.insert(var.to_string(), prev);
-                } else {
-                    scope.remove(&var.to_string());
+                if let Some(var) = var {
+                    if let Some(Some(prev)) = prev_value {
+                        scope.insert(var.to_string(), prev);
+                    } else {
+                        scope.remove(&var.to_string());
+                    }
                 }
             }
             IrStatement::Let { var, body, .. } => {
@@ -562,8 +565,12 @@ impl IrStatement {
                         .append(BoxDoc::text("..="))
                         .append(end.to_doc()),
                 };
+                let var_doc = match var {
+                    Some(name) => BoxDoc::text(name.as_str()),
+                    None => BoxDoc::text("_"),
+                };
                 BoxDoc::text("for ")
-                    .append(BoxDoc::text(var.as_str()))
+                    .append(var_doc)
                     .append(BoxDoc::text(" in "))
                     .append(source_doc)
                     .append(BoxDoc::text(" {"))

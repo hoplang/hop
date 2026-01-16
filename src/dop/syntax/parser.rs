@@ -248,8 +248,17 @@ pub fn parse_loop_header(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     range: &DocumentRange,
-) -> Result<(VarName, DocumentRange, ParsedLoopSource), ParseError> {
-    let (var_name, var_name_range) = expect_variable_name(iter, comments, range)?;
+) -> Result<(Option<VarName>, Option<DocumentRange>, ParsedLoopSource), ParseError> {
+    // Check for underscore (discarded binding) or variable name
+    let (var_name, var_name_range) = if let Some(underscore_range) =
+        advance_if(iter, comments, Token::Underscore)
+    {
+        // Underscore means "don't bind the loop variable"
+        (None, Some(underscore_range))
+    } else {
+        let (name, name_range) = expect_variable_name(iter, comments, range)?;
+        (Some(name), Some(name_range))
+    };
     expect_token(iter, comments, range, &Token::In)?;
     // Parse the start expression (could be array or start of range)
     let start_expr = parse_logical(iter, comments, range)?;
@@ -3557,7 +3566,11 @@ mod tests {
                         format!("{}..={}", start, end)
                     }
                 };
-                format!("{} in {}\n", var_name, source_str)
+                let var_str = match var_name {
+                    Some(name) => name.to_string(),
+                    None => "_".to_string(),
+                };
+                format!("{} in {}\n", var_str, source_str)
             }
             Err(err) => annotate_error(err),
         };
@@ -3600,6 +3613,36 @@ mod tests {
             "i in 1..=count + 1",
             expect![[r#"
                 i in 1..=count + 1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_for_loop_with_underscore_array() {
+        check_parse_loop_header(
+            "_ in items",
+            expect![[r#"
+                _ in items
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_for_loop_with_underscore_range() {
+        check_parse_loop_header(
+            "_ in 0..=5",
+            expect![[r#"
+                _ in 0..=5
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_for_loop_with_underscore_variable_range() {
+        check_parse_loop_header(
+            "_ in start..=end",
+            expect![[r#"
+                _ in start..=end
             "#]],
         );
     }

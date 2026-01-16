@@ -100,9 +100,10 @@ pub enum ParsedNode {
 
     /// A For node contains content that is evaluated once for each item of
     /// an array or each value in a range.
+    /// When var_name is None, the loop variable is discarded (underscore syntax).
     For {
-        var_name: VarName,
-        var_name_range: DocumentRange,
+        var_name: Option<VarName>,
+        var_name_range: Option<DocumentRange>,
         source: ParsedLoopSource,
         children: Vec<ParsedNode>,
         range: DocumentRange,
@@ -303,8 +304,12 @@ impl ParsedNode {
                         .append(BoxDoc::text("..="))
                         .append(end.to_doc()),
                 };
+                let var_doc = match var_name {
+                    Some(name) => BoxDoc::text(name.as_str()),
+                    None => BoxDoc::text("_"),
+                };
                 BoxDoc::text("<for {")
-                    .append(BoxDoc::text(var_name.as_str()))
+                    .append(var_doc)
                     .append(BoxDoc::text(" in "))
                     .append(source_doc)
                     .append(BoxDoc::text("}>"))

@@ -1090,7 +1090,7 @@ impl IrBuilder {
 
         self.statements.push(IrStatement::For {
             id: self.next_node_id(),
-            var: VarName::try_from(var.to_string()).unwrap(),
+            var: Some(VarName::try_from(var.to_string()).unwrap()),
             source: IrForSource::Array(array),
             body: inner_builder.statements,
         });
@@ -1113,7 +1113,39 @@ impl IrBuilder {
 
         self.statements.push(IrStatement::For {
             id: self.next_node_id(),
-            var: VarName::try_from(var.to_string()).unwrap(),
+            var: Some(VarName::try_from(var.to_string()).unwrap()),
+            source: IrForSource::RangeInclusive { start, end },
+            body: inner_builder.statements,
+        });
+    }
+
+    /// Create a for loop over an array without binding the loop variable (underscore)
+    pub fn for_array_discarded<F>(&mut self, array: IrExpr, body_fn: F)
+    where
+        F: FnOnce(&mut Self),
+    {
+        let mut inner_builder = self.new_scoped();
+        body_fn(&mut inner_builder);
+
+        self.statements.push(IrStatement::For {
+            id: self.next_node_id(),
+            var: None,
+            source: IrForSource::Array(array),
+            body: inner_builder.statements,
+        });
+    }
+
+    /// Create a for loop over an inclusive range without binding the loop variable (underscore)
+    pub fn for_range_discarded<F>(&mut self, start: IrExpr, end: IrExpr, body_fn: F)
+    where
+        F: FnOnce(&mut Self),
+    {
+        let mut inner_builder = self.new_scoped();
+        body_fn(&mut inner_builder);
+
+        self.statements.push(IrStatement::For {
+            id: self.next_node_id(),
+            var: None,
             source: IrForSource::RangeInclusive { start, end },
             body: inner_builder.statements,
         });

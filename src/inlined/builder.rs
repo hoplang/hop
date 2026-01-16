@@ -146,7 +146,7 @@ impl InlinedBuilder {
         self.var_stack.borrow_mut().pop();
 
         self.children.push(InlinedNode::For {
-            var_name: VarName::try_from(var.to_string()).unwrap(),
+            var_name: Some(VarName::try_from(var.to_string()).unwrap()),
             source: TypedLoopSource::Array(array),
             children,
         });

@@ -441,23 +441,30 @@ fn typecheck_node(
                 }
             };
 
-            // Push the loop variable into scope
-            let pushed = match var_env.push(var_name.to_string(), element_type.clone()) {
-                Ok(_) => {
-                    annotations.push(TypeAnnotation {
-                        range: var_name_range.clone(),
-                        typ: element_type.clone(),
-                        name: var_name.to_string(),
-                    });
-                    true
+            // Push the loop variable into scope (only if not discarded with _)
+            let pushed = if let (Some(var_name), Some(var_name_range)) =
+                (var_name, var_name_range)
+            {
+                match var_env.push(var_name.to_string(), element_type.clone()) {
+                    Ok(_) => {
+                        annotations.push(TypeAnnotation {
+                            range: var_name_range.clone(),
+                            typ: element_type.clone(),
+                            name: var_name.to_string(),
+                        });
+                        true
+                    }
+                    Err(_) => {
+                        errors.push(TypeError::VariableIsAlreadyDefined {
+                            var: var_name.as_str().to_string(),
+                            range: var_name_range.clone(),
+                        });
+                        false
+                    }
                 }
-                Err(_) => {
-                    errors.push(TypeError::VariableIsAlreadyDefined {
-                        var: var_name.as_str().to_string(),
-                        range: var_name_range.clone(),
-                    });
-                    false
-                }
+            } else {
+                // Underscore binding - no variable to push
+                false
             };
 
             let typed_children = children
@@ -468,9 +475,9 @@ fn typecheck_node(
             if pushed {
                 let (_, _, accessed) = var_env.pop();
                 if !accessed {
-                    errors.push(TypeError::UnusedVariable {
-                        var_name: var_name_range.clone(),
-                    })
+                    if let Some(var_name_range) = var_name_range {
+                        errors.push(TypeError::UnusedVariable { var_name: var_name_range.clone() })
+                    }
                 }
             }
 

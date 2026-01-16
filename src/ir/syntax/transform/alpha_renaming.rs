@@ -87,7 +87,7 @@ impl AlphaRenamingPass {
                     },
                 };
                 self.push_scope();
-                let renamed_var = self.bind_var(&var);
+                let renamed_var = var.as_ref().map(|v| self.bind_var(v));
                 let renamed_body = self.rename_statements(body);
                 self.pop_scope();
 

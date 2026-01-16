@@ -3278,4 +3278,140 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn for_loop_with_underscore_range() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.for_range_discarded(t.int(0), t.int(2), |t| {
+                        t.write("x");
+                    });
+                })
+                .build(),
+            "xxx",
+            expect![[r#"
+                -- input --
+                Test() {
+                  for _ in 0..=2 {
+                    write("x")
+                  }
+                }
+                -- expected output --
+                xxx
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn for_loop_with_underscore_array() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.let_stmt("items", t.array(vec![t.str("a"), t.str("b"), t.str("c")]), |t| {
+                        t.for_array_discarded(t.var("items"), |t| {
+                            t.write("*");
+                        });
+                    });
+                })
+                .build(),
+            "***",
+            expect![[r#"
+                -- input --
+                Test() {
+                  let items = ["a", "b", "c"] in {
+                    for _ in items {
+                      write("*")
+                    }
+                  }
+                }
+                -- expected output --
+                ***
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn for_loop_with_underscore_nested() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.for_range_discarded(t.int(0), t.int(1), |t| {
+                        t.for_range_discarded(t.int(0), t.int(2), |t| {
+                            t.write(".");
+                        });
+                    });
+                })
+                .build(),
+            "......",
+            expect![[r#"
+                -- input --
+                Test() {
+                  for _ in 0..=1 {
+                    for _ in 0..=2 {
+                      write(".")
+                    }
+                  }
+                }
+                -- expected output --
+                ......
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn for_loop_with_underscore_mixed_with_named() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.for_range("i", t.int(1), t.int(2), |t| {
+                        t.for_range_discarded(t.int(0), t.int(1), |t| {
+                            t.write_expr(t.var("i"), false);
+                        });
+                    });
+                })
+                .build(),
+            "1122",
+            expect![[r#"
+                -- input --
+                Test() {
+                  for i in 1..=2 {
+                    for _ in 0..=1 {
+                      write_expr(i)
+                    }
+                  }
+                }
+                -- expected output --
+                1122
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
 }

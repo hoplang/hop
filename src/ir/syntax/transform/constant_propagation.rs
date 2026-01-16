@@ -158,7 +158,7 @@ impl Pass for ConstantPropagationPass {
                     }
                     IrStatement::For { var, source, .. } => {
                         // Only track array bindings, not range bindings
-                        if let IrForSource::Array(array) = source {
+                        if let (Some(var), IrForSource::Array(array)) = (var, source) {
                             var_bindings.insert(var.to_string(), array.id());
                         }
                     }

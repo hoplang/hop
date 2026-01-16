@@ -70,7 +70,7 @@ pub enum TypedNode {
     },
 
     For {
-        var_name: VarName,
+        var_name: Option<VarName>,
         source: TypedLoopSource,
         children: Vec<TypedNode>,
     },
@@ -181,8 +181,12 @@ impl TypedNode {
                         .append(BoxDoc::text("..="))
                         .append(end.to_doc()),
                 };
+                let var_doc = match var_name {
+                    Some(name) => BoxDoc::text(name.as_str()),
+                    None => BoxDoc::text("_"),
+                };
                 let tag = BoxDoc::text("<for {")
-                    .append(BoxDoc::text(var_name.as_str()))
+                    .append(var_doc)
                     .append(BoxDoc::text(" in "))
                     .append(source_doc)
                     .append(BoxDoc::text("}>"));

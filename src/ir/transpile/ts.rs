@@ -449,14 +449,15 @@ impl StatementTranspiler for TsTranspiler {
 
     fn transpile_for<'a>(
         &self,
-        var: &'a str,
+        var: Option<&'a str>,
         source: &'a IrForSource,
         body: &'a [IrStatement],
     ) -> BoxDoc<'a> {
+        let var_name = var.unwrap_or("_");
         match source {
             IrForSource::Array(array) => BoxDoc::nil()
                 .append(BoxDoc::text("for (const "))
-                .append(BoxDoc::text(var))
+                .append(BoxDoc::text(var_name))
                 .append(BoxDoc::text(" of "))
                 .append(self.transpile_expr(array))
                 .append(BoxDoc::text(") {"))
@@ -470,15 +471,15 @@ impl StatementTranspiler for TsTranspiler {
                 .append(BoxDoc::text("}")),
             IrForSource::RangeInclusive { start, end } => BoxDoc::nil()
                 .append(BoxDoc::text("for (let "))
-                .append(BoxDoc::text(var))
+                .append(BoxDoc::text(var_name))
                 .append(BoxDoc::text(" = "))
                 .append(self.transpile_expr(start))
                 .append(BoxDoc::text("; "))
-                .append(BoxDoc::text(var))
+                .append(BoxDoc::text(var_name))
                 .append(BoxDoc::text(" <= "))
                 .append(self.transpile_expr(end))
                 .append(BoxDoc::text("; "))
-                .append(BoxDoc::text(var))
+                .append(BoxDoc::text(var_name))
                 .append(BoxDoc::text("++) {"))
                 .append(
                     BoxDoc::nil()

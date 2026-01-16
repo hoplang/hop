@@ -497,13 +497,14 @@ impl StatementTranspiler for PythonTranspiler {
 
     fn transpile_for<'a>(
         &self,
-        var: &'a str,
+        var: Option<&'a str>,
         source: &'a IrForSource,
         body: &'a [IrStatement],
     ) -> BoxDoc<'a> {
+        let var_name = var.unwrap_or("_");
         match source {
             IrForSource::Array(array) => BoxDoc::text("for ")
-                .append(BoxDoc::text(var))
+                .append(BoxDoc::text(var_name))
                 .append(BoxDoc::text(" in "))
                 .append(self.transpile_expr(array))
                 .append(BoxDoc::text(":"))
@@ -513,7 +514,7 @@ impl StatementTranspiler for PythonTranspiler {
                         .nest(4),
                 ),
             IrForSource::RangeInclusive { start, end } => BoxDoc::text("for ")
-                .append(BoxDoc::text(var))
+                .append(BoxDoc::text(var_name))
                 .append(BoxDoc::text(" in range("))
                 .append(self.transpile_expr(start))
                 .append(BoxDoc::text(", "))

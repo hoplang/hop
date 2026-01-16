@@ -97,9 +97,13 @@ fn eval_statement(
                     let items = array_value.as_array().cloned().unwrap_or_default();
 
                     for item in items {
-                        let _ = env.push(var.to_string(), item);
+                        if let Some(var) = var {
+                            let _ = env.push(var.to_string(), item);
+                        }
                         eval_statements(body, env, output)?;
-                        let _ = env.pop();
+                        if var.is_some() {
+                            let _ = env.pop();
+                        }
                     }
                 }
                 IrForSource::RangeInclusive { start, end } => {
@@ -109,9 +113,13 @@ fn eval_statement(
                     let end_int = end_value.as_i64().unwrap_or(0);
 
                     for i in start_int..=end_int {
-                        let _ = env.push(var.to_string(), Value::Number(i.into()));
+                        if let Some(var) = var {
+                            let _ = env.push(var.to_string(), Value::Number(i.into()));
+                        }
                         eval_statements(body, env, output)?;
-                        let _ = env.pop();
+                        if var.is_some() {
+                            let _ = env.pop();
+                        }
                     }
                 }
             }

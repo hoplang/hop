@@ -524,12 +524,37 @@ impl StatementTranspiler for GoTranspiler {
 
     fn transpile_for<'a>(
         &self,
-        var: &'a str,
+        var: Option<&'a str>,
         source: &'a IrForSource,
         body: &'a [IrStatement],
     ) -> BoxDoc<'a> {
-        match source {
-            IrForSource::Array(array) => BoxDoc::text("for _, ")
+        match (var, source) {
+            // Underscore binding for arrays: use `for range items` (Go 1.4+)
+            (None, IrForSource::Array(array)) => BoxDoc::text("for range ")
+                .append(self.transpile_expr(array))
+                .append(BoxDoc::text(" {"))
+                .append(
+                    BoxDoc::line()
+                        .append(self.transpile_statements(body))
+                        .nest(1),
+                )
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("}")),
+            // Underscore binding for ranges: use `for range end - start + 1` (Go 1.22+)
+            (None, IrForSource::RangeInclusive { start, end }) => BoxDoc::text("for range ")
+                .append(self.transpile_expr(end))
+                .append(BoxDoc::text(" - "))
+                .append(self.transpile_expr(start))
+                .append(BoxDoc::text(" + 1 {"))
+                .append(
+                    BoxDoc::line()
+                        .append(self.transpile_statements(body))
+                        .nest(1),
+                )
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("}")),
+            // Named binding for arrays
+            (Some(var), IrForSource::Array(array)) => BoxDoc::text("for _, ")
                 .append(BoxDoc::text(var))
                 .append(BoxDoc::text(" := range "))
                 .append(self.transpile_expr(array))
@@ -541,7 +566,8 @@ impl StatementTranspiler for GoTranspiler {
                 )
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("}")),
-            IrForSource::RangeInclusive { start, end } => BoxDoc::text("for ")
+            // Named binding for ranges
+            (Some(var), IrForSource::RangeInclusive { start, end }) => BoxDoc::text("for ")
                 .append(BoxDoc::text(var))
                 .append(BoxDoc::text(" := "))
                 .append(self.transpile_expr(start))

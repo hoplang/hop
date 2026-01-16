@@ -37,7 +37,7 @@ pub trait StatementTranspiler {
     ) -> BoxDoc<'a>;
     fn transpile_for<'a>(
         &self,
-        var: &'a str,
+        var: Option<&'a str>,
         source: &'a IrForSource,
         body: &'a [IrStatement],
     ) -> BoxDoc<'a>;
@@ -60,7 +60,7 @@ pub trait StatementTranspiler {
             } => self.transpile_if(condition, body, else_body.as_deref()),
             IrStatement::For {
                 var, source, body, ..
-            } => self.transpile_for(var.as_str(), source, body),
+            } => self.transpile_for(var.as_ref().map(|v| v.as_str()), source, body),
             IrStatement::Let {
                 var, value, body, ..
             } => self.transpile_let_statement(var.as_str(), value, body),

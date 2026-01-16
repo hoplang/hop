@@ -432,9 +432,13 @@ fn format_node<'a>(
                     .append(arena.text("..="))
                     .append(format_expr(arena, end, comments)),
             };
+            let var_doc = match var_name {
+                Some(name) => arena.text(name.as_str()),
+                None => arena.text("_"),
+            };
             arena
                 .text("<for {")
-                .append(arena.text(var_name.as_str()))
+                .append(var_doc)
                 .append(arena.text(" in "))
                 .append(source_doc)
                 .append(arena.text("}>"))
