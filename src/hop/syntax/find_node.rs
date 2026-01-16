@@ -44,6 +44,19 @@ fn find_node_at_position_in_node(
     if !node.range().contains_position(position) {
         return None;
     }
+
+    // Handle Match nodes specially since their children are inside cases
+    if let ParsedNode::Match { cases, .. } = node {
+        for case in cases {
+            for child in &case.children {
+                if let Some(found) = find_node_at_position_in_node(child, position) {
+                    return Some(found);
+                }
+            }
+        }
+        return Some(node);
+    }
+
     for child in node.children() {
         if let Some(found) = find_node_at_position_in_node(child, position) {
             return Some(found);
@@ -467,6 +480,28 @@ mod tests {
                 range
                 2 |     <div>First</div> <div>Second</div>
                   |                      ^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_element_inside_match_case() {
+        check_find_node_at_position(
+            indoc! {"
+                <Main {x: Option[String]}>
+                    <match {x}>
+                        <case {Some(s)}>
+                            <div>found</div>
+                             ^
+                        </case>
+                        <case {None}></case>
+                    </match>
+                </Main>
+            "},
+            expect![[r#"
+                range
+                4 |             <div>found</div>
+                  |             ^^^^^^^^^^^^^^^^
             "#]],
         );
     }

@@ -975,6 +975,57 @@ mod tests {
         );
     }
 
+    #[test]
+    fn should_find_definition_from_component_reference_in_same_module_simple() {
+        check_definition_location(
+            indoc! {r#"
+                -- main.hop --
+                <HelloWorld>
+                  <h1>Hello World</h1>
+                </HelloWorld>
+
+                <Main>
+                  <HelloWorld />
+                   ^
+                </Main>
+            "#},
+            expect![[r#"
+                Definition
+                  --> main (line 1, col 2)
+                1 | <HelloWorld>
+                  |  ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_find_definition_from_component_reference_inside_match() {
+        check_definition_location(
+            indoc! {r#"
+                -- main.hop --
+                <HelloWorld>
+                  <h1>Hello World</h1>
+                </HelloWorld>
+
+                <Main {x: Option[String]}>
+                  <match {x}>
+                    <case {Some(s)}>
+                      <HelloWorld />
+                       ^
+                    </case>
+                    <case {None}></case>
+                  </match>
+                </Main>
+            "#},
+            expect![[r#"
+                Definition
+                  --> main (line 1, col 2)
+                 1 | <HelloWorld>
+                   |  ^^^^^^^^^^
+            "#]],
+        );
+    }
+
     ///////////////////////////////////////////////////////////////////////////
     // RENAME LOCATIONS                                                      //
     ///////////////////////////////////////////////////////////////////////////
