@@ -579,6 +579,21 @@ fn format_node<'a>(
     }
 }
 
+/// Checks if a node is a block element (should be on its own line).
+fn is_block_node(node: &ParsedNode) -> bool {
+    matches!(
+        node,
+        ParsedNode::Html { .. }
+            | ParsedNode::ComponentReference { .. }
+            | ParsedNode::If { .. }
+            | ParsedNode::For { .. }
+            | ParsedNode::Let { .. }
+            | ParsedNode::Match { .. }
+            | ParsedNode::Placeholder { .. }
+            | ParsedNode::Doctype { .. }
+    )
+}
+
 fn format_children<'a>(
     arena: &'a Arena<'a>,
     children: &'a [ParsedNode],
@@ -588,12 +603,21 @@ fn format_children<'a>(
         return arena.nil();
     }
 
-    // Group children by LineBreak nodes.
-    // Each group is a sequence of nodes that should stay on the same line.
+    // Group children into lines. A new line starts when:
+    // 1. We encounter a LineBreak node
+    // 2. We encounter a block element (blocks go on their own lines)
     let mut lines: Vec<Vec<&ParsedNode>> = vec![vec![]];
     for child in children {
         if matches!(child, ParsedNode::LineBreak { .. }) {
+            // LineBreak creates a new line
             lines.push(vec![]);
+        } else if is_block_node(child) {
+            // Block elements go on their own line
+            if !lines.last().unwrap().is_empty() {
+                lines.push(vec![]);
+            }
+            lines.last_mut().unwrap().push(child);
+            lines.push(vec![]); // Start new line after block
         } else {
             lines.last_mut().unwrap().push(child);
         }

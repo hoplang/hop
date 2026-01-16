@@ -1945,8 +1945,6 @@ mod tests {
                 <Main {params: main::Params}>
                   <for {item in params.items}>
                     <if {item.active}></if>
-     
-     
                     <if {item.name}></if>
                   </for>
                 </Main>
@@ -2044,8 +2042,6 @@ mod tests {
                   <for {j in params}>
                     <if {j.a}></if>
                   </for>
-   
-   
                   <for {j in params}>
                     <if {j.b}></if>
                   </for>
@@ -2793,13 +2789,9 @@ mod tests {
                   <if {params.app.ui.theme.dark}>
                     ok!
                   </if>
-   
-   
                   <if {params.app.api.endpoints.users.enabled}>
                     ok!
                   </if>
-   
-   
                   <if {params.app.database.connection.ssl}>
                     ok!
                   </if>
@@ -4431,8 +4423,6 @@ mod tests {
                 -- main.hop --
                 <Main>
                   <input required={true}></input>
-   
-   
                   <input disabled={false}></input>
                 </Main>
             "#]],
@@ -4717,8 +4707,6 @@ mod tests {
                       {name}
                     </div>
                   </let>
-   
-   
                   <let {name = "Second"}>
                     <div>
                       {name}

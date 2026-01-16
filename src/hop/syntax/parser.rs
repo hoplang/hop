@@ -801,8 +801,6 @@ mod tests {
                       <if {k}></if>
                     </for>
                   </for>
-  
-  
                   <for {p in i}>
                     <for {k in p.s.t}>
                       <for {item in k}></for>
@@ -835,8 +833,6 @@ mod tests {
                     // parsed as html
                     console.log("<div>test</div>");
                   </script>
-  
-  
                   <style>
                     body { color: red; }
                   </style>
@@ -947,11 +943,7 @@ mod tests {
 
                 <Main>
                   <hr>
-  
-  
                   <br>
-  
-  
                   <input>
                 </Main>
 
@@ -976,8 +968,6 @@ mod tests {
             expect![[r#"
                 <Main {foo: String}>
                   <!DOCTYPE html>
-  
-  
                   <html>
                     <body>
                       <div>
@@ -1332,8 +1322,6 @@ mod tests {
             expect![[r#"
                 <Main {p: String}>
                   <Foo/>
-  
-  
                   <Foo/>
                 </Main>
             "#]],
@@ -1364,8 +1352,6 @@ mod tests {
 
                 <Main {data: Data}>
                   <Foo a={data}/>
-  
-  
                   <Bar b={data.user}/>
                 </Main>
             "#]],
@@ -1556,8 +1542,6 @@ mod tests {
                   <h1>
                     Hello World
                   </h1>
-  
-  
                   <p>
                     {data.message}
                   </p>
@@ -2664,8 +2648,6 @@ mod tests {
                   <let {a: String = "Hello"}>
                     {a}
                   </let>
-  
-  
                   <let {b: String = "World"}>
                     {b}
                   </let>
@@ -2690,8 +2672,6 @@ mod tests {
                   <div>
                     First
                   </div>
-  
-  
                   <let {name: String = "World"}>
                     <div>
                       Hello {name}
@@ -2720,8 +2700,6 @@ mod tests {
                       Hello {name}
                     </div>
                   </let>
-  
-  
                   <div>
                     Last
                   </div>

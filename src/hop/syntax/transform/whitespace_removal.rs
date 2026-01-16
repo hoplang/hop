@@ -264,8 +264,12 @@ fn trim_inline_group(mut nodes: Vec<ParsedNode>) -> Vec<ParsedNode> {
 }
 
 /// Flattens LineContent back to Vec<ParsedNode>, inserting LineBreak nodes.
+/// LineBreak nodes are only inserted between inline elements, not around blocks.
+/// This is because LineBreak becomes a space in the typed AST, and we don't want
+/// extra spaces around block elements.
 fn flatten_to_nodes(content: Vec<LineContent>) -> Vec<ParsedNode> {
     let mut result: Vec<ParsedNode> = Vec::new();
+    let mut last_was_inline = false;
 
     for item in content {
         match item {
@@ -275,31 +279,35 @@ fn flatten_to_nodes(content: Vec<LineContent>) -> Vec<ParsedNode> {
                     continue;
                 }
 
-                // Add LineBreak before this inline content if needed
-                if !result.is_empty()
-                    && !matches!(result.last(), Some(ParsedNode::LineBreak { .. }))
+                // Add LineBreak before this inline content only if previous was also inline
+                // (and there's a pending line break from a Break item)
+                if last_was_inline
+                    && !result.is_empty()
+                    && matches!(result.last(), Some(ParsedNode::LineBreak { .. }))
                 {
-                    // Use the range from the first node of this group
+                    // LineBreak already added by Break, keep it
+                } else if last_was_inline && !result.is_empty() {
+                    // Need to add LineBreak between consecutive inline groups
                     let range = nodes[0].range().clone();
                     result.push(ParsedNode::LineBreak { range });
                 }
 
                 result.extend(nodes);
+                last_was_inline = true;
             }
             LineContent::Block(node) => {
-                // Add LineBreak before block if needed
-                if !result.is_empty()
-                    && !matches!(result.last(), Some(ParsedNode::LineBreak { .. }))
-                {
-                    let range = node.range().clone();
-                    result.push(ParsedNode::LineBreak { range });
+                // Remove any pending LineBreak before a block (we don't want spaces around blocks)
+                if matches!(result.last(), Some(ParsedNode::LineBreak { .. })) {
+                    result.pop();
                 }
 
                 result.push(node);
+                last_was_inline = false;
             }
             LineContent::Break(range) => {
-                // Add LineBreak if not redundant
-                if !result.is_empty()
+                // Only add LineBreak if last was inline (for potential inline->inline transition)
+                if last_was_inline
+                    && !result.is_empty()
                     && !matches!(result.last(), Some(ParsedNode::LineBreak { .. }))
                 {
                     result.push(ParsedNode::LineBreak { range });

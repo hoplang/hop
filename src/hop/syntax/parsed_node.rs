@@ -13,18 +13,43 @@ use crate::hop::symbols::module_name::ModuleName;
 
 use super::parsed_ast::ParsedAttribute;
 
-/// Renders children to a BoxDoc, grouping by LineBreak nodes.
-/// Children between LineBreaks stay on the same line; LineBreaks cause line breaks.
+/// Checks if a node is a block element (should be on its own line).
+fn is_block_node(node: &ParsedNode) -> bool {
+    matches!(
+        node,
+        ParsedNode::Html { .. }
+            | ParsedNode::ComponentReference { .. }
+            | ParsedNode::If { .. }
+            | ParsedNode::For { .. }
+            | ParsedNode::Let { .. }
+            | ParsedNode::Match { .. }
+            | ParsedNode::Placeholder { .. }
+            | ParsedNode::Doctype { .. }
+    )
+}
+
+/// Renders children to a BoxDoc, grouping by LineBreak nodes and block elements.
+/// Inline children between LineBreaks stay on the same line.
+/// Block elements always go on their own line.
 fn children_to_doc(children: &[ParsedNode]) -> BoxDoc<'_> {
     if children.is_empty() {
         return BoxDoc::nil();
     }
 
-    // Group children by LineBreak nodes
+    // Group children into lines. A new line starts when:
+    // 1. We encounter a LineBreak node
+    // 2. We encounter a block element (blocks go on their own lines)
     let mut lines: Vec<Vec<BoxDoc<'_>>> = vec![vec![]];
     for child in children {
         if matches!(child, ParsedNode::LineBreak { .. }) {
             lines.push(vec![]);
+        } else if is_block_node(child) {
+            // Block elements go on their own line
+            if !lines.last().unwrap().is_empty() {
+                lines.push(vec![]);
+            }
+            lines.last_mut().unwrap().push(child.to_doc());
+            lines.push(vec![]); // Start new line after block
         } else {
             lines.last_mut().unwrap().push(child.to_doc());
         }

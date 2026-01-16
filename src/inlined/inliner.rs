@@ -829,8 +829,6 @@ mod tests {
                     <p>
                       First
                     </p>
-     
-     
                     <p>
                       Second
                     </p>
@@ -918,15 +916,11 @@ mod tests {
                       First
                     </p>
                   </div>
-   
-   
                   <div>
                     <span>
                       Empty
                     </span>
                   </div>
-   
-   
                   <div>
                     <p>
                       Third
@@ -1031,8 +1025,6 @@ mod tests {
                       content
                     </strong>
                   </div>
-   
-   
                   <div>
                     <strong>
                       content
