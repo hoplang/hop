@@ -1019,8 +1019,8 @@ impl IrBuilder {
 
     pub fn write_expr(&mut self, expr: IrExpr, escape: bool) {
         assert!(
-            matches!(expr.as_type(), Type::String | Type::TrustedHTML | Type::Int),
-            "WriteExpr expects String, TrustedHTML, or Int, got: {}",
+            matches!(expr.as_type(), Type::String | Type::TrustedHTML),
+            "WriteExpr expects String or TrustedHTML, got: {}",
             expr
         );
         self.statements.push(IrStatement::WriteExpr {

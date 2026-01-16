@@ -450,7 +450,7 @@ mod tests {
             IrModuleBuilder::new()
                 .component("Test", [], |t| {
                     t.for_range("i", t.int(1), t.int(3), |t| {
-                        t.write_expr(t.var("i"), false);
+                        t.write_expr(t.int_to_string(t.var("i")), false);
                         t.write(",");
                     });
                 })
@@ -460,7 +460,7 @@ mod tests {
                 -- input --
                 Test() {
                   for i in 1..=3 {
-                    write_expr(i)
+                    write_expr(i.to_string())
                     write(",")
                   }
                 }
@@ -483,7 +483,7 @@ mod tests {
             IrModuleBuilder::new()
                 .component("Test", [], |t| {
                     t.for_range("x", t.int(0), t.int(5), |t| {
-                        t.write_expr(t.var("x"), false);
+                        t.write_expr(t.int_to_string(t.var("x")), false);
                     });
                 })
                 .build(),
@@ -492,7 +492,7 @@ mod tests {
                 -- input --
                 Test() {
                   for x in 0..=5 {
-                    write_expr(x)
+                    write_expr(x.to_string())
                   }
                 }
                 -- expected output --
@@ -516,9 +516,9 @@ mod tests {
                     t.for_range("i", t.int(1), t.int(2), |t| {
                         t.for_range("j", t.int(1), t.int(2), |t| {
                             t.write("(");
-                            t.write_expr(t.var("i"), false);
+                            t.write_expr(t.int_to_string(t.var("i")), false);
                             t.write(",");
-                            t.write_expr(t.var("j"), false);
+                            t.write_expr(t.int_to_string(t.var("j")), false);
                             t.write(")");
                         });
                     });
@@ -531,9 +531,9 @@ mod tests {
                   for i in 1..=2 {
                     for j in 1..=2 {
                       write("(")
-                      write_expr(i)
+                      write_expr(i.to_string())
                       write(",")
-                      write_expr(j)
+                      write_expr(j.to_string())
                       write(")")
                     }
                   }
@@ -2758,7 +2758,8 @@ mod tests {
                 .component("Test", [], |t| {
                     t.let_stmt("items", t.array(vec![t.str("a"), t.str("b"), t.str("c")]), |t| {
                         let len = t.array_length(t.var("items"));
-                        t.write_expr(len, false);
+                        let len_str = t.int_to_string(len);
+                        t.write_expr(len_str, false);
                     });
                 })
                 .build(),
@@ -2767,7 +2768,7 @@ mod tests {
                 -- input --
                 Test() {
                   let items = ["a", "b", "c"] in {
-                    write_expr(items.len())
+                    write_expr(items.len().to_string())
                   }
                 }
                 -- expected output --
@@ -2792,7 +2793,8 @@ mod tests {
                 .component("Test", [], |t| {
                     t.let_stmt("items", t.typed_array(Type::String, vec![]), |t| {
                         let len = t.array_length(t.var("items"));
-                        t.write_expr(len, false);
+                        let len_str = t.int_to_string(len);
+                        t.write_expr(len_str, false);
                     });
                 })
                 .build(),
@@ -2801,7 +2803,7 @@ mod tests {
                 -- input --
                 Test() {
                   let items = [] in {
-                    write_expr(items.len())
+                    write_expr(items.len().to_string())
                   }
                 }
                 -- expected output --
@@ -2896,7 +2898,8 @@ mod tests {
                 .component("Test", [], |t| {
                     t.let_stmt("numbers", t.array(vec![t.int(1), t.int(2), t.int(3), t.int(4), t.int(5)]), |t| {
                         let len = t.array_length(t.var("numbers"));
-                        t.write_expr(len, false);
+                        let len_str = t.int_to_string(len);
+                        t.write_expr(len_str, false);
                     });
                 })
                 .build(),
@@ -2905,7 +2908,7 @@ mod tests {
                 -- input --
                 Test() {
                   let numbers = [1, 2, 3, 4, 5] in {
-                    write_expr(numbers.len())
+                    write_expr(numbers.len().to_string())
                   }
                 }
                 -- expected output --
@@ -3057,7 +3060,8 @@ mod tests {
                 .component("Test", [], |t| {
                     t.let_stmt("price", t.float(3.7), |t| {
                         let int_price = t.float_to_int(t.var("price"));
-                        t.write_expr(int_price, false);
+                        let str_price = t.int_to_string(int_price);
+                        t.write_expr(str_price, false);
                     });
                 })
                 .build(),
@@ -3066,7 +3070,7 @@ mod tests {
                 -- input --
                 Test() {
                   let price = 3.7 in {
-                    write_expr(price.to_int())
+                    write_expr(price.to_int().to_string())
                   }
                 }
                 -- expected output --
@@ -3089,7 +3093,8 @@ mod tests {
                 .component("Test", [], |t| {
                     t.let_stmt("temp", t.float(-2.9), |t| {
                         let int_temp = t.float_to_int(t.var("temp"));
-                        t.write_expr(int_temp, false);
+                        let str_temp = t.int_to_string(int_temp);
+                        t.write_expr(str_temp, false);
                     });
                 })
                 .build(),
@@ -3098,7 +3103,7 @@ mod tests {
                 -- input --
                 Test() {
                   let temp = -2.9 in {
-                    write_expr(temp.to_int())
+                    write_expr(temp.to_int().to_string())
                   }
                 }
                 -- expected output --
@@ -3121,7 +3126,8 @@ mod tests {
                 .component("Test", [], |t| {
                     t.let_stmt("val", t.float(5.0), |t| {
                         let int_val = t.float_to_int(t.var("val"));
-                        t.write_expr(int_val, false);
+                        let str_val = t.int_to_string(int_val);
+                        t.write_expr(str_val, false);
                     });
                 })
                 .build(),
@@ -3130,7 +3136,7 @@ mod tests {
                 -- input --
                 Test() {
                   let val = 5 in {
-                    write_expr(val.to_int())
+                    write_expr(val.to_int().to_string())
                   }
                 }
                 -- expected output --
@@ -3217,21 +3223,24 @@ mod tests {
             IrModuleBuilder::new()
                 .component("Test", [], |t| {
                     t.let_stmt("count", t.int(42), |t| {
+                        // Add 0.5 to ensure result has decimal part (consistent across languages)
                         let float_count = t.int_to_float(t.var("count"));
-                        t.write_expr(float_count, false);
+                        let result = t.add(float_count, t.float(0.5));
+                        let as_string = t.float_to_string(result);
+                        t.write_expr(as_string, false);
                     });
                 })
                 .build(),
-            "42",
+            "42.5",
             expect![[r#"
                 -- input --
                 Test() {
                   let count = 42 in {
-                    write_expr(count.to_float())
+                    write_expr((count.to_float() + 0.5).to_string())
                   }
                 }
                 -- expected output --
-                42
+                42.5
                 -- ts --
                 OK
                 -- go --
@@ -3252,7 +3261,8 @@ mod tests {
                         t.let_stmt("rate", t.float(0.5), |t| {
                             let float_count = t.int_to_float(t.var("count"));
                             let result = t.add(float_count, t.var("rate"));
-                            t.write_expr(result, false);
+                            let as_string = t.float_to_string(result);
+                            t.write_expr(as_string, false);
                         });
                     });
                 })
@@ -3263,7 +3273,7 @@ mod tests {
                 Test() {
                   let count = 5 in {
                     let rate = 0.5 in {
-                      write_expr((count.to_float() + rate))
+                      write_expr((count.to_float() + rate).to_string())
                     }
                   }
                 }
@@ -3388,7 +3398,7 @@ mod tests {
                 .component("Test", [], |t| {
                     t.for_range("i", t.int(1), t.int(2), |t| {
                         t.for_range_discarded(t.int(0), t.int(1), |t| {
-                            t.write_expr(t.var("i"), false);
+                            t.write_expr(t.int_to_string(t.var("i")), false);
                         });
                     });
                 })
@@ -3399,7 +3409,7 @@ mod tests {
                 Test() {
                   for i in 1..=2 {
                     for _ in 0..=1 {
-                      write_expr(i)
+                      write_expr(i.to_string())
                     }
                   }
                 }

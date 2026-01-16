@@ -534,7 +534,25 @@ impl StatementTranspiler for PythonTranspiler {
         value: &'a IrExpr,
         body: &'a [IrStatement],
     ) -> BoxDoc<'a> {
-        BoxDoc::text(var)
+        // Check if value is an empty array - Python needs type annotation for empty lists
+        let needs_type_annotation = matches!(
+            value,
+            IrExpr::ArrayLiteral { elements, .. } if elements.is_empty()
+        );
+
+        let var_doc = if needs_type_annotation {
+            if let IrExpr::ArrayLiteral { kind, .. } = value {
+                BoxDoc::text(var)
+                    .append(BoxDoc::text(": "))
+                    .append(self.transpile_type(kind))
+            } else {
+                BoxDoc::text(var)
+            }
+        } else {
+            BoxDoc::text(var)
+        };
+
+        var_doc
             .append(BoxDoc::text(" = "))
             .append(self.transpile_expr(value))
             .append(BoxDoc::line())
@@ -1276,7 +1294,7 @@ mod tests {
             IrModuleBuilder::new()
                 .component("Counter", [], |t| {
                     t.for_range("i", t.int(1), t.int(3), |t| {
-                        t.write_expr(t.var("i"), false);
+                        t.write_expr(t.int_to_string(t.var("i")), false);
                         t.write(" ");
                     });
                 })
@@ -1285,7 +1303,7 @@ mod tests {
                 -- before --
                 Counter() {
                   for i in 1..=3 {
-                    write_expr(i)
+                    write_expr(i.to_string())
                     write(" ")
                   }
                 }

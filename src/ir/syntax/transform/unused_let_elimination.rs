@@ -404,7 +404,7 @@ mod tests {
             build_ir("Test", [], |t| {
                 t.let_stmt("count", t.int(3), |t| {
                     t.for_range("i", t.int(1), t.var("count"), |t| {
-                        t.write_expr(t.var("i"), false);
+                        t.write_expr(t.int_to_string(t.var("i")), false);
                     });
                 });
             }),
@@ -413,7 +413,7 @@ mod tests {
                 Test() {
                   let count = 3 in {
                     for i in 1..=count {
-                      write_expr(i)
+                      write_expr(i.to_string())
                     }
                   }
                 }
@@ -422,7 +422,7 @@ mod tests {
                 Test() {
                   let count = 3 in {
                     for i in 1..=count {
-                      write_expr(i)
+                      write_expr(i.to_string())
                     }
                   }
                 }
@@ -436,7 +436,7 @@ mod tests {
             build_ir("Test", [], |t| {
                 t.let_stmt("start", t.int(1), |t| {
                     t.for_range("i", t.var("start"), t.int(5), |t| {
-                        t.write_expr(t.var("i"), false);
+                        t.write_expr(t.int_to_string(t.var("i")), false);
                     });
                 });
             }),
@@ -445,7 +445,7 @@ mod tests {
                 Test() {
                   let start = 1 in {
                     for i in start..=5 {
-                      write_expr(i)
+                      write_expr(i.to_string())
                     }
                   }
                 }
@@ -454,7 +454,7 @@ mod tests {
                 Test() {
                   let start = 1 in {
                     for i in start..=5 {
-                      write_expr(i)
+                      write_expr(i.to_string())
                     }
                   }
                 }

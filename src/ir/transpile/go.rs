@@ -1556,7 +1556,7 @@ mod tests {
             IrModuleBuilder::new()
                 .component("Counter", [], |t| {
                     t.for_range("i", t.int(1), t.int(3), |t| {
-                        t.write_expr(t.var("i"), false);
+                        t.write_expr(t.int_to_string(t.var("i")), false);
                         t.write(" ");
                     });
                 })
@@ -1565,7 +1565,7 @@ mod tests {
                 -- before --
                 Counter() {
                   for i in 1..=3 {
-                    write_expr(i)
+                    write_expr(i.to_string())
                     write(" ")
                   }
                 }
