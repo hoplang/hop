@@ -1,5 +1,4 @@
 use std::collections::VecDeque;
-use std::fmt::{self, Display};
 
 use crate::document::{DocumentRange, Ranged};
 use crate::dop::ParsedExpr;
@@ -9,7 +8,6 @@ use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
-use pretty::BoxDoc;
 
 use super::parsed_node::ParsedNode;
 
@@ -25,45 +23,11 @@ pub struct ParsedParameter {
     pub default_value: Option<ParsedExpr>,
 }
 
-impl Display for ParsedParameter {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(60))
-    }
-}
-
-impl ParsedParameter {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        let base = BoxDoc::text(self.var_name.as_str())
-            .append(BoxDoc::text(": "))
-            .append(self.var_type.to_doc());
-        match &self.default_value {
-            Some(default) => base.append(BoxDoc::text(" = ")).append(default.to_doc()),
-            None => base,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum ParsedAttributeValue {
     Expression(ParsedExpr),
     /// A quoted string value. None means empty string like `attr=""`
     String(Option<DocumentRange>),
-}
-
-impl ParsedAttributeValue {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        match self {
-            ParsedAttributeValue::Expression(expr) => BoxDoc::text("{")
-                .append(BoxDoc::line_().append(expr.to_doc()).nest(2))
-                .append(BoxDoc::line_())
-                .append(BoxDoc::text("}"))
-                .group(),
-            ParsedAttributeValue::String(range) => {
-                let content = range.as_ref().map(|r| r.as_str()).unwrap_or("");
-                BoxDoc::text(format!("\"{}\"", content))
-            }
-        }
-    }
 }
 
 /// A ParsedAttribute is an attribute on a node, it can either
@@ -77,16 +41,6 @@ pub struct ParsedAttribute {
     pub value: Option<ParsedAttributeValue>,
 }
 
-impl ParsedAttribute {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        let name_doc = BoxDoc::text(self.name.as_str());
-        match &self.value {
-            Some(value) => name_doc.append(BoxDoc::text("=")).append(value.to_doc()),
-            None => name_doc,
-        }
-    }
-}
-
 /// A declaration in a Hop module - can be an import, record, enum, or component.
 #[derive(Debug, Clone)]
 pub enum ParsedDeclaration {
@@ -94,17 +48,6 @@ pub enum ParsedDeclaration {
     Record(ParsedRecordDeclaration),
     Enum(ParsedEnumDeclaration),
     Component(ParsedComponentDeclaration),
-}
-
-impl ParsedDeclaration {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        match self {
-            ParsedDeclaration::Import(import) => import.to_doc(),
-            ParsedDeclaration::Record(record) => record.to_doc(),
-            ParsedDeclaration::Enum(e) => e.to_doc(),
-            ParsedDeclaration::Component(component) => component.to_doc(),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -176,33 +119,6 @@ impl ParsedAst {
             .flat_map(|n| &n.children)
             .flat_map(|n| n.iter_depth_first())
     }
-
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        if self.declarations.is_empty() {
-            BoxDoc::nil()
-        } else {
-            let mut doc = BoxDoc::nil();
-            let mut prev_was_import = false;
-            for (i, decl) in self.declarations.iter().enumerate() {
-                if i > 0 {
-                    doc = doc.append(BoxDoc::line());
-                    let curr_is_import = matches!(decl, ParsedDeclaration::Import(_));
-                    if !(prev_was_import && curr_is_import) {
-                        doc = doc.append(BoxDoc::line());
-                    }
-                }
-                doc = doc.append(decl.to_doc());
-                prev_was_import = matches!(decl, ParsedDeclaration::Import(_));
-            }
-            doc.append(BoxDoc::line())
-        }
-    }
-}
-
-impl Display for ParsedAst {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(80))
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -228,14 +144,6 @@ impl ParsedImportDeclaration {
     pub fn imports_from(&self, module_name: &ModuleName) -> bool {
         &self.module_name == module_name
     }
-
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text("import")
-            .append(BoxDoc::space())
-            .append(BoxDoc::text(self.module_name.to_string()))
-            .append(BoxDoc::text("::"))
-            .append(BoxDoc::text(self.type_name.as_str()))
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -243,14 +151,6 @@ pub struct ParsedRecordDeclarationField {
     pub name: FieldName,
     pub name_range: DocumentRange,
     pub field_type: ParsedType,
-}
-
-impl ParsedRecordDeclarationField {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text(self.name.as_str())
-            .append(BoxDoc::text(": "))
-            .append(self.field_type.to_doc())
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -265,27 +165,6 @@ impl ParsedRecordDeclaration {
     pub fn name(&self) -> &str {
         self.name.as_str()
     }
-
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text("record")
-            .append(BoxDoc::space())
-            .append(BoxDoc::text(self.name.as_str()))
-            .append(BoxDoc::space())
-            .append(BoxDoc::text("{"))
-            .append(if self.fields.is_empty() {
-                BoxDoc::nil()
-            } else {
-                BoxDoc::line()
-                    .append(BoxDoc::intersperse(
-                        self.fields.iter().map(|f| f.to_doc()),
-                        BoxDoc::text(",").append(BoxDoc::line()),
-                    ))
-                    .append(BoxDoc::text(","))
-                    .nest(2)
-                    .append(BoxDoc::line())
-            })
-            .append(BoxDoc::text("}"))
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -294,26 +173,6 @@ pub struct ParsedEnumDeclarationVariant {
     pub name_range: DocumentRange,
     /// Optional fields for this variant (empty for unit variants)
     pub fields: Vec<(FieldName, DocumentRange, ParsedType)>,
-}
-
-impl ParsedEnumDeclarationVariant {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        if self.fields.is_empty() {
-            BoxDoc::text(self.name.as_str())
-        } else {
-            BoxDoc::text(self.name.as_str())
-                .append(BoxDoc::text("("))
-                .append(BoxDoc::intersperse(
-                    self.fields.iter().map(|(field_name, _, field_type)| {
-                        BoxDoc::text(field_name.to_string())
-                            .append(BoxDoc::text(": "))
-                            .append(field_type.to_doc())
-                    }),
-                    BoxDoc::text(", "),
-                ))
-                .append(BoxDoc::text(")"))
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -327,27 +186,6 @@ pub struct ParsedEnumDeclaration {
 impl ParsedEnumDeclaration {
     pub fn name(&self) -> &str {
         self.name.as_str()
-    }
-
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text("enum")
-            .append(BoxDoc::space())
-            .append(BoxDoc::text(self.name.as_str()))
-            .append(BoxDoc::space())
-            .append(BoxDoc::text("{"))
-            .append(if self.variants.is_empty() {
-                BoxDoc::nil()
-            } else {
-                BoxDoc::line()
-                    .append(BoxDoc::intersperse(
-                        self.variants.iter().map(|v| v.to_doc()),
-                        BoxDoc::text(",").append(BoxDoc::line()),
-                    ))
-                    .append(BoxDoc::text(","))
-                    .nest(2)
-                    .append(BoxDoc::line())
-            })
-            .append(BoxDoc::text("}"))
     }
 }
 
@@ -370,41 +208,5 @@ impl Ranged for ParsedComponentDeclaration {
 impl ParsedComponentDeclaration {
     pub fn tag_name_ranges(&self) -> impl Iterator<Item = &DocumentRange> {
         self.closing_tag_name.iter().chain(Some(&self.tag_name))
-    }
-
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text("<")
-            .append(BoxDoc::text(self.component_name.as_str()))
-            .append(match &self.params {
-                Some((params, _)) if !params.is_empty() => BoxDoc::text(" {")
-                    .append(
-                        BoxDoc::line_()
-                            .append(BoxDoc::intersperse(
-                                params.iter().map(|p| p.to_doc()),
-                                BoxDoc::text(",").append(BoxDoc::line()),
-                            ))
-                            .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                            .nest(2),
-                    )
-                    .append(BoxDoc::line_())
-                    .append(BoxDoc::text("}"))
-                    .group(),
-                _ => BoxDoc::nil(),
-            })
-            .append(BoxDoc::text(">"))
-            .append(if self.children.is_empty() {
-                BoxDoc::nil()
-            } else {
-                BoxDoc::line()
-                    .append(BoxDoc::intersperse(
-                        self.children.iter().map(|c| c.to_doc()),
-                        BoxDoc::line(),
-                    ))
-                    .nest(2)
-                    .append(BoxDoc::line())
-            })
-            .append(BoxDoc::text("</"))
-            .append(BoxDoc::text(self.component_name.as_str()))
-            .append(BoxDoc::text(">"))
     }
 }

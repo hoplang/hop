@@ -716,7 +716,7 @@ mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
     use crate::error_collector::ErrorCollector;
-    use crate::hop::syntax::transform::whitespace_removal::remove_whitespace;
+    use crate::hop::syntax::formatter::format;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -734,7 +734,7 @@ mod tests {
                 .with_lines_before(1)
                 .annotate(None, errors.to_vec())
         } else {
-            remove_whitespace(module).to_string()
+            format(module)
         };
 
         expected.assert_eq(&actual);
@@ -756,6 +756,7 @@ mod tests {
             expect![[r#"
                 <First></First>
 
+                // This is a comment
                 <Second></Second>
             "#]],
         );
@@ -1478,9 +1479,7 @@ mod tests {
                       viewBox="0 0 128 128"
                       class="size-12"
                     >
-                      <g
-                        style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;"
-                      >
+                      <g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
                         <path d="M20.04 38 64 22l43.96 16L64 54Z">
                         </path>
                         <path d="M17.54 47.09v48l35.099 12.775">
@@ -1940,9 +1939,12 @@ mod tests {
                 }
 
                 <Main {color: Color}>
-                  <div
-                    class={match color {Color::Red => "text-red", Color::Blue => "text-blue"}}
-                  >
+                  <div class={
+                    match color {
+                      Color::Red => "text-red",
+                      Color::Blue => "text-blue",
+                    }
+                  }>
                   </div>
                 </Main>
             "#]],
@@ -2043,7 +2045,11 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                <Main {name: String, role: String = "user", active: Bool = true}>
+                <Main {
+                  name: String,
+                  role: String = "user",
+                  active: Bool = true,
+                }>
                   <div>
                     {name}
                   </div>

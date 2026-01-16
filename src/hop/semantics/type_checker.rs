@@ -442,8 +442,7 @@ fn typecheck_node(
             };
 
             // Push the loop variable into scope (only if not discarded with _)
-            let pushed = if let (Some(var_name), Some(var_name_range)) =
-                (var_name, var_name_range)
+            let pushed = if let (Some(var_name), Some(var_name_range)) = (var_name, var_name_range)
             {
                 match var_env.push(var_name.to_string(), element_type.clone()) {
                     Ok(_) => {
@@ -476,7 +475,9 @@ fn typecheck_node(
                 let (_, _, accessed) = var_env.pop();
                 if !accessed {
                     if let Some(var_name_range) = var_name_range {
-                        errors.push(TypeError::UnusedVariable { var_name: var_name_range.clone() })
+                        errors.push(TypeError::UnusedVariable {
+                            var_name: var_name_range.clone(),
+                        })
                     }
                 }
             }
@@ -4745,7 +4746,7 @@ mod tests {
                 -- main.hop --
                 <Main>
                   <let {first: String = "Hello", second: String = "World"}>
-                    <div>{first} {second}</div>
+                    <div><p>{first}</p><p>{second}</p></div>
                   </let>
                 </Main>
             "#},
@@ -4755,9 +4756,12 @@ mod tests {
                   <let {first = "Hello"}>
                     <let {second = "World"}>
                       <div>
-                        {first}
-         
-                        {second}
+                        <p>
+                          {first}
+                        </p>
+                        <p>
+                          {second}
+                        </p>
                       </div>
                     </let>
                   </let>
