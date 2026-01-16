@@ -22,7 +22,7 @@ use crate::hop::semantics::typed_ast::{
 use crate::hop::semantics::typed_node::{TypedAttribute, TypedAttributeValue, TypedNode};
 use crate::hop::symbols::module_name::ModuleName;
 use crate::hop::syntax::parsed_ast::{ParsedAst, ParsedAttributeValue};
-use crate::hop::syntax::parsed_node::ParsedNode;
+use crate::hop::syntax::parsed_node::{ParsedLetBinding, ParsedNode};
 
 #[derive(Default, Debug)]
 pub struct TypeChecker {
@@ -444,8 +444,10 @@ fn typecheck_node(
         ParsedNode::Let {
             bindings, children, ..
         } => {
-            // Process each binding: resolve type, typecheck value, push to scope
-            let mut typed_bindings = Vec::new();
+            // Track which bindings were pushed to scope (for popping later)
+            let mut pushed_bindings: Vec<&ParsedLetBinding> = Vec::new();
+            // Only store successfully typechecked bindings
+            let mut typed_bindings: Vec<(&ParsedLetBinding, TypedExpr)> = Vec::new();
 
             for binding in bindings {
                 // Resolve the declared type
@@ -456,6 +458,31 @@ fn typecheck_node(
                         continue;
                     }
                 };
+
+                // Push the variable into scope first, so later bindings can reference it
+                // even if the value expression fails to typecheck
+                let pushed = match var_env.push(binding.var_name.to_string(), resolved_type.clone())
+                {
+                    Ok(_) => {
+                        annotations.push(TypeAnnotation {
+                            range: binding.var_name_range.clone(),
+                            typ: resolved_type.clone(),
+                            name: binding.var_name.to_string(),
+                        });
+                        true
+                    }
+                    Err(_) => {
+                        errors.push(TypeError::VariableIsAlreadyDefined {
+                            var: binding.var_name.as_str().to_string(),
+                            range: binding.var_name_range.clone(),
+                        });
+                        false
+                    }
+                };
+
+                if pushed {
+                    pushed_bindings.push(binding);
+                }
 
                 // Type-check the value expression with the expected type
                 let Some(typed_value) = errors.ok_or_add(
@@ -481,27 +508,7 @@ fn typecheck_node(
                     });
                 }
 
-                // Push the variable into scope
-                let pushed = match var_env.push(binding.var_name.to_string(), resolved_type.clone())
-                {
-                    Ok(_) => {
-                        annotations.push(TypeAnnotation {
-                            range: binding.var_name_range.clone(),
-                            typ: resolved_type.clone(),
-                            name: binding.var_name.to_string(),
-                        });
-                        true
-                    }
-                    Err(_) => {
-                        errors.push(TypeError::VariableIsAlreadyDefined {
-                            var: binding.var_name.as_str().to_string(),
-                            range: binding.var_name_range.clone(),
-                        });
-                        false
-                    }
-                };
-
-                typed_bindings.push((binding, typed_value, pushed));
+                typed_bindings.push((binding, typed_value));
             }
 
             // Type-check children with all variables in scope
@@ -511,21 +518,19 @@ fn typecheck_node(
                 .collect();
 
             // Pop variables in reverse order and check for unused
-            for (binding, _, pushed) in typed_bindings.iter().rev() {
-                if *pushed {
-                    let (_, _, accessed) = var_env.pop();
-                    if !accessed {
-                        errors.push(TypeError::UnusedVariable {
-                            var_name: binding.var_name_range.clone(),
-                        })
-                    }
+            for binding in pushed_bindings.iter().rev() {
+                let (_, _, accessed) = var_env.pop();
+                if !accessed {
+                    errors.push(TypeError::UnusedVariable {
+                        var_name: binding.var_name_range.clone(),
+                    })
                 }
             }
 
             // Build nested Let structure from innermost to outermost
             // Start with children, then wrap with each binding in reverse order
             let mut result = typed_children;
-            for (binding, typed_value, _) in typed_bindings.into_iter().rev() {
+            for (binding, typed_value) in typed_bindings.into_iter().rev() {
                 result = vec![TypedNode::Let {
                     var: binding.var_name.clone(),
                     value: typed_value,
@@ -4771,6 +4776,67 @@ mod tests {
                     </let>
                   </let>
                 </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_allow_chained_bindings_with_arithmetic() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main>
+                  <let {x: Int = 0, y: Int = x + 1, z: Int = y + 2}>
+                    <if {z == 3}>
+                      <div>correct</div>
+                    </if>
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                -- main.hop --
+                <Main>
+                  <let {x = 0}>
+                    <let {y = (x + 1)}>
+                      <let {z = (y + 2)}>
+                        <if {(z == 3)}>
+                          <div>
+                            correct
+                          </div>
+                        </if>
+                      </let>
+                    </let>
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_binding_that_references_later_binding() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Main>
+                  <let {x: Int = y + 1, y: Int = 0}>
+                    <if {x == 1}>
+                      <div>correct</div>
+                    </if>
+                  </let>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Undefined variable: y
+                  --> main.hop (line 2, col 18)
+                1 | <Main>
+                2 |   <let {x: Int = y + 1, y: Int = 0}>
+                  |                  ^
+
+                error: Unused variable y
+                  --> main.hop (line 2, col 25)
+                1 | <Main>
+                2 |   <let {x: Int = y + 1, y: Int = 0}>
+                  |                         ^
             "#]],
         );
     }
