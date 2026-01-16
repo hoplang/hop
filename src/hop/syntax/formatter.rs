@@ -2922,4 +2922,94 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn inline_text_with_nested_element_to_doc() {
+        check(
+            indoc! {"
+                <Main>
+                  <div>
+                    foo<p>bar</p>
+                  </div>
+                </Main>
+            "},
+            expect![[r#"
+                <Main>
+                  <div>
+                    foo
+                    <p>
+                      bar
+                    </p>
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn nested_elements_inline_to_doc() {
+        check(
+            indoc! {"
+                <Main>
+                  <div><p>x</p></div>
+                </Main>
+            "},
+            expect![[r#"
+                <Main>
+                  <div>
+                    <p>
+                      x
+                    </p>
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn text_around_inline_element_to_doc() {
+        check(
+            indoc! {"
+                <Main>
+                  <div>hello <b>world</b>!</div>
+                </Main>
+            "},
+            expect![[r#"
+                <Main>
+                  <div>
+                    hello
+                    <b>
+                      world
+                    </b>
+                    !
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn empty_lines_between_text_collapsed_to_doc() {
+        check(
+            indoc! {"
+                <Main>
+                  <div>
+
+                  foo
+
+                  bar
+
+                  </div>
+                </Main>
+            "},
+            expect![[r#"
+                <Main>
+                  <div>
+                    foo
+                    bar
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
 }
