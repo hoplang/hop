@@ -589,6 +589,13 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 _ => Err(anyhow!("ArrayLength requires an array argument")),
             }
         }
+        IrExpr::IntToString { value, .. } => {
+            let int_val = evaluate_expr(value, env)?;
+            match int_val {
+                Value::Number(n) => Ok(Value::String(n.to_string())),
+                _ => Err(anyhow!("IntToString requires an integer argument")),
+            }
+        }
     }
 }
 

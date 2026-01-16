@@ -458,6 +458,10 @@ impl AlphaRenamingPass {
                 array: Box::new(self.rename_expr(array)),
                 id: *id,
             },
+            IrExpr::IntToString { value, id } => IrExpr::IntToString {
+                value: Box::new(self.rename_expr(value)),
+                id: *id,
+            },
         }
     }
 

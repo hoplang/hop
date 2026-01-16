@@ -264,6 +264,9 @@ pub enum IrExpr {
 
     /// Array length expression, e.g. items.len()
     ArrayLength { array: Box<IrExpr>, id: ExprId },
+
+    /// Int to string conversion, e.g. count.to_string()
+    IntToString { value: Box<IrExpr>, id: ExprId },
 }
 
 impl IrStatement {
@@ -729,7 +732,8 @@ impl IrExpr {
             | IrExpr::LessThan { id, .. }
             | IrExpr::LessThanOrEqual { id, .. }
             | IrExpr::Let { id, .. }
-            | IrExpr::ArrayLength { id, .. } => *id,
+            | IrExpr::ArrayLength { id, .. }
+            | IrExpr::IntToString { id, .. } => *id,
         }
     }
 
@@ -757,7 +761,8 @@ impl IrExpr {
             | IrExpr::EnvLookup { .. }
             | IrExpr::StringConcat { .. }
             | IrExpr::MergeClasses { .. }
-            | IrExpr::StringLiteral { .. } => &STRING_TYPE,
+            | IrExpr::StringLiteral { .. }
+            | IrExpr::IntToString { .. } => &STRING_TYPE,
 
             IrExpr::NumericAdd { operand_types, .. }
             | IrExpr::NumericSubtract { operand_types, .. }
@@ -1070,6 +1075,9 @@ impl IrExpr {
             IrExpr::ArrayLength { array, .. } => array
                 .to_doc()
                 .append(BoxDoc::text(".len()")),
+            IrExpr::IntToString { value, .. } => value
+                .to_doc()
+                .append(BoxDoc::text(".to_string()")),
         }
     }
 
@@ -1163,6 +1171,9 @@ impl IrExpr {
             IrExpr::ArrayLength { array, .. } => {
                 array.traverse(f);
             }
+            IrExpr::IntToString { value, .. } => {
+                value.traverse(f);
+            }
         }
     }
 
@@ -1255,6 +1266,9 @@ impl IrExpr {
             }
             IrExpr::ArrayLength { array, .. } => {
                 array.traverse_mut(f);
+            }
+            IrExpr::IntToString { value, .. } => {
+                value.traverse_mut(f);
             }
         }
     }

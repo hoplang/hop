@@ -33,7 +33,7 @@ impl GoTranspiler {
                 }
             });
 
-            // Check expressions for other imports (like json, os)
+            // Check expressions for other imports (like json, os, strconv)
             stmt.traverse(&mut |s| {
                 if let Some(primary_expr) = s.expr() {
                     primary_expr.traverse(&mut |expr| match expr {
@@ -42,6 +42,9 @@ impl GoTranspiler {
                         }
                         IrExpr::EnvLookup { .. } => {
                             imports.insert("os".to_string());
+                        }
+                        IrExpr::IntToString { .. } => {
+                            imports.insert("strconv".to_string());
                         }
                         _ => {}
                     });
@@ -1233,6 +1236,12 @@ impl ExpressionTranspiler for GoTranspiler {
     fn transpile_array_length<'a>(&self, array: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("len(")
             .append(self.transpile_expr(array))
+            .append(BoxDoc::text(")"))
+    }
+
+    fn transpile_int_to_string<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("strconv.Itoa(")
+            .append(self.transpile_expr(value))
             .append(BoxDoc::text(")"))
     }
 }

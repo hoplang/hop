@@ -2919,4 +2919,133 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn int_to_string_simple() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.let_stmt("count", t.int(42), |t| {
+                        let str_count = t.int_to_string(t.var("count"));
+                        t.write_expr(str_count, false);
+                    });
+                })
+                .build(),
+            "42",
+            expect![[r#"
+                -- input --
+                Test() {
+                  let count = 42 in {
+                    write_expr(count.to_string())
+                  }
+                }
+                -- expected output --
+                42
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn int_to_string_zero() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.let_stmt("num", t.int(0), |t| {
+                        let str_num = t.int_to_string(t.var("num"));
+                        t.write_expr(str_num, false);
+                    });
+                })
+                .build(),
+            "0",
+            expect![[r#"
+                -- input --
+                Test() {
+                  let num = 0 in {
+                    write_expr(num.to_string())
+                  }
+                }
+                -- expected output --
+                0
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn int_to_string_negative() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.let_stmt("num", t.int(-123), |t| {
+                        let str_num = t.int_to_string(t.var("num"));
+                        t.write_expr(str_num, false);
+                    });
+                })
+                .build(),
+            "-123",
+            expect![[r#"
+                -- input --
+                Test() {
+                  let num = -123 in {
+                    write_expr(num.to_string())
+                  }
+                }
+                -- expected output --
+                -123
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn int_to_string_concat() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.let_stmt("count", t.int(5), |t| {
+                        let str_count = t.int_to_string(t.var("count"));
+                        let message = t.string_concat(t.str("Count: "), str_count);
+                        t.write_expr(message, false);
+                    });
+                })
+                .build(),
+            "Count: 5",
+            expect![[r#"
+                -- input --
+                Test() {
+                  let count = 5 in {
+                    write_expr(("Count: " + count.to_string()))
+                  }
+                }
+                -- expected output --
+                Count: 5
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
 }

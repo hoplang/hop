@@ -149,6 +149,9 @@ pub enum TypedExpr {
 
     /// Array length expression, e.g. items.len()
     ArrayLength { array: Box<Self> },
+
+    /// Int to string conversion, e.g. count.to_string()
+    IntToString { value: Box<Self> },
 }
 
 impl TypedExpr {
@@ -173,7 +176,8 @@ impl TypedExpr {
 
             TypedExpr::StringConcat { .. }
             | TypedExpr::StringLiteral { .. }
-            | TypedExpr::MergeClasses { .. } => &STRING_TYPE,
+            | TypedExpr::MergeClasses { .. }
+            | TypedExpr::IntToString { .. } => &STRING_TYPE,
 
             TypedExpr::NumericAdd { operand_types, .. }
             | TypedExpr::NumericSubtract { operand_types, .. }
@@ -496,6 +500,9 @@ impl TypedExpr {
             TypedExpr::ArrayLength { array } => array
                 .to_doc()
                 .append(BoxDoc::text(".len()")),
+            TypedExpr::IntToString { value } => value
+                .to_doc()
+                .append(BoxDoc::text(".to_string()")),
         }
     }
 }

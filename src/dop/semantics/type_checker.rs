@@ -888,6 +888,9 @@ pub fn typecheck_expr(
                 (Type::Array(_), "len") => Ok(TypedExpr::ArrayLength {
                     array: Box::new(typed_receiver),
                 }),
+                (Type::Int, "to_string") => Ok(TypedExpr::IntToString {
+                    value: Box::new(typed_receiver),
+                }),
                 _ => Err(TypeError::MethodNotAvailable {
                     method: method.as_str().to_string(),
                     typ: receiver_type.to_string(),
@@ -4326,6 +4329,56 @@ mod tests {
                 error: Method 'foo' is not available on type Array[String]
                 items.foo()
                 ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    // Int to_string tests
+
+    #[test]
+    fn should_accept_to_string_on_int() {
+        check(
+            "",
+            &[("count", "Int")],
+            "count.to_string()",
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_accept_to_string_in_concat() {
+        check(
+            "",
+            &[("n", "Int")],
+            r#""Value: " + n.to_string()"#,
+            expect!["String"],
+        );
+    }
+
+    #[test]
+    fn should_reject_to_string_on_string() {
+        check(
+            "",
+            &[("name", "String")],
+            "name.to_string()",
+            expect![[r#"
+                error: Method 'to_string' is not available on type String
+                name.to_string()
+                ^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_to_string_on_array() {
+        check(
+            "",
+            &[("items", "Array[Int]")],
+            "items.to_string()",
+            expect![[r#"
+                error: Method 'to_string' is not available on type Array[Int]
+                items.to_string()
+                ^^^^^^^^^^^^^^^^^
             "#]],
         );
     }

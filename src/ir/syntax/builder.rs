@@ -524,6 +524,13 @@ impl IrBuilder {
         }
     }
 
+    pub fn int_to_string(&self, value: IrExpr) -> IrExpr {
+        IrExpr::IntToString {
+            value: Box::new(value),
+            id: self.next_expr_id(),
+        }
+    }
+
     pub fn record(&self, record_name: &str, fields: Vec<(&str, IrExpr)>) -> IrExpr {
         let record_fields = self
             .records

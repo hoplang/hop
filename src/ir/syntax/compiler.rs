@@ -707,6 +707,10 @@ impl Compiler {
                 array: Box::new(self.compile_expr(array)),
                 id: expr_id,
             },
+            TypedExpr::IntToString { value } => IrExpr::IntToString {
+                value: Box::new(self.compile_expr(value)),
+                id: expr_id,
+            },
         }
     }
 }
