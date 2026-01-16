@@ -3363,7 +3363,8 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 <UserCard {name: String, role: String = "user"}>
-                  {name} ({role})
+                  <span>{name}</span>
+                  <span>{role}</span>
                 </UserCard>
                 <Main>
                   <UserCard name="Alice" />
@@ -3372,10 +3373,12 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 <UserCard {name: String, role: String = "user"}>
-                  {name}
-                   (
-                  {role}
-                  )
+                  <span>
+                    {name}
+                  </span>
+                  <span>
+                    {role}
+                  </span>
                 </UserCard>
 
                 <Main>
