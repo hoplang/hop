@@ -7,7 +7,6 @@ use super::parsed_ast::{
     ParsedRecordDeclarationField,
 };
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
-use super::transform::whitespace_removal::remove_whitespace;
 use crate::common::is_void_element;
 use crate::document::{DocumentRange, Ranged};
 use crate::dop::syntax::parsed::{
@@ -16,7 +15,7 @@ use crate::dop::syntax::parsed::{
 use pretty::{Arena, DocAllocator, DocBuilder};
 
 pub fn format(ast: ParsedAst) -> String {
-    let ast = remove_whitespace(ast);
+    // Whitespace removal is done during parsing, so ast is already normalized
     let arena = Arena::new();
     format_ast(&ast, &arena).pretty(60).to_string()
 }

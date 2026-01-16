@@ -953,10 +953,11 @@ fn typecheck_node(
             value: value.clone(),
         }),
 
-        // LineBreak is a formatting-only node created during whitespace removal.
-        // It should not appear in parsed ASTs that reach the type checker,
-        // but we handle it gracefully by returning None.
-        ParsedNode::LineBreak { .. } => None,
+        // LineBreak represents a line break in the source. In the typed AST,
+        // we convert it to a single space to preserve word separation.
+        ParsedNode::LineBreak { .. } => Some(TypedNode::Text {
+            value: CheapString::new(" ".to_string()),
+        }),
     }
 }
 
@@ -1944,6 +1945,8 @@ mod tests {
                 <Main {params: main::Params}>
                   <for {item in params.items}>
                     <if {item.active}></if>
+     
+     
                     <if {item.name}></if>
                   </for>
                 </Main>
@@ -2041,6 +2044,8 @@ mod tests {
                   <for {j in params}>
                     <if {j.a}></if>
                   </for>
+   
+   
                   <for {j in params}>
                     <if {j.b}></if>
                   </for>
@@ -2788,9 +2793,13 @@ mod tests {
                   <if {params.app.ui.theme.dark}>
                     ok!
                   </if>
+   
+   
                   <if {params.app.api.endpoints.users.enabled}>
                     ok!
                   </if>
+   
+   
                   <if {params.app.database.connection.ssl}>
                     ok!
                   </if>
@@ -4422,6 +4431,8 @@ mod tests {
                 -- main.hop --
                 <Main>
                   <input required={true}></input>
+   
+   
                   <input disabled={false}></input>
                 </Main>
             "#]],
@@ -4706,6 +4717,8 @@ mod tests {
                       {name}
                     </div>
                   </let>
+   
+   
                   <let {name = "Second"}>
                     <div>
                       {name}

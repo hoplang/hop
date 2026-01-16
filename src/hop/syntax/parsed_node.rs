@@ -13,6 +13,39 @@ use crate::hop::symbols::module_name::ModuleName;
 
 use super::parsed_ast::ParsedAttribute;
 
+/// Renders children to a BoxDoc, grouping by LineBreak nodes.
+/// Children between LineBreaks stay on the same line; LineBreaks cause line breaks.
+fn children_to_doc(children: &[ParsedNode]) -> BoxDoc<'_> {
+    if children.is_empty() {
+        return BoxDoc::nil();
+    }
+
+    // Group children by LineBreak nodes
+    let mut lines: Vec<Vec<BoxDoc<'_>>> = vec![vec![]];
+    for child in children {
+        if matches!(child, ParsedNode::LineBreak { .. }) {
+            lines.push(vec![]);
+        } else {
+            lines.last_mut().unwrap().push(child.to_doc());
+        }
+    }
+
+    // Filter out empty lines
+    let lines: Vec<_> = lines.into_iter().filter(|l| !l.is_empty()).collect();
+
+    if lines.is_empty() {
+        return BoxDoc::nil();
+    }
+
+    // Render each line (concatenate docs within a line, separate lines with line())
+    let line_docs: Vec<BoxDoc<'_>> = lines
+        .into_iter()
+        .map(|line| BoxDoc::concat(line))
+        .collect();
+
+    BoxDoc::intersperse(line_docs, BoxDoc::line())
+}
+
 /// A case in a match node.
 /// E.g. <match {x}>
 ///        <case {Some(y)}>...</case>
@@ -35,10 +68,7 @@ impl ParsedMatchCase {
                 BoxDoc::nil()
             } else {
                 BoxDoc::line()
-                    .append(BoxDoc::intersperse(
-                        self.children.iter().map(|c| c.to_doc()),
-                        BoxDoc::line(),
-                    ))
+                    .append(children_to_doc(&self.children))
                     .nest(2)
                     .append(BoxDoc::line())
             })
@@ -266,10 +296,7 @@ impl ParsedNode {
                         .append(BoxDoc::text(">"))
                         .append(
                             BoxDoc::line()
-                                .append(BoxDoc::intersperse(
-                                    children.iter().map(|c| c.to_doc()),
-                                    BoxDoc::line(),
-                                ))
+                                .append(children_to_doc(children))
                                 .nest(2),
                         )
                         .append(BoxDoc::line())
@@ -289,10 +316,7 @@ impl ParsedNode {
                     BoxDoc::nil()
                 } else {
                     BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            children.iter().map(|c| c.to_doc()),
-                            BoxDoc::line(),
-                        ))
+                        .append(children_to_doc(children))
                         .nest(2)
                         .append(BoxDoc::line())
                 })
@@ -323,10 +347,7 @@ impl ParsedNode {
                         BoxDoc::nil()
                     } else {
                         BoxDoc::line()
-                            .append(BoxDoc::intersperse(
-                                children.iter().map(|c| c.to_doc()),
-                                BoxDoc::line(),
-                            ))
+                            .append(children_to_doc(children))
                             .nest(2)
                             .append(BoxDoc::line())
                     })
@@ -357,10 +378,7 @@ impl ParsedNode {
                         BoxDoc::nil()
                     } else {
                         BoxDoc::line()
-                            .append(BoxDoc::intersperse(
-                                children.iter().map(|c| c.to_doc()),
-                                BoxDoc::line(),
-                            ))
+                            .append(children_to_doc(children))
                             .nest(2)
                             .append(BoxDoc::line())
                     })
@@ -425,10 +443,7 @@ impl ParsedNode {
                     opening_tag_doc
                         .append(
                             BoxDoc::line()
-                                .append(BoxDoc::intersperse(
-                                    children.iter().map(|c| c.to_doc()),
-                                    BoxDoc::line(),
-                                ))
+                                .append(children_to_doc(children))
                                 .nest(2),
                         )
                         .append(BoxDoc::line())
@@ -443,10 +458,7 @@ impl ParsedNode {
                 } else {
                     BoxDoc::text("<placeholder>")
                         .append(BoxDoc::line())
-                        .append(BoxDoc::intersperse(
-                            children.iter().map(|c| c.to_doc()),
-                            BoxDoc::line(),
-                        ))
+                        .append(children_to_doc(children))
                         .nest(2)
                         .append(BoxDoc::line())
                         .append(BoxDoc::text("</placeholder>"))
