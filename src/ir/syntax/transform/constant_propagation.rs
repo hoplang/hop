@@ -354,6 +354,9 @@ impl Pass for ConstantPropagationPass {
                             binary_right_operands
                                 .push((right.id(), (expr.id(), BinaryOp::MergeClasses)));
                         }
+                        IrExpr::ArrayLength { .. } => {
+                            // Not yet implemented
+                        }
                         IrExpr::OptionLiteral { value, .. } => {
                             // Track the full Option constant with inner expression id
                             let inner_id = value.as_ref().map(|inner| inner.id());

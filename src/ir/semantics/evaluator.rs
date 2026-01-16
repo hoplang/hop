@@ -582,6 +582,13 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 _ => Err(anyhow!("MergeClasses requires string arguments")),
             }
         }
+        IrExpr::ArrayLength { array, .. } => {
+            let array_val = evaluate_expr(array, env)?;
+            match array_val {
+                Value::Array(arr) => Ok(Value::Number(serde_json::Number::from(arr.len() as i64))),
+                _ => Err(anyhow!("ArrayLength requires an array argument")),
+            }
+        }
     }
 }
 

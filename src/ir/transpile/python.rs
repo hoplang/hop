@@ -1029,6 +1029,12 @@ impl ExpressionTranspiler for PythonTranspiler {
     fn transpile_merge_classes<'a>(&self, _left: &'a IrExpr, _right: &'a IrExpr) -> BoxDoc<'a> {
         panic!("MergeClasses is not yet supported in Python transpiler")
     }
+
+    fn transpile_array_length<'a>(&self, array: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("len(")
+            .append(self.transpile_expr(array))
+            .append(BoxDoc::text(")"))
+    }
 }
 
 impl TypeTranspiler for PythonTranspiler {

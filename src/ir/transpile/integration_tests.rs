@@ -2749,4 +2749,174 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn array_length_simple() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.let_stmt("items", t.array(vec![t.str("a"), t.str("b"), t.str("c")]), |t| {
+                        let len = t.array_length(t.var("items"));
+                        t.write_expr(len, false);
+                    });
+                })
+                .build(),
+            "3",
+            expect![[r#"
+                -- input --
+                Test() {
+                  let items = ["a", "b", "c"] in {
+                    write_expr(items.len())
+                  }
+                }
+                -- expected output --
+                3
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn array_length_empty() {
+        use crate::dop::Type;
+
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.let_stmt("items", t.typed_array(Type::String, vec![]), |t| {
+                        let len = t.array_length(t.var("items"));
+                        t.write_expr(len, false);
+                    });
+                })
+                .build(),
+            "0",
+            expect![[r#"
+                -- input --
+                Test() {
+                  let items = [] in {
+                    write_expr(items.len())
+                  }
+                }
+                -- expected output --
+                0
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn array_length_in_comparison() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.let_stmt("items", t.array(vec![t.str("x"), t.str("y")]), |t| {
+                        let len = t.array_length(t.var("items"));
+                        t.if_stmt(t.eq(len, t.int(2)), |t| {
+                            t.write("has two");
+                        });
+                    });
+                })
+                .build(),
+            "has two",
+            expect![[r#"
+                -- input --
+                Test() {
+                  let items = ["x", "y"] in {
+                    if (items.len() == 2) {
+                      write("has two")
+                    }
+                  }
+                }
+                -- expected output --
+                has two
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn array_length_less_than() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.let_stmt("items", t.array(vec![t.str("a")]), |t| {
+                        let len = t.array_length(t.var("items"));
+                        t.if_stmt(t.less_than(len, t.int(5)), |t| {
+                            t.write("less than 5");
+                        });
+                    });
+                })
+                .build(),
+            "less than 5",
+            expect![[r#"
+                -- input --
+                Test() {
+                  let items = ["a"] in {
+                    if (items.len() < 5) {
+                      write("less than 5")
+                    }
+                  }
+                }
+                -- expected output --
+                less than 5
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn array_length_int_array() {
+        check(
+            IrModuleBuilder::new()
+                .component("Test", [], |t| {
+                    t.let_stmt("numbers", t.array(vec![t.int(1), t.int(2), t.int(3), t.int(4), t.int(5)]), |t| {
+                        let len = t.array_length(t.var("numbers"));
+                        t.write_expr(len, false);
+                    });
+                })
+                .build(),
+            "5",
+            expect![[r#"
+                -- input --
+                Test() {
+                  let numbers = [1, 2, 3, 4, 5] in {
+                    write_expr(numbers.len())
+                  }
+                }
+                -- expected output --
+                5
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
 }

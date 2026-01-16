@@ -876,8 +876,24 @@ pub fn typecheck_expr(
             "classes" => expand_classes_macro(args, range, var_env, type_env, annotations),
             _ => unreachable!("Unknown macro '{}' should be caught at parse time", name),
         },
-        ParsedExpr::MethodCall { .. } => {
-            todo!("Method call type checking is not yet implemented")
+        ParsedExpr::MethodCall {
+            receiver,
+            method,
+            range,
+        } => {
+            let typed_receiver = typecheck_expr(receiver, var_env, type_env, annotations, None)?;
+            let receiver_type = typed_receiver.as_type();
+
+            match (receiver_type, method.as_str()) {
+                (Type::Array(_), "len") => Ok(TypedExpr::ArrayLength {
+                    array: Box::new(typed_receiver),
+                }),
+                _ => Err(TypeError::MethodNotAvailable {
+                    method: method.as_str().to_string(),
+                    typ: receiver_type.to_string(),
+                    range: range.clone(),
+                }),
+            }
         }
     }
 }
@@ -4250,6 +4266,66 @@ mod tests {
                 error: Macro 'classes' expects String arguments, but got Int
                 classes!(name, age)
                                ^^^
+            "#]],
+        );
+    }
+
+    // Method call tests
+
+    #[test]
+    fn should_accept_len_on_array() {
+        check(
+            "",
+            &[("items", "Array[String]")],
+            "items.len()",
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_accept_len_on_int_array() {
+        check(
+            "",
+            &[("numbers", "Array[Int]")],
+            "numbers.len()",
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn should_accept_len_in_comparison() {
+        check(
+            "",
+            &[("items", "Array[String]")],
+            "items.len() == 0",
+            expect!["Bool"],
+        );
+    }
+
+    #[test]
+    fn should_reject_len_on_non_array() {
+        check(
+            "",
+            &[("name", "String")],
+            "name.len()",
+            expect![[r#"
+                error: Method 'len' is not available on type String
+                name.len()
+                ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_unknown_method_on_array() {
+        check(
+            "",
+            &[("items", "Array[String]")],
+            "items.foo()",
+            expect![[r#"
+                error: Method 'foo' is not available on type Array[String]
+                items.foo()
+                ^^^^^^^^^^^
             "#]],
         );
     }

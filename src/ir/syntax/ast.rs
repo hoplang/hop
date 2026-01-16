@@ -261,6 +261,9 @@ pub enum IrExpr {
         kind: Type,
         id: ExprId,
     },
+
+    /// Array length expression, e.g. items.len()
+    ArrayLength { array: Box<IrExpr>, id: ExprId },
 }
 
 impl IrStatement {
@@ -725,7 +728,8 @@ impl IrExpr {
             | IrExpr::Equals { id, .. }
             | IrExpr::LessThan { id, .. }
             | IrExpr::LessThanOrEqual { id, .. }
-            | IrExpr::Let { id, .. } => *id,
+            | IrExpr::Let { id, .. }
+            | IrExpr::ArrayLength { id, .. } => *id,
         }
     }
 
@@ -769,6 +773,8 @@ impl IrExpr {
             | IrExpr::LessThanOrEqual { .. }
             | IrExpr::BooleanLogicalAnd { .. }
             | IrExpr::BooleanLogicalOr { .. } => &BOOL_TYPE,
+
+            IrExpr::ArrayLength { .. } => &INT_TYPE,
         }
     }
 
@@ -1061,6 +1067,9 @@ impl IrExpr {
                 .append(BoxDoc::text(", "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
+            IrExpr::ArrayLength { array, .. } => array
+                .to_doc()
+                .append(BoxDoc::text(".len()")),
         }
     }
 
@@ -1151,6 +1160,9 @@ impl IrExpr {
                 left.traverse(f);
                 right.traverse(f);
             }
+            IrExpr::ArrayLength { array, .. } => {
+                array.traverse(f);
+            }
         }
     }
 
@@ -1240,6 +1252,9 @@ impl IrExpr {
             IrExpr::MergeClasses { left, right, .. } => {
                 left.traverse_mut(f);
                 right.traverse_mut(f);
+            }
+            IrExpr::ArrayLength { array, .. } => {
+                array.traverse_mut(f);
             }
         }
     }

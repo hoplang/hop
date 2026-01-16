@@ -703,6 +703,10 @@ impl Compiler {
                     result
                 }
             }
+            TypedExpr::ArrayLength { array } => IrExpr::ArrayLength {
+                array: Box::new(self.compile_expr(array)),
+                id: expr_id,
+            },
         }
     }
 }

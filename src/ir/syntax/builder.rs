@@ -517,6 +517,13 @@ impl IrBuilder {
         }
     }
 
+    pub fn array_length(&self, array: IrExpr) -> IrExpr {
+        IrExpr::ArrayLength {
+            array: Box::new(array),
+            id: self.next_expr_id(),
+        }
+    }
+
     pub fn record(&self, record_name: &str, fields: Vec<(&str, IrExpr)>) -> IrExpr {
         let record_fields = self
             .records

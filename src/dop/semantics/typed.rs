@@ -146,6 +146,9 @@ pub enum TypedExpr {
 
     /// Merge CSS classes expression, e.g. classes!(a, b, c)
     MergeClasses { args: Vec<Self> },
+
+    /// Array length expression, e.g. items.len()
+    ArrayLength { array: Box<Self> },
 }
 
 impl TypedExpr {
@@ -189,6 +192,8 @@ impl TypedExpr {
             | TypedExpr::GreaterThanOrEqual { .. }
             | TypedExpr::BooleanLogicalAnd { .. }
             | TypedExpr::BooleanLogicalOr { .. } => &BOOL_TYPE,
+
+            TypedExpr::ArrayLength { .. } => &INT_TYPE,
         }
     }
 
@@ -488,6 +493,9 @@ impl TypedExpr {
                         .append(BoxDoc::text(")"))
                 }
             }
+            TypedExpr::ArrayLength { array } => array
+                .to_doc()
+                .append(BoxDoc::text(".len()")),
         }
     }
 }

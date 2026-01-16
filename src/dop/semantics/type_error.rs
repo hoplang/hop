@@ -208,6 +208,13 @@ pub enum TypeError {
         actual: String,
         range: DocumentRange,
     },
+
+    #[error("Method '{method}' is not available on type {typ}")]
+    MethodNotAvailable {
+        method: String,
+        typ: String,
+        range: DocumentRange,
+    },
 }
 
 impl Ranged for TypeError {
@@ -247,7 +254,8 @@ impl Ranged for TypeError {
             | TypeError::MatchNoArms { range, .. }
             | TypeError::MatchUnusedBinding { range, .. }
             | TypeError::VariableAlreadyDefined { range, .. }
-            | TypeError::MacroArgumentTypeMismatch { range, .. } => range,
+            | TypeError::MacroArgumentTypeMismatch { range, .. }
+            | TypeError::MethodNotAvailable { range, .. } => range,
         }
     }
 }

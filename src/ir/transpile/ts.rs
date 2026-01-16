@@ -1160,6 +1160,11 @@ impl ExpressionTranspiler for TsTranspiler {
     fn transpile_merge_classes<'a>(&self, _left: &'a IrExpr, _right: &'a IrExpr) -> BoxDoc<'a> {
         panic!("MergeClasses is not yet supported in TypeScript transpiler")
     }
+
+    fn transpile_array_length<'a>(&self, array: &'a IrExpr) -> BoxDoc<'a> {
+        self.transpile_expr(array)
+            .append(BoxDoc::text(".length"))
+    }
 }
 
 impl TypeTranspiler for TsTranspiler {
