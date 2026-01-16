@@ -18,6 +18,8 @@ enum BinaryOp {
     Equals,
     StringConcat,
     MergeClasses,
+    LogicalOr,
+    LogicalAnd,
 }
 
 /// Constant values that can be tracked during constant folding
@@ -182,12 +184,6 @@ impl Pass for ConstantPropagationPass {
                         IrExpr::LessThan { .. } => {
                             // Not yet implemented
                         }
-                        IrExpr::BooleanLogicalOr { .. } => {
-                            // Not yet implemented
-                        }
-                        IrExpr::BooleanLogicalAnd { .. } => {
-                            // Not yet implemented
-                        }
                         IrExpr::NumericAdd { .. } => {
                             // Not yet implemented
                         }
@@ -211,6 +207,18 @@ impl Pass for ConstantPropagationPass {
                         }
                         IrExpr::FieldAccess { .. } => {
                             // Not yet implemented
+                        }
+                        IrExpr::BooleanLogicalOr { left, right, .. } => {
+                            binary_left_operands
+                                .push((left.id(), (expr.id(), BinaryOp::LogicalOr)));
+                            binary_right_operands
+                                .push((right.id(), (expr.id(), BinaryOp::LogicalOr)));
+                        }
+                        IrExpr::BooleanLogicalAnd { left, right, .. } => {
+                            binary_left_operands
+                                .push((left.id(), (expr.id(), BinaryOp::LogicalAnd)));
+                            binary_right_operands
+                                .push((right.id(), (expr.id(), BinaryOp::LogicalAnd)));
                         }
                         IrExpr::BooleanLiteral { value, .. } => {
                             initial_constants.push((expr.id(), Const::Bool(*value)));
@@ -496,6 +504,14 @@ impl Pass for ConstantPropagationPass {
                                     Const::String(tw_merge(&combined))
                                 }
                                 _ => unreachable!("MergeClasses can only have string operands"),
+                            },
+                            BinaryOp::LogicalOr => match (left_val, right_val) {
+                                (Const::Bool(l), Const::Bool(r)) => Const::Bool(*l || *r),
+                                _ => unreachable!("LogicalOr can only have boolean operands"),
+                            },
+                            BinaryOp::LogicalAnd => match (left_val, right_val) {
+                                (Const::Bool(l), Const::Bool(r)) => Const::Bool(*l && *r),
+                                _ => unreachable!("LogicalAnd can only have boolean operands"),
                             },
                         };
                         (*result_id, result)
@@ -2577,6 +2593,229 @@ mod tests {
                     let y = Msg::Say(text: "hello") in {
                       write_escaped("hello")
                     }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_logical_or_with_literals() {
+        check(
+            build_ir("Test", [], |t| {
+                t.if_stmt(t.or(t.bool(false), t.bool(false)), |t| {
+                    t.write("false || false");
+                });
+                t.if_stmt(t.or(t.bool(false), t.bool(true)), |t| {
+                    t.write("false || true");
+                });
+                t.if_stmt(t.or(t.bool(true), t.bool(false)), |t| {
+                    t.write("true || false");
+                });
+                t.if_stmt(t.or(t.bool(true), t.bool(true)), |t| {
+                    t.write("true || true");
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  if (false || false) {
+                    write("false || false")
+                  }
+                  if (false || true) {
+                    write("false || true")
+                  }
+                  if (true || false) {
+                    write("true || false")
+                  }
+                  if (true || true) {
+                    write("true || true")
+                  }
+                }
+
+                -- after --
+                Test() {
+                  if false {
+                    write("false || false")
+                  }
+                  if true {
+                    write("false || true")
+                  }
+                  if true {
+                    write("true || false")
+                  }
+                  if true {
+                    write("true || true")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_logical_and_with_literals() {
+        check(
+            build_ir("Test", [], |t| {
+                t.if_stmt(t.and(t.bool(false), t.bool(false)), |t| {
+                    t.write("false && false");
+                });
+                t.if_stmt(t.and(t.bool(false), t.bool(true)), |t| {
+                    t.write("false && true");
+                });
+                t.if_stmt(t.and(t.bool(true), t.bool(false)), |t| {
+                    t.write("true && false");
+                });
+                t.if_stmt(t.and(t.bool(true), t.bool(true)), |t| {
+                    t.write("true && true");
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  if (false && false) {
+                    write("false && false")
+                  }
+                  if (false && true) {
+                    write("false && true")
+                  }
+                  if (true && false) {
+                    write("true && false")
+                  }
+                  if (true && true) {
+                    write("true && true")
+                  }
+                }
+
+                -- after --
+                Test() {
+                  if false {
+                    write("false && false")
+                  }
+                  if false {
+                    write("false && true")
+                  }
+                  if false {
+                    write("true && false")
+                  }
+                  if true {
+                    write("true && true")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_logical_operations_with_propagated_variables() {
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("a", t.bool(true), |t| {
+                    t.let_stmt("b", t.bool(false), |t| {
+                        t.if_stmt(t.or(t.var("a"), t.var("b")), |t| {
+                            t.write("a || b");
+                        });
+                        t.if_stmt(t.and(t.var("a"), t.var("b")), |t| {
+                            t.write("a && b");
+                        });
+                    });
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let a = true in {
+                    let b = false in {
+                      if (a || b) {
+                        write("a || b")
+                      }
+                      if (a && b) {
+                        write("a && b")
+                      }
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let a = true in {
+                    let b = false in {
+                      if true {
+                        write("a || b")
+                      }
+                      if false {
+                        write("a && b")
+                      }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_nested_logical_operations() {
+        check(
+            build_ir("Test", [], |t| {
+                // (true && false) || (false || true) => false || true => true
+                t.if_stmt(
+                    t.or(
+                        t.and(t.bool(true), t.bool(false)),
+                        t.or(t.bool(false), t.bool(true)),
+                    ),
+                    |t| {
+                        t.write("complex expression");
+                    },
+                );
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  if ((true && false) || (false || true)) {
+                    write("complex expression")
+                  }
+                }
+
+                -- after --
+                Test() {
+                  if true {
+                    write("complex expression")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_logical_operations_with_negation() {
+        check(
+            build_ir("Test", [], |t| {
+                // !false && !false => true && true => true
+                t.if_stmt(t.and(t.not(t.bool(false)), t.not(t.bool(false))), |t| {
+                    t.write("both negated");
+                });
+                // !true || false => false || false => false
+                t.if_stmt(t.or(t.not(t.bool(true)), t.bool(false)), |t| {
+                    t.write("should not appear");
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  if ((!false) && (!false)) {
+                    write("both negated")
+                  }
+                  if ((!true) || false) {
+                    write("should not appear")
+                  }
+                }
+
+                -- after --
+                Test() {
+                  if true {
+                    write("both negated")
+                  }
+                  if false {
+                    write("should not appear")
                   }
                 }
             "#]],
