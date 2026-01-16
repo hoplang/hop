@@ -662,9 +662,9 @@ fn format_expr<'a>(
             .text("\"")
             .append(arena.text(value.as_str()))
             .append(arena.text("\"")),
-        ParsedExpr::BooleanLiteral { value, .. } => arena.text(value.to_string()),
-        ParsedExpr::IntLiteral { value, .. } => arena.text(value.to_string()),
-        ParsedExpr::FloatLiteral { value, .. } => arena.text(value.to_string()),
+        ParsedExpr::BooleanLiteral { range, .. } => arena.text(range.as_str()),
+        ParsedExpr::IntLiteral { range, .. } => arena.text(range.as_str()),
+        ParsedExpr::FloatLiteral { range, .. } => arena.text(range.as_str()),
         ParsedExpr::ArrayLiteral { elements, .. } => {
             if elements.is_empty() {
                 arena.text("[]")
@@ -2870,6 +2870,50 @@ mod tests {
                   <div>
                     {x.method().field}
                   </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn float_literal_to_doc() {
+        check(
+            indoc! {"
+                <Main>
+                  <let {x: Float = 5.0}>
+                    {x}
+                  </let>
+                </Main>
+            "},
+            expect![[r#"
+                <Main>
+                  <let {x: Float = 5.0}>
+                    {x}
+                  </let>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn float_literals_small_values_to_doc() {
+        check(
+            indoc! {"
+                <Main>
+                  <let {a: Float = 0.000, b: Float = 0.001, c: Float = 0.002}>
+                    {a}
+                  </let>
+                </Main>
+            "},
+            expect![[r#"
+                <Main>
+                  <let {
+                    a: Float = 0.000,
+                    b: Float = 0.001,
+                    c: Float = 0.002,
+                  }>
+                    {a}
+                  </let>
                 </Main>
             "#]],
         );
