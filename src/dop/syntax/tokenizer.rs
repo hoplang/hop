@@ -19,7 +19,19 @@ pub fn next(
 
     iter.next().map(|start| {
         match start.ch() {
-            '.' => Ok((Token::Dot, start)),
+            '.' => {
+                // Check for ..=
+                let mut lookahead = iter.clone();
+                if lookahead.next_if(|s| s.ch() == '.').is_some()
+                    && lookahead.peek().map(|s| s.ch()) == Some('=')
+                {
+                    iter.next(); // consume second dot
+                    let eq = iter.next().unwrap();
+                    Ok((Token::DotDotEq, start.to(eq)))
+                } else {
+                    Ok((Token::Dot, start))
+                }
+            }
             '(' => Ok((Token::LeftParen, start)),
             ')' => Ok((Token::RightParen, start)),
             '[' => Ok((Token::LeftBracket, start)),
@@ -141,11 +153,19 @@ pub fn next(
             ch if ch.is_ascii_digit() => {
                 let mut number_string =
                     start.extend(iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
-                let has_decimal = if let Some(dot) = iter.next_if(|s| s.ch() == '.') {
-                    number_string = number_string.to(dot);
-                    number_string =
-                        number_string.extend(iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
-                    true
+                // Only consume '.' as decimal if followed by a digit
+                let has_decimal = if iter.peek().map(|s| s.ch()) == Some('.') {
+                    let mut lookahead = iter.clone();
+                    lookahead.next(); // consume dot in lookahead
+                    if lookahead.peek().is_some_and(|s| s.ch().is_ascii_digit()) {
+                        let dot = iter.next().unwrap();
+                        number_string = number_string.to(dot);
+                        number_string = number_string
+                            .extend(iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
+                        true
+                    } else {
+                        false
+                    }
                 } else {
                     false
                 };
@@ -305,36 +325,47 @@ mod tests {
 
     #[test]
     fn should_reject_for_invalid_number_formats() {
+        // Numbers with leading zeros are invalid
         check(
-            "1. 1000. 1. 000 0. 0123 01010",
+            "000 0123 01010",
             expect![[r#"
                 error: Invalid number format
-                1. 1000. 1. 000 0. 0123 01010
-                ^^
+                000 0123 01010
+                ^^^
 
                 error: Invalid number format
-                1. 1000. 1. 000 0. 0123 01010
-                   ^^^^^
+                000 0123 01010
+                    ^^^^
 
                 error: Invalid number format
-                1. 1000. 1. 000 0. 0123 01010
-                         ^^
+                000 0123 01010
+                         ^^^^^
+            "#]],
+        );
+    }
 
-                error: Invalid number format
-                1. 1000. 1. 000 0. 0123 01010
-                            ^^^
+    #[test]
+    fn should_parse_trailing_dot_as_separate_token() {
+        // `1.` is parsed as integer `1` followed by `.` (not an invalid float)
+        // This allows range expressions like `0..=10`
+        check(
+            "1. 1000.",
+            expect![[r#"
+                token: 1
+                1. 1000.
+                ^
 
-                error: Invalid number format
-                1. 1000. 1. 000 0. 0123 01010
-                                ^^
+                token: .
+                1. 1000.
+                 ^
 
-                error: Invalid number format
-                1. 1000. 1. 000 0. 0123 01010
-                                   ^^^^
+                token: 1000
+                1. 1000.
+                   ^^^^
 
-                error: Invalid number format
-                1. 1000. 1. 000 0. 0123 01010
-                                        ^^^^^
+                token: .
+                1. 1000.
+                       ^
             "#]],
         );
     }
@@ -1603,6 +1634,54 @@ mod tests {
                 token: bar
                 foo / bar
                       ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_inclusive_range_operator() {
+        check(
+            "..=",
+            expect![[r#"
+                token: ..=
+                ..=
+                ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_inclusive_range_in_expression() {
+        check(
+            "0..=10",
+            expect![[r#"
+                token: 0
+                0..=10
+                ^
+
+                token: ..=
+                0..=10
+                 ^^^
+
+                token: 10
+                0..=10
+                    ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_tokenize_double_dot_as_two_dots() {
+        check(
+            "..",
+            expect![[r#"
+                token: .
+                ..
+                ^
+
+                token: .
+                ..
+                 ^
             "#]],
         );
     }
