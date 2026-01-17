@@ -945,8 +945,8 @@ fn typecheck_node(
 
         ParsedNode::Placeholder { .. } => Some(TypedNode::Placeholder),
 
-        ParsedNode::Text { value, range: _ } => Some(TypedNode::Text {
-            value: value.clone(),
+        ParsedNode::Text { range } => Some(TypedNode::Text {
+            value: range.to_cheap_string(),
         }),
 
         ParsedNode::Newline { range } => Some(TypedNode::Text {

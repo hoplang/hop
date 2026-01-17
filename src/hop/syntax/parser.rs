@@ -356,10 +356,7 @@ fn construct_node(
             value: range.to_cheap_string(),
             range,
         }),
-        Token::Text { range } => Some(ParsedNode::Text {
-            value: range.to_cheap_string(),
-            range,
-        }),
+        Token::Text { range } => Some(ParsedNode::Text { range }),
         Token::Newline { range } => Some(ParsedNode::Newline { range }),
         Token::TextExpression { content, range } => {
             let mut iter = content.cursor().peekable();
@@ -386,10 +383,7 @@ fn construct_node(
             // Convert content to a Text child if present
             let children = content
                 .map(|c| {
-                    vec![ParsedNode::Text {
-                        value: c.to_cheap_string(),
-                        range: c,
-                    }]
+                    vec![ParsedNode::Text { range: c }]
                 })
                 .unwrap_or_default();
 

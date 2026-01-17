@@ -39,15 +39,12 @@ fn transform_nodes(nodes: Vec<ParsedNode>) -> Vec<ParsedNode> {
 
 fn transform_node(node: ParsedNode) -> Option<ParsedNode> {
     match node {
-        ParsedNode::Text { range, .. } => {
+        ParsedNode::Text { range } => {
             let trimmed = range.trim();
             if trimmed.as_str().is_empty() {
                 None
             } else {
-                Some(ParsedNode::Text {
-                    value: trimmed.to_cheap_string(),
-                    range: trimmed,
-                })
+                Some(ParsedNode::Text { range: trimmed })
             }
         }
         // Newline nodes are filtered out - the formatter will insert its own line breaks

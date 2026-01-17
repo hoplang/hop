@@ -359,7 +359,7 @@ fn format_node<'a>(
     comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     match node {
-        ParsedNode::Text { value, .. } => arena.text(value.as_str()),
+        ParsedNode::Text { range } => arena.text(range.as_str()),
         // Newline nodes are filtered out by whitespace_removal before formatting,
         // but handle them here for completeness
         ParsedNode::Newline { .. } => arena.nil(),

@@ -61,10 +61,7 @@ pub enum ParsedNode {
     /// A Text node represents text in the document.
     /// E.g. <div>hello world</div>
     ///           ^^^^^^^^^^^
-    Text {
-        value: CheapString,
-        range: DocumentRange,
-    },
+    Text { range: DocumentRange },
 
     /// A Newline node represents a newline character in text position.
     /// This is separate from Text to allow precise whitespace handling.
@@ -228,7 +225,7 @@ impl ParsedNode {
 
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
-            ParsedNode::Text { value, .. } => BoxDoc::text(value.as_str()),
+            ParsedNode::Text { range } => BoxDoc::text(range.as_str()),
             ParsedNode::Newline { .. } => BoxDoc::line(),
             ParsedNode::TextExpression { expression, .. } => BoxDoc::text("{")
                 .append(expression.to_doc())
