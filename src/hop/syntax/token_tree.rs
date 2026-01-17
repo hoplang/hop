@@ -78,6 +78,7 @@ pub fn parse_tree(
             Token::Comment { .. }
             | Token::Doctype { .. }
             | Token::Text { .. }
+            | Token::Newline { .. }
             | Token::TextExpression { .. }
             | Token::RawTextTag { .. } => return Some(TokenTree::new(token)),
 
@@ -136,6 +137,7 @@ fn parse_nested_tree(
             Token::Comment { .. }
             | Token::Doctype { .. }
             | Token::Text { .. }
+            | Token::Newline { .. }
             | Token::TextExpression { .. }
             | Token::RawTextTag { .. } => {
                 stack.last_mut().unwrap().tree.append_node(token);
@@ -305,7 +307,7 @@ mod tests {
                 )
 
                 TokenTree(
-                  Text [1 byte, "\n"]
+                  Newline
                   closing_tag_name: None,
                   children: [],
                 )
@@ -334,7 +336,12 @@ mod tests {
                   closing_tag_name: Some("div"),
                   children: [
                     TokenTree(
-                      Text [5 byte, "\n    "]
+                      Newline
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                    TokenTree(
+                      Text [4 byte, "    "]
                       closing_tag_name: None,
                       children: [],
                     )
@@ -349,7 +356,12 @@ mod tests {
                       children: [],
                     )
                     TokenTree(
-                      Text [5 byte, "\n    "]
+                      Newline
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                    TokenTree(
+                      Text [4 byte, "    "]
                       closing_tag_name: None,
                       children: [],
                     )
@@ -364,7 +376,7 @@ mod tests {
                       children: [],
                     )
                     TokenTree(
-                      Text [1 byte, "\n"]
+                      Newline
                       closing_tag_name: None,
                       children: [],
                     )
@@ -372,7 +384,7 @@ mod tests {
                 )
 
                 TokenTree(
-                  Text [1 byte, "\n"]
+                  Newline
                   closing_tag_name: None,
                   children: [],
                 )
@@ -401,7 +413,12 @@ mod tests {
                   closing_tag_name: Some("div"),
                   children: [
                     TokenTree(
-                      Text [5 byte, "\n    "]
+                      Newline
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                    TokenTree(
+                      Text [4 byte, "    "]
                       closing_tag_name: None,
                       children: [],
                     )
@@ -422,7 +439,12 @@ mod tests {
                       ],
                     )
                     TokenTree(
-                      Text [5 byte, "\n    "]
+                      Newline
+                      closing_tag_name: None,
+                      children: [],
+                    )
+                    TokenTree(
+                      Text [4 byte, "    "]
                       closing_tag_name: None,
                       children: [],
                     )
@@ -443,7 +465,7 @@ mod tests {
                       ],
                     )
                     TokenTree(
-                      Text [1 byte, "\n"]
+                      Newline
                       closing_tag_name: None,
                       children: [],
                     )
@@ -451,7 +473,7 @@ mod tests {
                 )
 
                 TokenTree(
-                  Text [1 byte, "\n"]
+                  Newline
                   closing_tag_name: None,
                   children: [],
                 )

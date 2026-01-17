@@ -52,6 +52,12 @@ pub enum Token {
     Text {
         range: DocumentRange,
     },
+    /// A newline character in text position.
+    /// This is emitted separately from Text tokens to allow the parser
+    /// to handle whitespace normalization more precisely.
+    Newline {
+        range: DocumentRange,
+    },
     TextExpression {
         content: DocumentRange,
         range: DocumentRange,
@@ -73,6 +79,7 @@ impl Ranged for Token {
             | Token::OpeningTag { range, .. }
             | Token::ClosingTag { range, .. }
             | Token::Text { range }
+            | Token::Newline { range }
             | Token::TextExpression { range, .. }
             | Token::RawTextTag { range, .. } => range,
         }
@@ -89,6 +96,9 @@ impl Display for Token {
                     value.as_str().len(),
                     value.to_string()
                 )
+            }
+            Token::Newline { .. } => {
+                write!(f, "Newline")
             }
             Token::Doctype { .. } => {
                 write!(f, "Doctype")
@@ -211,6 +221,10 @@ pub fn next(
                 } else {
                     continue;
                 }
+            }
+            Some('\n') => {
+                let newline = iter.next().unwrap();
+                return Some(Token::Newline { range: newline });
             }
             Some(_) => return Some(parse_text(iter)),
             None => return None,
@@ -782,12 +796,14 @@ fn parse_raw_text_element(
 /// E.g. <div>hello</div>
 ///           ^^^^^
 /// Expects that the iterator points to the initial char.
+/// Stops at '<', '{', or '\n' (newlines are emitted as separate tokens).
 fn parse_text(iter: &mut Peekable<DocumentCursor>) -> Token {
     let Some(initial) = iter.next() else {
         panic!("Expected an initial char in parse_text but got None");
     };
     Token::Text {
-        range: initial.extend(iter.peeking_take_while(|s| s.ch() != '<' && s.ch() != '{')),
+        range: initial
+            .extend(iter.peeking_take_while(|s| s.ch() != '<' && s.ch() != '{' && s.ch() != '\n')),
     }
 }
 
@@ -979,13 +995,31 @@ mod tests {
             "this\ntext\nspans\nmultiple lines",
             expect![[r#"
                 -- tokens --
-                Text [30 byte, "this\ntext\nspans\nmultiple lines"]
+                Text [4 byte, "this"]
                 this
                 ^^^^
+
+                Newline
+                this
+                text
+
+                Text [4 byte, "text"]
                 text
                 ^^^^
+
+                Newline
+                text
+                spans
+
+                Text [5 byte, "spans"]
                 spans
                 ^^^^^
+
+                Newline
+                spans
+                multiple lines
+
+                Text [14 byte, "multiple lines"]
                 multiple lines
                 ^^^^^^^^^^^^^^
             "#]],
@@ -1139,7 +1173,7 @@ mod tests {
                 <p><!-- -->
                    ^^^^^^^^
 
-                Text [1 byte, "\n"]
+                Newline
                 <p><!-- -->
                 </p>
 
@@ -1149,7 +1183,7 @@ mod tests {
                 </p>
                 ^^^^
 
-                Text [1 byte, "\n"]
+                Newline
                 </p>
             "#]],
         );
@@ -1207,7 +1241,7 @@ mod tests {
                 lines --></p>
                          ^^^^
 
-                Text [1 byte, "\n"]
+                Newline
                 lines --></p>
             "#]],
         );
@@ -1254,7 +1288,7 @@ mod tests {
                 <!-- ---><!-- ----><!----><!-----><!-- ---->
                                                   ^^^^^^^^^^
 
-                Text [1 byte, "\n"]
+                Newline
                 <!-- ---><!-- ----><!----><!-----><!-- ---->
             "#]],
         );
@@ -1279,8 +1313,11 @@ mod tests {
                 <textarea>
                 ^^^^^^^^^^
 
-                Text [2 byte, "\n\t"]
+                Newline
                 <textarea>
+                    <div></div>
+
+                Text [1 byte, "\t"]
                     <div></div>
                 ^^^^
 
@@ -1299,7 +1336,7 @@ mod tests {
                     <div></div>
                          ^^^^^^
 
-                Text [1 byte, "\n"]
+                Newline
                     <div></div>
                 </textarea>
 
@@ -1309,7 +1346,7 @@ mod tests {
                 </textarea>
                 ^^^^^^^^^^^
 
-                Text [1 byte, "\n"]
+                Newline
                 </textarea>
             "#]],
         );
@@ -1405,7 +1442,7 @@ mod tests {
                 </style>
                 ^^^^^^^^
 
-                Text [1 byte, "\n"]
+                Newline
                 </style>
             "#]],
         );
@@ -1441,7 +1478,7 @@ mod tests {
                   data-value="something">
                 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-                Text [1 byte, "\n"]
+                Newline
                   data-value="something">
             "#]],
         );
@@ -1473,7 +1510,7 @@ mod tests {
                 </script>
                 ^^^^^^^^^
 
-                Text [1 byte, "\n"]
+                Newline
                 </script>
             "#]],
         );
@@ -1510,8 +1547,11 @@ mod tests {
                 </ script>
                 ^^^^^^^^^^
 
-                Text [2 byte, "\n\n"]
+                Newline
                 </ script>
+
+
+                Newline
 
                 <script>
 
@@ -1528,8 +1568,11 @@ mod tests {
                 </script  >
                 ^^^^^^^^^^^
 
-                Text [2 byte, "\n\n"]
+                Newline
                 </script  >
+
+
+                Newline
 
                 <script>
 
@@ -1546,7 +1589,7 @@ mod tests {
                 </ script  >
                 ^^^^^^^^^^^^
 
-                Text [1 byte, "\n"]
+                Newline
                 </ script  >
             "#]],
         );
@@ -1584,7 +1627,7 @@ mod tests {
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-                Text [1 byte, "\n"]
+                Newline
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
 
@@ -1608,7 +1651,7 @@ mod tests {
                 <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
                                                             ^^^^^^^
 
-                Text [1 byte, "\n"]
+                Newline
                 <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
                 <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
 
@@ -1629,7 +1672,7 @@ mod tests {
                 <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
                                                                                                                                                     ^^^^^^^
 
-                Text [1 byte, "\n"]
+                Newline
                 <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
                 <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
 
@@ -1650,7 +1693,7 @@ mod tests {
                 <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
                                                                  ^^^^^^^^^^^
 
-                Text [1 byte, "\n"]
+                Newline
                 <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
                 <line x1="12" y1="22.08" x2="12" y2="12"></line>
 
@@ -1674,7 +1717,7 @@ mod tests {
                 <line x1="12" y1="22.08" x2="12" y2="12"></line>
                                                          ^^^^^^^
 
-                Text [1 byte, "\n"]
+                Newline
                 <line x1="12" y1="22.08" x2="12" y2="12"></line>
                 </svg>
 
@@ -1684,7 +1727,7 @@ mod tests {
                 </svg>
                 ^^^^^^
 
-                Text [1 byte, "\n"]
+                Newline
                 </svg>
             "#]],
         );
@@ -1709,7 +1752,7 @@ mod tests {
                 <div class="test" {bar}>
                 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-                Text [1 byte, "\n"]
+                Newline
                 <div class="test" {bar}>
             "#]],
         );

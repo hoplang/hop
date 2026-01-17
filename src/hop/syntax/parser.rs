@@ -360,6 +360,14 @@ fn construct_node(
             value: range.to_cheap_string(),
             range,
         }),
+        Token::Newline { range } => {
+            // For now, convert newlines to text nodes with the newline character.
+            // This preserves existing behavior until ParsedNode::Newline is introduced.
+            Some(ParsedNode::Text {
+                value: range.to_cheap_string(),
+                range,
+            })
+        }
         Token::TextExpression { content, range } => {
             let mut iter = content.cursor().peekable();
             match dop::parser::parse_expr(&mut iter, comments, &content) {
@@ -442,8 +450,11 @@ fn construct_node(
                 let mut cases = Vec::new();
                 for child_tree in tree.children {
                     match &child_tree.token {
-                        // Ignore whitespace text
+                        // Ignore whitespace text and newlines
                         Token::Text { range, .. } if range.as_str().trim().is_empty() => {
+                            continue;
+                        }
+                        Token::Newline { .. } => {
                             continue;
                         }
                         // Process <case> tags
