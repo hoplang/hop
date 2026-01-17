@@ -360,6 +360,9 @@ fn format_node<'a>(
 ) -> DocBuilder<'a, Arena<'a>> {
     match node {
         ParsedNode::Text { value, .. } => arena.text(value.as_str()),
+        // Newline nodes are filtered out by whitespace_removal before formatting,
+        // but handle them here for completeness
+        ParsedNode::Newline { .. } => arena.nil(),
         ParsedNode::TextExpression { expression, .. } => arena
             .text("{")
             .append(format_expr(arena, expression, comments))

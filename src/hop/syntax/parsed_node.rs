@@ -66,6 +66,10 @@ pub enum ParsedNode {
         range: DocumentRange,
     },
 
+    /// A Newline node represents a newline character in text position.
+    /// This is separate from Text to allow precise whitespace handling.
+    Newline { range: DocumentRange },
+
     /// A TextExpression represents an expression that occurs in a text position.
     /// E.g. <div>hello {world}</div>
     ///                 ^^^^^^^
@@ -170,6 +174,7 @@ impl ParsedNode {
             ParsedNode::Match { .. } => &[], // children are inside cases
             ParsedNode::Doctype { .. } => &[],
             ParsedNode::Text { .. } => &[],
+            ParsedNode::Newline { .. } => &[],
             ParsedNode::TextExpression { .. } => &[],
         }
     }
@@ -224,6 +229,7 @@ impl ParsedNode {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
             ParsedNode::Text { value, .. } => BoxDoc::text(value.as_str()),
+            ParsedNode::Newline { .. } => BoxDoc::line(),
             ParsedNode::TextExpression { expression, .. } => BoxDoc::text("{")
                 .append(expression.to_doc())
                 .append(BoxDoc::text("}")),
@@ -454,6 +460,7 @@ impl Ranged for ParsedNode {
     fn range(&self) -> &DocumentRange {
         match self {
             ParsedNode::Text { range, .. }
+            | ParsedNode::Newline { range }
             | ParsedNode::TextExpression { range, .. }
             | ParsedNode::ComponentReference { range, .. }
             | ParsedNode::If { range, .. }

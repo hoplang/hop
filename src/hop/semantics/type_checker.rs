@@ -949,6 +949,10 @@ fn typecheck_node(
             value: value.clone(),
         }),
 
+        ParsedNode::Newline { range } => Some(TypedNode::Text {
+            value: range.to_cheap_string(),
+        }),
+
         ParsedNode::Doctype { value, range: _ } => Some(TypedNode::Doctype {
             value: value.clone(),
         }),

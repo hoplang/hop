@@ -360,14 +360,7 @@ fn construct_node(
             value: range.to_cheap_string(),
             range,
         }),
-        Token::Newline { range } => {
-            // For now, convert newlines to text nodes with the newline character.
-            // This preserves existing behavior until ParsedNode::Newline is introduced.
-            Some(ParsedNode::Text {
-                value: range.to_cheap_string(),
-                range,
-            })
-        }
+        Token::Newline { range } => Some(ParsedNode::Newline { range }),
         Token::TextExpression { content, range } => {
             let mut iter = content.cursor().peekable();
             match dop::parser::parse_expr(&mut iter, comments, &content) {
@@ -839,8 +832,8 @@ mod tests {
                 <Main>
                   <script>
                     // note that the <div> inside here is not
-                    // parsed as html
-                    console.log("<div>test</div>");
+                        // parsed as html
+                        console.log("<div>test</div>");
                   </script>
                   <style>
                     body { color: red; }
@@ -1714,7 +1707,7 @@ mod tests {
                 <Main>
                   <script>
                     const x = "{not_an_expression}";
-                    const obj = {key: "value"};
+                        const obj = {key: "value"};
                   </script>
                 </Main>
             "#]],
@@ -1736,7 +1729,7 @@ mod tests {
                 <Main>
                   <style>
                     body { color: red; }
-                    .class { font-size: 12px; }
+                        .class { font-size: 12px; }
                   </style>
                 </Main>
             "#]],

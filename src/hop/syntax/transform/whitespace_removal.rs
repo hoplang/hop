@@ -3,12 +3,12 @@ use crate::document::{CheapString, DocumentRange};
 use crate::hop::syntax::parsed_ast::{ParsedAst, ParsedComponentDeclaration, ParsedDeclaration};
 use crate::hop::syntax::parsed_node::{ParsedMatchCase, ParsedNode};
 
-/// Removes leading and trailing whitespace from text nodes in a ParsedAst.
+/// Removes whitespace from a ParsedAst to normalize it for formatting.
 ///
 /// This works by:
-/// 1. Splitting text on newlines
-/// 2. Trimming leading and trailing whitespace from each piece
-/// 3. Filtering out empty pieces
+/// 1. Trimming leading and trailing whitespace from Text nodes
+/// 2. Removing Text nodes that become empty after trimming
+/// 3. Removing all Newline nodes (the formatter will insert its own line breaks)
 pub fn remove_whitespace(ast: ParsedAst) -> ParsedAst {
     let declarations = ast
         .get_declarations()
@@ -41,7 +41,9 @@ fn transform_nodes(nodes: Vec<ParsedNode>) -> Vec<ParsedNode> {
 
 fn transform_node(node: ParsedNode) -> Vec<ParsedNode> {
     match node {
-        ParsedNode::Text { value, range } => split_text_node(&value, &range),
+        ParsedNode::Text { value, range } => trim_text_node(&value, &range),
+        // Newline nodes are filtered out - the formatter will insert its own line breaks
+        ParsedNode::Newline { .. } => vec![],
         ParsedNode::ComponentReference {
             component_name,
             component_name_opening_range,
@@ -130,17 +132,17 @@ fn transform_node(node: ParsedNode) -> Vec<ParsedNode> {
     }
 }
 
-fn split_text_node(value: &CheapString, range: &DocumentRange) -> Vec<ParsedNode> {
-    value
-        .as_str()
-        .split('\n')
-        .map(|line| line.trim())
-        .filter(|line| !line.is_empty())
-        .map(|line| ParsedNode::Text {
-            value: CheapString::new(line.to_string()),
+/// Trim whitespace from a text node, returning empty vec if the result is empty.
+fn trim_text_node(value: &CheapString, range: &DocumentRange) -> Vec<ParsedNode> {
+    let trimmed = value.as_str().trim();
+    if trimmed.is_empty() {
+        vec![]
+    } else {
+        vec![ParsedNode::Text {
+            value: CheapString::new(trimmed.to_string()),
             range: range.clone(),
-        })
-        .collect()
+        }]
+    }
 }
 
 #[cfg(test)]
