@@ -4,6 +4,7 @@ use std::iter::Peekable;
 use itertools::Itertools as _;
 
 use super::parse_error::ParseError;
+use crate::common::is_void_element;
 use crate::document::{DocumentCursor, DocumentRange, Ranged};
 use crate::dop;
 use crate::error_collector::ErrorCollector;
@@ -202,7 +203,7 @@ impl Display for Token {
 ///
 /// Returns `Some(token)` if a token was parsed, `None` at end of input.
 /// Errors are collected in the `errors` collector.
-pub fn next(
+fn step(
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut ErrorCollector<ParseError>,
 ) -> Option<Token> {
@@ -807,6 +808,82 @@ fn parse_text(iter: &mut Peekable<DocumentCursor>) -> Token {
     }
 }
 
+/// Tokenizer state for trimming whitespace from Text tokens.
+///
+/// Trimming rules:
+/// - Trim leading whitespace if preceded by Newline or OpeningTag (container start)
+/// - Trim trailing whitespace if followed by Newline or ClosingTag (container end)
+/// - Skip Text tokens that become empty after trimming
+pub struct Tokenizer {
+    trim_next_start: bool,
+}
+
+impl Tokenizer {
+    pub fn new() -> Self {
+        Self {
+            trim_next_start: true,
+        }
+    }
+
+    pub fn next(
+        &mut self,
+        iter: &mut Peekable<DocumentCursor>,
+        errors: &mut ErrorCollector<ParseError>,
+    ) -> Option<Token> {
+        loop {
+            let token = step(iter, errors)?;
+
+            match token {
+                Token::Text { range } => {
+                    let trim_start = self.trim_next_start;
+                    let trim_end = {
+                        let mut peek_iter = iter.clone();
+                        match peek_iter.next().map(|s| s.ch()) {
+                            Some('\n') => true,
+                            Some('<') => peek_iter.next().is_some_and(|s| s.ch() == '/'),
+                            _ => false,
+                        }
+                    };
+
+                    let range = match (trim_start, trim_end) {
+                        (true, true) => range.trim(),
+                        (true, false) => range.trim_start(),
+                        (false, true) => range.trim_end(),
+                        (false, false) => range,
+                    };
+
+                    self.trim_next_start = false;
+
+                    if range.as_str().is_empty() {
+                        // Skip empty text tokens, get next token
+                        continue;
+                    }
+
+                    return Some(Token::Text { range });
+                }
+                Token::Newline { .. } => {
+                    self.trim_next_start = true;
+                    return Some(token);
+                }
+                Token::OpeningTag {
+                    ref tag_name,
+                    self_closing,
+                    ..
+                } => {
+                    // After a non-void, non-self-closing opening tag, the next text
+                    // is at the start of the container's children
+                    self.trim_next_start = !self_closing && !is_void_element(tag_name.as_str());
+                    return Some(token);
+                }
+                _ => {
+                    self.trim_next_start = false;
+                    return Some(token);
+                }
+            }
+        }
+    }
+}
+
 fn parse_tag(
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut ErrorCollector<ParseError>,
@@ -846,8 +923,9 @@ mod tests {
         let mut token_annotations = Vec::new();
         let mut error_annotations = Vec::new();
         let mut errors = ErrorCollector::new();
+        let mut tokenizer = Tokenizer::new();
 
-        while let Some(token) = next(&mut iter, &mut errors) {
+        while let Some(token) = tokenizer.next(&mut iter, &mut errors) {
             token_annotations.push(SimpleAnnotation {
                 message: token.to_string(),
                 range: token.range().clone(),
@@ -885,6 +963,194 @@ mod tests {
     #[test]
     fn should_accept_empty_input() {
         check("", expect![""]);
+    }
+
+    #[test]
+    fn should_accept_text_on_separate_line() {
+        check(
+            indoc! {"
+                <div>
+                  hello world
+                </div>
+            "},
+            expect![[r#"
+                -- tokens --
+                OpeningTag(
+                  tag_name: "div",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <div>
+                ^^^^^
+
+                Newline
+                <div>
+                  hello world
+
+                Text [11 byte, "hello world"]
+                  hello world
+                  ^^^^^^^^^^^
+
+                Newline
+                  hello world
+                </div>
+
+                ClosingTag(
+                  tag_name: "div",
+                )
+                </div>
+                ^^^^^^
+
+                Newline
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_text_on_multiple_lines() {
+        check(
+            indoc! {"
+                <div>
+                  hello
+                  world
+                </div>
+            "},
+            expect![[r#"
+                -- tokens --
+                OpeningTag(
+                  tag_name: "div",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <div>
+                ^^^^^
+
+                Newline
+                <div>
+                  hello
+
+                Text [5 byte, "hello"]
+                  hello
+                  ^^^^^
+
+                Newline
+                  hello
+                  world
+
+                Text [5 byte, "world"]
+                  world
+                  ^^^^^
+
+                Newline
+                  world
+                </div>
+
+                ClosingTag(
+                  tag_name: "div",
+                )
+                </div>
+                ^^^^^^
+
+                Newline
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_inline_text_with_links() {
+        check(
+            indoc! {r##"
+                <div>
+                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+                </div>
+            "##},
+            expect![[r##"
+                -- tokens --
+                OpeningTag(
+                  tag_name: "div",
+                  attributes: {},
+                  expression: None,
+                  self_closing: false,
+                )
+                <div>
+                ^^^^^
+
+                Newline
+                <div>
+                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+
+                Text [39 byte, "By clicking continue, you agree to our "]
+                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                OpeningTag(
+                  tag_name: "a",
+                  attributes: {
+                    href: String("#"),
+                  },
+                  expression: None,
+                  self_closing: false,
+                )
+                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+                                                         ^^^^^^^^^^^^
+
+                Text [16 byte, "Terms of Service"]
+                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+                                                                     ^^^^^^^^^^^^^^^^
+
+                ClosingTag(
+                  tag_name: "a",
+                )
+                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+                                                                                     ^^^^
+
+                Text [5 byte, " and "]
+                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+                                                                                         ^^^^^
+
+                OpeningTag(
+                  tag_name: "a",
+                  attributes: {
+                    href: String("#"),
+                  },
+                  expression: None,
+                  self_closing: false,
+                )
+                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+                                                                                              ^^^^^^^^^^^^
+
+                Text [14 byte, "Privacy Policy"]
+                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+                                                                                                          ^^^^^^^^^^^^^^
+
+                ClosingTag(
+                  tag_name: "a",
+                )
+                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+                                                                                                                        ^^^^
+
+                Text [1 byte, "."]
+                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+                                                                                                                            ^
+
+                Newline
+                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+                </div>
+
+                ClosingTag(
+                  tag_name: "div",
+                )
+                </div>
+                ^^^^^^
+
+                Newline
+                </div>
+            "##]],
+        );
     }
 
     #[test]
@@ -1316,10 +1582,6 @@ mod tests {
                 Newline
                 <textarea>
                     <div></div>
-
-                Text [1 byte, "\t"]
-                    <div></div>
-                ^^^^
 
                 OpeningTag(
                   tag_name: "div",
@@ -2198,10 +2460,6 @@ mod tests {
                 )
                 </div> </div
                 ^^^^^^
-
-                Text [1 byte, " "]
-                </div> </div
-                      ^
             "#]],
         );
         check(

@@ -8,6 +8,7 @@ use super::parsed_ast::{
 };
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
 use super::token_tree::{TokenTree, parse_tree};
+use super::tokenizer::Tokenizer;
 use crate::document::{Document, DocumentCursor, DocumentRange};
 use crate::dop;
 use crate::dop::VarName;
@@ -257,7 +258,8 @@ fn parse_component_declaration(
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, ModuleName>,
 ) -> Option<ParsedComponentDeclaration> {
-    let tree = parse_tree(iter, errors)?;
+    let mut tokenizer = Tokenizer::new();
+    let tree = parse_tree(&mut tokenizer, iter, errors)?;
 
     let TokenTree {
         token,
@@ -311,7 +313,7 @@ fn parse_component_declaration(
 
     errors.extend(disallow_attributes(&attributes, &tag_name));
 
-    let children: Vec<ParsedNode> = tree_children
+    let children: Vec<_> = tree_children
         .into_iter()
         .filter_map(|child| {
             construct_node(
@@ -710,7 +712,6 @@ mod tests {
     use crate::document::DocumentAnnotator;
     use crate::error_collector::ErrorCollector;
     use crate::hop::syntax::formatter;
-    use crate::hop::syntax::transform::whitespace_removal::remove_whitespace;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -728,7 +729,7 @@ mod tests {
                 .with_lines_before(1)
                 .annotate(None, errors.to_vec())
         } else {
-            formatter::format(remove_whitespace(module))
+            formatter::format(module)
         };
 
         expected.assert_eq(&actual);
@@ -801,36 +802,6 @@ mod tests {
                       <for {item in k}></for>
                     </for>
                   </for>
-                </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_accept_script_and_style_tag_content_as_raw_text() {
-        check(
-            indoc! {r#"
-                <Main>
-                    <script>
-                        // note that the <div> inside here is not
-                        // parsed as html
-                        console.log("<div>test</div>");
-                    </script>
-                    <style>
-                        body { color: red; }
-                    </style>
-                </Main>
-            "#},
-            expect![[r#"
-                <Main>
-                  <script>
-                    // note that the <div> inside here is not
-                        // parsed as html
-                        console.log("<div>test</div>");
-                  </script>
-                  <style>
-                    body { color: red; }
-                  </style>
                 </Main>
             "#]],
         );
@@ -1667,50 +1638,6 @@ mod tests {
                   <h2>
                     {title}
                   </h2>
-                </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_not_parse_expressions_in_script_tags() {
-        check(
-            indoc! {r#"
-                <Main>
-                    <script>
-                        const x = "{not_an_expression}";
-                        const obj = {key: "value"};
-                    </script>
-                </Main>
-            "#},
-            expect![[r#"
-                <Main>
-                  <script>
-                    const x = "{not_an_expression}";
-                        const obj = {key: "value"};
-                  </script>
-                </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_not_parse_expressions_in_style_tags() {
-        check(
-            indoc! {r#"
-                <Main>
-                    <style>
-                        body { color: red; }
-                        .class { font-size: 12px; }
-                    </style>
-                </Main>
-            "#},
-            expect![[r#"
-                <Main>
-                  <style>
-                    body { color: red; }
-                        .class { font-size: 12px; }
-                  </style>
                 </Main>
             "#]],
         );

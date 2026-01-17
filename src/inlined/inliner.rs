@@ -443,7 +443,6 @@ mod tests {
     use crate::hop::semantics::type_checker::TypeChecker;
     use crate::hop::symbols::module_name::ModuleName;
     use crate::hop::syntax::parser::parse;
-    use crate::hop::syntax::transform::whitespace_removal::remove_whitespace;
     use expect_test::{Expect, expect};
 
     fn create_typed_asts_from_sources(sources: Vec<(&str, &str)>) -> HashMap<ModuleName, TypedAst> {
@@ -458,7 +457,6 @@ mod tests {
                 Document::new(source.to_string()),
                 &mut errors,
             );
-            let ast = remove_whitespace(ast);
             untyped_asts.insert(module_name, ast);
         }
 

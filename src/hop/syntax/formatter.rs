@@ -7,7 +7,6 @@ use super::parsed_ast::{
     ParsedRecordDeclarationField,
 };
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
-use super::transform::whitespace_removal::remove_whitespace;
 use crate::common::is_void_element;
 use crate::document::{DocumentRange, Ranged};
 use crate::dop::syntax::parsed::{
@@ -16,7 +15,6 @@ use crate::dop::syntax::parsed::{
 use pretty::{Arena, DocAllocator, DocBuilder};
 
 pub fn format(ast: ParsedAst) -> String {
-    let ast = remove_whitespace(ast);
     let arena = Arena::new();
     format_ast(&ast, &arena).pretty(60).to_string()
 }
@@ -3095,6 +3093,94 @@ mod tests {
                     foo
                     bar
                   </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn text_around_void_element_to_doc() {
+        check(
+            indoc! {"
+                <Main>
+                    <div>hello <br> world</div>
+                </Main>
+            "},
+            expect![[r#"
+                <Main>
+                  <div>
+                    hello{" "}
+                    <br>
+                    {" "}world
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn void_element_on_separate_line_to_doc() {
+        check(
+            indoc! {"
+                <Main>
+                    <div>
+                        hello
+                        <br>
+                        world
+                    </div>
+                </Main>
+            "},
+            expect![[r#"
+                <Main>
+                  <div>
+                    hello
+                    <br>
+                    world
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn text_around_input_element_to_doc() {
+        check(
+            indoc! {r#"
+                <Main>
+                    <label>Name: <input type="text"> (required)</label>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main>
+                  <label>
+                    Name:{" "}
+                    <input type="text">
+                    {" "}(required)
+                  </label>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn input_element_on_separate_line_to_doc() {
+        check(
+            indoc! {r#"
+                <Main>
+                    <label>
+                        Name:
+                        <input type="text">
+                        (required)
+                    </label>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main>
+                  <label>
+                    Name:
+                    <input type="text">
+                    (required)
+                  </label>
                 </Main>
             "#]],
         );

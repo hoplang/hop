@@ -1206,7 +1206,6 @@ mod tests {
     use crate::document::{Document, DocumentAnnotator};
     use crate::hop::symbols::module_name::ModuleName;
     use crate::hop::syntax::parser::parse;
-    use crate::hop::syntax::transform::whitespace_removal::remove_whitespace;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use simple_txtar::Archive;
@@ -1242,7 +1241,6 @@ mod tests {
                 panic!("Got parse errors: {:#?}", parse_errors);
             }
 
-            let ast = remove_whitespace(ast);
             typechecker.typecheck(&[&ast]);
 
             let type_errors = typechecker.type_errors.get(&ast.name);

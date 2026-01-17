@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 use std::iter::Peekable;
 
 use super::parse_error::ParseError;
-use super::tokenizer::{self, Token};
+use super::tokenizer::{Token, Tokenizer};
 use crate::common::is_void_element;
 use crate::document::{DocumentCursor, DocumentRange, Ranged as _};
 use crate::error_collector::ErrorCollector;
@@ -67,11 +67,12 @@ impl TokenTree {
 /// We do our best here to construct as much of the tree as possible even
 /// when we encounter errors.
 pub fn parse_tree(
+    tokenizer: &mut Tokenizer,
     iter: &mut Peekable<DocumentCursor>,
     errors: &mut ErrorCollector<ParseError>,
 ) -> Option<TokenTree> {
     loop {
-        let token = tokenizer::next(iter, errors)?;
+        let token = tokenizer.next(iter, errors)?;
 
         match token {
             // Leaf tokens - return immediately as single-node trees
@@ -91,7 +92,7 @@ pub fn parse_tree(
                     return Some(TokenTree::new(token));
                 }
                 let tag_name = tag_name.clone();
-                return Some(parse_nested_tree(token, tag_name, iter, errors));
+                return Some(parse_nested_tree(tokenizer, token, tag_name, iter, errors));
             }
 
             Token::ClosingTag { ref tag_name, .. } => {
@@ -117,6 +118,7 @@ pub fn parse_tree(
 /// Uses a stack-based approach to handle nested content until the
 /// matching closing tag is found.
 fn parse_nested_tree(
+    tokenizer: &mut Tokenizer,
     opening_token: Token,
     opening_tag_name: DocumentRange,
     iter: &mut Peekable<DocumentCursor>,
@@ -132,7 +134,7 @@ fn parse_nested_tree(
         tag_name: opening_tag_name,
     }];
 
-    while let Some(token) = tokenizer::next(iter, errors) {
+    while let Some(token) = tokenizer.next(iter, errors) {
         match token {
             Token::Comment { .. }
             | Token::Doctype { .. }
@@ -262,9 +264,10 @@ mod tests {
     fn check(input: &str, expected: Expect) {
         let mut errors = ErrorCollector::new();
         let mut iter = DocumentCursor::new(input.to_string()).peekable();
+        let mut tokenizer = Tokenizer::new();
 
         let mut trees = Vec::new();
-        while let Some(tree) = parse_tree(&mut iter, &mut errors) {
+        while let Some(tree) = parse_tree(&mut tokenizer, &mut iter, &mut errors) {
             trees.push(tree);
         }
 
@@ -341,11 +344,6 @@ mod tests {
                       children: [],
                     )
                     TokenTree(
-                      Text [4 byte, "    "]
-                      closing_tag_name: None,
-                      children: [],
-                    )
-                    TokenTree(
                       OpeningTag(
                         tag_name: "br",
                         attributes: {},
@@ -357,11 +355,6 @@ mod tests {
                     )
                     TokenTree(
                       Newline
-                      closing_tag_name: None,
-                      children: [],
-                    )
-                    TokenTree(
-                      Text [4 byte, "    "]
                       closing_tag_name: None,
                       children: [],
                     )
@@ -418,11 +411,6 @@ mod tests {
                       children: [],
                     )
                     TokenTree(
-                      Text [4 byte, "    "]
-                      closing_tag_name: None,
-                      children: [],
-                    )
-                    TokenTree(
                       OpeningTag(
                         tag_name: "p",
                         attributes: {},
@@ -440,11 +428,6 @@ mod tests {
                     )
                     TokenTree(
                       Newline
-                      closing_tag_name: None,
-                      children: [],
-                    )
-                    TokenTree(
-                      Text [4 byte, "    "]
                       closing_tag_name: None,
                       children: [],
                     )
