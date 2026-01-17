@@ -102,8 +102,7 @@ impl Iterator for DocumentCursor {
 
 /// A DocumentRange represents a range in a document.
 ///
-/// It is always non-empty, i.e. start < end and as_str().len() > 0
-/// always holds.
+/// The invariant is start <= end, meaning empty ranges are allowed.
 #[derive(Clone, Debug)]
 pub struct DocumentRange {
     /// The source info containing the document text and line starts.
@@ -123,8 +122,8 @@ impl DocumentRange {
     /// Extend a range to encompass another range that occurs
     /// later in the document.
     pub fn to(self, other: DocumentRange) -> Self {
-        debug_assert!(other.start > self.start);
-        debug_assert!(other.end > self.end);
+        debug_assert!(other.start >= self.start);
+        debug_assert!(other.end >= self.end);
         DocumentRange {
             source: self.source,
             start: self.start,
@@ -228,6 +227,18 @@ impl DocumentRange {
             source: self.source.clone(),
             start: self.start,
             end: self.end,
+        }
+    }
+
+    /// Returns a new DocumentRange with leading and trailing whitespace removed.
+    pub fn trim(&self) -> DocumentRange {
+        let s = self.as_str();
+        let trimmed = s.trim();
+        let leading = trimmed.as_ptr() as usize - s.as_ptr() as usize;
+        DocumentRange {
+            source: self.source.clone(),
+            start: self.start + leading,
+            end: self.start + leading + trimmed.len(),
         }
     }
 }

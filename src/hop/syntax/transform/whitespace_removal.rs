@@ -1,5 +1,3 @@
-use crate::document::{CheapString, DocumentRange};
-
 use crate::hop::syntax::parsed_ast::{ParsedAst, ParsedComponentDeclaration, ParsedDeclaration};
 use crate::hop::syntax::parsed_node::{ParsedMatchCase, ParsedNode};
 
@@ -36,14 +34,24 @@ fn transform_component(comp: ParsedComponentDeclaration) -> ParsedComponentDecla
 }
 
 fn transform_nodes(nodes: Vec<ParsedNode>) -> Vec<ParsedNode> {
-    nodes.into_iter().flat_map(transform_node).collect()
+    nodes.into_iter().filter_map(transform_node).collect()
 }
 
-fn transform_node(node: ParsedNode) -> Vec<ParsedNode> {
+fn transform_node(node: ParsedNode) -> Option<ParsedNode> {
     match node {
-        ParsedNode::Text { value, range } => trim_text_node(&value, &range),
+        ParsedNode::Text { range, .. } => {
+            let trimmed = range.trim();
+            if trimmed.as_str().is_empty() {
+                None
+            } else {
+                Some(ParsedNode::Text {
+                    value: trimmed.to_cheap_string(),
+                    range: trimmed,
+                })
+            }
+        }
         // Newline nodes are filtered out - the formatter will insert its own line breaks
-        ParsedNode::Newline { .. } => vec![],
+        ParsedNode::Newline { .. } => None,
         ParsedNode::ComponentReference {
             component_name,
             component_name_opening_range,
@@ -52,7 +60,7 @@ fn transform_node(node: ParsedNode) -> Vec<ParsedNode> {
             args,
             children,
             range,
-        } => vec![ParsedNode::ComponentReference {
+        } => Some(ParsedNode::ComponentReference {
             component_name,
             component_name_opening_range,
             component_name_closing_range,
@@ -60,62 +68,62 @@ fn transform_node(node: ParsedNode) -> Vec<ParsedNode> {
             args,
             children: transform_nodes(children),
             range,
-        }],
+        }),
         ParsedNode::If {
             condition,
             children,
             range,
-        } => vec![ParsedNode::If {
+        } => Some(ParsedNode::If {
             condition,
             children: transform_nodes(children),
             range,
-        }],
+        }),
         ParsedNode::For {
             var_name,
             var_name_range,
             source,
             children,
             range,
-        } => vec![ParsedNode::For {
+        } => Some(ParsedNode::For {
             var_name,
             var_name_range,
             source,
             children: transform_nodes(children),
             range,
-        }],
+        }),
         ParsedNode::Let {
             bindings,
             bindings_range,
             children,
             range,
-        } => vec![ParsedNode::Let {
+        } => Some(ParsedNode::Let {
             bindings,
             bindings_range,
             children: transform_nodes(children),
             range,
-        }],
+        }),
         ParsedNode::Html {
             tag_name,
             closing_tag_name,
             attributes,
             children,
             range,
-        } => vec![ParsedNode::Html {
+        } => Some(ParsedNode::Html {
             tag_name,
             closing_tag_name,
             attributes,
             children: transform_nodes(children),
             range,
-        }],
-        ParsedNode::Placeholder { children, range } => vec![ParsedNode::Placeholder {
+        }),
+        ParsedNode::Placeholder { children, range } => Some(ParsedNode::Placeholder {
             children: transform_nodes(children),
             range,
-        }],
+        }),
         ParsedNode::Match {
             subject,
             cases,
             range,
-        } => vec![ParsedNode::Match {
+        } => Some(ParsedNode::Match {
             subject,
             cases: cases
                 .into_iter()
@@ -127,21 +135,8 @@ fn transform_node(node: ParsedNode) -> Vec<ParsedNode> {
                 })
                 .collect(),
             range,
-        }],
-        other => vec![other],
-    }
-}
-
-/// Trim whitespace from a text node, returning empty vec if the result is empty.
-fn trim_text_node(value: &CheapString, range: &DocumentRange) -> Vec<ParsedNode> {
-    let trimmed = value.as_str().trim();
-    if trimmed.is_empty() {
-        vec![]
-    } else {
-        vec![ParsedNode::Text {
-            value: CheapString::new(trimmed.to_string()),
-            range: range.clone(),
-        }]
+        }),
+        other => Some(other),
     }
 }
 
