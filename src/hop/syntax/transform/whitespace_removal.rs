@@ -4,9 +4,11 @@ use crate::hop::syntax::parsed_node::{ParsedMatchCase, ParsedNode};
 /// Removes whitespace from a ParsedAst to normalize it for formatting.
 ///
 /// This works by:
-/// 1. Trimming leading and trailing whitespace from Text nodes
-/// 2. Removing Text nodes that become empty after trimming
-/// 3. Removing all Newline nodes (the formatter will insert its own line breaks)
+/// 1. Trimming leading whitespace from Text nodes that follow a Newline (or are first)
+/// 2. Trimming trailing whitespace from Text nodes that precede a Newline (or are last)
+/// 3. Preserving interior whitespace between inline elements (Text, TextExpression)
+/// 4. Removing Text nodes that become empty after trimming
+/// 5. Keeping Newline nodes as hints for the formatter
 pub fn remove_whitespace(ast: ParsedAst) -> ParsedAst {
     let declarations = ast
         .get_declarations()
@@ -33,22 +35,73 @@ fn transform_component(comp: ParsedComponentDeclaration) -> ParsedComponentDecla
     }
 }
 
-fn transform_nodes(nodes: Vec<ParsedNode>) -> Vec<ParsedNode> {
-    nodes.into_iter().filter_map(transform_node).collect()
+/// Classifies a node for whitespace trimming decisions.
+#[derive(Clone, Copy, PartialEq)]
+enum NodeKind {
+    Newline,
+    Text,
+    Other, // TextExpression, Html, etc.
 }
 
-fn transform_node(node: ParsedNode) -> Option<ParsedNode> {
+fn classify_node(node: &ParsedNode) -> NodeKind {
+    match node {
+        ParsedNode::Newline { .. } => NodeKind::Newline,
+        ParsedNode::Text { .. } => NodeKind::Text,
+        _ => NodeKind::Other,
+    }
+}
+
+fn transform_nodes(nodes: Vec<ParsedNode>) -> Vec<ParsedNode> {
+    if nodes.is_empty() {
+        return nodes;
+    }
+
+    // Pre-classify all nodes to determine trimming context
+    let kinds: Vec<NodeKind> = nodes.iter().map(classify_node).collect();
+    let len = nodes.len();
+
+    nodes
+        .into_iter()
+        .enumerate()
+        .filter_map(|(i, node)| {
+            let prev_kind = if i > 0 { Some(kinds[i - 1]) } else { None };
+            let next_kind = if i + 1 < len {
+                Some(kinds[i + 1])
+            } else {
+                None
+            };
+            transform_node_with_context(node, prev_kind, next_kind)
+        })
+        .collect()
+}
+
+fn transform_node_with_context(
+    node: ParsedNode,
+    prev_kind: Option<NodeKind>,
+    next_kind: Option<NodeKind>,
+) -> Option<ParsedNode> {
     match node {
         ParsedNode::Text { range } => {
-            let trimmed = range.trim();
+            // Trim start if preceded by Newline or at start of children
+            let trim_start = prev_kind.is_none() || prev_kind == Some(NodeKind::Newline);
+            // Trim end if followed by Newline or at end of children
+            let trim_end = next_kind.is_none() || next_kind == Some(NodeKind::Newline);
+
+            let trimmed = match (trim_start, trim_end) {
+                (true, true) => range.trim(),
+                (true, false) => range.trim_start(),
+                (false, true) => range.trim_end(),
+                (false, false) => range,
+            };
+
             if trimmed.as_str().is_empty() {
                 None
             } else {
                 Some(ParsedNode::Text { range: trimmed })
             }
         }
-        // Newline nodes are filtered out - the formatter will insert its own line breaks
-        ParsedNode::Newline { .. } => None,
+        // Keep Newline nodes - they serve as hints for where to insert line breaks
+        ParsedNode::Newline { .. } => Some(node),
         ParsedNode::ComponentReference {
             component_name,
             component_name_opening_range,
@@ -145,6 +198,7 @@ mod tests {
     use crate::document::Document;
     use crate::error_collector::ErrorCollector;
     use crate::hop::symbols::module_name::ModuleName;
+    use crate::hop::syntax::formatter;
     use crate::hop::syntax::parse_error::ParseError;
     use crate::hop::syntax::parser;
 
@@ -159,7 +213,7 @@ mod tests {
         );
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
         let ast = remove_whitespace(ast);
-        expected.assert_eq(&ast.to_doc().pretty(60).to_string());
+        expected.assert_eq(&formatter::format(ast));
     }
 
     #[test]

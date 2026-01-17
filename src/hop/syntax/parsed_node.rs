@@ -226,7 +226,8 @@ impl ParsedNode {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
             ParsedNode::Text { range } => BoxDoc::text(range.as_str()),
-            ParsedNode::Newline { .. } => BoxDoc::line(),
+            // Newlines don't produce output - they signal where breaks can occur
+            ParsedNode::Newline { .. } => BoxDoc::nil(),
             ParsedNode::TextExpression { expression, .. } => BoxDoc::text("{")
                 .append(expression.to_doc())
                 .append(BoxDoc::text("}")),

@@ -442,8 +442,7 @@ fn typecheck_node(
             };
 
             // Push the loop variable into scope (only if not discarded with _)
-            let pushed = if let (Some(var_name), Some(var_name_range)) =
-                (var_name, var_name_range)
+            let pushed = if let (Some(var_name), Some(var_name_range)) = (var_name, var_name_range)
             {
                 match var_env.push(var_name.to_string(), element_type.clone()) {
                     Ok(_) => {
@@ -476,7 +475,9 @@ fn typecheck_node(
                 let (_, _, accessed) = var_env.pop();
                 if !accessed {
                     if let Some(var_name_range) = var_name_range {
-                        errors.push(TypeError::UnusedVariable { var_name: var_name_range.clone() })
+                        errors.push(TypeError::UnusedVariable {
+                            var_name: var_name_range.clone(),
+                        })
                     }
                 }
             }
@@ -945,13 +946,19 @@ fn typecheck_node(
 
         ParsedNode::Placeholder { .. } => Some(TypedNode::Placeholder),
 
-        ParsedNode::Text { range } => Some(TypedNode::Text {
-            value: range.to_cheap_string(),
-        }),
+        ParsedNode::Text { range } => {
+            // Skip whitespace-only text nodes (they're formatting artifacts)
+            if range.as_str().trim().is_empty() {
+                None
+            } else {
+                Some(TypedNode::Text {
+                    value: range.to_cheap_string(),
+                })
+            }
+        }
 
-        ParsedNode::Newline { range } => Some(TypedNode::Text {
-            value: range.to_cheap_string(),
-        }),
+        // Newlines are whitespace hints for the formatter, not content
+        ParsedNode::Newline { .. } => None,
 
         ParsedNode::Doctype { value, range: _ } => Some(TypedNode::Doctype {
             value: value.clone(),
@@ -3315,7 +3322,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 <Greeting {name: String = "World"}>
-                  Hello,
+                  Hello, 
                   {name}
                   !
                 </Greeting>
@@ -3342,7 +3349,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 <Greeting {name: String = "World"}>
-                  Hello,
+                  Hello, 
                   {name}
                   !
                 </Greeting>
@@ -3370,7 +3377,7 @@ mod tests {
                 -- main.hop --
                 <UserCard {name: String, role: String = "user"}>
                   {name}
-                  (
+                   (
                   {role}
                   )
                 </UserCard>
@@ -3694,7 +3701,7 @@ mod tests {
                     <match {match_subject}>
                       <case {Some(v0)}>
                         <let {y = v0}>
-                          found
+                          found 
                           {y}
                         </let>
                       </case>
@@ -4609,7 +4616,7 @@ mod tests {
                 <Main>
                   <let {name = "World"}>
                     <div>
-                      Hello
+                      Hello 
                       {name}
                     </div>
                   </let>

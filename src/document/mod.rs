@@ -232,13 +232,29 @@ impl DocumentRange {
 
     /// Returns a new DocumentRange with leading and trailing whitespace removed.
     pub fn trim(&self) -> DocumentRange {
+        self.trim_start().trim_end()
+    }
+
+    /// Returns a new DocumentRange with leading whitespace removed.
+    pub fn trim_start(&self) -> DocumentRange {
         let s = self.as_str();
-        let trimmed = s.trim();
+        let trimmed = s.trim_start();
         let leading = trimmed.as_ptr() as usize - s.as_ptr() as usize;
         DocumentRange {
             source: self.source.clone(),
             start: self.start + leading,
-            end: self.start + leading + trimmed.len(),
+            end: self.end,
+        }
+    }
+
+    /// Returns a new DocumentRange with trailing whitespace removed.
+    pub fn trim_end(&self) -> DocumentRange {
+        let s = self.as_str();
+        let trimmed = s.trim_end();
+        DocumentRange {
+            source: self.source.clone(),
+            start: self.start,
+            end: self.start + trimmed.len(),
         }
     }
 }

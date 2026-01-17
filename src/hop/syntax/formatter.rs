@@ -63,11 +63,7 @@ fn format_braced_list<'a, T, F>(
     end_position: usize,
 ) -> DocBuilder<'a, Arena<'a>>
 where
-    F: FnMut(
-        &'a Arena<'a>,
-        &'a T,
-        &mut VecDeque<&'a DocumentRange>,
-    ) -> DocBuilder<'a, Arena<'a>>,
+    F: FnMut(&'a Arena<'a>, &'a T, &mut VecDeque<&'a DocumentRange>) -> DocBuilder<'a, Arena<'a>>,
 {
     let has_trailing_comments = comments.front().is_some_and(|c| c.start() < end_position);
     if items.is_empty() && !has_trailing_comments {
@@ -360,8 +356,8 @@ fn format_node<'a>(
 ) -> DocBuilder<'a, Arena<'a>> {
     match node {
         ParsedNode::Text { range } => arena.text(range.as_str()),
-        // Newline nodes are filtered out by whitespace_removal before formatting,
-        // but handle them here for completeness
+        // Newline nodes are handled by format_children (they signal where to break).
+        // This case is here for completeness but shouldn't be reached in normal formatting.
         ParsedNode::Newline { .. } => arena.nil(),
         ParsedNode::TextExpression { expression, .. } => arena
             .text("{")
@@ -398,7 +394,8 @@ fn format_node<'a>(
                     .append(arena.line_())
                     .group()
             };
-            if children.is_empty() {
+            if !has_content(children) {
+                // Empty or only whitespace/newlines - use self-closing tag
                 opening_tag_doc.append(arena.text("/>"))
             } else {
                 opening_tag_doc
@@ -431,9 +428,11 @@ fn format_node<'a>(
             let children_doc = format_children(arena, children, comments);
             let source_doc = match source {
                 ParsedLoopSource::Array(expr) => format_expr(arena, expr, comments),
-                ParsedLoopSource::RangeInclusive { start, end } => format_expr(arena, start, comments)
-                    .append(arena.text("..="))
-                    .append(format_expr(arena, end, comments)),
+                ParsedLoopSource::RangeInclusive { start, end } => {
+                    format_expr(arena, start, comments)
+                        .append(arena.text("..="))
+                        .append(format_expr(arena, end, comments))
+                }
             };
             let var_doc = match var_name {
                 Some(name) => arena.text(name.as_str()),
@@ -455,8 +454,7 @@ fn format_node<'a>(
             ..
         } => {
             let end_position = bindings_range.end();
-            let has_trailing_comments =
-                comments.front().is_some_and(|c| c.start() < end_position);
+            let has_trailing_comments = comments.front().is_some_and(|c| c.start() < end_position);
 
             let mut bindings_doc = arena.nil();
             for (i, binding) in bindings.iter().enumerate() {
@@ -552,9 +550,9 @@ fn format_node<'a>(
 
             if is_void_element(tag_name_str) {
                 opening_tag_doc
-            } else if children.is_empty() {
+            } else if !has_content(children) {
+                // Empty or only whitespace/newlines - compact closing tag
                 opening_tag_doc
-                    .append(arena.line())
                     .append(arena.text("</"))
                     .append(arena.text(tag_name_str))
                     .append(arena.text(">"))
@@ -567,8 +565,9 @@ fn format_node<'a>(
             }
         }
         ParsedNode::Placeholder { children, .. } => {
-            if children.is_empty() {
-                arena.text("<placeholder />")
+            if !has_content(children) {
+                // Empty or only whitespace/newlines - use self-closing tag
+                arena.text("<placeholder/>")
             } else {
                 arena
                     .text("<placeholder>")
@@ -579,23 +578,108 @@ fn format_node<'a>(
     }
 }
 
+/// Returns true if a node is "inline" content (text or expression).
+/// Inline nodes can stay on the same line unless separated by a Newline.
+fn is_inline(node: &ParsedNode) -> bool {
+    matches!(
+        node,
+        ParsedNode::Text { .. } | ParsedNode::TextExpression { .. }
+    )
+}
+
+/// Returns true if children contain any meaningful content (non-Newline nodes).
+/// Used to treat "only whitespace/newlines" the same as "truly empty" for formatting.
+fn has_content(children: &[ParsedNode]) -> bool {
+    children
+        .iter()
+        .any(|c| !matches!(c, ParsedNode::Newline { .. }))
+}
+
 fn format_children<'a>(
     arena: &'a Arena<'a>,
     children: &'a [ParsedNode],
     comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
     if children.is_empty() {
-        arena.nil()
-    } else {
-        let mut doc = arena.nil();
-        for (i, child) in children.iter().enumerate() {
-            if i > 0 {
-                doc = doc.append(arena.line());
+        return arena.nil();
+    }
+
+    // Collect non-Newline nodes with their "preceded by newline" flag.
+    // Newline nodes signal where to insert line breaks between inline content.
+    let mut items: Vec<(bool, &ParsedNode)> = Vec::new();
+    let mut prev_was_newline = false;
+
+    for child in children {
+        match child {
+            ParsedNode::Newline { .. } => {
+                prev_was_newline = true;
             }
+            _ => {
+                items.push((prev_was_newline, child));
+                prev_was_newline = false;
+            }
+        }
+    }
+
+    if items.is_empty() {
+        return arena.nil();
+    }
+
+    let mut doc = arena.nil();
+
+    for i in 0..items.len() {
+        let (preceded_by_newline, child) = items[i];
+        let prev_node = if i > 0 { Some(items[i - 1].1) } else { None };
+        let next_node = items.get(i + 1).map(|(_, n)| *n);
+
+        // Decide separator: line break if preceded by newline or adjacent to block element
+        let need_break = if let Some(prev) = prev_node {
+            preceded_by_newline || !is_inline(prev) || !is_inline(child)
+        } else {
+            false
+        };
+
+        if need_break {
+            doc = doc.append(arena.line());
+        }
+
+        // Special handling for Text nodes: convert whitespace adjacent to blocks to {" "}
+        if let ParsedNode::Text { range } = child {
+            let text = range.as_str();
+            let has_leading_ws = text.starts_with(|c: char| c.is_whitespace());
+            let has_trailing_ws = text.ends_with(|c: char| c.is_whitespace());
+            let prev_is_block = prev_node.map_or(false, |n| !is_inline(n));
+            let next_is_block = next_node.map_or(false, |n| !is_inline(n));
+
+            // Determine if we need to convert whitespace to {" "}
+            // Leading: if prev is block and we inserted a break (not from original newline)
+            let leading_needs_space = has_leading_ws && prev_is_block && !preceded_by_newline;
+            // Trailing: if next is block
+            let trailing_needs_space = has_trailing_ws && next_is_block;
+
+            if leading_needs_space || trailing_needs_space {
+                let trimmed = text.trim();
+                if trimmed.is_empty() {
+                    // Pure whitespace - output single {" "}
+                    doc = doc.append(arena.text("{\" \"}"));
+                } else {
+                    if leading_needs_space {
+                        doc = doc.append(arena.text("{\" \"}"));
+                    }
+                    doc = doc.append(arena.text(trimmed));
+                    if trailing_needs_space {
+                        doc = doc.append(arena.text("{\" \"}"));
+                    }
+                }
+            } else {
+                doc = doc.append(arena.text(text));
+            }
+        } else {
             doc = doc.append(format_node(arena, child, comments));
         }
-        arena.line().append(doc).nest(2).append(arena.line())
     }
+
+    arena.line().append(doc).nest(2).append(arena.line())
 }
 
 fn format_match_case<'a>(
@@ -769,8 +853,7 @@ fn format_expr<'a>(
         }
         ParsedExpr::Match { subject, arms, .. } => {
             let end_position = expr.range().end();
-            let has_trailing_comments =
-                comments.front().is_some_and(|c| c.start() < end_position);
+            let has_trailing_comments = comments.front().is_some_and(|c| c.start() < end_position);
 
             if arms.is_empty() && !has_trailing_comments {
                 arena
@@ -864,8 +947,7 @@ fn format_expr<'a>(
             }
 
             let end_position = expr.range().end();
-            let has_trailing_comments =
-                comments.front().is_some_and(|c| c.start() < end_position);
+            let has_trailing_comments = comments.front().is_some_and(|c| c.start() < end_position);
             let trailing_comments = drain_comments_before(arena, comments, end_position);
 
             if expanded_docs.is_empty() && !has_trailing_comments {
@@ -1199,8 +1281,7 @@ mod tests {
                       Color::Green => "green",
                       Color::Blue => "blue",
                     }
-                  }>
-                  </div>
+                  }></div>
                 </Main>
             "#]],
         );
@@ -1222,8 +1303,7 @@ mod tests {
                 }
 
                 <Main {color: Color}>
-                  <div class={match color {Color::Red => "red"}}>
-                  </div>
+                  <div class={match color {Color::Red => "red"}}></div>
                 </Main>
             "#]],
         );
@@ -1294,8 +1374,7 @@ mod tests {
             "#},
             expect![[r#"
                 <Main>
-                  <div class={"p-2"}>
-                  </div>
+                  <div class={"p-2"}></div>
                 </Main>
             "#]],
         );
@@ -1559,9 +1638,7 @@ mod tests {
             "#},
             expect![[r#"
                 <Greeting {name: String = "World"}>
-                  Hello,
-                  {name}
-                  !
+                  Hello, {name}!
                 </Greeting>
             "#]],
         );
@@ -1793,8 +1870,7 @@ mod tests {
             "#},
             expect![[r#"
                 <Card {base_class: String, extra_class: String}>
-                  <div class={classes!(base_class, extra_class)}>
-                  </div>
+                  <div class={classes!(base_class, extra_class)}></div>
                 </Card>
             "#]],
         );
@@ -1846,8 +1922,7 @@ mod tests {
                       interactive_styles,
                       custom_overrides,
                     )
-                  }>
-                  </div>
+                  }></div>
                 </Component>
             "#]],
         );
@@ -1863,8 +1938,7 @@ mod tests {
             "#},
             expect![[r#"
                 <Card>
-                  <div class={classes!("foo", "bar")}>
-                  </div>
+                  <div class={classes!("foo", "bar")}></div>
                 </Card>
             "#]],
         );
@@ -1880,8 +1954,7 @@ mod tests {
             "#},
             expect![[r#"
                 <Card>
-                  <div class={classes!("a", "b", "c")}>
-                  </div>
+                  <div class={classes!("a", "b", "c")}></div>
                 </Card>
             "#]],
         );
@@ -1899,8 +1972,7 @@ mod tests {
                 <Card {a: String, b: String, c: String}>
                   <div class={
                     classes!(a, "foo", "bar", b, "baz", "qux", c)
-                  }>
-                  </div>
+                  }></div>
                 </Card>
             "#]],
         );
@@ -1916,8 +1988,7 @@ mod tests {
             "#},
             expect![[r#"
                 <Card>
-                  <div class={classes!("foo", "bar")}>
-                  </div>
+                  <div class={classes!("foo", "bar")}></div>
                 </Card>
             "#]],
         );
@@ -1933,8 +2004,7 @@ mod tests {
             "#},
             expect![[r#"
                 <Card>
-                  <div class={classes!("foo", "bar", "baz")}>
-                  </div>
+                  <div class={classes!("foo", "bar", "baz")}></div>
                 </Card>
             "#]],
         );
@@ -2079,9 +2149,7 @@ mod tests {
             expect![[r#"
                 <Main>
                   <let {name: String = "World"}>
-                    Hello,
-                    {name}
-                    !
+                    Hello, {name}!
                   </let>
                 </Main>
             "#]],
@@ -2143,8 +2211,7 @@ mod tests {
             expect![[r#"
                 <Main>
                   <let {first: String = "Hello", second: String = "World"}>
-                    {first}
-                    {second}
+                    {first} {second}
                   </let>
                 </Main>
             "#]],
@@ -2165,11 +2232,7 @@ mod tests {
                 <Main>
                   <let {a: Int = 1, b: Int = 2, c: Int = 3}>
                     <div>
-                      {a}
-                      +
-                      {b}
-                      +
-                      {c}
+                      {a} + {b} + {c}
                     </div>
                   </let>
                 </Main>
@@ -2242,8 +2305,7 @@ mod tests {
                 <Main>
                   <let {a: String = "outer"}>
                     <let {b: String = "inner"}>
-                      {a}
-                      {b}
+                      {a} {b}
                     </let>
                   </let>
                 </Main>
@@ -2368,8 +2430,7 @@ mod tests {
                     last_name: String = "World",
                     // c
                   }>
-                    {first_name}
-                    {last_name}
+                    {first_name} {last_name}
                   </let>
                 </Main>
             "#]],
@@ -2639,8 +2700,7 @@ mod tests {
                       Orientation::Vertical => "vertical",
                       // c
                     }
-                  }>
-                  </div>
+                  }></div>
                 </Main>
             "#]],
         );
@@ -2670,8 +2730,7 @@ mod tests {
                       "items-center",
                       // more to come
                     )
-                  }>
-                  </div>
+                  }></div>
                 </Main>
             "#]],
         );
@@ -2703,8 +2762,7 @@ mod tests {
                       "gap-4",
                       // more to come
                     )
-                  }>
-                  </div>
+                  }></div>
                 </Main>
             "#]],
         );
@@ -2980,12 +3038,38 @@ mod tests {
             expect![[r#"
                 <Main>
                   <div>
-                    hello
+                    hello{" "}
                     <b>
                       world
                     </b>
                     !
                   </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn text_with_multiple_inline_links() {
+        check(
+            indoc! {r#"
+                <Main>
+                  <p>By clicking continue, you agree to our <a href="/tos">Terms of Service</a> and <a href="/privacy">Privacy Policy</a>.</p>
+                </Main>
+            "#},
+            expect![[r#"
+                <Main>
+                  <p>
+                    By clicking continue, you agree to our{" "}
+                    <a href="/tos">
+                      Terms of Service
+                    </a>
+                    {" "}and{" "}
+                    <a href="/privacy">
+                      Privacy Policy
+                    </a>
+                    .
+                  </p>
                 </Main>
             "#]],
         );

@@ -382,9 +382,7 @@ fn construct_node(
 
             // Convert content to a Text child if present
             let children = content
-                .map(|c| {
-                    vec![ParsedNode::Text { range: c }]
-                })
+                .map(|c| vec![ParsedNode::Text { range: c }])
                 .unwrap_or_default();
 
             Some(ParsedNode::Html {
@@ -551,8 +549,7 @@ fn construct_node(
                             dop::parser::parse_loop_header(&mut iter, comments, &e)
                                 .map_err(|err| err.into())
                         });
-                    let Some((var_name, var_name_range, source)) =
-                        errors.ok_or_add(parse_result)
+                    let Some((var_name, var_name_range, source)) = errors.ok_or_add(parse_result)
                     else {
                         return Some(ParsedNode::Placeholder {
                             range: tree.range.clone(),
@@ -712,6 +709,7 @@ mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
     use crate::error_collector::ErrorCollector;
+    use crate::hop::syntax::formatter;
     use crate::hop::syntax::transform::whitespace_removal::remove_whitespace;
     use expect_test::{Expect, expect};
     use indoc::indoc;
@@ -730,7 +728,7 @@ mod tests {
                 .with_lines_before(1)
                 .annotate(None, errors.to_vec())
         } else {
-            remove_whitespace(module).to_string()
+            formatter::format(remove_whitespace(module))
         };
 
         expected.assert_eq(&actual);
@@ -752,6 +750,7 @@ mod tests {
             expect![[r#"
                 <First></First>
 
+                // This is a comment
                 <Second></Second>
             "#]],
         );
@@ -1474,15 +1473,10 @@ mod tests {
                       viewBox="0 0 128 128"
                       class="size-12"
                     >
-                      <g
-                        style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;"
-                      >
-                        <path d="M20.04 38 64 22l43.96 16L64 54Z">
-                        </path>
-                        <path d="M17.54 47.09v48l35.099 12.775">
-                        </path>
-                        <path d="M64 112V64l46.46-16.91v48L77.988 106.91">
-                        </path>
+                      <g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
+                        <path d="M20.04 38 64 22l43.96 16L64 54Z"></path>
+                        <path d="M17.54 47.09v48l35.099 12.775"></path>
+                        <path d="M64 112V64l46.46-16.91v48L77.988 106.91"></path>
                       </g>
                     </svg>
                     <ul>
@@ -1615,9 +1609,7 @@ mod tests {
             expect![[r#"
                 <Main>
                   <h1>
-                    Hello
-                    {name}
-                    !
+                    Hello {name}!
                   </h1>
                 </Main>
             "#]],
@@ -1631,11 +1623,7 @@ mod tests {
             expect![[r#"
                 <Main>
                   <p>
-                    User
-                    {user.name}
-                    has
-                    {user.count}
-                    items
+                    User {user.name} has {user.count} items
                   </p>
                 </Main>
             "#]],
@@ -1649,8 +1637,7 @@ mod tests {
             expect![[r#"
                 <Main>
                   <span>
-                    {greeting}
-                    world!
+                    {greeting} world!
                   </span>
                 </Main>
             "#]],
@@ -1664,8 +1651,7 @@ mod tests {
             expect![[r#"
                 <Main>
                   <div>
-                    Price:
-                    {price}
+                    Price: {price}
                   </div>
                 </Main>
             "#]],
@@ -1761,8 +1747,7 @@ mod tests {
             expect![[r#"
                 <Main>
                   <p>
-                    Status:
-                    {user.profile.status == "active"}
+                    Status: {user.profile.status == "active"}
                   </p>
                 </Main>
             "#]],
@@ -1776,8 +1761,7 @@ mod tests {
             expect![[r#"
                 <Main>
                   <span>
-                    {first}
-                    {second}
+                    {first}{second}
                   </span>
                 </Main>
             "#]],
@@ -1946,10 +1930,12 @@ mod tests {
                 }
 
                 <Main {color: Color}>
-                  <div
-                    class={match color {Color::Red => "text-red", Color::Blue => "text-blue"}}
-                  >
-                  </div>
+                  <div class={
+                    match color {
+                      Color::Red => "text-red",
+                      Color::Blue => "text-blue",
+                    }
+                  }></div>
                 </Main>
             "#]],
         );
@@ -2033,8 +2019,7 @@ mod tests {
             "},
             expect![[r#"
                 <Main {enabled: Bool = true}>
-                  <div>
-                  </div>
+                  <div></div>
                 </Main>
             "#]],
         );
@@ -2049,7 +2034,11 @@ mod tests {
                 </Main>
             "#},
             expect![[r#"
-                <Main {name: String, role: String = "user", active: Bool = true}>
+                <Main {
+                  name: String,
+                  role: String = "user",
+                  active: Bool = true,
+                }>
                   <div>
                     {name}
                   </div>
@@ -2094,8 +2083,7 @@ mod tests {
                 }
 
                 <Main {config: Config = Config(debug: false, timeout: 30)}>
-                  <div>
-                  </div>
+                  <div></div>
                 </Main>
             "#]],
         );
@@ -2118,8 +2106,7 @@ mod tests {
                 }
 
                 <Main {status: Status = Status::Active}>
-                  <div>
-                  </div>
+                  <div></div>
                 </Main>
             "#]],
         );
@@ -2135,8 +2122,7 @@ mod tests {
             "},
             expect![[r#"
                 <Main {name: Option[String]}>
-                  <div>
-                  </div>
+                  <div></div>
                 </Main>
             "#]],
         );
@@ -2152,8 +2138,7 @@ mod tests {
             "},
             expect![[r#"
                 <Main {name: Option[String] = None}>
-                  <div>
-                  </div>
+                  <div></div>
                 </Main>
             "#]],
         );
@@ -2169,8 +2154,7 @@ mod tests {
             "#},
             expect![[r#"
                 <Main {name: Option[String] = Some("default")}>
-                  <div>
-                  </div>
+                  <div></div>
                 </Main>
             "#]],
         );
@@ -2195,8 +2179,7 @@ mod tests {
                 <Main {x: Option[String]}>
                   <match {x}>
                     <case {Some(y)}>
-                      found
-                      {y}
+                      found {y}
                     </case>
                     <case {None}>
                       nothing
@@ -2269,12 +2252,10 @@ mod tests {
                 <Main {r: Result}>
                   <match {r}>
                     <case {Result::Ok(value: v)}>
-                      Success:
-                      {v}
+                      Success: {v}
                     </case>
                     <case {Result::Err(message: m)}>
-                      Error:
-                      {m}
+                      Error: {m}
                     </case>
                   </match>
                 </Main>
@@ -2433,8 +2414,7 @@ mod tests {
                 <Main>
                   <let {name: String = "World"}>
                     <div>
-                      Hello
-                      {name}
+                      Hello {name}
                     </div>
                   </let>
                 </Main>
@@ -2508,9 +2488,7 @@ mod tests {
                   <let {a: Int = 1}>
                     <let {b: Int = 2}>
                       <div>
-                        {a}
-                        +
-                        {b}
+                        {a} + {b}
                       </div>
                     </let>
                   </let>
@@ -2590,8 +2568,7 @@ mod tests {
                 <Main>
                   <let {first: String = "Hello", second: String = "World"}>
                     <div>
-                      {first}
-                      {second}
+                      {first} {second}
                     </div>
                   </let>
                 </Main>
@@ -2613,11 +2590,7 @@ mod tests {
                 <Main>
                   <let {a: Int = 1, b: Int = 2, c: Int = 3}>
                     <div>
-                      {a}
-                      +
-                      {b}
-                      +
-                      {c}
+                      {a} + {b} + {c}
                     </div>
                   </let>
                 </Main>
@@ -2639,8 +2612,7 @@ mod tests {
                 <Main>
                   <let {name: String = "World"}>
                     <div>
-                      Hello
-                      {name}
+                      Hello {name}
                     </div>
                   </let>
                 </Main>
@@ -2692,8 +2664,7 @@ mod tests {
                   </div>
                   <let {name: String = "World"}>
                     <div>
-                      Hello
-                      {name}
+                      Hello {name}
                     </div>
                   </let>
                 </Main>
@@ -2716,8 +2687,7 @@ mod tests {
                 <Main>
                   <let {name: String = "World"}>
                     <div>
-                      Hello
-                      {name}
+                      Hello {name}
                     </div>
                   </let>
                   <div>
