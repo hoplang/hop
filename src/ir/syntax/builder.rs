@@ -1,6 +1,6 @@
 use crate::document::CheapString;
 use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
-use crate::dop::semantics::r#type::{ComparableType, EquatableType};
+use crate::dop::semantics::r#type::EquatableType;
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::{Type, VarName};
@@ -13,7 +13,6 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 pub struct IrModuleBuilder {
-    module_name: ModuleName,
     /// Enums with their variants. Each variant has a name and optional fields.
     enums: BTreeMap<String, Vec<(String, Vec<(String, Type)>)>>,
     records: BTreeMap<String, Vec<(String, Type)>>,
@@ -23,7 +22,6 @@ pub struct IrModuleBuilder {
 impl IrModuleBuilder {
     pub fn new() -> Self {
         Self {
-            module_name: ModuleName::new("test").unwrap(),
             enums: BTreeMap::new(),
             records: BTreeMap::new(),
             components: Vec::new(),
@@ -62,9 +60,6 @@ impl IrModuleBuilder {
         F: FnOnce(&mut RecordBuilder),
     {
         let mut builder = RecordBuilder {
-            module_name: &self.module_name,
-            enums: &self.enums,
-            records: &self.records,
             fields: Vec::new(),
         };
         f(&mut builder);
@@ -144,56 +139,14 @@ impl Default for IrModuleBuilder {
     }
 }
 
-pub struct RecordBuilder<'a> {
-    module_name: &'a ModuleName,
-    enums: &'a BTreeMap<String, Vec<(String, Vec<(String, Type)>)>>,
-    records: &'a BTreeMap<String, Vec<(String, Type)>>,
+pub struct RecordBuilder {
     fields: Vec<(String, Type)>,
 }
 
-impl<'a> RecordBuilder<'a> {
+impl RecordBuilder {
     pub fn field(&mut self, name: &str, typ: Type) -> &mut Self {
         self.fields.push((name.to_string(), typ));
         self
-    }
-
-    pub fn record_type(&self, name: &str) -> Type {
-        let fields = self.records.get(name).unwrap_or_else(|| {
-            panic!("Record '{}' not found. Define it before referencing.", name)
-        });
-
-        Type::Record {
-            module: self.module_name.clone(),
-            name: TypeName::new(name).unwrap(),
-            fields: fields
-                .iter()
-                .map(|(k, v)| (FieldName::new(k).unwrap(), v.clone()))
-                .collect(),
-        }
-    }
-
-    pub fn enum_type(&self, name: &str) -> Type {
-        let variants = self
-            .enums
-            .get(name)
-            .unwrap_or_else(|| panic!("Enum '{}' not found. Define it before referencing.", name));
-
-        Type::Enum {
-            module: self.module_name.clone(),
-            name: TypeName::new(name).unwrap(),
-            variants: variants
-                .iter()
-                .map(|(variant_name, fields)| {
-                    (
-                        TypeName::new(variant_name).unwrap(),
-                        fields
-                            .iter()
-                            .map(|(f, t)| (FieldName::new(f).unwrap(), t.clone()))
-                            .collect(),
-                    )
-                })
-                .collect(),
-        }
     }
 }
 
@@ -360,13 +313,6 @@ impl IrBuilder {
         }
     }
 
-    pub fn float(&self, n: f64) -> IrExpr {
-        IrExpr::FloatLiteral {
-            value: n,
-            id: self.next_expr_id(),
-        }
-    }
-
     pub fn bool(&self, b: bool) -> IrExpr {
         IrExpr::BooleanLiteral {
             value: b,
@@ -431,48 +377,6 @@ impl IrBuilder {
         }
     }
 
-    pub fn less_than(&self, left: IrExpr, right: IrExpr) -> IrExpr {
-        match (left.as_type(), right.as_type()) {
-            (Type::Int, Type::Int) => IrExpr::LessThan {
-                left: Box::new(left),
-                right: Box::new(right),
-                operand_types: ComparableType::Int,
-                id: self.next_expr_id(),
-            },
-            (Type::Float, Type::Float) => IrExpr::LessThan {
-                left: Box::new(left),
-                right: Box::new(right),
-                operand_types: ComparableType::Float,
-                id: self.next_expr_id(),
-            },
-            _ => panic!(
-                "Unsupported type for less than comparison: {:?}",
-                left.as_type()
-            ),
-        }
-    }
-
-    pub fn less_than_or_equal(&self, left: IrExpr, right: IrExpr) -> IrExpr {
-        match (left.as_type(), right.as_type()) {
-            (Type::Int, Type::Int) => IrExpr::LessThanOrEqual {
-                left: Box::new(left),
-                right: Box::new(right),
-                operand_types: ComparableType::Int,
-                id: self.next_expr_id(),
-            },
-            (Type::Float, Type::Float) => IrExpr::LessThanOrEqual {
-                left: Box::new(left),
-                right: Box::new(right),
-                operand_types: ComparableType::Float,
-                id: self.next_expr_id(),
-            },
-            _ => panic!(
-                "Unsupported type for less than or equal comparison: {:?}",
-                left.as_type()
-            ),
-        }
-    }
-
     pub fn not(&self, operand: IrExpr) -> IrExpr {
         IrExpr::BooleanNegation {
             operand: Box::new(operand),
@@ -517,36 +421,8 @@ impl IrBuilder {
         }
     }
 
-    pub fn array_length(&self, array: IrExpr) -> IrExpr {
-        IrExpr::ArrayLength {
-            array: Box::new(array),
-            id: self.next_expr_id(),
-        }
-    }
-
     pub fn int_to_string(&self, value: IrExpr) -> IrExpr {
         IrExpr::IntToString {
-            value: Box::new(value),
-            id: self.next_expr_id(),
-        }
-    }
-
-    pub fn float_to_int(&self, value: IrExpr) -> IrExpr {
-        IrExpr::FloatToInt {
-            value: Box::new(value),
-            id: self.next_expr_id(),
-        }
-    }
-
-    pub fn float_to_string(&self, value: IrExpr) -> IrExpr {
-        IrExpr::FloatToString {
-            value: Box::new(value),
-            id: self.next_expr_id(),
-        }
-    }
-
-    pub fn int_to_float(&self, value: IrExpr) -> IrExpr {
-        IrExpr::IntToFloat {
             value: Box::new(value),
             id: self.next_expr_id(),
         }
@@ -945,63 +821,6 @@ impl IrBuilder {
         }
     }
 
-    pub fn add(&self, left: IrExpr, right: IrExpr) -> IrExpr {
-        use crate::dop::semantics::r#type::NumericType;
-        match (left.as_type(), right.as_type()) {
-            (Type::Int, Type::Int) => IrExpr::NumericAdd {
-                left: Box::new(left),
-                right: Box::new(right),
-                operand_types: NumericType::Int,
-                id: self.next_expr_id(),
-            },
-            (Type::Float, Type::Float) => IrExpr::NumericAdd {
-                left: Box::new(left),
-                right: Box::new(right),
-                operand_types: NumericType::Float,
-                id: self.next_expr_id(),
-            },
-            _ => panic!("Unsupported types for addition: {:?}", left.as_type()),
-        }
-    }
-
-    pub fn subtract(&self, left: IrExpr, right: IrExpr) -> IrExpr {
-        use crate::dop::semantics::r#type::NumericType;
-        match (left.as_type(), right.as_type()) {
-            (Type::Int, Type::Int) => IrExpr::NumericSubtract {
-                left: Box::new(left),
-                right: Box::new(right),
-                operand_types: NumericType::Int,
-                id: self.next_expr_id(),
-            },
-            (Type::Float, Type::Float) => IrExpr::NumericSubtract {
-                left: Box::new(left),
-                right: Box::new(right),
-                operand_types: NumericType::Float,
-                id: self.next_expr_id(),
-            },
-            _ => panic!("Unsupported types for subtraction: {:?}", left.as_type()),
-        }
-    }
-
-    pub fn multiply(&self, left: IrExpr, right: IrExpr) -> IrExpr {
-        use crate::dop::semantics::r#type::NumericType;
-        match (left.as_type(), right.as_type()) {
-            (Type::Int, Type::Int) => IrExpr::NumericMultiply {
-                left: Box::new(left),
-                right: Box::new(right),
-                operand_types: NumericType::Int,
-                id: self.next_expr_id(),
-            },
-            (Type::Float, Type::Float) => IrExpr::NumericMultiply {
-                left: Box::new(left),
-                right: Box::new(right),
-                operand_types: NumericType::Float,
-                id: self.next_expr_id(),
-            },
-            _ => panic!("Unsupported types for multiplication: {:?}", left.as_type()),
-        }
-    }
-
     pub fn env_lookup(&self, key: IrExpr) -> IrExpr {
         IrExpr::EnvLookup {
             key: Box::new(key),
@@ -1115,22 +934,6 @@ impl IrBuilder {
             id: self.next_node_id(),
             var: Some(VarName::try_from(var.to_string()).unwrap()),
             source: IrForSource::RangeInclusive { start, end },
-            body: inner_builder.statements,
-        });
-    }
-
-    /// Create a for loop over an array without binding the loop variable (underscore)
-    pub fn for_array_discarded<F>(&mut self, array: IrExpr, body_fn: F)
-    where
-        F: FnOnce(&mut Self),
-    {
-        let mut inner_builder = self.new_scoped();
-        body_fn(&mut inner_builder);
-
-        self.statements.push(IrStatement::For {
-            id: self.next_node_id(),
-            var: None,
-            source: IrForSource::Array(array),
             body: inner_builder.statements,
         });
     }

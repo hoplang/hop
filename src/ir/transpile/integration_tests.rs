@@ -275,7 +275,7 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::syntax::builder::{IrBuilder, IrModuleBuilder};
+    use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::expect;
     use indoc::indoc;
 

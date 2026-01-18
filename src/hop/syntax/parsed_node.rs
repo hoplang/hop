@@ -21,9 +21,7 @@ use super::parsed_ast::ParsedAttribute;
 #[derive(Debug, Clone)]
 pub struct ParsedMatchCase {
     pub pattern: ParsedMatchPattern,
-    pub pattern_range: DocumentRange,
     pub children: Vec<ParsedNode>,
-    pub range: DocumentRange,
 }
 
 impl ParsedMatchCase {

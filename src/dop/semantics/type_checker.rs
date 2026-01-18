@@ -1382,8 +1382,8 @@ mod tests {
     use crate::document::DocumentCursor;
     use crate::dop::ParsedDeclaration;
     use crate::dop::parser;
+    use crate::dop::syntax::tokenizer;
     use crate::dop::symbols::type_name::TypeName;
-    use crate::error_collector::ErrorCollector;
     use crate::hop::symbols::module_name::ModuleName;
     use expect_test::{Expect, expect};
     use indoc::indoc;
@@ -1398,10 +1398,10 @@ mod tests {
         let cursor = DocumentCursor::new(declarations_str.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
-        let mut errors = ErrorCollector::new();
         let mut comments = VecDeque::new();
-        for declaration in parser::parse_declarations(&mut iter, &mut comments, &range, &mut errors)
-        {
+        while tokenizer::peek_past_comments(&iter).is_some() {
+            let declaration = parser::parse_declaration(&mut iter, &mut comments, &range)
+                .expect("Failed to parse declaration");
             match declaration {
                 ParsedDeclaration::Enum { name, variants, .. } => {
                     // Build variant types with properly resolved field types
@@ -1450,9 +1450,6 @@ mod tests {
                     panic!("Import declarations not supported in tests");
                 }
             }
-        }
-        if !errors.is_empty() {
-            panic!("Failed to parse declarations: {:?}", errors);
         }
 
         for (var_name, type_str) in env_vars {

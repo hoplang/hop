@@ -5,7 +5,6 @@ use crate::document::{CheapString, DocumentCursor, DocumentRange};
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::type_name::TypeName;
 use crate::dop::symbols::var_name::VarName;
-use crate::error_collector::ErrorCollector;
 use crate::hop::symbols::module_name::ModuleName;
 
 use super::parse_error::ParseError;
@@ -1236,52 +1235,6 @@ pub fn parse_declaration(
     }
 }
 
-pub fn parse_declarations(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    range: &DocumentRange,
-    errors: &mut ErrorCollector<ParseError>,
-) -> Vec<ParsedDeclaration> {
-    let mut declarations = Vec::new();
-
-    loop {
-        match peek(iter) {
-            Some(Ok((Token::Import, _))) => match parse_import_declaration(iter, comments, range) {
-                Ok(decl) => declarations.push(decl),
-                Err(err) => {
-                    errors.push(err);
-                    break;
-                }
-            },
-            Some(Ok((Token::Record, _))) => match parse_record_declaration(iter, comments, range) {
-                Ok(decl) => declarations.push(decl),
-                Err(err) => {
-                    errors.push(err);
-                    break;
-                }
-            },
-            Some(Ok((Token::Enum, _))) => match parse_enum_declaration(iter, comments, range) {
-                Ok(decl) => declarations.push(decl),
-                Err(err) => {
-                    errors.push(err);
-                    break;
-                }
-            },
-            Some(Ok((_, token_range))) => {
-                errors.push(ParseError::ExpectedDeclaration { range: token_range });
-                break;
-            }
-            Some(Err(err)) => {
-                errors.push(err);
-                break;
-            }
-            None => break,
-        }
-    }
-
-    declarations
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1341,19 +1294,27 @@ mod tests {
     }
 
     fn check_parse_declarations(input: &str, expected: Expect) {
-        use crate::error_collector::ErrorCollector;
-
-        let mut errors = ErrorCollector::<ParseError>::new();
         let cursor = DocumentCursor::new(input.to_string());
         let range = cursor.range();
         let mut iter = cursor.peekable();
         let mut comments = VecDeque::new();
-        let declarations = parse_declarations(&mut iter, &mut comments, &range, &mut errors);
+        let mut declarations = Vec::new();
+        let mut errors = Vec::new();
+
+        while peek(&iter).is_some() {
+            match parse_declaration(&mut iter, &mut comments, &range) {
+                Ok(decl) => declarations.push(decl),
+                Err(err) => {
+                    errors.push(err);
+                    break;
+                }
+            }
+        }
 
         let actual = if !errors.is_empty() {
             DocumentAnnotator::new()
                 .with_label("error")
-                .annotate(None, errors.to_vec())
+                .annotate(None, errors)
         } else {
             declarations
                 .iter()

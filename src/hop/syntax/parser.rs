@@ -485,9 +485,7 @@ fn construct_node(
                                 .collect();
                             cases.push(ParsedMatchCase {
                                 pattern,
-                                pattern_range,
                                 children: case_children,
-                                range: child_tree.range,
                             });
                         }
                         // Error on other nodes
