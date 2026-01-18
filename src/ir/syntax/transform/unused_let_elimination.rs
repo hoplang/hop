@@ -6,26 +6,86 @@ use crate::ir::{
 };
 use std::collections::HashSet;
 
-/// A pass that eliminates unused let statements
-/// If a variable is never referenced in the body of the let, the let statement is replaced with its body
+/// A pass that eliminates unused let statements and unused match bindings.
+/// - Unused let statements are replaced with their body
+/// - Unused Option match bindings are set to None (wildcard)
+/// - Unused Enum match bindings are removed from the bindings list
 pub struct UnusedLetEliminationPass;
 
+/// Collected information about unused variables
+struct UnusedVars {
+    /// Let statements with unused variables
+    unused_lets: HashSet<StatementId>,
+    /// Match statements with unused Option bindings
+    unused_option_bindings: HashSet<StatementId>,
+    /// Match statements with unused Enum bindings: (stmt_id, field_name)
+    unused_enum_bindings: HashSet<(StatementId, String)>,
+}
+
 impl UnusedLetEliminationPass {
-    /// Collect which let statements have unused variables
-    fn collect_unused_lets(entrypoint: &IrComponentDeclaration) -> HashSet<StatementId> {
+    /// Collect which let statements and match bindings have unused variables
+    fn collect_unused_vars(entrypoint: &IrComponentDeclaration) -> UnusedVars {
         let mut all_lets = HashSet::new();
         let mut used_lets = HashSet::new();
+        // Track Option match bindings: stmt_id -> binding_name
+        let mut option_bindings: Vec<(StatementId, String)> = Vec::new();
+        let mut used_option_bindings: HashSet<StatementId> = HashSet::new();
+        // Track Enum match bindings: (stmt_id, field_name) -> binding_name
+        let mut enum_bindings: Vec<((StatementId, String), String)> = Vec::new();
+        let mut used_enum_bindings: HashSet<(StatementId, String)> = HashSet::new();
 
-        // First collect all let statement IDs
+        // First collect all let statement IDs and match bindings
         for stmt in &entrypoint.body {
             stmt.traverse(&mut |s| {
-                if let IrStatement::Let { id, .. } = s {
-                    all_lets.insert(*id);
+                match s {
+                    IrStatement::Let { id, .. } => {
+                        all_lets.insert(*id);
+                    }
+                    IrStatement::Match { id, match_ } => {
+                        match match_ {
+                            Match::Option {
+                                some_arm_binding: Some(binding),
+                                ..
+                            } => {
+                                option_bindings.push((*id, binding.to_string()));
+                            }
+                            Match::Enum { arms, .. } => {
+                                for arm in arms {
+                                    for (field_name, var_name) in &arm.bindings {
+                                        enum_bindings.push((
+                                            (*id, field_name.to_string()),
+                                            var_name.to_string(),
+                                        ));
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
                 }
             });
         }
 
-        // Now traverse with scope tracking to find used lets
+        // Helper to check if a variable name is an Option or Enum binding use
+        let check_binding_use = |name_str: &str,
+                                 option_bindings: &[(StatementId, String)],
+                                 enum_bindings: &[((StatementId, String), String)],
+                                 used_option_bindings: &mut HashSet<StatementId>,
+                                 used_enum_bindings: &mut HashSet<(StatementId, String)>| {
+            for (stmt_id, binding_name) in option_bindings {
+                if binding_name == name_str {
+                    used_option_bindings.insert(*stmt_id);
+                }
+            }
+            for ((stmt_id, field_name), binding_name) in enum_bindings {
+                if binding_name == name_str {
+                    used_enum_bindings.insert((*stmt_id, field_name.clone()));
+                }
+            }
+        };
+
+        // Now traverse with scope tracking to find used variables
         for stmt in &entrypoint.body {
             stmt.traverse_with_scope(&mut |s, scope| {
                 // Check for match statement subjects (which are variable references)
@@ -35,10 +95,18 @@ impl UnusedLetEliminationPass {
                         Match::Enum { subject, .. } => &subject.0,
                         Match::Option { subject, .. } => &subject.0,
                     };
-                    if let Some(IrStatement::Let { id, .. }) = scope.get(&subject_name.to_string())
-                    {
+                    let name_str = subject_name.to_string();
+                    if let Some(IrStatement::Let { id, .. }) = scope.get(&name_str) {
                         used_lets.insert(*id);
                     }
+                    // Also check if the subject is an Option or Enum binding
+                    check_binding_use(
+                        &name_str,
+                        &option_bindings,
+                        &enum_bindings,
+                        &mut used_option_bindings,
+                        &mut used_enum_bindings,
+                    );
                 }
 
                 // Process only the primary expression of this statement (not nested ones)
@@ -47,10 +115,18 @@ impl UnusedLetEliminationPass {
                     primary_expr.traverse(&mut |expr| {
                         // Check for direct variable references
                         if let IrExpr::Var { value: name, .. } = expr {
-                            if let Some(IrStatement::Let { id, .. }) = scope.get(&name.to_string())
-                            {
+                            let name_str = name.to_string();
+                            if let Some(IrStatement::Let { id, .. }) = scope.get(&name_str) {
                                 used_lets.insert(*id);
                             }
+                            // Check if this is an Option or Enum binding use
+                            check_binding_use(
+                                &name_str,
+                                &option_bindings,
+                                &enum_bindings,
+                                &mut used_option_bindings,
+                                &mut used_enum_bindings,
+                            );
                         }
                         // Check for match expression subjects (which are variable references)
                         if let IrExpr::Match { match_, .. } = expr {
@@ -59,11 +135,18 @@ impl UnusedLetEliminationPass {
                                 Match::Enum { subject, .. } => &subject.0,
                                 Match::Option { subject, .. } => &subject.0,
                             };
-                            if let Some(IrStatement::Let { id, .. }) =
-                                scope.get(&subject_name.to_string())
-                            {
+                            let name_str = subject_name.to_string();
+                            if let Some(IrStatement::Let { id, .. }) = scope.get(&name_str) {
                                 used_lets.insert(*id);
                             }
+                            // Also check if the subject is an Option or Enum binding
+                            check_binding_use(
+                                &name_str,
+                                &option_bindings,
+                                &enum_bindings,
+                                &mut used_option_bindings,
+                                &mut used_enum_bindings,
+                            );
                         }
                     });
                 };
@@ -84,55 +167,195 @@ impl UnusedLetEliminationPass {
             });
         }
 
-        // Return the set of unused lets (all - used)
-        all_lets.difference(&used_lets).cloned().collect()
+        // Compute unused sets
+        let unused_lets = all_lets.difference(&used_lets).cloned().collect();
+        let unused_option_bindings = option_bindings
+            .iter()
+            .filter(|(id, _)| !used_option_bindings.contains(id))
+            .map(|(id, _)| *id)
+            .collect();
+        let all_enum_binding_keys: HashSet<_> = enum_bindings
+            .iter()
+            .map(|((id, field), _)| (*id, field.clone()))
+            .collect();
+        let unused_enum_bindings = all_enum_binding_keys
+            .difference(&used_enum_bindings)
+            .cloned()
+            .collect();
+
+        UnusedVars {
+            unused_lets,
+            unused_option_bindings,
+            unused_enum_bindings,
+        }
     }
 
-    /// Transform a list of statements, eliminating unused lets
+    /// Transform a list of statements, eliminating unused lets.
+    /// Returns (transformed_statements, made_changes).
     fn transform_statements(
         statements: Vec<IrStatement>,
-        unused_lets: &HashSet<StatementId>,
-    ) -> Vec<IrStatement> {
-        statements
+        unused_vars: &UnusedVars,
+    ) -> (Vec<IrStatement>, bool) {
+        let mut made_changes = false;
+        let result = statements
             .into_iter()
             .flat_map(|stmt| match stmt {
                 // Unused let - replace with its body, recursively transforming it
-                IrStatement::Let { body, id, .. } if unused_lets.contains(&id) => {
-                    Self::transform_statements(body, unused_lets)
+                IrStatement::Let { body, id, .. } if unused_vars.unused_lets.contains(&id) => {
+                    made_changes = true;
+                    Self::transform_statements(body, unused_vars).0
                 }
 
                 // All other statements pass through
                 other => vec![other],
             })
-            .collect()
+            .collect();
+        (result, made_changes)
+    }
+
+    /// Remove unused bindings from a Match. Returns true if any changes were made.
+    fn transform_match_bindings(match_: &mut Match<Vec<IrStatement>>, id: StatementId, unused_vars: &UnusedVars) -> bool {
+        match match_ {
+            Match::Option {
+                some_arm_binding, ..
+            } => {
+                if some_arm_binding.is_some() && unused_vars.unused_option_bindings.contains(&id) {
+                    *some_arm_binding = None;
+                    true
+                } else {
+                    false
+                }
+            }
+            Match::Enum { arms, .. } => {
+                let mut changed = false;
+                for arm in arms {
+                    let original_len = arm.bindings.len();
+                    arm.bindings.retain(|(field_name, _)| {
+                        !unused_vars
+                            .unused_enum_bindings
+                            .contains(&(id, field_name.to_string()))
+                    });
+                    if arm.bindings.len() != original_len {
+                        changed = true;
+                    }
+                }
+                changed
+            }
+            Match::Bool { .. } => false,
+        }
     }
 }
 
 impl Pass for UnusedLetEliminationPass {
     fn run(mut entrypoint: IrComponentDeclaration) -> IrComponentDeclaration {
-        // First collect which let statements have unused variables
-        let unused_lets = Self::collect_unused_lets(&entrypoint);
+        // Iterate until no more changes are made.
+        // This is necessary because removing a let statement may make another
+        // variable unused (e.g., removing `let val = v0` makes `v0` unused).
+        loop {
+            let unused_vars = Self::collect_unused_vars(&entrypoint);
+            let mut made_changes = false;
 
-        // Use visit_mut to recursively process nested bodies
-        for stmt in &mut entrypoint.body {
-            stmt.traverse_mut(&mut |s| match s {
-                IrStatement::If {
-                    body, else_body, ..
-                } => {
-                    *body = Self::transform_statements(std::mem::take(body), &unused_lets);
-                    *else_body = else_body
-                        .take()
-                        .map(|else_body| Self::transform_statements(else_body, &unused_lets))
-                }
-                IrStatement::For { body, .. } | IrStatement::Let { body, .. } => {
-                    *body = Self::transform_statements(std::mem::take(body), &unused_lets);
-                }
-                _ => {}
-            });
+            // Use visit_mut to recursively process nested bodies and transform match bindings
+            for stmt in &mut entrypoint.body {
+                stmt.traverse_mut(&mut |s| match s {
+                    IrStatement::If {
+                        body, else_body, ..
+                    } => {
+                        let (new_body, changed) = Self::transform_statements(std::mem::take(body), &unused_vars);
+                        *body = new_body;
+                        if changed {
+                            made_changes = true;
+                        }
+                        *else_body = else_body
+                            .take()
+                            .map(|else_body| {
+                                let (new_body, changed) = Self::transform_statements(else_body, &unused_vars);
+                                if changed {
+                                    made_changes = true;
+                                }
+                                new_body
+                            })
+                    }
+                    IrStatement::For { body, .. } | IrStatement::Let { body, .. } => {
+                        let (new_body, changed) = Self::transform_statements(std::mem::take(body), &unused_vars);
+                        *body = new_body;
+                        if changed {
+                            made_changes = true;
+                        }
+                    }
+                    IrStatement::Match { id, match_ } => {
+                        if Self::transform_match_bindings(match_, *id, &unused_vars) {
+                            made_changes = true;
+                        }
+                        // Also transform statements inside Match arm bodies
+                        match match_ {
+                            Match::Option {
+                                some_arm_body,
+                                none_arm_body,
+                                ..
+                            } => {
+                                let (new_some_body, some_changed) = Self::transform_statements(
+                                    std::mem::take(some_arm_body.as_mut()),
+                                    &unused_vars,
+                                );
+                                **some_arm_body = new_some_body;
+                                let (new_none_body, none_changed) = Self::transform_statements(
+                                    std::mem::take(none_arm_body.as_mut()),
+                                    &unused_vars,
+                                );
+                                **none_arm_body = new_none_body;
+                                if some_changed || none_changed {
+                                    made_changes = true;
+                                }
+                            }
+                            Match::Bool {
+                                true_body,
+                                false_body,
+                                ..
+                            } => {
+                                let (new_true_body, true_changed) = Self::transform_statements(
+                                    std::mem::take(true_body.as_mut()),
+                                    &unused_vars,
+                                );
+                                **true_body = new_true_body;
+                                let (new_false_body, false_changed) = Self::transform_statements(
+                                    std::mem::take(false_body.as_mut()),
+                                    &unused_vars,
+                                );
+                                **false_body = new_false_body;
+                                if true_changed || false_changed {
+                                    made_changes = true;
+                                }
+                            }
+                            Match::Enum { arms, .. } => {
+                                for arm in arms {
+                                    let (new_body, changed) = Self::transform_statements(
+                                        std::mem::take(&mut arm.body),
+                                        &unused_vars,
+                                    );
+                                    arm.body = new_body;
+                                    if changed {
+                                        made_changes = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                });
+            }
+
+            // Then transform top-level statements
+            let (new_body, changed) = Self::transform_statements(entrypoint.body, &unused_vars);
+            entrypoint.body = new_body;
+            if changed {
+                made_changes = true;
+            }
+
+            if !made_changes {
+                break;
+            }
         }
-
-        // Then transform top-level statements
-        entrypoint.body = Self::transform_statements(entrypoint.body, &unused_lets);
         entrypoint
     }
 }
@@ -686,7 +909,7 @@ mod tests {
                         BadgeElement::Span => {
                           write("<span>badge</span>")
                         }
-                        BadgeElement::Link(href: h) => {
+                        BadgeElement::Link => {
                           write("<a>badge</a>")
                         }
                       }
@@ -844,6 +1067,285 @@ mod tests {
                             write_escaped(h)
                           }
                         }
+                      }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_eliminate_unused_let_inside_option_match_arm_body() {
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("opt", t.some(t.str("hello")), |t| {
+                    t.option_match_stmt(
+                        t.var("opt"),
+                        Some("v0"),
+                        |t| {
+                            t.let_stmt("val", t.var("v0"), |t| {
+                                t.write("constant");
+                            });
+                        },
+                        |t| {
+                            t.write("none");
+                        },
+                    );
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let opt = Option[String]::Some("hello") in {
+                    match opt {
+                      Some(v0) => {
+                        let val = v0 in {
+                          write("constant")
+                        }
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let opt = Option[String]::Some("hello") in {
+                    match opt {
+                      Some(_) => {
+                        write("constant")
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_eliminate_unused_option_match_binding() {
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("opt", t.some(t.str("hello")), |t| {
+                    t.option_match_stmt(
+                        t.var("opt"),
+                        Some("unused_binding"),
+                        |t| {
+                            t.write("some");
+                        },
+                        |t| {
+                            t.write("none");
+                        },
+                    );
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let opt = Option[String]::Some("hello") in {
+                    match opt {
+                      Some(unused_binding) => {
+                        write("some")
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let opt = Option[String]::Some("hello") in {
+                    match opt {
+                      Some(_) => {
+                        write("some")
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_preserve_option_match_binding_when_used_as_nested_match_subject() {
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("outer_opt", t.some(t.some(t.str("deep"))), |t| {
+                    t.option_match_stmt(
+                        t.var("outer_opt"),
+                        Some("inner"),
+                        |t| {
+                            t.option_match_stmt(
+                                t.var("inner"),
+                                Some("value"),
+                                |t| {
+                                    t.write_expr(t.var("value"), false);
+                                },
+                                |t| {
+                                    t.write("inner-none");
+                                },
+                            );
+                        },
+                        |t| {
+                            t.write("outer-none");
+                        },
+                    );
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let outer_opt = Option[Option[String]]::Some(Option[String]::Some("deep")) in {
+                    match outer_opt {
+                      Some(inner) => {
+                        match inner {
+                          Some(value) => {
+                            write_expr(value)
+                          }
+                          None => {
+                            write("inner-none")
+                          }
+                        }
+                      }
+                      None => {
+                        write("outer-none")
+                      }
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let outer_opt = Option[Option[String]]::Some(Option[String]::Some("deep")) in {
+                    match outer_opt {
+                      Some(inner) => {
+                        match inner {
+                          Some(value) => {
+                            write_expr(value)
+                          }
+                          None => {
+                            write("inner-none")
+                          }
+                        }
+                      }
+                      None => {
+                        write("outer-none")
+                      }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_eliminate_cascading_unused_variables() {
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("opt", t.some(t.str("hello")), |t| {
+                    t.option_match_stmt(
+                        t.var("opt"),
+                        Some("v0"),
+                        |t| {
+                            t.let_stmt("val", t.var("v0"), |t| {
+                                t.write("constant");
+                            });
+                        },
+                        |t| {
+                            t.write("none");
+                        },
+                    );
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let opt = Option[String]::Some("hello") in {
+                    match opt {
+                      Some(v0) => {
+                        let val = v0 in {
+                          write("constant")
+                        }
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let opt = Option[String]::Some("hello") in {
+                    match opt {
+                      Some(_) => {
+                        write("constant")
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_eliminate_unused_let_inside_bool_match_arm_body() {
+        check(
+            build_ir("Test", [], |t| {
+                t.let_stmt("flag", t.bool(true), |t| {
+                    t.bool_match_stmt(
+                        t.var("flag"),
+                        |t| {
+                            t.let_stmt("unused", t.str("not used"), |t| {
+                                t.write("true branch");
+                            });
+                        },
+                        |t| {
+                            t.write("false branch");
+                        },
+                    );
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let flag = true in {
+                    match flag {
+                      true => {
+                        let unused = "not used" in {
+                          write("true branch")
+                        }
+                      }
+                      false => {
+                        write("false branch")
+                      }
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let flag = true in {
+                    match flag {
+                      true => {
+                        write("true branch")
+                      }
+                      false => {
+                        write("false branch")
                       }
                     }
                   }

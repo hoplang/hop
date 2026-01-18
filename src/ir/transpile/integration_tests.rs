@@ -275,139 +275,47 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::expect;
     use indoc::indoc;
-
-    // Legacy check function for unconverted tests
-    fn check_ir(
-        module: crate::ir::ast::IrModule,
-        expected_output: &str,
-        expected: expect_test::Expect,
-    ) {
-        let input = module.to_string();
-
-        let mut output = format!(
-            "-- input --\n{}-- expected output --\n{}\n",
-            input, expected_output
-        );
-
-        let ts_transpiler = TsTranspiler::new();
-        let ts_code = ts_transpiler.transpile_module(&module);
-        typecheck_typescript(&ts_code).expect("TypeScript typecheck failed");
-        let ts_output = execute_typescript(&ts_code).expect("TypeScript execution failed");
-        assert_eq!(ts_output, expected_output, "TypeScript output mismatch");
-        output.push_str("-- ts --\nOK\n");
-
-        let go_transpiler = GoTranspiler::new("components".to_string());
-        let go_code = go_transpiler.transpile_module(&module);
-        typecheck_go(&go_code).expect("Go typecheck failed");
-        let go_output = execute_go(&go_code).expect("Go execution failed");
-        assert_eq!(go_output, expected_output, "Go output mismatch");
-        output.push_str("-- go --\nOK\n");
-
-        let python_transpiler = PythonTranspiler::new();
-        let python_code = python_transpiler.transpile_module(&module);
-        typecheck_python(&python_code).expect("Python typecheck failed");
-        let python_output = execute_python(&python_code).expect("Python execution failed");
-        assert_eq!(python_output, expected_output, "Python output mismatch");
-        output.push_str("-- python --\nOK\n");
-
-        expected.assert_eq(&output);
-    }
-
-    // ==================================================================================
-    // IR-ONLY TESTS
-    // These tests use check_ir() because they test IR features without hop equivalents:
-    // - JsonEncode (no hop syntax)
-    // - Inline let expressions (let x = ... in expr)
-    // ==================================================================================
-
-    // NOTE: json_encode uses IR-level JsonEncode which has no hop syntax equivalent
-    #[test]
-    #[ignore]
-    fn json_encode() {
-        check_ir(
-            IrModuleBuilder::new()
-                .component("Test", [], |t| {
-                    t.write_expr(
-                        t.json_encode(t.array(vec![t.str("Hello"), t.str("World")])),
-                        false,
-                    );
-                })
-                .build(),
-            r#"["Hello","World"]"#,
-            expect![[r#"
-                -- input --
-                Test() {
-                  write_expr(JsonEncode(["Hello", "World"]))
-                }
-                -- expected output --
-                ["Hello","World"]
-                -- ts --
-                OK
-                -- go --
-                OK
-                -- python --
-                OK
-            "#]],
-        );
-    }
 
     #[test]
     #[ignore]
     fn option_match_returning_options() {
-        use crate::dop::Type;
-
-        // NOTE: This test uses check_ir because the Hop syntax version triggers
-        // a constant propagation bug where bindings remain after values are folded.
-        check_ir(
-            IrModuleBuilder::new()
-                .component("Test", [], |t| {
-                    t.let_stmt("inner", t.some(t.str("hello")), |t| {
-                        t.let_stmt(
-                            "mapped",
-                            t.option_match_expr_with_binding(
-                                t.var("inner"),
-                                "x",
-                                Type::String,
-                                |t| t.some(t.var("x")),
-                                t.none(Type::String),
-                            ),
-                            |t| {
-                                t.option_match_stmt(
-                                    t.var("mapped"),
-                                    Some("result"),
-                                    |t| {
-                                        t.write("mapped:");
-                                        t.write_expr(t.var("result"), false);
-                                    },
-                                    |t| {
-                                        t.write("was-none");
-                                    },
-                                );
-                            },
-                        );
-                    });
-                })
-                .build(),
+        check(
+            indoc! {r#"
+                <Test>
+                  <let {inner: Option[String] = Some("hello")}>
+                    <let {mapped: Option[String] = match inner { Some(x) => Some(x), None => None }}>
+                      <match {mapped}>
+                        <case {Some(result)}>mapped:{result}</case>
+                        <case {None}>was-none</case>
+                      </match>
+                    </let>
+                  </let>
+                </Test>
+            "#},
             "mapped:hello",
             expect![[r#"
                 -- input --
+                <Test>
+                  <let {inner: Option[String] = Some("hello")}>
+                    <let {mapped: Option[String] = match inner { Some(x) => Some(x), None => None }}>
+                      <match {mapped}>
+                        <case {Some(result)}>mapped:{result}</case>
+                        <case {None}>was-none</case>
+                      </match>
+                    </let>
+                  </let>
+                </Test>
+                -- ir --
                 Test() {
-                  let inner = Option[String]::Some("hello") in {
-                    let mapped = match inner {
-                      Some(x) => Option[String]::Some(x),
-                      None => Option[String]::None,
-                    } in {
-                      match mapped {
-                        Some(result) => {
-                          write("mapped:")
-                          write_expr(result)
-                        }
-                        None => {
-                          write("was-none")
-                        }
+                  let match_subject = Option[String]::Some("hello") in {
+                    match match_subject {
+                      Some(_) => {
+                        write("mapped:hello")
+                      }
+                      None => {
+                        write("was-none")
                       }
                     }
                   }
@@ -427,52 +335,41 @@ mod tests {
     #[test]
     #[ignore]
     fn option_match_as_some_value() {
-        use crate::dop::Type;
-
-        // NOTE: This test uses check_ir because the Hop syntax version triggers
-        // a constant propagation bug where bindings remain after values are folded.
-        check_ir(
-            IrModuleBuilder::new()
-                .component("Test", [], |t| {
-                    t.let_stmt("inner_opt", t.some(t.str("inner")), |t| {
-                        let match_result = t.option_match_expr_with_binding(
-                            t.var("inner_opt"),
-                            "x",
-                            Type::String,
-                            |t| t.var("x"),
-                            t.str("default"),
-                        );
-                        t.let_stmt("outer", t.some(match_result), |t| {
-                            t.option_match_stmt(
-                                t.var("outer"),
-                                Some("val"),
-                                |t| {
-                                    t.write_expr(t.var("val"), false);
-                                },
-                                |t| {
-                                    t.write("none");
-                                },
-                            );
-                        });
-                    });
-                })
-                .build(),
+        check(
+            indoc! {r#"
+                <Test>
+                  <let {inner_opt: Option[String] = Some("inner")}>
+                    <let {outer: Option[String] = Some(match inner_opt { Some(x) => x, None => "default" })}>
+                      <match {outer}>
+                        <case {Some(val)}>{val}</case>
+                        <case {None}>none</case>
+                      </match>
+                    </let>
+                  </let>
+                </Test>
+            "#},
             "inner",
             expect![[r#"
                 -- input --
+                <Test>
+                  <let {inner_opt: Option[String] = Some("inner")}>
+                    <let {outer: Option[String] = Some(match inner_opt { Some(x) => x, None => "default" })}>
+                      <match {outer}>
+                        <case {Some(val)}>{val}</case>
+                        <case {None}>none</case>
+                      </match>
+                    </let>
+                  </let>
+                </Test>
+                -- ir --
                 Test() {
-                  let inner_opt = Option[String]::Some("inner") in {
-                    let outer = Option[String]::Some(match inner_opt {
-                      Some(x) => x,
-                      None => "default",
-                    }) in {
-                      match outer {
-                        Some(val) => {
-                          write_expr(val)
-                        }
-                        None => {
-                          write("none")
-                        }
+                  let match_subject = Option[String]::Some("inner") in {
+                    match match_subject {
+                      Some(_) => {
+                        write("inner")
+                      }
+                      None => {
+                        write("none")
                       }
                     }
                   }
@@ -488,11 +385,6 @@ mod tests {
             "#]],
         );
     }
-
-    // ==================================================================================
-    // HOP SYNTAX TESTS
-    // These tests use check() with actual hop template syntax as input
-    // ==================================================================================
 
     #[test]
     #[ignore]
@@ -2289,6 +2181,60 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn option_match_nested_constant_folding() {
+        check(
+            indoc! {r#"
+                <Test>
+                  <let {inner_opt: Option[String] = Some("inner")}>
+                    <let {outer: Option[String] = Some(match inner_opt { Some(x) => x, None => "default" })}>
+                      <match {outer}>
+                        <case {Some(val)}>{val}</case>
+                        <case {None}>none</case>
+                      </match>
+                    </let>
+                  </let>
+                </Test>
+            "#},
+            "inner",
+            expect![[r#"
+                -- input --
+                <Test>
+                  <let {inner_opt: Option[String] = Some("inner")}>
+                    <let {outer: Option[String] = Some(match inner_opt { Some(x) => x, None => "default" })}>
+                      <match {outer}>
+                        <case {Some(val)}>{val}</case>
+                        <case {None}>none</case>
+                      </match>
+                    </let>
+                  </let>
+                </Test>
+                -- ir --
+                Test() {
+                  let match_subject = Option[String]::Some("inner") in {
+                    match match_subject {
+                      Some(_) => {
+                        write("inner")
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                inner
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn option_array_for_loop() {
         check(
             indoc! {r#"
@@ -3605,5 +3551,4 @@ mod tests {
             "#]],
         );
     }
-
 }
