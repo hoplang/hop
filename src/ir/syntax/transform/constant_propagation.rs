@@ -92,7 +92,12 @@ impl Const {
                     None => None,
                     Some(id) => {
                         let inner_const = const_map.get(id)?;
-                        Some(Box::new(inner_const.to_expr(*id, kind, const_map)?))
+                        // Extract the inner type: Option<T> -> T
+                        let inner_kind = match kind {
+                            Type::Option(inner) => inner.as_ref(),
+                            _ => panic!("Const::Option must have Option type, got {:?}", kind),
+                        };
+                        Some(Box::new(inner_const.to_expr(*id, inner_kind, const_map)?))
                     }
                 };
                 IrExpr::OptionLiteral {
@@ -1671,7 +1676,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 Test() {
-                  let opt = Some("hello") in {
+                  let opt = Option[String]::Some("hello") in {
                     write_escaped(match opt {
                       Some(_) => "got some",
                       None => "got none",
@@ -1681,7 +1686,7 @@ mod tests {
 
                 -- after --
                 Test() {
-                  let opt = Some("hello") in {
+                  let opt = Option[String]::Some("hello") in {
                     write_escaped("got some")
                   }
                 }
@@ -1706,7 +1711,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 Test() {
-                  let opt = None in {
+                  let opt = Option[String]::None in {
                     write_escaped(match opt {
                       Some(_) => "got some",
                       None => "got none",
@@ -1716,7 +1721,7 @@ mod tests {
 
                 -- after --
                 Test() {
-                  let opt = None in {
+                  let opt = Option[String]::None in {
                     write_escaped("got none")
                   }
                 }
@@ -1741,7 +1746,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 Test() {
-                  let x = Some("hello") in {
+                  let x = Option[String]::Some("hello") in {
                     let y = x in {
                       write_escaped(match y {
                         Some(_) => "got some",
@@ -1753,8 +1758,8 @@ mod tests {
 
                 -- after --
                 Test() {
-                  let x = Some("hello") in {
-                    let y = Some("hello") in {
+                  let x = Option[String]::Some("hello") in {
+                    let y = Option[String]::Some("hello") in {
                       write_escaped("got some")
                     }
                   }
@@ -1782,7 +1787,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 Test() {
-                  let opt = Some("hello") in {
+                  let opt = Option[String]::Some("hello") in {
                     write_escaped(match opt {
                       Some(inner) => inner,
                       None => "default",
@@ -1792,7 +1797,7 @@ mod tests {
 
                 -- after --
                 Test() {
-                  let opt = Some("hello") in {
+                  let opt = Option[String]::Some("hello") in {
                     write_escaped("hello")
                   }
                 }
@@ -1823,7 +1828,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 Test() {
-                  let opt = Some("hello") in {
+                  let opt = Option[String]::Some("hello") in {
                     write_escaped(match opt {
                       Some(inner) => (inner + " world"),
                       None => "default",
@@ -1833,7 +1838,7 @@ mod tests {
 
                 -- after --
                 Test() {
-                  let opt = Some("hello") in {
+                  let opt = Option[String]::Some("hello") in {
                     write_escaped("hello world")
                   }
                 }
@@ -1866,7 +1871,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 Test() {
-                  let opt = Some("hello") in {
+                  let opt = Option[String]::Some("hello") in {
                     if match opt {
                       Some(inner) => (inner == "hello"),
                       None => false,
@@ -1878,7 +1883,7 @@ mod tests {
 
                 -- after --
                 Test() {
-                  let opt = Some("hello") in {
+                  let opt = Option[String]::Some("hello") in {
                     if true {
                       write("matched hello")
                     }
@@ -1922,10 +1927,10 @@ mod tests {
             expect![[r#"
                 -- before --
                 Test() {
-                  let outer = Some(Some("nested")) in {
+                  let outer = Option[Option[String]]::Some(Option[String]::Some("nested")) in {
                     let inner_result = match outer {
                       Some(inner_opt) => inner_opt,
-                      None => None,
+                      None => Option[String]::None,
                     } in {
                       write_escaped(match inner_result {
                         Some(value) => value,
@@ -1937,8 +1942,8 @@ mod tests {
 
                 -- after --
                 Test() {
-                  let outer = Some(Some("nested")) in {
-                    let inner_result = Some("nested") in {
+                  let outer = Option[Option[String]]::Some(Option[String]::Some("nested")) in {
+                    let inner_result = Option[String]::Some("nested") in {
                       write_escaped("nested")
                     }
                   }
@@ -1978,7 +1983,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 Test() {
-                  let outer = Some(Some("nested")) in {
+                  let outer = Option[Option[String]]::Some(Option[String]::Some("nested")) in {
                     write_escaped(match outer {
                       Some(inner_opt) => let inner_opt_var = inner_opt in match inner_opt_var {
                         Some(value) => value,
@@ -1991,7 +1996,7 @@ mod tests {
 
                 -- after --
                 Test() {
-                  let outer = Some(Some("nested")) in {
+                  let outer = Option[Option[String]]::Some(Option[String]::Some("nested")) in {
                     write_escaped("nested")
                   }
                 }

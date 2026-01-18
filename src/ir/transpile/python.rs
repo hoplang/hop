@@ -1811,7 +1811,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 TestNestedOptionMatch() {
-                  let nested = Some(Some("deep")) in {
+                  let nested = Option[Option[String]]::Some(Option[String]::Some("deep")) in {
                     write_expr(match nested {
                       Some(outer) => match outer {
                         Some(inner) => inner,
@@ -1880,7 +1880,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 TestOption() {
-                  let some_val = Some("hello") in {
+                  let some_val = Option[String]::Some("hello") in {
                     match some_val {
                       Some(val) => {
                         write("Some:")
@@ -1891,7 +1891,7 @@ mod tests {
                       }
                     }
                   }
-                  let none_val = None in {
+                  let none_val = Option[String]::None in {
                     match none_val {
                       Some(val) => {
                         write(",Some:")

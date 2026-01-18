@@ -970,12 +970,23 @@ impl IrExpr {
                         .append(BoxDoc::text(")"))
                 }
             }
-            IrExpr::OptionLiteral { value, .. } => match value {
-                Some(inner) => BoxDoc::text("Some(")
-                    .append(inner.to_doc())
-                    .append(BoxDoc::text(")")),
-                None => BoxDoc::text("None"),
-            },
+            IrExpr::OptionLiteral { value, kind, .. } => {
+                // Extract inner type from Option[T] -> T
+                let inner_type = match kind {
+                    Type::Option(inner) => inner.to_doc(),
+                    _ => panic!("OptionLiteral must have Option type, got {:?}", kind),
+                };
+                let type_prefix = BoxDoc::text("Option[")
+                    .append(inner_type)
+                    .append(BoxDoc::text("]::"));
+                match value {
+                    Some(inner) => type_prefix
+                        .append(BoxDoc::text("Some("))
+                        .append(inner.to_doc())
+                        .append(BoxDoc::text(")")),
+                    None => type_prefix.append(BoxDoc::text("None")),
+                }
+            }
             IrExpr::Match { match_, .. } => match match_ {
                 Match::Enum { subject, arms } => {
                     if arms.is_empty() {

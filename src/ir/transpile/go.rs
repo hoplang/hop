@@ -2223,7 +2223,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 TestOption() {
-                  let opt1 = Some("hello") in {
+                  let opt1 = Option[String]::Some("hello") in {
                     match opt1 {
                       Some(val) => {
                         write("Got:")
@@ -2234,7 +2234,7 @@ mod tests {
                       }
                     }
                   }
-                  let opt2 = None in {
+                  let opt2 = Option[String]::None in {
                     match opt2 {
                       Some(val) => {
                         write("Got:")

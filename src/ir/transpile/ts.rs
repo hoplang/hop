@@ -2501,7 +2501,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 TestInlineMatch() {
-                  let opt = Some("world") in {
+                  let opt = Option[String]::Some("world") in {
                     match opt {
                       Some(val) => {
                         write("Got:")

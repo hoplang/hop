@@ -380,14 +380,14 @@ mod tests {
             expect![[r#"
                 -- input --
                 Test() {
-                  let opt1 = Some("hi") in {
+                  let opt1 = Option[String]::Some("hi") in {
                     write_expr(match opt1 {
                       Some(_) => "some",
                       None => "none",
                     })
                   }
                   write(",")
-                  let opt2 = None in {
+                  let opt2 = Option[String]::None in {
                     write_expr(match opt2 {
                       Some(_) => "SOME",
                       None => "NONE",
@@ -445,7 +445,7 @@ mod tests {
             expect![[r#"
                 -- input --
                 Test() {
-                  let opt1 = Some("hello") in {
+                  let opt1 = Option[String]::Some("hello") in {
                     match opt1 {
                       Some(_) => {
                         write("is-some")
@@ -456,7 +456,7 @@ mod tests {
                     }
                   }
                   write(",")
-                  let opt2 = None in {
+                  let opt2 = Option[String]::None in {
                     match opt2 {
                       Some(_) => {
                         write("IS-SOME")
@@ -518,10 +518,10 @@ mod tests {
             expect![[r#"
                 -- input --
                 Test() {
-                  let inner = Some("hello") in {
+                  let inner = Option[String]::Some("hello") in {
                     let mapped = match inner {
-                      Some(x) => Some(x),
-                      None => None,
+                      Some(x) => Option[String]::Some(x),
+                      None => Option[String]::None,
                     } in {
                       match mapped {
                         Some(result) => {
@@ -582,8 +582,8 @@ mod tests {
             expect![[r#"
                 -- input --
                 Test() {
-                  let inner_opt = Some("inner") in {
-                    let outer = Some(match inner_opt {
+                  let inner_opt = Option[String]::Some("inner") in {
+                    let outer = Option[String]::Some(match inner_opt {
                       Some(x) => x,
                       None => "default",
                     }) in {
@@ -685,7 +685,7 @@ mod tests {
             expect![[r#"
                 -- input --
                 Test() {
-                  let nested1 = Some(Some("deep")) in {
+                  let nested1 = Option[Option[String]]::Some(Option[String]::Some("deep")) in {
                     write_expr(match nested1 {
                       Some(outer) => match outer {
                         Some(inner) => inner,
@@ -694,7 +694,7 @@ mod tests {
                       None => "outer-none",
                     })
                     write(",")
-                    let nested2 = Some(None) in {
+                    let nested2 = Option[Option[String]]::Some(Option[String]::None) in {
                       write_expr(match nested2 {
                         Some(outer) => match outer {
                           Some(inner) => inner,
@@ -703,7 +703,7 @@ mod tests {
                         None => "outer-none",
                       })
                       write(",")
-                      let nested3 = None in {
+                      let nested3 = Option[Option[String]]::None in {
                         write_expr(match nested3 {
                           Some(outer) => match outer {
                             Some(inner) => inner,
@@ -2307,7 +2307,7 @@ mod tests {
                 </Test>
                 -- ir --
                 Test() {
-                  let match_subject = Some("hello") in {
+                  let match_subject = Option[String]::Some("hello") in {
                     match match_subject {
                       Some(v0) => {
                         let val = v0 in {
@@ -2320,7 +2320,7 @@ mod tests {
                       }
                     }
                   }
-                  let match_subject_1 = None in {
+                  let match_subject_1 = Option[String]::None in {
                     match match_subject_1 {
                       Some(v0_2) => {
                         let val_3 = v0_2 in {
@@ -2383,7 +2383,7 @@ mod tests {
                 </Test>
                 -- ir --
                 Test() {
-                  let match_subject = Some("world") in {
+                  let match_subject = Option[String]::Some("world") in {
                     match match_subject {
                       Some(v0) => {
                         let val = v0 in {
@@ -2397,7 +2397,7 @@ mod tests {
                     }
                   }
                   write(",")
-                  let match_subject_1 = None in {
+                  let match_subject_1 = Option[String]::None in {
                     match match_subject_1 {
                       Some(v0_2) => {
                         let val_3 = v0_2 in {
@@ -2450,7 +2450,11 @@ mod tests {
                 </Test>
                 -- ir --
                 Test() {
-                  for item in [Some("a"), None, Some("b")] {
+                  for item in [
+                    Option[String]::Some("a"),
+                    Option[String]::None,
+                    Option[String]::Some("b"),
+                  ] {
                     let match_subject = item in {
                       match match_subject {
                         Some(v0) => {
@@ -3612,4 +3616,66 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn nested_option_from_hop_syntax() {
+        check(
+            indoc! {r#"
+                <Test>
+                  <let {nested: Option[Option[String]] = Some(Some("deep"))}>
+                    <match {nested}>
+                      <case {Some(Some(x))}>{x}</case>
+                      <case {Some(None)}>some-none</case>
+                      <case {None}>none</case>
+                    </match>
+                  </let>
+                </Test>
+            "#},
+            "deep",
+            expect![[r#"
+                -- input --
+                <Test>
+                  <let {nested: Option[Option[String]] = Some(Some("deep"))}>
+                    <match {nested}>
+                      <case {Some(Some(x))}>{x}</case>
+                      <case {Some(None)}>some-none</case>
+                      <case {None}>none</case>
+                    </match>
+                  </let>
+                </Test>
+                -- ir --
+                Test() {
+                  let match_subject = Option[Option[String]]::Some(Option[String]::Some("deep")) in {
+                    match match_subject {
+                      Some(v0) => {
+                        match v0 {
+                          Some(v1) => {
+                            let x = v1 in {
+                              write_escaped(x)
+                            }
+                          }
+                          None => {
+                            write("some-none")
+                          }
+                        }
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                deep
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
 }
