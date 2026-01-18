@@ -734,16 +734,16 @@ fn format_expr<'a>(
 ) -> DocBuilder<'a, Arena<'a>> {
     match expr {
         ParsedExpr::Var { value, .. } => arena.text(value.as_str()),
-        ParsedExpr::FieldAccess {
+        expr @ ParsedExpr::FieldAccess {
             record: object,
             field,
             ..
-        } => format_expr(arena, object, comments)
+        } => format_expr_with_precedence(arena, object, expr.precedence(), comments)
             .append(arena.text("."))
             .append(arena.text(field.as_str())),
-        ParsedExpr::MethodCall {
+        expr @ ParsedExpr::MethodCall {
             receiver, method, ..
-        } => format_expr(arena, receiver, comments)
+        } => format_expr_with_precedence(arena, receiver, expr.precedence(), comments)
             .append(arena.text("."))
             .append(arena.text(method.as_str()))
             .append(arena.text("()")),
@@ -796,43 +796,25 @@ fn format_expr<'a>(
                     .append(arena.text(")"))
             }
         }
-        ParsedExpr::BinaryOp {
+        expr @ ParsedExpr::BinaryOp {
             left,
             operator,
             right,
             ..
         } => {
-            let prec = operator.precedence();
+            let prec = expr.precedence();
             format_expr_with_precedence(arena, left, prec, comments)
                 .append(arena.text(" "))
                 .append(arena.text(operator.as_str()))
                 .append(arena.text(" "))
                 .append(format_expr_with_precedence(arena, right, prec, comments))
         }
-        ParsedExpr::Negation { operand, .. } => {
-            if is_atomic(operand) {
-                arena
-                    .text("!")
-                    .append(format_expr(arena, operand, comments))
-            } else {
-                arena
-                    .text("!(")
-                    .append(format_expr(arena, operand, comments))
-                    .append(arena.text(")"))
-            }
-        }
-        ParsedExpr::NumericNegation { operand, .. } => {
-            if is_atomic(operand) {
-                arena
-                    .text("-")
-                    .append(format_expr(arena, operand, comments))
-            } else {
-                arena
-                    .text("-(")
-                    .append(format_expr(arena, operand, comments))
-                    .append(arena.text(")"))
-            }
-        }
+        expr @ ParsedExpr::Negation { operand, .. } => arena
+            .text("!")
+            .append(format_expr_with_precedence(arena, operand, expr.precedence(), comments)),
+        expr @ ParsedExpr::NumericNegation { operand, .. } => arena
+            .text("-")
+            .append(format_expr_with_precedence(arena, operand, expr.precedence(), comments)),
         ParsedExpr::EnumLiteral {
             enum_name,
             variant_name,
@@ -1006,38 +988,14 @@ fn format_expr_with_precedence<'a>(
     parent_precedence: u8,
     comments: &mut VecDeque<&'a DocumentRange>,
 ) -> DocBuilder<'a, Arena<'a>> {
-    match expr {
-        ParsedExpr::BinaryOp { operator, .. } => {
-            let needs_parens = operator.precedence() < parent_precedence;
-            if needs_parens {
-                arena
-                    .text("(")
-                    .append(format_expr(arena, expr, comments))
-                    .append(arena.text(")"))
-            } else {
-                format_expr(arena, expr, comments)
-            }
-        }
-        _ => format_expr(arena, expr, comments),
+    if expr.precedence() < parent_precedence {
+        arena
+            .text("(")
+            .append(format_expr(arena, expr, comments))
+            .append(arena.text(")"))
+    } else {
+        format_expr(arena, expr, comments)
     }
-}
-
-fn is_atomic(expr: &ParsedExpr) -> bool {
-    matches!(
-        expr,
-        ParsedExpr::Var { .. }
-            | ParsedExpr::FieldAccess { .. }
-            | ParsedExpr::StringLiteral { .. }
-            | ParsedExpr::BooleanLiteral { .. }
-            | ParsedExpr::IntLiteral { .. }
-            | ParsedExpr::FloatLiteral { .. }
-            | ParsedExpr::ArrayLiteral { .. }
-            | ParsedExpr::RecordLiteral { .. }
-            | ParsedExpr::EnumLiteral { .. }
-            | ParsedExpr::Match { .. }
-            | ParsedExpr::OptionLiteral { .. }
-            | ParsedExpr::MacroInvocation { .. }
-    )
 }
 
 fn format_match_arm<'a>(
@@ -3211,6 +3169,96 @@ mod tests {
                   <span>
                     {rating} ({num_reviews} reviews)
                   </span>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn method_call_on_negated_int_preserves_parens() {
+        check(
+            indoc! {"
+                <Main>
+                  <div>{(-42).to_string()}</div>
+                </Main>
+            "},
+            expect![[r#"
+                <Main>
+                  <div>
+                    {(-42).to_string()}
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn method_call_on_negated_float_preserves_parens() {
+        check(
+            indoc! {"
+                <Main>
+                  <div>{(-3.14).to_string()}</div>
+                </Main>
+            "},
+            expect![[r#"
+                <Main>
+                  <div>
+                    {(-3.14).to_string()}
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn method_call_on_binary_expr_preserves_parens() {
+        check(
+            indoc! {"
+                <Main>
+                  <div>{(1 + 2).to_string()}</div>
+                </Main>
+            "},
+            expect![[r#"
+                <Main>
+                  <div>
+                    {(1 + 2).to_string()}
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn field_access_on_negated_int_preserves_parens() {
+        check(
+            indoc! {"
+                <Main>
+                  <div>{(-42).foo}</div>
+                </Main>
+            "},
+            expect![[r#"
+                <Main>
+                  <div>
+                    {(-42).foo}
+                  </div>
+                </Main>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn binary_expr_with_parens_preserves_precedence() {
+        check(
+            indoc! {"
+                <Main {x: Int}>
+                  <div>{(1 + 2) * 3}</div>
+                </Main>
+            "},
+            expect![[r#"
+                <Main {x: Int}>
+                  <div>
+                    {(1 + 2) * 3}
+                  </div>
                 </Main>
             "#]],
         );

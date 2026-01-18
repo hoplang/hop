@@ -219,13 +219,13 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
     let program = Program::new(modules);
 
     // Verify input is properly formatted
-    // TODO: Re-enable this assertion after fixing the formatter bugs:
-    // - The formatter incorrectly transforms `(-42).to_string()` to `-(42.to_string())`
-    //   which changes semantics (negates a string instead of an int)
-    // - Similarly, `(1 + 2).to_string()` becomes `1 + 2.to_string()` (Int + String)
-    // See tests: negated_int_to_string, negated_float_to_string, method_call_on_parenthesized_expression
     let parsed_ast = program.get_parsed_ast(&module_name).expect("Failed to get parsed AST");
-    let _formatted = format(parsed_ast.clone());
+    let formatted = format(parsed_ast.clone());
+    assert_eq!(
+        formatted.trim(),
+        hop_source.trim(),
+        "Test input is not properly formatted. Update the test input (right) to match the formatted output (left)."
+    );
 
     // Check for errors and report them for easier debugging
     let parse_errors = program.get_parse_errors();

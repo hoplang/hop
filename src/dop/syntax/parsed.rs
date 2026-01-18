@@ -341,21 +341,6 @@ pub enum ParsedExpr {
 }
 
 impl ParsedBinaryOp {
-    /// Returns the precedence of this operator (higher = binds tighter).
-    pub fn precedence(&self) -> u8 {
-        match self {
-            ParsedBinaryOp::LogicalOr => 1,
-            ParsedBinaryOp::LogicalAnd => 2,
-            ParsedBinaryOp::Eq | ParsedBinaryOp::NotEq => 3,
-            ParsedBinaryOp::LessThan
-            | ParsedBinaryOp::GreaterThan
-            | ParsedBinaryOp::LessThanOrEqual
-            | ParsedBinaryOp::GreaterThanOrEqual => 4,
-            ParsedBinaryOp::Plus | ParsedBinaryOp::Minus => 5,
-            ParsedBinaryOp::Multiply => 6,
-        }
-    }
-
     pub fn as_str(&self) -> &'static str {
         match self {
             ParsedBinaryOp::Eq => "==",
@@ -395,6 +380,27 @@ impl ParsedExpr {
         }
     }
 
+    /// Returns the binding strength of this expression (higher = binds tighter).
+    /// Atomic expressions return u8::MAX, meaning they never need parentheses.
+    pub fn precedence(&self) -> u8 {
+        match self {
+            ParsedExpr::BinaryOp { operator, .. } => match operator {
+                ParsedBinaryOp::LogicalOr => 1,
+                ParsedBinaryOp::LogicalAnd => 2,
+                ParsedBinaryOp::Eq | ParsedBinaryOp::NotEq => 3,
+                ParsedBinaryOp::LessThan
+                | ParsedBinaryOp::GreaterThan
+                | ParsedBinaryOp::LessThanOrEqual
+                | ParsedBinaryOp::GreaterThanOrEqual => 4,
+                ParsedBinaryOp::Plus | ParsedBinaryOp::Minus => 5,
+                ParsedBinaryOp::Multiply => 6,
+            },
+            ParsedExpr::Negation { .. } | ParsedExpr::NumericNegation { .. } => 7,
+            ParsedExpr::FieldAccess { .. } | ParsedExpr::MethodCall { .. } => 10,
+            _ => u8::MAX,
+        }
+    }
+
     /// Returns true if this expression is "atomic" (never needs parentheses).
     fn is_atomic(&self) -> bool {
         matches!(
@@ -417,18 +423,12 @@ impl ParsedExpr {
 
     /// Converts this expression to a doc, adding parentheses if needed based on parent precedence.
     fn to_doc_with_precedence(&self, parent_precedence: u8) -> BoxDoc<'_> {
-        match self {
-            ParsedExpr::BinaryOp { operator, .. } => {
-                let needs_parens = operator.precedence() < parent_precedence;
-                if needs_parens {
-                    BoxDoc::text("(")
-                        .append(self.to_doc())
-                        .append(BoxDoc::text(")"))
-                } else {
-                    self.to_doc()
-                }
-            }
-            _ => self.to_doc(),
+        if self.precedence() < parent_precedence {
+            BoxDoc::text("(")
+                .append(self.to_doc())
+                .append(BoxDoc::text(")"))
+        } else {
+            self.to_doc()
         }
     }
 
@@ -440,13 +440,13 @@ impl ParsedExpr {
                 field,
                 ..
             } => object
-                .to_doc_with_precedence(7) // Higher than any binary op to ensure parens
+                .to_doc_with_precedence(self.precedence())
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(field.as_str())),
             ParsedExpr::MethodCall {
                 receiver, method, ..
             } => receiver
-                .to_doc_with_precedence(7) // Higher than any binary op to ensure parens
+                .to_doc_with_precedence(self.precedence())
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(method.as_str()))
                 .append(BoxDoc::text("()")),
@@ -507,7 +507,7 @@ impl ParsedExpr {
                 right,
                 ..
             } => {
-                let prec = operator.precedence();
+                let prec = self.precedence();
                 left.to_doc_with_precedence(prec)
                     .append(BoxDoc::text(format!(" {} ", operator)))
                     .append(right.to_doc_with_precedence(prec))
