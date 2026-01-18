@@ -1174,8 +1174,9 @@ impl ExpressionTranspiler for TsTranspiler {
     }
 
     fn transpile_int_to_string<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
-        self.transpile_expr(value)
-            .append(BoxDoc::text(".toString()"))
+        BoxDoc::text("(")
+            .append(self.transpile_expr(value))
+            .append(BoxDoc::text(").toString()"))
     }
 
     fn transpile_float_to_int<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
@@ -1185,8 +1186,9 @@ impl ExpressionTranspiler for TsTranspiler {
     }
 
     fn transpile_float_to_string<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
-        self.transpile_expr(value)
-            .append(BoxDoc::text(".toString()"))
+        BoxDoc::text("(")
+            .append(self.transpile_expr(value))
+            .append(BoxDoc::text(").toString()"))
     }
 
     fn transpile_int_to_float<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
@@ -1524,7 +1526,7 @@ mod tests {
                     counter: (): string => {
                         let output: string = "";
                         for (let i = 1; i <= 3; i++) {
-                            output += i.toString();
+                            output += (i).toString();
                             output += " ";
                         }
                         return output;

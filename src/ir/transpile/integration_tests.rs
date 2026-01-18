@@ -3504,4 +3504,108 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn int_literal_to_string() {
+        check(
+            indoc! {r#"
+                <Test>{42.to_string()}</Test>
+            "#},
+            "42",
+            expect![[r#"
+                -- input --
+                <Test>{42.to_string()}</Test>
+                -- ir --
+                Test() {
+                  write_escaped(42.to_string())
+                }
+                -- expected output --
+                42
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    fn negated_int_to_string() {
+        check(
+            indoc! {r#"
+                <Test>{(-42).to_string()}</Test>
+            "#},
+            "-42",
+            expect![[r#"
+                -- input --
+                <Test>{(-42).to_string()}</Test>
+                -- ir --
+                Test() {
+                  write_escaped((-42).to_string())
+                }
+                -- expected output --
+                -42
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    fn float_literal_to_string() {
+        check(
+            indoc! {r#"
+                <Test>{5.0.to_string()}</Test>
+            "#},
+            "5",
+            expect![[r#"
+                -- input --
+                <Test>{5.0.to_string()}</Test>
+                -- ir --
+                Test() {
+                  write_escaped(5.to_string())
+                }
+                -- expected output --
+                5
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    fn negated_float_to_string() {
+        check(
+            indoc! {r#"
+                <Test>{(-3.14).to_string()}</Test>
+            "#},
+            "-3.14",
+            expect![[r#"
+                -- input --
+                <Test>{(-3.14).to_string()}</Test>
+                -- ir --
+                Test() {
+                  write_escaped((-3.14).to_string())
+                }
+                -- expected output --
+                -3.14
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
 }
