@@ -216,6 +216,21 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
     modules.insert(module_name.clone(), Document::new(hop_source.to_string()));
 
     let program = Program::new(modules);
+
+    // Check for errors and report them for easier debugging
+    let parse_errors = program.get_parse_errors();
+    for (module, errors) in parse_errors.iter() {
+        for error in errors.iter() {
+            eprintln!("Parse Error in {:?}: {:?}", module, error);
+        }
+    }
+    let type_errors = program.get_type_errors();
+    for (module, errors) in type_errors.iter() {
+        for error in errors.iter() {
+            eprintln!("Type Error in {:?}: {:?}", module, error);
+        }
+    }
+
     let typed_asts = program.get_typed_modules();
 
     // Compile to IR (skip HTML structure injection and dev mode wrapper for simpler test output)
@@ -304,11 +319,9 @@ mod tests {
     // ==================================================================================
     // IR-ONLY TESTS
     // These tests use check_ir() because they test IR features without hop equivalents:
+    // - JsonEncode (no hop syntax)
     // - Inline let expressions (let x = ... in expr)
-    // - Match expressions that return values
-    // - JsonEncode
-    // - Negative number literals (hop parser limitation)
-    // - Complex chained method calls
+    // - Option match expressions with Some(_) pattern that doesn't bind
     // ==================================================================================
 
     // NOTE: json_encode uses IR-level JsonEncode which has no hop syntax equivalent
@@ -332,75 +345,6 @@ mod tests {
                 }
                 -- expected output --
                 ["Hello","World"]
-                -- ts --
-                OK
-                -- go --
-                OK
-                -- python --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn let_expression() {
-        check_ir(
-            IrModuleBuilder::new()
-                .component("Test", [], |t| {
-                    let result = t.let_expr("x", t.str("Hello"), |t| {
-                        t.string_concat(t.var("x"), t.str(" World"))
-                    });
-                    t.write_expr(result, false);
-                })
-                .build(),
-            "Hello World",
-            expect![[r#"
-                -- input --
-                Test() {
-                  write_expr(let x = "Hello" in (x + " World"))
-                }
-                -- expected output --
-                Hello World
-                -- ts --
-                OK
-                -- go --
-                OK
-                -- python --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn bool_match_expr() {
-        check_ir(
-            IrModuleBuilder::new()
-                .component("Test", [], |t| {
-                    t.let_stmt("flag", t.bool(true), |t| {
-                        let result = t.bool_match_expr(t.var("flag"), t.str("yes"), t.str("no"));
-                        t.write_expr(result, false);
-                    });
-                    t.let_stmt("other", t.bool(false), |t| {
-                        let result = t.bool_match_expr(t.var("other"), t.str("YES"), t.str("NO"));
-                        t.write_expr(result, false);
-                    });
-                })
-                .build(),
-            "yesNO",
-            expect![[r#"
-                -- input --
-                Test() {
-                  let flag = true in {
-                    write_expr(match flag {true => "yes", false => "no"})
-                  }
-                  let other = false in {
-                    write_expr(match other {true => "YES", false => "NO"})
-                  }
-                }
-                -- expected output --
-                yesNO
                 -- ts --
                 OK
                 -- go --
@@ -783,56 +727,78 @@ mod tests {
         );
     }
 
+    // ==================================================================================
+    // HOP SYNTAX TESTS
+    // These tests use check() with actual hop template syntax as input
+    // ==================================================================================
+
+    #[test]
+    #[ignore]
+    fn bool_match_expr() {
+        check(
+            indoc! {r#"
+                <Test>
+                  <let {flag: Bool = true}>{match flag {true => "yes", false => "no"}}</let>
+                  <let {other: Bool = false}>{match other {true => "YES", false => "NO"}}</let>
+                </Test>
+            "#},
+            "yesNO",
+            expect![[r#"
+                -- input --
+                <Test>
+                  <let {flag: Bool = true}>{match flag {true => "yes", false => "no"}}</let>
+                  <let {other: Bool = false}>{match other {true => "YES", false => "NO"}}</let>
+                </Test>
+                -- ir --
+                Test() {
+                  write("yesNO")
+                }
+                -- expected output --
+                yesNO
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
     #[test]
     #[ignore]
     fn nested_bool_match_expr() {
-        check_ir(
-            IrModuleBuilder::new()
-                .component("Test", [], |t| {
-                    t.let_stmt("outer", t.bool(true), |t| {
-                        t.let_stmt("inner", t.bool(false), |t| {
-                            let result = t.bool_match_expr(
-                                t.var("outer"),
-                                t.bool_match_expr(t.var("inner"), t.str("TT"), t.str("TF")),
-                                t.str("F"),
-                            );
-                            t.write_expr(result, false);
-                        });
-                    });
-                    t.write(",");
-                    t.let_stmt("outer2", t.bool(false), |t| {
-                        t.let_stmt("inner2", t.bool(true), |t| {
-                            let result = t.bool_match_expr(
-                                t.var("outer2"),
-                                t.bool_match_expr(t.var("inner2"), t.str("TT"), t.str("TF")),
-                                t.str("F"),
-                            );
-                            t.write_expr(result, false);
-                        });
-                    });
-                })
-                .build(),
+        check(
+            indoc! {r#"
+                <Test>
+                  <let {outer: Bool = true}>
+                    <let {inner: Bool = false}>
+                      {match outer {true => match inner {true => "TT", false => "TF"}, false => "F"}}
+                    </let>
+                  </let>,<let {outer2: Bool = false}>
+                    <let {inner2: Bool = true}>
+                      {match outer2 {true => match inner2 {true => "TT", false => "TF"}, false => "F"}}
+                    </let>
+                  </let>
+                </Test>
+            "#},
             "TF,F",
             expect![[r#"
                 -- input --
+                <Test>
+                  <let {outer: Bool = true}>
+                    <let {inner: Bool = false}>
+                      {match outer {true => match inner {true => "TT", false => "TF"}, false => "F"}}
+                    </let>
+                  </let>,<let {outer2: Bool = false}>
+                    <let {inner2: Bool = true}>
+                      {match outer2 {true => match inner2 {true => "TT", false => "TF"}, false => "F"}}
+                    </let>
+                  </let>
+                </Test>
+                -- ir --
                 Test() {
-                  let outer = true in {
-                    let inner = false in {
-                      write_expr(match outer {
-                        true => match inner {true => "TT", false => "TF"},
-                        false => "F",
-                      })
-                    }
-                  }
-                  write(",")
-                  let outer2 = false in {
-                    let inner2 = true in {
-                      write_expr(match outer2 {
-                        true => match inner2 {true => "TT", false => "TF"},
-                        false => "F",
-                      })
-                    }
-                  }
+                  write("TF,F")
                 }
                 -- expected output --
                 TF,F
@@ -849,34 +815,38 @@ mod tests {
     #[test]
     #[ignore]
     fn enum_equality_in_let_expr() {
-        check_ir(
-            IrModuleBuilder::new()
-                .enum_decl("Color", ["Red", "Green", "Blue"])
-                .component("Test", [], |t| {
-                    let color_expr = t.enum_variant("Color", "Green");
-                    let result = t.let_expr("color", color_expr, |t| {
-                        t.let_expr(
-                            "is_red",
-                            t.eq(t.var("color"), t.enum_variant("Color", "Red")),
-                            |t| t.bool_match_expr(t.var("is_red"), t.str("eq"), t.str("not eq")),
-                        )
-                    });
-                    t.write_expr(result, false);
-                })
-                .build(),
+        check(
+            indoc! {r#"
+                enum Color { Red, Green, Blue }
+
+                <Test>
+                  <let {color: Color = Color::Green}>
+                    <let {is_red: Bool = color == Color::Red}>
+                      {match is_red {true => "eq", false => "not eq"}}
+                    </let>
+                  </let>
+                </Test>
+            "#},
             "not eq",
             expect![[r#"
                 -- input --
+                enum Color { Red, Green, Blue }
+
+                <Test>
+                  <let {color: Color = Color::Green}>
+                    <let {is_red: Bool = color == Color::Red}>
+                      {match is_red {true => "eq", false => "not eq"}}
+                    </let>
+                  </let>
+                </Test>
+                -- ir --
                 enum Color {
                   Red,
                   Green,
                   Blue,
                 }
                 Test() {
-                  write_expr(let color = Color::Green in let is_red = (color == Color::Red) in match is_red {
-                    true => "eq",
-                    false => "not eq",
-                  })
+                  write("not eq")
                 }
                 -- expected output --
                 not eq
@@ -890,27 +860,31 @@ mod tests {
         );
     }
 
-    // NOTE: Uses complex chained method calls
     #[test]
     #[ignore]
     fn int_to_float_simple() {
-        check_ir(
-            IrModuleBuilder::new()
-                .component("Test", [], |t| {
-                    t.let_stmt("count", t.int(42), |t| {
-                        t.write_expr(
-                            t.float_to_string(t.add(t.int_to_float(t.var("count")), t.float(0.5))),
-                            true,
-                        );
-                    });
-                })
-                .build(),
+        check(
+            indoc! {r#"
+                <Test>
+                  <let {count: Int = 42}>
+                    <let {result: Float = count.to_float() + 0.5}>{result.to_string()}</let>
+                  </let>
+                </Test>
+            "#},
             "42.5",
             expect![[r#"
                 -- input --
+                <Test>
+                  <let {count: Int = 42}>
+                    <let {result: Float = count.to_float() + 0.5}>{result.to_string()}</let>
+                  </let>
+                </Test>
+                -- ir --
                 Test() {
                   let count = 42 in {
-                    write_escaped((count.to_float() + 0.5).to_string())
+                    let result = (count.to_float() + 0.5) in {
+                      write_escaped(result.to_string())
+                    }
                   }
                 }
                 -- expected output --
@@ -925,32 +899,36 @@ mod tests {
         );
     }
 
-    // NOTE: Uses complex chained method calls
     #[test]
     #[ignore]
     fn int_to_float_in_addition() {
-        check_ir(
-            IrModuleBuilder::new()
-                .component("Test", [], |t| {
-                    t.let_stmt("count", t.int(5), |t| {
-                        t.let_stmt("rate", t.float(0.5), |t| {
-                            t.write_expr(
-                                t.float_to_string(
-                                    t.add(t.int_to_float(t.var("count")), t.var("rate")),
-                                ),
-                                true,
-                            );
-                        });
-                    });
-                })
-                .build(),
+        check(
+            indoc! {r#"
+                <Test>
+                  <let {count: Int = 5}>
+                    <let {rate: Float = 0.5}>
+                      <let {result: Float = count.to_float() + rate}>{result.to_string()}</let>
+                    </let>
+                  </let>
+                </Test>
+            "#},
             "5.5",
             expect![[r#"
                 -- input --
+                <Test>
+                  <let {count: Int = 5}>
+                    <let {rate: Float = 0.5}>
+                      <let {result: Float = count.to_float() + rate}>{result.to_string()}</let>
+                    </let>
+                  </let>
+                </Test>
+                -- ir --
                 Test() {
                   let count = 5 in {
                     let rate = 0.5 in {
-                      write_escaped((count.to_float() + rate).to_string())
+                      let result = (count.to_float() + rate) in {
+                        write_escaped(result.to_string())
+                      }
                     }
                   }
                 }
@@ -965,11 +943,6 @@ mod tests {
             "#]],
         );
     }
-
-    // ==================================================================================
-    // HOP SYNTAX TESTS
-    // These tests use check() with actual hop template syntax as input
-    // ==================================================================================
 
     #[test]
     #[ignore]
