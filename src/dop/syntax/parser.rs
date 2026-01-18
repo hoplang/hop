@@ -598,29 +598,93 @@ fn parse_array_literal(
     })
 }
 
-fn parse_field_access(
+fn parse_primary(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
-    _range: &DocumentRange,
-    identifier: CheapString,
-    id_range: DocumentRange,
+    range: &DocumentRange,
 ) -> Result<ParsedExpr, ParseError> {
-    let var_name = VarName::from_cheap_string(identifier.clone()).map_err(|error| {
-        ParseError::InvalidVariableName {
-            name: identifier,
-            error,
-            range: id_range.clone(),
+    let mut expr = match next(iter, comments).transpose()? {
+        Some((Token::Identifier(name), name_range)) => {
+            // Check for macro invocation: identifier!
+            if advance_if(iter, comments, Token::Not).is_some() {
+                return parse_macro_invocation(iter, comments, range, name, name_range);
+            }
+            let var_name = VarName::from_cheap_string(name.clone()).map_err(|error| {
+                ParseError::InvalidVariableName {
+                    name,
+                    error,
+                    range: name_range.clone(),
+                }
+            })?;
+            ParsedExpr::Var {
+                range: name_range,
+                value: var_name,
+            }
         }
-    })?;
-    let mut expr = ParsedExpr::Var {
-        range: id_range,
-        value: var_name,
+        Some((Token::TypeName(name), name_range)) => {
+            let is_enum_variant =
+                peek(iter).and_then(|r| r.ok()).map(|(t, _)| t) == Some(Token::ColonColon);
+            if is_enum_variant {
+                parse_enum_literal(iter, comments, range, name, name_range)?
+            } else {
+                parse_record_literal(iter, comments, range, name, name_range)?
+            }
+        }
+        Some((Token::StringLiteral(value), lit_range)) => ParsedExpr::StringLiteral {
+            value,
+            range: lit_range,
+        },
+        Some((Token::True, lit_range)) => ParsedExpr::BooleanLiteral {
+            value: true,
+            range: lit_range,
+        },
+        Some((Token::False, lit_range)) => ParsedExpr::BooleanLiteral {
+            value: false,
+            range: lit_range,
+        },
+        Some((Token::IntLiteral(value), lit_range)) => ParsedExpr::IntLiteral {
+            value,
+            range: lit_range,
+        },
+        Some((Token::FloatLiteral(value), lit_range)) => ParsedExpr::FloatLiteral {
+            value,
+            range: lit_range,
+        },
+        Some((Token::LeftBracket, left_bracket)) => {
+            parse_array_literal(iter, comments, range, left_bracket)?
+        }
+        Some((Token::LeftParen, left_paren)) => {
+            let inner = parse_logical(iter, comments, range)?;
+            expect_opposite(iter, comments, &Token::LeftParen, &left_paren)?;
+            inner
+        }
+        Some((Token::Match, match_range)) => parse_match_expr(iter, comments, range, match_range)?,
+        Some((Token::Some, some_range)) => {
+            let left_paren = expect_token(iter, comments, range, &Token::LeftParen)?;
+            let value = parse_logical(iter, comments, range)?;
+            let right_paren = expect_opposite(iter, comments, &Token::LeftParen, &left_paren)?;
+            ParsedExpr::OptionLiteral {
+                value: Some(Box::new(value)),
+                range: some_range.to(right_paren),
+            }
+        }
+        Some((Token::None, none_range)) => ParsedExpr::OptionLiteral {
+            value: None,
+            range: none_range,
+        },
+        Some((token, token_range)) => {
+            return Err(ParseError::UnexpectedToken {
+                token,
+                range: token_range,
+            })
+        }
+        None => return Err(ParseError::UnexpectedEof { range: range.clone() }),
     };
 
+    // Handle postfix field access (.field) and method calls (.method())
     while let Some(dot) = advance_if(iter, comments, Token::Dot) {
         match next(iter, comments).transpose()? {
             Some((Token::Identifier(field_ident), field_range)) => {
-                // Validate field name
                 let field_name =
                     FieldName::from_cheap_string(field_ident.clone()).map_err(|error| {
                         ParseError::InvalidFieldName {
@@ -630,7 +694,6 @@ fn parse_field_access(
                         }
                     })?;
 
-                // Check for method call: identifier()
                 if let Some(left_paren) = advance_if(iter, comments, Token::LeftParen) {
                     let right_paren =
                         expect_opposite(iter, comments, &Token::LeftParen, &left_paren)?;
@@ -659,81 +722,8 @@ fn parse_field_access(
             }
         }
     }
-    Ok(expr)
-}
 
-fn parse_primary(
-    iter: &mut Peekable<DocumentCursor>,
-    comments: &mut VecDeque<DocumentRange>,
-    range: &DocumentRange,
-) -> Result<ParsedExpr, ParseError> {
-    match next(iter, comments).transpose()? {
-        Some((Token::Identifier(name), name_range)) => {
-            // Check for macro invocation: identifier!
-            if advance_if(iter, comments, Token::Not).is_some() {
-                return parse_macro_invocation(iter, comments, range, name, name_range);
-            }
-            parse_field_access(iter, comments, range, name, name_range)
-        }
-        Some((Token::TypeName(name), name_range)) => {
-            let is_enum_variant =
-                peek(iter).and_then(|r| r.ok()).map(|(t, _)| t) == Some(Token::ColonColon);
-            if is_enum_variant {
-                parse_enum_literal(iter, comments, range, name, name_range)
-            } else {
-                parse_record_literal(iter, comments, range, name, name_range)
-            }
-        }
-        Some((Token::StringLiteral(value), lit_range)) => Ok(ParsedExpr::StringLiteral {
-            value,
-            range: lit_range,
-        }),
-        Some((Token::True, lit_range)) => Ok(ParsedExpr::BooleanLiteral {
-            value: true,
-            range: lit_range,
-        }),
-        Some((Token::False, lit_range)) => Ok(ParsedExpr::BooleanLiteral {
-            value: false,
-            range: lit_range,
-        }),
-        Some((Token::IntLiteral(value), lit_range)) => Ok(ParsedExpr::IntLiteral {
-            value,
-            range: lit_range,
-        }),
-        Some((Token::FloatLiteral(value), lit_range)) => Ok(ParsedExpr::FloatLiteral {
-            value,
-            range: lit_range,
-        }),
-        Some((Token::LeftBracket, left_bracket)) => {
-            parse_array_literal(iter, comments, range, left_bracket)
-        }
-        Some((Token::LeftParen, left_paren)) => {
-            let expr = parse_logical(iter, comments, range)?;
-            expect_opposite(iter, comments, &Token::LeftParen, &left_paren)?;
-            Ok(expr)
-        }
-        Some((Token::Match, match_range)) => parse_match_expr(iter, comments, range, match_range),
-        Some((Token::Some, some_range)) => {
-            let left_paren = expect_token(iter, comments, range, &Token::LeftParen)?;
-            let value = parse_logical(iter, comments, range)?;
-            let right_paren = expect_opposite(iter, comments, &Token::LeftParen, &left_paren)?;
-            Ok(ParsedExpr::OptionLiteral {
-                value: Some(Box::new(value)),
-                range: some_range.to(right_paren),
-            })
-        }
-        Some((Token::None, none_range)) => Ok(ParsedExpr::OptionLiteral {
-            value: None,
-            range: none_range,
-        }),
-        Some((token, token_range)) => Err(ParseError::UnexpectedToken {
-            token,
-            range: token_range,
-        }),
-        None => Err(ParseError::UnexpectedEof {
-            range: range.clone(),
-        }),
-    }
+    Ok(expr)
 }
 
 fn parse_macro_invocation(
@@ -3742,6 +3732,209 @@ mod tests {
             "_ in start..=end",
             expect![[r#"
                 _ in start..=end
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // METHOD CALLS ON LITERALS AND PARENTHESIZED EXPRESSIONS                //
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_method_call_on_integer_literal() {
+        check_parse_expr(
+            "42.to_string()",
+            expect![[r#"
+                42.to_string()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_method_call_on_float_literal() {
+        check_parse_expr(
+            "3.14.to_string()",
+            expect![[r#"
+                3.14.to_string()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_method_call_on_string_literal() {
+        check_parse_expr(
+            r#""hello".length()"#,
+            expect![[r#"
+                "hello".length()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_method_call_on_boolean_literal() {
+        check_parse_expr(
+            "true.to_string()",
+            expect![[r#"
+                true.to_string()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_method_call_on_parenthesized_expression() {
+        check_parse_expr(
+            "(x + y).to_string()",
+            expect![[r#"
+                (x + y).to_string()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_chained_method_calls_on_parenthesized_expression() {
+        check_parse_expr(
+            "(x.to_float() + 0.5).to_string().length()",
+            expect![[r#"
+                (x.to_float() + 0.5).to_string().length()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_field_access_on_parenthesized_expression() {
+        check_parse_expr(
+            "(rec).field",
+            expect![[r#"
+                rec.field
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_method_call_on_array_literal() {
+        check_parse_expr(
+            "[1, 2, 3].length()",
+            expect![[r#"
+                [1, 2, 3].length()
+            "#]],
+        );
+    }
+
+    // Field access (not method calls) on literals - parser should accept,
+    // type checker will reject invalid combinations
+
+    #[test]
+    fn should_accept_field_access_on_int_literal() {
+        check_parse_expr(
+            "42.field",
+            expect![[r#"
+                42.field
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_field_access_on_string_literal() {
+        check_parse_expr(
+            r#""hello".length"#,
+            expect![[r#"
+                "hello".length
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_chained_field_access_on_literal() {
+        check_parse_expr(
+            "42.foo.bar",
+            expect![[r#"
+                42.foo.bar
+            "#]],
+        );
+    }
+
+    // Record and enum literals with postfix access
+
+    #[test]
+    fn should_accept_field_access_on_record_literal() {
+        check_parse_expr(
+            r#"User(name: "John").name"#,
+            expect![[r#"
+                User(name: "John").name
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_method_call_on_record_literal() {
+        check_parse_expr(
+            r#"User(name: "John").to_string()"#,
+            expect![[r#"
+                User(name: "John").to_string()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_field_access_on_enum_literal() {
+        check_parse_expr(
+            "Status::Active.value",
+            expect![[r#"
+                Status::Active.value
+            "#]],
+        );
+    }
+
+    // Option literals with postfix access
+
+    #[test]
+    fn should_accept_method_call_on_some_literal() {
+        check_parse_expr(
+            "Some(42).unwrap()",
+            expect![[r#"
+                Some(42).unwrap()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_method_call_on_none_literal() {
+        check_parse_expr(
+            "None.is_none()",
+            expect![[r#"
+                None.is_none()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_field_access_on_some_literal() {
+        check_parse_expr(
+            "Some(42).value",
+            expect![[r#"
+                Some(42).value
+            "#]],
+        );
+    }
+
+    // Precedence verification - method calls bind tighter than binary ops
+
+    #[test]
+    fn should_parse_method_call_with_higher_precedence_than_addition() {
+        check_parse_expr(
+            "1 + 2.to_string()",
+            expect![[r#"
+                1 + 2.to_string()
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_parse_field_access_with_higher_precedence_than_multiplication() {
+        check_parse_expr(
+            "x * y.field",
+            expect![[r#"
+                x * y.field
             "#]],
         );
     }

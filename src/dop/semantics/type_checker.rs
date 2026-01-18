@@ -4574,4 +4574,46 @@ mod tests {
             "#]],
         );
     }
+
+    // Method calls on literals
+
+    #[test]
+    fn should_accept_to_string_on_int_literal() {
+        check("", &[], "42.to_string()", expect!["String"]);
+    }
+
+    #[test]
+    fn should_accept_to_float_on_int_literal() {
+        check("", &[], "42.to_float()", expect!["Float"]);
+    }
+
+    #[test]
+    fn should_accept_to_string_on_float_literal() {
+        check("", &[], "3.14.to_string()", expect!["String"]);
+    }
+
+    #[test]
+    fn should_accept_to_int_on_float_literal() {
+        check("", &[], "3.14.to_int()", expect!["Int"]);
+    }
+
+    #[test]
+    fn should_accept_len_on_array_literal() {
+        check("", &[], "[1, 2, 3].len()", expect!["Int"]);
+    }
+
+    #[test]
+    fn should_accept_chained_method_calls_on_literal() {
+        check("", &[], "42.to_float().to_string()", expect!["String"]);
+    }
+
+    #[test]
+    fn should_accept_method_call_on_parenthesized_arithmetic() {
+        check("", &[], "(1 + 2).to_string()", expect!["String"]);
+    }
+
+    #[test]
+    fn should_accept_method_call_on_parenthesized_float_arithmetic() {
+        check("", &[("x", "Int")], "(x.to_float() + 0.5).to_string()", expect!["String"]);
+    }
 }

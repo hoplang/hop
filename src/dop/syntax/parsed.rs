@@ -440,13 +440,13 @@ impl ParsedExpr {
                 field,
                 ..
             } => object
-                .to_doc()
+                .to_doc_with_precedence(7) // Higher than any binary op to ensure parens
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(field.as_str())),
             ParsedExpr::MethodCall {
                 receiver, method, ..
             } => receiver
-                .to_doc()
+                .to_doc_with_precedence(7) // Higher than any binary op to ensure parens
                 .append(BoxDoc::text("."))
                 .append(BoxDoc::text(method.as_str()))
                 .append(BoxDoc::text("()")),

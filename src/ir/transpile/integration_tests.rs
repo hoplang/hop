@@ -3423,4 +3423,85 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn method_call_on_float_literal() {
+        check(
+            indoc! {r#"
+                <Test>{3.14.to_string()}</Test>
+            "#},
+            "3.14",
+            expect![[r#"
+                -- input --
+                <Test>{3.14.to_string()}</Test>
+                -- ir --
+                Test() {
+                  write_escaped(3.14.to_string())
+                }
+                -- expected output --
+                3.14
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn method_call_on_array_literal() {
+        check(
+            indoc! {r#"
+                <Test>{[1, 2, 3].len().to_string()}</Test>
+            "#},
+            "3",
+            expect![[r#"
+                -- input --
+                <Test>{[1, 2, 3].len().to_string()}</Test>
+                -- ir --
+                Test() {
+                  write_escaped([1, 2, 3].len().to_string())
+                }
+                -- expected output --
+                3
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn method_call_on_parenthesized_expression() {
+        check(
+            indoc! {r#"
+                <Test>{(1 + 2).to_string()}</Test>
+            "#},
+            "3",
+            expect![[r#"
+                -- input --
+                <Test>{(1 + 2).to_string()}</Test>
+                -- ir --
+                Test() {
+                  write_escaped((1 + 2).to_string())
+                }
+                -- expected output --
+                3
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
 }
