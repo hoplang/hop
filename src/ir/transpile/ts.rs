@@ -1163,8 +1163,7 @@ impl ExpressionTranspiler for TsTranspiler {
     }
 
     fn transpile_array_length<'a>(&self, array: &'a IrExpr) -> BoxDoc<'a> {
-        self.transpile_expr(array)
-            .append(BoxDoc::text(".length"))
+        self.transpile_expr(array).append(BoxDoc::text(".length"))
     }
 
     fn transpile_int_to_string<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {

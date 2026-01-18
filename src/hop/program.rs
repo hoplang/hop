@@ -6,7 +6,7 @@ use crate::hop::semantics::type_error::TypeError;
 use crate::hop::syntax::parse_error::ParseError;
 use crate::hop::syntax::parser::parse;
 use crate::ir;
-use crate::orchestrator::orchestrate;
+use crate::orchestrator::{OrchestrateOptions, orchestrate};
 use crate::toposorter::TopoSorter;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -565,7 +565,12 @@ impl Program {
 
         // Use orchestrate to handle inlining and compilation
         let pages = vec![(module_name.clone(), component_name.clone())];
-        let ir_module = orchestrate(self.get_typed_modules(), generated_tailwind_css, &pages)?;
+        let ir_module = orchestrate(
+            self.get_typed_modules(),
+            generated_tailwind_css,
+            &pages,
+            OrchestrateOptions::default(),
+        )?;
 
         // Get the entrypoint (should be the only one)
         let entrypoint = ir_module.components.first().ok_or_else(|| {

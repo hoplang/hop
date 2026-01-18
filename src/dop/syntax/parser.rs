@@ -250,15 +250,14 @@ pub fn parse_loop_header(
     range: &DocumentRange,
 ) -> Result<(Option<VarName>, Option<DocumentRange>, ParsedLoopSource), ParseError> {
     // Check for underscore (discarded binding) or variable name
-    let (var_name, var_name_range) = if let Some(underscore_range) =
-        advance_if(iter, comments, Token::Underscore)
-    {
-        // Underscore means "don't bind the loop variable"
-        (None, Some(underscore_range))
-    } else {
-        let (name, name_range) = expect_variable_name(iter, comments, range)?;
-        (Some(name), Some(name_range))
-    };
+    let (var_name, var_name_range) =
+        if let Some(underscore_range) = advance_if(iter, comments, Token::Underscore) {
+            // Underscore means "don't bind the loop variable"
+            (None, Some(underscore_range))
+        } else {
+            let (name, name_range) = expect_variable_name(iter, comments, range)?;
+            (Some(name), Some(name_range))
+        };
     expect_token(iter, comments, range, &Token::In)?;
     // Parse the start expression (could be array or start of range)
     let start_expr = parse_logical(iter, comments, range)?;

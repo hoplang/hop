@@ -211,9 +211,7 @@ pub fn next_collecting_comments(
 }
 
 /// Peeks at the next token without consuming it (includes comments).
-pub fn peek(
-    iter: &Peekable<DocumentCursor>,
-) -> Option<Result<(Token, DocumentRange), ParseError>> {
+pub fn peek(iter: &Peekable<DocumentCursor>) -> Option<Result<(Token, DocumentRange), ParseError>> {
     let mut cloned = iter.clone();
     next(&mut cloned)
 }

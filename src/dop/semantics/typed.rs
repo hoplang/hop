@@ -507,21 +507,13 @@ impl TypedExpr {
                         .append(BoxDoc::text(")"))
                 }
             }
-            TypedExpr::ArrayLength { array } => array
-                .to_doc()
-                .append(BoxDoc::text(".len()")),
-            TypedExpr::IntToString { value } => value
-                .to_doc()
-                .append(BoxDoc::text(".to_string()")),
-            TypedExpr::FloatToInt { value } => value
-                .to_doc()
-                .append(BoxDoc::text(".to_int()")),
-            TypedExpr::FloatToString { value } => value
-                .to_doc()
-                .append(BoxDoc::text(".to_string()")),
-            TypedExpr::IntToFloat { value } => value
-                .to_doc()
-                .append(BoxDoc::text(".to_float()")),
+            TypedExpr::ArrayLength { array } => array.to_doc().append(BoxDoc::text(".len()")),
+            TypedExpr::IntToString { value } => value.to_doc().append(BoxDoc::text(".to_string()")),
+            TypedExpr::FloatToInt { value } => value.to_doc().append(BoxDoc::text(".to_int()")),
+            TypedExpr::FloatToString { value } => {
+                value.to_doc().append(BoxDoc::text(".to_string()"))
+            }
+            TypedExpr::IntToFloat { value } => value.to_doc().append(BoxDoc::text(".to_float()")),
         }
     }
 }

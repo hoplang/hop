@@ -6,10 +6,17 @@ use crate::ir::{optimize, Compiler, IrEnumDeclaration, IrModule, IrRecordDeclara
 use anyhow::Result;
 use std::collections::HashMap;
 
+#[derive(Default)]
+pub struct OrchestrateOptions {
+    pub skip_html_structure: bool,
+    pub skip_dev_mode_wrapper: bool,
+}
+
 pub fn orchestrate(
     typed_asts: &HashMap<ModuleName, TypedAst>,
     generated_tailwind_css: Option<&str>,
     pages: &[(ModuleName, ComponentName)],
+    options: OrchestrateOptions,
 ) -> Result<IrModule> {
     // Collect record declarations from all modules
     let mut records: Vec<IrRecordDeclaration> = typed_asts
@@ -35,13 +42,19 @@ pub fn orchestrate(
 
     let components = Inliner::inline_entrypoints(typed_asts, pages)?
         .into_iter()
-        // transform ASTs
-        .map(DoctypeInjector::run)
-        .map(HtmlStructureInjector::run)
-        .map(MetaInjector::run)
-        .map(|entrypoint| TailwindInjector::run(entrypoint, generated_tailwind_css))
+        // transform ASTs (skip if options.skip_html_structure is set)
+        .map(|e| if options.skip_html_structure { e } else { DoctypeInjector::run(e) })
+        .map(|e| if options.skip_html_structure { e } else { HtmlStructureInjector::run(e) })
+        .map(|e| if options.skip_html_structure { e } else { MetaInjector::run(e) })
+        .map(|e| if options.skip_html_structure { e } else { TailwindInjector::run(e, generated_tailwind_css) })
         // compile to IR
-        .map(Compiler::compile)
+        .map(|e| {
+            if options.skip_dev_mode_wrapper {
+                Compiler::compile_without_dev_wrapper(e)
+            } else {
+                Compiler::compile(e)
+            }
+        })
         .collect();
 
     let module = IrModule {

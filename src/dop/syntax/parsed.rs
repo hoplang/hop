@@ -220,10 +220,7 @@ pub enum ParsedLoopSource {
     /// Iterate over elements of an array, e.g. `item in items`
     Array(ParsedExpr),
     /// Iterate over an inclusive integer range, e.g. `i in 0..=5`
-    RangeInclusive {
-        start: ParsedExpr,
-        end: ParsedExpr,
-    },
+    RangeInclusive { start: ParsedExpr, end: ParsedExpr },
 }
 
 #[derive(Debug, Clone, PartialEq)]

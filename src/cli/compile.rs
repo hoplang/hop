@@ -5,7 +5,7 @@ use crate::hop::program::Program;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use crate::ir::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
-use crate::orchestrator::orchestrate;
+use crate::orchestrator::{OrchestrateOptions, orchestrate};
 use crate::tui::timing;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
@@ -133,7 +133,12 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
         .collect::<Result<Vec<_>>>()?;
 
     // Use orchestrate to handle inlining, compilation, and optimization
-    let ir_module = orchestrate(program.get_typed_modules(), tailwind_css.as_deref(), &pages)?;
+    let ir_module = orchestrate(
+        program.get_typed_modules(),
+        tailwind_css.as_deref(),
+        &pages,
+        OrchestrateOptions::default(),
+    )?;
 
     // Generate code based on target language
     let generated_code = match resolved.target {

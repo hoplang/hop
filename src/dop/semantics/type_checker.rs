@@ -4396,12 +4396,7 @@ mod tests {
 
     #[test]
     fn should_accept_to_int_on_float() {
-        check(
-            "",
-            &[("price", "Float")],
-            "price.to_int()",
-            expect!["Int"],
-        );
+        check("", &[("price", "Float")], "price.to_int()", expect!["Int"]);
     }
 
     #[test]

@@ -1092,21 +1092,15 @@ impl IrExpr {
                 .append(BoxDoc::text(", "))
                 .append(right.to_doc())
                 .append(BoxDoc::text(")")),
-            IrExpr::ArrayLength { array, .. } => array
-                .to_doc()
-                .append(BoxDoc::text(".len()")),
-            IrExpr::IntToString { value, .. } => value
-                .to_doc()
-                .append(BoxDoc::text(".to_string()")),
-            IrExpr::FloatToInt { value, .. } => value
-                .to_doc()
-                .append(BoxDoc::text(".to_int()")),
-            IrExpr::FloatToString { value, .. } => value
-                .to_doc()
-                .append(BoxDoc::text(".to_string()")),
-            IrExpr::IntToFloat { value, .. } => value
-                .to_doc()
-                .append(BoxDoc::text(".to_float()")),
+            IrExpr::ArrayLength { array, .. } => array.to_doc().append(BoxDoc::text(".len()")),
+            IrExpr::IntToString { value, .. } => {
+                value.to_doc().append(BoxDoc::text(".to_string()"))
+            }
+            IrExpr::FloatToInt { value, .. } => value.to_doc().append(BoxDoc::text(".to_int()")),
+            IrExpr::FloatToString { value, .. } => {
+                value.to_doc().append(BoxDoc::text(".to_string()"))
+            }
+            IrExpr::IntToFloat { value, .. } => value.to_doc().append(BoxDoc::text(".to_float()")),
         }
     }
 

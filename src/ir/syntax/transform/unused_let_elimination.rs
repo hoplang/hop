@@ -73,7 +73,11 @@ impl UnusedLetEliminationPass {
                 }
 
                 // Also check for loop range expressions (not covered by s.expr())
-                if let IrStatement::For { source: IrForSource::RangeInclusive { start, end }, .. } = s {
+                if let IrStatement::For {
+                    source: IrForSource::RangeInclusive { start, end },
+                    ..
+                } = s
+                {
                     check_expr(start);
                     check_expr(end);
                 }

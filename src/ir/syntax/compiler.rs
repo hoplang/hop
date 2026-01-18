@@ -80,6 +80,33 @@ impl Compiler {
         }
     }
 
+    /// Compile without the development mode wrapper (useful for tests)
+    pub fn compile_without_dev_wrapper(
+        entrypoint: InlinedComponentDeclaration,
+    ) -> IrComponentDeclaration {
+        let mut compiler = Compiler {
+            expr_id_counter: 0,
+            node_id_counter: 0,
+        };
+
+        let param_info = entrypoint
+            .params
+            .into_iter()
+            .map(|param| (param.var_name, param.var_type))
+            .collect::<Vec<_>>();
+
+        let component_name = entrypoint.component_name;
+        let children = entrypoint.children;
+
+        let body = compiler.compile_nodes(children, None);
+
+        IrComponentDeclaration {
+            name: component_name,
+            parameters: param_info,
+            body,
+        }
+    }
+
     fn generate_development_mode_body(
         &mut self,
         module_name: &str,

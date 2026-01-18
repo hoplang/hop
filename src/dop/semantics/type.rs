@@ -79,7 +79,9 @@ impl Type {
                 let inner_equatable = inner.as_equatable_type()?;
                 Some(EquatableType::Option(Box::new(inner_equatable)))
             }
-            Type::TrustedHTML | Type::Array(_) | Type::Record { .. } | Type::Component { .. } => None,
+            Type::TrustedHTML | Type::Array(_) | Type::Record { .. } | Type::Component { .. } => {
+                None
+            }
         }
     }
 
