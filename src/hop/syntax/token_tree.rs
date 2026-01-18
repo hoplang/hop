@@ -309,12 +309,6 @@ mod tests {
                   ],
                 )
 
-                TokenTree(
-                  Newline
-                  closing_tag_name: None,
-                  children: [],
-                )
-
             "#]],
         );
     }
@@ -339,22 +333,12 @@ mod tests {
                   closing_tag_name: Some("div"),
                   children: [
                     TokenTree(
-                      Newline
-                      closing_tag_name: None,
-                      children: [],
-                    )
-                    TokenTree(
                       OpeningTag(
                         tag_name: "br",
                         attributes: {},
                         expression: None,
                         self_closing: false,
                       )
-                      closing_tag_name: None,
-                      children: [],
-                    )
-                    TokenTree(
-                      Newline
                       closing_tag_name: None,
                       children: [],
                     )
@@ -368,18 +352,7 @@ mod tests {
                       closing_tag_name: None,
                       children: [],
                     )
-                    TokenTree(
-                      Newline
-                      closing_tag_name: None,
-                      children: [],
-                    )
                   ],
-                )
-
-                TokenTree(
-                  Newline
-                  closing_tag_name: None,
-                  children: [],
                 )
 
             "#]],
@@ -406,11 +379,6 @@ mod tests {
                   closing_tag_name: Some("div"),
                   children: [
                     TokenTree(
-                      Newline
-                      closing_tag_name: None,
-                      children: [],
-                    )
-                    TokenTree(
                       OpeningTag(
                         tag_name: "p",
                         attributes: {},
@@ -425,11 +393,6 @@ mod tests {
                           children: [],
                         )
                       ],
-                    )
-                    TokenTree(
-                      Newline
-                      closing_tag_name: None,
-                      children: [],
                     )
                     TokenTree(
                       OpeningTag(
@@ -447,18 +410,7 @@ mod tests {
                         )
                       ],
                     )
-                    TokenTree(
-                      Newline
-                      closing_tag_name: None,
-                      children: [],
-                    )
                   ],
-                )
-
-                TokenTree(
-                  Newline
-                  closing_tag_name: None,
-                  children: [],
                 )
 
             "#]],

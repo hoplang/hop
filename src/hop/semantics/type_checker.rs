@@ -957,8 +957,11 @@ fn typecheck_node(
             }
         }
 
-        // Newlines are whitespace hints for the formatter, not content
-        ParsedNode::Newline { .. } => None,
+        // Newlines between inline content represent a space (HTML whitespace collapsing)
+        // The tokenizer only emits Newlines when they're semantically significant
+        ParsedNode::Newline { .. } => Some(TypedNode::Text {
+            value: CheapString::new(" ".to_string()),
+        }),
 
         ParsedNode::Doctype { value, range: _ } => Some(TypedNode::Doctype {
             value: value.clone(),

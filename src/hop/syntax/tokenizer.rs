@@ -808,20 +808,55 @@ fn parse_text(iter: &mut Peekable<DocumentCursor>) -> Token {
     }
 }
 
-/// Tokenizer state for trimming whitespace from Text tokens.
+/// Tokenizer state for whitespace normalization.
 ///
-/// Trimming rules:
-/// - Trim leading whitespace if preceded by Newline or OpeningTag (container start)
-/// - Trim trailing whitespace if followed by Newline or ClosingTag (container end)
+/// This wraps the raw `step()` function to handle two concerns:
+///
+/// ## 1. Whitespace Trimming
+///
+/// - Trim leading whitespace after OpeningTag or Newline
+/// - Trim trailing whitespace before Newline or ClosingTag
 /// - Skip Text tokens that become empty after trimming
+///
+/// ## 2. Newline-to-Space Conversion
+///
+/// Selectively emit Newline tokens:
+/// - Emit Newline only between Text/TextExpression tokens
+/// - Discard Newline before any tag (it's either a container boundary or
+///   the user can add explicit space on the same line if needed)
+///
 pub struct Tokenizer {
+    /// Trim leading whitespace from the next Text token.
+    /// Set after OpeningTag (container start) or Newline.
     trim_next_start: bool,
+    /// Previous emitted token was Text or TextExpression.
+    /// Used to decide if a Newline should be recorded as pending.
+    prev_was_inline: bool,
+    /// Pending Newline to emit before the next Text/TextExpression.
+    /// Discarded if the next token is a tag.
+    pending_newline: Option<DocumentRange>,
+    /// Token buffered to return after emitting a pending Newline.
+    buffered_token: Option<Token>,
 }
 
 impl Tokenizer {
     pub fn new() -> Self {
         Self {
             trim_next_start: true,
+            prev_was_inline: false,
+            pending_newline: None,
+            buffered_token: None,
+        }
+    }
+
+    /// If there's a pending newline that should be emitted before the given token,
+    /// buffer the token and return the newline. Otherwise, return the token directly.
+    fn maybe_emit_pending_newline(&mut self, token: Token) -> Option<Token> {
+        if let Some(range) = self.pending_newline.take() {
+            self.buffered_token = Some(token);
+            Some(Token::Newline { range })
+        } else {
+            Some(token)
         }
     }
 
@@ -830,6 +865,11 @@ impl Tokenizer {
         iter: &mut Peekable<DocumentCursor>,
         errors: &mut ErrorCollector<ParseError>,
     ) -> Option<Token> {
+        // First, return any buffered token from a previous call
+        if let Some(token) = self.buffered_token.take() {
+            return Some(token);
+        }
+
         loop {
             let token = step(iter, errors)?;
 
@@ -859,25 +899,85 @@ impl Tokenizer {
                         continue;
                     }
 
-                    return Some(Token::Text { range });
+                    self.prev_was_inline = true;
+                    return self.maybe_emit_pending_newline(Token::Text { range });
                 }
-                Token::Newline { .. } => {
+                Token::Newline { range } => {
+                    // Only record a pending newline if previous token was inline content
+                    if self.prev_was_inline {
+                        self.pending_newline = Some(range);
+                    }
                     self.trim_next_start = true;
-                    return Some(token);
+                    // Don't emit the newline yet; continue to get the next token
+                    continue;
+                }
+                Token::TextExpression { content, range } => {
+                    self.trim_next_start = false;
+                    self.prev_was_inline = true;
+                    return self
+                        .maybe_emit_pending_newline(Token::TextExpression { content, range });
                 }
                 Token::OpeningTag {
-                    ref tag_name,
+                    tag_name,
+                    attributes,
+                    expression,
                     self_closing,
-                    ..
+                    range,
                 } => {
+                    // Don't emit Newline before opening tag; only between text/expression
+                    self.pending_newline = None;
                     // After a non-void, non-self-closing opening tag, the next text
                     // is at the start of the container's children
                     self.trim_next_start = !self_closing && !is_void_element(tag_name.as_str());
-                    return Some(token);
+                    self.prev_was_inline = false;
+                    return Some(Token::OpeningTag {
+                        tag_name,
+                        attributes,
+                        expression,
+                        self_closing,
+                        range,
+                    });
                 }
-                _ => {
+                Token::ClosingTag { tag_name, range } => {
+                    // Don't emit Newline before closing tag (container end)
+                    self.pending_newline = None;
                     self.trim_next_start = false;
-                    return Some(token);
+                    // Only Text/TextExpression are inline content; tags are not
+                    self.prev_was_inline = false;
+                    return Some(Token::ClosingTag { tag_name, range });
+                }
+                Token::RawTextTag {
+                    tag_name,
+                    attributes,
+                    expression,
+                    content,
+                    range,
+                } => {
+                    // Don't emit Newline before tags; only between text/expression
+                    self.pending_newline = None;
+                    self.trim_next_start = false;
+                    self.prev_was_inline = false;
+                    return Some(Token::RawTextTag {
+                        tag_name,
+                        attributes,
+                        expression,
+                        content,
+                        range,
+                    });
+                }
+                Token::Comment { range } => {
+                    // Don't emit Newline before comments
+                    self.pending_newline = None;
+                    self.trim_next_start = false;
+                    self.prev_was_inline = false;
+                    return Some(Token::Comment { range });
+                }
+                Token::Doctype { range } => {
+                    // Don't emit Newline before doctype
+                    self.pending_newline = None;
+                    self.trim_next_start = false;
+                    self.prev_was_inline = false;
+                    return Some(Token::Doctype { range });
                 }
             }
         }
@@ -984,26 +1084,15 @@ mod tests {
                 <div>
                 ^^^^^
 
-                Newline
-                <div>
-                  hello world
-
                 Text [11 byte, "hello world"]
                   hello world
                   ^^^^^^^^^^^
-
-                Newline
-                  hello world
-                </div>
 
                 ClosingTag(
                   tag_name: "div",
                 )
                 </div>
                 ^^^^^^
-
-                Newline
-                </div>
             "#]],
         );
     }
@@ -1028,10 +1117,6 @@ mod tests {
                 <div>
                 ^^^^^
 
-                Newline
-                <div>
-                  hello
-
                 Text [5 byte, "hello"]
                   hello
                   ^^^^^
@@ -1044,18 +1129,11 @@ mod tests {
                   world
                   ^^^^^
 
-                Newline
-                  world
-                </div>
-
                 ClosingTag(
                   tag_name: "div",
                 )
                 </div>
                 ^^^^^^
-
-                Newline
-                </div>
             "#]],
         );
     }
@@ -1078,10 +1156,6 @@ mod tests {
                 )
                 <div>
                 ^^^^^
-
-                Newline
-                <div>
-                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
 
                 Text [39 byte, "By clicking continue, you agree to our "]
                   By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
@@ -1137,18 +1211,11 @@ mod tests {
                   By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
                                                                                                                             ^
 
-                Newline
-                  By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
-                </div>
-
                 ClosingTag(
                   tag_name: "div",
                 )
                 </div>
                 ^^^^^^
-
-                Newline
-                </div>
             "##]],
         );
     }
@@ -1439,18 +1506,11 @@ mod tests {
                 <p><!-- -->
                    ^^^^^^^^
 
-                Newline
-                <p><!-- -->
-                </p>
-
                 ClosingTag(
                   tag_name: "p",
                 )
                 </p>
                 ^^^^
-
-                Newline
-                </p>
             "#]],
         );
     }
@@ -1506,9 +1566,6 @@ mod tests {
                 )
                 lines --></p>
                          ^^^^
-
-                Newline
-                lines --></p>
             "#]],
         );
     }
@@ -1553,9 +1610,6 @@ mod tests {
                 Comment
                 <!-- ---><!-- ----><!----><!-----><!-- ---->
                                                   ^^^^^^^^^^
-
-                Newline
-                <!-- ---><!-- ----><!----><!-----><!-- ---->
             "#]],
         );
     }
@@ -1579,10 +1633,6 @@ mod tests {
                 <textarea>
                 ^^^^^^^^^^
 
-                Newline
-                <textarea>
-                    <div></div>
-
                 OpeningTag(
                   tag_name: "div",
                   attributes: {},
@@ -1598,18 +1648,11 @@ mod tests {
                     <div></div>
                          ^^^^^^
 
-                Newline
-                    <div></div>
-                </textarea>
-
                 ClosingTag(
                   tag_name: "textarea",
                 )
                 </textarea>
                 ^^^^^^^^^^^
-
-                Newline
-                </textarea>
             "#]],
         );
     }
@@ -1703,9 +1746,6 @@ mod tests {
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 </style>
                 ^^^^^^^^
-
-                Newline
-                </style>
             "#]],
         );
     }
@@ -1739,9 +1779,6 @@ mod tests {
                 ^^^^^^^^^^^
                   data-value="something">
                 ^^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Newline
-                  data-value="something">
             "#]],
         );
     }
@@ -1771,9 +1808,6 @@ mod tests {
                 ^^^^^^^^^^^^^^^^^^^^^^^
                 </script>
                 ^^^^^^^^^
-
-                Newline
-                </script>
             "#]],
         );
     }
@@ -1809,14 +1843,6 @@ mod tests {
                 </ script>
                 ^^^^^^^^^^
 
-                Newline
-                </ script>
-
-
-                Newline
-
-                <script>
-
                 RawTextTag(
                   tag_name: "script",
                   attributes: {},
@@ -1830,14 +1856,6 @@ mod tests {
                 </script  >
                 ^^^^^^^^^^^
 
-                Newline
-                </script  >
-
-
-                Newline
-
-                <script>
-
                 RawTextTag(
                   tag_name: "script",
                   attributes: {},
@@ -1850,9 +1868,6 @@ mod tests {
                 ^^^^^^^^^^^^^^^^^^
                 </ script  >
                 ^^^^^^^^^^^^
-
-                Newline
-                </ script  >
             "#]],
         );
     }
@@ -1889,10 +1904,6 @@ mod tests {
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-                Newline
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
-
                 OpeningTag(
                   tag_name: "line",
                   attributes: {
@@ -1913,10 +1924,6 @@ mod tests {
                 <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
                                                             ^^^^^^^
 
-                Newline
-                <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-
                 OpeningTag(
                   tag_name: "path",
                   attributes: {
@@ -1934,10 +1941,6 @@ mod tests {
                 <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
                                                                                                                                                     ^^^^^^^
 
-                Newline
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-
                 OpeningTag(
                   tag_name: "polyline",
                   attributes: {
@@ -1954,10 +1957,6 @@ mod tests {
                 )
                 <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
                                                                  ^^^^^^^^^^^
-
-                Newline
-                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                <line x1="12" y1="22.08" x2="12" y2="12"></line>
 
                 OpeningTag(
                   tag_name: "line",
@@ -1979,18 +1978,11 @@ mod tests {
                 <line x1="12" y1="22.08" x2="12" y2="12"></line>
                                                          ^^^^^^^
 
-                Newline
-                <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                </svg>
-
                 ClosingTag(
                   tag_name: "svg",
                 )
                 </svg>
                 ^^^^^^
-
-                Newline
-                </svg>
             "#]],
         );
     }
@@ -2013,9 +2005,6 @@ mod tests {
                 )
                 <div class="test" {bar}>
                 ^^^^^^^^^^^^^^^^^^^^^^^^
-
-                Newline
-                <div class="test" {bar}>
             "#]],
         );
     }

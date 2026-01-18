@@ -204,8 +204,7 @@ mod tests {
             .await;
 
         response.assert_status_ok();
-        expect![[r#"
-            <!DOCTYPE html><html><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1" name="viewport"></head><body><h1>Welcome</h1><p>Hello, Alice!</p></body></html>"#]]
+        expect![[r#"<!DOCTYPE html><html><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1" name="viewport"></head><body><h1>Welcome</h1><p>Hello, Alice!</p></body></html>"#]]
         .assert_eq(&response.text());
     }
 
