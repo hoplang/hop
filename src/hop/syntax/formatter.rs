@@ -821,6 +821,18 @@ fn format_expr<'a>(
                     .append(arena.text(")"))
             }
         }
+        ParsedExpr::NumericNegation { operand, .. } => {
+            if is_atomic(operand) {
+                arena
+                    .text("-")
+                    .append(format_expr(arena, operand, comments))
+            } else {
+                arena
+                    .text("-(")
+                    .append(format_expr(arena, operand, comments))
+                    .append(arena.text(")"))
+            }
+        }
         ParsedExpr::EnumLiteral {
             enum_name,
             variant_name,

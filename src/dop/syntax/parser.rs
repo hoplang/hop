@@ -563,6 +563,12 @@ fn parse_unary(
             range: operator_range.to(expr.range().clone()),
             operand: Box::new(expr),
         })
+    } else if let Some(operator_range) = advance_if(iter, comments, Token::Minus) {
+        let expr = parse_unary(iter, comments, range)?; // Right associative for multiple -
+        Ok(ParsedExpr::NumericNegation {
+            range: operator_range.to(expr.range().clone()),
+            operand: Box::new(expr),
+        })
     } else {
         parse_primary(iter, comments, range)
     }
@@ -2476,6 +2482,100 @@ mod tests {
             "x + y + z",
             expect![[r#"
                 x + y + z
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // NUMERIC NEGATION                                                       //
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn should_accept_negative_integer_literal() {
+        check_parse_expr(
+            "-5",
+            expect![[r#"
+                -5
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_negative_float_literal() {
+        check_parse_expr(
+            "-3.14",
+            expect![[r#"
+                -3.14
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_negative_variable() {
+        check_parse_expr(
+            "-x",
+            expect![[r#"
+                -x
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_double_negative() {
+        check_parse_expr(
+            "--5",
+            expect![[r#"
+                -(-5)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_negative_parenthesized_expression() {
+        check_parse_expr(
+            "-(a + b)",
+            expect![[r#"
+                -(a + b)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_negative_in_addition() {
+        check_parse_expr(
+            "x + -y",
+            expect![[r#"
+                x + -y
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_subtraction_of_negative() {
+        check_parse_expr(
+            "x - -y",
+            expect![[r#"
+                x - -y
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_negative_in_comparison() {
+        check_parse_expr(
+            "-5 < x",
+            expect![[r#"
+                -5 < x
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_negative_in_array() {
+        check_parse_expr(
+            "[-1, -2, -3]",
+            expect![[r#"
+                [-1, -2, -3]
             "#]],
         );
     }

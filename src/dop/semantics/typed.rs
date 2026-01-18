@@ -88,6 +88,12 @@ pub enum TypedExpr {
     /// Boolean negation expression
     BooleanNegation { operand: Box<Self> },
 
+    /// Numeric negation expression
+    NumericNegation {
+        operand: Box<Self>,
+        operand_type: NumericType,
+    },
+
     /// Boolean logical AND expression
     BooleanLogicalAnd { left: Box<Self>, right: Box<Self> },
 
@@ -191,7 +197,11 @@ impl TypedExpr {
 
             TypedExpr::NumericAdd { operand_types, .. }
             | TypedExpr::NumericSubtract { operand_types, .. }
-            | TypedExpr::NumericMultiply { operand_types, .. } => match operand_types {
+            | TypedExpr::NumericMultiply { operand_types, .. }
+            | TypedExpr::NumericNegation {
+                operand_type: operand_types,
+                ..
+            } => match operand_types {
                 NumericType::Int => &INT_TYPE,
                 NumericType::Float => &FLOAT_TYPE,
             },
@@ -300,6 +310,11 @@ impl TypedExpr {
             TypedExpr::BooleanNegation { operand, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::text("!"))
+                .append(operand.to_doc())
+                .append(BoxDoc::text(")")),
+            TypedExpr::NumericNegation { operand, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(BoxDoc::text("-"))
                 .append(operand.to_doc())
                 .append(BoxDoc::text(")")),
             TypedExpr::Equals { left, right, .. } => BoxDoc::nil()

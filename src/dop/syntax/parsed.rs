@@ -313,6 +313,12 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
+    /// Numeric negation expression for negating numeric values
+    NumericNegation {
+        operand: Box<Self>,
+        range: DocumentRange,
+    },
+
     /// A match expression, e.g. `match color {Red => "red", Blue => "blue"}`
     Match {
         subject: Box<Self>,
@@ -382,6 +388,7 @@ impl ParsedExpr {
             | ParsedExpr::EnumLiteral { range, .. }
             | ParsedExpr::BinaryOp { range, .. }
             | ParsedExpr::Negation { range, .. }
+            | ParsedExpr::NumericNegation { range, .. }
             | ParsedExpr::Match { range, .. }
             | ParsedExpr::OptionLiteral { range, .. }
             | ParsedExpr::MacroInvocation { range, .. } => range,
@@ -510,6 +517,15 @@ impl ParsedExpr {
                     BoxDoc::text("!").append(operand.to_doc())
                 } else {
                     BoxDoc::text("!(")
+                        .append(operand.to_doc())
+                        .append(BoxDoc::text(")"))
+                }
+            }
+            ParsedExpr::NumericNegation { operand, .. } => {
+                if operand.is_atomic() {
+                    BoxDoc::text("-").append(operand.to_doc())
+                } else {
+                    BoxDoc::text("-(")
                         .append(operand.to_doc())
                         .append(BoxDoc::text(")"))
                 }

@@ -216,6 +216,13 @@ pub enum IrExpr {
     /// Boolean negation expression
     BooleanNegation { operand: Box<IrExpr>, id: ExprId },
 
+    /// Numeric negation expression
+    NumericNegation {
+        operand: Box<IrExpr>,
+        operand_type: NumericType,
+        id: ExprId,
+    },
+
     /// Boolean logical AND expression
     BooleanLogicalAnd {
         left: Box<IrExpr>,
@@ -742,6 +749,7 @@ impl IrExpr {
             | IrExpr::NumericSubtract { id, .. }
             | IrExpr::NumericMultiply { id, .. }
             | IrExpr::BooleanNegation { id, .. }
+            | IrExpr::NumericNegation { id, .. }
             | IrExpr::BooleanLogicalAnd { id, .. }
             | IrExpr::BooleanLogicalOr { id, .. }
             | IrExpr::Equals { id, .. }
@@ -786,7 +794,11 @@ impl IrExpr {
 
             IrExpr::NumericAdd { operand_types, .. }
             | IrExpr::NumericSubtract { operand_types, .. }
-            | IrExpr::NumericMultiply { operand_types, .. } => match operand_types {
+            | IrExpr::NumericMultiply { operand_types, .. }
+            | IrExpr::NumericNegation {
+                operand_type: operand_types,
+                ..
+            } => match operand_types {
                 NumericType::Int => &INT_TYPE,
                 NumericType::Float => &FLOAT_TYPE,
             },
@@ -897,6 +909,11 @@ impl IrExpr {
             IrExpr::BooleanNegation { operand, .. } => BoxDoc::nil()
                 .append(BoxDoc::text("("))
                 .append(BoxDoc::text("!"))
+                .append(operand.to_doc())
+                .append(BoxDoc::text(")")),
+            IrExpr::NumericNegation { operand, .. } => BoxDoc::nil()
+                .append(BoxDoc::text("("))
+                .append(BoxDoc::text("-"))
                 .append(operand.to_doc())
                 .append(BoxDoc::text(")")),
             IrExpr::Equals { left, right, .. } => BoxDoc::nil()
@@ -1124,7 +1141,8 @@ impl IrExpr {
                     value.traverse(f);
                 }
             }
-            IrExpr::BooleanNegation { operand, .. } => {
+            IrExpr::BooleanNegation { operand, .. }
+            | IrExpr::NumericNegation { operand, .. } => {
                 operand.traverse(f);
             }
             IrExpr::JsonEncode { value, .. } => {
@@ -1229,7 +1247,8 @@ impl IrExpr {
                     value.traverse_mut(f);
                 }
             }
-            IrExpr::BooleanNegation { operand, .. } => {
+            IrExpr::BooleanNegation { operand, .. }
+            | IrExpr::NumericNegation { operand, .. } => {
                 operand.traverse_mut(f);
             }
             IrExpr::JsonEncode { value, .. } => {

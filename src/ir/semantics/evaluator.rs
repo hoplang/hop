@@ -265,6 +265,26 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             let bool_val = val.as_bool().unwrap_or(false);
             Ok(Value::Bool(!bool_val))
         }
+        IrExpr::NumericNegation {
+            operand,
+            operand_type,
+            ..
+        } => {
+            let val = evaluate_expr(operand, env)?;
+            match operand_type {
+                NumericType::Int => {
+                    let int_val = val.as_i64().unwrap_or(0);
+                    Ok(Value::Number(serde_json::Number::from(-int_val)))
+                }
+                NumericType::Float => {
+                    let float_val = val.as_f64().unwrap_or(0.0);
+                    Ok(Value::Number(
+                        serde_json::Number::from_f64(-float_val)
+                            .expect("Invalid float for negation"),
+                    ))
+                }
+            }
+        }
         IrExpr::Equals {
             left,
             right,

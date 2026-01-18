@@ -232,6 +232,9 @@ impl Pass for ConstantPropagationPass {
                         IrExpr::BooleanNegation { operand, .. } => {
                             not_operands.push((operand.id(), expr.id()));
                         }
+                        IrExpr::NumericNegation { .. } => {
+                            // Note: constant folding for numeric negation is not implemented
+                        }
                         IrExpr::Equals { left, right, .. } => {
                             binary_left_operands.push((left.id(), (expr.id(), BinaryOp::Equals)));
                             binary_right_operands.push((right.id(), (expr.id(), BinaryOp::Equals)));
@@ -485,6 +488,9 @@ impl Pass for ConstantPropagationPass {
                     },
                 );
             }
+
+            // Note: NumericNegation constant folding is not implemented since
+            // the Const enum doesn't have Int/Float variants.
 
             // Fold binary operations
             {

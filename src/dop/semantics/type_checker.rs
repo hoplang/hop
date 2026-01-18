@@ -556,6 +556,24 @@ pub fn typecheck_expr(
                 operand: Box::new(typed_operand),
             })
         }
+        ParsedExpr::NumericNegation { operand, .. } => {
+            let typed_operand = typecheck_expr(operand, var_env, type_env, annotations, None)?;
+            let operand_type = typed_operand.as_type();
+
+            match operand_type {
+                Type::Int => Ok(TypedExpr::NumericNegation {
+                    operand: Box::new(typed_operand),
+                    operand_type: NumericType::Int,
+                }),
+                Type::Float => Ok(TypedExpr::NumericNegation {
+                    operand: Box::new(typed_operand),
+                    operand_type: NumericType::Float,
+                }),
+                _ => Err(TypeError::NumericNegationRequiresNumber {
+                    range: operand.range().clone(),
+                }),
+            }
+        }
         ParsedExpr::ArrayLiteral { elements, range } => {
             if elements.is_empty() {
                 // Empty array: infer element type from expected type
@@ -1550,6 +1568,54 @@ mod tests {
                 error: Negation operator can only be applied to Bool values
                 !count
                  ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_numeric_negation_of_int() {
+        check("", &[("x", "Int")], "-x", expect!["Int"]);
+    }
+
+    #[test]
+    fn should_accept_numeric_negation_of_float() {
+        check("", &[("x", "Float")], "-x", expect!["Float"]);
+    }
+
+    #[test]
+    fn should_accept_numeric_negation_of_int_literal() {
+        check("", &[], "-42", expect!["Int"]);
+    }
+
+    #[test]
+    fn should_accept_numeric_negation_of_float_literal() {
+        check("", &[], "-3.14", expect!["Float"]);
+    }
+
+    #[test]
+    fn should_reject_numeric_negation_of_string() {
+        check(
+            "",
+            &[("name", "String")],
+            "-name",
+            expect![[r#"
+                error: Numeric negation operator can only be applied to Int or Float values
+                -name
+                 ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_numeric_negation_of_bool() {
+        check(
+            "",
+            &[("flag", "Bool")],
+            "-flag",
+            expect![[r#"
+                error: Numeric negation operator can only be applied to Int or Float values
+                -flag
+                 ^^^^
             "#]],
         );
     }

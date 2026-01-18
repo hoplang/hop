@@ -848,6 +848,12 @@ impl ExpressionTranspiler for PythonTranspiler {
             .append(BoxDoc::text(")"))
     }
 
+    fn transpile_numeric_negation<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("-(")
+            .append(self.transpile_expr(operand))
+            .append(BoxDoc::text(")"))
+    }
+
     fn transpile_json_encode<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("json.dumps(")
             .append(self.transpile_expr(value))

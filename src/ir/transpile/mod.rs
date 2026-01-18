@@ -132,6 +132,7 @@ pub trait ExpressionTranspiler {
         right: &'a IrExpr,
     ) -> BoxDoc<'a>;
     fn transpile_not<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a>;
+    fn transpile_numeric_negation<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_json_encode<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_env_lookup<'a>(&self, key: &'a IrExpr) -> BoxDoc<'a>;
     fn transpile_string_concat<'a>(&self, left: &'a IrExpr, right: &'a IrExpr) -> BoxDoc<'a>;
@@ -199,6 +200,7 @@ pub trait ExpressionTranspiler {
             IrExpr::EnvLookup { key, .. } => self.transpile_env_lookup(key),
             IrExpr::StringConcat { left, right, .. } => self.transpile_string_concat(left, right),
             IrExpr::BooleanNegation { operand, .. } => self.transpile_not(operand),
+            IrExpr::NumericNegation { operand, .. } => self.transpile_numeric_negation(operand),
             IrExpr::Equals {
                 left,
                 right,

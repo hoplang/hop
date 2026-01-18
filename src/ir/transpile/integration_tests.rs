@@ -890,70 +890,6 @@ mod tests {
         );
     }
 
-    // NOTE: Uses negative literal which hop parser doesn't support well
-    #[test]
-    #[ignore]
-    fn int_to_string_negative() {
-        check_ir(
-            IrModuleBuilder::new()
-                .component("Test", [], |t| {
-                    t.let_stmt("num", t.int(-123), |t| {
-                        t.write_expr(t.int_to_string(t.var("num")), true);
-                    });
-                })
-                .build(),
-            "-123",
-            expect![[r#"
-                -- input --
-                Test() {
-                  let num = -123 in {
-                    write_escaped(num.to_string())
-                  }
-                }
-                -- expected output --
-                -123
-                -- ts --
-                OK
-                -- go --
-                OK
-                -- python --
-                OK
-            "#]],
-        );
-    }
-
-    // NOTE: Uses negative literal which hop parser doesn't support well
-    #[test]
-    #[ignore]
-    fn float_to_int_negative() {
-        check_ir(
-            IrModuleBuilder::new()
-                .component("Test", [], |t| {
-                    t.let_stmt("temp", t.float(-2.9), |t| {
-                        t.write_expr(t.int_to_string(t.float_to_int(t.var("temp"))), true);
-                    });
-                })
-                .build(),
-            "-2",
-            expect![[r#"
-                -- input --
-                Test() {
-                  let temp = -2.9 in {
-                    write_escaped(temp.to_int().to_string())
-                  }
-                }
-                -- expected output --
-                -2
-                -- ts --
-                OK
-                -- go --
-                OK
-                -- python --
-                OK
-            "#]],
-        );
-    }
-
     // NOTE: Uses complex chained method calls
     #[test]
     #[ignore]
@@ -1034,6 +970,72 @@ mod tests {
     // HOP SYNTAX TESTS
     // These tests use check() with actual hop template syntax as input
     // ==================================================================================
+
+    #[test]
+    #[ignore]
+    fn int_to_string_negative() {
+        check(
+            indoc! {r#"
+                <Test>
+                  <let {num: Int = -123}>{num.to_string()}</let>
+                </Test>
+            "#},
+            "-123",
+            expect![[r#"
+                -- input --
+                <Test>
+                  <let {num: Int = -123}>{num.to_string()}</let>
+                </Test>
+                -- ir --
+                Test() {
+                  let num = (-123) in {
+                    write_escaped(num.to_string())
+                  }
+                }
+                -- expected output --
+                -123
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn float_to_int_negative() {
+        check(
+            indoc! {r#"
+              <Test>
+                <let {temp: Float = -2.9}>{temp.to_int().to_string()}</let>
+              </Test>
+            "#},
+            "-2",
+            expect![[r#"
+                -- input --
+                <Test>
+                  <let {temp: Float = -2.9}>{temp.to_int().to_string()}</let>
+                </Test>
+                -- ir --
+                Test() {
+                  let temp = (-2.9) in {
+                    write_escaped(temp.to_int().to_string())
+                  }
+                }
+                -- expected output --
+                -2
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
 
     #[test]
     #[ignore]

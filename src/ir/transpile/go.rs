@@ -940,6 +940,12 @@ impl ExpressionTranspiler for GoTranspiler {
             .append(BoxDoc::text(")"))
     }
 
+    fn transpile_numeric_negation<'a>(&self, operand: &'a IrExpr) -> BoxDoc<'a> {
+        BoxDoc::text("-(")
+            .append(self.transpile_expr(operand))
+            .append(BoxDoc::text(")"))
+    }
+
     fn transpile_json_encode<'a>(&self, value: &'a IrExpr) -> BoxDoc<'a> {
         BoxDoc::text("mustJSONMarshal(")
             .append(self.transpile_expr(value))

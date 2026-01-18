@@ -29,6 +29,9 @@ pub enum TypeError {
     #[error("Negation operator can only be applied to Bool values")]
     NegationRequiresBoolean { range: DocumentRange },
 
+    #[error("Numeric negation operator can only be applied to Int or Float values")]
+    NumericNegationRequiresNumber { range: DocumentRange },
+
     #[error("Array elements must all have the same type, found {expected} and {found}")]
     ArrayTypeMismatch {
         expected: String,
@@ -225,6 +228,7 @@ impl Ranged for TypeError {
             | TypeError::CannotUseAsRecord { range, .. }
             | TypeError::CannotCompareTypes { range, .. }
             | TypeError::NegationRequiresBoolean { range, .. }
+            | TypeError::NumericNegationRequiresNumber { range, .. }
             | TypeError::ArrayTypeMismatch { range, .. }
             | TypeError::CannotInferEmptyArrayType { range, .. }
             | TypeError::CannotInferNoneType { range, .. }

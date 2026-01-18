@@ -224,6 +224,15 @@ impl AlphaRenamingPass {
                 operand: Box::new(self.rename_expr(operand)),
                 id: *id,
             },
+            IrExpr::NumericNegation {
+                operand,
+                operand_type,
+                id,
+            } => IrExpr::NumericNegation {
+                operand: Box::new(self.rename_expr(operand)),
+                operand_type: operand_type.clone(),
+                id: *id,
+            },
             IrExpr::ArrayLiteral { elements, kind, id } => IrExpr::ArrayLiteral {
                 elements: elements.iter().map(|e| self.rename_expr(e)).collect(),
                 kind: kind.clone(),

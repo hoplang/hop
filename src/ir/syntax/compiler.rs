@@ -476,6 +476,14 @@ impl Compiler {
                 operand: Box::new(self.compile_expr(operand)),
                 id: expr_id,
             },
+            TypedExpr::NumericNegation {
+                operand,
+                operand_type,
+            } => IrExpr::NumericNegation {
+                operand: Box::new(self.compile_expr(operand)),
+                operand_type: operand_type.clone(),
+                id: expr_id,
+            },
             TypedExpr::ArrayLiteral { elements, kind, .. } => IrExpr::ArrayLiteral {
                 elements: elements.iter().map(|e| self.compile_expr(e)).collect(),
                 kind: kind.clone(),
