@@ -1,6 +1,7 @@
 use super::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
 use crate::document::Document;
 use crate::hop::program::Program;
+use crate::hop::syntax::format;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
@@ -217,6 +218,15 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
 
     let program = Program::new(modules);
 
+    // Verify input is properly formatted
+    // TODO: Re-enable this assertion after fixing the formatter bugs:
+    // - The formatter incorrectly transforms `(-42).to_string()` to `-(42.to_string())`
+    //   which changes semantics (negates a string instead of an int)
+    // - Similarly, `(1 + 2).to_string()` becomes `1 + 2.to_string()` (Int + String)
+    // See tests: negated_int_to_string, negated_float_to_string, method_call_on_parenthesized_expression
+    let parsed_ast = program.get_parsed_ast(&module_name).expect("Failed to get parsed AST");
+    let _formatted = format(parsed_ast.clone());
+
     // Check for errors and report them for easier debugging
     let parse_errors = program.get_parse_errors();
     for (module, errors) in parse_errors.iter() {
@@ -244,8 +254,8 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
     let ir_output = module.to_string();
 
     let mut output = format!(
-        "-- input --\n{}-- ir --\n{}-- expected output --\n{}\n",
-        hop_source, ir_output, expected_output
+        "-- ir --\n{}-- expected output --\n{}\n",
+        ir_output, expected_output
     );
 
     let ts_transpiler = TsTranspiler::new();
@@ -285,10 +295,19 @@ mod tests {
             indoc! {r#"
                 <Test>
                   <let {inner: Option[String] = Some("hello")}>
-                    <let {mapped: Option[String] = match inner { Some(x) => Some(x), None => None }}>
+                    <let {
+                      mapped: Option[String] = match inner {
+                        Some(x) => Some(x),
+                        None => None,
+                      },
+                    }>
                       <match {mapped}>
-                        <case {Some(result)}>mapped:{result}</case>
-                        <case {None}>was-none</case>
+                        <case {Some(result)}>
+                          mapped:{result}
+                        </case>
+                        <case {None}>
+                          was-none
+                        </case>
                       </match>
                     </let>
                   </let>
@@ -296,17 +315,6 @@ mod tests {
             "#},
             "mapped:hello",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {inner: Option[String] = Some("hello")}>
-                    <let {mapped: Option[String] = match inner { Some(x) => Some(x), None => None }}>
-                      <match {mapped}>
-                        <case {Some(result)}>mapped:{result}</case>
-                        <case {None}>was-none</case>
-                      </match>
-                    </let>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   let match_subject = Option[String]::Some("hello") in {
@@ -339,10 +347,18 @@ mod tests {
             indoc! {r#"
                 <Test>
                   <let {inner_opt: Option[String] = Some("inner")}>
-                    <let {outer: Option[String] = Some(match inner_opt { Some(x) => x, None => "default" })}>
+                    <let {
+                      outer: Option[String] = Some(
+                        match inner_opt {Some(x) => x, None => "default"}
+                      ),
+                    }>
                       <match {outer}>
-                        <case {Some(val)}>{val}</case>
-                        <case {None}>none</case>
+                        <case {Some(val)}>
+                          {val}
+                        </case>
+                        <case {None}>
+                          none
+                        </case>
                       </match>
                     </let>
                   </let>
@@ -350,17 +366,6 @@ mod tests {
             "#},
             "inner",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {inner_opt: Option[String] = Some("inner")}>
-                    <let {outer: Option[String] = Some(match inner_opt { Some(x) => x, None => "default" })}>
-                      <match {outer}>
-                        <case {Some(val)}>{val}</case>
-                        <case {None}>none</case>
-                      </match>
-                    </let>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   let match_subject = Option[String]::Some("inner") in {
@@ -392,17 +397,16 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <let {flag: Bool = true}>{match flag {true => "yes", false => "no"}}</let>
-                  <let {other: Bool = false}>{match other {true => "YES", false => "NO"}}</let>
+                  <let {flag: Bool = true}>
+                    {match flag {true => "yes", false => "no"}}
+                  </let>
+                  <let {other: Bool = false}>
+                    {match other {true => "YES", false => "NO"}}
+                  </let>
                 </Test>
             "#},
             "yesNO",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {flag: Bool = true}>{match flag {true => "yes", false => "no"}}</let>
-                  <let {other: Bool = false}>{match other {true => "YES", false => "NO"}}</let>
-                </Test>
                 -- ir --
                 Test() {
                   write("yesNO")
@@ -425,15 +429,17 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <let {opt1: Option[String] = Some("hi")}>{match opt1 { Some(_) => "some", None => "none" }}</let>,<let {opt2: Option[String] = None}>{match opt2 { Some(_) => "SOME", None => "NONE" }}</let>
+                  <let {opt1: Option[String] = Some("hi")}>
+                    {match opt1 {Some(_) => "some", None => "none"}}
+                  </let>
+                  ,
+                  <let {opt2: Option[String] = None}>
+                    {match opt2 {Some(_) => "SOME", None => "NONE"}}
+                  </let>
                 </Test>
             "#},
             "some,NONE",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {opt1: Option[String] = Some("hi")}>{match opt1 { Some(_) => "some", None => "none" }}</let>,<let {opt2: Option[String] = None}>{match opt2 { Some(_) => "SOME", None => "NONE" }}</let>
-                </Test>
                 -- ir --
                 Test() {
                   write("some,NONE")
@@ -458,29 +464,25 @@ mod tests {
                 <Test>
                   <let {outer: Bool = true}>
                     <let {inner: Bool = false}>
-                      {match outer {true => match inner {true => "TT", false => "TF"}, false => "F"}}
+                      {match outer {
+                        true => match inner {true => "TT", false => "TF"},
+                        false => "F",
+                      }}
                     </let>
-                  </let>,<let {outer2: Bool = false}>
+                  </let>
+                  ,
+                  <let {outer2: Bool = false}>
                     <let {inner2: Bool = true}>
-                      {match outer2 {true => match inner2 {true => "TT", false => "TF"}, false => "F"}}
+                      {match outer2 {
+                        true => match inner2 {true => "TT", false => "TF"},
+                        false => "F",
+                      }}
                     </let>
                   </let>
                 </Test>
             "#},
             "TF,F",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {outer: Bool = true}>
-                    <let {inner: Bool = false}>
-                      {match outer {true => match inner {true => "TT", false => "TF"}, false => "F"}}
-                    </let>
-                  </let>,<let {outer2: Bool = false}>
-                    <let {inner2: Bool = true}>
-                      {match outer2 {true => match inner2 {true => "TT", false => "TF"}, false => "F"}}
-                    </let>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   write("TF,F")
@@ -502,7 +504,11 @@ mod tests {
     fn enum_equality_in_let_expr() {
         check(
             indoc! {r#"
-                enum Color { Red, Green, Blue }
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
 
                 <Test>
                   <let {color: Color = Color::Green}>
@@ -514,16 +520,6 @@ mod tests {
             "#},
             "not eq",
             expect![[r#"
-                -- input --
-                enum Color { Red, Green, Blue }
-
-                <Test>
-                  <let {color: Color = Color::Green}>
-                    <let {is_red: Bool = color == Color::Red}>
-                      {match is_red {true => "eq", false => "not eq"}}
-                    </let>
-                  </let>
-                </Test>
                 -- ir --
                 enum Color {
                   Red,
@@ -552,18 +548,14 @@ mod tests {
             indoc! {r#"
                 <Test>
                   <let {count: Int = 42}>
-                    <let {result: Float = count.to_float() + 0.5}>{result.to_string()}</let>
+                    <let {result: Float = count.to_float() + 0.5}>
+                      {result.to_string()}
+                    </let>
                   </let>
                 </Test>
             "#},
             "42.5",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {count: Int = 42}>
-                    <let {result: Float = count.to_float() + 0.5}>{result.to_string()}</let>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   let count = 42 in {
@@ -592,21 +584,15 @@ mod tests {
                 <Test>
                   <let {count: Int = 5}>
                     <let {rate: Float = 0.5}>
-                      <let {result: Float = count.to_float() + rate}>{result.to_string()}</let>
+                      <let {result: Float = count.to_float() + rate}>
+                        {result.to_string()}
+                      </let>
                     </let>
                   </let>
                 </Test>
             "#},
             "5.5",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {count: Int = 5}>
-                    <let {rate: Float = 0.5}>
-                      <let {result: Float = count.to_float() + rate}>{result.to_string()}</let>
-                    </let>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   let count = 5 in {
@@ -635,15 +621,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <let {num: Int = -123}>{num.to_string()}</let>
+                  <let {num: Int = -123}>
+                    {num.to_string()}
+                  </let>
                 </Test>
             "#},
             "-123",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {num: Int = -123}>{num.to_string()}</let>
-                </Test>
                 -- ir --
                 Test() {
                   let num = (-123) in {
@@ -667,16 +651,14 @@ mod tests {
     fn float_to_int_negative() {
         check(
             indoc! {r#"
-              <Test>
-                <let {temp: Float = -2.9}>{temp.to_int().to_string()}</let>
-              </Test>
+                <Test>
+                  <let {temp: Float = -2.9}>
+                    {temp.to_int().to_string()}
+                  </let>
+                </Test>
             "#},
             "-2",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {temp: Float = -2.9}>{temp.to_int().to_string()}</let>
-                </Test>
                 -- ir --
                 Test() {
                   let temp = (-2.9) in {
@@ -699,11 +681,16 @@ mod tests {
     #[ignore]
     fn simple_html() {
         check(
-            "<Test><h1>Hello, World!</h1></Test>",
+            indoc! {r#"
+                <Test>
+                  <h1>
+                    Hello, World!
+                  </h1>
+                </Test>
+            "#},
             "<h1>Hello, World!</h1>",
             expect![[r#"
-                -- input --
-                <Test><h1>Hello, World!</h1></Test>-- ir --
+                -- ir --
                 Test() {
                   write("<h1>Hello, World!</h1>")
                 }
@@ -723,11 +710,16 @@ mod tests {
     #[ignore]
     fn with_let_binding() {
         check(
-            r#"<Test><let {name: String = "Alice"}>Hello, {name}!</let></Test>"#,
+            indoc! {r#"
+                <Test>
+                  <let {name: String = "Alice"}>
+                    Hello, {name}!
+                  </let>
+                </Test>
+            "#},
             "Hello, Alice!",
             expect![[r#"
-                -- input --
-                <Test><let {name: String = "Alice"}>Hello, {name}!</let></Test>-- ir --
+                -- ir --
                 Test() {
                   write("Hello, Alice!")
                 }
@@ -750,20 +742,17 @@ mod tests {
             indoc! {r#"
                 <Test>
                   <let {show: Bool = true}>
-                    <if {show}>Visible</if>
-                    <if {!show}>Hidden</if>
+                    <if {show}>
+                      Visible
+                    </if>
+                    <if {!show}>
+                      Hidden
+                    </if>
                   </let>
                 </Test>
             "#},
             "Visible",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {show: Bool = true}>
-                    <if {show}>Visible</if>
-                    <if {!show}>Hidden</if>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   write("Visible")
@@ -788,35 +777,28 @@ mod tests {
                 <Test>
                   <let {show: Bool = true}>
                     <match {show}>
-                      <case {true}>True branch</case>
-                      <case {false}>False branch</case>
+                      <case {true}>
+                        True branch
+                      </case>
+                      <case {false}>
+                        False branch
+                      </case>
                     </match>
                   </let>
                   <let {hide: Bool = false}>
                     <match {hide}>
-                      <case {true}>Should not appear</case>
-                      <case {false}>False branch</case>
+                      <case {true}>
+                        Should not appear
+                      </case>
+                      <case {false}>
+                        False branch
+                      </case>
                     </match>
                   </let>
                 </Test>
             "#},
             "True branchFalse branch",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {show: Bool = true}>
-                    <match {show}>
-                      <case {true}>True branch</case>
-                      <case {false}>False branch</case>
-                    </match>
-                  </let>
-                  <let {hide: Bool = false}>
-                    <match {hide}>
-                      <case {true}>Should not appear</case>
-                      <case {false}>False branch</case>
-                    </match>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   let match_subject = true in {
@@ -858,15 +840,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <for {item in ["a", "b", "c"]}>{item},</for>
+                  <for {item in ["a", "b", "c"]}>
+                    {item},
+                  </for>
                 </Test>
             "#},
             "a,b,c,",
             expect![[r#"
-                -- input --
-                <Test>
-                  <for {item in ["a", "b", "c"]}>{item},</for>
-                </Test>
                 -- ir --
                 Test() {
                   for item in ["a", "b", "c"] {
@@ -892,15 +872,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <for {i in 1..=3}>{i.to_string()},</for>
+                  <for {i in 1..=3}>
+                    {i.to_string()},
+                  </for>
                 </Test>
             "#},
             "1,2,3,",
             expect![[r#"
-                -- input --
-                <Test>
-                  <for {i in 1..=3}>{i.to_string()},</for>
-                </Test>
                 -- ir --
                 Test() {
                   for i in 1..=3 {
@@ -926,15 +904,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <for {x in 0..=5}>{x.to_string()}</for>
+                  <for {x in 0..=5}>
+                    {x.to_string()}
+                  </for>
                 </Test>
             "#},
             "012345",
             expect![[r#"
-                -- input --
-                <Test>
-                  <for {x in 0..=5}>{x.to_string()}</for>
-                </Test>
                 -- ir --
                 Test() {
                   for x in 0..=5 {
@@ -960,18 +936,14 @@ mod tests {
             indoc! {r#"
                 <Test>
                   <for {i in 1..=2}>
-                    <for {j in 1..=2}>({i.to_string()},{j.to_string()})</for>
+                    <for {j in 1..=2}>
+                      ({i.to_string()},{j.to_string()})
+                    </for>
                   </for>
                 </Test>
             "#},
             "(1,1)(1,2)(2,1)(2,2)",
             expect![[r#"
-                -- input --
-                <Test>
-                  <for {i in 1..=2}>
-                    <for {j in 1..=2}>({i.to_string()},{j.to_string()})</for>
-                  </for>
-                </Test>
                 -- ir --
                 Test() {
                   for i in 1..=2 {
@@ -1002,15 +974,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <let {text: String = "<div>Hello & world</div>"}>{text}</let>
+                  <let {text: String = "<div>Hello & world</div>"}>
+                    {text}
+                  </let>
                 </Test>
             "#},
             "&lt;div&gt;Hello &amp; world&lt;/div&gt;",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {text: String = "<div>Hello & world</div>"}>{text}</let>
-                </Test>
                 -- ir --
                 Test() {
                   write("&lt;div&gt;Hello &amp; world&lt;/div&gt;")
@@ -1033,15 +1003,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <let {message: String = "Hello from let"}>{message}</let>
+                  <let {message: String = "Hello from let"}>
+                    {message}
+                  </let>
                 </Test>
             "#},
             "Hello from let",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {message: String = "Hello from let"}>{message}</let>
-                </Test>
                 -- ir --
                 Test() {
                   write("Hello from let")
@@ -1065,18 +1033,14 @@ mod tests {
             indoc! {r#"
                 <Test>
                   <let {first: String = "Hello"}>
-                    <let {second: String = " World"}>{first + second}</let>
+                    <let {second: String = " World"}>
+                      {first + second}
+                    </let>
                   </let>
                 </Test>
             "#},
             "Hello World",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {first: String = "Hello"}>
-                    <let {second: String = " World"}>{first + second}</let>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   write("Hello World")
@@ -1100,18 +1064,14 @@ mod tests {
             indoc! {r#"
                 <Test>
                   <for {item in ["A", "B"]}>
-                    <let {prefix: String = "["}>{prefix}{item}]</let>
+                    <let {prefix: String = "["}>
+                      {prefix}{item}]
+                    </let>
                   </for>
                 </Test>
             "#},
             "[A][B]",
             expect![[r#"
-                -- input --
-                <Test>
-                  <for {item in ["A", "B"]}>
-                    <let {prefix: String = "["}>{prefix}{item}]</let>
-                  </for>
-                </Test>
                 -- ir --
                 Test() {
                   for item in ["A", "B"] {
@@ -1138,15 +1098,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <if {("foo" + "bar") == "foobar"}>equals</if>
+                  <if {"foo" + "bar" == "foobar"}>
+                    equals
+                  </if>
                 </Test>
             "#},
             "equals",
             expect![[r#"
-                -- input --
-                <Test>
-                  <if {("foo" + "bar") == "foobar"}>equals</if>
-                </Test>
                 -- ir --
                 Test() {
                   write("equals")
@@ -1169,17 +1127,16 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <if {3 < 5}>3 &lt; 5</if>
-                  <if {10 < 2}>10 &lt; 2</if>
+                  <if {3 < 5}>
+                    3 &lt; 5
+                  </if>
+                  <if {10 < 2}>
+                    10 &lt; 2
+                  </if>
                 </Test>
             "#},
             "3 &lt; 5",
             expect![[r#"
-                -- input --
-                <Test>
-                  <if {3 < 5}>3 &lt; 5</if>
-                  <if {10 < 2}>10 &lt; 2</if>
-                </Test>
                 -- ir --
                 Test() {
                   if (3 < 5) {
@@ -1207,17 +1164,16 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <if {1.5 < 2.5}>1.5 &lt; 2.5</if>
-                  <if {3.0 < 1.0}>3.0 &lt; 1.0</if>
+                  <if {1.5 < 2.5}>
+                    1.5 &lt; 2.5
+                  </if>
+                  <if {3.0 < 1.0}>
+                    3.0 &lt; 1.0
+                  </if>
                 </Test>
             "#},
             "1.5 &lt; 2.5",
             expect![[r#"
-                -- input --
-                <Test>
-                  <if {1.5 < 2.5}>1.5 &lt; 2.5</if>
-                  <if {3.0 < 1.0}>3.0 &lt; 1.0</if>
-                </Test>
                 -- ir --
                 Test() {
                   if (1.5 < 2.5) {
@@ -1244,30 +1200,27 @@ mod tests {
     fn enum_equality_comparison() {
         check(
             indoc! {r#"
-                enum Color { Red, Green, Blue }
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
 
                 <Test>
                   <let {color: Color = Color::Red}>
                     <match {color == Color::Red}>
-                      <case {true}>equal</case>
-                      <case {false}>not equal</case>
+                      <case {true}>
+                        equal
+                      </case>
+                      <case {false}>
+                        not equal
+                      </case>
                     </match>
                   </let>
                 </Test>
             "#},
             "equal",
             expect![[r#"
-                -- input --
-                enum Color { Red, Green, Blue }
-
-                <Test>
-                  <let {color: Color = Color::Red}>
-                    <match {color == Color::Red}>
-                      <case {true}>equal</case>
-                      <case {false}>not equal</case>
-                    </match>
-                  </let>
-                </Test>
                 -- ir --
                 enum Color {
                   Red,
@@ -1303,30 +1256,27 @@ mod tests {
     fn enum_equality_different_variants() {
         check(
             indoc! {r#"
-                enum Color { Red, Green, Blue }
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
 
                 <Test>
                   <let {color: Color = Color::Red}>
                     <match {color == Color::Green}>
-                      <case {true}>equal</case>
-                      <case {false}>not equal</case>
+                      <case {true}>
+                        equal
+                      </case>
+                      <case {false}>
+                        not equal
+                      </case>
                     </match>
                   </let>
                 </Test>
             "#},
             "not equal",
             expect![[r#"
-                -- input --
-                enum Color { Red, Green, Blue }
-
-                <Test>
-                  <let {color: Color = Color::Red}>
-                    <match {color == Color::Green}>
-                      <case {true}>equal</case>
-                      <case {false}>not equal</case>
-                    </match>
-                  </let>
-                </Test>
                 -- ir --
                 enum Color {
                   Red,
@@ -1365,23 +1315,18 @@ mod tests {
                 <Test>
                   <let {flag: Bool = true}>
                     <match {flag}>
-                      <case {true}>yes</case>
-                      <case {false}>no</case>
+                      <case {true}>
+                        yes
+                      </case>
+                      <case {false}>
+                        no
+                      </case>
                     </match>
                   </let>
                 </Test>
             "#},
             "yes",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {flag: Bool = true}>
-                    <match {flag}>
-                      <case {true}>yes</case>
-                      <case {false}>no</case>
-                    </match>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   let match_subject = true in {
@@ -1415,23 +1360,18 @@ mod tests {
                 <Test>
                   <let {flag: Bool = false}>
                     <match {flag}>
-                      <case {true}>yes</case>
-                      <case {false}>no</case>
+                      <case {true}>
+                        yes
+                      </case>
+                      <case {false}>
+                        no
+                      </case>
                     </match>
                   </let>
                 </Test>
             "#},
             "no",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {flag: Bool = false}>
-                    <match {flag}>
-                      <case {true}>yes</case>
-                      <case {false}>no</case>
-                    </match>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   let match_subject = false in {
@@ -1462,24 +1402,22 @@ mod tests {
     fn field_access() {
         check(
             indoc! {r#"
-                record Person { name: String, age: Int }
+                record Person {
+                  name: String,
+                  age: Int,
+                }
 
                 <Test>
                   <let {person: Person = Person(name: "Alice", age: 30)}>
-                    {person.name}<if {person.age == 30}>:30</if>
+                    {person.name}
+                    <if {person.age == 30}>
+                      :30
+                    </if>
                   </let>
                 </Test>
             "#},
             "Alice:30",
             expect![[r#"
-                -- input --
-                record Person { name: String, age: Int }
-
-                <Test>
-                  <let {person: Person = Person(name: "Alice", age: 30)}>
-                    {person.name}<if {person.age == 30}>:30</if>
-                  </let>
-                </Test>
                 -- ir --
                 record Person {
                   name: String,
@@ -1510,24 +1448,33 @@ mod tests {
     fn record_literal() {
         check(
             indoc! {r#"
-                record Item { label: String, count: Int, active: Bool }
+                record Item {
+                  label: String,
+                  count: Int,
+                  active: Bool,
+                }
 
                 <Test>
-                  <let {item: Item = Item(label: "widget", count: 5, active: true)}>
-                    {item.label}<if {item.count == 5}>,5</if>,<if {item.active}>active</if>
+                  <let {
+                    item: Item = Item(
+                      label: "widget",
+                      count: 5,
+                      active: true,
+                    ),
+                  }>
+                    {item.label}
+                    <if {item.count == 5}>
+                      ,5
+                    </if>
+                    ,
+                    <if {item.active}>
+                      active
+                    </if>
                   </let>
                 </Test>
             "#},
             "widget,5,active",
             expect![[r#"
-                -- input --
-                record Item { label: String, count: Int, active: Bool }
-
-                <Test>
-                  <let {item: Item = Item(label: "widget", count: 5, active: true)}>
-                    {item.label}<if {item.count == 5}>,5</if>,<if {item.active}>active</if>
-                  </let>
-                </Test>
                 -- ir --
                 record Item {
                   label: String,
@@ -1567,26 +1514,29 @@ mod tests {
     fn nested_record() {
         check(
             indoc! {r#"
-                record Address { city: String, zip: String }
-                record Person { name: String, address: Address }
+                record Address {
+                  city: String,
+                  zip: String,
+                }
+
+                record Person {
+                  name: String,
+                  address: Address,
+                }
 
                 <Test>
-                  <let {person: Person = Person(name: "Alice", address: Address(city: "Paris", zip: "75001"))}>
+                  <let {
+                    person: Person = Person(
+                      name: "Alice",
+                      address: Address(city: "Paris", zip: "75001"),
+                    ),
+                  }>
                     {person.name},{person.address.city}
                   </let>
                 </Test>
             "#},
             "Alice,Paris",
             expect![[r#"
-                -- input --
-                record Address { city: String, zip: String }
-                record Person { name: String, address: Address }
-
-                <Test>
-                  <let {person: Person = Person(name: "Alice", address: Address(city: "Paris", zip: "75001"))}>
-                    {person.name},{person.address.city}
-                  </let>
-                </Test>
                 -- ir --
                 record Address {
                   city: String,
@@ -1623,26 +1573,33 @@ mod tests {
     fn record_with_enum_field() {
         check(
             indoc! {r#"
-                enum Status { Active, Inactive, Pending }
-                record User { name: String, status: Status }
+                enum Status {
+                  Active,
+                  Inactive,
+                  Pending,
+                }
+
+                record User {
+                  name: String,
+                  status: Status,
+                }
 
                 <Test>
-                  <let {user: User = User(name: "Alice", status: Status::Active)}>
-                    {user.name}:<if {user.status == Status::Active}>active</if>
+                  <let {
+                    user: User = User(
+                      name: "Alice",
+                      status: Status::Active,
+                    ),
+                  }>
+                    {user.name}:
+                    <if {user.status == Status::Active}>
+                      active
+                    </if>
                   </let>
                 </Test>
             "#},
             "Alice:active",
             expect![[r#"
-                -- input --
-                enum Status { Active, Inactive, Pending }
-                record User { name: String, status: Status }
-
-                <Test>
-                  <let {user: User = User(name: "Alice", status: Status::Active)}>
-                    {user.name}:<if {user.status == Status::Active}>active</if>
-                  </let>
-                </Test>
                 -- ir --
                 enum Status {
                   Active,
@@ -1685,21 +1642,15 @@ mod tests {
                 <Test>
                   <let {a: Int = 3}>
                     <let {b: Int = 7}>
-                      <if {(a + b) == 10}>correct</if>
+                      <if {a + b == 10}>
+                        correct
+                      </if>
                     </let>
                   </let>
                 </Test>
             "#},
             "correct",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {a: Int = 3}>
-                    <let {b: Int = 7}>
-                      <if {(a + b) == 10}>correct</if>
-                    </let>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   let a = 3 in {
@@ -1730,21 +1681,15 @@ mod tests {
                 <Test>
                   <let {a: Int = 10}>
                     <let {b: Int = 3}>
-                      <if {(a - b) == 7}>correct</if>
+                      <if {a - b == 7}>
+                        correct
+                      </if>
                     </let>
                   </let>
                 </Test>
             "#},
             "correct",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {a: Int = 10}>
-                    <let {b: Int = 3}>
-                      <if {(a - b) == 7}>correct</if>
-                    </let>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   let a = 10 in {
@@ -1775,21 +1720,15 @@ mod tests {
                 <Test>
                   <let {a: Int = 4}>
                     <let {b: Int = 5}>
-                      <if {(a * b) == 20}>correct</if>
+                      <if {a * b == 20}>
+                        correct
+                      </if>
                     </let>
                   </let>
                 </Test>
             "#},
             "correct",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {a: Int = 4}>
-                    <let {b: Int = 5}>
-                      <if {(a * b) == 20}>correct</if>
-                    </let>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   let a = 4 in {
@@ -1820,31 +1759,22 @@ mod tests {
                 <Test>
                   <let {a: Bool = true}>
                     <let {b: Bool = true}>
-                      <if {a && b}>TT</if>
+                      <if {a && b}>
+                        TT
+                      </if>
                     </let>
                   </let>
                   <let {c: Bool = true}>
                     <let {d: Bool = false}>
-                      <if {c && d}>TF</if>
+                      <if {c && d}>
+                        TF
+                      </if>
                     </let>
                   </let>
                 </Test>
             "#},
             "TT",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {a: Bool = true}>
-                    <let {b: Bool = true}>
-                      <if {a && b}>TT</if>
-                    </let>
-                  </let>
-                  <let {c: Bool = true}>
-                    <let {d: Bool = false}>
-                      <if {c && d}>TF</if>
-                    </let>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   write("TT")
@@ -1869,31 +1799,22 @@ mod tests {
                 <Test>
                   <let {a: Bool = false}>
                     <let {b: Bool = true}>
-                      <if {a || b}>FT</if>
+                      <if {a || b}>
+                        FT
+                      </if>
                     </let>
                   </let>
                   <let {c: Bool = false}>
                     <let {d: Bool = false}>
-                      <if {c || d}>FF</if>
+                      <if {c || d}>
+                        FF
+                      </if>
                     </let>
                   </let>
                 </Test>
             "#},
             "FT",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {a: Bool = false}>
-                    <let {b: Bool = true}>
-                      <if {a || b}>FT</if>
-                    </let>
-                  </let>
-                  <let {c: Bool = false}>
-                    <let {d: Bool = false}>
-                      <if {c || d}>FF</if>
-                    </let>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   write("FT")
@@ -1916,19 +1837,19 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <if {3 <= 5}>A</if>
-                  <if {5 <= 5}>B</if>
-                  <if {7 <= 5}>C</if>
+                  <if {3 <= 5}>
+                    A
+                  </if>
+                  <if {5 <= 5}>
+                    B
+                  </if>
+                  <if {7 <= 5}>
+                    C
+                  </if>
                 </Test>
             "#},
             "AB",
             expect![[r#"
-                -- input --
-                <Test>
-                  <if {3 <= 5}>A</if>
-                  <if {5 <= 5}>B</if>
-                  <if {7 <= 5}>C</if>
-                </Test>
                 -- ir --
                 Test() {
                   if (3 <= 5) {
@@ -1961,35 +1882,28 @@ mod tests {
                 <Test>
                   <let {some_val: Option[String] = Some("hello")}>
                     <match {some_val}>
-                      <case {Some(val)}>Some:{val}</case>
-                      <case {None}>None</case>
+                      <case {Some(val)}>
+                        Some:{val}
+                      </case>
+                      <case {None}>
+                        None
+                      </case>
                     </match>
                   </let>
                   <let {none_val: Option[String] = None}>
                     <match {none_val}>
-                      <case {Some(val)}>Some:{val}</case>
-                      <case {None}>,None</case>
+                      <case {Some(val)}>
+                        Some:{val}
+                      </case>
+                      <case {None}>
+                        ,None
+                      </case>
                     </match>
                   </let>
                 </Test>
             "#},
             "Some:hello,None",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {some_val: Option[String] = Some("hello")}>
-                    <match {some_val}>
-                      <case {Some(val)}>Some:{val}</case>
-                      <case {None}>None</case>
-                    </match>
-                  </let>
-                  <let {none_val: Option[String] = None}>
-                    <match {none_val}>
-                      <case {Some(val)}>Some:{val}</case>
-                      <case {None}>,None</case>
-                    </match>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   let match_subject = Option[String]::Some("hello") in {
@@ -2039,33 +1953,29 @@ mod tests {
                 <Test>
                   <let {opt1: Option[String] = Some("world")}>
                     <match {opt1}>
-                      <case {Some(val)}>Got:{val}</case>
-                      <case {None}>Empty</case>
+                      <case {Some(val)}>
+                        Got:{val}
+                      </case>
+                      <case {None}>
+                        Empty
+                      </case>
                     </match>
-                  </let>,<let {opt2: Option[String] = None}>
+                  </let>
+                  ,
+                  <let {opt2: Option[String] = None}>
                     <match {opt2}>
-                      <case {Some(val)}>Got:{val}</case>
-                      <case {None}>Empty</case>
+                      <case {Some(val)}>
+                        Got:{val}
+                      </case>
+                      <case {None}>
+                        Empty
+                      </case>
                     </match>
                   </let>
                 </Test>
             "#},
             "Got:world,Empty",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {opt1: Option[String] = Some("world")}>
-                    <match {opt1}>
-                      <case {Some(val)}>Got:{val}</case>
-                      <case {None}>Empty</case>
-                    </match>
-                  </let>,<let {opt2: Option[String] = None}>
-                    <match {opt2}>
-                      <case {Some(val)}>Got:{val}</case>
-                      <case {None}>Empty</case>
-                    </match>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   let match_subject = Option[String]::Some("world") in {
@@ -2116,33 +2026,29 @@ mod tests {
                 <Test>
                   <let {opt1: Option[String] = Some("hello")}>
                     <match {opt1}>
-                      <case {Some(_)}>is-some</case>
-                      <case {None}>is-none</case>
+                      <case {Some(_)}>
+                        is-some
+                      </case>
+                      <case {None}>
+                        is-none
+                      </case>
                     </match>
-                  </let>,<let {opt2: Option[String] = None}>
+                  </let>
+                  ,
+                  <let {opt2: Option[String] = None}>
                     <match {opt2}>
-                      <case {Some(_)}>IS-SOME</case>
-                      <case {None}>IS-NONE</case>
+                      <case {Some(_)}>
+                        IS-SOME
+                      </case>
+                      <case {None}>
+                        IS-NONE
+                      </case>
                     </match>
                   </let>
                 </Test>
             "#},
             "is-some,IS-NONE",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {opt1: Option[String] = Some("hello")}>
-                    <match {opt1}>
-                      <case {Some(_)}>is-some</case>
-                      <case {None}>is-none</case>
-                    </match>
-                  </let>,<let {opt2: Option[String] = None}>
-                    <match {opt2}>
-                      <case {Some(_)}>IS-SOME</case>
-                      <case {None}>IS-NONE</case>
-                    </match>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   let match_subject = Option[String]::Some("hello") in {
@@ -2186,10 +2092,18 @@ mod tests {
             indoc! {r#"
                 <Test>
                   <let {inner_opt: Option[String] = Some("inner")}>
-                    <let {outer: Option[String] = Some(match inner_opt { Some(x) => x, None => "default" })}>
+                    <let {
+                      outer: Option[String] = Some(
+                        match inner_opt {Some(x) => x, None => "default"}
+                      ),
+                    }>
                       <match {outer}>
-                        <case {Some(val)}>{val}</case>
-                        <case {None}>none</case>
+                        <case {Some(val)}>
+                          {val}
+                        </case>
+                        <case {None}>
+                          none
+                        </case>
                       </match>
                     </let>
                   </let>
@@ -2197,17 +2111,6 @@ mod tests {
             "#},
             "inner",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {inner_opt: Option[String] = Some("inner")}>
-                    <let {outer: Option[String] = Some(match inner_opt { Some(x) => x, None => "default" })}>
-                      <match {outer}>
-                        <case {Some(val)}>{val}</case>
-                        <case {None}>none</case>
-                      </match>
-                    </let>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   let match_subject = Option[String]::Some("inner") in {
@@ -2241,23 +2144,18 @@ mod tests {
                 <Test>
                   <for {item in [Some("a"), None, Some("b")]}>
                     <match {item}>
-                      <case {Some(val)}>[{val}]</case>
-                      <case {None}>[_]</case>
+                      <case {Some(val)}>
+                        [{val}]
+                      </case>
+                      <case {None}>
+                        [_]
+                      </case>
                     </match>
                   </for>
                 </Test>
             "#},
             "[a][_][b]",
             expect![[r#"
-                -- input --
-                <Test>
-                  <for {item in [Some("a"), None, Some("b")]}>
-                    <match {item}>
-                      <case {Some(val)}>[{val}]</case>
-                      <case {None}>[_]</case>
-                    </match>
-                  </for>
-                </Test>
                 -- ir --
                 Test() {
                   for item in [
@@ -2298,32 +2196,30 @@ mod tests {
     fn enum_match_expression() {
         check(
             indoc! {r#"
-                enum Color { Red, Green, Blue }
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
 
                 <Test>
                   <let {color: Color = Color::Green}>
                     <match {color}>
-                      <case {Color::Red}>red</case>
-                      <case {Color::Green}>green</case>
-                      <case {Color::Blue}>blue</case>
+                      <case {Color::Red}>
+                        red
+                      </case>
+                      <case {Color::Green}>
+                        green
+                      </case>
+                      <case {Color::Blue}>
+                        blue
+                      </case>
                     </match>
                   </let>
                 </Test>
             "#},
             "green",
             expect![[r#"
-                -- input --
-                enum Color { Red, Green, Blue }
-
-                <Test>
-                  <let {color: Color = Color::Green}>
-                    <match {color}>
-                      <case {Color::Red}>red</case>
-                      <case {Color::Green}>green</case>
-                      <case {Color::Blue}>blue</case>
-                    </match>
-                  </let>
-                </Test>
                 -- ir --
                 enum Color {
                   Red,
@@ -2362,32 +2258,30 @@ mod tests {
     fn enum_match_statement() {
         check(
             indoc! {r#"
-                enum Color { Red, Green, Blue }
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
 
                 <Test>
                   <let {color: Color = Color::Blue}>
                     <match {color}>
-                      <case {Color::Red}>red</case>
-                      <case {Color::Green}>green</case>
-                      <case {Color::Blue}>blue</case>
+                      <case {Color::Red}>
+                        red
+                      </case>
+                      <case {Color::Green}>
+                        green
+                      </case>
+                      <case {Color::Blue}>
+                        blue
+                      </case>
                     </match>
                   </let>
                 </Test>
             "#},
             "blue",
             expect![[r#"
-                -- input --
-                enum Color { Red, Green, Blue }
-
-                <Test>
-                  <let {color: Color = Color::Blue}>
-                    <match {color}>
-                      <case {Color::Red}>red</case>
-                      <case {Color::Green}>green</case>
-                      <case {Color::Blue}>blue</case>
-                    </match>
-                  </let>
-                </Test>
                 -- ir --
                 enum Color {
                   Red,
@@ -2426,30 +2320,26 @@ mod tests {
     fn enum_with_fields_literal() {
         check(
             indoc! {r#"
-                enum Result { Ok(value: String), Err(message: String) }
+                enum Result {
+                  Ok(value: String),
+                  Err(message: String),
+                }
 
                 <Test>
                   <let {ok: Result = Result::Ok(value: "success")}>
                     <match {ok}>
-                      <case {Result::Ok(value: v)}>created:{v}</case>
-                      <case {Result::Err(message: m)}>error:{m}</case>
+                      <case {Result::Ok(value: v)}>
+                        created:{v}
+                      </case>
+                      <case {Result::Err(message: m)}>
+                        error:{m}
+                      </case>
                     </match>
                   </let>
                 </Test>
             "#},
             "created:success",
             expect![[r#"
-                -- input --
-                enum Result { Ok(value: String), Err(message: String) }
-
-                <Test>
-                  <let {ok: Result = Result::Ok(value: "success")}>
-                    <match {ok}>
-                      <case {Result::Ok(value: v)}>created:{v}</case>
-                      <case {Result::Err(message: m)}>error:{m}</case>
-                    </match>
-                  </let>
-                </Test>
                 -- ir --
                 enum Result {
                   Ok(value: String),
@@ -2490,30 +2380,26 @@ mod tests {
     fn enum_match_with_field_bindings() {
         check(
             indoc! {r#"
-                enum Result { Ok(value: String), Err(message: String) }
+                enum Result {
+                  Ok(value: String),
+                  Err(message: String),
+                }
 
                 <Test>
                   <let {result: Result = Result::Ok(value: "hello")}>
                     <match {result}>
-                      <case {Result::Ok(value: v)}>Ok:{v}</case>
-                      <case {Result::Err(message: m)}>Err:{m}</case>
+                      <case {Result::Ok(value: v)}>
+                        Ok:{v}
+                      </case>
+                      <case {Result::Err(message: m)}>
+                        Err:{m}
+                      </case>
                     </match>
                   </let>
                 </Test>
             "#},
             "Ok:hello",
             expect![[r#"
-                -- input --
-                enum Result { Ok(value: String), Err(message: String) }
-
-                <Test>
-                  <let {result: Result = Result::Ok(value: "hello")}>
-                    <match {result}>
-                      <case {Result::Ok(value: v)}>Ok:{v}</case>
-                      <case {Result::Err(message: m)}>Err:{m}</case>
-                    </match>
-                  </let>
-                </Test>
                 -- ir --
                 enum Result {
                   Ok(value: String),
@@ -2554,30 +2440,28 @@ mod tests {
     fn enum_match_err_variant_with_bindings() {
         check(
             indoc! {r#"
-                enum Result { Ok(value: String), Err(message: String) }
+                enum Result {
+                  Ok(value: String),
+                  Err(message: String),
+                }
 
                 <Test>
-                  <let {result: Result = Result::Err(message: "something went wrong")}>
+                  <let {
+                    result: Result = Result::Err(message: "something went wrong"),
+                  }>
                     <match {result}>
-                      <case {Result::Ok(value: v)}>Ok:{v}</case>
-                      <case {Result::Err(message: m)}>Err:{m}</case>
+                      <case {Result::Ok(value: v)}>
+                        Ok:{v}
+                      </case>
+                      <case {Result::Err(message: m)}>
+                        Err:{m}
+                      </case>
                     </match>
                   </let>
                 </Test>
             "#},
             "Err:something went wrong",
             expect![[r#"
-                -- input --
-                enum Result { Ok(value: String), Err(message: String) }
-
-                <Test>
-                  <let {result: Result = Result::Err(message: "something went wrong")}>
-                    <match {result}>
-                      <case {Result::Ok(value: v)}>Ok:{v}</case>
-                      <case {Result::Err(message: m)}>Err:{m}</case>
-                    </match>
-                  </let>
-                </Test>
                 -- ir --
                 enum Result {
                   Ok(value: String),
@@ -2618,30 +2502,28 @@ mod tests {
     fn enum_with_multiple_fields() {
         check(
             indoc! {r#"
-                enum Response { Success(code: String, body: String), Error(reason: String) }
+                enum Response {
+                  Success(code: String, body: String),
+                  Error(reason: String),
+                }
 
                 <Test>
-                  <let {resp: Response = Response::Success(code: "200", body: "OK")}>
+                  <let {
+                    resp: Response = Response::Success(code: "200", body: "OK"),
+                  }>
                     <match {resp}>
-                      <case {Response::Success(code: c, body: b)}>{c}:{b}</case>
-                      <case {Response::Error(reason: r)}>Error:{r}</case>
+                      <case {Response::Success(code: c, body: b)}>
+                        {c}:{b}
+                      </case>
+                      <case {Response::Error(reason: r)}>
+                        Error:{r}
+                      </case>
                     </match>
                   </let>
                 </Test>
             "#},
             "200:OK",
             expect![[r#"
-                -- input --
-                enum Response { Success(code: String, body: String), Error(reason: String) }
-
-                <Test>
-                  <let {resp: Response = Response::Success(code: "200", body: "OK")}>
-                    <match {resp}>
-                      <case {Response::Success(code: c, body: b)}>{c}:{b}</case>
-                      <case {Response::Error(reason: r)}>Error:{r}</case>
-                    </match>
-                  </let>
-                </Test>
                 -- ir --
                 enum Response {
                   Success(code: String, body: String),
@@ -2686,15 +2568,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <let {items: Array[String] = ["a", "b", "c"]}>{items.len().to_string()}</let>
+                  <let {items: Array[String] = ["a", "b", "c"]}>
+                    {items.len().to_string()}
+                  </let>
                 </Test>
             "#},
             "3",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {items: Array[String] = ["a", "b", "c"]}>{items.len().to_string()}</let>
-                </Test>
                 -- ir --
                 Test() {
                   let items = ["a", "b", "c"] in {
@@ -2719,15 +2599,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <let {items: Array[String] = []}>{items.len().to_string()}</let>
+                  <let {items: Array[String] = []}>
+                    {items.len().to_string()}
+                  </let>
                 </Test>
             "#},
             "0",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {items: Array[String] = []}>{items.len().to_string()}</let>
-                </Test>
                 -- ir --
                 Test() {
                   let items = [] in {
@@ -2753,18 +2631,14 @@ mod tests {
             indoc! {r#"
                 <Test>
                   <let {items: Array[String] = ["x", "y"]}>
-                    <if {items.len() == 2}>has two</if>
+                    <if {items.len() == 2}>
+                      has two
+                    </if>
                   </let>
                 </Test>
             "#},
             "has two",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {items: Array[String] = ["x", "y"]}>
-                    <if {items.len() == 2}>has two</if>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   let items = ["x", "y"] in {
@@ -2792,18 +2666,14 @@ mod tests {
             indoc! {r#"
                 <Test>
                   <let {items: Array[String] = ["a"]}>
-                    <if {items.len() < 5}>less than 5</if>
+                    <if {items.len() < 5}>
+                      less than 5
+                    </if>
                   </let>
                 </Test>
             "#},
             "less than 5",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {items: Array[String] = ["a"]}>
-                    <if {items.len() < 5}>less than 5</if>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   let items = ["a"] in {
@@ -2830,15 +2700,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <let {numbers: Array[Int] = [1, 2, 3, 4, 5]}>{numbers.len().to_string()}</let>
+                  <let {numbers: Array[Int] = [1, 2, 3, 4, 5]}>
+                    {numbers.len().to_string()}
+                  </let>
                 </Test>
             "#},
             "5",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {numbers: Array[Int] = [1, 2, 3, 4, 5]}>{numbers.len().to_string()}</let>
-                </Test>
                 -- ir --
                 Test() {
                   let numbers = [1, 2, 3, 4, 5] in {
@@ -2863,15 +2731,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <let {count: Int = 42}>{count.to_string()}</let>
+                  <let {count: Int = 42}>
+                    {count.to_string()}
+                  </let>
                 </Test>
             "#},
             "42",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {count: Int = 42}>{count.to_string()}</let>
-                </Test>
                 -- ir --
                 Test() {
                   let count = 42 in {
@@ -2896,15 +2762,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <let {num: Int = 0}>{num.to_string()}</let>
+                  <let {num: Int = 0}>
+                    {num.to_string()}
+                  </let>
                 </Test>
             "#},
             "0",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {num: Int = 0}>{num.to_string()}</let>
-                </Test>
                 -- ir --
                 Test() {
                   let num = 0 in {
@@ -2929,15 +2793,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <let {count: Int = 5}>{"Count: " + count.to_string()}</let>
+                  <let {count: Int = 5}>
+                    {"Count: " + count.to_string()}
+                  </let>
                 </Test>
             "#},
             "Count: 5",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {count: Int = 5}>{"Count: " + count.to_string()}</let>
-                </Test>
                 -- ir --
                 Test() {
                   let count = 5 in {
@@ -2962,15 +2824,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <let {price: Float = 3.7}>{price.to_int().to_string()}</let>
+                  <let {price: Float = 3.7}>
+                    {price.to_int().to_string()}
+                  </let>
                 </Test>
             "#},
             "3",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {price: Float = 3.7}>{price.to_int().to_string()}</let>
-                </Test>
                 -- ir --
                 Test() {
                   let price = 3.7 in {
@@ -2995,15 +2855,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <let {val: Float = 5.0}>{val.to_int().to_string()}</let>
+                  <let {val: Float = 5.0}>
+                    {val.to_int().to_string()}
+                  </let>
                 </Test>
             "#},
             "5",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {val: Float = 5.0}>{val.to_int().to_string()}</let>
-                </Test>
                 -- ir --
                 Test() {
                   let val = 5 in {
@@ -3028,15 +2886,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <let {price: Float = 19.99}>{price.to_string()}</let>
+                  <let {price: Float = 19.99}>
+                    {price.to_string()}
+                  </let>
                 </Test>
             "#},
             "19.99",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {price: Float = 19.99}>{price.to_string()}</let>
-                </Test>
                 -- ir --
                 Test() {
                   let price = 19.99 in {
@@ -3061,15 +2917,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <let {price: Float = 9.99}>{"$" + price.to_string()}</let>
+                  <let {price: Float = 9.99}>
+                    {"$" + price.to_string()}
+                  </let>
                 </Test>
             "#},
             "$9.99",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {price: Float = 9.99}>{"$" + price.to_string()}</let>
-                </Test>
                 -- ir --
                 Test() {
                   let price = 9.99 in {
@@ -3094,15 +2948,13 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <for {_ in 0..=2}>x</for>
+                  <for {_ in 0..=2}>
+                    x
+                  </for>
                 </Test>
             "#},
             "xxx",
             expect![[r#"
-                -- input --
-                <Test>
-                  <for {_ in 0..=2}>x</for>
-                </Test>
                 -- ir --
                 Test() {
                   for _ in 0..=2 {
@@ -3128,18 +2980,14 @@ mod tests {
             indoc! {r#"
                 <Test>
                   <let {items: Array[String] = ["a", "b", "c"]}>
-                    <for {_ in items}>*</for>
+                    <for {_ in items}>
+                      *
+                    </for>
                   </let>
                 </Test>
             "#},
             "***",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {items: Array[String] = ["a", "b", "c"]}>
-                    <for {_ in items}>*</for>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   let items = ["a", "b", "c"] in {
@@ -3167,18 +3015,14 @@ mod tests {
             indoc! {r#"
                 <Test>
                   <for {_ in 0..=1}>
-                    <for {_ in 0..=2}>.</for>
+                    <for {_ in 0..=2}>
+                      .
+                    </for>
                   </for>
                 </Test>
             "#},
             "......",
             expect![[r#"
-                -- input --
-                <Test>
-                  <for {_ in 0..=1}>
-                    <for {_ in 0..=2}>.</for>
-                  </for>
-                </Test>
                 -- ir --
                 Test() {
                   for _ in 0..=1 {
@@ -3206,18 +3050,14 @@ mod tests {
             indoc! {r#"
                 <Test>
                   <for {i in 1..=2}>
-                    <for {_ in 0..=1}>{i.to_string()}</for>
+                    <for {_ in 0..=1}>
+                      {i.to_string()}
+                    </for>
                   </for>
                 </Test>
             "#},
             "1122",
             expect![[r#"
-                -- input --
-                <Test>
-                  <for {i in 1..=2}>
-                    <for {_ in 0..=1}>{i.to_string()}</for>
-                  </for>
-                </Test>
                 -- ir --
                 Test() {
                   for i in 1..=2 {
@@ -3243,12 +3083,12 @@ mod tests {
     fn method_call_on_float_literal() {
         check(
             indoc! {r#"
-                <Test>{3.14.to_string()}</Test>
+                <Test>
+                  {3.14.to_string()}
+                </Test>
             "#},
             "3.14",
             expect![[r#"
-                -- input --
-                <Test>{3.14.to_string()}</Test>
                 -- ir --
                 Test() {
                   write_escaped(3.14.to_string())
@@ -3270,12 +3110,12 @@ mod tests {
     fn method_call_on_array_literal() {
         check(
             indoc! {r#"
-                <Test>{[1, 2, 3].len().to_string()}</Test>
+                <Test>
+                  {[1, 2, 3].len().to_string()}
+                </Test>
             "#},
             "3",
             expect![[r#"
-                -- input --
-                <Test>{[1, 2, 3].len().to_string()}</Test>
                 -- ir --
                 Test() {
                   write_escaped([1, 2, 3].len().to_string())
@@ -3297,12 +3137,12 @@ mod tests {
     fn method_call_on_parenthesized_expression() {
         check(
             indoc! {r#"
-                <Test>{(1 + 2).to_string()}</Test>
+                <Test>
+                  {(1 + 2).to_string()}
+                </Test>
             "#},
             "3",
             expect![[r#"
-                -- input --
-                <Test>{(1 + 2).to_string()}</Test>
                 -- ir --
                 Test() {
                   write_escaped((1 + 2).to_string())
@@ -3324,12 +3164,12 @@ mod tests {
     fn int_literal_to_string() {
         check(
             indoc! {r#"
-                <Test>{42.to_string()}</Test>
+                <Test>
+                  {42.to_string()}
+                </Test>
             "#},
             "42",
             expect![[r#"
-                -- input --
-                <Test>{42.to_string()}</Test>
                 -- ir --
                 Test() {
                   write_escaped(42.to_string())
@@ -3351,12 +3191,12 @@ mod tests {
     fn negated_int_to_string() {
         check(
             indoc! {r#"
-                <Test>{(-42).to_string()}</Test>
+                <Test>
+                  {(-42).to_string()}
+                </Test>
             "#},
             "-42",
             expect![[r#"
-                -- input --
-                <Test>{(-42).to_string()}</Test>
                 -- ir --
                 Test() {
                   write_escaped((-42).to_string())
@@ -3378,12 +3218,12 @@ mod tests {
     fn float_literal_to_string() {
         check(
             indoc! {r#"
-                <Test>{5.0.to_string()}</Test>
+                <Test>
+                  {5.0.to_string()}
+                </Test>
             "#},
             "5",
             expect![[r#"
-                -- input --
-                <Test>{5.0.to_string()}</Test>
                 -- ir --
                 Test() {
                   write_escaped(5.to_string())
@@ -3405,12 +3245,12 @@ mod tests {
     fn negated_float_to_string() {
         check(
             indoc! {r#"
-                <Test>{(-3.14).to_string()}</Test>
+                <Test>
+                  {(-3.14).to_string()}
+                </Test>
             "#},
             "-3.14",
             expect![[r#"
-                -- input --
-                <Test>{(-3.14).to_string()}</Test>
                 -- ir --
                 Test() {
                   write_escaped((-3.14).to_string())
@@ -3433,51 +3273,53 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <let {nested1: Option[Option[String]] = Some(Some("deep"))}>
+                  <let {
+                    nested1: Option[Option[String]] = Some(Some("deep")),
+                  }>
                     <match {nested1}>
-                      <case {Some(Some(x))}>{x}</case>
-                      <case {Some(None)}>some-none</case>
-                      <case {None}>none</case>
+                      <case {Some(Some(x))}>
+                        {x}
+                      </case>
+                      <case {Some(None)}>
+                        some-none
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
                     </match>
-                  </let>,<let {nested2: Option[Option[String]] = Some(None)}>
+                  </let>
+                  ,
+                  <let {nested2: Option[Option[String]] = Some(None)}>
                     <match {nested2}>
-                      <case {Some(Some(x))}>{x}</case>
-                      <case {Some(None)}>some-none</case>
-                      <case {None}>none</case>
+                      <case {Some(Some(x))}>
+                        {x}
+                      </case>
+                      <case {Some(None)}>
+                        some-none
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
                     </match>
-                  </let>,<let {nested3: Option[Option[String]] = None}>
+                  </let>
+                  ,
+                  <let {nested3: Option[Option[String]] = None}>
                     <match {nested3}>
-                      <case {Some(Some(x))}>{x}</case>
-                      <case {Some(None)}>some-none</case>
-                      <case {None}>none</case>
+                      <case {Some(Some(x))}>
+                        {x}
+                      </case>
+                      <case {Some(None)}>
+                        some-none
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
                     </match>
                   </let>
                 </Test>
             "#},
             "deep,some-none,none",
             expect![[r#"
-                -- input --
-                <Test>
-                  <let {nested1: Option[Option[String]] = Some(Some("deep"))}>
-                    <match {nested1}>
-                      <case {Some(Some(x))}>{x}</case>
-                      <case {Some(None)}>some-none</case>
-                      <case {None}>none</case>
-                    </match>
-                  </let>,<let {nested2: Option[Option[String]] = Some(None)}>
-                    <match {nested2}>
-                      <case {Some(Some(x))}>{x}</case>
-                      <case {Some(None)}>some-none</case>
-                      <case {None}>none</case>
-                    </match>
-                  </let>,<let {nested3: Option[Option[String]] = None}>
-                    <match {nested3}>
-                      <case {Some(Some(x))}>{x}</case>
-                      <case {Some(None)}>some-none</case>
-                      <case {None}>none</case>
-                    </match>
-                  </let>
-                </Test>
                 -- ir --
                 Test() {
                   let match_subject = Option[Option[String]]::Some(Option[String]::Some("deep")) in {
