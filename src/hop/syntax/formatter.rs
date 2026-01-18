@@ -3197,4 +3197,22 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn text_with_multiple_expressions_to_doc() {
+        check(
+            indoc! {"
+                <Main {rating: String, num_reviews: String}>
+                  <span>{rating} ({num_reviews} reviews)</span>
+                </Main>
+            "},
+            expect![[r#"
+                <Main {rating: String, num_reviews: String}>
+                  <span>
+                    {rating} ({num_reviews} reviews)
+                  </span>
+                </Main>
+            "#]],
+        );
+    }
 }
