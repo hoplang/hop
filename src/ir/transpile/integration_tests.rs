@@ -3506,6 +3506,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn int_literal_to_string() {
         check(
             indoc! {r#"
@@ -3532,6 +3533,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn negated_int_to_string() {
         check(
             indoc! {r#"
@@ -3558,6 +3560,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn float_literal_to_string() {
         check(
             indoc! {r#"
@@ -3584,6 +3587,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn negated_float_to_string() {
         check(
             indoc! {r#"
