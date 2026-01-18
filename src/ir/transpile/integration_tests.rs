@@ -321,7 +321,6 @@ mod tests {
     // These tests use check_ir() because they test IR features without hop equivalents:
     // - JsonEncode (no hop syntax)
     // - Inline let expressions (let x = ... in expr)
-    // - Option match expressions with Some(_) pattern that doesn't bind
     // ==================================================================================
 
     // NOTE: json_encode uses IR-level JsonEncode which has no hop syntax equivalent
@@ -357,133 +356,11 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn option_literal_inline_match_expr() {
-        use crate::dop::Type;
-
-        check_ir(
-            IrModuleBuilder::new()
-                .component("Test", [], |t| {
-                    t.let_stmt("opt1", t.some(t.str("hi")), |t| {
-                        let result =
-                            t.option_match_expr(t.var("opt1"), t.str("some"), t.str("none"));
-                        t.write_expr(result, false);
-                    });
-                    t.write(",");
-                    t.let_stmt("opt2", t.none(Type::String), |t| {
-                        let result2 =
-                            t.option_match_expr(t.var("opt2"), t.str("SOME"), t.str("NONE"));
-                        t.write_expr(result2, false);
-                    });
-                })
-                .build(),
-            "some,NONE",
-            expect![[r#"
-                -- input --
-                Test() {
-                  let opt1 = Option[String]::Some("hi") in {
-                    write_expr(match opt1 {
-                      Some(_) => "some",
-                      None => "none",
-                    })
-                  }
-                  write(",")
-                  let opt2 = Option[String]::None in {
-                    write_expr(match opt2 {
-                      Some(_) => "SOME",
-                      None => "NONE",
-                    })
-                  }
-                }
-                -- expected output --
-                some,NONE
-                -- ts --
-                OK
-                -- go --
-                OK
-                -- python --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn option_match_stmt_without_binding() {
-        use crate::dop::Type;
-
-        check_ir(
-            IrModuleBuilder::new()
-                .component("Test", [], |t| {
-                    t.let_stmt("opt1", t.some(t.str("hello")), |t| {
-                        t.option_match_stmt(
-                            t.var("opt1"),
-                            None,
-                            |t| {
-                                t.write("is-some");
-                            },
-                            |t| {
-                                t.write("is-none");
-                            },
-                        );
-                    });
-                    t.write(",");
-                    t.let_stmt("opt2", t.none(Type::String), |t| {
-                        t.option_match_stmt(
-                            t.var("opt2"),
-                            None,
-                            |t| {
-                                t.write("IS-SOME");
-                            },
-                            |t| {
-                                t.write("IS-NONE");
-                            },
-                        );
-                    });
-                })
-                .build(),
-            "is-some,IS-NONE",
-            expect![[r#"
-                -- input --
-                Test() {
-                  let opt1 = Option[String]::Some("hello") in {
-                    match opt1 {
-                      Some(_) => {
-                        write("is-some")
-                      }
-                      None => {
-                        write("is-none")
-                      }
-                    }
-                  }
-                  write(",")
-                  let opt2 = Option[String]::None in {
-                    match opt2 {
-                      Some(_) => {
-                        write("IS-SOME")
-                      }
-                      None => {
-                        write("IS-NONE")
-                      }
-                    }
-                  }
-                }
-                -- expected output --
-                is-some,IS-NONE
-                -- ts --
-                OK
-                -- go --
-                OK
-                -- python --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
     fn option_match_returning_options() {
         use crate::dop::Type;
 
+        // NOTE: This test uses check_ir because the Hop syntax version triggers
+        // a constant propagation bug where bindings remain after values are folded.
         check_ir(
             IrModuleBuilder::new()
                 .component("Test", [], |t| {
@@ -552,6 +429,8 @@ mod tests {
     fn option_match_as_some_value() {
         use crate::dop::Type;
 
+        // NOTE: This test uses check_ir because the Hop syntax version triggers
+        // a constant propagation bug where bindings remain after values are folded.
         check_ir(
             IrModuleBuilder::new()
                 .component("Test", [], |t| {
@@ -610,123 +489,6 @@ mod tests {
         );
     }
 
-    #[test]
-    #[ignore]
-    fn nested_option_literal_match() {
-        use crate::dop::Type;
-
-        check_ir(
-            IrModuleBuilder::new()
-                .component("Test", [], |t| {
-                    let nested_some = t.some(t.some(t.str("deep")));
-                    t.let_stmt("nested1", nested_some, |t| {
-                        let result = t.option_match_expr_with_binding(
-                            t.var("nested1"),
-                            "outer",
-                            Type::Option(Box::new(Type::String)),
-                            |t| {
-                                t.option_match_expr_with_binding(
-                                    t.var("outer"),
-                                    "inner",
-                                    Type::String,
-                                    |t| t.var("inner"),
-                                    t.str("inner-none"),
-                                )
-                            },
-                            t.str("outer-none"),
-                        );
-                        t.write_expr(result, false);
-                        t.write(",");
-
-                        let some_none = t.some(t.none(Type::String));
-                        t.let_stmt("nested2", some_none, |t| {
-                            let result2 = t.option_match_expr_with_binding(
-                                t.var("nested2"),
-                                "outer",
-                                Type::Option(Box::new(Type::String)),
-                                |t| {
-                                    t.option_match_expr_with_binding(
-                                        t.var("outer"),
-                                        "inner",
-                                        Type::String,
-                                        |t| t.var("inner"),
-                                        t.str("inner-none"),
-                                    )
-                                },
-                                t.str("outer-none"),
-                            );
-                            t.write_expr(result2, false);
-                            t.write(",");
-
-                            let outer_none = t.none(Type::Option(Box::new(Type::String)));
-                            t.let_stmt("nested3", outer_none, |t| {
-                                let result3 = t.option_match_expr_with_binding(
-                                    t.var("nested3"),
-                                    "outer",
-                                    Type::Option(Box::new(Type::String)),
-                                    |t| {
-                                        t.option_match_expr_with_binding(
-                                            t.var("outer"),
-                                            "inner",
-                                            Type::String,
-                                            |t| t.var("inner"),
-                                            t.str("inner-none"),
-                                        )
-                                    },
-                                    t.str("outer-none"),
-                                );
-                                t.write_expr(result3, false);
-                            });
-                        });
-                    });
-                })
-                .build(),
-            "deep,inner-none,outer-none",
-            expect![[r#"
-                -- input --
-                Test() {
-                  let nested1 = Option[Option[String]]::Some(Option[String]::Some("deep")) in {
-                    write_expr(match nested1 {
-                      Some(outer) => match outer {
-                        Some(inner) => inner,
-                        None => "inner-none",
-                      },
-                      None => "outer-none",
-                    })
-                    write(",")
-                    let nested2 = Option[Option[String]]::Some(Option[String]::None) in {
-                      write_expr(match nested2 {
-                        Some(outer) => match outer {
-                          Some(inner) => inner,
-                          None => "inner-none",
-                        },
-                        None => "outer-none",
-                      })
-                      write(",")
-                      let nested3 = Option[Option[String]]::None in {
-                        write_expr(match nested3 {
-                          Some(outer) => match outer {
-                            Some(inner) => inner,
-                            None => "inner-none",
-                          },
-                          None => "outer-none",
-                        })
-                      }
-                    }
-                  }
-                }
-                -- expected output --
-                deep,inner-none,outer-none
-                -- ts --
-                OK
-                -- go --
-                OK
-                -- python --
-                OK
-            "#]],
-        );
-    }
-
     // ==================================================================================
     // HOP SYNTAX TESTS
     // These tests use check() with actual hop template syntax as input
@@ -755,6 +517,37 @@ mod tests {
                 }
                 -- expected output --
                 yesNO
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn option_literal_inline_match_expr() {
+        check(
+            indoc! {r#"
+                <Test>
+                  <let {opt1: Option[String] = Some("hi")}>{match opt1 { Some(_) => "some", None => "none" }}</let>,<let {opt2: Option[String] = None}>{match opt2 { Some(_) => "SOME", None => "NONE" }}</let>
+                </Test>
+            "#},
+            "some,NONE",
+            expect![[r#"
+                -- input --
+                <Test>
+                  <let {opt1: Option[String] = Some("hi")}>{match opt1 { Some(_) => "some", None => "none" }}</let>,<let {opt2: Option[String] = None}>{match opt2 { Some(_) => "SOME", None => "NONE" }}</let>
+                </Test>
+                -- ir --
+                Test() {
+                  write("some,NONE")
+                }
+                -- expected output --
+                some,NONE
                 -- ts --
                 OK
                 -- go --
@@ -2425,6 +2218,77 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn option_match_wildcard_pattern() {
+        check(
+            indoc! {r#"
+                <Test>
+                  <let {opt1: Option[String] = Some("hello")}>
+                    <match {opt1}>
+                      <case {Some(_)}>is-some</case>
+                      <case {None}>is-none</case>
+                    </match>
+                  </let>,<let {opt2: Option[String] = None}>
+                    <match {opt2}>
+                      <case {Some(_)}>IS-SOME</case>
+                      <case {None}>IS-NONE</case>
+                    </match>
+                  </let>
+                </Test>
+            "#},
+            "is-some,IS-NONE",
+            expect![[r#"
+                -- input --
+                <Test>
+                  <let {opt1: Option[String] = Some("hello")}>
+                    <match {opt1}>
+                      <case {Some(_)}>is-some</case>
+                      <case {None}>is-none</case>
+                    </match>
+                  </let>,<let {opt2: Option[String] = None}>
+                    <match {opt2}>
+                      <case {Some(_)}>IS-SOME</case>
+                      <case {None}>IS-NONE</case>
+                    </match>
+                  </let>
+                </Test>
+                -- ir --
+                Test() {
+                  let match_subject = Option[String]::Some("hello") in {
+                    match match_subject {
+                      Some(_) => {
+                        write("is-some")
+                      }
+                      None => {
+                        write("is-none")
+                      }
+                    }
+                  }
+                  write(",")
+                  let match_subject_1 = Option[String]::None in {
+                    match match_subject_1 {
+                      Some(_) => {
+                        write("IS-SOME")
+                      }
+                      None => {
+                        write("IS-NONE")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                is-some,IS-NONE
+                -- ts --
+                OK
+                -- go --
+                OK
+                -- python --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn option_array_for_loop() {
         check(
             indoc! {r#"
@@ -3623,8 +3487,20 @@ mod tests {
         check(
             indoc! {r#"
                 <Test>
-                  <let {nested: Option[Option[String]] = Some(Some("deep"))}>
-                    <match {nested}>
+                  <let {nested1: Option[Option[String]] = Some(Some("deep"))}>
+                    <match {nested1}>
+                      <case {Some(Some(x))}>{x}</case>
+                      <case {Some(None)}>some-none</case>
+                      <case {None}>none</case>
+                    </match>
+                  </let>,<let {nested2: Option[Option[String]] = Some(None)}>
+                    <match {nested2}>
+                      <case {Some(Some(x))}>{x}</case>
+                      <case {Some(None)}>some-none</case>
+                      <case {None}>none</case>
+                    </match>
+                  </let>,<let {nested3: Option[Option[String]] = None}>
+                    <match {nested3}>
                       <case {Some(Some(x))}>{x}</case>
                       <case {Some(None)}>some-none</case>
                       <case {None}>none</case>
@@ -3632,12 +3508,24 @@ mod tests {
                   </let>
                 </Test>
             "#},
-            "deep",
+            "deep,some-none,none",
             expect![[r#"
                 -- input --
                 <Test>
-                  <let {nested: Option[Option[String]] = Some(Some("deep"))}>
-                    <match {nested}>
+                  <let {nested1: Option[Option[String]] = Some(Some("deep"))}>
+                    <match {nested1}>
+                      <case {Some(Some(x))}>{x}</case>
+                      <case {Some(None)}>some-none</case>
+                      <case {None}>none</case>
+                    </match>
+                  </let>,<let {nested2: Option[Option[String]] = Some(None)}>
+                    <match {nested2}>
+                      <case {Some(Some(x))}>{x}</case>
+                      <case {Some(None)}>some-none</case>
+                      <case {None}>none</case>
+                    </match>
+                  </let>,<let {nested3: Option[Option[String]] = None}>
+                    <match {nested3}>
                       <case {Some(Some(x))}>{x}</case>
                       <case {Some(None)}>some-none</case>
                       <case {None}>none</case>
@@ -3665,9 +3553,49 @@ mod tests {
                       }
                     }
                   }
+                  write(",")
+                  let match_subject_1 = Option[Option[String]]::Some(Option[String]::None) in {
+                    match match_subject_1 {
+                      Some(v0_2) => {
+                        match v0_2 {
+                          Some(v1_3) => {
+                            let x_4 = v1_3 in {
+                              write_escaped(x_4)
+                            }
+                          }
+                          None => {
+                            write("some-none")
+                          }
+                        }
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                  write(",")
+                  let match_subject_5 = Option[Option[String]]::None in {
+                    match match_subject_5 {
+                      Some(v0_6) => {
+                        match v0_6 {
+                          Some(v1_7) => {
+                            let x_8 = v1_7 in {
+                              write_escaped(x_8)
+                            }
+                          }
+                          None => {
+                            write("some-none")
+                          }
+                        }
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
                 }
                 -- expected output --
-                deep
+                deep,some-none,none
                 -- ts --
                 OK
                 -- go --

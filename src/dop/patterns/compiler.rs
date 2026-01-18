@@ -55,11 +55,18 @@ impl Body {
 pub struct Variable {
     pub name: String,
     pub typ: Type,
+    /// Whether this variable was bound via a wildcard pattern (`_`).
+    /// When true, the variable should not generate a binding in the output.
+    pub is_wildcard: bool,
 }
 
 impl Variable {
     pub fn new(name: String, typ: Type) -> Self {
-        Self { name, typ }
+        Self {
+            name,
+            typ,
+            is_wildcard: false,
+        }
     }
 }
 
@@ -428,7 +435,11 @@ impl Compiler {
                         }
                     } else {
                         // Positional args (Option Some, etc.)
-                        for (var, pat) in cases[idx].1.iter().zip(args.into_iter()) {
+                        for (var, pat) in cases[idx].1.iter_mut().zip(args.into_iter()) {
+                            // Mark variables as wildcards if the pattern is `_`
+                            if matches!(pat, ParsedMatchPattern::Wildcard { .. }) {
+                                var.is_wildcard = true;
+                            }
                             cols.push(Column::new(var.clone(), pat));
                         }
                     }
