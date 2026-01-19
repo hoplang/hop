@@ -396,10 +396,14 @@ fn parse_attribute(
         );
     };
 
-    // consume: ('-' | '_' | [a-zA-Z0-9])*
+    // consume: ('-' | '_' | ':' | '.' | [a-zA-Z0-9])*
     let attr_name =
         initial.extend(iter.peeking_take_while(|s| {
-            s.ch() == '-' || s.ch() == '_' || s.ch().is_ascii_alphanumeric()
+            s.ch() == '-'
+                || s.ch() == '_'
+                || s.ch() == ':'
+                || s.ch() == '.'
+                || s.ch().is_ascii_alphanumeric()
         }));
 
     // consume: whitespace
@@ -2287,6 +2291,28 @@ mod tests {
                 )
                 <input required required />
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_attributes_with_colons_and_dots() {
+        check(
+            r#"<button x-on:click={handler} x-bind:aria-selected={selected} x-on:click.prevent={other}>"#,
+            expect![[r#"
+                -- tokens --
+                OpeningTag(
+                  tag_name: "button",
+                  attributes: {
+                    x-on:click: Expression("handler"),
+                    x-bind:aria-selected: Expression("selected"),
+                    x-on:click.prevent: Expression("other"),
+                  },
+                  expression: None,
+                  self_closing: false,
+                )
+                <button x-on:click={handler} x-bind:aria-selected={selected} x-on:click.prevent={other}>
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
