@@ -401,26 +401,6 @@ impl ParsedExpr {
         }
     }
 
-    /// Returns true if this expression is "atomic" (never needs parentheses).
-    fn is_atomic(&self) -> bool {
-        matches!(
-            self,
-            ParsedExpr::Var { .. }
-                | ParsedExpr::FieldAccess { .. }
-                | ParsedExpr::MethodCall { .. }
-                | ParsedExpr::StringLiteral { .. }
-                | ParsedExpr::BooleanLiteral { .. }
-                | ParsedExpr::IntLiteral { .. }
-                | ParsedExpr::FloatLiteral { .. }
-                | ParsedExpr::ArrayLiteral { .. }
-                | ParsedExpr::RecordLiteral { .. }
-                | ParsedExpr::EnumLiteral { .. }
-                | ParsedExpr::Match { .. }
-                | ParsedExpr::OptionLiteral { .. }
-                | ParsedExpr::MacroInvocation { .. }
-        )
-    }
-
     /// Converts this expression to a doc, adding parentheses if needed based on parent precedence.
     fn to_doc_with_precedence(&self, parent_precedence: u8) -> BoxDoc<'_> {
         if self.precedence() < parent_precedence {
@@ -513,22 +493,10 @@ impl ParsedExpr {
                     .append(right.to_doc_with_precedence(prec))
             }
             ParsedExpr::Negation { operand, .. } => {
-                if operand.is_atomic() {
-                    BoxDoc::text("!").append(operand.to_doc())
-                } else {
-                    BoxDoc::text("!(")
-                        .append(operand.to_doc())
-                        .append(BoxDoc::text(")"))
-                }
+                BoxDoc::text("!").append(operand.to_doc_with_precedence(self.precedence()))
             }
             ParsedExpr::NumericNegation { operand, .. } => {
-                if operand.is_atomic() {
-                    BoxDoc::text("-").append(operand.to_doc())
-                } else {
-                    BoxDoc::text("-(")
-                        .append(operand.to_doc())
-                        .append(BoxDoc::text(")"))
-                }
+                BoxDoc::text("-").append(operand.to_doc_with_precedence(self.precedence()))
             }
             ParsedExpr::EnumLiteral {
                 enum_name,

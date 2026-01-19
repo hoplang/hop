@@ -2476,7 +2476,7 @@ mod tests {
         check_parse_expr(
             "--5",
             expect![[r#"
-                -(-5)
+                --5
             "#]],
         );
     }
