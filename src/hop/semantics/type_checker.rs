@@ -1231,9 +1231,11 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
                                         .find(|(v, _)| v.as_str() == variant_name)
                                         .map(|(_, fields)| fields)
                                         .unwrap_or(&empty_fields);
+                                    // Filter out wildcard bindings
                                     let bindings: Vec<_> = variant_fields
                                         .iter()
                                         .zip(case.arguments.iter())
+                                        .filter(|(_, arg)| !arg.is_wildcard)
                                         .map(|((field_name, _), arg)| {
                                             (
                                                 field_name.clone(),
@@ -3643,7 +3645,7 @@ mod tests {
 
                 <Badge {status: main::Status = Status::Active(since: 2000)}>
                   {match status {
-                    Status::Active => let v0 = status.since in "active",
+                    Status::Active => "active",
                     Status::Inactive => "not active",
                     Status::Pending => "not active",
                   }}

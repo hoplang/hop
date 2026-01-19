@@ -4498,4 +4498,164 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn enum_wildcard_binding_ok() {
+        // Test Result::Ok(value: _) - wildcard binding for enum field
+        check(
+            indoc! {r#"
+                enum Result {
+                  Ok(value: String),
+                  Err(message: String),
+                }
+
+                entrypoint Test() {
+                  <let {result: Result = Result::Ok(value: "hello")}>
+                    <match {result}>
+                      <case {Result::Ok(value: _)}>
+                        ok
+                      </case>
+                      <case {Result::Err(message: _)}>
+                        err
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "ok",
+            expect![[r#"
+                -- ir (unoptimized) --
+                enum Result {
+                  Ok(value: String),
+                  Err(message: String),
+                }
+                Test() {
+                  let result = Result::Ok(value: "hello") in {
+                    let match_subject = result in {
+                      match match_subject {
+                        Result::Ok => {
+                          write("ok")
+                        }
+                        Result::Err => {
+                          write("err")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                enum Result {
+                  Ok(value: String),
+                  Err(message: String),
+                }
+                Test() {
+                  let match_subject = Result::Ok(value: "hello") in {
+                    match match_subject {
+                      Result::Ok => {
+                        write("ok")
+                      }
+                      Result::Err => {
+                        write("err")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                ok
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn enum_wildcard_binding_err() {
+        // Test Result::Err(message: _) - wildcard binding for enum field
+        check(
+            indoc! {r#"
+                enum Result {
+                  Ok(value: String),
+                  Err(message: String),
+                }
+
+                entrypoint Test() {
+                  <let {result: Result = Result::Err(message: "failed")}>
+                    <match {result}>
+                      <case {Result::Ok(value: _)}>
+                        ok
+                      </case>
+                      <case {Result::Err(message: _)}>
+                        err
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "err",
+            expect![[r#"
+                -- ir (unoptimized) --
+                enum Result {
+                  Ok(value: String),
+                  Err(message: String),
+                }
+                Test() {
+                  let result = Result::Err(message: "failed") in {
+                    let match_subject = result in {
+                      match match_subject {
+                        Result::Ok => {
+                          write("ok")
+                        }
+                        Result::Err => {
+                          write("err")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                enum Result {
+                  Ok(value: String),
+                  Err(message: String),
+                }
+                Test() {
+                  let match_subject = Result::Err(message: "failed") in {
+                    match match_subject {
+                      Result::Ok => {
+                        write("ok")
+                      }
+                      Result::Err => {
+                        write("err")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                err
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
 }

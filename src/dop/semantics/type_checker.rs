@@ -1295,10 +1295,17 @@ fn decision_to_typed_expr(
 
                             // Wrap with Let expressions for each field (using FieldAccess)
                             // Iterate in reverse so bindings are in the correct order
+                            // Skip wildcard bindings
                             for (i, (field_name, _field_type)) in
                                 variant_fields.iter().enumerate().rev()
                             {
                                 let var = &case.arguments[i];
+
+                                // Skip wildcard patterns - no binding needed
+                                if var.is_wildcard {
+                                    continue;
+                                }
+
                                 let var_name =
                                     VarName::new(&var.name).expect("invalid variable name");
 
