@@ -19,8 +19,8 @@ pub fn format(ast: ParsedAst) -> String {
     format_ast(&ast, &arena).pretty(60).to_string()
 }
 
-/// Wraps items in a grouped body with optional trailing comma: `{ items, }` or `( items )`
-/// Used for arrays, records, match arms, macros, etc.
+/// Wraps items in a grouped body with trailing comma that disappear
+/// when on single line. Used for arrays, records, match arms, macros, etc.
 fn soft_block<'a>(
     arena: &'a Arena<'a>,
     items: DocBuilder<'a, Arena<'a>>,
@@ -392,7 +392,7 @@ fn format_node<'a>(
                     .append(arena.line_())
                     .group()
             };
-            if !has_content(children) {
+            if children.is_empty() {
                 // Empty or only whitespace/newlines - use self-closing tag
                 opening_tag_doc.append(arena.text("/>"))
             } else {
@@ -548,7 +548,7 @@ fn format_node<'a>(
 
             if is_void_element(tag_name_str) {
                 opening_tag_doc
-            } else if !has_content(children) {
+            } else if children.is_empty() {
                 // Empty or only whitespace/newlines - compact closing tag
                 opening_tag_doc
                     .append(arena.text("</"))
@@ -563,7 +563,7 @@ fn format_node<'a>(
             }
         }
         ParsedNode::Placeholder { children, .. } => {
-            if !has_content(children) {
+            if children.is_empty() {
                 // Empty or only whitespace/newlines - use self-closing tag
                 arena.text("<placeholder/>")
             } else {
@@ -583,14 +583,6 @@ fn is_inline(node: &ParsedNode) -> bool {
         node,
         ParsedNode::Text { .. } | ParsedNode::TextExpression { .. }
     )
-}
-
-/// Returns true if children contain any meaningful content (non-Newline nodes).
-/// Used to treat "only whitespace/newlines" the same as "truly empty" for formatting.
-fn has_content(children: &[ParsedNode]) -> bool {
-    children
-        .iter()
-        .any(|c| !matches!(c, ParsedNode::Newline { .. }))
 }
 
 fn format_children<'a>(
@@ -646,8 +638,8 @@ fn format_children<'a>(
             let text = range.as_str();
             let has_leading_ws = text.starts_with(|c: char| c.is_whitespace());
             let has_trailing_ws = text.ends_with(|c: char| c.is_whitespace());
-            let prev_is_block = prev_node.map_or(false, |n| !is_inline(n));
-            let next_is_block = next_node.map_or(false, |n| !is_inline(n));
+            let prev_is_block = prev_node.is_some_and(|n| !is_inline(n));
+            let next_is_block = next_node.is_some_and(|n| !is_inline(n));
 
             // Determine if we need to convert whitespace to {" "}
             // Leading: if prev is block and we inserted a break (not from original newline)
@@ -809,12 +801,12 @@ fn format_expr<'a>(
                 .append(arena.text(" "))
                 .append(format_expr_with_precedence(arena, right, prec, comments))
         }
-        expr @ ParsedExpr::Negation { operand, .. } => arena
-            .text("!")
-            .append(format_expr_with_precedence(arena, operand, expr.precedence(), comments)),
-        expr @ ParsedExpr::NumericNegation { operand, .. } => arena
-            .text("-")
-            .append(format_expr_with_precedence(arena, operand, expr.precedence(), comments)),
+        expr @ ParsedExpr::Negation { operand, .. } => arena.text("!").append(
+            format_expr_with_precedence(arena, operand, expr.precedence(), comments),
+        ),
+        expr @ ParsedExpr::NumericNegation { operand, .. } => arena.text("-").append(
+            format_expr_with_precedence(arena, operand, expr.precedence(), comments),
+        ),
         ParsedExpr::EnumLiteral {
             enum_name,
             variant_name,
