@@ -102,32 +102,34 @@ impl Inliner {
             }
         }
 
-        let mut result = Vec::new();
+        // Iterate over pages in order to ensure deterministic output
+        let result = pages
+            .iter()
+            .map(|(module_name, component_name)| {
+                let ast = asts
+                    .get(module_name)
+                    .expect("Module should exist (validated above)");
+                let component = ast
+                    .get_component_declaration(component_name.as_str())
+                    .expect("Component should exist (validated above)");
 
-        for (module_name, ast) in asts {
-            for component in ast.get_component_declarations() {
-                let included = pages
-                    .iter()
-                    .any(|(m, c)| m == module_name && c == &component.component_name);
-                if included {
-                    result.push(InlinedComponentDeclaration {
-                        module_name: module_name.clone(),
-                        component_name: component.component_name.clone(),
-                        children: Self::inline_nodes(&component.children, &asts),
-                        params: component
-                            .params
-                            .iter()
-                            .cloned()
-                            .map(|(var_name, var_type, default_value)| InlinedParameter {
-                                var_name,
-                                var_type,
-                                default_value,
-                            })
-                            .collect(),
-                    });
+                InlinedComponentDeclaration {
+                    module_name: module_name.clone(),
+                    component_name: component.component_name.clone(),
+                    children: Self::inline_nodes(&component.children, asts),
+                    params: component
+                        .params
+                        .iter()
+                        .cloned()
+                        .map(|(var_name, var_type, default_value)| InlinedParameter {
+                            var_name,
+                            var_type,
+                            default_value,
+                        })
+                        .collect(),
                 }
-            }
-        }
+            })
+            .collect();
 
         Ok(result)
     }
@@ -1255,6 +1257,150 @@ mod tests {
                     </let>
                   </let>
                 </TestBadgeLink>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn deterministic_output_order_with_multiple_modules() {
+        // Test that output order is deterministic when there are multiple modules.
+        // The output should follow the order specified in the `pages` parameter.
+        // This test would be flaky if the implementation used HashMap iteration order.
+        // With 8 modules, there's only 1/40320 chance of accidental success.
+        check_inlining(
+            vec![
+                (
+                    "alpha",
+                    r#"
+                        <AlphaComp>
+                            <div>Alpha</div>
+                        </AlphaComp>
+                    "#,
+                ),
+                (
+                    "beta",
+                    r#"
+                        <BetaComp>
+                            <div>Beta</div>
+                        </BetaComp>
+                    "#,
+                ),
+                (
+                    "gamma",
+                    r#"
+                        <GammaComp>
+                            <div>Gamma</div>
+                        </GammaComp>
+                    "#,
+                ),
+                (
+                    "delta",
+                    r#"
+                        <DeltaComp>
+                            <div>Delta</div>
+                        </DeltaComp>
+                    "#,
+                ),
+                (
+                    "epsilon",
+                    r#"
+                        <EpsilonComp>
+                            <div>Epsilon</div>
+                        </EpsilonComp>
+                    "#,
+                ),
+                (
+                    "zeta",
+                    r#"
+                        <ZetaComp>
+                            <div>Zeta</div>
+                        </ZetaComp>
+                    "#,
+                ),
+                (
+                    "eta",
+                    r#"
+                        <EtaComp>
+                            <div>Eta</div>
+                        </EtaComp>
+                    "#,
+                ),
+                (
+                    "theta",
+                    r#"
+                        <ThetaComp>
+                            <div>Theta</div>
+                        </ThetaComp>
+                    "#,
+                ),
+            ],
+            // Request pages in a specific non-alphabetical order
+            vec![
+                ("eta", "EtaComp"),
+                ("gamma", "GammaComp"),
+                ("alpha", "AlphaComp"),
+                ("theta", "ThetaComp"),
+                ("beta", "BetaComp"),
+                ("zeta", "ZetaComp"),
+                ("delta", "DeltaComp"),
+                ("epsilon", "EpsilonComp"),
+            ],
+            // Output should match the requested order exactly
+            expect![[r#"
+                <EtaComp>
+                  <div>
+                    Eta
+                  </div>
+                </EtaComp>
+
+
+                <GammaComp>
+                  <div>
+                    Gamma
+                  </div>
+                </GammaComp>
+
+
+                <AlphaComp>
+                  <div>
+                    Alpha
+                  </div>
+                </AlphaComp>
+
+
+                <ThetaComp>
+                  <div>
+                    Theta
+                  </div>
+                </ThetaComp>
+
+
+                <BetaComp>
+                  <div>
+                    Beta
+                  </div>
+                </BetaComp>
+
+
+                <ZetaComp>
+                  <div>
+                    Zeta
+                  </div>
+                </ZetaComp>
+
+
+                <DeltaComp>
+                  <div>
+                    Delta
+                  </div>
+                </DeltaComp>
+
+
+                <EpsilonComp>
+                  <div>
+                    Epsilon
+                  </div>
+                </EpsilonComp>
             "#]],
         );
     }

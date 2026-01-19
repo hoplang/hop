@@ -223,4 +223,107 @@ mod tests {
         // Clean up
         fs::remove_dir_all(&temp_dir).unwrap();
     }
+
+    #[tokio::test]
+    #[ignore]
+    async fn deterministic_output_order_across_modules() {
+        // Test that output order is deterministic when there are multiple modules.
+        // The output should follow the order specified in the `pages` config.
+        // This test would be flaky if the implementation used HashMap iteration order.
+        // With 8 modules, there's only 1/40320 chance of accidental success.
+        let archive = Archive::from(indoc! {r#"
+            -- hop.toml --
+            [compile]
+            target = "ts"
+            output_path = "output.ts"
+            pages = [
+                "eta/EtaComp",
+                "gamma/GammaComp",
+                "alpha/AlphaComp",
+                "theta/ThetaComp",
+                "beta/BetaComp",
+                "zeta/ZetaComp",
+                "delta/DeltaComp",
+                "epsilon/EpsilonComp",
+            ]
+
+            [css]
+            mode = "none"
+            -- alpha.hop --
+            <AlphaComp><div>Alpha</div></AlphaComp>
+            -- beta.hop --
+            <BetaComp><div>Beta</div></BetaComp>
+            -- gamma.hop --
+            <GammaComp><div>Gamma</div></GammaComp>
+            -- delta.hop --
+            <DeltaComp><div>Delta</div></DeltaComp>
+            -- epsilon.hop --
+            <EpsilonComp><div>Epsilon</div></EpsilonComp>
+            -- zeta.hop --
+            <ZetaComp><div>Zeta</div></ZetaComp>
+            -- eta.hop --
+            <EtaComp><div>Eta</div></EtaComp>
+            -- theta.hop --
+            <ThetaComp><div>Theta</div></ThetaComp>
+        "#});
+
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let project_root = ProjectRoot::from(&temp_dir).unwrap();
+
+        // Execute the compile command
+        let result = execute(&project_root).await;
+        assert!(
+            result.is_ok(),
+            "Compilation should succeed: {:?}",
+            result.err()
+        );
+
+        // Read the generated output
+        let output_path = temp_dir.join("output.ts");
+        let generated_code = fs::read_to_string(&output_path).unwrap();
+
+        // Extract the order of exported functions from the TypeScript output.
+        // The functions should appear in the order specified in pages config.
+        let expected_order = [
+            "EtaComp",
+            "GammaComp",
+            "AlphaComp",
+            "ThetaComp",
+            "BetaComp",
+            "ZetaComp",
+            "DeltaComp",
+            "EpsilonComp",
+        ];
+
+        // Find positions of each function in the output and sort by position
+        let mut positions: Vec<(usize, &str)> = expected_order
+            .iter()
+            .filter_map(|name| {
+                let pattern = format!("export function {}(", name);
+                generated_code.find(&pattern).map(|pos| (pos, *name))
+            })
+            .collect();
+
+        assert_eq!(
+            positions.len(),
+            expected_order.len(),
+            "Not all expected functions were found in the output"
+        );
+
+        positions.sort_by_key(|(pos, _)| *pos);
+        let actual_order: Vec<&str> = positions.iter().map(|(_, name)| *name).collect();
+
+        assert_eq!(
+            actual_order,
+            expected_order.to_vec(),
+            "Functions should appear in the order specified by pages config.\n\
+             Expected: {:?}\n\
+             Actual: {:?}\n\
+             TypeScript output:\n{}",
+            expected_order, actual_order, generated_code
+        );
+
+        // Clean up
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
 }
