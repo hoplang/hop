@@ -1274,8 +1274,15 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
 
                     // Wrap with Let nodes for each field (using FieldAccess)
                     // Iterate in reverse so bindings are in the correct order
+                    // Skip wildcard bindings
                     for (i, (field_name, _field_type)) in type_fields.iter().enumerate().rev() {
                         let var = &case.arguments[i];
+
+                        // Skip wildcard patterns - no binding needed
+                        if var.is_wildcard {
+                            continue;
+                        }
+
                         let var_name = VarName::new(&var.name).expect("invalid variable name");
 
                         // Create field access: subject.field_name

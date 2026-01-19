@@ -4658,4 +4658,184 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn record_wildcard_binding() {
+        // Test record pattern with wildcard binding - Person(name: _, age: a)
+        check(
+            indoc! {r#"
+                record Person {
+                  name: String,
+                  age: Int,
+                }
+
+                entrypoint Test() {
+                  <let {person: Person = Person(name: "Alice", age: 30)}>
+                    <match {person}>
+                      <case {Person(name: _, age: a)}>
+                        age:{a.to_string()}
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "age:30",
+            expect![[r#"
+                -- ir (unoptimized) --
+                record Person {
+                  name: String,
+                  age: Int,
+                }
+                Test() {
+                  let person = Person(name: "Alice", age: 30) in {
+                    let match_subject = person in {
+                      let v1 = match_subject.age in {
+                        let a = v1 in {
+                          write("age:")
+                          write_escaped(a.to_string())
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                record Person {
+                  name: String,
+                  age: Int,
+                }
+                Test() {
+                  let person = Person(name: "Alice", age: 30) in {
+                    let match_subject = person in {
+                      let v1 = match_subject.age in {
+                        let a = v1 in {
+                          write("age:")
+                          write_escaped(a.to_string())
+                        }
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                age:30
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn triple_nested_option_wildcard() {
+        // Test Some(Some(Some(_))) pattern - triple nested with innermost wildcard
+        check(
+            indoc! {r#"
+                entrypoint Test() {
+                  <let {
+                    deep: Option[Option[Option[String]]] = Some(
+                      Some(Some("value"))
+                    ),
+                  }>
+                    <match {deep}>
+                      <case {Some(Some(Some(_)))}>
+                        triple-some
+                      </case>
+                      <case {Some(Some(None))}>
+                        double-some-none
+                      </case>
+                      <case {Some(None)}>
+                        single-some-none
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "triple-some",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let deep = Option[Option[Option[String]]]::Some(Option[Option[String]]::Some(Option[String]::Some("value"))) in {
+                    let match_subject = deep in {
+                      match match_subject {
+                        Some(v0) => {
+                          match v0 {
+                            Some(v1) => {
+                              match v1 {
+                                Some(_) => {
+                                  write("triple-some")
+                                }
+                                None => {
+                                  write("double-some-none")
+                                }
+                              }
+                            }
+                            None => {
+                              write("single-some-none")
+                            }
+                          }
+                        }
+                        None => {
+                          write("none")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  let match_subject = Option[Option[Option[String]]]::Some(Option[Option[String]]::Some(Option[String]::Some("value"))) in {
+                    match match_subject {
+                      Some(v0) => {
+                        match v0 {
+                          Some(v1) => {
+                            match v1 {
+                              Some(_) => {
+                                write("triple-some")
+                              }
+                              None => {
+                                write("double-some-none")
+                              }
+                            }
+                          }
+                          None => {
+                            write("single-some-none")
+                          }
+                        }
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                triple-some
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
 }

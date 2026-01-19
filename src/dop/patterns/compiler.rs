@@ -411,7 +411,11 @@ impl Compiler {
                                     .iter()
                                     .position(|(name, _)| name == &field_name)
                                     .expect("field not found in record type");
-                                let var = &cases[idx].1[field_idx];
+                                let var = &mut cases[idx].1[field_idx];
+                                // Mark variables as wildcards if the pattern is `_`
+                                if matches!(field_pattern, ParsedMatchPattern::Wildcard { .. }) {
+                                    var.is_wildcard = true;
+                                }
                                 cols.push(Column::new(var.clone(), field_pattern));
                             }
                         } else if let Type::Enum { variants, .. } = &branch_var.typ {
