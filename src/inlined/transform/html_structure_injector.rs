@@ -1,6 +1,6 @@
 use crate::{
     document::CheapString,
-    inlined::{InlinedComponentDeclaration, InlinedNode},
+    inlined::{InlinedEntrypointDeclaration, InlinedNode},
 };
 use std::collections::BTreeMap;
 
@@ -104,7 +104,7 @@ impl HtmlStructureInjector {
         pos
     }
 
-    pub fn run(mut entrypoint: InlinedComponentDeclaration) -> InlinedComponentDeclaration {
+    pub fn run(mut entrypoint: InlinedEntrypointDeclaration) -> InlinedEntrypointDeclaration {
         // If there's no <html> element, wrap everything in proper structure
         if !Self::has_html_element(&entrypoint.children) {
             // Find where to insert (after DOCTYPE and leading whitespace)

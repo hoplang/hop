@@ -6,7 +6,7 @@ use crate::dop::semantics::r#type::EquatableType;
 use crate::dop::{Type, VarName};
 use crate::hop::semantics::typed_node::TypedLoopSource;
 use crate::inlined::{
-    InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
+    InlinedAttribute, InlinedAttributeValue, InlinedEntrypointDeclaration, InlinedNode,
 };
 use std::collections::BTreeMap;
 
@@ -21,7 +21,7 @@ pub struct Compiler {
 }
 
 impl Compiler {
-    pub fn compile(entrypoint: InlinedComponentDeclaration) -> IrComponentDeclaration {
+    pub fn compile(entrypoint: InlinedEntrypointDeclaration) -> IrComponentDeclaration {
         let mut compiler = Compiler {
             expr_id_counter: 0,
             node_id_counter: 0,
@@ -82,7 +82,7 @@ impl Compiler {
 
     /// Compile without the development mode wrapper (useful for tests)
     pub fn compile_without_dev_wrapper(
-        entrypoint: InlinedComponentDeclaration,
+        entrypoint: InlinedEntrypointDeclaration,
     ) -> IrComponentDeclaration {
         let mut compiler = Compiler {
             expr_id_counter: 0,
@@ -768,7 +768,7 @@ mod tests {
     use crate::inlined::builder::build_inlined;
     use expect_test::{Expect, expect};
 
-    fn check(entrypoint: InlinedComponentDeclaration, expected: Expect) {
+    fn check(entrypoint: InlinedEntrypointDeclaration, expected: Expect) {
         let before = entrypoint.to_string();
         let ir = Compiler::compile(entrypoint);
         let after = ir.to_string();
@@ -784,9 +784,9 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                <MainComp>
+                entrypoint MainComp() {
                   Hello World
-                </MainComp>
+                }
 
                 -- after --
                 MainComp() {
@@ -815,10 +815,10 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                <MainComp {name: String}>
+                entrypoint MainComp(name: String) {
                   Hello 
                   {name}
-                </MainComp>
+                }
 
                 -- after --
                 MainComp(name: String) {
@@ -851,11 +851,11 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                <MainComp>
+                entrypoint MainComp() {
                   <div>
                     Content
                   </div>
-                </MainComp>
+                }
 
                 -- after --
                 MainComp() {
@@ -890,13 +890,13 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                <MainComp {show: Bool}>
+                entrypoint MainComp(show: Bool) {
                   <if {show}>
                     <div>
                       Visible
                     </div>
                   </if>
-                </MainComp>
+                }
 
                 -- after --
                 MainComp(show: Bool) {
@@ -941,7 +941,7 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                <MainComp {items: Array[String]}>
+                entrypoint MainComp(items: Array[String]) {
                   <ul>
                     <for {item in items}>
                       <li>
@@ -949,7 +949,7 @@ mod tests {
                       </li>
                     </for>
                   </ul>
-                </MainComp>
+                }
 
                 -- after --
                 MainComp(items: Array[String]) {
@@ -992,11 +992,11 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                <MainComp>
+                entrypoint MainComp() {
                   <div class="base" id="test">
                     Content
                   </div>
-                </MainComp>
+                }
 
                 -- after --
                 MainComp() {
@@ -1037,11 +1037,11 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                <MainComp {cls: String}>
+                entrypoint MainComp(cls: String) {
                   <div class="base" data-value={cls}>
                     Content
                   </div>
-                </MainComp>
+                }
 
                 -- after --
                 MainComp(cls: String) {
@@ -1087,14 +1087,14 @@ mod tests {
             ),
             expect![[r#"
                 -- before --
-                <TestComp {name: String, count: String}>
+                entrypoint TestComp(name: String, count: String) {
                   <div>
                     Hello 
                     {name}
                     , count: 
                     {count}
                   </div>
-                </TestComp>
+                }
 
                 -- after --
                 TestComp(name: String, count: String) {
@@ -1141,7 +1141,7 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                <TestComp {flag: Bool}>
+                entrypoint TestComp(flag: Bool) {
                   <match {flag}>
                     <case {true}>
                       yes
@@ -1150,7 +1150,7 @@ mod tests {
                       no
                     </case>
                   </match>
-                </TestComp>
+                }
 
                 -- after --
                 TestComp(flag: Bool) {
@@ -1191,9 +1191,9 @@ mod tests {
             }),
             expect![[r#"
                 -- before --
-                <TestComp {disabled: Bool}>
+                entrypoint TestComp(disabled: Bool) {
                   <input disabled={disabled} />
-                </TestComp>
+                }
 
                 -- after --
                 TestComp(disabled: Bool) {

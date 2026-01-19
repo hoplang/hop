@@ -597,7 +597,7 @@ fn parse_array_literal(
     })
 }
 
-fn parse_primary(
+pub fn parse_primary(
     iter: &mut Peekable<DocumentCursor>,
     comments: &mut VecDeque<DocumentRange>,
     range: &DocumentRange,

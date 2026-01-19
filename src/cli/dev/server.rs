@@ -185,10 +185,10 @@ mod tests {
     async fn should_correctly_render_a_component_with_props() {
         let server = create_test_server(indoc::indoc! {r#"
             -- test.hop --
-            <GreetingComp {name: String, title: String}>
+            entrypoint GreetingComp(name: String, title: String) {
               <h1>{title}</h1>
               <p>Hello, {name}!</p>
-            </GreetingComp>
+            }
         "#});
 
         let response = server
@@ -212,9 +212,9 @@ mod tests {
     async fn should_correctly_render_a_component_without_props() {
         let server = create_test_server(indoc::indoc! {r#"
             -- test.hop --
-            <SimpleComp>
+            entrypoint SimpleComp() {
               <div>Simple content</div>
-            </SimpleComp>
+            }
         "#});
 
         let response = server
@@ -243,9 +243,9 @@ mod tests {
             -- page.hop --
             import components::Button
 
-            <Page>
+            entrypoint Page() {
               <div><Button label="Click me" /></div>
-            </Page>
+            }
         "#});
 
         let response = server
@@ -268,13 +268,13 @@ mod tests {
      {
         let server = create_test_server(indoc::indoc! {r#"
             -- test.hop --
-            <GreetingComp {name: String}>
+            entrypoint GreetingComp(name: String) {
               <p>Hello, {name}!</p>
-            </GreetingComp>
+            }
 
-            <SimpleComp>
+            entrypoint SimpleComp() {
               <div>Simple content</div>
-            </SimpleComp>
+            }
         "#});
 
         let response = server
@@ -287,7 +287,7 @@ mod tests {
             .await;
 
         response.assert_status_bad_request();
-        expect!["Error rendering component: Component 'NonExistent' not found in module 'test'. Available components: GreetingComp, SimpleComp"]
+        expect!["Error rendering component: Entrypoint 'NonExistent' not found in module 'test'. Available entrypoints: GreetingComp, SimpleComp"]
             .assert_eq(&response.text());
     }
 

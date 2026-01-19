@@ -3,8 +3,8 @@ use std::iter::Peekable;
 
 use super::parsed_ast::{
     self, ParsedAst, ParsedComponentDeclaration, ParsedDeclaration, ParsedEnumDeclaration,
-    ParsedEnumDeclarationVariant, ParsedImportDeclaration, ParsedRecordDeclaration,
-    ParsedRecordDeclarationField,
+    ParsedEnumDeclarationVariant, ParsedEntrypointDeclaration, ParsedImportDeclaration,
+    ParsedRecordDeclaration, ParsedRecordDeclarationField,
 };
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
 use super::token_tree::{TokenTree, parse_tree};
@@ -79,6 +79,7 @@ pub fn parse(
     let mut imported_components = HashMap::new();
     let mut defined_records = HashSet::new();
     let mut defined_enums = HashSet::new();
+    let mut defined_entrypoints: HashSet<String> = HashSet::new();
 
     loop {
         match dop::tokenizer::peek_past_comments(&iter) {
@@ -183,6 +184,33 @@ pub fn parse(
                         errors.push(err.into());
                         break;
                     }
+                }
+            }
+            Some(Ok((dop::Token::Entrypoint, _))) => {
+                // Entrypoint declaration
+                if let Some(entrypoint) = parse_entrypoint_declaration(
+                    &mut iter,
+                    &mut comments,
+                    errors,
+                    &module_name,
+                    &defined_components,
+                    &imported_components,
+                ) {
+                    let name = entrypoint.name.as_str();
+                    if defined_entrypoints.contains(name)
+                        || defined_components.contains(name)
+                        || imported_components.contains_key(name)
+                        || defined_records.contains(name)
+                        || defined_enums.contains(name)
+                    {
+                        errors.push(ParseError::TypeNameIsAlreadyDefined {
+                            name: entrypoint.name_range.to_cheap_string(),
+                            range: entrypoint.name_range.clone(),
+                        });
+                    } else {
+                        defined_entrypoints.insert(name.to_string());
+                    }
+                    declarations.push(ParsedDeclaration::Entrypoint(entrypoint));
                 }
             }
             Some(Ok((dop::Token::LessThan, _))) => {
@@ -335,6 +363,222 @@ fn parse_component_declaration(
         range,
         children,
     })
+}
+
+/// Parse an entrypoint declaration from a document cursor.
+///
+/// Syntax: `entrypoint Name(param: Type, ...) { ... }`
+///
+/// Returns `None` if parsing fails.
+fn parse_entrypoint_declaration(
+    iter: &mut Peekable<DocumentCursor>,
+    comments: &mut VecDeque<DocumentRange>,
+    errors: &mut ErrorCollector<ParseError>,
+    module_name: &ModuleName,
+    defined_components: &HashSet<String>,
+    imported_components: &HashMap<String, ModuleName>,
+) -> Option<ParsedEntrypointDeclaration> {
+    // Consume the 'entrypoint' keyword
+    let Some(Ok((dop::Token::Entrypoint, keyword_range))) =
+        dop::tokenizer::next_collecting_comments(iter, comments)
+    else {
+        return None;
+    };
+
+    // Parse the entrypoint name (must be PascalCase)
+    // First peek to check what type of token we have
+    let (name_str, name_range) = match dop::tokenizer::peek_past_comments(iter) {
+        Some(Ok((dop::Token::TypeName(name_str), range))) => {
+            // Consume the token
+            dop::tokenizer::next_collecting_comments(iter, comments);
+            (name_str, range)
+        }
+        Some(Ok((dop::Token::Identifier(_), range))) => {
+            // Lowercase name - consume and report error
+            dop::tokenizer::next_collecting_comments(iter, comments);
+            errors.push(ParseError::InvalidEntrypointName { range });
+            return None;
+        }
+        _ => {
+            errors.push(ParseError::InvalidEntrypointName {
+                range: keyword_range,
+            });
+            return None;
+        }
+    };
+
+    let name = match ComponentName::new(name_str.to_string()) {
+        Ok(n) => n,
+        Err(_) => {
+            errors.push(ParseError::InvalidEntrypointName {
+                range: name_range.clone(),
+            });
+            return None;
+        }
+    };
+
+    // Expect opening parenthesis for parameters
+    let Some(Ok((dop::Token::LeftParen, params_start))) =
+        dop::tokenizer::next_collecting_comments(iter, comments)
+    else {
+        errors.push(dop::ParseError::ExpectedTokenButGotEof {
+            expected: dop::Token::LeftParen,
+            range: name_range.clone(),
+        }.into());
+        return None;
+    };
+
+    // Parse parameters
+    let (params, params_range) = {
+        let mut params = Vec::new();
+        let mut params_end = params_start.clone();
+
+        loop {
+            // Check for closing paren
+            if let Some(Ok((dop::Token::RightParen, end_range))) = dop::tokenizer::peek(iter) {
+                params_end = end_range;
+                dop::tokenizer::next_collecting_comments(iter, comments);
+                break;
+            }
+
+            // Skip comma if present (between parameters)
+            if !params.is_empty() {
+                if let Some(Ok((dop::Token::Comma, _))) = dop::tokenizer::peek(iter) {
+                    dop::tokenizer::next_collecting_comments(iter, comments);
+                } else {
+                    // Missing comma or closing paren
+                    break;
+                }
+            }
+
+            // Check for trailing comma before closing paren
+            if let Some(Ok((dop::Token::RightParen, end_range))) = dop::tokenizer::peek(iter) {
+                params_end = end_range;
+                dop::tokenizer::next_collecting_comments(iter, comments);
+                break;
+            }
+
+            // Parse parameter: name: Type [= default]
+            let Some(Ok((dop::Token::Identifier(param_name), param_name_range))) =
+                dop::tokenizer::next_collecting_comments(iter, comments)
+            else {
+                break;
+            };
+
+            // Expect colon
+            match dop::tokenizer::next_collecting_comments(iter, comments) {
+                Some(Ok((dop::Token::Colon, _))) => {}
+                Some(Ok((token, range))) => {
+                    errors.push(dop::ParseError::ExpectedTokenButGot {
+                        expected: dop::Token::Colon,
+                        actual: token,
+                        range,
+                    }.into());
+                    break;
+                }
+                _ => {
+                    errors.push(dop::ParseError::ExpectedTokenButGotEof {
+                        expected: dop::Token::Colon,
+                        range: param_name_range.clone(),
+                    }.into());
+                    break;
+                }
+            }
+
+            // Parse type
+            let param_type = match dop::parser::parse_type(iter, comments, &params_start) {
+                Ok(t) => t,
+                Err(e) => {
+                    errors.push(e.into());
+                    break;
+                }
+            };
+
+            // Check for default value - use parse_primary which doesn't consume past the literal
+            let default_value = if let Some(Ok((dop::Token::Assign, _))) = dop::tokenizer::peek(iter) {
+                dop::tokenizer::next_collecting_comments(iter, comments);
+                match dop::parser::parse_primary(iter, comments, &params_start) {
+                    Ok(expr) => Some(expr),
+                    Err(e) => {
+                        errors.push(e.into());
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
+            let var_name = VarName::new(&param_name).expect("identifier should be valid var name");
+            params.push(parsed_ast::ParsedParameter {
+                var_name,
+                var_name_range: param_name_range,
+                var_type: param_type,
+                default_value,
+            });
+        }
+
+        (params, params_start.to(params_end))
+    };
+
+    // Expect opening brace for body
+    let Some(Ok((dop::Token::LeftBrace, body_start))) =
+        dop::tokenizer::next_collecting_comments(iter, comments)
+    else {
+        errors.push(dop::ParseError::ExpectedTokenButGotEof {
+            expected: dop::Token::LeftBrace,
+            range: params_range.clone(),
+        }.into());
+        return None;
+    };
+
+    // Parse the body - this contains HTML/component nodes
+    // We need to use the hop tokenizer for this
+    let mut children = Vec::new();
+    let mut tokenizer = Tokenizer::new();
+
+    loop {
+        // Skip whitespace
+        while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
+            iter.next();
+        }
+
+        // Check for closing brace
+        if let Some(Ok((dop::Token::RightBrace, body_end))) = dop::tokenizer::peek(iter) {
+            dop::tokenizer::next_collecting_comments(iter, comments);
+            let range = keyword_range.to(body_end);
+            return Some(ParsedEntrypointDeclaration {
+                name,
+                name_range,
+                params,
+                children,
+                range,
+            });
+        }
+
+        // Try to parse a node using the hop tokenizer
+        if let Some(tree) = parse_tree(&mut tokenizer, iter, errors) {
+            if let Some(node) = construct_node(
+                tree,
+                comments,
+                errors,
+                module_name,
+                defined_components,
+                imported_components,
+            ) {
+                children.push(node);
+            }
+        } else {
+            // If we can't parse a tree, we're done or hit an error
+            break;
+        }
+    }
+
+    // If we get here, we didn't find a closing brace
+    errors.push(dop::ParseError::ExpectedTokenButGotEof {
+        expected: dop::Token::RightBrace,
+        range: body_start,
+    }.into());
+    None
 }
 
 fn construct_node(
@@ -2615,6 +2859,476 @@ mod tests {
                 error: Component name must start with an uppercase letter
                 1 | <div></div>
                   |  ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_declaration() {
+        check(
+            indoc! {"
+                entrypoint Index() {
+                    <div>Hello</div>
+                }
+            "},
+            expect![[r#"
+                entrypoint Index() {
+                  <div>
+                    Hello
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_with_parameters() {
+        check(
+            indoc! {"
+                entrypoint Index(name: String, count: Int) {
+                    <div>{name}: {count}</div>
+                }
+            "},
+            expect![[r#"
+                entrypoint Index(name: String, count: Int) {
+                  <div>
+                    {name}: {count}
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_with_component_reference() {
+        check(
+            indoc! {"
+                <Header {title: String}>
+                    <h1>{title}</h1>
+                </Header>
+
+                entrypoint Index(title: String) {
+                    <Header title={title} />
+                }
+            "},
+            expect![[r#"
+                <Header {title: String}>
+                  <h1>
+                    {title}
+                  </h1>
+                </Header>
+
+                entrypoint Index(title: String) {
+                  <Header title={title}/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_multiple_entrypoints() {
+        check(
+            indoc! {"
+                entrypoint Index() {
+                    <div>Index</div>
+                }
+
+                entrypoint About() {
+                    <div>About</div>
+                }
+            "},
+            expect![[r#"
+                entrypoint Index() {
+                  <div>
+                    Index
+                  </div>
+                }
+
+                entrypoint About() {
+                  <div>
+                    About
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_duplicate_entrypoint_names() {
+        check(
+            indoc! {"
+                entrypoint Index() {
+                    <div>First</div>
+                }
+
+                entrypoint Index() {
+                    <div>Second</div>
+                }
+            "},
+            expect![[r#"
+                error: Index is already defined
+                4 | 
+                5 | entrypoint Index() {
+                  |            ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_entrypoint_with_same_name_as_component() {
+        check(
+            indoc! {"
+                <Index>
+                    <div>Component</div>
+                </Index>
+
+                entrypoint Index() {
+                    <div>Entrypoint</div>
+                }
+            "},
+            expect![[r#"
+                error: Index is already defined
+                4 | 
+                5 | entrypoint Index() {
+                  |            ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_entrypoint_with_lowercase_name() {
+        check(
+            indoc! {"
+                entrypoint index() {
+                    <div>Hello</div>
+                }
+            "},
+            expect![[r#"
+                error: Entrypoint name must start with an uppercase letter
+                1 | entrypoint index() {
+                  |            ^^^^^
+
+                error: Unexpected text at top level
+                1 | entrypoint index() {
+                  |                 ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_with_default_parameter() {
+        check(
+            indoc! {r#"
+                entrypoint Index(name: String = "World") {
+                    <div>Hello {name}</div>
+                }
+            "#},
+            expect![[r#"
+                entrypoint Index(name: String = "World") {
+                  <div>
+                    Hello {name}
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_with_empty_body() {
+        check(
+            indoc! {"
+                entrypoint Index() {
+                }
+            "},
+            expect![[r#"
+                entrypoint Index() {}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_with_if_statement() {
+        check(
+            indoc! {"
+                entrypoint Index(show: Bool) {
+                    <if {show}>
+                        <div>Visible</div>
+                    </if>
+                }
+            "},
+            expect![[r#"
+                entrypoint Index(show: Bool) {
+                  <if {show}>
+                    <div>
+                      Visible
+                    </div>
+                  </if>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_with_for_loop() {
+        check(
+            indoc! {"
+                entrypoint Index(items: Array[String]) {
+                    <for {item in items}>
+                        <div>{item}</div>
+                    </for>
+                }
+            "},
+            expect![[r#"
+                entrypoint Index(items: Array[String]) {
+                  <for {item in items}>
+                    <div>
+                      {item}
+                    </div>
+                  </for>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_with_let_binding() {
+        check(
+            indoc! {r#"
+                entrypoint Index() {
+                    <let {name: String = "World"}>
+                        <div>Hello {name}</div>
+                    </let>
+                }
+            "#},
+            expect![[r#"
+                entrypoint Index() {
+                  <let {name: String = "World"}>
+                    <div>
+                      Hello {name}
+                    </div>
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_with_void_elements() {
+        check(
+            indoc! {"
+                entrypoint Index() {
+                    <div>
+                        <br />
+                        <input type=\"text\" />
+                        <hr />
+                    </div>
+                }
+            "},
+            expect![[r#"
+                entrypoint Index() {
+                  <div>
+                    <br>
+                    <input type="text">
+                    <hr>
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_with_trailing_comma_in_params() {
+        check(
+            indoc! {"
+                entrypoint Index(name: String,) {
+                    <div>{name}</div>
+                }
+            "},
+            expect![[r#"
+                entrypoint Index(name: String) {
+                  <div>
+                    {name}
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_entrypoint_with_same_name_as_record() {
+        check(
+            indoc! {"
+                record Index {
+                    name: String
+                }
+
+                entrypoint Index() {
+                    <div>Hello</div>
+                }
+            "},
+            expect![[r#"
+                error: Index is already defined
+                4 | 
+                5 | entrypoint Index() {
+                  |            ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_entrypoint_with_same_name_as_enum() {
+        check(
+            indoc! {"
+                enum Index {
+                    Page,
+                    Home
+                }
+
+                entrypoint Index() {
+                    <div>Hello</div>
+                }
+            "},
+            expect![[r#"
+                error: Index is already defined
+                5 | 
+                6 | entrypoint Index() {
+                  |            ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_with_match_expression() {
+        check(
+            indoc! {"
+                entrypoint Index(value: Option[String]) {
+                    <match {value}>
+                        <case {Some(s)}>
+                            <div>{s}</div>
+                        </case>
+                        <case {None}>
+                            <div>No value</div>
+                        </case>
+                    </match>
+                }
+            "},
+            expect![[r#"
+                entrypoint Index(value: Option[String]) {
+                  <match {value}>
+                    <case {Some(s)}>
+                      <div>
+                        {s}
+                      </div>
+                    </case>
+                    <case {None}>
+                      <div>
+                        No value
+                      </div>
+                    </case>
+                  </match>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_with_nested_components() {
+        check(
+            indoc! {"
+                <Header {title: String}>
+                    <h1>{title}</h1>
+                </Header>
+
+                <Footer>
+                    <p>Copyright 2024</p>
+                </Footer>
+
+                entrypoint Index(title: String) {
+                    <div>
+                        <Header title={title} />
+                        <main>Content</main>
+                        <Footer />
+                    </div>
+                }
+            "},
+            expect![[r#"
+                <Header {title: String}>
+                  <h1>
+                    {title}
+                  </h1>
+                </Header>
+
+                <Footer>
+                  <p>
+                    Copyright 2024
+                  </p>
+                </Footer>
+
+                entrypoint Index(title: String) {
+                  <div>
+                    <Header title={title}/>
+                    <main>
+                      Content
+                    </main>
+                    <Footer/>
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_between_components() {
+        check(
+            indoc! {"
+                <Header>
+                    <h1>Header</h1>
+                </Header>
+
+                entrypoint Index() {
+                    <div>Index</div>
+                }
+
+                <Footer>
+                    <p>Footer</p>
+                </Footer>
+            "},
+            expect![[r#"
+                <Header>
+                  <h1>
+                    Header
+                  </h1>
+                </Header>
+
+                entrypoint Index() {
+                  <div>
+                    Index
+                  </div>
+                }
+
+                <Footer>
+                  <p>
+                    Footer
+                  </p>
+                </Footer>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_with_multiple_params_mixed_defaults() {
+        check(
+            indoc! {r#"
+                entrypoint Index(required: String, optional: Int = 42) {
+                    <div>{required}: {optional}</div>
+                }
+            "#},
+            expect![[r#"
+                entrypoint Index(required: String, optional: Int = 42) {
+                  <div>
+                    {required}: {optional}
+                  </div>
+                }
             "#]],
         );
     }

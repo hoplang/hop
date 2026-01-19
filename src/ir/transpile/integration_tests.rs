@@ -2,7 +2,6 @@ use super::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
 use crate::document::Document;
 use crate::hop::program::Program;
 use crate::hop::syntax::format;
-use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
 use expect_test::Expect;
@@ -244,12 +243,11 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
     let typed_asts = program.get_typed_modules();
 
     // Compile to IR (skip HTML structure injection and dev mode wrapper for simpler test output)
-    let pages = vec![(module_name, ComponentName::new("Test".to_string()).unwrap())];
     let options = OrchestrateOptions {
         skip_html_structure: true,
         skip_dev_mode_wrapper: true,
     };
-    let module = orchestrate(typed_asts, None, &pages, options).expect("Orchestration failed");
+    let module = orchestrate(typed_asts, None, options);
 
     let ir_output = module.to_string();
 
@@ -293,7 +291,7 @@ mod tests {
     fn option_match_returning_options() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {inner: Option[String] = Some("hello")}>
                     <let {
                       mapped: Option[String] = match inner {
@@ -311,7 +309,7 @@ mod tests {
                       </match>
                     </let>
                   </let>
-                </Test>
+                }
             "#},
             "mapped:hello",
             expect![[r#"
@@ -345,7 +343,7 @@ mod tests {
     fn option_match_as_some_value() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {inner_opt: Option[String] = Some("inner")}>
                     <let {
                       outer: Option[String] = Some(
@@ -362,7 +360,7 @@ mod tests {
                       </match>
                     </let>
                   </let>
-                </Test>
+                }
             "#},
             "inner",
             expect![[r#"
@@ -396,14 +394,14 @@ mod tests {
     fn bool_match_expr() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {flag: Bool = true}>
                     {match flag {true => "yes", false => "no"}}
                   </let>
                   <let {other: Bool = false}>
                     {match other {true => "YES", false => "NO"}}
                   </let>
-                </Test>
+                }
             "#},
             "yesNO",
             expect![[r#"
@@ -428,7 +426,7 @@ mod tests {
     fn option_literal_inline_match_expr() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {opt1: Option[String] = Some("hi")}>
                     {match opt1 {Some(_) => "some", None => "none"}}
                   </let>
@@ -436,7 +434,7 @@ mod tests {
                   <let {opt2: Option[String] = None}>
                     {match opt2 {Some(_) => "SOME", None => "NONE"}}
                   </let>
-                </Test>
+                }
             "#},
             "some,NONE",
             expect![[r#"
@@ -461,7 +459,7 @@ mod tests {
     fn nested_bool_match_expr() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {outer: Bool = true}>
                     <let {inner: Bool = false}>
                       {match outer {
@@ -479,7 +477,7 @@ mod tests {
                       }}
                     </let>
                   </let>
-                </Test>
+                }
             "#},
             "TF,F",
             expect![[r#"
@@ -510,13 +508,13 @@ mod tests {
                   Blue,
                 }
 
-                <Test>
+                entrypoint Test() {
                   <let {color: Color = Color::Green}>
                     <let {is_red: Bool = color == Color::Red}>
                       {match is_red {true => "eq", false => "not eq"}}
                     </let>
                   </let>
-                </Test>
+                }
             "#},
             "not eq",
             expect![[r#"
@@ -546,13 +544,13 @@ mod tests {
     fn int_to_float_simple() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {count: Int = 42}>
                     <let {result: Float = count.to_float() + 0.5}>
                       {result.to_string()}
                     </let>
                   </let>
-                </Test>
+                }
             "#},
             "42.5",
             expect![[r#"
@@ -581,7 +579,7 @@ mod tests {
     fn int_to_float_in_addition() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {count: Int = 5}>
                     <let {rate: Float = 0.5}>
                       <let {result: Float = count.to_float() + rate}>
@@ -589,7 +587,7 @@ mod tests {
                       </let>
                     </let>
                   </let>
-                </Test>
+                }
             "#},
             "5.5",
             expect![[r#"
@@ -620,11 +618,11 @@ mod tests {
     fn int_to_string_negative() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {num: Int = -123}>
                     {num.to_string()}
                   </let>
-                </Test>
+                }
             "#},
             "-123",
             expect![[r#"
@@ -651,11 +649,11 @@ mod tests {
     fn float_to_int_negative() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {temp: Float = -2.9}>
                     {temp.to_int().to_string()}
                   </let>
-                </Test>
+                }
             "#},
             "-2",
             expect![[r#"
@@ -682,11 +680,11 @@ mod tests {
     fn simple_html() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <h1>
                     Hello, World!
                   </h1>
-                </Test>
+                }
             "#},
             "<h1>Hello, World!</h1>",
             expect![[r#"
@@ -711,11 +709,11 @@ mod tests {
     fn with_let_binding() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {name: String = "Alice"}>
                     Hello, {name}!
                   </let>
-                </Test>
+                }
             "#},
             "Hello, Alice!",
             expect![[r#"
@@ -740,7 +738,7 @@ mod tests {
     fn conditional() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {show: Bool = true}>
                     <if {show}>
                       Visible
@@ -749,7 +747,7 @@ mod tests {
                       Hidden
                     </if>
                   </let>
-                </Test>
+                }
             "#},
             "Visible",
             expect![[r#"
@@ -774,7 +772,7 @@ mod tests {
     fn if_else() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {show: Bool = true}>
                     <match {show}>
                       <case {true}>
@@ -795,7 +793,7 @@ mod tests {
                       </case>
                     </match>
                   </let>
-                </Test>
+                }
             "#},
             "True branchFalse branch",
             expect![[r#"
@@ -839,11 +837,11 @@ mod tests {
     fn for_loop() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <for {item in ["a", "b", "c"]}>
                     {item},
                   </for>
-                </Test>
+                }
             "#},
             "a,b,c,",
             expect![[r#"
@@ -871,11 +869,11 @@ mod tests {
     fn for_loop_with_range() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <for {i in 1..=3}>
                     {i.to_string()},
                   </for>
-                </Test>
+                }
             "#},
             "1,2,3,",
             expect![[r#"
@@ -903,11 +901,11 @@ mod tests {
     fn for_loop_with_range_zero_to_five() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <for {x in 0..=5}>
                     {x.to_string()}
                   </for>
-                </Test>
+                }
             "#},
             "012345",
             expect![[r#"
@@ -934,13 +932,13 @@ mod tests {
     fn for_loop_with_range_nested() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <for {i in 1..=2}>
                     <for {j in 1..=2}>
                       ({i.to_string()},{j.to_string()})
                     </for>
                   </for>
-                </Test>
+                }
             "#},
             "(1,1)(1,2)(2,1)(2,2)",
             expect![[r#"
@@ -973,11 +971,11 @@ mod tests {
     fn html_escaping() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {text: String = "<div>Hello & world</div>"}>
                     {text}
                   </let>
-                </Test>
+                }
             "#},
             "&lt;div&gt;Hello &amp; world&lt;/div&gt;",
             expect![[r#"
@@ -1002,11 +1000,11 @@ mod tests {
     fn let_binding() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {message: String = "Hello from let"}>
                     {message}
                   </let>
-                </Test>
+                }
             "#},
             "Hello from let",
             expect![[r#"
@@ -1031,13 +1029,13 @@ mod tests {
     fn string_concatenation() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {first: String = "Hello"}>
                     <let {second: String = " World"}>
                       {first + second}
                     </let>
                   </let>
-                </Test>
+                }
             "#},
             "Hello World",
             expect![[r#"
@@ -1062,13 +1060,13 @@ mod tests {
     fn complex_nested_structure() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <for {item in ["A", "B"]}>
                     <let {prefix: String = "["}>
                       {prefix}{item}]
                     </let>
                   </for>
-                </Test>
+                }
             "#},
             "[A][B]",
             expect![[r#"
@@ -1097,11 +1095,11 @@ mod tests {
     fn string_concat_equality() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <if {"foo" + "bar" == "foobar"}>
                     equals
                   </if>
-                </Test>
+                }
             "#},
             "equals",
             expect![[r#"
@@ -1126,14 +1124,14 @@ mod tests {
     fn less_than_comparison() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <if {3 < 5}>
                     3 &lt; 5
                   </if>
                   <if {10 < 2}>
                     10 &lt; 2
                   </if>
-                </Test>
+                }
             "#},
             "3 &lt; 5",
             expect![[r#"
@@ -1163,14 +1161,14 @@ mod tests {
     fn less_than_float_comparison() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <if {1.5 < 2.5}>
                     1.5 &lt; 2.5
                   </if>
                   <if {3.0 < 1.0}>
                     3.0 &lt; 1.0
                   </if>
-                </Test>
+                }
             "#},
             "1.5 &lt; 2.5",
             expect![[r#"
@@ -1206,7 +1204,7 @@ mod tests {
                   Blue,
                 }
 
-                <Test>
+                entrypoint Test() {
                   <let {color: Color = Color::Red}>
                     <match {color == Color::Red}>
                       <case {true}>
@@ -1217,7 +1215,7 @@ mod tests {
                       </case>
                     </match>
                   </let>
-                </Test>
+                }
             "#},
             "equal",
             expect![[r#"
@@ -1262,7 +1260,7 @@ mod tests {
                   Blue,
                 }
 
-                <Test>
+                entrypoint Test() {
                   <let {color: Color = Color::Red}>
                     <match {color == Color::Green}>
                       <case {true}>
@@ -1273,7 +1271,7 @@ mod tests {
                       </case>
                     </match>
                   </let>
-                </Test>
+                }
             "#},
             "not equal",
             expect![[r#"
@@ -1312,7 +1310,7 @@ mod tests {
     fn bool_match_true() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {flag: Bool = true}>
                     <match {flag}>
                       <case {true}>
@@ -1323,7 +1321,7 @@ mod tests {
                       </case>
                     </match>
                   </let>
-                </Test>
+                }
             "#},
             "yes",
             expect![[r#"
@@ -1357,7 +1355,7 @@ mod tests {
     fn bool_match_false() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {flag: Bool = false}>
                     <match {flag}>
                       <case {true}>
@@ -1368,7 +1366,7 @@ mod tests {
                       </case>
                     </match>
                   </let>
-                </Test>
+                }
             "#},
             "no",
             expect![[r#"
@@ -1407,14 +1405,14 @@ mod tests {
                   age: Int,
                 }
 
-                <Test>
+                entrypoint Test() {
                   <let {person: Person = Person(name: "Alice", age: 30)}>
                     {person.name}
                     <if {person.age == 30}>
                       :30
                     </if>
                   </let>
-                </Test>
+                }
             "#},
             "Alice:30",
             expect![[r#"
@@ -1454,7 +1452,7 @@ mod tests {
                   active: Bool,
                 }
 
-                <Test>
+                entrypoint Test() {
                   <let {
                     item: Item = Item(
                       label: "widget",
@@ -1471,7 +1469,7 @@ mod tests {
                       active
                     </if>
                   </let>
-                </Test>
+                }
             "#},
             "widget,5,active",
             expect![[r#"
@@ -1524,7 +1522,7 @@ mod tests {
                   address: Address,
                 }
 
-                <Test>
+                entrypoint Test() {
                   <let {
                     person: Person = Person(
                       name: "Alice",
@@ -1533,7 +1531,7 @@ mod tests {
                   }>
                     {person.name},{person.address.city}
                   </let>
-                </Test>
+                }
             "#},
             "Alice,Paris",
             expect![[r#"
@@ -1584,7 +1582,7 @@ mod tests {
                   status: Status,
                 }
 
-                <Test>
+                entrypoint Test() {
                   <let {
                     user: User = User(
                       name: "Alice",
@@ -1596,7 +1594,7 @@ mod tests {
                       active
                     </if>
                   </let>
-                </Test>
+                }
             "#},
             "Alice:active",
             expect![[r#"
@@ -1639,7 +1637,7 @@ mod tests {
     fn numeric_add() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {a: Int = 3}>
                     <let {b: Int = 7}>
                       <if {a + b == 10}>
@@ -1647,7 +1645,7 @@ mod tests {
                       </if>
                     </let>
                   </let>
-                </Test>
+                }
             "#},
             "correct",
             expect![[r#"
@@ -1678,7 +1676,7 @@ mod tests {
     fn numeric_subtract() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {a: Int = 10}>
                     <let {b: Int = 3}>
                       <if {a - b == 7}>
@@ -1686,7 +1684,7 @@ mod tests {
                       </if>
                     </let>
                   </let>
-                </Test>
+                }
             "#},
             "correct",
             expect![[r#"
@@ -1717,7 +1715,7 @@ mod tests {
     fn numeric_multiply() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {a: Int = 4}>
                     <let {b: Int = 5}>
                       <if {a * b == 20}>
@@ -1725,7 +1723,7 @@ mod tests {
                       </if>
                     </let>
                   </let>
-                </Test>
+                }
             "#},
             "correct",
             expect![[r#"
@@ -1756,7 +1754,7 @@ mod tests {
     fn boolean_logical_and() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {a: Bool = true}>
                     <let {b: Bool = true}>
                       <if {a && b}>
@@ -1771,7 +1769,7 @@ mod tests {
                       </if>
                     </let>
                   </let>
-                </Test>
+                }
             "#},
             "TT",
             expect![[r#"
@@ -1796,7 +1794,7 @@ mod tests {
     fn boolean_logical_or() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {a: Bool = false}>
                     <let {b: Bool = true}>
                       <if {a || b}>
@@ -1811,7 +1809,7 @@ mod tests {
                       </if>
                     </let>
                   </let>
-                </Test>
+                }
             "#},
             "FT",
             expect![[r#"
@@ -1836,7 +1834,7 @@ mod tests {
     fn less_than_or_equal() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <if {3 <= 5}>
                     A
                   </if>
@@ -1846,7 +1844,7 @@ mod tests {
                   <if {7 <= 5}>
                     C
                   </if>
-                </Test>
+                }
             "#},
             "AB",
             expect![[r#"
@@ -1879,7 +1877,7 @@ mod tests {
     fn option_literal() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {some_val: Option[String] = Some("hello")}>
                     <match {some_val}>
                       <case {Some(val)}>
@@ -1900,7 +1898,7 @@ mod tests {
                       </case>
                     </match>
                   </let>
-                </Test>
+                }
             "#},
             "Some:hello,None",
             expect![[r#"
@@ -1950,7 +1948,7 @@ mod tests {
     fn option_literal_inline_match() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {opt1: Option[String] = Some("world")}>
                     <match {opt1}>
                       <case {Some(val)}>
@@ -1972,7 +1970,7 @@ mod tests {
                       </case>
                     </match>
                   </let>
-                </Test>
+                }
             "#},
             "Got:world,Empty",
             expect![[r#"
@@ -2023,7 +2021,7 @@ mod tests {
     fn option_match_wildcard_pattern() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {opt1: Option[String] = Some("hello")}>
                     <match {opt1}>
                       <case {Some(_)}>
@@ -2045,7 +2043,7 @@ mod tests {
                       </case>
                     </match>
                   </let>
-                </Test>
+                }
             "#},
             "is-some,IS-NONE",
             expect![[r#"
@@ -2090,7 +2088,7 @@ mod tests {
     fn option_match_nested_constant_folding() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {inner_opt: Option[String] = Some("inner")}>
                     <let {
                       outer: Option[String] = Some(
@@ -2107,7 +2105,7 @@ mod tests {
                       </match>
                     </let>
                   </let>
-                </Test>
+                }
             "#},
             "inner",
             expect![[r#"
@@ -2141,7 +2139,7 @@ mod tests {
     fn option_array_for_loop() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <for {item in [Some("a"), None, Some("b")]}>
                     <match {item}>
                       <case {Some(val)}>
@@ -2152,7 +2150,7 @@ mod tests {
                       </case>
                     </match>
                   </for>
-                </Test>
+                }
             "#},
             "[a][_][b]",
             expect![[r#"
@@ -2202,7 +2200,7 @@ mod tests {
                   Blue,
                 }
 
-                <Test>
+                entrypoint Test() {
                   <let {color: Color = Color::Green}>
                     <match {color}>
                       <case {Color::Red}>
@@ -2216,7 +2214,7 @@ mod tests {
                       </case>
                     </match>
                   </let>
-                </Test>
+                }
             "#},
             "green",
             expect![[r#"
@@ -2264,7 +2262,7 @@ mod tests {
                   Blue,
                 }
 
-                <Test>
+                entrypoint Test() {
                   <let {color: Color = Color::Blue}>
                     <match {color}>
                       <case {Color::Red}>
@@ -2278,7 +2276,7 @@ mod tests {
                       </case>
                     </match>
                   </let>
-                </Test>
+                }
             "#},
             "blue",
             expect![[r#"
@@ -2325,7 +2323,7 @@ mod tests {
                   Err(message: String),
                 }
 
-                <Test>
+                entrypoint Test() {
                   <let {ok: Result = Result::Ok(value: "success")}>
                     <match {ok}>
                       <case {Result::Ok(value: v)}>
@@ -2336,7 +2334,7 @@ mod tests {
                       </case>
                     </match>
                   </let>
-                </Test>
+                }
             "#},
             "created:success",
             expect![[r#"
@@ -2385,7 +2383,7 @@ mod tests {
                   Err(message: String),
                 }
 
-                <Test>
+                entrypoint Test() {
                   <let {result: Result = Result::Ok(value: "hello")}>
                     <match {result}>
                       <case {Result::Ok(value: v)}>
@@ -2396,7 +2394,7 @@ mod tests {
                       </case>
                     </match>
                   </let>
-                </Test>
+                }
             "#},
             "Ok:hello",
             expect![[r#"
@@ -2445,7 +2443,7 @@ mod tests {
                   Err(message: String),
                 }
 
-                <Test>
+                entrypoint Test() {
                   <let {
                     result: Result = Result::Err(message: "something went wrong"),
                   }>
@@ -2458,7 +2456,7 @@ mod tests {
                       </case>
                     </match>
                   </let>
-                </Test>
+                }
             "#},
             "Err:something went wrong",
             expect![[r#"
@@ -2507,7 +2505,7 @@ mod tests {
                   Error(reason: String),
                 }
 
-                <Test>
+                entrypoint Test() {
                   <let {
                     resp: Response = Response::Success(code: "200", body: "OK"),
                   }>
@@ -2520,7 +2518,7 @@ mod tests {
                       </case>
                     </match>
                   </let>
-                </Test>
+                }
             "#},
             "200:OK",
             expect![[r#"
@@ -2567,11 +2565,11 @@ mod tests {
     fn array_length_simple() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {items: Array[String] = ["a", "b", "c"]}>
                     {items.len().to_string()}
                   </let>
-                </Test>
+                }
             "#},
             "3",
             expect![[r#"
@@ -2598,11 +2596,11 @@ mod tests {
     fn array_length_empty() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {items: Array[String] = []}>
                     {items.len().to_string()}
                   </let>
-                </Test>
+                }
             "#},
             "0",
             expect![[r#"
@@ -2629,13 +2627,13 @@ mod tests {
     fn array_length_in_comparison() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {items: Array[String] = ["x", "y"]}>
                     <if {items.len() == 2}>
                       has two
                     </if>
                   </let>
-                </Test>
+                }
             "#},
             "has two",
             expect![[r#"
@@ -2664,13 +2662,13 @@ mod tests {
     fn array_length_less_than() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {items: Array[String] = ["a"]}>
                     <if {items.len() < 5}>
                       less than 5
                     </if>
                   </let>
-                </Test>
+                }
             "#},
             "less than 5",
             expect![[r#"
@@ -2699,11 +2697,11 @@ mod tests {
     fn array_length_int_array() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {numbers: Array[Int] = [1, 2, 3, 4, 5]}>
                     {numbers.len().to_string()}
                   </let>
-                </Test>
+                }
             "#},
             "5",
             expect![[r#"
@@ -2730,11 +2728,11 @@ mod tests {
     fn int_to_string_simple() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {count: Int = 42}>
                     {count.to_string()}
                   </let>
-                </Test>
+                }
             "#},
             "42",
             expect![[r#"
@@ -2761,11 +2759,11 @@ mod tests {
     fn int_to_string_zero() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {num: Int = 0}>
                     {num.to_string()}
                   </let>
-                </Test>
+                }
             "#},
             "0",
             expect![[r#"
@@ -2792,11 +2790,11 @@ mod tests {
     fn int_to_string_concat() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {count: Int = 5}>
                     {"Count: " + count.to_string()}
                   </let>
-                </Test>
+                }
             "#},
             "Count: 5",
             expect![[r#"
@@ -2823,11 +2821,11 @@ mod tests {
     fn float_to_int_simple() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {price: Float = 3.7}>
                     {price.to_int().to_string()}
                   </let>
-                </Test>
+                }
             "#},
             "3",
             expect![[r#"
@@ -2854,11 +2852,11 @@ mod tests {
     fn float_to_int_whole_number() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {val: Float = 5.0}>
                     {val.to_int().to_string()}
                   </let>
-                </Test>
+                }
             "#},
             "5",
             expect![[r#"
@@ -2885,11 +2883,11 @@ mod tests {
     fn float_to_string_simple() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {price: Float = 19.99}>
                     {price.to_string()}
                   </let>
-                </Test>
+                }
             "#},
             "19.99",
             expect![[r#"
@@ -2916,11 +2914,11 @@ mod tests {
     fn float_to_string_concat() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {price: Float = 9.99}>
                     {"$" + price.to_string()}
                   </let>
-                </Test>
+                }
             "#},
             "$9.99",
             expect![[r#"
@@ -2947,11 +2945,11 @@ mod tests {
     fn for_loop_with_underscore_range() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <for {_ in 0..=2}>
                     x
                   </for>
-                </Test>
+                }
             "#},
             "xxx",
             expect![[r#"
@@ -2978,13 +2976,13 @@ mod tests {
     fn for_loop_with_underscore_array() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {items: Array[String] = ["a", "b", "c"]}>
                     <for {_ in items}>
                       *
                     </for>
                   </let>
-                </Test>
+                }
             "#},
             "***",
             expect![[r#"
@@ -3013,13 +3011,13 @@ mod tests {
     fn for_loop_with_underscore_nested() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <for {_ in 0..=1}>
                     <for {_ in 0..=2}>
                       .
                     </for>
                   </for>
-                </Test>
+                }
             "#},
             "......",
             expect![[r#"
@@ -3048,13 +3046,13 @@ mod tests {
     fn for_loop_with_underscore_mixed_with_named() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <for {i in 1..=2}>
                     <for {_ in 0..=1}>
                       {i.to_string()}
                     </for>
                   </for>
-                </Test>
+                }
             "#},
             "1122",
             expect![[r#"
@@ -3083,9 +3081,9 @@ mod tests {
     fn method_call_on_float_literal() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   {3.14.to_string()}
-                </Test>
+                }
             "#},
             "3.14",
             expect![[r#"
@@ -3110,9 +3108,9 @@ mod tests {
     fn method_call_on_array_literal() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   {[1, 2, 3].len().to_string()}
-                </Test>
+                }
             "#},
             "3",
             expect![[r#"
@@ -3137,9 +3135,9 @@ mod tests {
     fn method_call_on_parenthesized_expression() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   {(1 + 2).to_string()}
-                </Test>
+                }
             "#},
             "3",
             expect![[r#"
@@ -3164,9 +3162,9 @@ mod tests {
     fn int_literal_to_string() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   {42.to_string()}
-                </Test>
+                }
             "#},
             "42",
             expect![[r#"
@@ -3191,9 +3189,9 @@ mod tests {
     fn negated_int_to_string() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   {(-42).to_string()}
-                </Test>
+                }
             "#},
             "-42",
             expect![[r#"
@@ -3218,9 +3216,9 @@ mod tests {
     fn float_literal_to_string() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   {5.0.to_string()}
-                </Test>
+                }
             "#},
             "5",
             expect![[r#"
@@ -3245,9 +3243,9 @@ mod tests {
     fn negated_float_to_string() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   {(-3.14).to_string()}
-                </Test>
+                }
             "#},
             "-3.14",
             expect![[r#"
@@ -3272,7 +3270,7 @@ mod tests {
     fn nested_option_from_hop_syntax() {
         check(
             indoc! {r#"
-                <Test>
+                entrypoint Test() {
                   <let {
                     nested1: Option[Option[String]] = Some(Some("deep")),
                   }>
@@ -3316,7 +3314,7 @@ mod tests {
                       </case>
                     </match>
                   </let>
-                </Test>
+                }
             "#},
             "deep,some-none,none",
             expect![[r#"

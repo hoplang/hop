@@ -93,6 +93,13 @@ pub struct TypedComponentDeclaration {
     pub params: Vec<(VarName, Type, Option<TypedExpr>)>,
 }
 
+#[derive(Debug, Clone)]
+pub struct TypedEntrypointDeclaration {
+    pub name: ComponentName,
+    pub children: Vec<TypedNode>,
+    pub params: Vec<(VarName, Type, Option<TypedExpr>)>,
+}
+
 impl TypedComponentDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
         let tag = BoxDoc::text("<").append(BoxDoc::text(self.component_name.as_str()));
@@ -147,11 +154,58 @@ impl TypedComponentDeclaration {
     }
 }
 
+impl TypedEntrypointDeclaration {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        let params_doc = if self.params.is_empty() {
+            BoxDoc::nil()
+        } else {
+            BoxDoc::intersperse(
+                self.params.iter().map(|(name, ty, default)| {
+                    let base = BoxDoc::text(name.as_str())
+                        .append(BoxDoc::text(": "))
+                        .append(ty.to_doc());
+                    match default {
+                        Some(expr) => base.append(BoxDoc::text(" = ")).append(expr.to_doc()),
+                        None => base,
+                    }
+                }),
+                BoxDoc::text(", "),
+            )
+        };
+
+        let header = BoxDoc::text("entrypoint")
+            .append(BoxDoc::space())
+            .append(BoxDoc::text(self.name.as_str()))
+            .append(BoxDoc::text("("))
+            .append(params_doc)
+            .append(BoxDoc::text(")"))
+            .append(BoxDoc::space())
+            .append(BoxDoc::text("{"));
+
+        if self.children.is_empty() {
+            header.append(BoxDoc::text("}"))
+        } else {
+            header
+                .append(
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            self.children.iter().map(|c| c.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .nest(2),
+                )
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("}"))
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TypedAst {
     record_declarations: Vec<TypedRecordDeclaration>,
     enum_declarations: Vec<TypedEnumDeclaration>,
     component_declarations: Vec<TypedComponentDeclaration>,
+    entrypoint_declarations: Vec<TypedEntrypointDeclaration>,
 }
 
 impl TypedAst {
@@ -159,11 +213,13 @@ impl TypedAst {
         component_declarations: Vec<TypedComponentDeclaration>,
         record_declarations: Vec<TypedRecordDeclaration>,
         enum_declarations: Vec<TypedEnumDeclaration>,
+        entrypoint_declarations: Vec<TypedEntrypointDeclaration>,
     ) -> Self {
         Self {
             component_declarations,
             record_declarations,
             enum_declarations,
+            entrypoint_declarations,
         }
     }
 
@@ -171,11 +227,6 @@ impl TypedAst {
         self.component_declarations
             .iter()
             .find(|&n| n.component_name.as_str() == name)
-    }
-
-    /// Returns a reference to all component declarations in the AST.
-    pub fn get_component_declarations(&self) -> &[TypedComponentDeclaration] {
-        &self.component_declarations
     }
 
     /// Returns a reference to all record declarations in the AST.
@@ -186,6 +237,11 @@ impl TypedAst {
     /// Returns a reference to all enum declarations in the AST.
     pub fn get_enums(&self) -> &[TypedEnumDeclaration] {
         &self.enum_declarations
+    }
+
+    /// Returns a reference to all entrypoint declarations in the AST.
+    pub fn get_entrypoint_declarations(&self) -> &[TypedEntrypointDeclaration] {
+        &self.entrypoint_declarations
     }
 
     pub fn to_doc(&self) -> BoxDoc<'_> {
@@ -201,6 +257,10 @@ impl TypedAst {
 
         for component in &self.component_declarations {
             docs.push(component.to_doc());
+        }
+
+        for entrypoint in &self.entrypoint_declarations {
+            docs.push(entrypoint.to_doc());
         }
 
         if docs.is_empty() {

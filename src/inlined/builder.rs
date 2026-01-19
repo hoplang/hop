@@ -1,5 +1,5 @@
 use super::inlined_ast::{
-    InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
+    InlinedAttribute, InlinedAttributeValue, InlinedEntrypointDeclaration, InlinedNode,
     InlinedParameter,
 };
 use crate::document::CheapString;
@@ -20,7 +20,7 @@ fn extract_var_subject(expr: &TypedExpr) -> (VarName, Type) {
     }
 }
 
-pub fn build_inlined<F, P>(tag_name: &str, params: P, children_fn: F) -> InlinedComponentDeclaration
+pub fn build_inlined<F, P>(tag_name: &str, params: P, children_fn: F) -> InlinedEntrypointDeclaration
 where
     F: FnOnce(&mut InlinedBuilder),
     P: IntoIterator<Item = (&'static str, Type)>,
@@ -66,8 +66,8 @@ impl InlinedBuilder {
         }
     }
 
-    fn build(self, component_name: &str) -> InlinedComponentDeclaration {
-        InlinedComponentDeclaration {
+    fn build(self, component_name: &str) -> InlinedEntrypointDeclaration {
+        InlinedEntrypointDeclaration {
             module_name: ModuleName::new("test").unwrap(),
             component_name: ComponentName::new(component_name.to_string()).unwrap(),
             params: self.params,
@@ -250,7 +250,7 @@ mod tests {
     use super::*;
     use expect_test::{Expect, expect};
 
-    fn check(component: InlinedComponentDeclaration, expected: Expect) {
+    fn check(component: InlinedEntrypointDeclaration, expected: Expect) {
         expected.assert_eq(&component.to_string());
     }
 
@@ -261,9 +261,9 @@ mod tests {
                 b.text("Hello, World!");
             }),
             expect![[r#"
-                <Hello>
+                entrypoint Hello() {
                   Hello, World!
-                </Hello>
+                }
             "#]],
         );
     }
@@ -277,11 +277,11 @@ mod tests {
                 });
             }),
             expect![[r#"
-                <Card>
+                entrypoint Card() {
                   <div class="container">
                     Content
                   </div>
-                </Card>
+                }
             "#]],
         );
     }
@@ -294,10 +294,10 @@ mod tests {
                 b.text_expr(b.var_expr("name"));
             }),
             expect![[r#"
-                <Greeting {name: String}>
+                entrypoint Greeting(name: String) {
                   Hello, 
                   {name}
-                </Greeting>
+                }
             "#]],
         );
     }
@@ -319,7 +319,7 @@ mod tests {
                 },
             ),
             expect![[r#"
-                <List {items: Array[String]}>
+                entrypoint List(items: Array[String]) {
                   <ul>
                     <for {item in items}>
                       <li>
@@ -327,7 +327,7 @@ mod tests {
                       </li>
                     </for>
                   </ul>
-                </List>
+                }
             "#]],
         );
     }
@@ -343,13 +343,13 @@ mod tests {
                 });
             }),
             expect![[r#"
-                <Toggle {visible: Bool}>
+                entrypoint Toggle(visible: Bool) {
                   <if {visible}>
                     <div>
                       Shown
                     </div>
                   </if>
-                </Toggle>
+                }
             "#]],
         );
     }

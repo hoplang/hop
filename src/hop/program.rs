@@ -521,7 +521,7 @@ impl Program {
         diagnostics
     }
 
-    /// Evaluate a component given module and component name.
+    /// Evaluate an entrypoint given module and entrypoint name.
     pub fn evaluate_component(
         &self,
         module_name: &ModuleName,
@@ -542,44 +542,46 @@ impl Program {
             )
         })?;
 
-        // Check if the component exists in this module
-        let component_exists = module
-            .get_component_declarations()
+        // Check if the entrypoint exists in this module
+        let entrypoint_exists = module
+            .get_entrypoint_declarations()
             .iter()
-            .any(|comp| comp.component_name.as_str() == component_name.as_str());
+            .any(|ep| ep.name.as_str() == component_name.as_str());
 
-        if !component_exists {
-            let available_components: Vec<_> = module
-                .get_component_declarations()
+        if !entrypoint_exists {
+            let available_entrypoints: Vec<_> = module
+                .get_entrypoint_declarations()
                 .iter()
-                .map(|comp| comp.component_name.as_str())
+                .map(|ep| ep.name.as_str())
                 .collect();
 
             anyhow::bail!(
-                "Component '{}' not found in module '{}'. Available components: {}",
+                "Entrypoint '{}' not found in module '{}'. Available entrypoints: {}",
                 component_name,
                 module_name,
-                available_components.join(", ")
+                available_entrypoints.join(", ")
             );
         }
 
         // Use orchestrate to handle inlining and compilation
-        let pages = vec![(module_name.clone(), component_name.clone())];
         let ir_module = orchestrate(
             self.get_typed_modules(),
             generated_tailwind_css,
-            &pages,
             OrchestrateOptions::default(),
-        )?;
+        );
 
-        // Get the entrypoint (should be the only one)
-        let entrypoint = ir_module.components.first().ok_or_else(|| {
-            anyhow::anyhow!(
-                "Entrypoint '{}/{}' not found after compilation",
-                module_name,
-                component_name
-            )
-        })?;
+        // Find the requested entrypoint in the compiled module
+        let entrypoint = ir_module
+            .components
+            .iter()
+            .find(|c| c.name.as_str() == component_name.as_str())
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Entrypoint '{}/{}' not found after compilation",
+                    module_name,
+                    component_name
+                )
+            })?;
 
         // Evaluate the entrypoint
         ir::semantics::evaluator::evaluate_component(entrypoint, args)
@@ -1764,13 +1766,13 @@ mod tests {
     fn should_evaluate_ir_entrypoint_with_parameters() {
         let program = program_from_txtar(indoc! {r#"
             -- main.hop --
-            <HelloWorld {name: String}>
+            entrypoint HelloWorld(name: String) {
               <h1>Hello {name}!</h1>
-            </HelloWorld>
+            }
 
-            <AnotherComp>
+            entrypoint AnotherComp() {
               <p>Static content</p>
-            </AnotherComp>
+            }
         "#});
 
         // Test evaluating hello-world entrypoint with a name parameter
@@ -1801,7 +1803,7 @@ mod tests {
             result
                 .unwrap_err()
                 .to_string()
-                .contains("Component 'NonExistent' not found in module 'main'")
+                .contains("Entrypoint 'NonExistent' not found in module 'main'")
         );
     }
 }

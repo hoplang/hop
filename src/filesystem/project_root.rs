@@ -472,7 +472,6 @@ mod tests {
             [compile]
             target = "ts"
             output_path = "app.ts"
-            pages = ["main/App"]
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::from(&temp_dir).unwrap();

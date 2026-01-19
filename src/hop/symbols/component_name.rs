@@ -79,23 +79,6 @@ impl ComponentName {
         self.0.clone()
     }
 
-    /// Convert the component name to camelCase
-    ///
-    /// Examples:
-    /// - "UserProfile" -> "userProfile"
-    /// - "Button" -> "button"
-    /// - "NavBar" -> "navBar"
-    pub fn to_camel_case(&self) -> String {
-        if self.0.is_empty() {
-            return String::new();
-        }
-
-        let mut chars = self.0.chars();
-        let first = chars.next().unwrap().to_ascii_lowercase();
-        let rest: String = chars.collect();
-        format!("{}{}", first, rest)
-    }
-
     /// Convert the component name to snake_case
     ///
     /// Examples:
@@ -251,28 +234,6 @@ mod tests {
                 .unwrap()
                 .to_pascal_case(),
             "UserProfile"
-        );
-    }
-
-    #[test]
-    fn should_convert_to_camel_case() {
-        assert_eq!(
-            ComponentName::new("Button".to_string())
-                .unwrap()
-                .to_camel_case(),
-            "button"
-        );
-        assert_eq!(
-            ComponentName::new("UserProfile".to_string())
-                .unwrap()
-                .to_camel_case(),
-            "userProfile"
-        );
-        assert_eq!(
-            ComponentName::new("NavBar".to_string())
-                .unwrap()
-                .to_camel_case(),
-            "navBar"
         );
     }
 

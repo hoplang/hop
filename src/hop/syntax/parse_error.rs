@@ -31,6 +31,9 @@ pub enum ParseError {
         range: DocumentRange,
     },
 
+    #[error("Entrypoint name must start with an uppercase letter")]
+    InvalidEntrypointName { range: DocumentRange },
+
     #[error("{name} is already defined")]
     TypeNameIsAlreadyDefined {
         name: CheapString,
@@ -130,6 +133,7 @@ impl Ranged for ParseError {
             | ParseError::UnclosedTag { range, .. }
             | ParseError::ClosedVoidTag { range, .. }
             | ParseError::InvalidComponentName { range, .. }
+            | ParseError::InvalidEntrypointName { range }
             | ParseError::TypeNameIsAlreadyDefined { range, .. }
             | ParseError::DuplicateAttribute { range, .. }
             | ParseError::UnrecognizedAttribute { range, .. }

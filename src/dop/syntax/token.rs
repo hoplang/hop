@@ -45,6 +45,7 @@ pub enum Token {
     Record,
     Match,
     Enum,
+    Entrypoint,
     Some,
     None,
     // Type tokens
@@ -113,6 +114,7 @@ impl fmt::Display for Token {
             Token::Record => write!(f, "record"),
             Token::Match => write!(f, "match"),
             Token::Enum => write!(f, "enum"),
+            Token::Entrypoint => write!(f, "entrypoint"),
             Token::Some => write!(f, "Some"),
             Token::None => write!(f, "None"),
             Token::TypeString => write!(f, "String"),

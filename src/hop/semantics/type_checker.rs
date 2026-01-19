@@ -8,8 +8,8 @@ use crate::environment::Environment;
 use crate::error_collector::ErrorCollector;
 use crate::hop::syntax::parsed_ast::ParsedDeclaration;
 use crate::hop::syntax::parsed_ast::{
-    ParsedAttribute, ParsedComponentDeclaration, ParsedEnumDeclaration, ParsedImportDeclaration,
-    ParsedRecordDeclaration,
+    ParsedAttribute, ParsedComponentDeclaration, ParsedEntrypointDeclaration,
+    ParsedEnumDeclaration, ParsedImportDeclaration, ParsedRecordDeclaration,
 };
 use std::collections::HashMap;
 
@@ -17,7 +17,8 @@ use crate::dop::patterns::compiler::Decision;
 use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
 use crate::dop::syntax::parsed::{Constructor, ParsedLoopSource};
 use crate::hop::semantics::typed_ast::{
-    TypedAst, TypedComponentDeclaration, TypedEnumDeclaration, TypedRecordDeclaration,
+    TypedAst, TypedComponentDeclaration, TypedEntrypointDeclaration, TypedEnumDeclaration,
+    TypedRecordDeclaration,
 };
 use crate::hop::semantics::typed_node::{
     TypedAttribute, TypedAttributeValue, TypedLoopSource, TypedNode,
@@ -81,6 +82,7 @@ fn typecheck_module(
     let mut typed_records = Vec::new();
     let mut typed_enums = Vec::new();
     let mut typed_component_declarations = Vec::new();
+    let mut typed_entrypoints = Vec::new();
 
     for decl in parsed_ast.get_declarations() {
         match decl {
@@ -318,6 +320,95 @@ fn typecheck_module(
                     variants: typed_variants,
                 });
             }
+            ParsedDeclaration::Entrypoint(ParsedEntrypointDeclaration {
+                params,
+                children,
+                name,
+                name_range,
+                ..
+            }) => {
+                let mut pushed_params = Vec::new();
+                let mut typed_params = Vec::new();
+
+                for param in params {
+                    let Some(param_type) = errors.ok_or_add(
+                        resolve_type(&param.var_type, &mut type_env).map_err(|e| e.into()),
+                    ) else {
+                        continue;
+                    };
+
+                    // Typecheck default value
+                    let typed_default_value = {
+                        if let Some(default_expr) = &param.default_value {
+                            if let Some(typed_default) = errors.ok_or_add(
+                                dop::typecheck_expr(
+                                    default_expr,
+                                    &mut var_env,
+                                    &mut type_env,
+                                    annotations,
+                                    Some(&param_type),
+                                )
+                                .map_err(|e| e.into()),
+                            ) {
+                                let default_type = typed_default.as_type();
+                                if *default_type != param_type {
+                                    errors.push(TypeError::DefaultValueTypeMismatch {
+                                        param_name: param.var_name.to_string(),
+                                        expected: param_type.clone(),
+                                        found: default_type.clone(),
+                                        range: default_expr.range().clone(),
+                                    });
+                                    None
+                                } else {
+                                    Some(typed_default)
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    };
+
+                    annotations.push(TypeAnnotation {
+                        range: param.var_name_range.clone(),
+                        typ: param_type.clone(),
+                        name: param.var_name.to_string(),
+                    });
+                    let _ = var_env.push(param.var_name.to_string(), param_type.clone());
+                    pushed_params.push(param);
+                    typed_params.push((param.var_name.clone(), param_type, typed_default_value));
+                }
+
+                let typed_children = children
+                    .iter()
+                    .filter_map(|child| {
+                        typecheck_node(child, &mut var_env, annotations, errors, &mut type_env)
+                    })
+                    .collect::<Vec<_>>();
+
+                for param in pushed_params.iter().rev() {
+                    let (_, _, accessed) = var_env.pop();
+                    if !accessed {
+                        errors.push(TypeError::UnusedVariable {
+                            var_name: param.var_name_range.clone(),
+                        })
+                    }
+                }
+
+                // Add type annotation for the entrypoint name
+                annotations.push(TypeAnnotation {
+                    range: name_range.clone(),
+                    typ: Type::TrustedHTML,
+                    name: name.as_str().to_string(),
+                });
+
+                typed_entrypoints.push(TypedEntrypointDeclaration {
+                    name: name.clone(),
+                    params: typed_params,
+                    children: typed_children,
+                });
+            }
         }
     }
 
@@ -340,7 +431,12 @@ fn typecheck_module(
     }
     state.insert(parsed_ast.name.clone(), module_types);
 
-    TypedAst::new(typed_component_declarations, typed_records, typed_enums)
+    TypedAst::new(
+        typed_component_declarations,
+        typed_records,
+        typed_enums,
+        typed_entrypoints,
+    )
 }
 
 fn typecheck_node(
@@ -4899,6 +4995,197 @@ mod tests {
                 1 | <Main>
                 2 |   <let {x: Int = y + 1, y: Int = 0}>
                   |                         ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_without_parameters() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                entrypoint Main() {
+                  <div>Hello</div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                entrypoint Main() {
+                  <div>
+                    Hello
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_with_string_parameter() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                entrypoint Main(name: String) {
+                  <div>Hello, {name}!</div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                entrypoint Main(name: String) {
+                  <div>
+                    Hello, 
+                    {name}
+                    !
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_with_multiple_parameters() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                entrypoint Main(name: String, age: Int) {
+                  <div>Hello, {name}! You are {age.to_string()} years old.</div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                entrypoint Main(name: String, age: Int) {
+                  <div>
+                    Hello, 
+                    {name}
+                    ! You are 
+                    {age.to_string()}
+                     years old.
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_with_default_value() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                entrypoint Main(name: String = "World") {
+                  <div>Hello, {name}!</div>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                entrypoint Main(name: String = "World") {
+                  <div>
+                    Hello, 
+                    {name}
+                    !
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_referencing_component() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <Greeting {name: String}>
+                  <div>Hello, {name}!</div>
+                </Greeting>
+
+                entrypoint Main(name: String) {
+                  <Greeting name={name} />
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                <Greeting {name: String}>
+                  <div>
+                    Hello, 
+                    {name}
+                    !
+                  </div>
+                </Greeting>
+
+                entrypoint Main(name: String) {
+                  <Greeting name={name}/>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_entrypoint_with_undefined_component() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                entrypoint Main() {
+                  <UndefinedComponent />
+                }
+            "#},
+            expect![[r#"
+                error: Component UndefinedComponent is not defined
+                  --> main.hop (line 2, col 4)
+                1 | entrypoint Main() {
+                2 |   <UndefinedComponent />
+                  |    ^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_entrypoint_with_unused_parameter() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                entrypoint Main(unused: String) {
+                  <div>Hello</div>
+                }
+            "#},
+            expect![[r#"
+                error: Unused variable unused
+                  --> main.hop (line 1, col 17)
+                1 | entrypoint Main(unused: String) {
+                  |                 ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_entrypoint_with_default_value_type_mismatch() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                entrypoint Main(name: String = 42) {
+                  <div>Hello, {name}!</div>
+                }
+            "#},
+            expect![[r#"
+                error: Default value for parameter 'name' has type Int, expected String
+                  --> main.hop (line 1, col 32)
+                1 | entrypoint Main(name: String = 42) {
+                  |                                ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_entrypoint_with_undefined_parameter_type() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                entrypoint Main(foo: UndefinedType) {
+                  <div>Hello</div>
+                }
+            "#},
+            expect![[r#"
+                error: Type 'UndefinedType' is not defined
+                  --> main.hop (line 1, col 22)
+                1 | entrypoint Main(foo: UndefinedType) {
+                  |                      ^^^^^^^^^^^^^
             "#]],
         );
     }

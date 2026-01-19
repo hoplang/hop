@@ -87,13 +87,14 @@ impl ParsedAttribute {
     }
 }
 
-/// A declaration in a Hop module - can be an import, record, enum, or component.
+/// A declaration in a Hop module - can be an import, record, enum, component, or entrypoint.
 #[derive(Debug, Clone)]
 pub enum ParsedDeclaration {
     Import(ParsedImportDeclaration),
     Record(ParsedRecordDeclaration),
     Enum(ParsedEnumDeclaration),
     Component(ParsedComponentDeclaration),
+    Entrypoint(ParsedEntrypointDeclaration),
 }
 
 impl ParsedDeclaration {
@@ -103,6 +104,7 @@ impl ParsedDeclaration {
             ParsedDeclaration::Record(record) => record.to_doc(),
             ParsedDeclaration::Enum(e) => e.to_doc(),
             ParsedDeclaration::Component(component) => component.to_doc(),
+            ParsedDeclaration::Entrypoint(entrypoint) => entrypoint.to_doc(),
         }
     }
 }
@@ -170,11 +172,27 @@ impl ParsedAst {
         })
     }
 
+    /// Returns an iterator over all entrypoint declarations in the AST.
+    pub fn get_entrypoint_declarations(&self) -> impl Iterator<Item = &ParsedEntrypointDeclaration> {
+        self.declarations.iter().filter_map(|d| match d {
+            ParsedDeclaration::Entrypoint(e) => Some(e),
+            _ => None,
+        })
+    }
+
     /// Returns an iterator over all nodes in the AST, iterating depth-first.
     pub fn iter_all_nodes(&self) -> impl Iterator<Item = &ParsedNode> {
-        self.get_component_declarations()
+        let component_nodes = self
+            .get_component_declarations()
             .flat_map(|n| &n.children)
-            .flat_map(|n| n.iter_depth_first())
+            .flat_map(|n| n.iter_depth_first());
+
+        let entrypoint_nodes = self
+            .get_entrypoint_declarations()
+            .flat_map(|n| &n.children)
+            .flat_map(|n| n.iter_depth_first());
+
+        component_nodes.chain(entrypoint_nodes)
     }
 
     pub fn to_doc(&self) -> BoxDoc<'_> {
@@ -406,5 +424,52 @@ impl ParsedComponentDeclaration {
             .append(BoxDoc::text("</"))
             .append(BoxDoc::text(self.component_name.as_str()))
             .append(BoxDoc::text(">"))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ParsedEntrypointDeclaration {
+    pub name: ComponentName,
+    pub name_range: DocumentRange,
+    pub params: Vec<ParsedParameter>,
+    pub children: Vec<ParsedNode>,
+    pub range: DocumentRange,
+}
+
+impl Ranged for ParsedEntrypointDeclaration {
+    fn range(&self) -> &DocumentRange {
+        &self.range
+    }
+}
+
+impl ParsedEntrypointDeclaration {
+    pub fn to_doc(&self) -> BoxDoc<'_> {
+        BoxDoc::text("entrypoint")
+            .append(BoxDoc::space())
+            .append(BoxDoc::text(self.name.as_str()))
+            .append(BoxDoc::text("("))
+            .append(if self.params.is_empty() {
+                BoxDoc::nil()
+            } else {
+                BoxDoc::intersperse(
+                    self.params.iter().map(|p| p.to_doc()),
+                    BoxDoc::text(", "),
+                )
+            })
+            .append(BoxDoc::text(")"))
+            .append(BoxDoc::space())
+            .append(BoxDoc::text("{"))
+            .append(if self.children.is_empty() {
+                BoxDoc::nil()
+            } else {
+                BoxDoc::line()
+                    .append(BoxDoc::intersperse(
+                        self.children.iter().map(|c| c.to_doc()),
+                        BoxDoc::line(),
+                    ))
+                    .nest(2)
+                    .append(BoxDoc::line())
+            })
+            .append(BoxDoc::text("}"))
     }
 }

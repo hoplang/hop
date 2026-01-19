@@ -1,6 +1,6 @@
 use crate::{
     document::CheapString,
-    inlined::{InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode},
+    inlined::{InlinedAttribute, InlinedAttributeValue, InlinedEntrypointDeclaration, InlinedNode},
 };
 use std::collections::BTreeMap;
 
@@ -100,7 +100,7 @@ impl MetaInjector {
             .collect()
     }
 
-    pub fn run(mut entrypoint: InlinedComponentDeclaration) -> InlinedComponentDeclaration {
+    pub fn run(mut entrypoint: InlinedEntrypointDeclaration) -> InlinedEntrypointDeclaration {
         entrypoint.children = Self::inject_meta_into_head(entrypoint.children);
         entrypoint
     }
@@ -113,7 +113,7 @@ mod tests {
     use expect_test::{Expect, expect};
 
     /// Helper to pretty-print entrypoint children for testing
-    fn format_entrypoint_children(entrypoint: &InlinedComponentDeclaration) -> String {
+    fn format_entrypoint_children(entrypoint: &InlinedEntrypointDeclaration) -> String {
         entrypoint
             .children
             .iter()
@@ -123,7 +123,7 @@ mod tests {
     }
 
     /// Helper to check meta injection
-    fn check_meta_injection(entrypoint: InlinedComponentDeclaration, expected: Expect) {
+    fn check_meta_injection(entrypoint: InlinedEntrypointDeclaration, expected: Expect) {
         // Format before
         let before = format_entrypoint_children(&entrypoint);
 

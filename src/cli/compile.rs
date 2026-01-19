@@ -2,8 +2,6 @@ use crate::document::DocumentAnnotator;
 use crate::filesystem::config::TargetLanguage;
 use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::program::Program;
-use crate::hop::symbols::component_name::ComponentName;
-use crate::hop::symbols::module_name::ModuleName;
 use crate::ir::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
 use crate::tui::timing;
@@ -115,30 +113,12 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
 
     timer.start_phase("compiling to IR");
 
-    let pages: Vec<(ModuleName, ComponentName)> = resolved
-        .pages
-        .iter()
-        .map(|page| {
-            let (module, component) = page.rsplit_once('/').ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Invalid page format '{}'. Expected 'module/Component' (e.g., 'main/HomePage')",
-                    page
-                )
-            })?;
-            Ok((
-                ModuleName::new(module)?,
-                ComponentName::new(component.to_string())?,
-            ))
-        })
-        .collect::<Result<Vec<_>>>()?;
-
     // Use orchestrate to handle inlining, compilation, and optimization
     let ir_module = orchestrate(
         program.get_typed_modules(),
         tailwind_css.as_deref(),
-        &pages,
         OrchestrateOptions::default(),
-    )?;
+    );
 
     // Generate code based on target language
     let generated_code = match resolved.target {
@@ -187,12 +167,13 @@ mod tests {
             [compile]
             target = "go"
             output_path = "components/frontend.go"
-            pages = ["main/HelloWorld"]
 
             [css]
             mode = "tailwind4"
             -- main.hop --
-            <HelloWorld>Hello, World!</HelloWorld>
+            entrypoint HelloWorld() {
+                Hello, World!
+            }
         "#});
 
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
@@ -228,7 +209,7 @@ mod tests {
     #[ignore]
     async fn deterministic_output_order_across_modules() {
         // Test that output order is deterministic when there are multiple modules.
-        // The output should follow the order specified in the `pages` config.
+        // Entrypoints are sorted alphabetically by module name.
         // This test would be flaky if the implementation used HashMap iteration order.
         // With 8 modules, there's only 1/40320 chance of accidental success.
         let archive = Archive::from(indoc! {r#"
@@ -236,35 +217,25 @@ mod tests {
             [compile]
             target = "ts"
             output_path = "output.ts"
-            pages = [
-                "eta/EtaComp",
-                "gamma/GammaComp",
-                "alpha/AlphaComp",
-                "theta/ThetaComp",
-                "beta/BetaComp",
-                "zeta/ZetaComp",
-                "delta/DeltaComp",
-                "epsilon/EpsilonComp",
-            ]
 
             [css]
             mode = "none"
             -- alpha.hop --
-            <AlphaComp><div>Alpha</div></AlphaComp>
+            entrypoint AlphaPage() { <div>Alpha</div> }
             -- beta.hop --
-            <BetaComp><div>Beta</div></BetaComp>
+            entrypoint BetaPage() { <div>Beta</div> }
             -- gamma.hop --
-            <GammaComp><div>Gamma</div></GammaComp>
+            entrypoint GammaPage() { <div>Gamma</div> }
             -- delta.hop --
-            <DeltaComp><div>Delta</div></DeltaComp>
+            entrypoint DeltaPage() { <div>Delta</div> }
             -- epsilon.hop --
-            <EpsilonComp><div>Epsilon</div></EpsilonComp>
+            entrypoint EpsilonPage() { <div>Epsilon</div> }
             -- zeta.hop --
-            <ZetaComp><div>Zeta</div></ZetaComp>
+            entrypoint ZetaPage() { <div>Zeta</div> }
             -- eta.hop --
-            <EtaComp><div>Eta</div></EtaComp>
+            entrypoint EtaPage() { <div>Eta</div> }
             -- theta.hop --
-            <ThetaComp><div>Theta</div></ThetaComp>
+            entrypoint ThetaPage() { <div>Theta</div> }
         "#});
 
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
@@ -283,16 +254,16 @@ mod tests {
         let generated_code = fs::read_to_string(&output_path).unwrap();
 
         // Extract the order of exported functions from the TypeScript output.
-        // The functions should appear in the order specified in pages config.
+        // The functions should appear in alphabetical order by module name.
         let expected_order = [
-            "EtaComp",
-            "GammaComp",
-            "AlphaComp",
-            "ThetaComp",
-            "BetaComp",
-            "ZetaComp",
-            "DeltaComp",
-            "EpsilonComp",
+            "AlphaPage",
+            "BetaPage",
+            "DeltaPage",
+            "EpsilonPage",
+            "EtaPage",
+            "GammaPage",
+            "ThetaPage",
+            "ZetaPage",
         ];
 
         // Find positions of each function in the output and sort by position
@@ -316,7 +287,7 @@ mod tests {
         assert_eq!(
             actual_order,
             expected_order.to_vec(),
-            "Functions should appear in the order specified by pages config.\n\
+            "Entrypoints should appear in alphabetical order by module name.\n\
              Expected: {:?}\n\
              Actual: {:?}\n\
              TypeScript output:\n{}",

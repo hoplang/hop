@@ -1,15 +1,13 @@
 use crate::dop::VarName;
 use crate::dop::patterns::{EnumMatchArm, Match};
 use crate::dop::{Type, TypedExpr};
-use crate::hop::semantics::typed_ast::{TypedAst, TypedComponentDeclaration};
+use crate::hop::semantics::typed_ast::{TypedAst, TypedComponentDeclaration, TypedEntrypointDeclaration};
 use crate::hop::semantics::typed_node::{TypedAttribute, TypedAttributeValue, TypedNode};
-use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use crate::inlined::inlined_ast::{
-    InlinedAttribute, InlinedAttributeValue, InlinedComponentDeclaration, InlinedNode,
+    InlinedAttribute, InlinedAttributeValue, InlinedEntrypointDeclaration, InlinedNode,
     InlinedParameter,
 };
-use anyhow::Result;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// Context for inlining, carrying slot content and variable bindings.
@@ -63,75 +61,55 @@ impl<'a> InlineContext<'a> {
 pub struct Inliner;
 
 impl Inliner {
-    /// Inline all component references in components listed in pages
-    /// Returns a vector of inlined entrypoint components
+    /// Inline all entrypoint declarations found in the ASTs.
+    /// Returns a vector of inlined component declarations (entrypoints are treated
+    /// as components in the compilation pipeline).
     ///
     /// # Arguments
     /// * `asts` - Map of module name to typed AST
-    /// * `pages` - List of pages to export as (ModuleName, ComponentName) tuples
     ///
     /// # Returns
-    /// Result containing the list of inlined entrypoints or an error if a page doesn't exist
-    pub fn inline_entrypoints(
+    /// Vector of inlined component declarations from entrypoints
+    pub fn inline_ast_entrypoints(
         asts: &HashMap<ModuleName, TypedAst>,
-        pages: &[(ModuleName, ComponentName)],
-    ) -> Result<Vec<InlinedComponentDeclaration>> {
-        // Validate that all requested pages exist
-        for (module_name, component_name) in pages {
-            let component_exists = asts.get(module_name).is_some_and(|ast| {
-                ast.get_component_declarations()
+    ) -> Vec<InlinedEntrypointDeclaration> {
+        // Collect all entrypoints from all modules, maintaining deterministic order
+        let mut module_names: Vec<_> = asts.keys().collect();
+        module_names.sort();
+
+        module_names
+            .into_iter()
+            .flat_map(|module_name| {
+                let ast = asts.get(module_name).unwrap();
+                ast.get_entrypoint_declarations()
                     .iter()
-                    .any(|c| &c.component_name == component_name)
-            });
-
-            if !component_exists {
-                let available_list: Vec<_> = asts
-                    .iter()
-                    .flat_map(|(m, ast)| {
-                        ast.get_component_declarations()
-                            .iter()
-                            .map(move |c| format!("  - {}/{}", m, c.component_name))
-                    })
-                    .collect();
-                anyhow::bail!(
-                    "Component '{}/{}' listed in pages but not found\nAvailable components:\n{}",
-                    module_name,
-                    component_name,
-                    available_list.join("\n")
-                );
-            }
-        }
-
-        // Iterate over pages in order to ensure deterministic output
-        let result = pages
-            .iter()
-            .map(|(module_name, component_name)| {
-                let ast = asts
-                    .get(module_name)
-                    .expect("Module should exist (validated above)");
-                let component = ast
-                    .get_component_declaration(component_name.as_str())
-                    .expect("Component should exist (validated above)");
-
-                InlinedComponentDeclaration {
-                    module_name: module_name.clone(),
-                    component_name: component.component_name.clone(),
-                    children: Self::inline_nodes(&component.children, asts),
-                    params: component
-                        .params
-                        .iter()
-                        .cloned()
-                        .map(|(var_name, var_type, default_value)| InlinedParameter {
-                            var_name,
-                            var_type,
-                            default_value,
-                        })
-                        .collect(),
-                }
+                    .map(|entrypoint| Self::inline_entrypoint(module_name, entrypoint, asts))
+                    .collect::<Vec<_>>()
             })
-            .collect();
+            .collect()
+    }
 
-        Ok(result)
+    /// Inline a single entrypoint declaration
+    fn inline_entrypoint(
+        module_name: &ModuleName,
+        entrypoint: &TypedEntrypointDeclaration,
+        asts: &HashMap<ModuleName, TypedAst>,
+    ) -> InlinedEntrypointDeclaration {
+        InlinedEntrypointDeclaration {
+            module_name: module_name.clone(),
+            component_name: entrypoint.name.clone(),
+            children: Self::inline_nodes(&entrypoint.children, asts),
+            params: entrypoint
+                .params
+                .iter()
+                .cloned()
+                .map(|(var_name, var_type, default_value)| InlinedParameter {
+                    var_name,
+                    var_type,
+                    default_value,
+                })
+                .collect(),
+        }
     }
 
     /// Convert a TypedAttribute to InlinedAttribute
@@ -480,781 +458,400 @@ mod tests {
         typechecker.typed_asts
     }
 
-    fn check_inlining(sources: Vec<(&str, &str)>, pages: Vec<(&str, &str)>, expected: Expect) {
+    fn check_entrypoint_inlining(sources: Vec<(&str, &str)>, expected: Expect) {
         let typed_asts = create_typed_asts_from_sources(sources);
-        let pages_owned: Vec<(ModuleName, ComponentName)> = pages
-            .iter()
-            .map(|(m, c)| {
-                (
-                    ModuleName::new(m).unwrap(),
-                    ComponentName::new(c.to_string()).unwrap(),
-                )
-            })
-            .collect();
-        let inlined_entrypoints = Inliner::inline_entrypoints(&typed_asts, &pages_owned)
-            .expect("Inlining should succeed");
+        let inlined_entrypoints = Inliner::inline_ast_entrypoints(&typed_asts);
 
-        // Format using Display implementation for better readability
         let output = inlined_entrypoints
             .iter()
             .map(|ep| ep.to_string())
             .collect::<Vec<_>>()
-            .join("\n\n");
+            .join("\n");
 
         expected.assert_eq(&output);
     }
 
     #[test]
-    fn simple_component_inlining() {
-        check_inlining(
+    fn entrypoint_without_parameters() {
+        check_entrypoint_inlining(
             vec![(
                 "main",
                 r#"
-                    <CardComp {title: String}>
-                        <h2>{title}</h2>
-                    </CardComp>
-
-                    <Main>
-                        <CardComp title="Hello"/>
-                    </Main>
+                    entrypoint Main() {
+                        <div>Hello</div>
+                    }
                 "#,
             )],
-            vec![("main", "Main")],
             expect![[r#"
-                <Main>
-                  <let {title = "Hello"}>
-                    <h2>
-                      {title}
-                    </h2>
-                  </let>
-                </Main>
+                entrypoint Main() {
+                  <div>
+                    Hello
+                  </div>
+                }
             "#]],
         );
     }
 
     #[test]
-    fn component_with_children() {
-        check_inlining(
+    fn entrypoint_with_parameters() {
+        check_entrypoint_inlining(
             vec![(
                 "main",
                 r#"
-                    <CardComp {children: TrustedHTML}>
+                    entrypoint Main(name: String) {
+                        <div>Hello, {name}!</div>
+                    }
+                "#,
+            )],
+            expect![[r#"
+                entrypoint Main(name: String) {
+                  <div>
+                    Hello, 
+                    {name}
+                    !
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn entrypoint_with_default_parameter() {
+        check_entrypoint_inlining(
+            vec![(
+                "main",
+                r#"
+                    entrypoint Main(name: String = "World") {
+                        <div>Hello, {name}!</div>
+                    }
+                "#,
+            )],
+            expect![[r#"
+                entrypoint Main(name: String = "World") {
+                  <div>
+                    Hello, 
+                    {name}
+                    !
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn entrypoint_referencing_component() {
+        check_entrypoint_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Greeting {name: String}>
+                        <div>Hello, {name}!</div>
+                    </Greeting>
+
+                    entrypoint Main(name: String) {
+                        <Greeting name={name} />
+                    }
+                "#,
+            )],
+            expect![[r#"
+                entrypoint Main(name: String) {
+                  <let {name = name}>
+                    <div>
+                      Hello, 
+                      {name}
+                      !
+                    </div>
+                  </let>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn multiple_entrypoints_in_same_module() {
+        check_entrypoint_inlining(
+            vec![(
+                "main",
+                r#"
+                    entrypoint Home() {
+                        <div>Home page</div>
+                    }
+
+                    entrypoint About() {
+                        <div>About page</div>
+                    }
+                "#,
+            )],
+            expect![[r#"
+                entrypoint Home() {
+                  <div>
+                    Home page
+                  </div>
+                }
+
+                entrypoint About() {
+                  <div>
+                    About page
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn entrypoints_across_multiple_modules() {
+        check_entrypoint_inlining(
+            vec![
+                (
+                    "alpha",
+                    r#"
+                        entrypoint AlphaPage() {
+                            <div>Alpha</div>
+                        }
+                    "#,
+                ),
+                (
+                    "beta",
+                    r#"
+                        entrypoint BetaPage() {
+                            <div>Beta</div>
+                        }
+                    "#,
+                ),
+            ],
+            expect![[r#"
+                entrypoint AlphaPage() {
+                  <div>
+                    Alpha
+                  </div>
+                }
+
+                entrypoint BetaPage() {
+                  <div>
+                    Beta
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn entrypoint_with_component_using_slot_content() {
+        check_entrypoint_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Card {children: TrustedHTML}>
                         <div class="card">
                             {children}
                         </div>
-                    </CardComp>
+                    </Card>
 
-                    <Main>
-                        <CardComp>
-                            <p>Slot content</p>
-                        </CardComp>
-                    </Main>
+                    entrypoint Main() {
+                        <Card>
+                            <p>This is slot content</p>
+                        </Card>
+                    }
                 "#,
             )],
-            vec![("main", "Main")],
             expect![[r#"
-                <Main>
+                entrypoint Main() {
                   <div class="card">
                     <p>
-                      Slot content
+                      This is slot content
                     </p>
                   </div>
-                </Main>
+                }
             "#]],
         );
     }
 
     #[test]
-    fn component_with_default_parameter_uses_default() {
-        check_inlining(
+    fn entrypoint_with_nested_component_inlining() {
+        check_entrypoint_inlining(
             vec![(
                 "main",
                 r#"
-                    <Greeting {name: String = "World"}>
-                        <p>Hello, {name}!</p>
-                    </Greeting>
-
-                    <Main>
-                        <Greeting />
-                    </Main>
-                "#,
-            )],
-            vec![("main", "Main")],
-            expect![[r#"
-                <Main>
-                  <let {name = "World"}>
-                    <p>
-                      Hello, 
-                      {name}
-                      !
-                    </p>
-                  </let>
-                </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn component_with_default_parameter_overridden() {
-        check_inlining(
-            vec![(
-                "main",
-                r#"
-                    <Greeting {name: String = "World"}>
-                        <p>Hello, {name}!</p>
-                    </Greeting>
-
-                    <Main>
-                        <Greeting name="Alice" />
-                    </Main>
-                "#,
-            )],
-            vec![("main", "Main")],
-            expect![[r#"
-                <Main>
-                  <let {name = "Alice"}>
-                    <p>
-                      Hello, 
-                      {name}
-                      !
-                    </p>
-                  </let>
-                </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn component_with_mixed_required_and_default_parameters() {
-        check_inlining(
-            vec![(
-                "main",
-                r#"
-                    <Button {label: String, size: String = "medium"}>
-                        <button class={size}>{label}</button>
-                    </Button>
-
-                    <Main>
-                        <Button label="Click me" />
-                    </Main>
-                "#,
-            )],
-            vec![("main", "Main")],
-            expect![[r#"
-                <Main>
-                  <let {label = "Click me"}>
-                    <let {size = "medium"}>
-                      <button class={size}>
-                        {label}
-                      </button>
-                    </let>
-                  </let>
-                </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn component_with_int_default_parameter() {
-        check_inlining(
-            vec![(
-                "main",
-                r#"
-                    <Counter {count: Int = 0}>
-                        <if {count == 0}>
-                            <span>Zero</span>
-                        </if>
-                    </Counter>
-
-                    <Main>
-                        <Counter />
-                    </Main>
-                "#,
-            )],
-            vec![("main", "Main")],
-            expect![[r#"
-                <Main>
-                  <let {count = 0}>
-                    <if {(count == 0)}>
-                      <span>
-                        Zero
-                      </span>
-                    </if>
-                  </let>
-                </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn component_with_bool_default_parameter() {
-        check_inlining(
-            vec![(
-                "main",
-                r#"
-                    <Toggle {enabled: Bool = true}>
-                        <if {enabled}>
-                            <span>On</span>
-                        </if>
-                    </Toggle>
-
-                    <Main>
-                        <Toggle />
-                    </Main>
-                "#,
-            )],
-            vec![("main", "Main")],
-            expect![[r#"
-                <Main>
-                  <let {enabled = true}>
-                    <if {enabled}>
-                      <span>
-                        On
-                      </span>
-                    </if>
-                  </let>
-                </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn component_with_optional_children_none_provided() {
-        // When no children are provided, the None arm should be inlined
-        check_inlining(
-            vec![(
-                "main",
-                r#"
-                    <Separator {children: Option[TrustedHTML] = None}>
-                        <li>
-                            <match {children}>
-                                <case {Some(c)}>
-                                    {c}
-                                </case>
-                                <case {None}>
-                                    <span>Default</span>
-                                </case>
-                            </match>
-                        </li>
-                    </Separator>
-
-                    <Main>
-                        <Separator />
-                    </Main>
-                "#,
-            )],
-            vec![("main", "Main")],
-            expect![[r#"
-                <Main>
-                  <li>
-                    <span>
-                      Default
-                    </span>
-                  </li>
-                </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn component_with_optional_children_some_provided() {
-        // When children are provided, the Some arm should be inlined with children content
-        check_inlining(
-            vec![(
-                "main",
-                r#"
-                    <Separator {children: Option[TrustedHTML] = None}>
-                        <li>
-                            <match {children}>
-                                <case {Some(c)}>
-                                    {c}
-                                </case>
-                                <case {None}>
-                                    <span>Default</span>
-                                </case>
-                            </match>
-                        </li>
-                    </Separator>
-
-                    <Main>
-                        <Separator>
-                            <strong>Custom</strong>
-                        </Separator>
-                    </Main>
-                "#,
-            )],
-            vec![("main", "Main")],
-            expect![[r#"
-                <Main>
-                  <li>
-                    <strong>
-                      Custom
-                    </strong>
-                  </li>
-                </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn optional_children_with_multiple_child_elements() {
-        // Multiple children elements should all be inlined in the Some arm
-        check_inlining(
-            vec![(
-                "main",
-                r#"
-                    <Wrapper {children: Option[TrustedHTML] = None}>
-                        <div>
-                            <match {children}>
-                                <case {Some(c)}>{c}</case>
-                                <case {None}><span>Empty</span></case>
-                            </match>
-                        </div>
-                    </Wrapper>
-
-                    <Main>
-                        <Wrapper>
-                            <p>First</p>
-                            <p>Second</p>
-                        </Wrapper>
-                    </Main>
-                "#,
-            )],
-            vec![("main", "Main")],
-            expect![[r#"
-                <Main>
-                  <div>
-                    <p>
-                      First
-                    </p>
-                    <p>
-                      Second
-                    </p>
-                  </div>
-                </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn optional_children_without_binding() {
-        // Test that optional children work even when the Some arm doesn't bind the content
-        check_inlining(
-            vec![(
-                "main",
-                r#"
-                    <Indicator {children: Option[TrustedHTML] = None}>
-                        <match {children}>
-                            <case {Some(_)}>
-                                <span>Has content</span>
-                            </case>
-                            <case {None}>
-                                <span>Empty</span>
-                            </case>
-                        </match>
-                    </Indicator>
-
-                    <WithChildren>
-                        <Indicator>
-                            <p>Ignored</p>
-                        </Indicator>
-                    </WithChildren>
-
-                    <WithoutChildren>
-                        <Indicator />
-                    </WithoutChildren>
-                "#,
-            )],
-            vec![("main", "WithChildren"), ("main", "WithoutChildren")],
-            expect![[r#"
-                <WithChildren>
-                  <span>
-                    Has content
-                  </span>
-                </WithChildren>
-
-
-                <WithoutChildren>
-                  <span>
-                    Empty
-                  </span>
-                </WithoutChildren>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn same_component_with_and_without_children() {
-        // Same component used twice - once with children, once without
-        check_inlining(
-            vec![(
-                "main",
-                r#"
-                    <Box {children: Option[TrustedHTML] = None}>
-                        <div>
-                            <match {children}>
-                                <case {Some(c)}>{c}</case>
-                                <case {None}><span>Empty</span></case>
-                            </match>
-                        </div>
-                    </Box>
-
-                    <Main>
-                        <Box><p>First</p></Box>
-                        <Box />
-                        <Box><p>Third</p></Box>
-                    </Main>
-                "#,
-            )],
-            vec![("main", "Main")],
-            expect![[r#"
-                <Main>
-                  <div>
-                    <p>
-                      First
-                    </p>
-                  </div>
-                  <div>
-                    <span>
-                      Empty
-                    </span>
-                  </div>
-                  <div>
-                    <p>
-                      Third
-                    </p>
-                  </div>
-                </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn nested_optional_children_passthrough() {
-        // Outer component passes its optional children to an inner component that also has optional children
-        check_inlining(
-            vec![(
-                "main",
-                r#"
-                    <Inner {children: Option[TrustedHTML] = None}>
-                        <span>
-                            <match {children}>
-                                <case {Some(c)}>{c}</case>
-                                <case {None}>inner-default</case>
-                            </match>
-                        </span>
+                    <Inner {text: String}>
+                        <span>{text}</span>
                     </Inner>
 
-                    <Outer {children: Option[TrustedHTML] = None}>
-                        <div>
-                            <match {children}>
-                                <case {Some(c)}>
-                                    <Inner>{c}</Inner>
-                                </case>
-                                <case {None}>
-                                    <Inner />
-                                </case>
-                            </match>
+                    <Outer {label: String}>
+                        <div class="outer">
+                            <Inner text={label} />
                         </div>
                     </Outer>
 
-                    <WithChildren>
-                        <Outer><strong>content</strong></Outer>
-                    </WithChildren>
-
-                    <WithoutChildren>
-                        <Outer />
-                    </WithoutChildren>
+                    entrypoint Main(title: String) {
+                        <Outer label={title} />
+                    }
                 "#,
             )],
-            vec![("main", "WithChildren"), ("main", "WithoutChildren")],
             expect![[r#"
-                <WithChildren>
-                  <div>
-                    <span>
-                      <strong>
-                        content
-                      </strong>
-                    </span>
-                  </div>
-                </WithChildren>
-
-
-                <WithoutChildren>
-                  <div>
-                    <span>
-                      inner-default
-                    </span>
-                  </div>
-                </WithoutChildren>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn optional_children_used_multiple_times() {
-        // Test using the bound content multiple times in the Some arm
-        check_inlining(
-            vec![(
-                "main",
-                r#"
-                    <Repeat {children: Option[TrustedHTML] = None}>
-                        <match {children}>
-                            <case {Some(c)}>
-                                <div>{c}</div>
-                                <div>{c}</div>
-                            </case>
-                            <case {None}>
-                                <span>empty</span>
-                            </case>
-                        </match>
-                    </Repeat>
-
-                    <Main>
-                        <Repeat><strong>content</strong></Repeat>
-                    </Main>
-                "#,
-            )],
-            vec![("main", "Main")],
-            expect![[r#"
-                <Main>
-                  <div>
-                    <strong>
-                      content
-                    </strong>
-                  </div>
-                  <div>
-                    <strong>
-                      content
-                    </strong>
-                  </div>
-                </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn regular_option_match_still_works() {
-        // Non-children Option matches should still work normally (not statically resolved)
-        check_inlining(
-            vec![(
-                "main",
-                r#"
-                    <Card {title: Option[String] = None}>
-                        <div>
-                            <match {title}>
-                                <case {Some(t)}><h1>{t}</h1></case>
-                                <case {None}><h1>Untitled</h1></case>
-                            </match>
-                        </div>
-                    </Card>
-
-                    <Main>
-                        <Card title={Some("Hello")} />
-                    </Main>
-                "#,
-            )],
-            vec![("main", "Main")],
-            expect![[r#"
-                <Main>
-                  <let {title = Some("Hello")}>
-                    <div>
-                      <let {match_subject = title}>
-                        <match {match_subject}>
-                          <case {Some(v0)}>
-                            <let {t = v0}>
-                              <h1>
-                                {t}
-                              </h1>
-                            </let>
-                          </case>
-                          <case {None}>
-                            <h1>
-                              Untitled
-                            </h1>
-                          </case>
-                        </match>
+                entrypoint Main(title: String) {
+                  <let {label = title}>
+                    <div class="outer">
+                      <let {text = label}>
+                        <span>
+                          {text}
+                        </span>
                       </let>
                     </div>
                   </let>
-                </Main>
+                }
             "#]],
         );
     }
 
     #[test]
-    fn required_children_still_work() {
-        // Required children (TrustedHTML without Option) should still work
-        check_inlining(
+    fn entrypoint_with_conditional_rendering() {
+        check_entrypoint_inlining(
             vec![(
                 "main",
                 r#"
-                    <Box {children: TrustedHTML}>
-                        <div class="box">{children}</div>
-                    </Box>
-
-                    <Main>
-                        <Box>
-                            <span>Content</span>
-                        </Box>
-                    </Main>
-                "#,
-            )],
-            vec![("main", "Main")],
-            expect![[r#"
-                <Main>
-                  <div class="box">
-                    <span>
-                      Content
-                    </span>
-                  </div>
-                </Main>
-            "#]],
-        );
-    }
-
-    #[test]
-    fn nested_optional_and_required_children() {
-        // Component with optional children containing a component with required children
-        check_inlining(
-            vec![(
-                "main",
-                r#"
-                    <Inner {children: TrustedHTML}>
-                        <span>{children}</span>
-                    </Inner>
-
-                    <Outer {children: Option[TrustedHTML] = None}>
+                    entrypoint Main(show_greeting: Bool, name: String) {
                         <div>
-                            <match {children}>
-                                <case {Some(c)}>{c}</case>
-                                <case {None}><Inner>Default</Inner></case>
-                            </match>
+                            <if {show_greeting}>
+                                <p>Hello, {name}!</p>
+                            </if>
                         </div>
-                    </Outer>
-
-                    <Main>
-                        <Outer>
-                            <Inner>Custom</Inner>
-                        </Outer>
-                    </Main>
+                    }
                 "#,
             )],
-            vec![("main", "Main")],
             expect![[r#"
-                <Main>
+                entrypoint Main(show_greeting: Bool, name: String) {
                   <div>
-                    <span>
-                      Custom
-                    </span>
+                    <if {show_greeting}>
+                      <p>
+                        Hello, 
+                        {name}
+                        !
+                      </p>
+                    </if>
                   </div>
-                </Main>
+                }
             "#]],
         );
     }
 
     #[test]
-    fn badge_and_badge_link_with_enum_element() {
-        check_inlining(
+    fn entrypoint_with_loop() {
+        check_entrypoint_inlining(
             vec![(
                 "main",
                 r#"
-                    enum BadgeElement {
-                        Span,
-                        Link(href: String),
+                    entrypoint Main(count: Int) {
+                        <ul>
+                            <for {i in 1..=count}>
+                                <li>Item {i.to_string()}</li>
+                            </for>
+                        </ul>
                     }
-
-                    <BadgeBase {
-                        element: BadgeElement,
-                        children: TrustedHTML,
-                    }>
-                        <let {classes: String = "inline-flex items-center"}>
-                            <match {element}>
-                                <case {BadgeElement::Span}>
-                                    <span data-slot="badge" class={classes}>
-                                        {children}
-                                    </span>
-                                </case>
-                                <case {BadgeElement::Link(href: h)}>
-                                    <a data-slot="badge" href={h} class={classes}>
-                                        {children}
-                                    </a>
-                                </case>
-                            </match>
-                        </let>
-                    </BadgeBase>
-
-                    <Badge {children: TrustedHTML}>
-                        <BadgeBase element={BadgeElement::Span}>
-                            {children}
-                        </BadgeBase>
-                    </Badge>
-
-                    <BadgeLink {href: String, children: TrustedHTML}>
-                        <BadgeBase element={BadgeElement::Link(href: href)}>
-                            {children}
-                        </BadgeBase>
-                    </BadgeLink>
-
-                    <TestBadge>
-                        <Badge>Hello</Badge>
-                    </TestBadge>
-
-                    <TestBadgeLink>
-                        <BadgeLink href="/home">Click me</BadgeLink>
-                    </TestBadgeLink>
                 "#,
             )],
-            vec![("main", "TestBadge"), ("main", "TestBadgeLink")],
             expect![[r#"
-                <TestBadge>
-                  <let {element = BadgeElement::Span}>
-                    <let {classes = "inline-flex items-center"}>
-                      <let {match_subject = element}>
-                        <match {match_subject}>
-                          <case {BadgeElement::Span}>
-                            <span class={classes} data-slot="badge">
-                              Hello
-                            </span>
-                          </case>
-                          <case {BadgeElement::Link(href: v0)}>
-                            <let {h = v0}>
-                              <a class={classes} data-slot="badge" href={h}>
-                                Hello
-                              </a>
-                            </let>
-                          </case>
-                        </match>
-                      </let>
-                    </let>
-                  </let>
-                </TestBadge>
+                entrypoint Main(count: Int) {
+                  <ul>
+                    <for {i in 1..=count}>
+                      <li>
+                        Item 
+                        {i.to_string()}
+                      </li>
+                    </for>
+                  </ul>
+                }
+            "#]],
+        );
+    }
 
+    #[test]
+    fn entrypoint_with_component_default_value_used() {
+        check_entrypoint_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Button {label: String = "Click me"}>
+                        <button>{label}</button>
+                    </Button>
 
-                <TestBadgeLink>
-                  <let {href = "/home"}>
-                    <let {element = BadgeElement::Link(href: href)}>
-                      <let {classes = "inline-flex items-center"}>
-                        <let {match_subject = element}>
-                          <match {match_subject}>
-                            <case {BadgeElement::Span}>
-                              <span class={classes} data-slot="badge">
-                                Click me
-                              </span>
-                            </case>
-                            <case {BadgeElement::Link(href: v0)}>
-                              <let {h = v0}>
-                                <a class={classes} data-slot="badge" href={h}>
-                                  Click me
-                                </a>
-                              </let>
-                            </case>
-                          </match>
-                        </let>
-                      </let>
+                    entrypoint Main() {
+                        <div>
+                            <Button />
+                        </div>
+                    }
+                "#,
+            )],
+            expect![[r#"
+                entrypoint Main() {
+                  <div>
+                    <let {label = "Click me"}>
+                      <button>
+                        {label}
+                      </button>
                     </let>
-                  </let>
-                </TestBadgeLink>
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn entrypoint_complex_page_layout() {
+        check_entrypoint_inlining(
+            vec![(
+                "main",
+                r#"
+                    <Header {title: String}>
+                        <header>
+                            <h1>{title}</h1>
+                        </header>
+                    </Header>
+
+                    <Footer>
+                        <footer>
+                            <p>Copyright 2024</p>
+                        </footer>
+                    </Footer>
+
+                    <Layout {children: TrustedHTML}>
+                        <div class="layout">
+                            {children}
+                        </div>
+                    </Layout>
+
+                    entrypoint HomePage(page_title: String) {
+                        <Layout>
+                            <Header title={page_title} />
+                            <main>
+                                <p>Welcome to the home page</p>
+                            </main>
+                            <Footer />
+                        </Layout>
+                    }
+                "#,
+            )],
+            expect![[r#"
+                entrypoint HomePage(page_title: String) {
+                  <div class="layout">
+                    <let {title = page_title}>
+                      <header>
+                        <h1>
+                          {title}
+                        </h1>
+                      </header>
+                    </let>
+                    <main>
+                      <p>
+                        Welcome to the home page
+                      </p>
+                    </main>
+                    <footer>
+                      <p>
+                        Copyright 2024
+                      </p>
+                    </footer>
+                  </div>
+                }
             "#]],
         );
     }
@@ -1262,143 +859,125 @@ mod tests {
     #[test]
     fn deterministic_output_order_with_multiple_modules() {
         // Test that output order is deterministic when there are multiple modules.
-        // The output should follow the order specified in the `pages` parameter.
+        // Modules should be sorted alphabetically by name.
         // This test would be flaky if the implementation used HashMap iteration order.
         // With 8 modules, there's only 1/40320 chance of accidental success.
-        check_inlining(
+        check_entrypoint_inlining(
             vec![
-                (
-                    "alpha",
-                    r#"
-                        <AlphaComp>
-                            <div>Alpha</div>
-                        </AlphaComp>
-                    "#,
-                ),
-                (
-                    "beta",
-                    r#"
-                        <BetaComp>
-                            <div>Beta</div>
-                        </BetaComp>
-                    "#,
-                ),
-                (
-                    "gamma",
-                    r#"
-                        <GammaComp>
-                            <div>Gamma</div>
-                        </GammaComp>
-                    "#,
-                ),
-                (
-                    "delta",
-                    r#"
-                        <DeltaComp>
-                            <div>Delta</div>
-                        </DeltaComp>
-                    "#,
-                ),
-                (
-                    "epsilon",
-                    r#"
-                        <EpsilonComp>
-                            <div>Epsilon</div>
-                        </EpsilonComp>
-                    "#,
-                ),
                 (
                     "zeta",
                     r#"
-                        <ZetaComp>
+                        entrypoint ZetaPage() {
                             <div>Zeta</div>
-                        </ZetaComp>
+                        }
                     "#,
                 ),
                 (
-                    "eta",
+                    "alpha",
                     r#"
-                        <EtaComp>
-                            <div>Eta</div>
-                        </EtaComp>
+                        entrypoint AlphaPage() {
+                            <div>Alpha</div>
+                        }
                     "#,
                 ),
                 (
                     "theta",
                     r#"
-                        <ThetaComp>
+                        entrypoint ThetaPage() {
                             <div>Theta</div>
-                        </ThetaComp>
+                        }
+                    "#,
+                ),
+                (
+                    "beta",
+                    r#"
+                        entrypoint BetaPage() {
+                            <div>Beta</div>
+                        }
+                    "#,
+                ),
+                (
+                    "eta",
+                    r#"
+                        entrypoint EtaPage() {
+                            <div>Eta</div>
+                        }
+                    "#,
+                ),
+                (
+                    "delta",
+                    r#"
+                        entrypoint DeltaPage() {
+                            <div>Delta</div>
+                        }
+                    "#,
+                ),
+                (
+                    "gamma",
+                    r#"
+                        entrypoint GammaPage() {
+                            <div>Gamma</div>
+                        }
+                    "#,
+                ),
+                (
+                    "epsilon",
+                    r#"
+                        entrypoint EpsilonPage() {
+                            <div>Epsilon</div>
+                        }
                     "#,
                 ),
             ],
-            // Request pages in a specific non-alphabetical order
-            vec![
-                ("eta", "EtaComp"),
-                ("gamma", "GammaComp"),
-                ("alpha", "AlphaComp"),
-                ("theta", "ThetaComp"),
-                ("beta", "BetaComp"),
-                ("zeta", "ZetaComp"),
-                ("delta", "DeltaComp"),
-                ("epsilon", "EpsilonComp"),
-            ],
-            // Output should match the requested order exactly
+            // Output should be sorted alphabetically by module name
             expect![[r#"
-                <EtaComp>
-                  <div>
-                    Eta
-                  </div>
-                </EtaComp>
-
-
-                <GammaComp>
-                  <div>
-                    Gamma
-                  </div>
-                </GammaComp>
-
-
-                <AlphaComp>
+                entrypoint AlphaPage() {
                   <div>
                     Alpha
                   </div>
-                </AlphaComp>
+                }
 
-
-                <ThetaComp>
-                  <div>
-                    Theta
-                  </div>
-                </ThetaComp>
-
-
-                <BetaComp>
+                entrypoint BetaPage() {
                   <div>
                     Beta
                   </div>
-                </BetaComp>
+                }
 
-
-                <ZetaComp>
-                  <div>
-                    Zeta
-                  </div>
-                </ZetaComp>
-
-
-                <DeltaComp>
+                entrypoint DeltaPage() {
                   <div>
                     Delta
                   </div>
-                </DeltaComp>
+                }
 
-
-                <EpsilonComp>
+                entrypoint EpsilonPage() {
                   <div>
                     Epsilon
                   </div>
-                </EpsilonComp>
+                }
+
+                entrypoint EtaPage() {
+                  <div>
+                    Eta
+                  </div>
+                }
+
+                entrypoint GammaPage() {
+                  <div>
+                    Gamma
+                  </div>
+                }
+
+                entrypoint ThetaPage() {
+                  <div>
+                    Theta
+                  </div>
+                }
+
+                entrypoint ZetaPage() {
+                  <div>
+                    Zeta
+                  </div>
+                }
             "#]],
         );
     }

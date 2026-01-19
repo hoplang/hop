@@ -1,9 +1,7 @@
 use crate::hop::semantics::typed_ast::TypedAst;
-use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use crate::inlined::{DoctypeInjector, HtmlStructureInjector, Inliner, MetaInjector, TailwindInjector};
 use crate::ir::{optimize, Compiler, IrEnumDeclaration, IrModule, IrRecordDeclaration};
-use anyhow::Result;
 use std::collections::HashMap;
 
 #[derive(Default)]
@@ -15,9 +13,8 @@ pub struct OrchestrateOptions {
 pub fn orchestrate(
     typed_asts: &HashMap<ModuleName, TypedAst>,
     generated_tailwind_css: Option<&str>,
-    pages: &[(ModuleName, ComponentName)],
     options: OrchestrateOptions,
-) -> Result<IrModule> {
+) -> IrModule {
     // Collect record declarations from all modules
     let mut records: Vec<IrRecordDeclaration> = typed_asts
         .values()
@@ -40,7 +37,7 @@ pub fn orchestrate(
         .collect();
     enums.sort_by(|a, b| a.name.cmp(&b.name));
 
-    let components = Inliner::inline_entrypoints(typed_asts, pages)?
+    let components = Inliner::inline_ast_entrypoints(typed_asts)
         .into_iter()
         // transform ASTs (skip if options.skip_html_structure is set)
         .map(|e| if options.skip_html_structure { e } else { DoctypeInjector::run(e) })
@@ -63,5 +60,5 @@ pub fn orchestrate(
         enums,
     };
 
-    Ok(optimize(module))
+    optimize(module)
 }

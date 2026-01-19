@@ -2,9 +2,9 @@ use std::collections::VecDeque;
 
 use super::parsed_ast::{
     ParsedAst, ParsedAttribute, ParsedAttributeValue, ParsedComponentDeclaration,
-    ParsedDeclaration, ParsedEnumDeclaration, ParsedEnumDeclarationVariant,
-    ParsedImportDeclaration, ParsedParameter, ParsedRecordDeclaration,
-    ParsedRecordDeclarationField,
+    ParsedDeclaration, ParsedEntrypointDeclaration, ParsedEnumDeclaration,
+    ParsedEnumDeclarationVariant, ParsedImportDeclaration, ParsedParameter,
+    ParsedRecordDeclaration, ParsedRecordDeclarationField,
 };
 use super::parsed_node::{ParsedLetBinding, ParsedMatchCase, ParsedNode};
 use crate::common::is_void_element;
@@ -127,6 +127,9 @@ fn format_declaration<'a>(
         ParsedDeclaration::Enum(e) => format_enum_declaration(arena, e, comments),
         ParsedDeclaration::Component(component) => {
             format_component_declaration(arena, component, comments)
+        }
+        ParsedDeclaration::Entrypoint(entrypoint) => {
+            format_entrypoint_declaration(arena, entrypoint, comments)
         }
     }
 }
@@ -285,6 +288,37 @@ fn format_component_declaration<'a>(
         .append(arena.text("</"))
         .append(arena.text(component.component_name.as_str()))
         .append(arena.text(">"))
+}
+
+fn format_entrypoint_declaration<'a>(
+    arena: &'a Arena<'a>,
+    entrypoint: &'a ParsedEntrypointDeclaration,
+    comments: &mut VecDeque<&'a DocumentRange>,
+) -> DocBuilder<'a, Arena<'a>> {
+    let leading_comments = drain_comments_before(arena, comments, entrypoint.range.start());
+
+    // Format parameters
+    let params_doc = if entrypoint.params.is_empty() {
+        arena.text("()")
+    } else {
+        let mut params_inner = arena.nil();
+        for (i, param) in entrypoint.params.iter().enumerate() {
+            if i > 0 {
+                params_inner = params_inner.append(arena.text(", "));
+            }
+            params_inner = params_inner.append(format_parameter(arena, param, comments));
+        }
+        arena.text("(").append(params_inner).append(arena.text(")"))
+    };
+
+    leading_comments
+        .append(arena.text("entrypoint"))
+        .append(arena.text(" "))
+        .append(arena.text(entrypoint.name.as_str()))
+        .append(params_doc)
+        .append(arena.text(" {"))
+        .append(format_children(arena, &entrypoint.children, comments))
+        .append(arena.text("}"))
 }
 
 fn format_parameter<'a>(

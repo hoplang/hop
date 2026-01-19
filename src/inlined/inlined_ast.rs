@@ -30,7 +30,7 @@ pub struct InlinedAttribute {
 }
 
 #[derive(Debug, Clone)]
-pub struct InlinedComponentDeclaration {
+pub struct InlinedEntrypointDeclaration {
     pub module_name: ModuleName,
     pub component_name: ComponentName,
     pub params: Vec<InlinedParameter>,
@@ -105,21 +105,25 @@ impl InlinedAttribute {
     }
 }
 
-impl InlinedComponentDeclaration {
+impl InlinedEntrypointDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text("<")
+        let params_doc = if self.params.is_empty() {
+            BoxDoc::nil()
+        } else {
+            BoxDoc::intersperse(
+                self.params.iter().map(|param| param.to_doc()),
+                BoxDoc::text(", "),
+            )
+        };
+
+        BoxDoc::text("entrypoint")
+            .append(BoxDoc::space())
             .append(BoxDoc::text(self.component_name.as_str()))
-            .append(if self.params.is_empty() {
-                BoxDoc::nil()
-            } else {
-                BoxDoc::text(" {")
-                    .append(BoxDoc::intersperse(
-                        self.params.iter().map(|param| param.to_doc()),
-                        BoxDoc::text(", "),
-                    ))
-                    .append(BoxDoc::text("}"))
-            })
-            .append(BoxDoc::text(">"))
+            .append(BoxDoc::text("("))
+            .append(params_doc)
+            .append(BoxDoc::text(")"))
+            .append(BoxDoc::space())
+            .append(BoxDoc::text("{"))
             .append(if self.children.is_empty() {
                 BoxDoc::nil()
             } else {
@@ -128,12 +132,10 @@ impl InlinedComponentDeclaration {
                         self.children.iter().map(|child| child.to_doc()),
                         BoxDoc::line(),
                     ))
-                    .append(BoxDoc::line())
                     .nest(2)
+                    .append(BoxDoc::line())
             })
-            .append(BoxDoc::text("</"))
-            .append(BoxDoc::text(self.component_name.as_str()))
-            .append(BoxDoc::text(">"))
+            .append(BoxDoc::text("}"))
     }
 }
 
@@ -382,7 +384,7 @@ impl fmt::Display for InlinedAttribute {
     }
 }
 
-impl fmt::Display for InlinedComponentDeclaration {
+impl fmt::Display for InlinedEntrypointDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.to_doc().pretty(60))
     }

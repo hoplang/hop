@@ -129,6 +129,7 @@ pub fn next(
                     "record" => Token::Record,
                     "match" => Token::Match,
                     "enum" => Token::Enum,
+                    "entrypoint" => Token::Entrypoint,
                     "Some" => Token::Some,
                     "None" => Token::None,
                     // Types
