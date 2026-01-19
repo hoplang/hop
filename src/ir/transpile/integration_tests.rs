@@ -19,8 +19,8 @@ fn execute_typescript(code: &str) -> Result<String, String> {
     fs::write(&module_file, code).map_err(|e| format!("Failed to write module file: {}", e))?;
 
     let runner_code = r#"
-import module from './module.ts';
-console.log(module.test());
+import { Test } from './module.ts';
+console.log(Test());
 "#;
 
     fs::write(&runner_file, runner_code)

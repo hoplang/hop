@@ -312,22 +312,12 @@ impl Transpiler for TsTranspiler {
                 .append(BoxDoc::line());
         }
 
-        result = result
-            .append(BoxDoc::text("export default {"))
-            .append(
-                BoxDoc::nil()
-                    .append(BoxDoc::hardline())
-                    .append(BoxDoc::intersperse(
-                        entrypoints.iter().map(|entrypoint| {
-                            self.transpile_entrypoint(&entrypoint.name, entrypoint)
-                        }),
-                        BoxDoc::text(",").append(BoxDoc::hardline()),
-                    ))
-                    .append(BoxDoc::hardline())
-                    .nest(4),
-            )
-            .append(BoxDoc::text("}"))
-            .append(BoxDoc::hardline());
+        result = result.append(BoxDoc::intersperse(
+            entrypoints
+                .iter()
+                .map(|entrypoint| self.transpile_entrypoint(&entrypoint.name, entrypoint)),
+            BoxDoc::hardline().append(BoxDoc::hardline()),
+        ));
 
         // Render to string
         let mut buffer = Vec::new();
@@ -340,9 +330,9 @@ impl Transpiler for TsTranspiler {
         name: &'a ComponentName,
         entrypoint: &'a IrComponentDeclaration,
     ) -> BoxDoc<'a> {
-        let camel_case_name = name.to_camel_case();
-
-        let mut result = BoxDoc::as_string(camel_case_name).append(BoxDoc::text(": ("));
+        let mut result = BoxDoc::text("export function ")
+            .append(BoxDoc::text(name.as_ref()))
+            .append(BoxDoc::text("("));
 
         if !entrypoint.parameters.is_empty() {
             result = result
@@ -372,9 +362,7 @@ impl Transpiler for TsTranspiler {
 
         // Function body
         result
-            .append(BoxDoc::text(")"))
-            .append(BoxDoc::text(": string"))
-            .append(BoxDoc::text(" => {"))
+            .append(BoxDoc::text("): string {"))
             .append(
                 BoxDoc::nil()
                     .append(BoxDoc::line())
@@ -1278,14 +1266,11 @@ mod tests {
                     }
                 }
 
-                export default {
-                    helloWorld: (): string => {
-                        let output: string = "";
-                        output += "<h1>Hello, World!</h1>\n";
-                        return output;
-                    }
-                }
-            "#]],
+                export function HelloWorld(): string {
+                    let output: string = "";
+                    output += "<h1>Hello, World!</h1>\n";
+                    return output;
+                }"#]],
         );
     }
 
@@ -1342,21 +1327,18 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export default {
-                    userInfo: ({ name, age }: { name: string, age: string }): string => {
-                        let output: string = "";
-                        output += "<div>\n";
-                        output += "<h2>Name: ";
-                        output += escapeHtml(name);
-                        output += "</h2>\n";
-                        output += "<p>Age: ";
-                        output += age;
-                        output += "</p>\n";
-                        output += "</div>\n";
-                        return output;
-                    }
-                }
-            "#]],
+                export function UserInfo({ name, age }: { name: string, age: string }): string {
+                    let output: string = "";
+                    output += "<div>\n";
+                    output += "<h2>Name: ";
+                    output += escapeHtml(name);
+                    output += "</h2>\n";
+                    output += "<p>Age: ";
+                    output += age;
+                    output += "</p>\n";
+                    output += "</div>\n";
+                    return output;
+                }"#]],
         );
     }
 
@@ -1407,18 +1389,15 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export default {
-                    conditionalDisplay: ({ title, show }: { title: string, show: boolean }): string => {
-                        let output: string = "";
-                        if (show) {
-                            output += "<h1>";
-                            output += escapeHtml(title);
-                            output += "</h1>\n";
-                        }
-                        return output;
+                export function ConditionalDisplay({ title, show }: { title: string, show: boolean }): string {
+                    let output: string = "";
+                    if (show) {
+                        output += "<h1>";
+                        output += escapeHtml(title);
+                        output += "</h1>\n";
                     }
-                }
-            "#]],
+                    return output;
+                }"#]],
         );
     }
 
@@ -1473,20 +1452,17 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export default {
-                    listItems: ({ items }: { items: string[] }): string => {
-                        let output: string = "";
-                        output += "<ul>\n";
-                        for (const item of items) {
-                            output += "<li>";
-                            output += escapeHtml(item);
-                            output += "</li>\n";
-                        }
-                        output += "</ul>\n";
-                        return output;
+                export function ListItems({ items }: { items: string[] }): string {
+                    let output: string = "";
+                    output += "<ul>\n";
+                    for (const item of items) {
+                        output += "<li>";
+                        output += escapeHtml(item);
+                        output += "</li>\n";
                     }
-                }
-            "#]],
+                    output += "</ul>\n";
+                    return output;
+                }"#]],
         );
     }
 
@@ -1522,17 +1498,14 @@ mod tests {
                     }
                 }
 
-                export default {
-                    counter: (): string => {
-                        let output: string = "";
-                        for (let i = 1; i <= 3; i++) {
-                            output += (i).toString();
-                            output += " ";
-                        }
-                        return output;
+                export function Counter(): string {
+                    let output: string = "";
+                    for (let i = 1; i <= 3; i++) {
+                        output += (i).toString();
+                        output += " ";
                     }
-                }
-            "#]],
+                    return output;
+                }"#]],
         );
     }
 
@@ -1583,19 +1556,16 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export default {
-                    greetingCard: (): string => {
-                        let output: string = "";
-                        const greeting = "Hello from hop!";
-                        output += "<div class=\"card\">\n";
-                        output += "<p>";
-                        output += escapeHtml(greeting);
-                        output += "</p>\n";
-                        output += "</div>\n";
-                        return output;
-                    }
-                }
-            "#]],
+                export function GreetingCard(): string {
+                    let output: string = "";
+                    const greeting = "Hello from hop!";
+                    output += "<div class=\"card\">\n";
+                    output += "<p>";
+                    output += escapeHtml(greeting);
+                    output += "</p>\n";
+                    output += "</div>\n";
+                    return output;
+                }"#]],
         );
     }
 
@@ -1646,19 +1616,16 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export default {
-                    testMainComp: (): string => {
-                        let output: string = "";
-                        output += "<div data-hop-id=\"test/card-comp\">";
-                        const title = "Hello World";
-                        output += "<h2>";
-                        output += escapeHtml(title);
-                        output += "</h2>";
-                        output += "</div>";
-                        return output;
-                    }
-                }
-            "#]],
+                export function TestMainComp(): string {
+                    let output: string = "";
+                    output += "<div data-hop-id=\"test/card-comp\">";
+                    const title = "Hello World";
+                    output += "<h2>";
+                    output += escapeHtml(title);
+                    output += "</h2>";
+                    output += "</div>";
+                    return output;
+                }"#]],
         );
     }
 
@@ -1716,18 +1683,15 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export default {
-                    renderHtml: ({ safe_content, user_input }: { safe_content: TrustedHTML, user_input: string }): string => {
-                        let output: string = "";
-                        output += "<div>";
-                        output += safe_content;
-                        output += "</div><div>";
-                        output += escapeHtml(user_input);
-                        output += "</div>";
-                        return output;
-                    }
-                }
-            "#]],
+                export function RenderHtml({ safe_content, user_input }: { safe_content: TrustedHTML, user_input: string }): string {
+                    let output: string = "";
+                    output += "<div>";
+                    output += safe_content;
+                    output += "</div><div>";
+                    output += escapeHtml(user_input);
+                    output += "</div>";
+                    return output;
+                }"#]],
         );
     }
 
@@ -1815,16 +1779,13 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export default {
-                    userProfile: ({ user }: { user: User }): string => {
-                        let output: string = "";
-                        output += "<div>";
-                        output += escapeHtml(user.name);
-                        output += "</div>";
-                        return output;
-                    }
-                }
-            "#]],
+                export function UserProfile({ user }: { user: User }): string {
+                    let output: string = "";
+                    output += "<div>";
+                    output += escapeHtml(user.name);
+                    output += "</div>";
+                    return output;
+                }"#]],
         );
     }
 
@@ -1882,16 +1843,13 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export default {
-                    createUser: (): string => {
-                        let output: string = "";
-                        output += "<div>";
-                        output += escapeHtml(new User("John", 30).name);
-                        output += "</div>";
-                        return output;
-                    }
-                }
-            "#]],
+                export function CreateUser(): string {
+                    let output: string = "";
+                    output += "<div>";
+                    output += escapeHtml(new User("John", 30).name);
+                    output += "</div>";
+                    return output;
+                }"#]],
         );
     }
 
@@ -1958,16 +1916,13 @@ mod tests {
                     }
                 }
 
-                export default {
-                    colorDisplay: ({ color }: { color: Color.Color }): string => {
-                        let output: string = "";
-                        if ((color.tag === Color.Red().tag)) {
-                            output += "<div>Red!</div>";
-                        }
-                        return output;
+                export function ColorDisplay({ color }: { color: Color.Color }): string {
+                    let output: string = "";
+                    if ((color.tag === Color.Red().tag)) {
+                        output += "<div>Red!</div>";
                     }
-                }
-            "#]],
+                    return output;
+                }"#]],
         );
     }
 
@@ -2052,20 +2007,17 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export default {
-                    colorName: ({ color }: { color: Color.Color }): string => {
-                        let output: string = "";
-                        output += escapeHtml((() => {
-                          switch (color.tag) {
-                            case "Red": return "red";
-                            case "Green": return "green";
-                            case "Blue": return "blue";
-                          }
-                        })());
-                        return output;
-                    }
-                }
-            "#]],
+                export function ColorName({ color }: { color: Color.Color }): string {
+                    let output: string = "";
+                    output += escapeHtml((() => {
+                      switch (color.tag) {
+                        case "Red": return "red";
+                        case "Green": return "green";
+                        case "Blue": return "blue";
+                      }
+                    })());
+                    return output;
+                }"#]],
         );
     }
 
@@ -2106,14 +2058,11 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export default {
-                    isActive: ({ active }: { active: boolean }): string => {
-                        let output: string = "";
-                        output += escapeHtml((active ? "yes" : "no"));
-                        return output;
-                    }
-                }
-            "#]],
+                export function IsActive({ active }: { active: boolean }): string {
+                    let output: string = "";
+                    output += escapeHtml((active ? "yes" : "no"));
+                    return output;
+                }"#]],
         );
     }
 
@@ -2161,19 +2110,16 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export default {
-                    checkOption: ({ opt }: { opt: Option.Option<number> }): string => {
-                        let output: string = "";
-                        output += escapeHtml((() => {
-                          switch (opt.tag) {
-                            case "Some": return "has value";
-                            case "None": return "empty";
-                          }
-                        })());
-                        return output;
-                    }
-                }
-            "#]],
+                export function CheckOption({ opt }: { opt: Option.Option<number> }): string {
+                    let output: string = "";
+                    output += escapeHtml((() => {
+                      switch (opt.tag) {
+                        case "Some": return "has value";
+                        case "None": return "empty";
+                      }
+                    })());
+                    return output;
+                }"#]],
         );
     }
 
@@ -2248,30 +2194,27 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export default {
-                    checkNestedOption: ({ opt }: { opt: Option.Option<Option.Option<boolean>> }): string => {
-                        let output: string = "";
-                        output += escapeHtml((() => {
-                          switch (opt.tag) {
-                            case "Some": {
-                              const v0 = opt.value;
-                              return (() => {
-                                switch (v0.tag) {
-                                  case "Some": {
-                                    const v1 = v0.value;
-                                    return (v1 ? "some-some-true" : "some-some-false");
-                                  }
-                                  case "None": return "some-none";
-                                }
-                              })();
+                export function CheckNestedOption({ opt }: { opt: Option.Option<Option.Option<boolean>> }): string {
+                    let output: string = "";
+                    output += escapeHtml((() => {
+                      switch (opt.tag) {
+                        case "Some": {
+                          const v0 = opt.value;
+                          return (() => {
+                            switch (v0.tag) {
+                              case "Some": {
+                                const v1 = v0.value;
+                                return (v1 ? "some-some-true" : "some-some-false");
+                              }
+                              case "None": return "some-none";
                             }
-                            case "None": return "none";
-                          }
-                        })());
-                        return output;
-                    }
-                }
-            "#]],
+                          })();
+                        }
+                        case "None": return "none";
+                      }
+                    })());
+                    return output;
+                }"#]],
         );
     }
 
@@ -2312,17 +2255,14 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export default {
-                    letExpr: ({ name }: { name: string }): string => {
-                        let output: string = "";
-                        output += escapeHtml((() => {
-                          const x = name;
-                          return x;
-                        })());
-                        return output;
-                    }
-                }
-            "#]],
+                export function LetExpr({ name }: { name: string }): string {
+                    let output: string = "";
+                    output += escapeHtml((() => {
+                      const x = name;
+                      return x;
+                    })());
+                    return output;
+                }"#]],
         );
     }
 
@@ -2385,26 +2325,23 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export default {
-                    displayOption: ({ opt }: { opt: Option.Option<string> }): string => {
-                        let output: string = "";
-                        switch (opt.tag) {
-                            case "Some": {
-                                const value = opt.value;
-                                output += "<span>Found: ";
-                                output += escapeHtml(value);
-                                output += "</span>";
-                                break;
-                            }
-                            case "None": {
-                                output += "<span>Nothing</span>";
-                                break;
-                            }
+                export function DisplayOption({ opt }: { opt: Option.Option<string> }): string {
+                    let output: string = "";
+                    switch (opt.tag) {
+                        case "Some": {
+                            const value = opt.value;
+                            output += "<span>Found: ";
+                            output += escapeHtml(value);
+                            output += "</span>";
+                            break;
                         }
-                        return output;
+                        case "None": {
+                            output += "<span>Nothing</span>";
+                            break;
+                        }
                     }
-                }
-            "#]],
+                    return output;
+                }"#]],
         );
     }
 
@@ -2456,25 +2393,22 @@ mod tests {
                     }
                 }
 
-                export default {
-                    testOptionLiteral: ({ opt1, opt2 }: { opt1: Option.Option<string>, opt2: Option.Option<string> }): string => {
-                        let output: string = "";
-                        output += (() => {
-                          switch (opt1.tag) {
-                            case "Some": return "has value";
-                            case "None": return "empty";
-                          }
-                        })();
-                        output += (() => {
-                          switch (opt2.tag) {
-                            case "Some": return "HAS";
-                            case "None": return "EMPTY";
-                          }
-                        })();
-                        return output;
-                    }
-                }
-            "#]],
+                export function TestOptionLiteral({ opt1, opt2 }: { opt1: Option.Option<string>, opt2: Option.Option<string> }): string {
+                    let output: string = "";
+                    output += (() => {
+                      switch (opt1.tag) {
+                        case "Some": return "has value";
+                        case "None": return "empty";
+                      }
+                    })();
+                    output += (() => {
+                      switch (opt2.tag) {
+                        case "Some": return "HAS";
+                        case "None": return "EMPTY";
+                      }
+                    })();
+                    return output;
+                }"#]],
         );
     }
 
@@ -2526,26 +2460,23 @@ mod tests {
                     }
                 }
 
-                export default {
-                    testInlineMatch: (): string => {
-                        let output: string = "";
-                        const opt = Option.some<string>("world");
-                        switch (opt.tag) {
-                            case "Some": {
-                                const val = opt.value;
-                                output += "Got:";
-                                output += val;
-                                break;
-                            }
-                            case "None": {
-                                output += "Empty";
-                                break;
-                            }
+                export function TestInlineMatch(): string {
+                    let output: string = "";
+                    const opt = Option.some<string>("world");
+                    switch (opt.tag) {
+                        case "Some": {
+                            const val = opt.value;
+                            output += "Got:";
+                            output += val;
+                            break;
                         }
-                        return output;
+                        case "None": {
+                            output += "Empty";
+                            break;
+                        }
                     }
-                }
-            "#]],
+                    return output;
+                }"#]],
         );
     }
 
@@ -2624,17 +2555,14 @@ mod tests {
                     }
                 }
 
-                export default {
-                    showResult: ({ r }: { r: Result.Result }): string => {
-                        let output: string = "";
-                        output += "<div>";
-                        const ok = Result.Ok(42);
-                        output += "Created Ok!";
-                        output += "</div>";
-                        return output;
-                    }
-                }
-            "#]],
+                export function ShowResult({ r }: { r: Result.Result }): string {
+                    let output: string = "";
+                    output += "<div>";
+                    const ok = Result.Ok(42);
+                    output += "Created Ok!";
+                    output += "</div>";
+                    return output;
+                }"#]],
         );
     }
 
@@ -2732,27 +2660,24 @@ mod tests {
                     }
                 }
 
-                export default {
-                    showResult: ({ r }: { r: Result.Result }): string => {
-                        let output: string = "";
-                        switch (r.tag) {
-                            case "Ok": {
-                                const { value: v } = r;
-                                output += "Value: ";
-                                output += v;
-                                break;
-                            }
-                            case "Err": {
-                                const { message: m } = r;
-                                output += "Error: ";
-                                output += m;
-                                break;
-                            }
+                export function ShowResult({ r }: { r: Result.Result }): string {
+                    let output: string = "";
+                    switch (r.tag) {
+                        case "Ok": {
+                            const { value: v } = r;
+                            output += "Value: ";
+                            output += v;
+                            break;
                         }
-                        return output;
+                        case "Err": {
+                            const { message: m } = r;
+                            output += "Error: ";
+                            output += m;
+                            break;
+                        }
                     }
-                }
-            "#]],
+                    return output;
+                }"#]],
         );
     }
 }
