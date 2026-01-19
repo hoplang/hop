@@ -380,17 +380,15 @@ mod tests {
                       Some(v0) => let x = v0 in Option[String]::Some(x),
                       None => Option[String]::None,
                     } in {
-                      let match_subject = mapped in {
-                        match match_subject {
-                          Some(v0) => {
-                            let result = v0 in {
-                              write("mapped:")
-                              write_escaped(result)
-                            }
+                      match mapped {
+                        Some(v0) => {
+                          let result = v0 in {
+                            write("mapped:")
+                            write_escaped(result)
                           }
-                          None => {
-                            write("was-none")
-                          }
+                        }
+                        None => {
+                          write("was-none")
                         }
                       }
                     }
@@ -398,8 +396,8 @@ mod tests {
                 }
                 -- ir (optimized) --
                 Test() {
-                  let match_subject = Option[String]::Some("hello") in {
-                    match match_subject {
+                  let mapped = Option[String]::Some("hello") in {
+                    match mapped {
                       Some(_) => {
                         write("mapped:hello")
                       }
@@ -460,16 +458,14 @@ mod tests {
                       Some(v0) => let x = v0 in x,
                       None => "default",
                     }) in {
-                      let match_subject = outer in {
-                        match match_subject {
-                          Some(v0) => {
-                            let val = v0 in {
-                              write_escaped(val)
-                            }
+                      match outer {
+                        Some(v0) => {
+                          let val = v0 in {
+                            write_escaped(val)
                           }
-                          None => {
-                            write("none")
-                          }
+                        }
+                        None => {
+                          write("none")
                         }
                       }
                     }
@@ -477,8 +473,8 @@ mod tests {
                 }
                 -- ir (optimized) --
                 Test() {
-                  let match_subject = Option[String]::Some("inner") in {
-                    match match_subject {
+                  let outer = Option[String]::Some("inner") in {
+                    match outer {
                       Some(_) => {
                         write("inner")
                       }
@@ -1694,22 +1690,20 @@ mod tests {
                 -- ir (unoptimized) --
                 Test() {
                   let flag = true in {
-                    let match_subject = flag in {
-                      match match_subject {
-                        true => {
-                          write("yes")
-                        }
-                        false => {
-                          write("no")
-                        }
+                    match flag {
+                      true => {
+                        write("yes")
+                      }
+                      false => {
+                        write("no")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 Test() {
-                  let match_subject = true in {
-                    match match_subject {
+                  let flag = true in {
+                    match flag {
                       true => {
                         write("yes")
                       }
@@ -1760,22 +1754,20 @@ mod tests {
                 -- ir (unoptimized) --
                 Test() {
                   let flag = false in {
-                    let match_subject = flag in {
-                      match match_subject {
-                        true => {
-                          write("yes")
-                        }
-                        false => {
-                          write("no")
-                        }
+                    match flag {
+                      true => {
+                        write("yes")
+                      }
+                      false => {
+                        write("no")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 Test() {
-                  let match_subject = false in {
-                    match match_subject {
+                  let flag = false in {
+                    match flag {
                       true => {
                         write("yes")
                       }
@@ -2421,24 +2413,22 @@ mod tests {
                 -- ir (unoptimized) --
                 Test() {
                   let some_val = Option[String]::Some("hello") in {
-                    let match_subject = some_val in {
-                      match match_subject {
-                        Some(v0) => {
-                          let val = v0 in {
-                            write_escaped(val)
-                          }
+                    match some_val {
+                      Some(v0) => {
+                        let val = v0 in {
+                          write_escaped(val)
                         }
-                        None => {
-                          write("none")
-                        }
+                      }
+                      None => {
+                        write("none")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 Test() {
-                  let match_subject = Option[String]::Some("hello") in {
-                    match match_subject {
+                  let some_val = Option[String]::Some("hello") in {
+                    match some_val {
                       Some(v0) => {
                         let val = v0 in {
                           write_escaped(val)
@@ -2491,22 +2481,20 @@ mod tests {
                 -- ir (unoptimized) --
                 Test() {
                   let opt = Option[String]::Some("hello") in {
-                    let match_subject = opt in {
-                      match match_subject {
-                        Some(_) => {
-                          write("some")
-                        }
-                        None => {
-                          write("none")
-                        }
+                    match opt {
+                      Some(_) => {
+                        write("some")
+                      }
+                      None => {
+                        write("none")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 Test() {
-                  let match_subject = Option[String]::Some("hello") in {
-                    match match_subject {
+                  let opt = Option[String]::Some("hello") in {
+                    match opt {
                       Some(_) => {
                         write("some")
                       }
@@ -2567,16 +2555,14 @@ mod tests {
                       Some(v0) => let x = v0 in x,
                       None => "default",
                     }) in {
-                      let match_subject = outer in {
-                        match match_subject {
-                          Some(v0) => {
-                            let val = v0 in {
-                              write_escaped(val)
-                            }
+                      match outer {
+                        Some(v0) => {
+                          let val = v0 in {
+                            write_escaped(val)
                           }
-                          None => {
-                            write("none")
-                          }
+                        }
+                        None => {
+                          write("none")
                         }
                       }
                     }
@@ -2584,8 +2570,8 @@ mod tests {
                 }
                 -- ir (optimized) --
                 Test() {
-                  let match_subject = Option[String]::Some("inner") in {
-                    match match_subject {
+                  let outer = Option[String]::Some("inner") in {
+                    match outer {
                       Some(_) => {
                         write("inner")
                       }
@@ -2640,18 +2626,16 @@ mod tests {
                     Option[String]::None,
                     Option[String]::Some("b"),
                   ] {
-                    let match_subject = item in {
-                      match match_subject {
-                        Some(v0) => {
-                          let val = v0 in {
-                            write("[")
-                            write_escaped(val)
-                            write("]")
-                          }
+                    match item {
+                      Some(v0) => {
+                        let val = v0 in {
+                          write("[")
+                          write_escaped(val)
+                          write("]")
                         }
-                        None => {
-                          write("[_]")
-                        }
+                      }
+                      None => {
+                        write("[_]")
                       }
                     }
                   }
@@ -2663,18 +2647,16 @@ mod tests {
                     Option[String]::None,
                     Option[String]::Some("b"),
                   ] {
-                    let match_subject = item in {
-                      match match_subject {
-                        Some(v0) => {
-                          let val = v0 in {
-                            write("[")
-                            write_escaped(val)
-                            write("]")
-                          }
+                    match item {
+                      Some(v0) => {
+                        let val = v0 in {
+                          write("[")
+                          write_escaped(val)
+                          write("]")
                         }
-                        None => {
-                          write("[_]")
-                        }
+                      }
+                      None => {
+                        write("[_]")
                       }
                     }
                   }
@@ -2799,17 +2781,15 @@ mod tests {
                 }
                 Test() {
                   let color = Color::Blue in {
-                    let match_subject = color in {
-                      match match_subject {
-                        Color::Red => {
-                          write("red")
-                        }
-                        Color::Green => {
-                          write("green")
-                        }
-                        Color::Blue => {
-                          write("blue")
-                        }
+                    match color {
+                      Color::Red => {
+                        write("red")
+                      }
+                      Color::Green => {
+                        write("green")
+                      }
+                      Color::Blue => {
+                        write("blue")
                       }
                     }
                   }
@@ -2821,8 +2801,8 @@ mod tests {
                   Blue,
                 }
                 Test() {
-                  let match_subject = Color::Blue in {
-                    match match_subject {
+                  let color = Color::Blue in {
+                    match color {
                       Color::Red => {
                         write("red")
                       }
@@ -2885,19 +2865,17 @@ mod tests {
                 }
                 Test() {
                   let result = Result::Ok(value: "hello") in {
-                    let match_subject = result in {
-                      match match_subject {
-                        Result::Ok(value: v0) => {
-                          let v = v0 in {
-                            write("Ok:")
-                            write_escaped(v)
-                          }
+                    match result {
+                      Result::Ok(value: v0) => {
+                        let v = v0 in {
+                          write("Ok:")
+                          write_escaped(v)
                         }
-                        Result::Err(message: v1) => {
-                          let m = v1 in {
-                            write("Err:")
-                            write_escaped(m)
-                          }
+                      }
+                      Result::Err(message: v1) => {
+                        let m = v1 in {
+                          write("Err:")
+                          write_escaped(m)
                         }
                       }
                     }
@@ -2909,8 +2887,8 @@ mod tests {
                   Err(message: String),
                 }
                 Test() {
-                  let match_subject = Result::Ok(value: "hello") in {
-                    match match_subject {
+                  let result = Result::Ok(value: "hello") in {
+                    match result {
                       Result::Ok(value: v0) => {
                         let v = v0 in {
                           write("Ok:")
@@ -2978,19 +2956,17 @@ mod tests {
                 }
                 Test() {
                   let result = Result::Err(message: "something went wrong") in {
-                    let match_subject = result in {
-                      match match_subject {
-                        Result::Ok(value: v0) => {
-                          let v = v0 in {
-                            write("Ok:")
-                            write_escaped(v)
-                          }
+                    match result {
+                      Result::Ok(value: v0) => {
+                        let v = v0 in {
+                          write("Ok:")
+                          write_escaped(v)
                         }
-                        Result::Err(message: v1) => {
-                          let m = v1 in {
-                            write("Err:")
-                            write_escaped(m)
-                          }
+                      }
+                      Result::Err(message: v1) => {
+                        let m = v1 in {
+                          write("Err:")
+                          write_escaped(m)
                         }
                       }
                     }
@@ -3002,8 +2978,8 @@ mod tests {
                   Err(message: String),
                 }
                 Test() {
-                  let match_subject = Result::Err(message: "something went wrong") in {
-                    match match_subject {
+                  let result = Result::Err(message: "something went wrong") in {
+                    match result {
                       Result::Ok(value: v0) => {
                         let v = v0 in {
                           write("Ok:")
@@ -3071,22 +3047,20 @@ mod tests {
                 }
                 Test() {
                   let resp = Response::Success(code: "200", body: "OK") in {
-                    let match_subject = resp in {
-                      match match_subject {
-                        Response::Success(code: v0, body: v1) => {
-                          let c = v0 in {
-                            let b = v1 in {
-                              write_escaped(c)
-                              write(":")
-                              write_escaped(b)
-                            }
+                    match resp {
+                      Response::Success(code: v0, body: v1) => {
+                        let c = v0 in {
+                          let b = v1 in {
+                            write_escaped(c)
+                            write(":")
+                            write_escaped(b)
                           }
                         }
-                        Response::Error(reason: v2) => {
-                          let r = v2 in {
-                            write("Error:")
-                            write_escaped(r)
-                          }
+                      }
+                      Response::Error(reason: v2) => {
+                        let r = v2 in {
+                          write("Error:")
+                          write_escaped(r)
                         }
                       }
                     }
@@ -3098,8 +3072,8 @@ mod tests {
                   Error(reason: String),
                 }
                 Test() {
-                  let match_subject = Response::Success(code: "200", body: "OK") in {
-                    match match_subject {
+                  let resp = Response::Success(code: "200", body: "OK") in {
+                    match resp {
                       Response::Success(code: v0, body: v1) => {
                         let c = v0 in {
                           let b = v1 in {
@@ -4067,31 +4041,29 @@ mod tests {
                 -- ir (unoptimized) --
                 Test() {
                   let nested = Option[Option[String]]::Some(Option[String]::Some("deep")) in {
-                    let match_subject = nested in {
-                      match match_subject {
-                        Some(v0) => {
-                          match v0 {
-                            Some(v1) => {
-                              let x = v1 in {
-                                write_escaped(x)
-                              }
-                            }
-                            None => {
-                              write("some-none")
+                    match nested {
+                      Some(v0) => {
+                        match v0 {
+                          Some(v1) => {
+                            let x = v1 in {
+                              write_escaped(x)
                             }
                           }
+                          None => {
+                            write("some-none")
+                          }
                         }
-                        None => {
-                          write("none")
-                        }
+                      }
+                      None => {
+                        write("none")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 Test() {
-                  let match_subject = Option[Option[String]]::Some(Option[String]::Some("deep")) in {
-                    match match_subject {
+                  let nested = Option[Option[String]]::Some(Option[String]::Some("deep")) in {
+                    match nested {
                       Some(v0) => {
                         match v0 {
                           Some(v1) => {
@@ -4151,22 +4123,20 @@ mod tests {
                 -- ir (unoptimized) --
                 Test() {
                   let opt = Option[String]::Some("x") in {
-                    let match_subject = opt in {
-                      match match_subject {
-                        Some(_) => {
-                          write("some")
-                        }
-                        None => {
-                          write("none")
-                        }
+                    match opt {
+                      Some(_) => {
+                        write("some")
+                      }
+                      None => {
+                        write("none")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 Test() {
-                  let match_subject = Option[String]::Some("x") in {
-                    match match_subject {
+                  let opt = Option[String]::Some("x") in {
+                    match opt {
                       Some(_) => {
                         write("some")
                       }
@@ -4217,22 +4187,20 @@ mod tests {
                 -- ir (unoptimized) --
                 Test() {
                   let opt = Option[String]::None in {
-                    let match_subject = opt in {
-                      match match_subject {
-                        Some(_) => {
-                          write("some")
-                        }
-                        None => {
-                          write("none")
-                        }
+                    match opt {
+                      Some(_) => {
+                        write("some")
+                      }
+                      None => {
+                        write("none")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 Test() {
-                  let match_subject = Option[String]::None in {
-                    match match_subject {
+                  let opt = Option[String]::None in {
+                    match opt {
                       Some(_) => {
                         write("some")
                       }
@@ -4375,29 +4343,27 @@ mod tests {
                 -- ir (unoptimized) --
                 Test() {
                   let nested = Option[Option[String]]::Some(Option[String]::Some("x")) in {
-                    let match_subject = nested in {
-                      match match_subject {
-                        Some(v0) => {
-                          match v0 {
-                            Some(_) => {
-                              write("some-some")
-                            }
-                            None => {
-                              write("some-none")
-                            }
+                    match nested {
+                      Some(v0) => {
+                        match v0 {
+                          Some(_) => {
+                            write("some-some")
+                          }
+                          None => {
+                            write("some-none")
                           }
                         }
-                        None => {
-                          write("none")
-                        }
+                      }
+                      None => {
+                        write("none")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 Test() {
-                  let match_subject = Option[Option[String]]::Some(Option[String]::Some("x")) in {
-                    match match_subject {
+                  let nested = Option[Option[String]]::Some(Option[String]::Some("x")) in {
+                    match nested {
                       Some(v0) => {
                         match v0 {
                           Some(_) => {
@@ -4456,22 +4422,20 @@ mod tests {
                 -- ir (unoptimized) --
                 Test() {
                   let nested = Option[Option[String]]::Some(Option[String]::Some("x")) in {
-                    let match_subject = nested in {
-                      match match_subject {
-                        Some(_) => {
-                          write("some")
-                        }
-                        None => {
-                          write("none")
-                        }
+                    match nested {
+                      Some(_) => {
+                        write("some")
+                      }
+                      None => {
+                        write("none")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 Test() {
-                  let match_subject = Option[Option[String]]::Some(Option[String]::Some("x")) in {
-                    match match_subject {
+                  let nested = Option[Option[String]]::Some(Option[String]::Some("x")) in {
+                    match nested {
                       Some(_) => {
                         write("some")
                       }
@@ -4532,14 +4496,12 @@ mod tests {
                 }
                 Test() {
                   let result = Result::Ok(value: "hello") in {
-                    let match_subject = result in {
-                      match match_subject {
-                        Result::Ok => {
-                          write("ok")
-                        }
-                        Result::Err => {
-                          write("err")
-                        }
+                    match result {
+                      Result::Ok => {
+                        write("ok")
+                      }
+                      Result::Err => {
+                        write("err")
                       }
                     }
                   }
@@ -4550,8 +4512,8 @@ mod tests {
                   Err(message: String),
                 }
                 Test() {
-                  let match_subject = Result::Ok(value: "hello") in {
-                    match match_subject {
+                  let result = Result::Ok(value: "hello") in {
+                    match result {
                       Result::Ok => {
                         write("ok")
                       }
@@ -4612,14 +4574,12 @@ mod tests {
                 }
                 Test() {
                   let result = Result::Err(message: "failed") in {
-                    let match_subject = result in {
-                      match match_subject {
-                        Result::Ok => {
-                          write("ok")
-                        }
-                        Result::Err => {
-                          write("err")
-                        }
+                    match result {
+                      Result::Ok => {
+                        write("ok")
+                      }
+                      Result::Err => {
+                        write("err")
                       }
                     }
                   }
@@ -4630,8 +4590,8 @@ mod tests {
                   Err(message: String),
                 }
                 Test() {
-                  let match_subject = Result::Err(message: "failed") in {
-                    match match_subject {
+                  let result = Result::Err(message: "failed") in {
+                    match result {
                       Result::Ok => {
                         write("ok")
                       }
@@ -4689,12 +4649,10 @@ mod tests {
                 }
                 Test() {
                   let person = Person(name: "Alice", age: 30) in {
-                    let match_subject = person in {
-                      let v1 = match_subject.age in {
-                        let a = v1 in {
-                          write("age:")
-                          write_escaped(a.to_string())
-                        }
+                    let v1 = person.age in {
+                      let a = v1 in {
+                        write("age:")
+                        write_escaped(a.to_string())
                       }
                     }
                   }
@@ -4706,12 +4664,10 @@ mod tests {
                 }
                 Test() {
                   let person = Person(name: "Alice", age: 30) in {
-                    let match_subject = person in {
-                      let v1 = match_subject.age in {
-                        let a = v1 in {
-                          write("age:")
-                          write_escaped(a.to_string())
-                        }
+                    let v1 = person.age in {
+                      let a = v1 in {
+                        write("age:")
+                        write_escaped(a.to_string())
                       }
                     }
                   }
@@ -4768,36 +4724,34 @@ mod tests {
                 -- ir (unoptimized) --
                 Test() {
                   let deep = Option[Option[Option[String]]]::Some(Option[Option[String]]::Some(Option[String]::Some("value"))) in {
-                    let match_subject = deep in {
-                      match match_subject {
-                        Some(v0) => {
-                          match v0 {
-                            Some(v1) => {
-                              match v1 {
-                                Some(_) => {
-                                  write("triple-some")
-                                }
-                                None => {
-                                  write("double-some-none")
-                                }
+                    match deep {
+                      Some(v0) => {
+                        match v0 {
+                          Some(v1) => {
+                            match v1 {
+                              Some(_) => {
+                                write("triple-some")
+                              }
+                              None => {
+                                write("double-some-none")
                               }
                             }
-                            None => {
-                              write("single-some-none")
-                            }
+                          }
+                          None => {
+                            write("single-some-none")
                           }
                         }
-                        None => {
-                          write("none")
-                        }
+                      }
+                      None => {
+                        write("none")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
                 Test() {
-                  let match_subject = Option[Option[Option[String]]]::Some(Option[Option[String]]::Some(Option[String]::Some("value"))) in {
-                    match match_subject {
+                  let deep = Option[Option[Option[String]]]::Some(Option[Option[String]]::Some(Option[String]::Some("value"))) in {
+                    match deep {
                       Some(v0) => {
                         match v0 {
                           Some(v1) => {
@@ -4886,21 +4840,19 @@ mod tests {
                 }
                 Test() {
                   let result = Outer::Ok(value: Inner::Ok(value: "deep")) in {
-                    let match_subject = result in {
-                      match match_subject {
-                        Outer::Ok(value: v0) => {
-                          match v0 {
-                            Inner::Ok => {
-                              write("ok-ok")
-                            }
-                            Inner::Err => {
-                              write("ok-err")
-                            }
+                    match result {
+                      Outer::Ok(value: v0) => {
+                        match v0 {
+                          Inner::Ok => {
+                            write("ok-ok")
+                          }
+                          Inner::Err => {
+                            write("ok-err")
                           }
                         }
-                        Outer::Err => {
-                          write("err")
-                        }
+                      }
+                      Outer::Err => {
+                        write("err")
                       }
                     }
                   }
@@ -4915,8 +4867,8 @@ mod tests {
                   Err(message: String),
                 }
                 Test() {
-                  let match_subject = Outer::Ok(value: Inner::Ok(value: "deep")) in {
-                    match match_subject {
+                  let result = Outer::Ok(value: Inner::Ok(value: "deep")) in {
+                    match result {
                       Outer::Ok(value: v0) => {
                         match v0 {
                           Inner::Ok => {
@@ -5034,4 +4986,5 @@ mod tests {
             "#]],
         );
     }
+
 }

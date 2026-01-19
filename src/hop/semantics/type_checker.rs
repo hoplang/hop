@@ -959,9 +959,15 @@ fn typecheck_node(
                 .map(|case| case.pattern.clone())
                 .collect::<Vec<_>>();
 
+            // If subject is already a variable, use it directly; otherwise we'll wrap in a let
+            let (subject_name, needs_wrapper) = match &typed_subject {
+                dop::TypedExpr::Var { value, .. } => (value.as_str().to_string(), false),
+                _ => ("match_subject".to_string(), true),
+            };
+
             let decision = match PatMatchCompiler::new(0).compile(
                 &patterns,
-                "match_subject",
+                &subject_name,
                 &subject_type,
                 subject.range(),
                 range,
@@ -1030,13 +1036,15 @@ fn typecheck_node(
             let mut result = decision_to_typed_nodes(&decision, &typed_bodies);
 
             // Wrap with a Let to bind the subject expression to the subject variable
-            result = vec![TypedNode::Let {
-                var: VarName::new("match_subject").expect("invalid variable name"),
-                value: typed_subject,
-                children: result,
-            }];
+            // (only if the subject is not already a simple variable reference)
+            if needs_wrapper {
+                result = vec![TypedNode::Let {
+                    var: VarName::new(&subject_name).expect("invalid variable name"),
+                    value: typed_subject,
+                    children: result,
+                }];
+            }
 
-            // Return the single match node (unwrap the vec since we know it's a single Let)
             result.into_iter().next()
         }
 
@@ -3753,19 +3761,17 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 <Main {x: Option[String]}>
-                  <let {match_subject = x}>
-                    <match {match_subject}>
-                      <case {Some(v0)}>
-                        <let {y = v0}>
-                          found 
-                          {y}
-                        </let>
-                      </case>
-                      <case {None}>
-                        nothing
-                      </case>
-                    </match>
-                  </let>
+                  <match {x}>
+                    <case {Some(v0)}>
+                      <let {y = v0}>
+                        found 
+                        {y}
+                      </let>
+                    </case>
+                    <case {None}>
+                      nothing
+                    </case>
+                  </match>
                 </Main>
             "#]],
         );
@@ -3794,19 +3800,17 @@ mod tests {
                 }
 
                 <Main {c: main::Color}>
-                  <let {match_subject = c}>
-                    <match {match_subject}>
-                      <case {Color::Red}>
-                        red
-                      </case>
-                      <case {Color::Green}>
-                        green
-                      </case>
-                      <case {Color::Blue}>
-                        blue
-                      </case>
-                    </match>
-                  </let>
+                  <match {c}>
+                    <case {Color::Red}>
+                      red
+                    </case>
+                    <case {Color::Green}>
+                      green
+                    </case>
+                    <case {Color::Blue}>
+                      blue
+                    </case>
+                  </match>
                 </Main>
             "#]],
         );
@@ -3869,16 +3873,14 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 <Main {flag: Bool}>
-                  <let {match_subject = flag}>
-                    <match {match_subject}>
-                      <case {true}>
-                        yes
-                      </case>
-                      <case {false}>
-                        no
-                      </case>
-                    </match>
-                  </let>
+                  <match {flag}>
+                    <case {true}>
+                      yes
+                    </case>
+                    <case {false}>
+                      no
+                    </case>
+                  </match>
                 </Main>
             "#]],
         );
@@ -3924,18 +3926,16 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 <Main {x: Option[String]}>
-                  <let {match_subject = x}>
-                    <match {match_subject}>
-                      <case {Some(v0)}>
-                        <let {name = v0}>
-                          <div class={name}></div>
-                        </let>
-                      </case>
-                      <case {None}>
-                        nothing
-                      </case>
-                    </match>
-                  </let>
+                  <match {x}>
+                    <case {Some(v0)}>
+                      <let {name = v0}>
+                        <div class={name}></div>
+                      </let>
+                    </case>
+                    <case {None}>
+                      nothing
+                    </case>
+                  </match>
                 </Main>
             "#]],
         );
@@ -4142,29 +4142,25 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 <Main {x: Option[Option[String]]}>
-                  <let {match_subject = x}>
-                    <match {match_subject}>
-                      <case {Some(v0)}>
-                        <let {inner = v0}>
-                          <let {match_subject = inner}>
-                            <match {match_subject}>
-                              <case {Some(v0)}>
-                                <let {val = v0}>
-                                  {val}
-                                </let>
-                              </case>
-                              <case {None}>
-                                inner none
-                              </case>
-                            </match>
-                          </let>
-                        </let>
-                      </case>
-                      <case {None}>
-                        outer none
-                      </case>
-                    </match>
-                  </let>
+                  <match {x}>
+                    <case {Some(v0)}>
+                      <let {inner = v0}>
+                        <match {inner}>
+                          <case {Some(v0)}>
+                            <let {val = v0}>
+                              {val}
+                            </let>
+                          </case>
+                          <case {None}>
+                            inner none
+                          </case>
+                        </match>
+                      </let>
+                    </case>
+                    <case {None}>
+                      outer none
+                    </case>
+                  </match>
                 </Main>
             "#]],
         );
@@ -4188,18 +4184,16 @@ mod tests {
                 -- main.hop --
                 <Main {items: Array[Option[String]]}>
                   <for {item in items}>
-                    <let {match_subject = item}>
-                      <match {match_subject}>
-                        <case {Some(v0)}>
-                          <let {val = v0}>
-                            {val}
-                          </let>
-                        </case>
-                        <case {None}>
-                          -
-                        </case>
-                      </match>
-                    </let>
+                    <match {item}>
+                      <case {Some(v0)}>
+                        <let {val = v0}>
+                          {val}
+                        </let>
+                      </case>
+                      <case {None}>
+                        -
+                      </case>
+                    </match>
                   </for>
                 </Main>
             "#]],
@@ -4225,16 +4219,14 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 <Main {x: Option[String]}>
-                  <let {match_subject = x}>
-                    <match {match_subject}>
-                      <case {Some(_)}>
-                        found something
-                      </case>
-                      <case {None}>
-                        nothing
-                      </case>
-                    </match>
-                  </let>
+                  <match {x}>
+                    <case {Some(_)}>
+                      found something
+                    </case>
+                    <case {None}>
+                      nothing
+                    </case>
+                  </match>
                 </Main>
             "#]],
         );
@@ -4260,31 +4252,27 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 <Main {r1: Option[String], r2: Option[Bool]}>
-                  <let {match_subject = r1}>
-                    <match {match_subject}>
-                      <case {Some(v0)}>
-                        <let {val = v0}>
-                          {val}
-                        </let>
-                      </case>
-                      <case {None}>
-                        <let {match_subject = r2}>
-                          <match {match_subject}>
-                            <case {Some(v0)}>
-                              <let {val = v0}>
-                                <if {val}>
-                                  yes
-                                </if>
-                              </let>
-                            </case>
-                            <case {None}>
-                              both none
-                            </case>
-                          </match>
-                        </let>
-                      </case>
-                    </match>
-                  </let>
+                  <match {r1}>
+                    <case {Some(v0)}>
+                      <let {val = v0}>
+                        {val}
+                      </let>
+                    </case>
+                    <case {None}>
+                      <match {r2}>
+                        <case {Some(v0)}>
+                          <let {val = v0}>
+                            <if {val}>
+                              yes
+                            </if>
+                          </let>
+                        </case>
+                        <case {None}>
+                          both none
+                        </case>
+                      </match>
+                    </case>
+                  </match>
                 </Main>
             "#]],
         );
@@ -4366,18 +4354,16 @@ mod tests {
                 -- main.hop --
                 <Main {show: Bool, x: Option[String]}>
                   <if {show}>
-                    <let {match_subject = x}>
-                      <match {match_subject}>
-                        <case {Some(v0)}>
-                          <let {v = v0}>
-                            {v}
-                          </let>
-                        </case>
-                        <case {None}>
-                          none
-                        </case>
-                      </match>
-                    </let>
+                    <match {x}>
+                      <case {Some(v0)}>
+                        <let {v = v0}>
+                          {v}
+                        </let>
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
+                    </match>
                   </if>
                 </Main>
             "#]],
@@ -4402,22 +4388,20 @@ mod tests {
                 -- main.hop --
                 <Main {x: Option[String]}>
                   <div>
-                    <let {match_subject = x}>
-                      <match {match_subject}>
-                        <case {Some(v0)}>
-                          <let {v = v0}>
-                            <span>
-                              {v}
-                            </span>
-                          </let>
-                        </case>
-                        <case {None}>
+                    <match {x}>
+                      <case {Some(v0)}>
+                        <let {v = v0}>
                           <span>
-                            none
+                            {v}
                           </span>
-                        </case>
-                      </match>
-                    </let>
+                        </let>
+                      </case>
+                      <case {None}>
+                        <span>
+                          none
+                        </span>
+                      </case>
+                    </match>
                   </div>
                 </Main>
             "#]],
@@ -4559,20 +4543,18 @@ mod tests {
                 -- main.hop --
                 <Separator {children: Option[TrustedHTML] = None}>
                   <li>
-                    <let {match_subject = children}>
-                      <match {match_subject}>
-                        <case {Some(v0)}>
-                          <let {c = v0}>
-                            {c}
-                          </let>
-                        </case>
-                        <case {None}>
-                          <span>
-                            Default
-                          </span>
-                        </case>
-                      </match>
-                    </let>
+                    <match {children}>
+                      <case {Some(v0)}>
+                        <let {c = v0}>
+                          {c}
+                        </let>
+                      </case>
+                      <case {None}>
+                        <span>
+                          Default
+                        </span>
+                      </case>
+                    </match>
                   </li>
                 </Separator>
 
@@ -4606,20 +4588,18 @@ mod tests {
                 -- main.hop --
                 <Separator {children: Option[TrustedHTML] = None}>
                   <li>
-                    <let {match_subject = children}>
-                      <match {match_subject}>
-                        <case {Some(v0)}>
-                          <let {c = v0}>
-                            {c}
-                          </let>
-                        </case>
-                        <case {None}>
-                          <span>
-                            Default
-                          </span>
-                        </case>
-                      </match>
-                    </let>
+                    <match {children}>
+                      <case {Some(v0)}>
+                        <let {c = v0}>
+                          {c}
+                        </let>
+                      </case>
+                      <case {None}>
+                        <span>
+                          Default
+                        </span>
+                      </case>
+                    </match>
                   </li>
                 </Separator>
 
