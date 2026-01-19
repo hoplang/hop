@@ -4838,4 +4838,200 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn nested_enum_wildcard() {
+        // Test nested enum matching with wildcard - Outer::Ok(value: Inner::Ok(value: _))
+        check(
+            indoc! {r#"
+                enum Inner {
+                  Ok(value: String),
+                  Err(message: String),
+                }
+
+                enum Outer {
+                  Ok(value: Inner),
+                  Err(message: String),
+                }
+
+                entrypoint Test() {
+                  <let {
+                    result: Outer = Outer::Ok(value: Inner::Ok(value: "deep")),
+                  }>
+                    <match {result}>
+                      <case {Outer::Ok(value: Inner::Ok(value: _))}>
+                        ok-ok
+                      </case>
+                      <case {Outer::Ok(value: Inner::Err(message: _))}>
+                        ok-err
+                      </case>
+                      <case {Outer::Err(message: _)}>
+                        err
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "ok-ok",
+            expect![[r#"
+                -- ir (unoptimized) --
+                enum Inner {
+                  Ok(value: String),
+                  Err(message: String),
+                }
+                enum Outer {
+                  Ok(value: test::Inner),
+                  Err(message: String),
+                }
+                Test() {
+                  let result = Outer::Ok(value: Inner::Ok(value: "deep")) in {
+                    let match_subject = result in {
+                      match match_subject {
+                        Outer::Ok(value: v0) => {
+                          match v0 {
+                            Inner::Ok => {
+                              write("ok-ok")
+                            }
+                            Inner::Err => {
+                              write("ok-err")
+                            }
+                          }
+                        }
+                        Outer::Err => {
+                          write("err")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                enum Inner {
+                  Ok(value: String),
+                  Err(message: String),
+                }
+                enum Outer {
+                  Ok(value: test::Inner),
+                  Err(message: String),
+                }
+                Test() {
+                  let match_subject = Outer::Ok(value: Inner::Ok(value: "deep")) in {
+                    match match_subject {
+                      Outer::Ok(value: v0) => {
+                        match v0 {
+                          Inner::Ok => {
+                            write("ok-ok")
+                          }
+                          Inner::Err => {
+                            write("ok-err")
+                          }
+                        }
+                      }
+                      Outer::Err => {
+                        write("err")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                ok-ok
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn bool_match_partial_wildcard_true() {
+        // Test bool match with one explicit case and wildcard - match b {true => "t", _ => "f"}
+        check(
+            indoc! {r#"
+                entrypoint Test() {
+                  <let {b: Bool = true}>
+                    {match b {true => "t", _ => "f"}}
+                  </let>
+                }
+            "#},
+            "t",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let b = true in {
+                    write_escaped(match b {true => "t", false => "f"})
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  write("t")
+                }
+                -- expected output --
+                t
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn bool_match_partial_wildcard_false() {
+        // Test bool match with wildcard matching false
+        check(
+            indoc! {r#"
+                entrypoint Test() {
+                  <let {b: Bool = false}>
+                    {match b {true => "t", _ => "f"}}
+                  </let>
+                }
+            "#},
+            "f",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let b = false in {
+                    write_escaped(match b {true => "t", false => "f"})
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  write("f")
+                }
+                -- expected output --
+                f
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
 }
