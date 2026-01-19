@@ -2,9 +2,6 @@ pub mod go;
 pub mod python;
 pub mod ts;
 
-#[cfg(test)]
-pub mod integration_tests;
-
 pub use go::GoTranspiler;
 use pretty::BoxDoc;
 pub use python::PythonTranspiler;

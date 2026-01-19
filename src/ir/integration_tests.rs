@@ -1,4 +1,4 @@
-use super::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
+use super::transpile::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
 use crate::document::Document;
 use crate::hop::program::Program;
 use crate::hop::syntax::format;
