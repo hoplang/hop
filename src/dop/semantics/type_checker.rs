@@ -1222,9 +1222,14 @@ fn decision_to_typed_expr(
                     for case in cases {
                         match &case.constructor {
                             Constructor::OptionSome => {
-                                some_arm_binding = case.arguments.first().map(|var| {
-                                    VarName::new(&var.name).expect("invalid variable name")
-                                });
+                                // Only create binding if the variable is not a wildcard pattern
+                                some_arm_binding = case
+                                    .arguments
+                                    .first()
+                                    .filter(|var| !var.is_wildcard)
+                                    .map(|var| {
+                                        VarName::new(&var.name).expect("invalid variable name")
+                                    });
                                 some_arm_body = Some(decision_to_typed_expr(
                                     &case.body,
                                     typed_bodies,

@@ -242,40 +242,100 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
 
     let typed_asts = program.get_typed_modules();
 
-    // Compile to IR (skip HTML structure injection and dev mode wrapper for simpler test output)
-    let options = OrchestrateOptions {
+    // Compile to IR without optimization
+    let unoptimized_options = OrchestrateOptions {
         skip_html_structure: true,
         skip_dev_mode_wrapper: true,
+        skip_optimization: true,
     };
-    let module = orchestrate(typed_asts, None, options);
+    let unoptimized_module = orchestrate(typed_asts, None, unoptimized_options);
 
-    let ir_output = module.to_string();
+    // Compile to IR with optimization
+    let optimized_options = OrchestrateOptions {
+        skip_html_structure: true,
+        skip_dev_mode_wrapper: true,
+        skip_optimization: false,
+    };
+    let optimized_module = orchestrate(typed_asts, None, optimized_options);
+
+    let unoptimized_ir = unoptimized_module.to_string();
+    let optimized_ir = optimized_module.to_string();
 
     let mut output = format!(
-        "-- ir --\n{}-- expected output --\n{}\n",
-        ir_output, expected_output
+        "-- ir (unoptimized) --\n{}-- ir (optimized) --\n{}-- expected output --\n{}\n",
+        unoptimized_ir, optimized_ir, expected_output
     );
 
+    // Test unoptimized version
     let ts_transpiler = TsTranspiler::new();
-    let ts_code = ts_transpiler.transpile_module(&module);
-    typecheck_typescript(&ts_code).expect("TypeScript typecheck failed");
-    let ts_output = execute_typescript(&ts_code).expect("TypeScript execution failed");
-    assert_eq!(ts_output, expected_output, "TypeScript output mismatch");
-    output.push_str("-- ts --\nOK\n");
+    let ts_code = ts_transpiler.transpile_module(&unoptimized_module);
+    if let Err(e) = typecheck_typescript(&ts_code) {
+        panic!("TypeScript typecheck failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, unoptimized_ir, ts_code);
+    }
+    let ts_output = match execute_typescript(&ts_code) {
+        Ok(out) => out,
+        Err(e) => panic!("TypeScript execution failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, unoptimized_ir, ts_code),
+    };
+    assert_eq!(ts_output, expected_output, "TypeScript output mismatch (unoptimized)\n\nIR:\n{}\nGenerated code:\n{}", unoptimized_ir, ts_code);
+    output.push_str("-- ts (unoptimized) --\nOK\n");
 
     let go_transpiler = GoTranspiler::new("components".to_string());
-    let go_code = go_transpiler.transpile_module(&module);
-    typecheck_go(&go_code).expect("Go typecheck failed");
-    let go_output = execute_go(&go_code).expect("Go execution failed");
-    assert_eq!(go_output, expected_output, "Go output mismatch");
-    output.push_str("-- go --\nOK\n");
+    let go_code = go_transpiler.transpile_module(&unoptimized_module);
+    if let Err(e) = typecheck_go(&go_code) {
+        panic!("Go typecheck failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, unoptimized_ir, go_code);
+    }
+    let go_output = match execute_go(&go_code) {
+        Ok(out) => out,
+        Err(e) => panic!("Go execution failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, unoptimized_ir, go_code),
+    };
+    assert_eq!(go_output, expected_output, "Go output mismatch (unoptimized)\n\nIR:\n{}\nGenerated code:\n{}", unoptimized_ir, go_code);
+    output.push_str("-- go (unoptimized) --\nOK\n");
 
     let python_transpiler = PythonTranspiler::new();
-    let python_code = python_transpiler.transpile_module(&module);
-    typecheck_python(&python_code).expect("Python typecheck failed");
-    let python_output = execute_python(&python_code).expect("Python execution failed");
-    assert_eq!(python_output, expected_output, "Python output mismatch");
-    output.push_str("-- python --\nOK\n");
+    let python_code = python_transpiler.transpile_module(&unoptimized_module);
+    if let Err(e) = typecheck_python(&python_code) {
+        panic!("Python typecheck failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, unoptimized_ir, python_code);
+    }
+    let python_output = match execute_python(&python_code) {
+        Ok(out) => out,
+        Err(e) => panic!("Python execution failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, unoptimized_ir, python_code),
+    };
+    assert_eq!(python_output, expected_output, "Python output mismatch (unoptimized)\n\nIR:\n{}\nGenerated code:\n{}", unoptimized_ir, python_code);
+    output.push_str("-- python (unoptimized) --\nOK\n");
+
+    // Test optimized version
+    let ts_code = ts_transpiler.transpile_module(&optimized_module);
+    if let Err(e) = typecheck_typescript(&ts_code) {
+        panic!("TypeScript typecheck failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, optimized_ir, ts_code);
+    }
+    let ts_output = match execute_typescript(&ts_code) {
+        Ok(out) => out,
+        Err(e) => panic!("TypeScript execution failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, optimized_ir, ts_code),
+    };
+    assert_eq!(ts_output, expected_output, "TypeScript output mismatch (optimized)\n\nIR:\n{}\nGenerated code:\n{}", optimized_ir, ts_code);
+    output.push_str("-- ts (optimized) --\nOK\n");
+
+    let go_code = go_transpiler.transpile_module(&optimized_module);
+    if let Err(e) = typecheck_go(&go_code) {
+        panic!("Go typecheck failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, optimized_ir, go_code);
+    }
+    let go_output = match execute_go(&go_code) {
+        Ok(out) => out,
+        Err(e) => panic!("Go execution failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, optimized_ir, go_code),
+    };
+    assert_eq!(go_output, expected_output, "Go output mismatch (optimized)\n\nIR:\n{}\nGenerated code:\n{}", optimized_ir, go_code);
+    output.push_str("-- go (optimized) --\nOK\n");
+
+    let python_code = python_transpiler.transpile_module(&optimized_module);
+    if let Err(e) = typecheck_python(&python_code) {
+        panic!("Python typecheck failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, optimized_ir, python_code);
+    }
+    let python_output = match execute_python(&python_code) {
+        Ok(out) => out,
+        Err(e) => panic!("Python execution failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, optimized_ir, python_code),
+    };
+    assert_eq!(python_output, expected_output, "Python output mismatch (optimized)\n\nIR:\n{}\nGenerated code:\n{}", optimized_ir, python_code);
+    output.push_str("-- python (optimized) --\nOK\n");
 
     expected.assert_eq(&output);
 }
@@ -313,7 +373,30 @@ mod tests {
             "#},
             "mapped:hello",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let inner = Option[String]::Some("hello") in {
+                    let mapped = match inner {
+                      Some(v0) => let x = v0 in Option[String]::Some(x),
+                      None => Option[String]::None,
+                    } in {
+                      let match_subject = mapped in {
+                        match match_subject {
+                          Some(v0) => {
+                            let result = v0 in {
+                              write("mapped:")
+                              write_escaped(result)
+                            }
+                          }
+                          None => {
+                            write("was-none")
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let match_subject = Option[String]::Some("hello") in {
                     match match_subject {
@@ -328,11 +411,17 @@ mod tests {
                 }
                 -- expected output --
                 mapped:hello
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -364,7 +453,29 @@ mod tests {
             "#},
             "inner",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let inner_opt = Option[String]::Some("inner") in {
+                    let outer = Option[String]::Some(match inner_opt {
+                      Some(v0) => let x = v0 in x,
+                      None => "default",
+                    }) in {
+                      let match_subject = outer in {
+                        match match_subject {
+                          Some(v0) => {
+                            let val = v0 in {
+                              write_escaped(val)
+                            }
+                          }
+                          None => {
+                            write("none")
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let match_subject = Option[String]::Some("inner") in {
                     match match_subject {
@@ -379,11 +490,17 @@ mod tests {
                 }
                 -- expected output --
                 inner
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -405,17 +522,35 @@ mod tests {
             "#},
             "yesNO",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let flag = true in {
+                    write_escaped(match flag {true => "yes", false => "no"})
+                  }
+                  let other = false in {
+                    write_escaped(match other {
+                      true => "YES",
+                      false => "NO",
+                    })
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   write("yesNO")
                 }
                 -- expected output --
                 yesNO
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -438,17 +573,39 @@ mod tests {
             "#},
             "some,NONE",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let opt1 = Option[String]::Some("hi") in {
+                    write_escaped(match opt1 {
+                      Some(_) => "some",
+                      None => "none",
+                    })
+                  }
+                  write(",")
+                  let opt2 = Option[String]::None in {
+                    write_escaped(match opt2 {
+                      Some(_) => "SOME",
+                      None => "NONE",
+                    })
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   write("some,NONE")
                 }
                 -- expected output --
                 some,NONE
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -481,17 +638,43 @@ mod tests {
             "#},
             "TF,F",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let outer = true in {
+                    let inner = false in {
+                      write_escaped(match outer {
+                        true => match inner {true => "TT", false => "TF"},
+                        false => "F",
+                      })
+                    }
+                  }
+                  write(",")
+                  let outer2 = false in {
+                    let inner2 = true in {
+                      write_escaped(match outer2 {
+                        true => match inner2 {true => "TT", false => "TF"},
+                        false => "F",
+                      })
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   write("TF,F")
                 }
                 -- expected output --
                 TF,F
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -518,7 +701,23 @@ mod tests {
             "#},
             "not eq",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
+                Test() {
+                  let color = Color::Green in {
+                    let is_red = (color == Color::Red) in {
+                      write_escaped(match is_red {
+                        true => "eq",
+                        false => "not eq",
+                      })
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 enum Color {
                   Red,
                   Green,
@@ -529,11 +728,17 @@ mod tests {
                 }
                 -- expected output --
                 not eq
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -554,7 +759,15 @@ mod tests {
             "#},
             "42.5",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let count = 42 in {
+                    let result = (count.to_float() + 0.5) in {
+                      write_escaped(result.to_string())
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let count = 42 in {
                     let result = (count.to_float() + 0.5) in {
@@ -564,11 +777,17 @@ mod tests {
                 }
                 -- expected output --
                 42.5
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -587,7 +806,13 @@ mod tests {
             "#},
             "-123",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let num = (-123) in {
+                    write_escaped(num.to_string())
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let num = (-123) in {
                     write_escaped(num.to_string())
@@ -595,11 +820,17 @@ mod tests {
                 }
                 -- expected output --
                 -123
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -618,7 +849,13 @@ mod tests {
             "#},
             "-2",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let temp = (-2.9) in {
+                    write_escaped(temp.to_int().to_string())
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let temp = (-2.9) in {
                     write_escaped(temp.to_int().to_string())
@@ -626,11 +863,17 @@ mod tests {
                 }
                 -- expected output --
                 -2
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -649,17 +892,30 @@ mod tests {
             "#},
             "<h1>Hello, World!</h1>",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  write("<h1")
+                  write(">")
+                  write("Hello, World!")
+                  write("</h1>")
+                }
+                -- ir (optimized) --
                 Test() {
                   write("<h1>Hello, World!</h1>")
                 }
                 -- expected output --
                 <h1>Hello, World!</h1>
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -678,17 +934,31 @@ mod tests {
             "#},
             "Hello, Alice!",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let name = "Alice" in {
+                    write("Hello, ")
+                    write_escaped(name)
+                    write("!")
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   write("Hello, Alice!")
                 }
                 -- expected output --
                 Hello, Alice!
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -712,17 +982,34 @@ mod tests {
             "#},
             "Visible",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let show = true in {
+                    if show {
+                      write("Visible")
+                    }
+                    if (!show) {
+                      write("Hidden")
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   write("Visible")
                 }
                 -- expected output --
                 Visible
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -741,7 +1028,14 @@ mod tests {
             "#},
             "a,b,c,",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  for item in ["a", "b", "c"] {
+                    write_escaped(item)
+                    write(",")
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   for item in ["a", "b", "c"] {
                     write_escaped(item)
@@ -750,11 +1044,17 @@ mod tests {
                 }
                 -- expected output --
                 a,b,c,
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -773,7 +1073,14 @@ mod tests {
             "#},
             "1,2,3,",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  for i in 1..=3 {
+                    write_escaped(i.to_string())
+                    write(",")
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   for i in 1..=3 {
                     write_escaped(i.to_string())
@@ -782,11 +1089,17 @@ mod tests {
                 }
                 -- expected output --
                 1,2,3,
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -805,7 +1118,13 @@ mod tests {
             "#},
             "012345",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  for x in 0..=5 {
+                    write_escaped(x.to_string())
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   for x in 0..=5 {
                     write_escaped(x.to_string())
@@ -813,11 +1132,17 @@ mod tests {
                 }
                 -- expected output --
                 012345
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -838,7 +1163,19 @@ mod tests {
             "#},
             "(1,1)(1,2)(2,1)(2,2)",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  for i in 1..=2 {
+                    for j in 1..=2 {
+                      write("(")
+                      write_escaped(i.to_string())
+                      write(",")
+                      write_escaped(j.to_string())
+                      write(")")
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   for i in 1..=2 {
                     for j in 1..=2 {
@@ -852,11 +1189,17 @@ mod tests {
                 }
                 -- expected output --
                 (1,1)(1,2)(2,1)(2,2)
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -875,17 +1218,29 @@ mod tests {
             "#},
             "&lt;div&gt;Hello &amp; world&lt;/div&gt;",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let text = "<div>Hello & world</div>" in {
+                    write_escaped(text)
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   write("&lt;div&gt;Hello &amp; world&lt;/div&gt;")
                 }
                 -- expected output --
                 &lt;div&gt;Hello &amp; world&lt;/div&gt;
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -904,17 +1259,29 @@ mod tests {
             "#},
             "Hello from let",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let message = "Hello from let" in {
+                    write_escaped(message)
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   write("Hello from let")
                 }
                 -- expected output --
                 Hello from let
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -935,17 +1302,31 @@ mod tests {
             "#},
             "Hello World",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let first = "Hello" in {
+                    let second = " World" in {
+                      write_escaped((first + second))
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   write("Hello World")
                 }
                 -- expected output --
                 Hello World
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -966,7 +1347,17 @@ mod tests {
             "#},
             "[A][B]",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  for item in ["A", "B"] {
+                    let prefix = "[" in {
+                      write_escaped(prefix)
+                      write_escaped(item)
+                      write("]")
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   for item in ["A", "B"] {
                     write("[")
@@ -976,11 +1367,17 @@ mod tests {
                 }
                 -- expected output --
                 [A][B]
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -999,17 +1396,29 @@ mod tests {
             "#},
             "equals",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  if (("foo" + "bar") == "foobar") {
+                    write("equals")
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   write("equals")
                 }
                 -- expected output --
                 equals
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1031,7 +1440,16 @@ mod tests {
             "#},
             "3 &lt; 5",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  if (3 < 5) {
+                    write("3 &lt; 5")
+                  }
+                  if (10 < 2) {
+                    write("10 &lt; 2")
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   if (3 < 5) {
                     write("3 &lt; 5")
@@ -1042,11 +1460,17 @@ mod tests {
                 }
                 -- expected output --
                 3 &lt; 5
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1068,7 +1492,16 @@ mod tests {
             "#},
             "1.5 &lt; 2.5",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  if (1.5 < 2.5) {
+                    write("1.5 &lt; 2.5")
+                  }
+                  if (3 < 1) {
+                    write("3.0 &lt; 1.0")
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   if (1.5 < 2.5) {
                     write("1.5 &lt; 2.5")
@@ -1079,11 +1512,17 @@ mod tests {
                 }
                 -- expected output --
                 1.5 &lt; 2.5
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1110,7 +1549,20 @@ mod tests {
             "#},
             "equal",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
+                Test() {
+                  let color = Color::Red in {
+                    if (color == Color::Red) {
+                      write("equal")
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 enum Color {
                   Red,
                   Green,
@@ -1121,11 +1573,17 @@ mod tests {
                 }
                 -- expected output --
                 equal
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1157,7 +1615,27 @@ mod tests {
             "#},
             "not equal",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
+                Test() {
+                  let color = Color::Red in {
+                    let match_subject = (color == Color::Green) in {
+                      match match_subject {
+                        true => {
+                          write("equal")
+                        }
+                        false => {
+                          write("not equal")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 enum Color {
                   Red,
                   Green,
@@ -1177,11 +1655,17 @@ mod tests {
                 }
                 -- expected output --
                 not equal
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1207,7 +1691,22 @@ mod tests {
             "#},
             "yes",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let flag = true in {
+                    let match_subject = flag in {
+                      match match_subject {
+                        true => {
+                          write("yes")
+                        }
+                        false => {
+                          write("no")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let match_subject = true in {
                     match match_subject {
@@ -1222,11 +1721,17 @@ mod tests {
                 }
                 -- expected output --
                 yes
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1252,7 +1757,22 @@ mod tests {
             "#},
             "no",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let flag = false in {
+                    let match_subject = flag in {
+                      match match_subject {
+                        true => {
+                          write("yes")
+                        }
+                        false => {
+                          write("no")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let match_subject = false in {
                     match match_subject {
@@ -1267,11 +1787,17 @@ mod tests {
                 }
                 -- expected output --
                 no
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1298,7 +1824,20 @@ mod tests {
             "#},
             "Alice:30",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                record Person {
+                  name: String,
+                  age: Int,
+                }
+                Test() {
+                  let person = Person(name: "Alice", age: 30) in {
+                    write_escaped(person.name)
+                    if (person.age == 30) {
+                      write(":30")
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 record Person {
                   name: String,
                   age: Int,
@@ -1313,11 +1852,17 @@ mod tests {
                 }
                 -- expected output --
                 Alice:30
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1351,7 +1896,26 @@ mod tests {
             "#},
             "Alice,Paris",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                record Address {
+                  city: String,
+                  zip: String,
+                }
+                record Person {
+                  name: String,
+                  address: Address,
+                }
+                Test() {
+                  let person = Person(
+                    name: "Alice",
+                    address: Address(city: "Paris", zip: "75001"),
+                  ) in {
+                    write_escaped(person.name)
+                    write(",")
+                    write_escaped(person.address.city)
+                  }
+                }
+                -- ir (optimized) --
                 record Address {
                   city: String,
                   zip: String,
@@ -1372,11 +1936,17 @@ mod tests {
                 }
                 -- expected output --
                 Alice,Paris
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1414,7 +1984,29 @@ mod tests {
             "#},
             "Alice:active",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                enum Status {
+                  Active,
+                  Inactive,
+                  Pending,
+                }
+                record User {
+                  name: String,
+                  status: Status,
+                }
+                Test() {
+                  let user = User(
+                    name: "Alice",
+                    status: Status::Active,
+                  ) in {
+                    write_escaped(user.name)
+                    write(":")
+                    if (user.status == Status::Active) {
+                      write("active")
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 enum Status {
                   Active,
                   Inactive,
@@ -1438,11 +2030,17 @@ mod tests {
                 }
                 -- expected output --
                 Alice:active
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1465,7 +2063,17 @@ mod tests {
             "#},
             "correct",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let a = 3 in {
+                    let b = 7 in {
+                      if ((a + b) == 10) {
+                        write("correct")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let a = 3 in {
                     let b = 7 in {
@@ -1477,11 +2085,17 @@ mod tests {
                 }
                 -- expected output --
                 correct
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1504,7 +2118,17 @@ mod tests {
             "#},
             "correct",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let a = 10 in {
+                    let b = 3 in {
+                      if ((a - b) == 7) {
+                        write("correct")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let a = 10 in {
                     let b = 3 in {
@@ -1516,11 +2140,17 @@ mod tests {
                 }
                 -- expected output --
                 correct
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1543,7 +2173,17 @@ mod tests {
             "#},
             "correct",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let a = 4 in {
+                    let b = 5 in {
+                      if ((a * b) == 20) {
+                        write("correct")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let a = 4 in {
                     let b = 5 in {
@@ -1555,11 +2195,17 @@ mod tests {
                 }
                 -- expected output --
                 correct
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1589,17 +2235,40 @@ mod tests {
             "#},
             "TT",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let a = true in {
+                    let b = true in {
+                      if (a && b) {
+                        write("TT")
+                      }
+                    }
+                  }
+                  let c = true in {
+                    let d = false in {
+                      if (c && d) {
+                        write("TF")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   write("TT")
                 }
                 -- expected output --
                 TT
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1629,17 +2298,40 @@ mod tests {
             "#},
             "FT",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let a = false in {
+                    let b = true in {
+                      if (a || b) {
+                        write("FT")
+                      }
+                    }
+                  }
+                  let c = false in {
+                    let d = false in {
+                      if (c || d) {
+                        write("FF")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   write("FT")
                 }
                 -- expected output --
                 FT
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1664,7 +2356,19 @@ mod tests {
             "#},
             "AB",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  if (3 <= 5) {
+                    write("A")
+                  }
+                  if (5 <= 5) {
+                    write("B")
+                  }
+                  if (7 <= 5) {
+                    write("C")
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   if (3 <= 5) {
                     write("A")
@@ -1678,11 +2382,17 @@ mod tests {
                 }
                 -- expected output --
                 AB
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1708,7 +2418,24 @@ mod tests {
             "#},
             "hello",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let some_val = Option[String]::Some("hello") in {
+                    let match_subject = some_val in {
+                      match match_subject {
+                        Some(v0) => {
+                          let val = v0 in {
+                            write_escaped(val)
+                          }
+                        }
+                        None => {
+                          write("none")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let match_subject = Option[String]::Some("hello") in {
                     match match_subject {
@@ -1725,11 +2452,17 @@ mod tests {
                 }
                 -- expected output --
                 hello
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1755,7 +2488,22 @@ mod tests {
             "#},
             "some",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let opt = Option[String]::Some("hello") in {
+                    let match_subject = opt in {
+                      match match_subject {
+                        Some(_) => {
+                          write("some")
+                        }
+                        None => {
+                          write("none")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let match_subject = Option[String]::Some("hello") in {
                     match match_subject {
@@ -1770,11 +2518,17 @@ mod tests {
                 }
                 -- expected output --
                 some
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1806,7 +2560,29 @@ mod tests {
             "#},
             "inner",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let inner_opt = Option[String]::Some("inner") in {
+                    let outer = Option[String]::Some(match inner_opt {
+                      Some(v0) => let x = v0 in x,
+                      None => "default",
+                    }) in {
+                      let match_subject = outer in {
+                        match match_subject {
+                          Some(v0) => {
+                            let val = v0 in {
+                              write_escaped(val)
+                            }
+                          }
+                          None => {
+                            write("none")
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let match_subject = Option[String]::Some("inner") in {
                     match match_subject {
@@ -1821,11 +2597,17 @@ mod tests {
                 }
                 -- expected output --
                 inner
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1851,7 +2633,30 @@ mod tests {
             "#},
             "[a][_][b]",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  for item in [
+                    Option[String]::Some("a"),
+                    Option[String]::None,
+                    Option[String]::Some("b"),
+                  ] {
+                    let match_subject = item in {
+                      match match_subject {
+                        Some(v0) => {
+                          let val = v0 in {
+                            write("[")
+                            write_escaped(val)
+                            write("]")
+                          }
+                        }
+                        None => {
+                          write("[_]")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   for item in [
                     Option[String]::Some("a"),
@@ -1876,11 +2681,17 @@ mod tests {
                 }
                 -- expected output --
                 [a][_][b]
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1909,7 +2720,22 @@ mod tests {
             "#},
             "green",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
+                Test() {
+                  let color = Color::Green in {
+                    write_escaped(match color {
+                      Color::Red => "red",
+                      Color::Green => "green",
+                      Color::Blue => "blue",
+                    })
+                  }
+                }
+                -- ir (optimized) --
                 enum Color {
                   Red,
                   Green,
@@ -1920,11 +2746,17 @@ mod tests {
                 }
                 -- expected output --
                 green
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -1959,7 +2791,30 @@ mod tests {
             "#},
             "blue",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                enum Color {
+                  Red,
+                  Green,
+                  Blue,
+                }
+                Test() {
+                  let color = Color::Blue in {
+                    let match_subject = color in {
+                      match match_subject {
+                        Color::Red => {
+                          write("red")
+                        }
+                        Color::Green => {
+                          write("green")
+                        }
+                        Color::Blue => {
+                          write("blue")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 enum Color {
                   Red,
                   Green,
@@ -1982,11 +2837,17 @@ mod tests {
                 }
                 -- expected output --
                 blue
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2017,7 +2878,32 @@ mod tests {
             "#},
             "Ok:hello",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                enum Result {
+                  Ok(value: String),
+                  Err(message: String),
+                }
+                Test() {
+                  let result = Result::Ok(value: "hello") in {
+                    let match_subject = result in {
+                      match match_subject {
+                        Result::Ok(value: v0) => {
+                          let v = v0 in {
+                            write("Ok:")
+                            write_escaped(v)
+                          }
+                        }
+                        Result::Err(message: v1) => {
+                          let m = v1 in {
+                            write("Err:")
+                            write_escaped(m)
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 enum Result {
                   Ok(value: String),
                   Err(message: String),
@@ -2042,11 +2928,17 @@ mod tests {
                 }
                 -- expected output --
                 Ok:hello
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2079,7 +2971,32 @@ mod tests {
             "#},
             "Err:something went wrong",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                enum Result {
+                  Ok(value: String),
+                  Err(message: String),
+                }
+                Test() {
+                  let result = Result::Err(message: "something went wrong") in {
+                    let match_subject = result in {
+                      match match_subject {
+                        Result::Ok(value: v0) => {
+                          let v = v0 in {
+                            write("Ok:")
+                            write_escaped(v)
+                          }
+                        }
+                        Result::Err(message: v1) => {
+                          let m = v1 in {
+                            write("Err:")
+                            write_escaped(m)
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 enum Result {
                   Ok(value: String),
                   Err(message: String),
@@ -2104,11 +3021,17 @@ mod tests {
                 }
                 -- expected output --
                 Err:something went wrong
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2141,7 +3064,35 @@ mod tests {
             "#},
             "200:OK",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                enum Response {
+                  Success(code: String, body: String),
+                  Error(reason: String),
+                }
+                Test() {
+                  let resp = Response::Success(code: "200", body: "OK") in {
+                    let match_subject = resp in {
+                      match match_subject {
+                        Response::Success(code: v0, body: v1) => {
+                          let c = v0 in {
+                            let b = v1 in {
+                              write_escaped(c)
+                              write(":")
+                              write_escaped(b)
+                            }
+                          }
+                        }
+                        Response::Error(reason: v2) => {
+                          let r = v2 in {
+                            write("Error:")
+                            write_escaped(r)
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 enum Response {
                   Success(code: String, body: String),
                   Error(reason: String),
@@ -2169,11 +3120,17 @@ mod tests {
                 }
                 -- expected output --
                 200:OK
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2192,7 +3149,13 @@ mod tests {
             "#},
             "3",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let items = ["a", "b", "c"] in {
+                    write_escaped(items.len().to_string())
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let items = ["a", "b", "c"] in {
                     write_escaped(items.len().to_string())
@@ -2200,11 +3163,17 @@ mod tests {
                 }
                 -- expected output --
                 3
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2223,7 +3192,13 @@ mod tests {
             "#},
             "0",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let items = [] in {
+                    write_escaped(items.len().to_string())
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let items = [] in {
                     write_escaped(items.len().to_string())
@@ -2231,11 +3206,17 @@ mod tests {
                 }
                 -- expected output --
                 0
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2256,7 +3237,15 @@ mod tests {
             "#},
             "has two",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let items = ["x", "y"] in {
+                    if (items.len() == 2) {
+                      write("has two")
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let items = ["x", "y"] in {
                     if (items.len() == 2) {
@@ -2266,11 +3255,17 @@ mod tests {
                 }
                 -- expected output --
                 has two
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2291,7 +3286,15 @@ mod tests {
             "#},
             "less than 5",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let items = ["a"] in {
+                    if (items.len() < 5) {
+                      write("less than 5")
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let items = ["a"] in {
                     if (items.len() < 5) {
@@ -2301,11 +3304,17 @@ mod tests {
                 }
                 -- expected output --
                 less than 5
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2324,7 +3333,13 @@ mod tests {
             "#},
             "5",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let numbers = [1, 2, 3, 4, 5] in {
+                    write_escaped(numbers.len().to_string())
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let numbers = [1, 2, 3, 4, 5] in {
                     write_escaped(numbers.len().to_string())
@@ -2332,11 +3347,17 @@ mod tests {
                 }
                 -- expected output --
                 5
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2355,7 +3376,13 @@ mod tests {
             "#},
             "42",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let count = 42 in {
+                    write_escaped(count.to_string())
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let count = 42 in {
                     write_escaped(count.to_string())
@@ -2363,11 +3390,17 @@ mod tests {
                 }
                 -- expected output --
                 42
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2386,7 +3419,13 @@ mod tests {
             "#},
             "0",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let num = 0 in {
+                    write_escaped(num.to_string())
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let num = 0 in {
                     write_escaped(num.to_string())
@@ -2394,11 +3433,17 @@ mod tests {
                 }
                 -- expected output --
                 0
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2417,7 +3462,13 @@ mod tests {
             "#},
             "Count: 5",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let count = 5 in {
+                    write_escaped(("Count: " + count.to_string()))
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let count = 5 in {
                     write_escaped(("Count: " + count.to_string()))
@@ -2425,11 +3476,17 @@ mod tests {
                 }
                 -- expected output --
                 Count: 5
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2448,7 +3505,13 @@ mod tests {
             "#},
             "3",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let price = 3.7 in {
+                    write_escaped(price.to_int().to_string())
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let price = 3.7 in {
                     write_escaped(price.to_int().to_string())
@@ -2456,11 +3519,17 @@ mod tests {
                 }
                 -- expected output --
                 3
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2479,7 +3548,13 @@ mod tests {
             "#},
             "5",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let val = 5 in {
+                    write_escaped(val.to_int().to_string())
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let val = 5 in {
                     write_escaped(val.to_int().to_string())
@@ -2487,11 +3562,17 @@ mod tests {
                 }
                 -- expected output --
                 5
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2510,7 +3591,13 @@ mod tests {
             "#},
             "19.99",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let price = 19.99 in {
+                    write_escaped(price.to_string())
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let price = 19.99 in {
                     write_escaped(price.to_string())
@@ -2518,11 +3605,17 @@ mod tests {
                 }
                 -- expected output --
                 19.99
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2541,7 +3634,13 @@ mod tests {
             "#},
             "$9.99",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let price = 9.99 in {
+                    write_escaped(("$" + price.to_string()))
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let price = 9.99 in {
                     write_escaped(("$" + price.to_string()))
@@ -2549,11 +3648,17 @@ mod tests {
                 }
                 -- expected output --
                 $9.99
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2572,7 +3677,13 @@ mod tests {
             "#},
             "xxx",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  for _ in 0..=2 {
+                    write("x")
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   for _ in 0..=2 {
                     write("x")
@@ -2580,11 +3691,17 @@ mod tests {
                 }
                 -- expected output --
                 xxx
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2605,7 +3722,15 @@ mod tests {
             "#},
             "***",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let items = ["a", "b", "c"] in {
+                    for _ in items {
+                      write("*")
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let items = ["a", "b", "c"] in {
                     for _ in items {
@@ -2615,11 +3740,17 @@ mod tests {
                 }
                 -- expected output --
                 ***
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2640,7 +3771,15 @@ mod tests {
             "#},
             "......",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  for _ in 0..=1 {
+                    for _ in 0..=2 {
+                      write(".")
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   for _ in 0..=1 {
                     for _ in 0..=2 {
@@ -2650,11 +3789,17 @@ mod tests {
                 }
                 -- expected output --
                 ......
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2675,7 +3820,15 @@ mod tests {
             "#},
             "1122",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  for i in 1..=2 {
+                    for _ in 0..=1 {
+                      write_escaped(i.to_string())
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   for i in 1..=2 {
                     for _ in 0..=1 {
@@ -2685,11 +3838,17 @@ mod tests {
                 }
                 -- expected output --
                 1122
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2706,17 +3865,27 @@ mod tests {
             "#},
             "3.14",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  write_escaped(3.14.to_string())
+                }
+                -- ir (optimized) --
                 Test() {
                   write_escaped(3.14.to_string())
                 }
                 -- expected output --
                 3.14
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2733,17 +3902,27 @@ mod tests {
             "#},
             "3",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  write_escaped([1, 2, 3].len().to_string())
+                }
+                -- ir (optimized) --
                 Test() {
                   write_escaped([1, 2, 3].len().to_string())
                 }
                 -- expected output --
                 3
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2760,17 +3939,27 @@ mod tests {
             "#},
             "3",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  write_escaped((1 + 2).to_string())
+                }
+                -- ir (optimized) --
                 Test() {
                   write_escaped((1 + 2).to_string())
                 }
                 -- expected output --
                 3
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2787,17 +3976,27 @@ mod tests {
             "#},
             "42",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  write_escaped(42.to_string())
+                }
+                -- ir (optimized) --
                 Test() {
                   write_escaped(42.to_string())
                 }
                 -- expected output --
                 42
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2814,17 +4013,27 @@ mod tests {
             "#},
             "-3.14",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  write_escaped((-3.14).to_string())
+                }
+                -- ir (optimized) --
                 Test() {
                   write_escaped((-3.14).to_string())
                 }
                 -- expected output --
                 -3.14
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );
@@ -2855,7 +4064,31 @@ mod tests {
             "#},
             "deep",
             expect![[r#"
-                -- ir --
+                -- ir (unoptimized) --
+                Test() {
+                  let nested = Option[Option[String]]::Some(Option[String]::Some("deep")) in {
+                    let match_subject = nested in {
+                      match match_subject {
+                        Some(v0) => {
+                          match v0 {
+                            Some(v1) => {
+                              let x = v1 in {
+                                write_escaped(x)
+                              }
+                            }
+                            None => {
+                              write("some-none")
+                            }
+                          }
+                        }
+                        None => {
+                          write("none")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
                 Test() {
                   let match_subject = Option[Option[String]]::Some(Option[String]::Some("deep")) in {
                     match match_subject {
@@ -2879,11 +4112,388 @@ mod tests {
                 }
                 -- expected output --
                 deep
-                -- ts --
+                -- ts (unoptimized) --
                 OK
-                -- go --
+                -- go (unoptimized) --
                 OK
-                -- python --
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn option_wildcard_match_some_input() {
+        check(
+            indoc! {r#"
+                entrypoint Test() {
+                  <let {opt: Option[String] = Some("x")}>
+                    <match {opt}>
+                      <case {Some(_)}>
+                        some
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "some",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let opt = Option[String]::Some("x") in {
+                    let match_subject = opt in {
+                      match match_subject {
+                        Some(_) => {
+                          write("some")
+                        }
+                        None => {
+                          write("none")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  let match_subject = Option[String]::Some("x") in {
+                    match match_subject {
+                      Some(_) => {
+                        write("some")
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                some
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn option_wildcard_match_none_input() {
+        check(
+            indoc! {r#"
+                entrypoint Test() {
+                  <let {opt: Option[String] = None}>
+                    <match {opt}>
+                      <case {Some(_)}>
+                        some
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "none",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let opt = Option[String]::None in {
+                    let match_subject = opt in {
+                      match match_subject {
+                        Some(_) => {
+                          write("some")
+                        }
+                        None => {
+                          write("none")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  let match_subject = Option[String]::None in {
+                    match match_subject {
+                      Some(_) => {
+                        write("some")
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                none
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn option_wildcard_match_expr_some_input() {
+        check(
+            indoc! {r#"
+                entrypoint Test() {
+                  <let {opt: Option[String] = Some("x")}>
+                    {match opt {Some(_) => "some", None => "none"}}
+                  </let>
+                }
+            "#},
+            "some",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let opt = Option[String]::Some("x") in {
+                    write_escaped(match opt {
+                      Some(_) => "some",
+                      None => "none",
+                    })
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  write("some")
+                }
+                -- expected output --
+                some
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn option_wildcard_match_expr_none_input() {
+        check(
+            indoc! {r#"
+                entrypoint Test() {
+                  <let {opt: Option[String] = None}>
+                    {match opt {Some(_) => "some", None => "none"}}
+                  </let>
+                }
+            "#},
+            "none",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let opt = Option[String]::None in {
+                    write_escaped(match opt {
+                      Some(_) => "some",
+                      None => "none",
+                    })
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  write("none")
+                }
+                -- expected output --
+                none
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn nested_option_wildcard_inner() {
+        // Test Some(Some(_)) pattern - inner value discarded
+        check(
+            indoc! {r#"
+                entrypoint Test() {
+                  <let {nested: Option[Option[String]] = Some(Some("x"))}>
+                    <match {nested}>
+                      <case {Some(Some(_))}>
+                        some-some
+                      </case>
+                      <case {Some(None)}>
+                        some-none
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "some-some",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let nested = Option[Option[String]]::Some(Option[String]::Some("x")) in {
+                    let match_subject = nested in {
+                      match match_subject {
+                        Some(v0) => {
+                          match v0 {
+                            Some(_) => {
+                              write("some-some")
+                            }
+                            None => {
+                              write("some-none")
+                            }
+                          }
+                        }
+                        None => {
+                          write("none")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  let match_subject = Option[Option[String]]::Some(Option[String]::Some("x")) in {
+                    match match_subject {
+                      Some(v0) => {
+                        match v0 {
+                          Some(_) => {
+                            write("some-some")
+                          }
+                          None => {
+                            write("some-none")
+                          }
+                        }
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                some-some
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn nested_option_wildcard_outer() {
+        // Test Some(_) pattern on Option[Option[String]] - entire inner option discarded
+        check(
+            indoc! {r#"
+                entrypoint Test() {
+                  <let {nested: Option[Option[String]] = Some(Some("x"))}>
+                    <match {nested}>
+                      <case {Some(_)}>
+                        some
+                      </case>
+                      <case {None}>
+                        none
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "some",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let nested = Option[Option[String]]::Some(Option[String]::Some("x")) in {
+                    let match_subject = nested in {
+                      match match_subject {
+                        Some(_) => {
+                          write("some")
+                        }
+                        None => {
+                          write("none")
+                        }
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  let match_subject = Option[Option[String]]::Some(Option[String]::Some("x")) in {
+                    match match_subject {
+                      Some(_) => {
+                        write("some")
+                      }
+                      None => {
+                        write("none")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                some
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
                 OK
             "#]],
         );

@@ -8,6 +8,7 @@ use std::collections::HashMap;
 pub struct OrchestrateOptions {
     pub skip_html_structure: bool,
     pub skip_dev_mode_wrapper: bool,
+    pub skip_optimization: bool,
 }
 
 pub fn orchestrate(
@@ -60,5 +61,9 @@ pub fn orchestrate(
         enums,
     };
 
-    optimize(module)
+    if options.skip_optimization {
+        module
+    } else {
+        optimize(module)
+    }
 }
