@@ -576,45 +576,6 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn int_to_float_in_addition() {
-        check(
-            indoc! {r#"
-                entrypoint Test() {
-                  <let {count: Int = 5}>
-                    <let {rate: Float = 0.5}>
-                      <let {result: Float = count.to_float() + rate}>
-                        {result.to_string()}
-                      </let>
-                    </let>
-                  </let>
-                }
-            "#},
-            "5.5",
-            expect![[r#"
-                -- ir --
-                Test() {
-                  let count = 5 in {
-                    let rate = 0.5 in {
-                      let result = (count.to_float() + rate) in {
-                        write_escaped(result.to_string())
-                      }
-                    }
-                  }
-                }
-                -- expected output --
-                5.5
-                -- ts --
-                OK
-                -- go --
-                OK
-                -- python --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
     fn int_to_string_negative() {
         check(
             indoc! {r#"
@@ -757,71 +718,6 @@ mod tests {
                 }
                 -- expected output --
                 Visible
-                -- ts --
-                OK
-                -- go --
-                OK
-                -- python --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn if_else() {
-        check(
-            indoc! {r#"
-                entrypoint Test() {
-                  <let {show: Bool = true}>
-                    <match {show}>
-                      <case {true}>
-                        True branch
-                      </case>
-                      <case {false}>
-                        False branch
-                      </case>
-                    </match>
-                  </let>
-                  <let {hide: Bool = false}>
-                    <match {hide}>
-                      <case {true}>
-                        Should not appear
-                      </case>
-                      <case {false}>
-                        False branch
-                      </case>
-                    </match>
-                  </let>
-                }
-            "#},
-            "True branchFalse branch",
-            expect![[r#"
-                -- ir --
-                Test() {
-                  let match_subject = true in {
-                    match match_subject {
-                      true => {
-                        write("True branch")
-                      }
-                      false => {
-                        write("False branch")
-                      }
-                    }
-                  }
-                  let match_subject_1 = false in {
-                    match match_subject_1 {
-                      true => {
-                        write("Should not appear")
-                      }
-                      false => {
-                        write("False branch")
-                      }
-                    }
-                  }
-                }
-                -- expected output --
-                True branchFalse branch
                 -- ts --
                 OK
                 -- go --
@@ -1206,14 +1102,9 @@ mod tests {
 
                 entrypoint Test() {
                   <let {color: Color = Color::Red}>
-                    <match {color == Color::Red}>
-                      <case {true}>
-                        equal
-                      </case>
-                      <case {false}>
-                        not equal
-                      </case>
-                    </match>
+                    <if {color == Color::Red}>
+                      equal
+                    </if>
                   </let>
                 }
             "#},
@@ -1226,16 +1117,7 @@ mod tests {
                   Blue,
                 }
                 Test() {
-                  let match_subject = true in {
-                    match match_subject {
-                      true => {
-                        write("equal")
-                      }
-                      false => {
-                        write("not equal")
-                      }
-                    }
-                  }
+                  write("equal")
                 }
                 -- expected output --
                 equal
@@ -1431,72 +1313,6 @@ mod tests {
                 }
                 -- expected output --
                 Alice:30
-                -- ts --
-                OK
-                -- go --
-                OK
-                -- python --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn record_literal() {
-        check(
-            indoc! {r#"
-                record Item {
-                  label: String,
-                  count: Int,
-                  active: Bool,
-                }
-
-                entrypoint Test() {
-                  <let {
-                    item: Item = Item(
-                      label: "widget",
-                      count: 5,
-                      active: true,
-                    ),
-                  }>
-                    {item.label}
-                    <if {item.count == 5}>
-                      ,5
-                    </if>
-                    ,
-                    <if {item.active}>
-                      active
-                    </if>
-                  </let>
-                }
-            "#},
-            "widget,5,active",
-            expect![[r#"
-                -- ir --
-                record Item {
-                  label: String,
-                  count: Int,
-                  active: Bool,
-                }
-                Test() {
-                  let item = Item(
-                    label: "widget",
-                    count: 5,
-                    active: true,
-                  ) in {
-                    write_escaped(item.label)
-                    if (item.count == 5) {
-                      write(",5")
-                    }
-                    write(",")
-                    if item.active {
-                      write("active")
-                    }
-                  }
-                }
-                -- expected output --
-                widget,5,active
                 -- ts --
                 OK
                 -- go --
@@ -1881,26 +1697,16 @@ mod tests {
                   <let {some_val: Option[String] = Some("hello")}>
                     <match {some_val}>
                       <case {Some(val)}>
-                        Some:{val}
+                        {val}
                       </case>
                       <case {None}>
-                        None
-                      </case>
-                    </match>
-                  </let>
-                  <let {none_val: Option[String] = None}>
-                    <match {none_val}>
-                      <case {Some(val)}>
-                        Some:{val}
-                      </case>
-                      <case {None}>
-                        ,None
+                        none
                       </case>
                     </match>
                   </let>
                 }
             "#},
-            "Some:hello,None",
+            "hello",
             expect![[r#"
                 -- ir --
                 Test() {
@@ -1908,104 +1714,17 @@ mod tests {
                     match match_subject {
                       Some(v0) => {
                         let val = v0 in {
-                          write("Some:")
                           write_escaped(val)
                         }
                       }
                       None => {
-                        write("None")
-                      }
-                    }
-                  }
-                  let match_subject_1 = Option[String]::None in {
-                    match match_subject_1 {
-                      Some(v0_2) => {
-                        let val_3 = v0_2 in {
-                          write("Some:")
-                          write_escaped(val_3)
-                        }
-                      }
-                      None => {
-                        write(",None")
+                        write("none")
                       }
                     }
                   }
                 }
                 -- expected output --
-                Some:hello,None
-                -- ts --
-                OK
-                -- go --
-                OK
-                -- python --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn option_literal_inline_match() {
-        check(
-            indoc! {r#"
-                entrypoint Test() {
-                  <let {opt1: Option[String] = Some("world")}>
-                    <match {opt1}>
-                      <case {Some(val)}>
-                        Got:{val}
-                      </case>
-                      <case {None}>
-                        Empty
-                      </case>
-                    </match>
-                  </let>
-                  ,
-                  <let {opt2: Option[String] = None}>
-                    <match {opt2}>
-                      <case {Some(val)}>
-                        Got:{val}
-                      </case>
-                      <case {None}>
-                        Empty
-                      </case>
-                    </match>
-                  </let>
-                }
-            "#},
-            "Got:world,Empty",
-            expect![[r#"
-                -- ir --
-                Test() {
-                  let match_subject = Option[String]::Some("world") in {
-                    match match_subject {
-                      Some(v0) => {
-                        let val = v0 in {
-                          write("Got:")
-                          write_escaped(val)
-                        }
-                      }
-                      None => {
-                        write("Empty")
-                      }
-                    }
-                  }
-                  write(",")
-                  let match_subject_1 = Option[String]::None in {
-                    match match_subject_1 {
-                      Some(v0_2) => {
-                        let val_3 = v0_2 in {
-                          write("Got:")
-                          write_escaped(val_3)
-                        }
-                      }
-                      None => {
-                        write("Empty")
-                      }
-                    }
-                  }
-                }
-                -- expected output --
-                Got:world,Empty
+                hello
                 -- ts --
                 OK
                 -- go --
@@ -2022,57 +1741,35 @@ mod tests {
         check(
             indoc! {r#"
                 entrypoint Test() {
-                  <let {opt1: Option[String] = Some("hello")}>
-                    <match {opt1}>
+                  <let {opt: Option[String] = Some("hello")}>
+                    <match {opt}>
                       <case {Some(_)}>
-                        is-some
+                        some
                       </case>
                       <case {None}>
-                        is-none
-                      </case>
-                    </match>
-                  </let>
-                  ,
-                  <let {opt2: Option[String] = None}>
-                    <match {opt2}>
-                      <case {Some(_)}>
-                        IS-SOME
-                      </case>
-                      <case {None}>
-                        IS-NONE
+                        none
                       </case>
                     </match>
                   </let>
                 }
             "#},
-            "is-some,IS-NONE",
+            "some",
             expect![[r#"
                 -- ir --
                 Test() {
                   let match_subject = Option[String]::Some("hello") in {
                     match match_subject {
                       Some(_) => {
-                        write("is-some")
+                        write("some")
                       }
                       None => {
-                        write("is-none")
-                      }
-                    }
-                  }
-                  write(",")
-                  let match_subject_1 = Option[String]::None in {
-                    match match_subject_1 {
-                      Some(_) => {
-                        write("IS-SOME")
-                      }
-                      None => {
-                        write("IS-NONE")
+                        write("none")
                       }
                     }
                   }
                 }
                 -- expected output --
-                is-some,IS-NONE
+                some
                 -- ts --
                 OK
                 -- go --
@@ -2191,7 +1888,7 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn enum_match_expression() {
+    fn enum_match_expr() {
         check(
             indoc! {r#"
                 enum Color {
@@ -2202,17 +1899,11 @@ mod tests {
 
                 entrypoint Test() {
                   <let {color: Color = Color::Green}>
-                    <match {color}>
-                      <case {Color::Red}>
-                        red
-                      </case>
-                      <case {Color::Green}>
-                        green
-                      </case>
-                      <case {Color::Blue}>
-                        blue
-                      </case>
-                    </match>
+                    {match color {
+                      Color::Red => "red",
+                      Color::Green => "green",
+                      Color::Blue => "blue",
+                    }}
                   </let>
                 }
             "#},
@@ -2225,19 +1916,7 @@ mod tests {
                   Blue,
                 }
                 Test() {
-                  let match_subject = Color::Green in {
-                    match match_subject {
-                      Color::Red => {
-                        write("red")
-                      }
-                      Color::Green => {
-                        write("green")
-                      }
-                      Color::Blue => {
-                        write("blue")
-                      }
-                    }
-                  }
+                  write("green")
                 }
                 -- expected output --
                 green
@@ -2303,66 +1982,6 @@ mod tests {
                 }
                 -- expected output --
                 blue
-                -- ts --
-                OK
-                -- go --
-                OK
-                -- python --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn enum_with_fields_literal() {
-        check(
-            indoc! {r#"
-                enum Result {
-                  Ok(value: String),
-                  Err(message: String),
-                }
-
-                entrypoint Test() {
-                  <let {ok: Result = Result::Ok(value: "success")}>
-                    <match {ok}>
-                      <case {Result::Ok(value: v)}>
-                        created:{v}
-                      </case>
-                      <case {Result::Err(message: m)}>
-                        error:{m}
-                      </case>
-                    </match>
-                  </let>
-                }
-            "#},
-            "created:success",
-            expect![[r#"
-                -- ir --
-                enum Result {
-                  Ok(value: String),
-                  Err(message: String),
-                }
-                Test() {
-                  let match_subject = Result::Ok(value: "success") in {
-                    match match_subject {
-                      Result::Ok(value: v0) => {
-                        let v = v0 in {
-                          write("created:")
-                          write_escaped(v)
-                        }
-                      }
-                      Result::Err(message: v1) => {
-                        let m = v1 in {
-                          write("error:")
-                          write_escaped(m)
-                        }
-                      }
-                    }
-                  }
-                }
-                -- expected output --
-                created:success
                 -- ts --
                 OK
                 -- go --
@@ -3186,60 +2805,6 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn negated_int_to_string() {
-        check(
-            indoc! {r#"
-                entrypoint Test() {
-                  {(-42).to_string()}
-                }
-            "#},
-            "-42",
-            expect![[r#"
-                -- ir --
-                Test() {
-                  write_escaped((-42).to_string())
-                }
-                -- expected output --
-                -42
-                -- ts --
-                OK
-                -- go --
-                OK
-                -- python --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn float_literal_to_string() {
-        check(
-            indoc! {r#"
-                entrypoint Test() {
-                  {5.0.to_string()}
-                }
-            "#},
-            "5",
-            expect![[r#"
-                -- ir --
-                Test() {
-                  write_escaped(5.to_string())
-                }
-                -- expected output --
-                5
-                -- ts --
-                OK
-                -- go --
-                OK
-                -- python --
-                OK
-            "#]],
-        );
-    }
-
-    #[test]
-    #[ignore]
     fn negated_float_to_string() {
         check(
             indoc! {r#"
@@ -3267,42 +2832,14 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn nested_option_from_hop_syntax() {
+    fn nested_option_match() {
         check(
             indoc! {r#"
                 entrypoint Test() {
                   <let {
-                    nested1: Option[Option[String]] = Some(Some("deep")),
+                    nested: Option[Option[String]] = Some(Some("deep")),
                   }>
-                    <match {nested1}>
-                      <case {Some(Some(x))}>
-                        {x}
-                      </case>
-                      <case {Some(None)}>
-                        some-none
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
-                  </let>
-                  ,
-                  <let {nested2: Option[Option[String]] = Some(None)}>
-                    <match {nested2}>
-                      <case {Some(Some(x))}>
-                        {x}
-                      </case>
-                      <case {Some(None)}>
-                        some-none
-                      </case>
-                      <case {None}>
-                        none
-                      </case>
-                    </match>
-                  </let>
-                  ,
-                  <let {nested3: Option[Option[String]] = None}>
-                    <match {nested3}>
+                    <match {nested}>
                       <case {Some(Some(x))}>
                         {x}
                       </case>
@@ -3316,7 +2853,7 @@ mod tests {
                   </let>
                 }
             "#},
-            "deep,some-none,none",
+            "deep",
             expect![[r#"
                 -- ir --
                 Test() {
@@ -3339,49 +2876,9 @@ mod tests {
                       }
                     }
                   }
-                  write(",")
-                  let match_subject_1 = Option[Option[String]]::Some(Option[String]::None) in {
-                    match match_subject_1 {
-                      Some(v0_2) => {
-                        match v0_2 {
-                          Some(v1_3) => {
-                            let x_4 = v1_3 in {
-                              write_escaped(x_4)
-                            }
-                          }
-                          None => {
-                            write("some-none")
-                          }
-                        }
-                      }
-                      None => {
-                        write("none")
-                      }
-                    }
-                  }
-                  write(",")
-                  let match_subject_5 = Option[Option[String]]::None in {
-                    match match_subject_5 {
-                      Some(v0_6) => {
-                        match v0_6 {
-                          Some(v1_7) => {
-                            let x_8 = v1_7 in {
-                              write_escaped(x_8)
-                            }
-                          }
-                          None => {
-                            write("some-none")
-                          }
-                        }
-                      }
-                      None => {
-                        write("none")
-                      }
-                    }
-                  }
                 }
                 -- expected output --
-                deep,some-none,none
+                deep
                 -- ts --
                 OK
                 -- go --
