@@ -94,8 +94,6 @@ pub enum TypedNode {
         attributes: Vec<TypedAttribute>,
         children: Vec<TypedNode>,
     },
-
-    Placeholder,
 }
 
 impl TypedNode {
@@ -455,7 +453,6 @@ impl TypedNode {
                         .append(BoxDoc::text(">"))
                 }
             }
-            TypedNode::Placeholder => BoxDoc::text("<placeholder/>"),
         }
     }
 }

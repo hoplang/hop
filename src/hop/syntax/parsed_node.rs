@@ -145,15 +145,6 @@ pub enum ParsedNode {
         range: DocumentRange,
     },
 
-    /// A Placeholder node represents a node that could not be constructed (because
-    /// it is missing a required attribute or similar).
-    ///
-    /// We use Placeholder nodes to be able to construct the child nodes of the node that could not be
-    /// constructed. This is useful for e.g. go-to-definition in the language server.
-    Placeholder {
-        children: Vec<ParsedNode>,
-        range: DocumentRange,
-    },
 }
 
 impl ParsedNode {
@@ -165,7 +156,6 @@ impl ParsedNode {
             ParsedNode::For { children, .. } => children,
             ParsedNode::Let { children, .. } => children,
             ParsedNode::Html { children, .. } => children,
-            ParsedNode::Placeholder { children, .. } => children,
             ParsedNode::Match { .. } => &[], // children are inside cases
             ParsedNode::Doctype { .. } => &[],
             ParsedNode::Text { .. } => &[],
@@ -433,21 +423,6 @@ impl ParsedNode {
                         .append(BoxDoc::text(">"))
                 }
             }
-            ParsedNode::Placeholder { children, .. } => {
-                if children.is_empty() {
-                    BoxDoc::text("<placeholder />")
-                } else {
-                    BoxDoc::text("<placeholder>")
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::intersperse(
-                            children.iter().map(|c| c.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .nest(2)
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::text("</placeholder>"))
-                }
-            }
         }
     }
 }
@@ -464,7 +439,6 @@ impl Ranged for ParsedNode {
             | ParsedNode::Let { range, .. }
             | ParsedNode::Match { range, .. }
             | ParsedNode::Html { range, .. }
-            | ParsedNode::Placeholder { range, .. }
             | ParsedNode::Doctype { range, .. } => range,
         }
     }

@@ -562,17 +562,6 @@ fn format_node<'a>(
                     .append(arena.text(">"))
             }
         }
-        ParsedNode::Placeholder { children, .. } => {
-            if children.is_empty() {
-                // Empty or only whitespace/newlines - use self-closing tag
-                arena.text("<placeholder/>")
-            } else {
-                arena
-                    .text("<placeholder>")
-                    .append(format_children(arena, children, comments))
-                    .append(arena.text("</placeholder>"))
-            }
-        }
     }
 }
 

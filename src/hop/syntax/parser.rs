@@ -412,25 +412,18 @@ fn construct_node(
                     let mut iter = e.cursor().peekable();
                     dop::parser::parse_expr(&mut iter, comments, &e).map_err(|err| err.into())
                 })) else {
-                    // Parse children normally for error recovery
-                    let children: Vec<_> = tree
-                        .children
-                        .into_iter()
-                        .filter_map(|child| {
-                            construct_node(
-                                child,
-                                comments,
-                                errors,
-                                module_name,
-                                defined_components,
-                                imported_components,
-                            )
-                        })
-                        .collect();
-                    return Some(ParsedNode::Placeholder {
-                        range: tree.range.clone(),
-                        children,
-                    });
+                    // Parse children to collect errors
+                    for child in tree.children {
+                        construct_node(
+                            child,
+                            comments,
+                            errors,
+                            module_name,
+                            defined_components,
+                            imported_components,
+                        );
+                    }
+                    return None;
                 };
 
                 // Process children as <case> tags
@@ -551,10 +544,7 @@ fn construct_node(
                         });
                     let Some((var_name, var_name_range, source)) = errors.ok_or_add(parse_result)
                     else {
-                        return Some(ParsedNode::Placeholder {
-                            range: tree.range.clone(),
-                            children,
-                        });
+                        return None;
                     };
                     Some(ParsedNode::For {
                         var_name,
@@ -572,10 +562,7 @@ fn construct_node(
                         errors.push(ParseError::MissingLetBinding {
                             range: opening_tag_range.clone(),
                         });
-                        return Some(ParsedNode::Placeholder {
-                            range: tree.range.clone(),
-                            children,
-                        });
+                        return None;
                     };
                     let parse_result = {
                         let mut iter = bindings_range.cursor().peekable();
@@ -583,10 +570,7 @@ fn construct_node(
                             .map_err(|err| err.into())
                     };
                     let Some(parsed_bindings) = errors.ok_or_add(parse_result) else {
-                        return Some(ParsedNode::Placeholder {
-                            range: tree.range.clone(),
-                            children,
-                        });
+                        return None;
                     };
                     let bindings = parsed_bindings
                         .into_iter()

@@ -431,8 +431,6 @@ impl Inliner {
                     children: Self::inline_nodes_with_ctx(children, ctx),
                 }]
             }
-
-            TypedNode::Placeholder => panic!("Placeholder nodes should not exist after typing"),
         }
     }
 }

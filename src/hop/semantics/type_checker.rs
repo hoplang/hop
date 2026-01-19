@@ -944,8 +944,6 @@ fn typecheck_node(
             result.into_iter().next()
         }
 
-        ParsedNode::Placeholder { .. } => Some(TypedNode::Placeholder),
-
         ParsedNode::Text { range } => {
             // Skip whitespace-only text nodes (they're formatting artifacts)
             if range.as_str().trim().is_empty() {
