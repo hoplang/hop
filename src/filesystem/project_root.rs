@@ -151,7 +151,7 @@ impl ProjectRoot {
     }
 
     /// Recursively find all .hop files in this project root
-    fn find_hop_files(&self) -> anyhow::Result<Vec<PathBuf>> {
+    pub fn find_hop_files(&self) -> anyhow::Result<Vec<PathBuf>> {
         let mut hop_files = Vec::new();
 
         if !self.directory.exists() || !self.directory.is_dir() {

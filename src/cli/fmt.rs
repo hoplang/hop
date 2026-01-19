@@ -6,7 +6,7 @@ use crate::hop::syntax::format;
 use crate::hop::syntax::parser;
 use anyhow::Result;
 use rayon::prelude::*;
-use std::path::Path;
+use std::path::PathBuf;
 
 pub struct FmtResult {
     pub files_formatted: usize,
@@ -20,54 +20,67 @@ struct FormattedModule {
     has_errors: bool,
 }
 
+enum ModuleResult {
+    Success(FormattedModule),
+    LoadError { path: PathBuf, error: anyhow::Error },
+}
+
 pub fn execute(project_root: &ProjectRoot, file: Option<&str>) -> Result<FmtResult> {
-    let hop_modules: Vec<(ModuleName, Document)> = match file {
-        Some(file_path) => {
-            let (module_name, document) = project_root.load_hop_module(Path::new(file_path))?;
-            vec![(module_name, document)]
-        }
+    let module_paths: Vec<PathBuf> = match file {
+        Some(file_path) => vec![PathBuf::from(file_path)],
         None => {
-            let modules = project_root.load_all_hop_modules()?;
-            if modules.is_empty() {
+            let paths = project_root.find_hop_files()?;
+            if paths.is_empty() {
                 anyhow::bail!("No .hop files found in project");
             }
-            modules.into_iter().collect()
+            paths
         }
     };
 
-    // Parse and format all files in parallel
-    let results: Vec<FormattedModule> = hop_modules
+    let results: Vec<ModuleResult> = module_paths
         .into_par_iter()
-        .map(|(module_name, document)| {
+        .map(|path| {
+            let (module_name, document) = match project_root.load_hop_module(&path) {
+                Ok(result) => result,
+                Err(e) => return ModuleResult::LoadError { path, error: e },
+            };
             let mut errors = ErrorCollector::new();
             let ast = parser::parse(module_name.clone(), document.clone(), &mut errors);
             let formatted = format(ast);
-
-            FormattedModule {
+            ModuleResult::Success(FormattedModule {
                 module_name,
                 original: document,
                 formatted,
                 has_errors: !errors.is_empty(),
-            }
+            })
         })
         .collect();
 
-    // Check for parse errors
-    if let Some(result) = results.iter().find(|r| r.has_errors) {
-        anyhow::bail!("Parse errors in {}", result.module_name);
+    for result in &results {
+        match result {
+            ModuleResult::LoadError { path, error } => {
+                anyhow::bail!("Failed to read {}: {}", path.display(), error);
+            }
+            ModuleResult::Success(m) if m.has_errors => {
+                anyhow::bail!("Parse errors in {}", m.module_name);
+            }
+            _ => {}
+        }
     }
 
-    // Write all results to disk (only if all parsed successfully)
+    // Write all results to disk (only if all loaded and parsed successfully)
     let mut files_formatted = 0;
     let mut files_unchanged = 0;
 
     for result in results {
-        if result.formatted != result.original.as_str() {
-            let path = project_root.module_name_to_path(&result.module_name);
-            std::fs::write(&path, &result.formatted)?;
-            files_formatted += 1;
-        } else {
-            files_unchanged += 1;
+        if let ModuleResult::Success(result) = result {
+            if result.formatted != result.original.as_str() {
+                let path = project_root.module_name_to_path(&result.module_name);
+                std::fs::write(&path, &result.formatted)?;
+                files_formatted += 1;
+            } else {
+                files_unchanged += 1;
+            }
         }
     }
 
