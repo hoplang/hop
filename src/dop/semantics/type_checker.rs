@@ -1169,195 +1169,92 @@ fn decision_to_typed_expr(
             result
         }
 
-        Decision::Switch(var, cases) => {
+        Decision::SwitchBool {
+            variable,
+            true_case,
+            false_case,
+        } => {
             let subject = (
-                VarName::new(&var.name).expect("invalid variable name"),
-                var.typ.clone(),
+                VarName::new(&variable.name).expect("invalid variable name"),
+                variable.typ.clone(),
+            );
+            TypedExpr::Match {
+                match_: Match::Bool {
+                    subject,
+                    true_body: Box::new(decision_to_typed_expr(
+                        &true_case.body,
+                        typed_bodies,
+                        result_type.clone(),
+                    )),
+                    false_body: Box::new(decision_to_typed_expr(
+                        &false_case.body,
+                        typed_bodies,
+                        result_type.clone(),
+                    )),
+                },
+                kind: result_type,
+            }
+        }
+
+        Decision::SwitchOption {
+            variable,
+            some_case,
+            none_case,
+        } => {
+            let subject = (
+                VarName::new(&variable.name).expect("invalid variable name"),
+                variable.typ.clone(),
+            );
+            // bound_name is already Option<String> - just convert to Option<VarName>
+            let some_arm_binding = some_case
+                .bound_name
+                .as_ref()
+                .map(|name| VarName::new(name).expect("invalid variable name"));
+            TypedExpr::Match {
+                match_: Match::Option {
+                    subject,
+                    some_arm_binding,
+                    some_arm_body: Box::new(decision_to_typed_expr(
+                        &some_case.body,
+                        typed_bodies,
+                        result_type.clone(),
+                    )),
+                    none_arm_body: Box::new(decision_to_typed_expr(
+                        &none_case.body,
+                        typed_bodies,
+                        result_type.clone(),
+                    )),
+                },
+                kind: result_type,
+            }
+        }
+
+        Decision::SwitchEnum { variable, cases } => {
+            let subject = (
+                VarName::new(&variable.name).expect("invalid variable name"),
+                variable.typ.clone(),
             );
 
-            match &var.typ {
-                Type::Bool => {
-                    // Find the true and false cases
-                    let mut true_body = None;
-                    let mut false_body = None;
+            let arms = cases
+                .iter()
+                .map(|case| {
+                    let pattern = EnumPattern::Variant {
+                        enum_name: case.enum_name.to_string(),
+                        variant_name: case.variant_name.to_string(),
+                    };
 
-                    for case in cases {
-                        match &case.constructor {
-                            Constructor::BooleanTrue => {
-                                true_body = Some(decision_to_typed_expr(
-                                    &case.body,
-                                    typed_bodies,
-                                    result_type.clone(),
-                                ));
-                            }
-                            Constructor::BooleanFalse => {
-                                false_body = Some(decision_to_typed_expr(
-                                    &case.body,
-                                    typed_bodies,
-                                    result_type.clone(),
-                                ));
-                            }
-                            _ => unreachable!("Invalid constructor for Bool type"),
-                        }
-                    }
-
-                    TypedExpr::Match {
-                        match_: Match::Bool {
-                            subject,
-                            true_body: Box::new(true_body.expect("BoolMatch must have a true arm")),
-                            false_body: Box::new(
-                                false_body.expect("BoolMatch must have a false arm"),
-                            ),
-                        },
-                        kind: result_type,
-                    }
-                }
-
-                Type::Option(_) => {
-                    // Find the Some and None cases
-                    let mut some_arm_binding = None;
-                    let mut some_arm_body = None;
-                    let mut none_arm_body = None;
-
-                    for case in cases {
-                        match &case.constructor {
-                            Constructor::OptionSome => {
-                                // Only create binding if the variable is not a wildcard pattern
-                                some_arm_binding = case
-                                    .arguments
-                                    .first()
-                                    .filter(|var| !var.is_wildcard)
-                                    .map(|var| {
-                                        VarName::new(&var.name).expect("invalid variable name")
-                                    });
-                                some_arm_body = Some(decision_to_typed_expr(
-                                    &case.body,
-                                    typed_bodies,
-                                    result_type.clone(),
-                                ));
-                            }
-                            Constructor::OptionNone => {
-                                none_arm_body = Some(decision_to_typed_expr(
-                                    &case.body,
-                                    typed_bodies,
-                                    result_type.clone(),
-                                ));
-                            }
-                            _ => unreachable!("Invalid constructor for Option type"),
-                        }
-                    }
-
-                    TypedExpr::Match {
-                        match_: Match::Option {
-                            subject,
-                            some_arm_binding,
-                            some_arm_body: Box::new(
-                                some_arm_body.expect("OptionMatch must have a Some arm"),
-                            ),
-                            none_arm_body: Box::new(
-                                none_arm_body.expect("OptionMatch must have a None arm"),
-                            ),
-                        },
-                        kind: result_type,
-                    }
-                }
-
-                Type::Enum { variants, .. } => {
-                    let arms = cases
-                        .iter()
-                        .map(|case| {
-                            let (pattern, variant_fields) = match &case.constructor {
-                                Constructor::EnumVariant {
-                                    enum_name,
-                                    variant_name,
-                                } => {
-                                    let fields = variants
-                                        .iter()
-                                        .find(|(name, _)| name.as_str() == variant_name)
-                                        .map(|(_, fields)| fields)
-                                        .expect("variant not found");
-                                    (
-                                        EnumPattern::Variant {
-                                            enum_name: enum_name.to_string(),
-                                            variant_name: variant_name.to_string(),
-                                        },
-                                        fields,
-                                    )
-                                }
-                                _ => unreachable!("Invalid constructor for Enum type"),
-                            };
-
-                            let mut body = decision_to_typed_expr(
-                                &case.body,
-                                typed_bodies,
-                                result_type.clone(),
-                            );
-
-                            // Wrap with Let expressions for each field (using FieldAccess)
-                            // Iterate in reverse so bindings are in the correct order
-                            // Skip wildcard bindings
-                            for (i, (field_name, _field_type)) in
-                                variant_fields.iter().enumerate().rev()
-                            {
-                                let var = &case.arguments[i];
-
-                                // Skip wildcard patterns - no binding needed
-                                if var.is_wildcard {
-                                    continue;
-                                }
-
-                                let var_name =
-                                    VarName::new(&var.name).expect("invalid variable name");
-
-                                // Create field access: subject.field_name
-                                let field_access = TypedExpr::FieldAccess {
-                                    record: Box::new(TypedExpr::Var {
-                                        value: subject.0.clone(),
-                                        kind: subject.1.clone(),
-                                    }),
-                                    field: field_name.clone(),
-                                    kind: var.typ.clone(),
-                                };
-
-                                let kind = body.as_type().clone();
-                                body = TypedExpr::Let {
-                                    var: var_name,
-                                    value: Box::new(field_access),
-                                    body: Box::new(body),
-                                    kind,
-                                };
-                            }
-
-                            EnumMatchArm {
-                                pattern,
-                                bindings: vec![],
-                                body,
-                            }
-                        })
-                        .collect();
-
-                    TypedExpr::Match {
-                        match_: Match::Enum { subject, arms },
-                        kind: result_type,
-                    }
-                }
-
-                Type::Record {
-                    fields: type_fields,
-                    ..
-                } => {
-                    // Records have only one case (the record itself)
-                    let case = &cases[0];
-
-                    // Build the body with Let bindings for each field
                     let mut body =
                         decision_to_typed_expr(&case.body, typed_bodies, result_type.clone());
 
                     // Wrap with Let expressions for each field (using FieldAccess)
                     // Iterate in reverse so bindings are in the correct order
-                    for (i, (field_name, _field_type)) in type_fields.iter().enumerate().rev() {
-                        let var = &case.arguments[i];
-                        let var_name = VarName::new(&var.name).expect("invalid variable name");
+                    // Skip wildcard bindings (bound_name is None)
+                    for binding in case.bindings.iter().rev() {
+                        let Some(bound_name) = &binding.bound_name else {
+                            continue;
+                        };
+
+                        let var_name = VarName::new(bound_name).expect("invalid variable name");
 
                         // Create field access: subject.field_name
                         let field_access = TypedExpr::FieldAccess {
@@ -1365,8 +1262,8 @@ fn decision_to_typed_expr(
                                 value: subject.0.clone(),
                                 kind: subject.1.clone(),
                             }),
-                            field: field_name.clone(),
-                            kind: var.typ.clone(),
+                            field: binding.field_name.clone(),
+                            kind: binding.typ.clone(),
                         };
 
                         let kind = body.as_type().clone();
@@ -1378,11 +1275,59 @@ fn decision_to_typed_expr(
                         };
                     }
 
-                    body
-                }
+                    EnumMatchArm {
+                        pattern,
+                        bindings: vec![],
+                        body,
+                    }
+                })
+                .collect();
 
-                _ => panic!("Unsupported type for pattern matching: {:?}", var.typ),
+            TypedExpr::Match {
+                match_: Match::Enum { subject, arms },
+                kind: result_type,
             }
+        }
+
+        Decision::SwitchRecord { variable, case } => {
+            let subject = (
+                VarName::new(&variable.name).expect("invalid variable name"),
+                variable.typ.clone(),
+            );
+
+            // Build the body with Let bindings for each field
+            let mut body = decision_to_typed_expr(&case.body, typed_bodies, result_type);
+
+            // Wrap with Let expressions for each field (using FieldAccess)
+            // Iterate in reverse so bindings are in the correct order
+            // Skip wildcard bindings (bound_name is None)
+            for binding in case.bindings.iter().rev() {
+                let Some(bound_name) = &binding.bound_name else {
+                    continue;
+                };
+
+                let var_name = VarName::new(bound_name).expect("invalid variable name");
+
+                // Create field access: subject.field_name
+                let field_access = TypedExpr::FieldAccess {
+                    record: Box::new(TypedExpr::Var {
+                        value: subject.0.clone(),
+                        kind: subject.1.clone(),
+                    }),
+                    field: binding.field_name.clone(),
+                    kind: binding.typ.clone(),
+                };
+
+                let kind = body.as_type().clone();
+                body = TypedExpr::Let {
+                    var: var_name,
+                    value: Box::new(field_access),
+                    body: Box::new(body),
+                    kind,
+                };
+            }
+
+            body
         }
     }
 }
@@ -1394,8 +1339,8 @@ mod tests {
     use crate::document::DocumentCursor;
     use crate::dop::ParsedDeclaration;
     use crate::dop::parser;
-    use crate::dop::syntax::tokenizer;
     use crate::dop::symbols::type_name::TypeName;
+    use crate::dop::syntax::tokenizer;
     use crate::hop::symbols::module_name::ModuleName;
     use expect_test::{Expect, expect};
     use indoc::indoc;
@@ -4623,6 +4568,11 @@ mod tests {
 
     #[test]
     fn should_accept_method_call_on_parenthesized_float_arithmetic() {
-        check("", &[("x", "Int")], "(x.to_float() + 0.5).to_string()", expect!["String"]);
+        check(
+            "",
+            &[("x", "Int")],
+            "(x.to_float() + 0.5).to_string()",
+            expect!["String"],
+        );
     }
 }

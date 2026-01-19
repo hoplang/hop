@@ -15,7 +15,7 @@ use std::collections::HashMap;
 
 use crate::dop::patterns::compiler::Decision;
 use crate::dop::patterns::{EnumMatchArm, EnumPattern, Match};
-use crate::dop::syntax::parsed::{Constructor, ParsedLoopSource};
+use crate::dop::syntax::parsed::ParsedLoopSource;
 use crate::hop::semantics::typed_ast::{
     TypedAst, TypedComponentDeclaration, TypedEntrypointDeclaration, TypedEnumDeclaration,
     TypedRecordDeclaration,
@@ -1133,180 +1133,127 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
             result
         }
 
-        Decision::Switch(var, cases) => {
+        Decision::SwitchBool {
+            variable,
+            true_case,
+            false_case,
+        } => {
             let subject = (
-                VarName::new(&var.name).expect("invalid variable name"),
-                var.typ.clone(),
+                VarName::new(&variable.name).expect("invalid variable name"),
+                variable.typ.clone(),
+            );
+            vec![TypedNode::Match {
+                match_: Match::Bool {
+                    subject,
+                    true_body: Box::new(decision_to_typed_nodes(&true_case.body, typed_bodies)),
+                    false_body: Box::new(decision_to_typed_nodes(&false_case.body, typed_bodies)),
+                },
+            }]
+        }
+
+        Decision::SwitchOption {
+            variable,
+            some_case,
+            none_case,
+        } => {
+            let subject = (
+                VarName::new(&variable.name).expect("invalid variable name"),
+                variable.typ.clone(),
+            );
+            // bound_name is already Option<String> - just convert to Option<VarName>
+            let some_arm_binding = some_case
+                .bound_name
+                .as_ref()
+                .map(|name| VarName::new(name).expect("invalid variable name"));
+            vec![TypedNode::Match {
+                match_: Match::Option {
+                    subject,
+                    some_arm_binding,
+                    some_arm_body: Box::new(decision_to_typed_nodes(&some_case.body, typed_bodies)),
+                    none_arm_body: Box::new(decision_to_typed_nodes(&none_case.body, typed_bodies)),
+                },
+            }]
+        }
+
+        Decision::SwitchEnum { variable, cases } => {
+            let subject = (
+                VarName::new(&variable.name).expect("invalid variable name"),
+                variable.typ.clone(),
             );
 
-            match &var.typ {
-                Type::Bool => {
-                    // Find the true and false cases
-                    let mut true_body = None;
-                    let mut false_body = None;
+            let arms = cases
+                .iter()
+                .map(|case| {
+                    let pattern = EnumPattern::Variant {
+                        enum_name: case.enum_name.to_string(),
+                        variant_name: case.variant_name.to_string(),
+                    };
 
-                    for case in cases {
-                        match &case.constructor {
-                            Constructor::BooleanTrue => {
-                                true_body = Some(decision_to_typed_nodes(&case.body, typed_bodies));
-                            }
-                            Constructor::BooleanFalse => {
-                                false_body =
-                                    Some(decision_to_typed_nodes(&case.body, typed_bodies));
-                            }
-                            _ => unreachable!("Invalid constructor for Bool type"),
-                        }
-                    }
-
-                    vec![TypedNode::Match {
-                        match_: Match::Bool {
-                            subject,
-                            true_body: Box::new(true_body.expect("BoolMatch must have a true arm")),
-                            false_body: Box::new(
-                                false_body.expect("BoolMatch must have a false arm"),
-                            ),
-                        },
-                    }]
-                }
-
-                Type::Option(_) => {
-                    // Find the Some and None cases
-                    let mut some_arm_binding = None;
-                    let mut some_arm_body = None;
-                    let mut none_arm_body = None;
-
-                    for case in cases {
-                        match &case.constructor {
-                            Constructor::OptionSome => {
-                                // Only create binding if the variable is not a wildcard pattern
-                                some_arm_binding = case
-                                    .arguments
-                                    .first()
-                                    .filter(|var| !var.is_wildcard)
-                                    .map(|var| {
-                                        VarName::new(&var.name).expect("invalid variable name")
-                                    });
-                                some_arm_body =
-                                    Some(decision_to_typed_nodes(&case.body, typed_bodies));
-                            }
-                            Constructor::OptionNone => {
-                                none_arm_body =
-                                    Some(decision_to_typed_nodes(&case.body, typed_bodies));
-                            }
-                            _ => unreachable!("Invalid constructor for Option type"),
-                        }
-                    }
-
-                    vec![TypedNode::Match {
-                        match_: Match::Option {
-                            subject,
-                            some_arm_binding,
-                            some_arm_body: Box::new(
-                                some_arm_body.expect("OptionMatch must have a Some arm"),
-                            ),
-                            none_arm_body: Box::new(
-                                none_arm_body.expect("OptionMatch must have a None arm"),
-                            ),
-                        },
-                    }]
-                }
-
-                Type::Enum { variants, .. } => {
-                    let arms = cases
+                    // Filter out wildcard bindings (bound_name is None)
+                    let bindings: Vec<_> = case
+                        .bindings
                         .iter()
-                        .map(|case| {
-                            let (pattern, bindings) = match &case.constructor {
-                                Constructor::EnumVariant {
-                                    enum_name,
-                                    variant_name,
-                                } => {
-                                    let pattern = EnumPattern::Variant {
-                                        enum_name: enum_name.to_string(),
-                                        variant_name: variant_name.to_string(),
-                                    };
-                                    // Get the variant's fields to create bindings
-                                    let empty_fields = vec![];
-                                    let variant_fields = variants
-                                        .iter()
-                                        .find(|(v, _)| v.as_str() == variant_name)
-                                        .map(|(_, fields)| fields)
-                                        .unwrap_or(&empty_fields);
-                                    // Filter out wildcard bindings
-                                    let bindings: Vec<_> = variant_fields
-                                        .iter()
-                                        .zip(case.arguments.iter())
-                                        .filter(|(_, arg)| !arg.is_wildcard)
-                                        .map(|((field_name, _), arg)| {
-                                            (
-                                                field_name.clone(),
-                                                VarName::new(&arg.name)
-                                                    .expect("invalid variable name"),
-                                            )
-                                        })
-                                        .collect();
-                                    (pattern, bindings)
-                                }
-                                _ => unreachable!("Invalid constructor for Enum type"),
-                            };
-                            let body = decision_to_typed_nodes(&case.body, typed_bodies);
-                            EnumMatchArm {
-                                pattern,
-                                bindings,
-                                body,
-                            }
+                        .filter_map(|b| {
+                            b.bound_name.as_ref().map(|name| {
+                                (
+                                    b.field_name.clone(),
+                                    VarName::new(name).expect("invalid variable name"),
+                                )
+                            })
                         })
                         .collect();
 
-                    vec![TypedNode::Match {
-                        match_: Match::Enum { subject, arms },
-                    }]
-                }
-
-                Type::Record {
-                    fields: type_fields,
-                    ..
-                } => {
-                    // Records have only one case (the record itself)
-                    let case = &cases[0];
-
-                    // Build the body with Let bindings for each field
-                    let mut body = decision_to_typed_nodes(&case.body, typed_bodies);
-
-                    // Wrap with Let nodes for each field (using FieldAccess)
-                    // Iterate in reverse so bindings are in the correct order
-                    // Skip wildcard bindings
-                    for (i, (field_name, _field_type)) in type_fields.iter().enumerate().rev() {
-                        let var = &case.arguments[i];
-
-                        // Skip wildcard patterns - no binding needed
-                        if var.is_wildcard {
-                            continue;
-                        }
-
-                        let var_name = VarName::new(&var.name).expect("invalid variable name");
-
-                        // Create field access: subject.field_name
-                        let field_access = TypedExpr::FieldAccess {
-                            record: Box::new(TypedExpr::Var {
-                                value: subject.0.clone(),
-                                kind: subject.1.clone(),
-                            }),
-                            field: field_name.clone(),
-                            kind: var.typ.clone(),
-                        };
-
-                        body = vec![TypedNode::Let {
-                            var: var_name,
-                            value: field_access,
-                            children: body,
-                        }];
+                    let body = decision_to_typed_nodes(&case.body, typed_bodies);
+                    EnumMatchArm {
+                        pattern,
+                        bindings,
+                        body,
                     }
+                })
+                .collect();
 
-                    body
-                }
+            vec![TypedNode::Match {
+                match_: Match::Enum { subject, arms },
+            }]
+        }
 
-                _ => panic!("Unsupported type for pattern matching: {:?}", var.typ),
+        Decision::SwitchRecord { variable, case } => {
+            let subject = (
+                VarName::new(&variable.name).expect("invalid variable name"),
+                variable.typ.clone(),
+            );
+
+            // Build the body with Let bindings for each field
+            let mut body = decision_to_typed_nodes(&case.body, typed_bodies);
+
+            // Wrap with Let nodes for each field (using FieldAccess)
+            // Iterate in reverse so bindings are in the correct order
+            // Skip wildcard bindings (bound_name is None)
+            for binding in case.bindings.iter().rev() {
+                let Some(bound_name) = &binding.bound_name else {
+                    continue;
+                };
+
+                let var_name = VarName::new(bound_name).expect("invalid variable name");
+
+                // Create field access: subject.field_name
+                let field_access = TypedExpr::FieldAccess {
+                    record: Box::new(TypedExpr::Var {
+                        value: subject.0.clone(),
+                        kind: subject.1.clone(),
+                    }),
+                    field: binding.field_name.clone(),
+                    kind: binding.typ.clone(),
+                };
+
+                body = vec![TypedNode::Let {
+                    var: var_name,
+                    value: field_access,
+                    children: body,
+                }];
             }
+
+            body
         }
     }
 }

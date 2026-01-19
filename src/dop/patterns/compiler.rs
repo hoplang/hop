@@ -10,6 +10,8 @@ use crate::dop::syntax::parsed::{Constructor, ParsedMatchPattern};
 
 use crate::dop::semantics::r#type::Type;
 use crate::dop::semantics::type_error::TypeError;
+use crate::dop::symbols::field_name::FieldName;
+use crate::dop::symbols::type_name::TypeName;
 
 /// A binding introduced by a pattern match (i.e. `name = source_name`).
 #[derive(Clone, Debug)]
@@ -57,7 +59,7 @@ pub struct Variable {
     pub typ: Type,
     /// Whether this variable was bound via a wildcard pattern (`_`).
     /// When true, the variable should not generate a binding in the output.
-    pub is_wildcard: bool,
+    is_wildcard: bool,
 }
 
 impl Variable {
@@ -107,27 +109,54 @@ impl Column {
     }
 }
 
-/// A case in a decision tree to test against a variable.
+/// A case for boolean pattern matching - no bindings possible.
 #[derive(Debug)]
-pub struct Case {
-    /// The constructor to test against an input variable.
-    pub constructor: Constructor,
-
-    /// Variables to introduce to the body of this case.
-    pub arguments: Vec<Variable>,
-
-    /// The sub tree of this case.
+pub struct BoolCase {
     pub body: Decision,
 }
 
-impl Case {
-    fn new(constructor: Constructor, arguments: Vec<Variable>, body: Decision) -> Self {
-        Self {
-            constructor,
-            arguments,
-            body,
-        }
-    }
+/// A case for the Some variant of Option - exactly one potential binding.
+#[derive(Debug)]
+pub struct OptionSomeCase {
+    /// The name to bind the inner value to, or None if wildcard pattern.
+    pub bound_name: Option<String>,
+    pub body: Decision,
+}
+
+/// A case for the None variant of Option - no bindings.
+#[derive(Debug)]
+pub struct OptionNoneCase {
+    pub body: Decision,
+}
+
+/// A binding for a field in a record or enum variant.
+#[derive(Debug, Clone)]
+pub struct FieldBinding {
+    /// The field name this binding corresponds to.
+    pub field_name: FieldName,
+    /// The name to bind this field's value to, or None if wildcard pattern.
+    pub bound_name: Option<String>,
+    /// The type of the field.
+    pub typ: Type,
+}
+
+/// A case for an enum variant - may have multiple field bindings.
+#[derive(Debug)]
+pub struct EnumCase {
+    pub enum_name: TypeName,
+    pub variant_name: CheapString,
+    /// Bindings for each field in the variant.
+    pub bindings: Vec<FieldBinding>,
+    pub body: Decision,
+}
+
+/// A case for record destructuring - has bindings for each field.
+#[derive(Debug)]
+pub struct RecordCase {
+    pub type_name: TypeName,
+    /// Bindings for each field in the record.
+    pub bindings: Vec<FieldBinding>,
+    pub body: Decision,
 }
 
 /// A decision tree compiled from a list of match cases.
@@ -136,13 +165,31 @@ pub enum Decision {
     /// A pattern is matched and the right-hand value is to be returned.
     Success(Body),
 
-    /// Checks if a value is any of the given patterns.
-    ///
-    /// The values are as follows:
-    ///
-    /// 1. The variable to test.
-    /// 2. The cases to test against this variable.
-    Switch(Variable, Vec<Case>),
+    /// Switch on a boolean value.
+    SwitchBool {
+        variable: Variable,
+        true_case: Box<BoolCase>,
+        false_case: Box<BoolCase>,
+    },
+
+    /// Switch on an Option value.
+    SwitchOption {
+        variable: Variable,
+        some_case: Box<OptionSomeCase>,
+        none_case: Box<OptionNoneCase>,
+    },
+
+    /// Switch on an enum value.
+    SwitchEnum {
+        variable: Variable,
+        cases: Vec<EnumCase>,
+    },
+
+    /// Match a record (single case, destructures fields).
+    SwitchRecord {
+        variable: Variable,
+        case: Box<RecordCase>,
+    },
 }
 
 /// Information about a matched constructor for a variable.
@@ -434,7 +481,8 @@ impl Compiler {
                                         .expect("field not found in variant");
                                     let var = &mut cases[idx].1[field_idx];
                                     // Mark variables as wildcards if the pattern is `_`
-                                    if matches!(field_pattern, ParsedMatchPattern::Wildcard { .. }) {
+                                    if matches!(field_pattern, ParsedMatchPattern::Wildcard { .. })
+                                    {
                                         var.is_wildcard = true;
                                     }
                                     cols.push(Column::new(var.clone(), field_pattern));
@@ -516,14 +564,124 @@ impl Compiler {
             return None;
         }
 
-        // All case bodies are Some, build the Switch
-        Some(Decision::Switch(
-            branch_var.clone(),
-            compiled_cases
-                .into_iter()
-                .map(|(cons, vars, body)| Case::new(cons, vars, body.unwrap()))
-                .collect(),
-        ))
+        // All case bodies are Some, build the appropriate typed Decision variant
+        // Clone the type to avoid borrow issues when moving branch_var
+        let branch_typ = branch_var.typ.clone();
+        match branch_typ {
+            Type::Bool => {
+                // compiled_cases is ordered: [false, true]
+                let mut iter = compiled_cases.into_iter();
+                let (_, _, false_body) = iter.next().unwrap();
+                let (_, _, true_body) = iter.next().unwrap();
+                Some(Decision::SwitchBool {
+                    variable: branch_var,
+                    false_case: Box::new(BoolCase {
+                        body: false_body.unwrap(),
+                    }),
+                    true_case: Box::new(BoolCase {
+                        body: true_body.unwrap(),
+                    }),
+                })
+            }
+            Type::Option(_) => {
+                // compiled_cases is ordered: [some, none]
+                let mut iter = compiled_cases.into_iter();
+                let (_, some_vars, some_body) = iter.next().unwrap();
+                let (_, _, none_body) = iter.next().unwrap();
+                let some_var = some_vars.into_iter().next().unwrap();
+                Some(Decision::SwitchOption {
+                    variable: branch_var,
+                    some_case: Box::new(OptionSomeCase {
+                        bound_name: if some_var.is_wildcard {
+                            None
+                        } else {
+                            Some(some_var.name)
+                        },
+                        body: some_body.unwrap(),
+                    }),
+                    none_case: Box::new(OptionNoneCase {
+                        body: none_body.unwrap(),
+                    }),
+                })
+            }
+            Type::Enum {
+                name,
+                variants: type_variants,
+                ..
+            } => {
+                let cases = compiled_cases
+                    .into_iter()
+                    .map(|(cons, vars, body)| {
+                        let variant_name = match cons {
+                            Constructor::EnumVariant { variant_name, .. } => variant_name,
+                            _ => unreachable!("Expected EnumVariant constructor"),
+                        };
+                        // Get the field names from the type definition
+                        let empty_fields = vec![];
+                        let variant_fields = type_variants
+                            .iter()
+                            .find(|(v, _)| v.as_str() == variant_name.as_str())
+                            .map(|(_, fields)| fields)
+                            .unwrap_or(&empty_fields);
+                        // Create FieldBindings with field names
+                        let bindings = variant_fields
+                            .iter()
+                            .zip(vars)
+                            .map(|((field_name, _), var)| FieldBinding {
+                                field_name: field_name.clone(),
+                                bound_name: if var.is_wildcard {
+                                    None
+                                } else {
+                                    Some(var.name)
+                                },
+                                typ: var.typ,
+                            })
+                            .collect();
+                        EnumCase {
+                            enum_name: name.clone(),
+                            variant_name,
+                            bindings,
+                            body: body.unwrap(),
+                        }
+                    })
+                    .collect();
+                Some(Decision::SwitchEnum {
+                    variable: branch_var,
+                    cases,
+                })
+            }
+            Type::Record {
+                name,
+                fields: type_fields,
+                ..
+            } => {
+                // Records have exactly one case
+                let (_, vars, body) = compiled_cases.into_iter().next().unwrap();
+                // Create FieldBindings with field names
+                let bindings = type_fields
+                    .iter()
+                    .zip(vars)
+                    .map(|((field_name, _), var)| FieldBinding {
+                        field_name: field_name.clone(),
+                        bound_name: if var.is_wildcard {
+                            None
+                        } else {
+                            Some(var.name)
+                        },
+                        typ: var.typ,
+                    })
+                    .collect();
+                Some(Decision::SwitchRecord {
+                    variable: branch_var,
+                    case: Box::new(RecordCase {
+                        type_name: name,
+                        bindings,
+                        body: body.unwrap(),
+                    }),
+                })
+            }
+            _ => unreachable!("Unsupported type for pattern matching"),
+        }
     }
 
     /// Given a row, returns the variable in that row that's referred to the
@@ -839,58 +997,78 @@ mod tests {
                 out.push_str(&format!("{}branch {}\n", pad, body.value));
                 out
             }
-            Decision::Switch(var, cases) => {
+            Decision::SwitchBool {
+                variable,
+                true_case,
+                false_case,
+            } => {
+                let mut out = String::new();
+                out.push_str(&format!("{}{} is false\n", pad, variable.name));
+                out.push_str(&format_decision(&false_case.body, indent + 1));
+                out.push_str(&format!("{}{} is true\n", pad, variable.name));
+                out.push_str(&format_decision(&true_case.body, indent + 1));
+                out
+            }
+            Decision::SwitchOption {
+                variable,
+                some_case,
+                none_case,
+            } => {
+                let mut out = String::new();
+                let binding_str = some_case.bound_name.as_deref().unwrap_or("_");
+                out.push_str(&format!(
+                    "{}{} is Some({})\n",
+                    pad, variable.name, binding_str
+                ));
+                out.push_str(&format_decision(&some_case.body, indent + 1));
+                out.push_str(&format!("{}{} is None\n", pad, variable.name));
+                out.push_str(&format_decision(&none_case.body, indent + 1));
+                out
+            }
+            Decision::SwitchEnum { variable, cases } => {
                 let mut out = String::new();
                 for case in cases {
-                    let args = if case.arguments.is_empty() {
+                    let args = if case.bindings.is_empty() {
                         String::new()
-                    } else if let (Constructor::Record { .. }, Type::Record { fields, .. }) =
-                        (&case.constructor, &var.typ)
-                    {
-                        // For records, show field names
-                        let named: Vec<_> = fields
+                    } else {
+                        let named: Vec<_> = case
+                            .bindings
                             .iter()
-                            .zip(case.arguments.iter())
-                            .map(|((field_name, _), v)| format!("{}: {}", field_name, v.name))
+                            .map(|b| {
+                                let name = b.bound_name.as_deref().unwrap_or("_");
+                                format!("{}: {}", b.field_name, name)
+                            })
                             .collect();
                         format!("({})", named.join(", "))
-                    } else if let (
-                        Constructor::EnumVariant { variant_name, .. },
-                        Type::Enum { variants, .. },
-                    ) = (&case.constructor, &var.typ)
-                    {
-                        // For enum variants with fields, show field names
-                        let variant_fields = variants
-                            .iter()
-                            .find(|(v, _)| v.as_str() == variant_name)
-                            .map(|(_, f)| f);
-                        if let Some(fields) = variant_fields {
-                            if fields.is_empty() {
-                                String::new()
-                            } else {
-                                let named: Vec<_> = fields
-                                    .iter()
-                                    .zip(case.arguments.iter())
-                                    .map(|((field_name, _), v)| {
-                                        format!("{}: {}", field_name, v.name)
-                                    })
-                                    .collect();
-                                format!("({})", named.join(", "))
-                            }
-                        } else {
-                            String::new()
-                        }
-                    } else {
-                        let names: Vec<_> =
-                            case.arguments.iter().map(|v| v.name.as_str()).collect();
-                        format!("({})", names.join(", "))
                     };
                     out.push_str(&format!(
-                        "{}{} is {}{}\n",
-                        pad, var.name, case.constructor, args
+                        "{}{} is {}::{}{}\n",
+                        pad, variable.name, case.enum_name, case.variant_name, args
                     ));
                     out.push_str(&format_decision(&case.body, indent + 1));
                 }
+                out
+            }
+            Decision::SwitchRecord { variable, case } => {
+                let mut out = String::new();
+                let args = if case.bindings.is_empty() {
+                    String::new()
+                } else {
+                    let named: Vec<_> = case
+                        .bindings
+                        .iter()
+                        .map(|b| {
+                            let name = b.bound_name.as_deref().unwrap_or("_");
+                            format!("{}: {}", b.field_name, name)
+                        })
+                        .collect();
+                    format!("({})", named.join(", "))
+                };
+                out.push_str(&format!(
+                    "{}{} is {}{}\n",
+                    pad, variable.name, case.type_name, args
+                ));
+                out.push_str(&format_decision(&case.body, indent + 1));
                 out
             }
         }
@@ -1306,9 +1484,9 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Result::Ok(value: v0)
+                x is Result::Ok(value: _)
                   branch 0
-                x is Result::Err(message: v1)
+                x is Result::Err(message: _)
                   branch 1
             "#]],
         );
@@ -1407,7 +1585,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Point3D::Coords(x: v0, y: v1, z: v2)
+                x is Point3D::Coords(x: _, y: _, z: _)
                   branch 0
             "#]],
         );
@@ -1434,7 +1612,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is Point3D::Coords(x: v0, y: v1, z: v2)
+                x is Point3D::Coords(x: v0, y: _, z: v2)
                   let a = v0
                   let c = v2
                   branch 0
@@ -2497,7 +2675,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is User(name: v0, age: v1)
+                x is User(name: _, age: _)
                   branch 0
             "#]],
         );
