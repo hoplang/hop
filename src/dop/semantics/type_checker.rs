@@ -3422,7 +3422,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_match_with_only_wildcard() {
+    fn should_reject_match_with_only_wildcard() {
         check(
             indoc! {"
                 enum Color {
@@ -3437,7 +3437,15 @@ mod tests {
                     _ => "any color",
                 }
             "#},
-            expect!["String"],
+            expect![[r#"
+                error: Useless match expression: does not branch or bind any variables
+                match color {
+                ^^^^^^^^^^^^^
+                    _ => "any color",
+                ^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
         );
     }
 
@@ -3499,7 +3507,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_boolean_match_with_only_wildcard() {
+    fn should_reject_boolean_match_with_only_wildcard() {
         check(
             "",
             &[("flag", "Bool")],
@@ -3508,7 +3516,15 @@ mod tests {
                     _ => "always",
                 }
             "#},
-            expect!["String"],
+            expect![[r#"
+                error: Useless match expression: does not branch or bind any variables
+                match flag {
+                ^^^^^^^^^^^^
+                    _ => "always",
+                ^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
         );
     }
 
@@ -3609,7 +3625,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_option_match_with_only_wildcard() {
+    fn should_reject_option_match_with_only_wildcard() {
         check(
             "",
             &[("opt", "Option[Int]")],
@@ -3618,7 +3634,15 @@ mod tests {
                     _ => "always this",
                 }
             "#},
-            expect!["String"],
+            expect![[r#"
+                error: Useless match expression: does not branch or bind any variables
+                match opt {
+                ^^^^^^^^^^^
+                    _ => "always this",
+                ^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
         );
     }
 
@@ -4044,7 +4068,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_record_match_with_wildcard_fields() {
+    fn should_reject_record_match_with_wildcard_fields() {
         check(
             indoc! {"
                 record User {
@@ -4058,7 +4082,74 @@ mod tests {
                     User(name: _, age: _) => "matched",
                 }
             "#},
-            expect!["String"],
+            expect![[r#"
+                error: Useless match expression: does not branch or bind any variables
+                match user {
+                ^^^^^^^^^^^^
+                    User(name: _, age: _) => "matched",
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_record_match_with_nested_wildcard_fields() {
+        check(
+            indoc! {"
+                record Role {
+                    title: String,
+                    salary: Int,
+                }
+                record User {
+                    role: Role,
+                    created_at: Int,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    User(role: Role(title: _, salary: _), created_at: _) => "matched",
+                }
+            "#},
+            expect![[r#"
+                error: Useless match expression: does not branch or bind any variables
+                match user {
+                ^^^^^^^^^^^^
+                    User(role: Role(title: _, salary: _), created_at: _) => "matched",
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_record_match_with_nested_wildcard_fields_followed_by_wildcard() {
+        check(
+            indoc! {"
+                record Role {
+                    title: String,
+                    salary: Int,
+                }
+                record User {
+                    role: Role,
+                    created_at: Int,
+                }
+            "},
+            &[("user", "User")],
+            indoc! {r#"
+                match user {
+                    User(role: Role(title: _, salary: _), created_at: _) => 0,
+                    _ => 1,
+                }
+            "#},
+            expect![[r#"
+                error: Unreachable match arm for variant '_'
+                    _ => 1,
+                    ^
+            "#]],
         );
     }
 

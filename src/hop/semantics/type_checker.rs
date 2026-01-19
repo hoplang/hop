@@ -4121,6 +4121,83 @@ mod tests {
     }
 
     #[test]
+    fn should_reject_match_node_with_only_wildcard() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                enum Color { Red, Green, Blue }
+                <Main {c: Color}>
+                    <match {c}>
+                        <case {_}>any color</case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Useless match expression: does not branch or bind any variables
+                  --> main.hop (line 3, col 5)
+                2 | <Main {c: Color}>
+                3 |     <match {c}>
+                  |     ^^^^^^^^^^^
+                4 |         <case {_}>any color</case>
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                5 |     </match>
+                  | ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_node_with_nested_wildcard_record_followed_by_wildcard() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record Role { title: String, salary: Int }
+                record User { role: Role, created_at: Int }
+                <Main {user: User}>
+                    <match {user}>
+                        <case {User(role: Role(title: _, salary: _), created_at: _)}>matched</case>
+                        <case {_}>fallback</case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Unreachable match arm for variant '_'
+                  --> main.hop (line 6, col 16)
+                5 |         <case {User(role: Role(title: _, salary: _), created_at: _)}>matched</case>
+                6 |         <case {_}>fallback</case>
+                  |                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_reject_match_node_with_nested_wildcard_record() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                record Role { title: String, salary: Int }
+                record User { role: Role, created_at: Int }
+                <Main {user: User}>
+                    <match {user}>
+                        <case {User(role: Role(title: _, salary: _), created_at: _)}>matched</case>
+                    </match>
+                </Main>
+            "#},
+            expect![[r#"
+                error: Useless match expression: does not branch or bind any variables
+                  --> main.hop (line 4, col 5)
+                3 | <Main {user: User}>
+                4 |     <match {user}>
+                  |     ^^^^^^^^^^^^^^
+                5 |         <case {User(role: Role(title: _, salary: _), created_at: _)}>matched</case>
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                6 |     </match>
+                  | ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_accept_nested_match_nodes() {
         check(
             indoc! {r#"

@@ -3,6 +3,13 @@
 //!
 //! Adapted from <https://github.com/yorickpeterse/pattern-matching-in-rust/>.
 //! Thanks to Yorick Peterse for the original implementation.
+//!
+//! NOTE:
+//! The match compiler will always reject useless matching (i.e. when
+//! the match does not branch and does not bind any variable). This is
+//! necessary to not generate useless variable bindings (which is compile
+//! errors in some languages). Make sure that this invariant holds when
+//! introducing new match subjects.
 use std::collections::{HashMap, HashSet};
 
 use crate::document::{CheapString, DocumentRange, Ranged};
@@ -57,9 +64,9 @@ impl Body {
 pub struct Variable {
     pub name: String,
     pub typ: Type,
-    /// Whether this variable was bound via a wildcard pattern (`_`).
+    /// Whether this variable's pattern introduces no bindings.
     /// When true, the variable should not generate a binding in the output.
-    is_wildcard: bool,
+    is_free_from_bindings: bool,
 }
 
 impl Variable {
@@ -67,7 +74,7 @@ impl Variable {
         Self {
             name,
             typ,
-            is_wildcard: false,
+            is_free_from_bindings: false,
         }
     }
 }
@@ -203,6 +210,34 @@ struct VarInfo {
     args: Vec<(String, Option<String>)>,
 }
 
+/// Checks if a pattern introduces no bindings and requires no runtime discrimination.
+/// This is true for wildcards and for record patterns where all fields are free from bindings
+/// (since records have only one constructor).
+fn is_free_from_bindings(pattern: &ParsedMatchPattern, typ: &Type) -> bool {
+    match pattern {
+        ParsedMatchPattern::Wildcard { .. } => true,
+        ParsedMatchPattern::Binding { .. } => false,
+        ParsedMatchPattern::Constructor { fields, .. } => {
+            // Only records can be free from bindings since they have one constructor
+            if let Type::Record {
+                fields: type_fields,
+                ..
+            } = typ
+            {
+                fields.iter().all(|(field_name, _, field_pattern)| {
+                    type_fields
+                        .iter()
+                        .find(|(n, _)| n == field_name)
+                        .map(|(_, field_type)| is_free_from_bindings(field_pattern, field_type))
+                        .unwrap_or(false)
+                })
+            } else {
+                false
+            }
+        }
+    }
+}
+
 /// The `match` compiler itself.
 pub struct Compiler {
     /// A counter used to construct unused variable names.
@@ -321,7 +356,18 @@ impl Compiler {
         }
 
         // Tree is guaranteed to be Some if there are no missing patterns
-        Ok(tree.expect("tree should be Some when there are no missing patterns"))
+        let tree = tree.expect("tree should be Some when there are no missing patterns");
+
+        // Check for useless match (Success with no bindings)
+        if let Decision::Success(body) = &tree {
+            if body.bindings.is_empty() {
+                return Err(TypeError::MatchUseless {
+                    range: match_range.clone(),
+                });
+            }
+        }
+
+        Ok(tree)
     }
 
     fn compile_rows(&mut self, mut rows: Vec<Row>) -> Option<Decision> {
@@ -343,7 +389,9 @@ impl Compiler {
                     ));
                     false
                 }
-                ParsedMatchPattern::Constructor { .. } => true,
+                ParsedMatchPattern::Constructor { .. } => {
+                    !is_free_from_bindings(&col.pattern, &col.variable.typ)
+                }
             });
         }
 
@@ -459,9 +507,8 @@ impl Compiler {
                                     .position(|(name, _)| name == &field_name)
                                     .expect("field not found in record type");
                                 let var = &mut cases[idx].1[field_idx];
-                                // Mark variables as wildcards if the pattern is `_`
-                                if matches!(field_pattern, ParsedMatchPattern::Wildcard { .. }) {
-                                    var.is_wildcard = true;
+                                if is_free_from_bindings(&field_pattern, &var.typ) {
+                                    var.is_free_from_bindings = true;
                                 }
                                 cols.push(Column::new(var.clone(), field_pattern));
                             }
@@ -480,10 +527,8 @@ impl Compiler {
                                         .position(|(name, _)| name == &field_name)
                                         .expect("field not found in variant");
                                     let var = &mut cases[idx].1[field_idx];
-                                    // Mark variables as wildcards if the pattern is `_`
-                                    if matches!(field_pattern, ParsedMatchPattern::Wildcard { .. })
-                                    {
-                                        var.is_wildcard = true;
+                                    if is_free_from_bindings(&field_pattern, &var.typ) {
+                                        var.is_free_from_bindings = true;
                                     }
                                     cols.push(Column::new(var.clone(), field_pattern));
                                 }
@@ -492,9 +537,8 @@ impl Compiler {
                     } else {
                         // Positional args (Option Some, etc.)
                         for (var, pat) in cases[idx].1.iter_mut().zip(args.into_iter()) {
-                            // Mark variables as wildcards if the pattern is `_`
-                            if matches!(pat, ParsedMatchPattern::Wildcard { .. }) {
-                                var.is_wildcard = true;
+                            if is_free_from_bindings(&pat, &var.typ) {
+                                var.is_free_from_bindings = true;
                             }
                             cols.push(Column::new(var.clone(), pat));
                         }
@@ -592,7 +636,7 @@ impl Compiler {
                 Some(Decision::SwitchOption {
                     variable: branch_var,
                     some_case: Box::new(OptionSomeCase {
-                        bound_name: if some_var.is_wildcard {
+                        bound_name: if some_var.is_free_from_bindings {
                             None
                         } else {
                             Some(some_var.name)
@@ -629,7 +673,7 @@ impl Compiler {
                             .zip(vars)
                             .map(|((field_name, _), var)| FieldBinding {
                                 field_name: field_name.clone(),
-                                bound_name: if var.is_wildcard {
+                                bound_name: if var.is_free_from_bindings {
                                     None
                                 } else {
                                     Some(var.name)
@@ -657,13 +701,14 @@ impl Compiler {
             } => {
                 // Records have exactly one case
                 let (_, vars, body) = compiled_cases.into_iter().next().unwrap();
+
                 // Create FieldBindings with field names
                 let bindings = type_fields
                     .iter()
                     .zip(vars)
                     .map(|((field_name, _), var)| FieldBinding {
                         field_name: field_name.clone(),
-                        bound_name: if var.is_wildcard {
+                        bound_name: if var.is_free_from_bindings {
                             None
                         } else {
                             Some(var.name)
@@ -1166,7 +1211,13 @@ mod tests {
                 }
             "},
             expect![[r#"
-                branch 0
+                error: Useless match expression: does not branch or bind any variables
+                match x {
+                ^^^^^^^^^
+                    _ => 0,
+                ^^^^^^^^^^^
+                }
+                ^
             "#]],
         );
     }
@@ -1643,7 +1694,13 @@ mod tests {
                 }
             "},
             expect![[r#"
-                branch 0
+                error: Useless match expression: does not branch or bind any variables
+                match x {
+                ^^^^^^^^^
+                    _ => 0,
+                ^^^^^^^^^^^
+                }
+                ^
             "#]],
         );
     }
@@ -2385,7 +2442,13 @@ mod tests {
                 }
             "},
             expect![[r#"
-                branch 0
+                error: Useless match expression: does not branch or bind any variables
+                match x {
+                ^^^^^^^^^
+                    _ => 0,
+                ^^^^^^^^^^^
+                }
+                ^
             "#]],
         );
     }
@@ -2675,8 +2738,13 @@ mod tests {
                 }
             "},
             expect![[r#"
-                x is User(name: _, age: _)
-                  branch 0
+                error: Useless match expression: does not branch or bind any variables
+                match x {
+                ^^^^^^^^^
+                    User(name: _, age: _) => 0,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
             "#]],
         );
     }
@@ -2835,6 +2903,255 @@ mod tests {
                     branch 0
                 x is None
                   branch 1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn option_of_record_with_wildcard_fields() {
+        check(
+            Type::Option(Box::new(Type::Record {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("User").unwrap(),
+                fields: vec![
+                    (FieldName::new("name").unwrap(), Type::String),
+                    (FieldName::new("age").unwrap(), Type::Int),
+                ],
+            })),
+            indoc! {"
+                match x {
+                    Some(User(name: _, age: _)) => 0,
+                    None => 1,
+                }
+            "},
+            expect![[r#"
+                x is Some(_)
+                  branch 0
+                x is None
+                  branch 1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn option_of_nested_records_with_wildcard_fields() {
+        // Role is a nested record inside User
+        let role_type = Type::Record {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Role").unwrap(),
+            fields: vec![
+                (FieldName::new("title").unwrap(), Type::String),
+                (FieldName::new("salary").unwrap(), Type::Int),
+            ],
+        };
+        check(
+            Type::Option(Box::new(Type::Record {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("User").unwrap(),
+                fields: vec![
+                    (FieldName::new("role").unwrap(), role_type),
+                    (FieldName::new("created_at").unwrap(), Type::Int),
+                ],
+            })),
+            indoc! {"
+                match x {
+                    Some(User(role: Role(title: _, salary: _), created_at: _)) => 0,
+                    None => 1,
+                }
+            "},
+            expect![[r#"
+                x is Some(_)
+                  branch 0
+                x is None
+                  branch 1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn record_with_all_effectively_wildcard_fields() {
+        // All fields are effectively wildcards (one literal, one nested record)
+        let address_type = Type::Record {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Address").unwrap(),
+            fields: vec![
+                (FieldName::new("street").unwrap(), Type::String),
+                (FieldName::new("city").unwrap(), Type::String),
+            ],
+        };
+        check(
+            Type::Record {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("User").unwrap(),
+                fields: vec![
+                    (FieldName::new("name").unwrap(), Type::String),
+                    (FieldName::new("address").unwrap(), address_type),
+                ],
+            },
+            indoc! {"
+                match x {
+                    User(name: _, address: Address(street: _, city: _)) => 0,
+                }
+            "},
+            expect![[r#"
+                error: Useless match expression: does not branch or bind any variables
+                match x {
+                ^^^^^^^^^
+                    User(name: _, address: Address(street: _, city: _)) => 0,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                }
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn record_with_nested_wildcard_fields_followed_by_wildcard() {
+        // First arm has all wildcard fields (effectively a wildcard), second arm is unreachable
+        let role_type = Type::Record {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Role").unwrap(),
+            fields: vec![
+                (FieldName::new("title").unwrap(), Type::String),
+                (FieldName::new("salary").unwrap(), Type::Int),
+            ],
+        };
+        check(
+            Type::Record {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("User").unwrap(),
+                fields: vec![
+                    (FieldName::new("role").unwrap(), role_type),
+                    (FieldName::new("created_at").unwrap(), Type::Int),
+                ],
+            },
+            indoc! {"
+                match x {
+                    User(role: Role(title: _, salary: _), created_at: _) => 0,
+                    _ => 1,
+                }
+            "},
+            expect![[r#"
+                error: Unreachable match arm for variant '_'
+                    _ => 1,
+                    ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn record_with_binding_and_nested_wildcard_record() {
+        // User has a binding for `name` but `address` is an effectively-wildcard record
+        let address_type = Type::Record {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Address").unwrap(),
+            fields: vec![
+                (FieldName::new("street").unwrap(), Type::String),
+                (FieldName::new("city").unwrap(), Type::String),
+            ],
+        };
+        check(
+            Type::Record {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("User").unwrap(),
+                fields: vec![
+                    (FieldName::new("name").unwrap(), Type::String),
+                    (FieldName::new("address").unwrap(), address_type),
+                ],
+            },
+            indoc! {"
+                match x {
+                    User(name: n, address: Address(street: _, city: _)) => 0,
+                }
+            "},
+            expect![[r#"
+                x is User(name: v0, address: _)
+                  let n = v0
+                  branch 0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn enum_variant_with_binding_and_nested_wildcard_record() {
+        // Result::Ok has a binding for `value` but `metadata` is an effectively-wildcard record
+        let metadata_type = Type::Record {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Metadata").unwrap(),
+            fields: vec![
+                (FieldName::new("created").unwrap(), Type::Int),
+                (FieldName::new("updated").unwrap(), Type::Int),
+            ],
+        };
+        check(
+            Type::Enum {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Result").unwrap(),
+                variants: vec![
+                    (
+                        TypeName::new("Ok").unwrap(),
+                        vec![
+                            (FieldName::new("value").unwrap(), Type::String),
+                            (FieldName::new("metadata").unwrap(), metadata_type),
+                        ],
+                    ),
+                    (
+                        TypeName::new("Err").unwrap(),
+                        vec![(FieldName::new("message").unwrap(), Type::String)],
+                    ),
+                ],
+            },
+            indoc! {"
+                match x {
+                    Result::Ok(value: v, metadata: Metadata(created: _, updated: _)) => 0,
+                    Result::Err(message: _) => 1,
+                }
+            "},
+            expect![[r#"
+                x is Result::Ok(value: v0, metadata: _)
+                  let v = v0
+                  branch 0
+                x is Result::Err(message: _)
+                  branch 1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn three_level_nested_records_with_middle_binding() {
+        // Outer -> Middle (has binding) -> Inner (all wildcards)
+        let inner_type = Type::Record {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Inner").unwrap(),
+            fields: vec![
+                (FieldName::new("x").unwrap(), Type::Int),
+                (FieldName::new("y").unwrap(), Type::Int),
+            ],
+        };
+        let middle_type = Type::Record {
+            module: ModuleName::new("test").unwrap(),
+            name: TypeName::new("Middle").unwrap(),
+            fields: vec![
+                (FieldName::new("name").unwrap(), Type::String),
+                (FieldName::new("inner").unwrap(), inner_type),
+            ],
+        };
+        check(
+            Type::Record {
+                module: ModuleName::new("test").unwrap(),
+                name: TypeName::new("Outer").unwrap(),
+                fields: vec![(FieldName::new("middle").unwrap(), middle_type)],
+            },
+            indoc! {"
+                match x {
+                    Outer(middle: Middle(name: n, inner: Inner(x: _, y: _))) => 0,
+                }
+            "},
+            expect![[r#"
+                x is Outer(middle: v0)
+                  v0 is Middle(name: v1, inner: _)
+                    let n = v1
+                    branch 0
             "#]],
         );
     }

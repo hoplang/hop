@@ -198,6 +198,9 @@ pub enum TypeError {
     #[error("Match expression must have at least one arm")]
     MatchNoArms { range: DocumentRange },
 
+    #[error("Useless match expression: does not branch or bind any variables")]
+    MatchUseless { range: DocumentRange },
+
     #[error("Unused binding '{name}' in match arm")]
     MatchUnusedBinding { name: String, range: DocumentRange },
 
@@ -256,6 +259,7 @@ impl Ranged for TypeError {
             | TypeError::MatchUnreachableArm { range, .. }
             | TypeError::MatchPatternTypeMismatch { range, .. }
             | TypeError::MatchNoArms { range, .. }
+            | TypeError::MatchUseless { range, .. }
             | TypeError::MatchUnusedBinding { range, .. }
             | TypeError::VariableAlreadyDefined { range, .. }
             | TypeError::MacroArgumentTypeMismatch { range, .. }
