@@ -46,7 +46,7 @@ async fn create_default_tailwind_input() -> Result<PathBuf> {
     Ok(temp_input)
 }
 
-pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
+pub async fn execute(project_root: &ProjectRoot, skip_optimization: bool) -> Result<CompileResult> {
     let mut timer = timing::TimingCollector::new();
 
     // Load configuration
@@ -117,7 +117,10 @@ pub async fn execute(project_root: &ProjectRoot) -> Result<CompileResult> {
     let ir_module = orchestrate(
         program.get_typed_modules(),
         tailwind_css.as_deref(),
-        OrchestrateOptions::default(),
+        OrchestrateOptions {
+            skip_optimization,
+            ..Default::default()
+        },
     );
 
     // Generate code based on target language
@@ -180,7 +183,7 @@ mod tests {
         let project_root = ProjectRoot::from(&temp_dir).unwrap();
 
         // Execute the compile command
-        let result = execute(&project_root).await;
+        let result = execute(&project_root, false).await;
         assert!(
             result.is_ok(),
             "Compilation should succeed: {:?}",
@@ -242,7 +245,7 @@ mod tests {
         let project_root = ProjectRoot::from(&temp_dir).unwrap();
 
         // Execute the compile command
-        let result = execute(&project_root).await;
+        let result = execute(&project_root, false).await;
         assert!(
             result.is_ok(),
             "Compilation should succeed: {:?}",

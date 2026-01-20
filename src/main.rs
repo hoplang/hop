@@ -33,6 +33,9 @@ enum Commands {
         /// Path to project root
         #[arg(long)]
         projectdir: Option<String>,
+        /// Skip optimization passes
+        #[arg(long)]
+        no_optimize: bool,
     },
     /// Start development server for serving a hop project
     Dev {
@@ -85,7 +88,10 @@ async fn main() -> anyhow::Result<()> {
             );
             println!();
         }
-        Some(Commands::Compile { projectdir }) => {
+        Some(Commands::Compile {
+            projectdir,
+            no_optimize,
+        }) => {
             use std::time::Instant;
             let start_time = Instant::now();
 
@@ -94,7 +100,7 @@ async fn main() -> anyhow::Result<()> {
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
 
-            let mut result = cli::compile::execute(&root).await?;
+            let mut result = cli::compile::execute(&root, *no_optimize).await?;
             let elapsed = start_time.elapsed();
 
             tui::print_header("compiled", elapsed.as_millis());
@@ -181,7 +187,7 @@ async fn main() -> anyhow::Result<()> {
                 let commands = &resolved.server_commands;
 
                 // Step (2) - Compile project (generates both dev and prod code)
-                cli::compile::execute(root).await?;
+                cli::compile::execute(root, false).await?;
 
                 // Store the last command
                 let last_command = commands
