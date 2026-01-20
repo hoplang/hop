@@ -297,9 +297,9 @@ fn format_entrypoint_declaration<'a>(
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, entrypoint.range.start());
 
-    // Format parameters
+    // Format parameters (omit parentheses if no parameters)
     let params_doc = if entrypoint.params.is_empty() {
-        arena.text("()")
+        arena.nil()
     } else {
         let mut params_inner = arena.nil();
         for (i, param) in entrypoint.params.iter().enumerate() {

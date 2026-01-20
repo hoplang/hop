@@ -413,7 +413,7 @@ mod tests {
     fn option_match_returning_options() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {inner: Option[String] = Some("hello")}>
                     <let {
                       mapped: Option[String] = match inner {
@@ -495,7 +495,7 @@ mod tests {
     fn option_match_as_some_value() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {inner_opt: Option[String] = Some("inner")}>
                     <let {
                       outer: Option[String] = Some(
@@ -574,7 +574,7 @@ mod tests {
     fn bool_match_expr() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {flag: Bool = true}>
                     {match flag {true => "yes", false => "no"}}
                   </let>
@@ -624,7 +624,7 @@ mod tests {
     fn option_literal_inline_match_expr() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {opt1: Option[String] = Some("hi")}>
                     {match opt1 {Some(_) => "some", None => "none"}}
                   </let>
@@ -679,7 +679,7 @@ mod tests {
     fn nested_bool_match_expr() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {outer: Bool = true}>
                     <let {inner: Bool = false}>
                       {match outer {
@@ -754,7 +754,7 @@ mod tests {
                   Blue,
                 }
 
-                entrypoint Test() {
+                entrypoint Test {
                   <let {color: Color = Color::Green}>
                     <let {is_red: Bool = color == Color::Red}>
                       {match is_red {true => "eq", false => "not eq"}}
@@ -812,7 +812,7 @@ mod tests {
     fn int_to_float_simple() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {count: Int = 42}>
                     <let {result: Float = count.to_float() + 0.5}>
                       {result.to_string()}
@@ -861,7 +861,7 @@ mod tests {
     fn int_to_string_negative() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {num: Int = -123}>
                     {num.to_string()}
                   </let>
@@ -904,7 +904,7 @@ mod tests {
     fn float_to_int_negative() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {temp: Float = -2.9}>
                     {temp.to_int().to_string()}
                   </let>
@@ -947,7 +947,7 @@ mod tests {
     fn simple_html() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <h1>
                     Hello, World!
                   </h1>
@@ -989,7 +989,7 @@ mod tests {
     fn with_let_binding() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {name: String = "Alice"}>
                     Hello, {name}!
                   </let>
@@ -1032,7 +1032,7 @@ mod tests {
     fn conditional() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {show: Bool = true}>
                     <if {show}>
                       Visible
@@ -1083,7 +1083,7 @@ mod tests {
     fn for_loop() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <for {item in ["a", "b", "c"]}>
                     {item},
                   </for>
@@ -1128,7 +1128,7 @@ mod tests {
     fn for_loop_with_range() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <for {i in 1..=3}>
                     {i.to_string()},
                   </for>
@@ -1173,7 +1173,7 @@ mod tests {
     fn for_loop_with_range_zero_to_five() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <for {x in 0..=5}>
                     {x.to_string()}
                   </for>
@@ -1216,7 +1216,7 @@ mod tests {
     fn for_loop_with_range_nested() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <for {i in 1..=2}>
                     <for {j in 1..=2}>
                       ({i.to_string()},{j.to_string()})
@@ -1273,7 +1273,7 @@ mod tests {
     fn html_escaping() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {text: String = "<div>Hello & world</div>"}>
                     {text}
                   </let>
@@ -1314,7 +1314,7 @@ mod tests {
     fn let_binding() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {message: String = "Hello from let"}>
                     {message}
                   </let>
@@ -1355,7 +1355,7 @@ mod tests {
     fn string_concatenation() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {first: String = "Hello"}>
                     <let {second: String = " World"}>
                       {first + second}
@@ -1400,7 +1400,7 @@ mod tests {
     fn complex_nested_structure() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <for {item in ["A", "B"]}>
                     <let {prefix: String = "["}>
                       {prefix}{item}]
@@ -1451,7 +1451,7 @@ mod tests {
     fn string_concat_equality() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <if {"foo" + "bar" == "foobar"}>
                     equals
                   </if>
@@ -1492,7 +1492,7 @@ mod tests {
     fn less_than_comparison() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <if {3 < 5}>
                     3 &lt; 5
                   </if>
@@ -1544,7 +1544,7 @@ mod tests {
     fn less_than_float_comparison() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <if {1.5 < 2.5}>
                     1.5 &lt; 2.5
                   </if>
@@ -1602,7 +1602,7 @@ mod tests {
                   Blue,
                 }
 
-                entrypoint Test() {
+                entrypoint Test {
                   <let {color: Color = Color::Red}>
                     <if {color == Color::Red}>
                       equal
@@ -1663,7 +1663,7 @@ mod tests {
                   Blue,
                 }
 
-                entrypoint Test() {
+                entrypoint Test {
                   <let {color: Color = Color::Red}>
                     <match {color == Color::Green}>
                       <case {true}>
@@ -1739,7 +1739,7 @@ mod tests {
     fn bool_match_true() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {flag: Bool = true}>
                     <match {flag}>
                       <case {true}>
@@ -1803,7 +1803,7 @@ mod tests {
     fn bool_match_false() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {flag: Bool = false}>
                     <match {flag}>
                       <case {true}>
@@ -1872,7 +1872,7 @@ mod tests {
                   age: Int,
                 }
 
-                entrypoint Test() {
+                entrypoint Test {
                   <let {person: Person = Person(name: "Alice", age: 30)}>
                     {person.name}
                     <if {person.age == 30}>
@@ -1942,7 +1942,7 @@ mod tests {
                   address: Address,
                 }
 
-                entrypoint Test() {
+                entrypoint Test {
                   <let {
                     person: Person = Person(
                       name: "Alice",
@@ -2027,7 +2027,7 @@ mod tests {
                   status: Status,
                 }
 
-                entrypoint Test() {
+                entrypoint Test {
                   <let {
                     user: User = User(
                       name: "Alice",
@@ -2110,7 +2110,7 @@ mod tests {
     fn numeric_add() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {a: Int = 3}>
                     <let {b: Int = 7}>
                       <if {a + b == 10}>
@@ -2165,7 +2165,7 @@ mod tests {
     fn numeric_subtract() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {a: Int = 10}>
                     <let {b: Int = 3}>
                       <if {a - b == 7}>
@@ -2220,7 +2220,7 @@ mod tests {
     fn numeric_multiply() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {a: Int = 4}>
                     <let {b: Int = 5}>
                       <if {a * b == 20}>
@@ -2275,7 +2275,7 @@ mod tests {
     fn boolean_logical_and() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {a: Bool = true}>
                     <let {b: Bool = true}>
                       <if {a && b}>
@@ -2338,7 +2338,7 @@ mod tests {
     fn boolean_logical_or() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {a: Bool = false}>
                     <let {b: Bool = true}>
                       <if {a || b}>
@@ -2401,7 +2401,7 @@ mod tests {
     fn less_than_or_equal() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <if {3 <= 5}>
                     A
                   </if>
@@ -2462,7 +2462,7 @@ mod tests {
     fn option_literal() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {some_val: Option[String] = Some("hello")}>
                     <match {some_val}>
                       <case {Some(s)}>
@@ -2530,7 +2530,7 @@ mod tests {
     fn option_match_wildcard_pattern() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {opt: Option[String] = Some("hello")}>
                     <match {opt}>
                       <case {Some(_)}>
@@ -2594,7 +2594,7 @@ mod tests {
     fn option_match_nested_constant_folding() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {inner_opt: Option[String] = Some("inner")}>
                     <let {
                       outer: Option[String] = Some(
@@ -2673,7 +2673,7 @@ mod tests {
     fn option_array_for_loop() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <for {item in [Some("a"), None, Some("b")]}>
                     <match {item}>
                       <case {Some(s)}>
@@ -2759,7 +2759,7 @@ mod tests {
                   Blue,
                 }
 
-                entrypoint Test() {
+                entrypoint Test {
                   <let {color: Color = Color::Green}>
                     {match color {
                       Color::Red => "red",
@@ -2824,7 +2824,7 @@ mod tests {
                   Blue,
                 }
 
-                entrypoint Test() {
+                entrypoint Test {
                   <let {color: Color = Color::Blue}>
                     <match {color}>
                       <case {Color::Red}>
@@ -2912,7 +2912,7 @@ mod tests {
                   Failure(message: String),
                 }
 
-                entrypoint Test() {
+                entrypoint Test {
                   <let {result: Outcome = Outcome::Success(value: "hello")}>
                     <match {result}>
                       <case {Outcome::Success(value: v)}>
@@ -3001,7 +3001,7 @@ mod tests {
                   Failure(message: String),
                 }
 
-                entrypoint Test() {
+                entrypoint Test {
                   <let {
                     result: Outcome = Outcome::Failure(message: "something went wrong"),
                   }>
@@ -3092,7 +3092,7 @@ mod tests {
                   Lose(reason: String),
                 }
 
-                entrypoint Test() {
+                entrypoint Test {
                   <let {
                     resp: Response = Response::Win(code: "200", body: "OK"),
                   }>
@@ -3184,7 +3184,7 @@ mod tests {
     fn array_length_simple() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {items: Array[String] = ["a", "b", "c"]}>
                     {items.len().to_string()}
                   </let>
@@ -3227,7 +3227,7 @@ mod tests {
     fn array_length_empty() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {items: Array[String] = []}>
                     {items.len().to_string()}
                   </let>
@@ -3270,7 +3270,7 @@ mod tests {
     fn array_length_in_comparison() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {items: Array[String] = ["x", "y"]}>
                     <if {items.len() == 2}>
                       has two
@@ -3319,7 +3319,7 @@ mod tests {
     fn array_length_less_than() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {items: Array[String] = ["a"]}>
                     <if {items.len() < 5}>
                       less than 5
@@ -3368,7 +3368,7 @@ mod tests {
     fn array_length_int_array() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {numbers: Array[Int] = [1, 2, 3, 4, 5]}>
                     {numbers.len().to_string()}
                   </let>
@@ -3411,7 +3411,7 @@ mod tests {
     fn int_to_string_simple() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {count: Int = 42}>
                     {count.to_string()}
                   </let>
@@ -3454,7 +3454,7 @@ mod tests {
     fn int_to_string_zero() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {num: Int = 0}>
                     {num.to_string()}
                   </let>
@@ -3497,7 +3497,7 @@ mod tests {
     fn int_to_string_concat() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {count: Int = 5}>
                     {"Count: " + count.to_string()}
                   </let>
@@ -3540,7 +3540,7 @@ mod tests {
     fn float_to_int_simple() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {price: Float = 3.7}>
                     {price.to_int().to_string()}
                   </let>
@@ -3583,7 +3583,7 @@ mod tests {
     fn float_to_int_whole_number() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {num: Float = 5.0}>
                     {num.to_int().to_string()}
                   </let>
@@ -3626,7 +3626,7 @@ mod tests {
     fn float_to_string_simple() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {price: Float = 19.99}>
                     {price.to_string()}
                   </let>
@@ -3669,7 +3669,7 @@ mod tests {
     fn float_to_string_concat() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {price: Float = 9.99}>
                     {"$" + price.to_string()}
                   </let>
@@ -3712,7 +3712,7 @@ mod tests {
     fn for_loop_with_underscore_range() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <for {_ in 0..=2}>
                     x
                   </for>
@@ -3755,7 +3755,7 @@ mod tests {
     fn for_loop_with_underscore_array() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {items: Array[String] = ["a", "b", "c"]}>
                     <for {_ in items}>
                       *
@@ -3804,7 +3804,7 @@ mod tests {
     fn for_loop_with_underscore_nested() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <for {_ in 0..=1}>
                     <for {_ in 0..=2}>
                       .
@@ -3853,7 +3853,7 @@ mod tests {
     fn for_loop_with_underscore_mixed_with_named() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <for {i in 1..=2}>
                     <for {_ in 0..=1}>
                       {i.to_string()}
@@ -3902,7 +3902,7 @@ mod tests {
     fn method_call_on_float_literal() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   {3.14.to_string()}
                 }
             "#},
@@ -3939,7 +3939,7 @@ mod tests {
     fn method_call_on_array_literal() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   {[1, 2, 3].len().to_string()}
                 }
             "#},
@@ -3976,7 +3976,7 @@ mod tests {
     fn method_call_on_parenthesized_expression() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   {(1 + 2).to_string()}
                 }
             "#},
@@ -4013,7 +4013,7 @@ mod tests {
     fn int_literal_to_string() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   {42.to_string()}
                 }
             "#},
@@ -4050,7 +4050,7 @@ mod tests {
     fn negated_float_to_string() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   {(-3.14).to_string()}
                 }
             "#},
@@ -4087,7 +4087,7 @@ mod tests {
     fn nested_option_match() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {
                     nested: Option[Option[String]] = Some(Some("deep")),
                   }>
@@ -4174,7 +4174,7 @@ mod tests {
     fn option_wildcard_match_some_input() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {opt: Option[String] = Some("x")}>
                     <match {opt}>
                       <case {Some(_)}>
@@ -4238,7 +4238,7 @@ mod tests {
     fn option_wildcard_match_none_input() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {opt: Option[String] = None}>
                     <match {opt}>
                       <case {Some(_)}>
@@ -4302,7 +4302,7 @@ mod tests {
     fn option_wildcard_match_expr_some_input() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {opt: Option[String] = Some("x")}>
                     {match opt {Some(_) => "some", None => "none"}}
                   </let>
@@ -4346,7 +4346,7 @@ mod tests {
     fn option_wildcard_match_expr_none_input() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {opt: Option[String] = None}>
                     {match opt {Some(_) => "some", None => "none"}}
                   </let>
@@ -4391,7 +4391,7 @@ mod tests {
         // Test Some(Some(_)) pattern - inner value discarded
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {nested: Option[Option[String]] = Some(Some("x"))}>
                     <match {nested}>
                       <case {Some(Some(_))}>
@@ -4473,7 +4473,7 @@ mod tests {
         // Test Some(_) pattern on Option[Option[String]] - entire inner option discarded
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {nested: Option[Option[String]] = Some(Some("x"))}>
                     <match {nested}>
                       <case {Some(_)}>
@@ -4543,7 +4543,7 @@ mod tests {
                   Failure(message: String),
                 }
 
-                entrypoint Test() {
+                entrypoint Test {
                   <let {result: Outcome = Outcome::Success(value: "hello")}>
                     <match {result}>
                       <case {Outcome::Success(value: _)}>
@@ -4621,7 +4621,7 @@ mod tests {
                   Failure(message: String),
                 }
 
-                entrypoint Test() {
+                entrypoint Test {
                   <let {
                     result: Outcome = Outcome::Failure(message: "failed"),
                   }>
@@ -4701,7 +4701,7 @@ mod tests {
                   age: Int,
                 }
 
-                entrypoint Test() {
+                entrypoint Test {
                   <let {person: Person = Person(name: "Alice", age: 30)}>
                     <match {person}>
                       <case {Person(name: _, age: a)}>
@@ -4767,7 +4767,7 @@ mod tests {
         // Test Some(Some(Some(_))) pattern - triple nested with innermost wildcard
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {
                     deep: Option[Option[Option[String]]] = Some(
                       Some(Some("value"))
@@ -4880,7 +4880,7 @@ mod tests {
                   Failure(message: String),
                 }
 
-                entrypoint Test() {
+                entrypoint Test {
                   <let {
                     result: Outer = Outer::Success(value: Inner::Success(value: "deep")),
                   }>
@@ -4980,7 +4980,7 @@ mod tests {
         // Test bool match with one explicit case and wildcard - match b {true => "t", _ => "f"}
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {b: Bool = true}>
                     {match b {true => "t", _ => "f"}}
                   </let>
@@ -5022,7 +5022,7 @@ mod tests {
         // Test bool match with wildcard matching false
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {b: Bool = false}>
                     {match b {true => "t", _ => "f"}}
                   </let>
@@ -5063,7 +5063,7 @@ mod tests {
     fn nested_match_statements_with_literal_subjects() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <match {Some("outer")}>
                     <case {Some(x)}>
                       <match {Some("inner")}>
@@ -5162,7 +5162,7 @@ mod tests {
     fn nested_match_statements_with_variable_subjects() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {
                     outer: Option[Option[String]] = Some(Some("hello")),
                   }>
@@ -5259,7 +5259,7 @@ mod tests {
     fn classes_macro_merges_css_classes() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <div class={classes!("foo", "bar", "baz")}></div>
                 }
             "#},
@@ -5301,7 +5301,7 @@ mod tests {
     fn reserved_keyword_as_variable_name_typescript() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {delete: String = "removed"}>
                     {delete}
                   </let>
@@ -5342,7 +5342,7 @@ mod tests {
     fn reserved_keyword_as_variable_name_python() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {def: String = "definition"}>
                     {def}
                   </let>
@@ -5383,7 +5383,7 @@ mod tests {
     fn reserved_keyword_as_variable_name_go() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {range: String = "1-10"}>
                     {range}
                   </let>
@@ -5424,7 +5424,7 @@ mod tests {
     fn reserved_keyword_class_as_variable_name() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {class: String = "my-class"}>
                     <div class={class}></div>
                   </let>
@@ -5470,7 +5470,7 @@ mod tests {
     fn reserved_keyword_switch_as_variable_name() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {switch: String = "on"}>
                     <span>
                       {switch}
@@ -5515,7 +5515,7 @@ mod tests {
     fn unreserved_keyword_type_as_variable_name() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <let {type: String = "button"}>
                     <input type={type}>
                   </let>
@@ -5559,7 +5559,7 @@ mod tests {
     fn unreserved_keyword_for_as_attribute_name() {
         check(
             indoc! {r#"
-                entrypoint Test() {
+                entrypoint Test {
                   <label for="email">
                     Email
                   </label>

@@ -417,108 +417,116 @@ fn parse_entrypoint_declaration(
         }
     };
 
-    // Expect opening parenthesis for parameters
-    let Some(Ok((dop::Token::LeftParen, params_start))) =
-        dop::tokenizer::next_collecting_comments(iter, comments)
-    else {
-        errors.push(dop::ParseError::ExpectedTokenButGotEof {
-            expected: dop::Token::LeftParen,
-            range: name_range.clone(),
-        }.into());
-        return None;
-    };
-
-    // Parse parameters
-    let (params, params_range) = {
-        let mut params = Vec::new();
-        let mut params_end = params_start.clone();
-
-        loop {
-            // Check for closing paren
-            if let Some(Ok((dop::Token::RightParen, end_range))) = dop::tokenizer::peek(iter) {
-                params_end = end_range;
-                dop::tokenizer::next_collecting_comments(iter, comments);
-                break;
-            }
-
-            // Skip comma if present (between parameters)
-            if !params.is_empty() {
-                if let Some(Ok((dop::Token::Comma, _))) = dop::tokenizer::peek(iter) {
-                    dop::tokenizer::next_collecting_comments(iter, comments);
-                } else {
-                    // Missing comma or closing paren
-                    break;
-                }
-            }
-
-            // Check for trailing comma before closing paren
-            if let Some(Ok((dop::Token::RightParen, end_range))) = dop::tokenizer::peek(iter) {
-                params_end = end_range;
-                dop::tokenizer::next_collecting_comments(iter, comments);
-                break;
-            }
-
-            // Parse parameter: name: Type [= default]
-            let Some(Ok((dop::Token::Identifier(param_name), param_name_range))) =
+    // Parse parameters (parentheses are optional if no parameters)
+    let (params, params_range) =
+        if let Some(Ok((dop::Token::LeftParen, _))) = dop::tokenizer::peek_past_comments(iter) {
+            // Consume the opening parenthesis
+            let Some(Ok((dop::Token::LeftParen, params_start))) =
                 dop::tokenizer::next_collecting_comments(iter, comments)
             else {
-                break;
+                unreachable!("we just peeked a LeftParen");
             };
 
-            // Expect colon
-            match dop::tokenizer::next_collecting_comments(iter, comments) {
-                Some(Ok((dop::Token::Colon, _))) => {}
-                Some(Ok((token, range))) => {
-                    errors.push(dop::ParseError::ExpectedTokenButGot {
-                        expected: dop::Token::Colon,
-                        actual: token,
-                        range,
-                    }.into());
-                    break;
-                }
-                _ => {
-                    errors.push(dop::ParseError::ExpectedTokenButGotEof {
-                        expected: dop::Token::Colon,
-                        range: param_name_range.clone(),
-                    }.into());
-                    break;
-                }
-            }
+            let mut params = Vec::new();
+            let mut params_end = params_start.clone();
 
-            // Parse type
-            let param_type = match dop::parser::parse_type(iter, comments, &params_start) {
-                Ok(t) => t,
-                Err(e) => {
-                    errors.push(e.into());
+            loop {
+                // Check for closing paren
+                if let Some(Ok((dop::Token::RightParen, end_range))) = dop::tokenizer::peek(iter) {
+                    params_end = end_range;
+                    dop::tokenizer::next_collecting_comments(iter, comments);
                     break;
                 }
-            };
 
-            // Check for default value - use parse_primary which doesn't consume past the literal
-            let default_value = if let Some(Ok((dop::Token::Assign, _))) = dop::tokenizer::peek(iter) {
-                dop::tokenizer::next_collecting_comments(iter, comments);
-                match dop::parser::parse_primary(iter, comments, &params_start) {
-                    Ok(expr) => Some(expr),
-                    Err(e) => {
-                        errors.push(e.into());
-                        None
+                // Skip comma if present (between parameters)
+                if !params.is_empty() {
+                    if let Some(Ok((dop::Token::Comma, _))) = dop::tokenizer::peek(iter) {
+                        dop::tokenizer::next_collecting_comments(iter, comments);
+                    } else {
+                        // Missing comma or closing paren
+                        break;
                     }
                 }
-            } else {
-                None
-            };
 
-            let var_name = VarName::new(&param_name).expect("identifier should be valid var name");
-            params.push(parsed_ast::ParsedParameter {
-                var_name,
-                var_name_range: param_name_range,
-                var_type: param_type,
-                default_value,
-            });
-        }
+                // Check for trailing comma before closing paren
+                if let Some(Ok((dop::Token::RightParen, end_range))) = dop::tokenizer::peek(iter) {
+                    params_end = end_range;
+                    dop::tokenizer::next_collecting_comments(iter, comments);
+                    break;
+                }
 
-        (params, params_start.to(params_end))
-    };
+                // Parse parameter: name: Type [= default]
+                let Some(Ok((dop::Token::Identifier(param_name), param_name_range))) =
+                    dop::tokenizer::next_collecting_comments(iter, comments)
+                else {
+                    break;
+                };
+
+                // Expect colon
+                match dop::tokenizer::next_collecting_comments(iter, comments) {
+                    Some(Ok((dop::Token::Colon, _))) => {}
+                    Some(Ok((token, range))) => {
+                        errors.push(
+                            dop::ParseError::ExpectedTokenButGot {
+                                expected: dop::Token::Colon,
+                                actual: token,
+                                range,
+                            }
+                            .into(),
+                        );
+                        break;
+                    }
+                    _ => {
+                        errors.push(
+                            dop::ParseError::ExpectedTokenButGotEof {
+                                expected: dop::Token::Colon,
+                                range: param_name_range.clone(),
+                            }
+                            .into(),
+                        );
+                        break;
+                    }
+                }
+
+                // Parse type
+                let param_type = match dop::parser::parse_type(iter, comments, &params_start) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        errors.push(e.into());
+                        break;
+                    }
+                };
+
+                // Check for default value - use parse_primary which doesn't consume past the literal
+                let default_value =
+                    if let Some(Ok((dop::Token::Assign, _))) = dop::tokenizer::peek(iter) {
+                        dop::tokenizer::next_collecting_comments(iter, comments);
+                        match dop::parser::parse_primary(iter, comments, &params_start) {
+                            Ok(expr) => Some(expr),
+                            Err(e) => {
+                                errors.push(e.into());
+                                None
+                            }
+                        }
+                    } else {
+                        None
+                    };
+
+                let var_name =
+                    VarName::new(&param_name).expect("identifier should be valid var name");
+                params.push(parsed_ast::ParsedParameter {
+                    var_name,
+                    var_name_range: param_name_range,
+                    var_type: param_type,
+                    default_value,
+                });
+            }
+
+            (params, params_start.to(params_end))
+        } else {
+            // No parentheses - treat as empty parameter list
+            (Vec::new(), name_range.clone())
+        };
 
     // Expect opening brace for body
     let Some(Ok((dop::Token::LeftBrace, body_start))) =
@@ -2872,7 +2880,25 @@ mod tests {
                 }
             "},
             expect![[r#"
-                entrypoint Index() {
+                entrypoint Index {
+                  <div>
+                    Hello
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_entrypoint_without_parentheses() {
+        check(
+            indoc! {"
+                entrypoint Index {
+                    <div>Hello</div>
+                }
+            "},
+            expect![[r#"
+                entrypoint Index {
                   <div>
                     Hello
                   </div>
@@ -2938,13 +2964,13 @@ mod tests {
                 }
             "},
             expect![[r#"
-                entrypoint Index() {
+                entrypoint Index {
                   <div>
                     Index
                   </div>
                 }
 
-                entrypoint About() {
+                entrypoint About {
                   <div>
                     About
                   </div>
@@ -3041,7 +3067,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                entrypoint Index() {}
+                entrypoint Index {}
             "#]],
         );
     }
@@ -3101,7 +3127,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint Index() {
+                entrypoint Index {
                   <let {name: String = "World"}>
                     <div>
                       Hello {name}
@@ -3125,7 +3151,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                entrypoint Index() {
+                entrypoint Index {
                   <div>
                     <br>
                     <input type="text">
@@ -3300,7 +3326,7 @@ mod tests {
                   </h1>
                 </Header>
 
-                entrypoint Index() {
+                entrypoint Index {
                   <div>
                     Index
                   </div>
