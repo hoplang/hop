@@ -1246,13 +1246,13 @@ mod tests {
             Type::Option(Box::new(Type::String)),
             indoc! {"
                 match x {
-                    Some(val) => 0,
+                    Some(item) => 0,
                     None => 1,
                 }
             "},
             expect![[r#"
                 x is Some(v_0)
-                  let val = v_0
+                  let item = v_0
                   branch 0
                 x is None
                   branch 1
@@ -1266,15 +1266,15 @@ mod tests {
             Type::Option(Box::new(Type::String)),
             indoc! {"
                 match x {
-                    Some(val) => 0,
+                    Some(item) => 0,
                 }
             "},
             expect![[r#"
                 error: Match expression is missing arms for: None
                 match x {
                 ^^^^^^^^^
-                    Some(val) => 0,
-                ^^^^^^^^^^^^^^^^^^^
+                    Some(item) => 0,
+                ^^^^^^^^^^^^^^^^^^^^
                 }
                 ^
             "#]],
@@ -1308,7 +1308,7 @@ mod tests {
             Type::Option(Box::new(Type::Option(Box::new(Type::String)))),
             indoc! {"
                 match x {
-                    Some(Some(val)) => 0,
+                    Some(Some(item)) => 0,
                     Some(None) => 1,
                     None => 2,
                 }
@@ -1316,7 +1316,7 @@ mod tests {
             expect![[r#"
                 x is Some(v_0)
                   v_0 is Some(v_1)
-                    let val = v_1
+                    let item = v_1
                     branch 0
                   v_0 is None
                     branch 1
@@ -1452,29 +1452,29 @@ mod tests {
         check(
             Type::Enum {
                 module: ModuleName::new("test").unwrap(),
-                name: TypeName::new("Result").unwrap(),
+                name: TypeName::new("Outcome").unwrap(),
                 variants: vec![
                     (
-                        TypeName::new("Ok").unwrap(),
+                        TypeName::new("Success").unwrap(),
                         vec![(FieldName::new("value").unwrap(), Type::Int)],
                     ),
                     (
-                        TypeName::new("Err").unwrap(),
+                        TypeName::new("Failure").unwrap(),
                         vec![(FieldName::new("message").unwrap(), Type::String)],
                     ),
                 ],
             },
             indoc! {"
                 match x {
-                    Result::Ok(value: v) => 0,
-                    Result::Err(message: m) => 1,
+                    Outcome::Success(value: v) => 0,
+                    Outcome::Failure(message: m) => 1,
                 }
             "},
             expect![[r#"
-                x is Result::Ok(value: v_0)
+                x is Outcome::Success(value: v_0)
                   let v = v_0
                   branch 0
-                x is Result::Err(message: v_1)
+                x is Outcome::Failure(message: v_1)
                   let m = v_1
                   branch 1
             "#]],
@@ -1516,28 +1516,28 @@ mod tests {
         check(
             Type::Enum {
                 module: ModuleName::new("test").unwrap(),
-                name: TypeName::new("Result").unwrap(),
+                name: TypeName::new("Outcome").unwrap(),
                 variants: vec![
                     (
-                        TypeName::new("Ok").unwrap(),
+                        TypeName::new("Success").unwrap(),
                         vec![(FieldName::new("value").unwrap(), Type::Int)],
                     ),
                     (
-                        TypeName::new("Err").unwrap(),
+                        TypeName::new("Failure").unwrap(),
                         vec![(FieldName::new("message").unwrap(), Type::String)],
                     ),
                 ],
             },
             indoc! {"
                 match x {
-                    Result::Ok(value: _) => 0,
-                    Result::Err(message: _) => 1,
+                    Outcome::Success(value: _) => 0,
+                    Outcome::Failure(message: _) => 1,
                 }
             "},
             expect![[r#"
-                x is Result::Ok(value: _)
+                x is Outcome::Success(value: _)
                   branch 0
-                x is Result::Err(message: _)
+                x is Outcome::Failure(message: _)
                   branch 1
             "#]],
         );
@@ -1775,29 +1775,29 @@ mod tests {
         check(
             Type::Enum {
                 module: ModuleName::new("test").unwrap(),
-                name: TypeName::new("Result").unwrap(),
+                name: TypeName::new("Outcome").unwrap(),
                 variants: vec![
                     (
-                        TypeName::new("Ok").unwrap(),
+                        TypeName::new("Success").unwrap(),
                         vec![(FieldName::new("value").unwrap(), Type::Int)],
                     ),
                     (
-                        TypeName::new("Err").unwrap(),
+                        TypeName::new("Failure").unwrap(),
                         vec![(FieldName::new("message").unwrap(), Type::String)],
                     ),
                 ],
             },
             indoc! {"
                 match x {
-                    Result::Ok(value: v) => 0,
+                    Outcome::Success(value: v) => 0,
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Result::Err(message: _)
+                error: Match expression is missing arms for: Outcome::Failure(message: _)
                 match x {
                 ^^^^^^^^^
-                    Result::Ok(value: v) => 0,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    Outcome::Success(value: v) => 0,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 }
                 ^
             "#]],
@@ -1844,29 +1844,29 @@ mod tests {
         check(
             Type::Enum {
                 module: ModuleName::new("test").unwrap(),
-                name: TypeName::new("Result").unwrap(),
+                name: TypeName::new("Outcome").unwrap(),
                 variants: vec![
                     (
-                        TypeName::new("Ok").unwrap(),
+                        TypeName::new("Success").unwrap(),
                         vec![(FieldName::new("value").unwrap(), Type::Int)],
                     ),
                     (
-                        TypeName::new("Err").unwrap(),
+                        TypeName::new("Failure").unwrap(),
                         vec![(FieldName::new("message").unwrap(), Type::String)],
                     ),
                 ],
             },
             indoc! {"
                 match x {
-                    Result::Ok(value: v) => 0,
-                    Result::Ok(value: w) => 1,
-                    Result::Err(message: _) => 2,
+                    Outcome::Success(value: v) => 0,
+                    Outcome::Success(value: w) => 1,
+                    Outcome::Failure(message: _) => 2,
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for variant 'Result::Ok(value: w)'
-                    Result::Ok(value: w) => 1,
-                    ^^^^^^^^^^^^^^^^^^^^
+                error: Unreachable match arm for variant 'Outcome::Success(value: w)'
+                    Outcome::Success(value: w) => 1,
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -1876,14 +1876,14 @@ mod tests {
         check(
             Type::Enum {
                 module: ModuleName::new("test").unwrap(),
-                name: TypeName::new("Result").unwrap(),
+                name: TypeName::new("Outcome").unwrap(),
                 variants: vec![
                     (
-                        TypeName::new("Ok").unwrap(),
+                        TypeName::new("Success").unwrap(),
                         vec![(FieldName::new("value").unwrap(), Type::Int)],
                     ),
                     (
-                        TypeName::new("Err").unwrap(),
+                        TypeName::new("Failure").unwrap(),
                         vec![(FieldName::new("message").unwrap(), Type::String)],
                     ),
                 ],
@@ -1891,13 +1891,13 @@ mod tests {
             indoc! {"
                 match x {
                     _ => 0,
-                    Result::Ok(value: v) => 1,
+                    Outcome::Success(value: v) => 1,
                 }
             "},
             expect![[r#"
-                error: Unreachable match arm for variant 'Result::Ok(value: v)'
-                    Result::Ok(value: v) => 1,
-                    ^^^^^^^^^^^^^^^^^^^^
+                error: Unreachable match arm for variant 'Outcome::Success(value: v)'
+                    Outcome::Success(value: v) => 1,
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -1907,28 +1907,28 @@ mod tests {
         check(
             Type::Enum {
                 module: ModuleName::new("test").unwrap(),
-                name: TypeName::new("Result").unwrap(),
+                name: TypeName::new("Outcome").unwrap(),
                 variants: vec![
                     (
-                        TypeName::new("Ok").unwrap(),
+                        TypeName::new("Success").unwrap(),
                         vec![(FieldName::new("value").unwrap(), Type::Int)],
                     ),
                     (
-                        TypeName::new("Err").unwrap(),
+                        TypeName::new("Failure").unwrap(),
                         vec![(FieldName::new("message").unwrap(), Type::String)],
                     ),
                 ],
             },
             indoc! {"
                 match x {
-                    Result::Ok(unknown: v) => 0,
-                    Result::Err(message: _) => 1,
+                    Outcome::Success(unknown: v) => 0,
+                    Outcome::Failure(message: _) => 1,
                 }
             "},
             expect![[r#"
-                error: Unknown field 'unknown' in enum variant 'Result::Ok'
-                    Result::Ok(unknown: v) => 0,
-                               ^^^^^^^
+                error: Unknown field 'unknown' in enum variant 'Outcome::Success'
+                    Outcome::Success(unknown: v) => 0,
+                                     ^^^^^^^
             "#]],
         );
     }
@@ -2166,18 +2166,18 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("Flag").unwrap(),
                 variants: vec![(
-                    TypeName::new("Set").unwrap(),
+                    TypeName::new("Active").unwrap(),
                     vec![(FieldName::new("enabled").unwrap(), Type::Bool)],
                 )],
             },
             indoc! {"
                 match x {
-                    Flag::Set(enabled: true) => 0,
-                    Flag::Set(enabled: false) => 1,
+                    Flag::Active(enabled: true) => 0,
+                    Flag::Active(enabled: false) => 1,
                 }
             "},
             expect![[r#"
-                x is Flag::Set(enabled: v_0)
+                x is Flag::Active(enabled: v_0)
                   v_0 is false
                     branch 1
                   v_0 is true
@@ -2193,21 +2193,21 @@ mod tests {
                 module: ModuleName::new("test").unwrap(),
                 name: TypeName::new("Flag").unwrap(),
                 variants: vec![(
-                    TypeName::new("Set").unwrap(),
+                    TypeName::new("Active").unwrap(),
                     vec![(FieldName::new("enabled").unwrap(), Type::Bool)],
                 )],
             },
             indoc! {"
                 match x {
-                    Flag::Set(enabled: true) => 0,
+                    Flag::Active(enabled: true) => 0,
                 }
             "},
             expect![[r#"
-                error: Match expression is missing arms for: Flag::Set(enabled: false)
+                error: Match expression is missing arms for: Flag::Active(enabled: false)
                 match x {
                 ^^^^^^^^^
-                    Flag::Set(enabled: true) => 0,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    Flag::Active(enabled: true) => 0,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 }
                 ^
             "#]],
@@ -3074,7 +3074,7 @@ mod tests {
 
     #[test]
     fn enum_variant_with_binding_and_nested_wildcard_record() {
-        // Result::Ok has a binding for `value` but `metadata` is an effectively-wildcard record
+        // Outcome::Success has a binding for `value` but `metadata` is an effectively-wildcard record
         let metadata_type = Type::Record {
             module: ModuleName::new("test").unwrap(),
             name: TypeName::new("Metadata").unwrap(),
@@ -3086,32 +3086,32 @@ mod tests {
         check(
             Type::Enum {
                 module: ModuleName::new("test").unwrap(),
-                name: TypeName::new("Result").unwrap(),
+                name: TypeName::new("Outcome").unwrap(),
                 variants: vec![
                     (
-                        TypeName::new("Ok").unwrap(),
+                        TypeName::new("Success").unwrap(),
                         vec![
                             (FieldName::new("value").unwrap(), Type::String),
                             (FieldName::new("metadata").unwrap(), metadata_type),
                         ],
                     ),
                     (
-                        TypeName::new("Err").unwrap(),
+                        TypeName::new("Failure").unwrap(),
                         vec![(FieldName::new("message").unwrap(), Type::String)],
                     ),
                 ],
             },
             indoc! {"
                 match x {
-                    Result::Ok(value: v, metadata: Metadata(created: _, updated: _)) => 0,
-                    Result::Err(message: _) => 1,
+                    Outcome::Success(value: v, metadata: Metadata(created: _, updated: _)) => 0,
+                    Outcome::Failure(message: _) => 1,
                 }
             "},
             expect![[r#"
-                x is Result::Ok(value: v_0, metadata: _)
+                x is Outcome::Success(value: v_0, metadata: _)
                   let v = v_0
                   branch 0
-                x is Result::Err(message: _)
+                x is Outcome::Failure(message: _)
                   branch 1
             "#]],
         );

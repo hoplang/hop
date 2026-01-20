@@ -1548,6 +1548,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn should_reject_parameters_when_name_is_reserved_keyword() {
+        check_parse_parameters(
+            "let: String",
+            expect![[r#"
+                error: Expected variable name but got let
+                let: String
+                ^^^
+            "#]],
+        );
+    }
+
     ///////////////////////////////////////////////////////////////////////////
     // COMMENTS                                                              //
     ///////////////////////////////////////////////////////////////////////////
@@ -2918,13 +2930,13 @@ mod tests {
     #[test]
     fn should_accept_enum_variant_with_single_field() {
         check_parse_declarations(
-            "enum Result { Ok(value: Int), Err(message: String) }",
+            "enum Outcome { Success(value: Int), Failure(message: String) }",
             expect![[r#"
                 Enum {
-                  name: Result,
+                  name: Outcome,
                   variants: {
-                    Ok(value: Int),
-                    Err(message: String),
+                    Success(value: Int),
+                    Failure(message: String),
                   },
                 }
             "#]],
@@ -2966,12 +2978,12 @@ mod tests {
     #[test]
     fn should_accept_enum_variant_with_trailing_comma_in_fields() {
         check_parse_declarations(
-            "enum Result { Ok(value: Int,) }",
+            "enum Outcome { Success(value: Int,) }",
             expect![[r#"
                 Enum {
-                  name: Result,
+                  name: Outcome,
                   variants: {
-                    Ok(value: Int),
+                    Success(value: Int),
                   },
                 }
             "#]],
@@ -2981,11 +2993,11 @@ mod tests {
     #[test]
     fn should_reject_enum_variant_with_duplicate_field() {
         check_parse_declarations(
-            "enum Result { Ok(value: Int, value: String) }",
+            "enum Outcome { Success(value: Int, value: String) }",
             expect![[r#"
                 error: Duplicate field 'value'
-                1 | enum Result { Ok(value: Int, value: String) }
-                  |                              ^^^^^
+                1 | enum Outcome { Success(value: Int, value: String) }
+                  |                                    ^^^^^
             "#]],
         );
     }
@@ -3008,12 +3020,12 @@ mod tests {
     #[test]
     fn should_accept_enum_variant_with_complex_field_types() {
         check_parse_declarations(
-            "enum Container { Box(items: Array[String], count: Option[Int]) }",
+            "enum Container { Wrapper(items: Array[String], count: Option[Int]) }",
             expect![[r#"
                 Enum {
                   name: Container,
                   variants: {
-                    Box(items: Array[String], count: Option[Int]),
+                    Wrapper(items: Array[String], count: Option[Int]),
                   },
                 }
             "#]],
@@ -3081,9 +3093,9 @@ mod tests {
     #[test]
     fn should_accept_enum_literal_with_single_field() {
         check_parse_expr(
-            "Result::Ok(value: 42)",
+            "Outcome::Success(value: 42)",
             expect![[r#"
-                Result::Ok(value: 42)
+                Outcome::Success(value: 42)
             "#]],
         );
     }
@@ -3101,9 +3113,9 @@ mod tests {
     #[test]
     fn should_accept_enum_literal_with_string_field() {
         check_parse_expr(
-            r#"Result::Err(message: "something went wrong")"#,
+            r#"Outcome::Failure(message: "something went wrong")"#,
             expect![[r#"
-                Result::Err(message: "something went wrong")
+                Outcome::Failure(message: "something went wrong")
             "#]],
         );
     }
@@ -3111,9 +3123,9 @@ mod tests {
     #[test]
     fn should_accept_enum_literal_with_nested_expression() {
         check_parse_expr(
-            r#"Result::Ok(value: x + 1)"#,
+            r#"Outcome::Success(value: x + 1)"#,
             expect![[r#"
-                Result::Ok(value: x + 1)
+                Outcome::Success(value: x + 1)
             "#]],
         );
     }
@@ -3121,9 +3133,9 @@ mod tests {
     #[test]
     fn should_accept_enum_literal_with_trailing_comma() {
         check_parse_expr(
-            "Result::Ok(value: 42,)",
+            "Outcome::Success(value: 42,)",
             expect![[r#"
-                Result::Ok(value: 42)
+                Outcome::Success(value: 42)
             "#]],
         );
     }
@@ -3336,11 +3348,11 @@ mod tests {
     #[test]
     fn should_accept_match_with_enum_field_pattern() {
         check_parse_expr(
-            "match result { Result::Ok(value: v) => v, Result::Err(message: m) => m }",
+            "match result { Outcome::Success(value: v) => v, Outcome::Failure(message: m) => m }",
             expect![[r#"
                 match result {
-                  Result::Ok(value: v) => v,
-                  Result::Err(message: m) => m,
+                  Outcome::Success(value: v) => v,
+                  Outcome::Failure(message: m) => m,
                 }
             "#]],
         );
@@ -3372,9 +3384,9 @@ mod tests {
     #[test]
     fn should_accept_match_with_nested_enum_field_pattern() {
         check_parse_expr(
-            "match result { Result::Ok(data: Some(x)) => x, _ => 0 }",
+            "match result { Outcome::Success(data: Some(x)) => x, _ => 0 }",
             expect![[r#"
-                match result {Result::Ok(data: Some(x)) => x, _ => 0}
+                match result {Outcome::Success(data: Some(x)) => x, _ => 0}
             "#]],
         );
     }
@@ -3382,11 +3394,11 @@ mod tests {
     #[test]
     fn should_accept_match_with_wildcard_field_pattern() {
         check_parse_expr(
-            "match result { Result::Ok(value: _) => 1, Result::Err(message: _) => 0 }",
+            "match result { Outcome::Success(value: _) => 1, Outcome::Failure(message: _) => 0 }",
             expect![[r#"
                 match result {
-                  Result::Ok(value: _) => 1,
-                  Result::Err(message: _) => 0,
+                  Outcome::Success(value: _) => 1,
+                  Outcome::Failure(message: _) => 0,
                 }
             "#]],
         );

@@ -2384,30 +2384,30 @@ mod tests {
     fn should_parse_match_with_enum_variant_fields() {
         check(
             indoc! {r#"
-                enum Result { Ok(value: Int), Err(message: String) }
-                <Main {r: Result}>
+                enum Outcome { Success(value: Int), Failure(message: String) }
+                <Main {r: Outcome}>
                     <match {r}>
-                        <case {Result::Ok(value: v)}>
+                        <case {Outcome::Success(value: v)}>
                             Success: {v}
                         </case>
-                        <case {Result::Err(message: m)}>
+                        <case {Outcome::Failure(message: m)}>
                             Error: {m}
                         </case>
                     </match>
                 </Main>
             "#},
             expect![[r#"
-                enum Result {
-                  Ok(value: Int),
-                  Err(message: String),
+                enum Outcome {
+                  Success(value: Int),
+                  Failure(message: String),
                 }
 
-                <Main {r: Result}>
+                <Main {r: Outcome}>
                   <match {r}>
-                    <case {Result::Ok(value: v)}>
+                    <case {Outcome::Success(value: v)}>
                       Success: {v}
                     </case>
-                    <case {Result::Err(message: m)}>
+                    <case {Outcome::Failure(message: m)}>
                       Error: {m}
                     </case>
                   </match>

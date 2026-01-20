@@ -503,8 +503,8 @@ mod tests {
                       ),
                     }>
                       <match {outer}>
-                        <case {Some(val)}>
-                          {val}
+                        <case {Some(s)}>
+                          {s}
                         </case>
                         <case {None}>
                           none
@@ -525,8 +525,8 @@ mod tests {
                     }) in {
                       match outer {
                         Some(v_1) => {
-                          let val = v_1 in {
-                            write_escaped(val)
+                          let s = v_1 in {
+                            write_escaped(s)
                           }
                         }
                         None => {
@@ -541,8 +541,8 @@ mod tests {
                   let outer = Option[String]::Some("inner") in {
                     match outer {
                       Some(v_1) => {
-                        let val = v_1 in {
-                          write_escaped(val)
+                        let s = v_1 in {
+                          write_escaped(s)
                         }
                       }
                       None => {
@@ -2465,8 +2465,8 @@ mod tests {
                 entrypoint Test() {
                   <let {some_val: Option[String] = Some("hello")}>
                     <match {some_val}>
-                      <case {Some(val)}>
-                        {val}
+                      <case {Some(s)}>
+                        {s}
                       </case>
                       <case {None}>
                         none
@@ -2482,8 +2482,8 @@ mod tests {
                   let some_val = Option[String]::Some("hello") in {
                     match some_val {
                       Some(v_0) => {
-                        let val = v_0 in {
-                          write_escaped(val)
+                        let s = v_0 in {
+                          write_escaped(s)
                         }
                       }
                       None => {
@@ -2497,8 +2497,8 @@ mod tests {
                   let some_val = Option[String]::Some("hello") in {
                     match some_val {
                       Some(v_0) => {
-                        let val = v_0 in {
-                          write_escaped(val)
+                        let s = v_0 in {
+                          write_escaped(s)
                         }
                       }
                       None => {
@@ -2602,8 +2602,8 @@ mod tests {
                       ),
                     }>
                       <match {outer}>
-                        <case {Some(val)}>
-                          {val}
+                        <case {Some(s)}>
+                          {s}
                         </case>
                         <case {None}>
                           none
@@ -2624,8 +2624,8 @@ mod tests {
                     }) in {
                       match outer {
                         Some(v_1) => {
-                          let val = v_1 in {
-                            write_escaped(val)
+                          let s = v_1 in {
+                            write_escaped(s)
                           }
                         }
                         None => {
@@ -2640,8 +2640,8 @@ mod tests {
                   let outer = Option[String]::Some("inner") in {
                     match outer {
                       Some(v_1) => {
-                        let val = v_1 in {
-                          write_escaped(val)
+                        let s = v_1 in {
+                          write_escaped(s)
                         }
                       }
                       None => {
@@ -2676,8 +2676,8 @@ mod tests {
                 entrypoint Test() {
                   <for {item in [Some("a"), None, Some("b")]}>
                     <match {item}>
-                      <case {Some(val)}>
-                        [{val}]
+                      <case {Some(s)}>
+                        [{s}]
                       </case>
                       <case {None}>
                         [_]
@@ -2697,9 +2697,9 @@ mod tests {
                   ] {
                     match item {
                       Some(v_0) => {
-                        let val = v_0 in {
+                        let s = v_0 in {
                           write("[")
-                          write_escaped(val)
+                          write_escaped(s)
                           write("]")
                         }
                       }
@@ -2718,9 +2718,9 @@ mod tests {
                   ] {
                     match item {
                       Some(v_0) => {
-                        let val = v_0 in {
+                        let s = v_0 in {
                           write("[")
-                          write_escaped(val)
+                          write_escaped(s)
                           write("]")
                         }
                       }
@@ -2907,18 +2907,18 @@ mod tests {
     fn enum_match_with_field_bindings() {
         check(
             indoc! {r#"
-                enum Result {
-                  Ok(value: String),
-                  Err(message: String),
+                enum Outcome {
+                  Success(value: String),
+                  Failure(message: String),
                 }
 
                 entrypoint Test() {
-                  <let {result: Result = Result::Ok(value: "hello")}>
+                  <let {result: Outcome = Outcome::Success(value: "hello")}>
                     <match {result}>
-                      <case {Result::Ok(value: v)}>
+                      <case {Outcome::Success(value: v)}>
                         Ok:{v}
                       </case>
-                      <case {Result::Err(message: m)}>
+                      <case {Outcome::Failure(message: m)}>
                         Err:{m}
                       </case>
                     </match>
@@ -2928,20 +2928,20 @@ mod tests {
             "Ok:hello",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Result {
-                  Ok(value: String),
-                  Err(message: String),
+                enum Outcome {
+                  Success(value: String),
+                  Failure(message: String),
                 }
                 Test() {
-                  let result = Result::Ok(value: "hello") in {
+                  let result = Outcome::Success(value: "hello") in {
                     match result {
-                      Result::Ok(value: v_0) => {
+                      Outcome::Success(value: v_0) => {
                         let v = v_0 in {
                           write("Ok:")
                           write_escaped(v)
                         }
                       }
-                      Result::Err(message: v_1) => {
+                      Outcome::Failure(message: v_1) => {
                         let m = v_1 in {
                           write("Err:")
                           write_escaped(m)
@@ -2951,20 +2951,20 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Result {
-                  Ok(value: String),
-                  Err(message: String),
+                enum Outcome {
+                  Success(value: String),
+                  Failure(message: String),
                 }
                 Test() {
-                  let result = Result::Ok(value: "hello") in {
+                  let result = Outcome::Success(value: "hello") in {
                     match result {
-                      Result::Ok(value: v_0) => {
+                      Outcome::Success(value: v_0) => {
                         let v = v_0 in {
                           write("Ok:")
                           write_escaped(v)
                         }
                       }
-                      Result::Err(message: v_1) => {
+                      Outcome::Failure(message: v_1) => {
                         let m = v_1 in {
                           write("Err:")
                           write_escaped(m)
@@ -2996,20 +2996,20 @@ mod tests {
     fn enum_match_err_variant_with_bindings() {
         check(
             indoc! {r#"
-                enum Result {
-                  Ok(value: String),
-                  Err(message: String),
+                enum Outcome {
+                  Success(value: String),
+                  Failure(message: String),
                 }
 
                 entrypoint Test() {
                   <let {
-                    result: Result = Result::Err(message: "something went wrong"),
+                    result: Outcome = Outcome::Failure(message: "something went wrong"),
                   }>
                     <match {result}>
-                      <case {Result::Ok(value: v)}>
+                      <case {Outcome::Success(value: v)}>
                         Ok:{v}
                       </case>
-                      <case {Result::Err(message: m)}>
+                      <case {Outcome::Failure(message: m)}>
                         Err:{m}
                       </case>
                     </match>
@@ -3019,20 +3019,20 @@ mod tests {
             "Err:something went wrong",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Result {
-                  Ok(value: String),
-                  Err(message: String),
+                enum Outcome {
+                  Success(value: String),
+                  Failure(message: String),
                 }
                 Test() {
-                  let result = Result::Err(message: "something went wrong") in {
+                  let result = Outcome::Failure(message: "something went wrong") in {
                     match result {
-                      Result::Ok(value: v_0) => {
+                      Outcome::Success(value: v_0) => {
                         let v = v_0 in {
                           write("Ok:")
                           write_escaped(v)
                         }
                       }
-                      Result::Err(message: v_1) => {
+                      Outcome::Failure(message: v_1) => {
                         let m = v_1 in {
                           write("Err:")
                           write_escaped(m)
@@ -3042,20 +3042,20 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                enum Result {
-                  Ok(value: String),
-                  Err(message: String),
+                enum Outcome {
+                  Success(value: String),
+                  Failure(message: String),
                 }
                 Test() {
-                  let result = Result::Err(message: "something went wrong") in {
+                  let result = Outcome::Failure(message: "something went wrong") in {
                     match result {
-                      Result::Ok(value: v_0) => {
+                      Outcome::Success(value: v_0) => {
                         let v = v_0 in {
                           write("Ok:")
                           write_escaped(v)
                         }
                       }
-                      Result::Err(message: v_1) => {
+                      Outcome::Failure(message: v_1) => {
                         let m = v_1 in {
                           write("Err:")
                           write_escaped(m)
@@ -3088,19 +3088,19 @@ mod tests {
         check(
             indoc! {r#"
                 enum Response {
-                  Success(code: String, body: String),
-                  Error(reason: String),
+                  Win(code: String, body: String),
+                  Lose(reason: String),
                 }
 
                 entrypoint Test() {
                   <let {
-                    resp: Response = Response::Success(code: "200", body: "OK"),
+                    resp: Response = Response::Win(code: "200", body: "OK"),
                   }>
                     <match {resp}>
-                      <case {Response::Success(code: c, body: b)}>
+                      <case {Response::Win(code: c, body: b)}>
                         {c}:{b}
                       </case>
-                      <case {Response::Error(reason: r)}>
+                      <case {Response::Lose(reason: r)}>
                         Error:{r}
                       </case>
                     </match>
@@ -3111,13 +3111,13 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 enum Response {
-                  Success(code: String, body: String),
-                  Error(reason: String),
+                  Win(code: String, body: String),
+                  Lose(reason: String),
                 }
                 Test() {
-                  let resp = Response::Success(code: "200", body: "OK") in {
+                  let resp = Response::Win(code: "200", body: "OK") in {
                     match resp {
-                      Response::Success(code: v_0, body: v_1) => {
+                      Response::Win(code: v_0, body: v_1) => {
                         let c = v_0 in {
                           let b = v_1 in {
                             write_escaped(c)
@@ -3126,7 +3126,7 @@ mod tests {
                           }
                         }
                       }
-                      Response::Error(reason: v_2) => {
+                      Response::Lose(reason: v_2) => {
                         let r = v_2 in {
                           write("Error:")
                           write_escaped(r)
@@ -3137,13 +3137,13 @@ mod tests {
                 }
                 -- ir (optimized) --
                 enum Response {
-                  Success(code: String, body: String),
-                  Error(reason: String),
+                  Win(code: String, body: String),
+                  Lose(reason: String),
                 }
                 Test() {
-                  let resp = Response::Success(code: "200", body: "OK") in {
+                  let resp = Response::Win(code: "200", body: "OK") in {
                     match resp {
-                      Response::Success(code: v_0, body: v_1) => {
+                      Response::Win(code: v_0, body: v_1) => {
                         let c = v_0 in {
                           let b = v_1 in {
                             write_escaped(c)
@@ -3152,7 +3152,7 @@ mod tests {
                           }
                         }
                       }
-                      Response::Error(reason: v_2) => {
+                      Response::Lose(reason: v_2) => {
                         let r = v_2 in {
                           write("Error:")
                           write_escaped(r)
@@ -3584,8 +3584,8 @@ mod tests {
         check(
             indoc! {r#"
                 entrypoint Test() {
-                  <let {val: Float = 5.0}>
-                    {val.to_int().to_string()}
+                  <let {num: Float = 5.0}>
+                    {num.to_int().to_string()}
                   </let>
                 }
             "#},
@@ -3593,14 +3593,14 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 Test() {
-                  let val = 5 in {
-                    write_escaped(val.to_int().to_string())
+                  let num = 5 in {
+                    write_escaped(num.to_int().to_string())
                   }
                 }
                 -- ir (optimized) --
                 Test() {
-                  let val = 5 in {
-                    write_escaped(val.to_int().to_string())
+                  let num = 5 in {
+                    write_escaped(num.to_int().to_string())
                   }
                 }
                 -- expected output --
@@ -4535,21 +4535,21 @@ mod tests {
     #[test]
     #[ignore]
     fn enum_wildcard_binding_ok() {
-        // Test Result::Ok(value: _) - wildcard binding for enum field
+        // Test Outcome::Success(value: _) - wildcard binding for enum field
         check(
             indoc! {r#"
-                enum Result {
-                  Ok(value: String),
-                  Err(message: String),
+                enum Outcome {
+                  Success(value: String),
+                  Failure(message: String),
                 }
 
                 entrypoint Test() {
-                  <let {result: Result = Result::Ok(value: "hello")}>
+                  <let {result: Outcome = Outcome::Success(value: "hello")}>
                     <match {result}>
-                      <case {Result::Ok(value: _)}>
+                      <case {Outcome::Success(value: _)}>
                         ok
                       </case>
-                      <case {Result::Err(message: _)}>
+                      <case {Outcome::Failure(message: _)}>
                         err
                       </case>
                     </match>
@@ -4559,34 +4559,34 @@ mod tests {
             "ok",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Result {
-                  Ok(value: String),
-                  Err(message: String),
+                enum Outcome {
+                  Success(value: String),
+                  Failure(message: String),
                 }
                 Test() {
-                  let result = Result::Ok(value: "hello") in {
+                  let result = Outcome::Success(value: "hello") in {
                     match result {
-                      Result::Ok => {
+                      Outcome::Success => {
                         write("ok")
                       }
-                      Result::Err => {
+                      Outcome::Failure => {
                         write("err")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
-                enum Result {
-                  Ok(value: String),
-                  Err(message: String),
+                enum Outcome {
+                  Success(value: String),
+                  Failure(message: String),
                 }
                 Test() {
-                  let result = Result::Ok(value: "hello") in {
+                  let result = Outcome::Success(value: "hello") in {
                     match result {
-                      Result::Ok => {
+                      Outcome::Success => {
                         write("ok")
                       }
-                      Result::Err => {
+                      Outcome::Failure => {
                         write("err")
                       }
                     }
@@ -4613,21 +4613,23 @@ mod tests {
     #[test]
     #[ignore]
     fn enum_wildcard_binding_err() {
-        // Test Result::Err(message: _) - wildcard binding for enum field
+        // Test Outcome::Failure(message: _) - wildcard binding for enum field
         check(
             indoc! {r#"
-                enum Result {
-                  Ok(value: String),
-                  Err(message: String),
+                enum Outcome {
+                  Success(value: String),
+                  Failure(message: String),
                 }
 
                 entrypoint Test() {
-                  <let {result: Result = Result::Err(message: "failed")}>
+                  <let {
+                    result: Outcome = Outcome::Failure(message: "failed"),
+                  }>
                     <match {result}>
-                      <case {Result::Ok(value: _)}>
+                      <case {Outcome::Success(value: _)}>
                         ok
                       </case>
-                      <case {Result::Err(message: _)}>
+                      <case {Outcome::Failure(message: _)}>
                         err
                       </case>
                     </match>
@@ -4637,34 +4639,34 @@ mod tests {
             "err",
             expect![[r#"
                 -- ir (unoptimized) --
-                enum Result {
-                  Ok(value: String),
-                  Err(message: String),
+                enum Outcome {
+                  Success(value: String),
+                  Failure(message: String),
                 }
                 Test() {
-                  let result = Result::Err(message: "failed") in {
+                  let result = Outcome::Failure(message: "failed") in {
                     match result {
-                      Result::Ok => {
+                      Outcome::Success => {
                         write("ok")
                       }
-                      Result::Err => {
+                      Outcome::Failure => {
                         write("err")
                       }
                     }
                   }
                 }
                 -- ir (optimized) --
-                enum Result {
-                  Ok(value: String),
-                  Err(message: String),
+                enum Outcome {
+                  Success(value: String),
+                  Failure(message: String),
                 }
                 Test() {
-                  let result = Result::Err(message: "failed") in {
+                  let result = Outcome::Failure(message: "failed") in {
                     match result {
-                      Result::Ok => {
+                      Outcome::Success => {
                         write("ok")
                       }
-                      Result::Err => {
+                      Outcome::Failure => {
                         write("err")
                       }
                     }
@@ -4865,31 +4867,31 @@ mod tests {
     #[test]
     #[ignore]
     fn nested_enum_wildcard() {
-        // Test nested enum matching with wildcard - Outer::Ok(value: Inner::Ok(value: _))
+        // Test nested enum matching with wildcard - Outer::Success(value: Inner::Success(value: _))
         check(
             indoc! {r#"
                 enum Inner {
-                  Ok(value: String),
-                  Err(message: String),
+                  Success(value: String),
+                  Failure(message: String),
                 }
 
                 enum Outer {
-                  Ok(value: Inner),
-                  Err(message: String),
+                  Success(value: Inner),
+                  Failure(message: String),
                 }
 
                 entrypoint Test() {
                   <let {
-                    result: Outer = Outer::Ok(value: Inner::Ok(value: "deep")),
+                    result: Outer = Outer::Success(value: Inner::Success(value: "deep")),
                   }>
                     <match {result}>
-                      <case {Outer::Ok(value: Inner::Ok(value: _))}>
+                      <case {Outer::Success(value: Inner::Success(value: _))}>
                         ok-ok
                       </case>
-                      <case {Outer::Ok(value: Inner::Err(message: _))}>
+                      <case {Outer::Success(value: Inner::Failure(message: _))}>
                         ok-err
                       </case>
-                      <case {Outer::Err(message: _)}>
+                      <case {Outer::Failure(message: _)}>
                         err
                       </case>
                     </match>
@@ -4900,27 +4902,27 @@ mod tests {
             expect![[r#"
                 -- ir (unoptimized) --
                 enum Inner {
-                  Ok(value: String),
-                  Err(message: String),
+                  Success(value: String),
+                  Failure(message: String),
                 }
                 enum Outer {
-                  Ok(value: test::Inner),
-                  Err(message: String),
+                  Success(value: test::Inner),
+                  Failure(message: String),
                 }
                 Test() {
-                  let result = Outer::Ok(value: Inner::Ok(value: "deep")) in {
+                  let result = Outer::Success(value: Inner::Success(value: "deep")) in {
                     match result {
-                      Outer::Ok(value: v_0) => {
+                      Outer::Success(value: v_0) => {
                         match v_0 {
-                          Inner::Ok => {
+                          Inner::Success => {
                             write("ok-ok")
                           }
-                          Inner::Err => {
+                          Inner::Failure => {
                             write("ok-err")
                           }
                         }
                       }
-                      Outer::Err => {
+                      Outer::Failure => {
                         write("err")
                       }
                     }
@@ -4928,27 +4930,27 @@ mod tests {
                 }
                 -- ir (optimized) --
                 enum Inner {
-                  Ok(value: String),
-                  Err(message: String),
+                  Success(value: String),
+                  Failure(message: String),
                 }
                 enum Outer {
-                  Ok(value: test::Inner),
-                  Err(message: String),
+                  Success(value: test::Inner),
+                  Failure(message: String),
                 }
                 Test() {
-                  let result = Outer::Ok(value: Inner::Ok(value: "deep")) in {
+                  let result = Outer::Success(value: Inner::Success(value: "deep")) in {
                     match result {
-                      Outer::Ok(value: v_0) => {
+                      Outer::Success(value: v_0) => {
                         match v_0 {
-                          Inner::Ok => {
+                          Inner::Success => {
                             write("ok-ok")
                           }
-                          Inner::Err => {
+                          Inner::Failure => {
                             write("ok-err")
                           }
                         }
                       }
-                      Outer::Err => {
+                      Outer::Failure => {
                         write("err")
                       }
                     }

@@ -4206,7 +4206,7 @@ mod tests {
                     <match {x}>
                         <case {Some(inner)}>
                             <match {inner}>
-                                <case {Some(val)}>{val}</case>
+                                <case {Some(s)}>{s}</case>
                                 <case {None}>inner none</case>
                             </match>
                         </case>
@@ -4224,8 +4224,8 @@ mod tests {
                       <let {inner = v_0}>
                         <match {inner}>
                           <case {Some(v_1)}>
-                            <let {val = v_1}>
-                              {val}
+                            <let {s = v_1}>
+                              {s}
                             </let>
                           </case>
                           <case {None}>
@@ -4251,7 +4251,7 @@ mod tests {
                 <Main {items: Array[Option[String]]}>
                     <for {item in items}>
                         <match {item}>
-                            <case {Some(val)}>{val}</case>
+                            <case {Some(s)}>{s}</case>
                             <case {None}>-</case>
                         </match>
                     </for>
@@ -4263,8 +4263,8 @@ mod tests {
                   <for {item in items}>
                     <match {item}>
                       <case {Some(v_0)}>
-                        <let {val = v_0}>
-                          {val}
+                        <let {s = v_0}>
+                          {s}
                         </let>
                       </case>
                       <case {None}>
@@ -4316,10 +4316,10 @@ mod tests {
                 -- main.hop --
                 <Main {r1: Option[String], r2: Option[Bool]}>
                     <match {r1}>
-                        <case {Some(val)}>{val}</case>
+                        <case {Some(bound)}>{bound}</case>
                         <case {None}>
                             <match {r2}>
-                                <case {Some(val)}><if {val}>yes</if></case>
+                                <case {Some(bound)}><if {bound}>yes</if></case>
                                 <case {None}>both none</case>
                             </match>
                         </case>
@@ -4331,15 +4331,15 @@ mod tests {
                 <Main {r1: Option[String], r2: Option[Bool]}>
                   <match {r1}>
                     <case {Some(v_0)}>
-                      <let {val = v_0}>
-                        {val}
+                      <let {bound = v_0}>
+                        {bound}
                       </let>
                     </case>
                     <case {None}>
                       <match {r2}>
                         <case {Some(v_1)}>
-                          <let {val = v_1}>
-                            <if {val}>
+                          <let {bound = v_1}>
+                            <if {bound}>
                               yes
                             </if>
                           </let>

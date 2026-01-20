@@ -140,6 +140,28 @@ pub fn next(
                     "TrustedHTML" => Token::TypeTrustedHTML,
                     "Array" => Token::TypeArray,
                     "Option" => Token::TypeOption,
+                    // Reserved keywords
+                    "let" | "fn" | "func" | "if" | "else" | "return" | "struct" | "type"
+                    | "var" | "const" | "for" | "assert" | "comp" | "component" | "and"
+                    | "or" | "not" | "while" | "loop" | "break" | "continue" | "switch"
+                    | "case" | "default" | "try" | "catch" | "throw" | "finally" | "async"
+                    | "await" | "yield" | "pub" | "private" | "mut" | "impl" | "trait"
+                    | "interface" | "class" | "as" | "is" | "where" | "self" | "this"
+                    | "super" | "use" | "from" | "export" | "mod" | "null" | "nil" | "new"
+                    | "static" | "defer" | "extends" | "implements" | "namespace" | "include"
+                    | "package" | "internal" | "undefined" | "void" | "final" | "when"
+                    | "out" | "priv" | "public" | "val" | "elif" | "readonly" | "get"
+                    | "set" | "auto" | "constructor"
+                    // Uppercase reserved keywords
+                    | "Any" | "Arr" | "Async" | "Auto" | "Box" | "CSS" | "Class"
+                    | "Classes" | "Client" | "Comp" | "Computed" | "Dyn" | "Dynamic"
+                    | "Enum" | "Err" | "Error" | "Fn" | "Func" | "Function" | "Future"
+                    | "HTML" | "IO" | "List" | "Map" | "Never" | "Object" | "Ok"
+                    | "Promise" | "Rec" | "Record" | "Result" | "Runtime" | "Safe"
+                    | "Scope" | "Scoped" | "Self" | "Set" | "Static" | "Struct" | "Task"
+                    | "Trusted" | "Tuple" | "Type" | "Union" | "Unknown" | "Void" => {
+                        Token::Reserved(identifier.to_cheap_string())
+                    }
                     _ => {
                         let first_char = identifier.as_str().chars().next().unwrap();
                         if first_char.is_ascii_uppercase() {
@@ -239,7 +261,7 @@ mod tests {
             match t {
                 Ok((tok, range)) => {
                     annotations.push(SimpleAnnotation {
-                        message: format!("token: {}", tok),
+                        message: format!("token: {:?}", tok),
                         range,
                     });
                 }
@@ -263,11 +285,11 @@ mod tests {
         check(
             "  foo   bar  ",
             expect![[r#"
-                token: foo
+                token: Identifier("foo")
                   foo   bar  
                   ^^^
 
-                token: bar
+                token: Identifier("bar")
                   foo   bar  
                         ^^^
             "#]],
@@ -279,11 +301,11 @@ mod tests {
         check(
             "foo\nbar",
             expect![[r#"
-                token: foo
+                token: Identifier("foo")
                 foo
                 ^^^
 
-                token: bar
+                token: Identifier("bar")
                 bar
                 ^^^
             "#]],
@@ -295,27 +317,27 @@ mod tests {
         check(
             "1.0 0.0 0.0000 1000000 0.0000 0.1010",
             expect![[r#"
-                token: 1
+                token: FloatLiteral(1.0)
                 1.0 0.0 0.0000 1000000 0.0000 0.1010
                 ^^^
 
-                token: 0
+                token: FloatLiteral(0.0)
                 1.0 0.0 0.0000 1000000 0.0000 0.1010
                     ^^^
 
-                token: 0
+                token: FloatLiteral(0.0)
                 1.0 0.0 0.0000 1000000 0.0000 0.1010
                         ^^^^^^
 
-                token: 1000000
+                token: IntLiteral(1000000)
                 1.0 0.0 0.0000 1000000 0.0000 0.1010
                                ^^^^^^^
 
-                token: 0
+                token: FloatLiteral(0.0)
                 1.0 0.0 0.0000 1000000 0.0000 0.1010
                                        ^^^^^^
 
-                token: 0.101
+                token: FloatLiteral(0.101)
                 1.0 0.0 0.0000 1000000 0.0000 0.1010
                                               ^^^^^^
             "#]],
@@ -350,19 +372,19 @@ mod tests {
         check(
             "1. 1000.",
             expect![[r#"
-                token: 1
+                token: IntLiteral(1)
                 1. 1000.
                 ^
 
-                token: .
+                token: Dot
                 1. 1000.
                  ^
 
-                token: 1000
+                token: IntLiteral(1000)
                 1. 1000.
                    ^^^^
 
-                token: .
+                token: Dot
                 1. 1000.
                        ^
             "#]],
@@ -374,11 +396,11 @@ mod tests {
         check(
             "=foo",
             expect![[r#"
-                token: =
+                token: Assign
                 =foo
                 ^
 
-                token: foo
+                token: Identifier("foo")
                 =foo
                  ^^^
             "#]],
@@ -418,19 +440,19 @@ mod tests {
         check(
             "42 0 123 999",
             expect![[r#"
-                token: 42
+                token: IntLiteral(42)
                 42 0 123 999
                 ^^
 
-                token: 0
+                token: IntLiteral(0)
                 42 0 123 999
                    ^
 
-                token: 123
+                token: IntLiteral(123)
                 42 0 123 999
                      ^^^
 
-                token: 999
+                token: IntLiteral(999)
                 42 0 123 999
                          ^^^
             "#]],
@@ -442,27 +464,27 @@ mod tests {
         check(
             "42 3.14 0 0.0 123 99.99",
             expect![[r#"
-                token: 42
+                token: IntLiteral(42)
                 42 3.14 0 0.0 123 99.99
                 ^^
 
-                token: 3.14
+                token: FloatLiteral(3.14)
                 42 3.14 0 0.0 123 99.99
                    ^^^^
 
-                token: 0
+                token: IntLiteral(0)
                 42 3.14 0 0.0 123 99.99
                         ^
 
-                token: 0
+                token: FloatLiteral(0.0)
                 42 3.14 0 0.0 123 99.99
                           ^^^
 
-                token: 123
+                token: IntLiteral(123)
                 42 3.14 0 0.0 123 99.99
                               ^^^
 
-                token: 99.99
+                token: FloatLiteral(99.99)
                 42 3.14 0 0.0 123 99.99
                                   ^^^^^
             "#]],
@@ -474,31 +496,31 @@ mod tests {
         check(
             "( ) . ! == < >",
             expect![[r#"
-                token: (
+                token: LeftParen
                 ( ) . ! == < >
                 ^
 
-                token: )
+                token: RightParen
                 ( ) . ! == < >
                   ^
 
-                token: .
+                token: Dot
                 ( ) . ! == < >
                     ^
 
-                token: !
+                token: Not
                 ( ) . ! == < >
                       ^
 
-                token: ==
+                token: Eq
                 ( ) . ! == < >
                         ^^
 
-                token: <
+                token: LessThan
                 ( ) . ! == < >
                            ^
 
-                token: >
+                token: GreaterThan
                 ( ) . ! == < >
                              ^
             "#]],
@@ -510,7 +532,7 @@ mod tests {
         check(
             "!=",
             expect![[r#"
-                token: !=
+                token: NotEq
                 !=
                 ^^
             "#]],
@@ -522,15 +544,15 @@ mod tests {
         check(
             "x != y",
             expect![[r#"
-                token: x
+                token: Identifier("x")
                 x != y
                 ^
 
-                token: !=
+                token: NotEq
                 x != y
                   ^^
 
-                token: y
+                token: Identifier("y")
                 x != y
                      ^
             "#]],
@@ -542,7 +564,7 @@ mod tests {
         check(
             "<=",
             expect![[r#"
-                token: <=
+                token: LessThanOrEqual
                 <=
                 ^^
             "#]],
@@ -554,15 +576,15 @@ mod tests {
         check(
             "x <= y",
             expect![[r#"
-                token: x
+                token: Identifier("x")
                 x <= y
                 ^
 
-                token: <=
+                token: LessThanOrEqual
                 x <= y
                   ^^
 
-                token: y
+                token: Identifier("y")
                 x <= y
                      ^
             "#]],
@@ -574,7 +596,7 @@ mod tests {
         check(
             ">=",
             expect![[r#"
-                token: >=
+                token: GreaterThanOrEqual
                 >=
                 ^^
             "#]],
@@ -586,15 +608,15 @@ mod tests {
         check(
             "x >= y",
             expect![[r#"
-                token: x
+                token: Identifier("x")
                 x >= y
                 ^
 
-                token: >=
+                token: GreaterThanOrEqual
                 x >= y
                   ^^
 
-                token: y
+                token: Identifier("y")
                 x >= y
                      ^
             "#]],
@@ -606,27 +628,27 @@ mod tests {
         check(
             "foo in true false _test var123",
             expect![[r#"
-                token: foo
+                token: Identifier("foo")
                 foo in true false _test var123
                 ^^^
 
-                token: in
+                token: In
                 foo in true false _test var123
                     ^^
 
-                token: true
+                token: True
                 foo in true false _test var123
                        ^^^^
 
-                token: false
+                token: False
                 foo in true false _test var123
                             ^^^^^
 
-                token: _test
+                token: Identifier("_test")
                 foo in true false _test var123
                                   ^^^^^
 
-                token: var123
+                token: Identifier("var123")
                 foo in true false _test var123
                                         ^^^^^^
             "#]],
@@ -638,27 +660,27 @@ mod tests {
         check(
             "String Int Float Bool TrustedHTML Array",
             expect![[r#"
-                token: String
+                token: TypeString
                 String Int Float Bool TrustedHTML Array
                 ^^^^^^
 
-                token: Int
+                token: TypeInt
                 String Int Float Bool TrustedHTML Array
                        ^^^
 
-                token: Float
+                token: TypeFloat
                 String Int Float Bool TrustedHTML Array
                            ^^^^^
 
-                token: Bool
+                token: TypeBoolean
                 String Int Float Bool TrustedHTML Array
                                  ^^^^
 
-                token: TrustedHTML
+                token: TypeTrustedHTML
                 String Int Float Bool TrustedHTML Array
                                       ^^^^^^^^^^^
 
-                token: Array
+                token: TypeArray
                 String Int Float Bool TrustedHTML Array
                                                   ^^^^^
             "#]],
@@ -670,19 +692,19 @@ mod tests {
         check(
             "User Person MyType CustomRecord",
             expect![[r#"
-                token: User
+                token: TypeName("User")
                 User Person MyType CustomRecord
                 ^^^^
 
-                token: Person
+                token: TypeName("Person")
                 User Person MyType CustomRecord
                      ^^^^^^
 
-                token: MyType
+                token: TypeName("MyType")
                 User Person MyType CustomRecord
                             ^^^^^^
 
-                token: CustomRecord
+                token: TypeName("CustomRecord")
                 User Person MyType CustomRecord
                                    ^^^^^^^^^^^^
             "#]],
@@ -694,27 +716,27 @@ mod tests {
         check(
             "foo Foo bar Bar _test Test",
             expect![[r#"
-                token: foo
+                token: Identifier("foo")
                 foo Foo bar Bar _test Test
                 ^^^
 
-                token: Foo
+                token: TypeName("Foo")
                 foo Foo bar Bar _test Test
                     ^^^
 
-                token: bar
+                token: Identifier("bar")
                 foo Foo bar Bar _test Test
                         ^^^
 
-                token: Bar
+                token: TypeName("Bar")
                 foo Foo bar Bar _test Test
                             ^^^
 
-                token: _test
+                token: Identifier("_test")
                 foo Foo bar Bar _test Test
                                 ^^^^^
 
-                token: Test
+                token: TypeName("Test")
                 foo Foo bar Bar _test Test
                                       ^^^^
             "#]],
@@ -726,15 +748,15 @@ mod tests {
         check(
             r#""hello" "world with spaces" """#,
             expect![[r#"
-                token: "hello"
+                token: StringLiteral("hello")
                 "hello" "world with spaces" ""
                 ^^^^^^^
 
-                token: "world with spaces"
+                token: StringLiteral("world with spaces")
                 "hello" "world with spaces" ""
                         ^^^^^^^^^^^^^^^^^^^
 
-                token: ""
+                token: StringLiteral("")
                 "hello" "world with spaces" ""
                                             ^^
             "#]],
@@ -746,15 +768,15 @@ mod tests {
         check(
             "user.name",
             expect![[r#"
-                token: user
+                token: Identifier("user")
                 user.name
                 ^^^^
 
-                token: .
+                token: Dot
                 user.name
                     ^
 
-                token: name
+                token: Identifier("name")
                 user.name
                      ^^^^
             "#]],
@@ -766,23 +788,23 @@ mod tests {
         check(
             r#"user.name == "admin""#,
             expect![[r#"
-                token: user
+                token: Identifier("user")
                 user.name == "admin"
                 ^^^^
 
-                token: .
+                token: Dot
                 user.name == "admin"
                     ^
 
-                token: name
+                token: Identifier("name")
                 user.name == "admin"
                      ^^^^
 
-                token: ==
+                token: Eq
                 user.name == "admin"
                           ^^
 
-                token: "admin"
+                token: StringLiteral("admin")
                 user.name == "admin"
                              ^^^^^^^
             "#]],
@@ -794,27 +816,27 @@ mod tests {
         check(
             "!(foo == true)",
             expect![[r#"
-                token: !
+                token: Not
                 !(foo == true)
                 ^
 
-                token: (
+                token: LeftParen
                 !(foo == true)
                  ^
 
-                token: foo
+                token: Identifier("foo")
                 !(foo == true)
                   ^^^
 
-                token: ==
+                token: Eq
                 !(foo == true)
                       ^^
 
-                token: true
+                token: True
                 !(foo == true)
                          ^^^^
 
-                token: )
+                token: RightParen
                 !(foo == true)
                              ^
             "#]],
@@ -826,31 +848,31 @@ mod tests {
         check(
             "[1, 2, 3]",
             expect![[r#"
-                token: [
+                token: LeftBracket
                 [1, 2, 3]
                 ^
 
-                token: 1
+                token: IntLiteral(1)
                 [1, 2, 3]
                  ^
 
-                token: ,
+                token: Comma
                 [1, 2, 3]
                   ^
 
-                token: 2
+                token: IntLiteral(2)
                 [1, 2, 3]
                     ^
 
-                token: ,
+                token: Comma
                 [1, 2, 3]
                      ^
 
-                token: 3
+                token: IntLiteral(3)
                 [1, 2, 3]
                        ^
 
-                token: ]
+                token: RightBracket
                 [1, 2, 3]
                         ^
             "#]],
@@ -862,31 +884,31 @@ mod tests {
         check(
             "[1.0, 12.0, 343.0]",
             expect![[r#"
-                token: [
+                token: LeftBracket
                 [1.0, 12.0, 343.0]
                 ^
 
-                token: 1
+                token: FloatLiteral(1.0)
                 [1.0, 12.0, 343.0]
                  ^^^
 
-                token: ,
+                token: Comma
                 [1.0, 12.0, 343.0]
                     ^
 
-                token: 12
+                token: FloatLiteral(12.0)
                 [1.0, 12.0, 343.0]
                       ^^^^
 
-                token: ,
+                token: Comma
                 [1.0, 12.0, 343.0]
                           ^
 
-                token: 343
+                token: FloatLiteral(343.0)
                 [1.0, 12.0, 343.0]
                             ^^^^^
 
-                token: ]
+                token: RightBracket
                 [1.0, 12.0, 343.0]
                                  ^
             "#]],
@@ -898,11 +920,11 @@ mod tests {
         check(
             "[]",
             expect![[r#"
-                token: [
+                token: LeftBracket
                 []
                 ^
 
-                token: ]
+                token: RightBracket
                 []
                  ^
             "#]],
@@ -914,19 +936,19 @@ mod tests {
         check(
             r#"import user_list::UserList"#,
             expect![[r#"
-                token: import
+                token: Import
                 import user_list::UserList
                 ^^^^^^
 
-                token: user_list
+                token: Identifier("user_list")
                 import user_list::UserList
                        ^^^^^^^^^
 
-                token: ::
+                token: ColonColon
                 import user_list::UserList
                                 ^^
 
-                token: UserList
+                token: TypeName("UserList")
                 import user_list::UserList
                                   ^^^^^^^^
             "#]],
@@ -938,47 +960,47 @@ mod tests {
         check(
             "record User {name: String, age: Int}",
             expect![[r#"
-                token: record
+                token: Record
                 record User {name: String, age: Int}
                 ^^^^^^
 
-                token: User
+                token: TypeName("User")
                 record User {name: String, age: Int}
                        ^^^^
 
-                token: {
+                token: LeftBrace
                 record User {name: String, age: Int}
                             ^
 
-                token: name
+                token: Identifier("name")
                 record User {name: String, age: Int}
                              ^^^^
 
-                token: :
+                token: Colon
                 record User {name: String, age: Int}
                                  ^
 
-                token: String
+                token: TypeString
                 record User {name: String, age: Int}
                                    ^^^^^^
 
-                token: ,
+                token: Comma
                 record User {name: String, age: Int}
                                          ^
 
-                token: age
+                token: Identifier("age")
                 record User {name: String, age: Int}
                                            ^^^
 
-                token: :
+                token: Colon
                 record User {name: String, age: Int}
                                               ^
 
-                token: Int
+                token: TypeInt
                 record User {name: String, age: Int}
                                                 ^^^
 
-                token: }
+                token: RightBrace
                 record User {name: String, age: Int}
                                                    ^
             "#]],
@@ -990,43 +1012,43 @@ mod tests {
         check(
             "record UserList {users: Array[User]}",
             expect![[r#"
-                token: record
+                token: Record
                 record UserList {users: Array[User]}
                 ^^^^^^
 
-                token: UserList
+                token: TypeName("UserList")
                 record UserList {users: Array[User]}
                        ^^^^^^^^
 
-                token: {
+                token: LeftBrace
                 record UserList {users: Array[User]}
                                 ^
 
-                token: users
+                token: Identifier("users")
                 record UserList {users: Array[User]}
                                  ^^^^^
 
-                token: :
+                token: Colon
                 record UserList {users: Array[User]}
                                       ^
 
-                token: Array
+                token: TypeArray
                 record UserList {users: Array[User]}
                                         ^^^^^
 
-                token: [
+                token: LeftBracket
                 record UserList {users: Array[User]}
                                              ^
 
-                token: User
+                token: TypeName("User")
                 record UserList {users: Array[User]}
                                               ^^^^
 
-                token: ]
+                token: RightBracket
                 record UserList {users: Array[User]}
                                                   ^
 
-                token: }
+                token: RightBrace
                 record UserList {users: Array[User]}
                                                    ^
             "#]],
@@ -1038,51 +1060,51 @@ mod tests {
         check(
             "record User {\n    name: String,\n    age: Int,\n}",
             expect![[r#"
-                token: record
+                token: Record
                 record User {
                 ^^^^^^
 
-                token: User
+                token: TypeName("User")
                 record User {
                        ^^^^
 
-                token: {
+                token: LeftBrace
                 record User {
                             ^
 
-                token: name
+                token: Identifier("name")
                     name: String,
                     ^^^^
 
-                token: :
+                token: Colon
                     name: String,
                         ^
 
-                token: String
+                token: TypeString
                     name: String,
                           ^^^^^^
 
-                token: ,
+                token: Comma
                     name: String,
                                 ^
 
-                token: age
+                token: Identifier("age")
                     age: Int,
                     ^^^
 
-                token: :
+                token: Colon
                     age: Int,
                        ^
 
-                token: Int
+                token: TypeInt
                     age: Int,
                          ^^^
 
-                token: ,
+                token: Comma
                     age: Int,
                             ^
 
-                token: }
+                token: RightBrace
                 }
                 ^
             "#]],
@@ -1094,35 +1116,35 @@ mod tests {
         check(
             "import foo::Foo\nimport bar::Bar",
             expect![[r#"
-                token: import
+                token: Import
                 import foo::Foo
                 ^^^^^^
 
-                token: foo
+                token: Identifier("foo")
                 import foo::Foo
                        ^^^
 
-                token: ::
+                token: ColonColon
                 import foo::Foo
                           ^^
 
-                token: Foo
+                token: TypeName("Foo")
                 import foo::Foo
                             ^^^
 
-                token: import
+                token: Import
                 import bar::Bar
                 ^^^^^^
 
-                token: bar
+                token: Identifier("bar")
                 import bar::Bar
                        ^^^
 
-                token: ::
+                token: ColonColon
                 import bar::Bar
                           ^^
 
-                token: Bar
+                token: TypeName("Bar")
                 import bar::Bar
                             ^^^
             "#]],
@@ -1134,47 +1156,47 @@ mod tests {
         check(
             "import foo::Foo\nrecord Bar {name: String}",
             expect![[r#"
-                token: import
+                token: Import
                 import foo::Foo
                 ^^^^^^
 
-                token: foo
+                token: Identifier("foo")
                 import foo::Foo
                        ^^^
 
-                token: ::
+                token: ColonColon
                 import foo::Foo
                           ^^
 
-                token: Foo
+                token: TypeName("Foo")
                 import foo::Foo
                             ^^^
 
-                token: record
+                token: Record
                 record Bar {name: String}
                 ^^^^^^
 
-                token: Bar
+                token: TypeName("Bar")
                 record Bar {name: String}
                        ^^^
 
-                token: {
+                token: LeftBrace
                 record Bar {name: String}
                            ^
 
-                token: name
+                token: Identifier("name")
                 record Bar {name: String}
                             ^^^^
 
-                token: :
+                token: Colon
                 record Bar {name: String}
                                 ^
 
-                token: String
+                token: TypeString
                 record Bar {name: String}
                                   ^^^^^^
 
-                token: }
+                token: RightBrace
                 record Bar {name: String}
                                         ^
             "#]],
@@ -1186,31 +1208,31 @@ mod tests {
         check(
             "record  User  {  name :  String  }",
             expect![[r#"
-                token: record
+                token: Record
                 record  User  {  name :  String  }
                 ^^^^^^
 
-                token: User
+                token: TypeName("User")
                 record  User  {  name :  String  }
                         ^^^^
 
-                token: {
+                token: LeftBrace
                 record  User  {  name :  String  }
                               ^
 
-                token: name
+                token: Identifier("name")
                 record  User  {  name :  String  }
                                  ^^^^
 
-                token: :
+                token: Colon
                 record  User  {  name :  String  }
                                       ^
 
-                token: String
+                token: TypeString
                 record  User  {  name :  String  }
                                          ^^^^^^
 
-                token: }
+                token: RightBrace
                 record  User  {  name :  String  }
                                                  ^
             "#]],
@@ -1222,55 +1244,55 @@ mod tests {
         check(
             "record Data {matrix: Array[Array[Int]]}",
             expect![[r#"
-                token: record
+                token: Record
                 record Data {matrix: Array[Array[Int]]}
                 ^^^^^^
 
-                token: Data
+                token: TypeName("Data")
                 record Data {matrix: Array[Array[Int]]}
                        ^^^^
 
-                token: {
+                token: LeftBrace
                 record Data {matrix: Array[Array[Int]]}
                             ^
 
-                token: matrix
+                token: Identifier("matrix")
                 record Data {matrix: Array[Array[Int]]}
                              ^^^^^^
 
-                token: :
+                token: Colon
                 record Data {matrix: Array[Array[Int]]}
                                    ^
 
-                token: Array
+                token: TypeArray
                 record Data {matrix: Array[Array[Int]]}
                                      ^^^^^
 
-                token: [
+                token: LeftBracket
                 record Data {matrix: Array[Array[Int]]}
                                           ^
 
-                token: Array
+                token: TypeArray
                 record Data {matrix: Array[Array[Int]]}
                                            ^^^^^
 
-                token: [
+                token: LeftBracket
                 record Data {matrix: Array[Array[Int]]}
                                                 ^
 
-                token: Int
+                token: TypeInt
                 record Data {matrix: Array[Array[Int]]}
                                                  ^^^
 
-                token: ]
+                token: RightBracket
                 record Data {matrix: Array[Array[Int]]}
                                                     ^
 
-                token: ]
+                token: RightBracket
                 record Data {matrix: Array[Array[Int]]}
                                                      ^
 
-                token: }
+                token: RightBrace
                 record Data {matrix: Array[Array[Int]]}
                                                       ^
             "#]],
@@ -1282,31 +1304,31 @@ mod tests {
         check(
             "record my_record {field_name: String}",
             expect![[r#"
-                token: record
+                token: Record
                 record my_record {field_name: String}
                 ^^^^^^
 
-                token: my_record
+                token: Identifier("my_record")
                 record my_record {field_name: String}
                        ^^^^^^^^^
 
-                token: {
+                token: LeftBrace
                 record my_record {field_name: String}
                                  ^
 
-                token: field_name
+                token: Identifier("field_name")
                 record my_record {field_name: String}
                                   ^^^^^^^^^^
 
-                token: :
+                token: Colon
                 record my_record {field_name: String}
                                             ^
 
-                token: String
+                token: TypeString
                 record my_record {field_name: String}
                                               ^^^^^^
 
-                token: }
+                token: RightBrace
                 record my_record {field_name: String}
                                                     ^
             "#]],
@@ -1318,11 +1340,11 @@ mod tests {
         check(
             "match foo",
             expect![[r#"
-                token: match
+                token: Match
                 match foo
                 ^^^^^
 
-                token: foo
+                token: Identifier("foo")
                 match foo
                       ^^^
             "#]],
@@ -1334,11 +1356,11 @@ mod tests {
         check(
             "enum Color",
             expect![[r#"
-                token: enum
+                token: Enum
                 enum Color
                 ^^^^
 
-                token: Color
+                token: TypeName("Color")
                 enum Color
                      ^^^^^
             "#]],
@@ -1354,15 +1376,15 @@ mod tests {
                 Some(x)
                 ^^^^
 
-                token: (
+                token: LeftParen
                 Some(x)
                     ^
 
-                token: x
+                token: Identifier("x")
                 Some(x)
                      ^
 
-                token: )
+                token: RightParen
                 Some(x)
                       ^
             "#]],
@@ -1386,19 +1408,19 @@ mod tests {
         check(
             "Option[String]",
             expect![[r#"
-                token: Option
+                token: TypeOption
                 Option[String]
                 ^^^^^^
 
-                token: [
+                token: LeftBracket
                 Option[String]
                       ^
 
-                token: String
+                token: TypeString
                 Option[String]
                        ^^^^^^
 
-                token: ]
+                token: RightBracket
                 Option[String]
                              ^
             "#]],
@@ -1410,23 +1432,23 @@ mod tests {
         check(
             "foo::bar::Baz",
             expect![[r#"
-                token: foo
+                token: Identifier("foo")
                 foo::bar::Baz
                 ^^^
 
-                token: ::
+                token: ColonColon
                 foo::bar::Baz
                    ^^
 
-                token: bar
+                token: Identifier("bar")
                 foo::bar::Baz
                      ^^^
 
-                token: ::
+                token: ColonColon
                 foo::bar::Baz
                         ^^
 
-                token: Baz
+                token: TypeName("Baz")
                 foo::bar::Baz
                           ^^^
             "#]],
@@ -1438,11 +1460,11 @@ mod tests {
         check(
             "import foo",
             expect![[r#"
-                token: import
+                token: Import
                 import foo
                 ^^^^^^
 
-                token: foo
+                token: Identifier("foo")
                 import foo
                        ^^^
             "#]],
@@ -1454,7 +1476,7 @@ mod tests {
         check(
             "->",
             expect![[r#"
-                token: ->
+                token: Arrow
                 ->
                 ^^
             "#]],
@@ -1466,7 +1488,7 @@ mod tests {
         check(
             "=>",
             expect![[r#"
-                token: =>
+                token: FatArrow
                 =>
                 ^^
             "#]],
@@ -1478,15 +1500,15 @@ mod tests {
         check(
             "x => y",
             expect![[r#"
-                token: x
+                token: Identifier("x")
                 x => y
                 ^
 
-                token: =>
+                token: FatArrow
                 x => y
                   ^^
 
-                token: y
+                token: Identifier("y")
                 x => y
                      ^
             "#]],
@@ -1498,27 +1520,27 @@ mod tests {
         check(
             "x - y x -> y",
             expect![[r#"
-                token: x
+                token: Identifier("x")
                 x - y x -> y
                 ^
 
-                token: -
+                token: Minus
                 x - y x -> y
                   ^
 
-                token: y
+                token: Identifier("y")
                 x - y x -> y
                     ^
 
-                token: x
+                token: Identifier("x")
                 x - y x -> y
                       ^
 
-                token: ->
+                token: Arrow
                 x - y x -> y
                         ^^
 
-                token: y
+                token: Identifier("y")
                 x - y x -> y
                            ^
             "#]],
@@ -1530,15 +1552,15 @@ mod tests {
         check(
             "_ _test __",
             expect![[r#"
-                token: _
+                token: Underscore
                 _ _test __
                 ^
 
-                token: _test
+                token: Identifier("_test")
                 _ _test __
                   ^^^^^
 
-                token: __
+                token: Identifier("__")
                 _ _test __
                         ^^
             "#]],
@@ -1550,7 +1572,7 @@ mod tests {
         check(
             "// this is a comment",
             expect![[r#"
-                token: // this is a comment
+                token: Comment("// this is a comment")
                 // this is a comment
                 ^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1562,11 +1584,11 @@ mod tests {
         check(
             "foo // comment",
             expect![[r#"
-                token: foo
+                token: Identifier("foo")
                 foo // comment
                 ^^^
 
-                token: // comment
+                token: Comment("// comment")
                 foo // comment
                     ^^^^^^^^^^
             "#]],
@@ -1578,11 +1600,11 @@ mod tests {
         check(
             "// comment\nfoo",
             expect![[r#"
-                token: // comment
+                token: Comment("// comment")
                 // comment
                 ^^^^^^^^^^
 
-                token: foo
+                token: Identifier("foo")
                 foo
                 ^^^
             "#]],
@@ -1594,7 +1616,7 @@ mod tests {
         check(
             "//",
             expect![[r#"
-                token: //
+                token: Comment("//")
                 //
                 ^^
             "#]],
@@ -1606,11 +1628,11 @@ mod tests {
         check(
             "// first\n// second",
             expect![[r#"
-                token: // first
+                token: Comment("// first")
                 // first
                 ^^^^^^^^
 
-                token: // second
+                token: Comment("// second")
                 // second
                 ^^^^^^^^^
             "#]],
@@ -1622,7 +1644,7 @@ mod tests {
         check(
             "foo / bar",
             expect![[r#"
-                token: foo
+                token: Identifier("foo")
                 foo / bar
                 ^^^
 
@@ -1630,7 +1652,7 @@ mod tests {
                 foo / bar
                     ^
 
-                token: bar
+                token: Identifier("bar")
                 foo / bar
                       ^^^
             "#]],
@@ -1642,7 +1664,7 @@ mod tests {
         check(
             "..=",
             expect![[r#"
-                token: ..=
+                token: DotDotEq
                 ..=
                 ^^^
             "#]],
@@ -1654,15 +1676,15 @@ mod tests {
         check(
             "0..=10",
             expect![[r#"
-                token: 0
+                token: IntLiteral(0)
                 0..=10
                 ^
 
-                token: ..=
+                token: DotDotEq
                 0..=10
                  ^^^
 
-                token: 10
+                token: IntLiteral(10)
                 0..=10
                     ^^
             "#]],
@@ -1674,13 +1696,313 @@ mod tests {
         check(
             "..",
             expect![[r#"
-                token: .
+                token: Dot
                 ..
                 ^
 
-                token: .
+                token: Dot
                 ..
                  ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_accept_reserved_keywords() {
+        check(
+            "let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor",
+            expect![[r#"
+                token: Reserved("let")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                ^^^
+
+                token: Reserved("fn")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                    ^^
+
+                token: Reserved("func")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                       ^^^^
+
+                token: Reserved("if")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                            ^^
+
+                token: Reserved("else")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                               ^^^^
+
+                token: Reserved("return")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                    ^^^^^^
+
+                token: Reserved("struct")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                           ^^^^^^
+
+                token: Reserved("type")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                  ^^^^
+
+                token: Reserved("var")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                       ^^^
+
+                token: Reserved("const")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                           ^^^^^
+
+                token: Reserved("for")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                 ^^^
+
+                token: Reserved("assert")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                     ^^^^^^
+
+                token: Reserved("comp")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                            ^^^^
+
+                token: Reserved("component")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                 ^^^^^^^^^
+
+                token: Reserved("and")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                           ^^^
+
+                token: Reserved("or")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                               ^^
+
+                token: Reserved("not")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                  ^^^
+
+                token: Reserved("while")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                      ^^^^^
+
+                token: Reserved("loop")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                            ^^^^
+
+                token: Reserved("break")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                 ^^^^^
+
+                token: Reserved("continue")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                       ^^^^^^^^
+
+                token: Reserved("switch")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                ^^^^^^
+
+                token: Reserved("case")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                       ^^^^
+
+                token: Reserved("default")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                            ^^^^^^^
+
+                token: Reserved("try")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                    ^^^
+
+                token: Reserved("catch")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                        ^^^^^
+
+                token: Reserved("throw")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                              ^^^^^
+
+                token: Reserved("finally")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                    ^^^^^^^
+
+                token: Reserved("async")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                            ^^^^^
+
+                token: Reserved("await")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                  ^^^^^
+
+                token: Reserved("yield")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                        ^^^^^
+
+                token: Reserved("pub")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                              ^^^
+
+                token: Reserved("private")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                  ^^^^^^^
+
+                token: Reserved("mut")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                          ^^^
+
+                token: Reserved("impl")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                              ^^^^
+
+                token: Reserved("trait")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                   ^^^^^
+
+                token: Reserved("interface")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                         ^^^^^^^^^
+
+                token: Reserved("class")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                   ^^^^^
+
+                token: Reserved("as")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                         ^^
+
+                token: Reserved("is")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                            ^^
+
+                token: Reserved("where")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                               ^^^^^
+
+                token: Reserved("self")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                     ^^^^
+
+                token: Reserved("this")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                          ^^^^
+
+                token: Reserved("super")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                               ^^^^^
+
+                token: Reserved("use")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                     ^^^
+
+                token: Reserved("from")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                         ^^^^
+
+                token: Reserved("export")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                              ^^^^^^
+
+                token: Reserved("mod")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                     ^^^
+
+                token: Reserved("null")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                         ^^^^
+
+                token: Reserved("nil")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                              ^^^
+
+                token: Reserved("new")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                  ^^^
+
+                token: Reserved("static")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                      ^^^^^^
+
+                token: Reserved("defer")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                             ^^^^^
+
+                token: Reserved("extends")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                   ^^^^^^^
+
+                token: Reserved("implements")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                           ^^^^^^^^^^
+
+                token: Reserved("namespace")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                                      ^^^^^^^^^
+
+                token: Reserved("include")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                                                ^^^^^^^
+
+                token: Reserved("package")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                                                        ^^^^^^^
+
+                token: Reserved("internal")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                                                                ^^^^^^^^
+
+                token: Reserved("undefined")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                                                                         ^^^^^^^^^
+
+                token: Reserved("void")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                                                                                   ^^^^
+
+                token: Reserved("final")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                                                                                        ^^^^^
+
+                token: Reserved("when")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                                                                                              ^^^^
+
+                token: Reserved("out")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                                                                                                   ^^^
+
+                token: Reserved("priv")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                                                                                                       ^^^^
+
+                token: Reserved("public")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                                                                                                            ^^^^^^
+
+                token: Reserved("val")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                                                                                                                   ^^^
+
+                token: Reserved("elif")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                                                                                                                       ^^^^
+
+                token: Reserved("readonly")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                                                                                                                            ^^^^^^^^
+
+                token: Reserved("get")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                                                                                                                                     ^^^
+
+                token: Reserved("set")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                                                                                                                                         ^^^
+
+                token: Reserved("auto")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                                                                                                                                             ^^^^
+
+                token: Reserved("constructor")
+                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                                                                                                                                                                                                                                                                                                                                                                                                                                                  ^^^^^^^^^^^
             "#]],
         );
     }

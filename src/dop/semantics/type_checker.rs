@@ -2686,10 +2686,10 @@ mod tests {
         check(
             "",
             &[],
-            "Unknown::Red",
+            "Missing::Red",
             expect![[r#"
-                error: Enum type 'Unknown' is not defined
-                Unknown::Red
+                error: Enum type 'Missing' is not defined
+                Missing::Red
                 ^^^^^^^^^^^^
             "#]],
         );
@@ -2699,14 +2699,14 @@ mod tests {
     fn should_accept_enum_variant_with_fields() {
         check(
             indoc! {"
-                enum Result {
-                    Ok(value: Int),
-                    Err(message: String),
+                enum Outcome {
+                    Success(value: Int),
+                    Failure(message: String),
                 }
             "},
             &[],
-            "Result::Ok(value: 42)",
-            expect!["test::Result"],
+            "Outcome::Success(value: 42)",
+            expect!["test::Outcome"],
         );
     }
 
@@ -2729,17 +2729,17 @@ mod tests {
     fn should_reject_enum_variant_missing_field() {
         check(
             indoc! {"
-                enum Result {
-                    Ok(value: Int),
-                    Err(message: String),
+                enum Outcome {
+                    Success(value: Int),
+                    Failure(message: String),
                 }
             "},
             &[],
-            "Result::Ok()",
+            "Outcome::Success()",
             expect![[r#"
-                error: Enum variant 'Result::Ok' is missing fields: value
-                Result::Ok()
-                ^^^^^^^^^^
+                error: Enum variant 'Outcome::Success' is missing fields: value
+                Outcome::Success()
+                ^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -2766,17 +2766,17 @@ mod tests {
     fn should_reject_enum_variant_unknown_field() {
         check(
             indoc! {"
-                enum Result {
-                    Ok(value: Int),
-                    Err(message: String),
+                enum Outcome {
+                    Success(value: Int),
+                    Failure(message: String),
                 }
             "},
             &[],
-            "Result::Ok(wrong: 42)",
+            "Outcome::Success(wrong: 42)",
             expect![[r#"
-                error: Unknown field 'wrong' in enum variant 'Result::Ok'
-                Result::Ok(wrong: 42)
-                           ^^^^^
+                error: Unknown field 'wrong' in enum variant 'Outcome::Success'
+                Outcome::Success(wrong: 42)
+                                 ^^^^^
             "#]],
         );
     }
@@ -2785,17 +2785,17 @@ mod tests {
     fn should_reject_enum_variant_field_type_mismatch() {
         check(
             indoc! {"
-                enum Result {
-                    Ok(value: Int),
-                    Err(message: String),
+                enum Outcome {
+                    Success(value: Int),
+                    Failure(message: String),
                 }
             "},
             &[],
-            r#"Result::Ok(value: "hello")"#,
+            r#"Outcome::Success(value: "hello")"#,
             expect![[r#"
-                error: Field 'value' in 'Result::Ok' expects type Int, but got String
-                Result::Ok(value: "hello")
-                                  ^^^^^^^
+                error: Field 'value' in 'Outcome::Success' expects type Int, but got String
+                Outcome::Success(value: "hello")
+                                        ^^^^^^^
             "#]],
         );
     }
