@@ -54,11 +54,15 @@ async fn handle_render(
     State(state): State<AppState>,
     axum::Json(body): axum::Json<RenderParams>,
 ) -> Response<Body> {
+    let render_start = std::time::Instant::now();
+
     let program = state.program.read().unwrap();
 
     // Get the CSS content from state
     let css = state.tailwind_css.read().unwrap();
     let css_content = css.as_deref();
+
+    let component_name_for_log = body.component.clone();
 
     // Parse module name
     let module_name = match ModuleName::new(&body.module) {
@@ -117,7 +121,7 @@ async fn handle_render(
             .unwrap();
     }
 
-    match program.evaluate_component(&module_name, &component_name, body.params, css_content) {
+    let result = match program.evaluate_component(&module_name, &component_name, body.params, css_content) {
         Ok(html) => Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "text/html")
@@ -128,7 +132,15 @@ async fn handle_render(
             .header("Content-Type", "text/html")
             .body(Body::from(format!("Error rendering component: {}", e)))
             .unwrap(),
-    }
+    };
+
+    eprintln!(
+        "[render] component: {}, total: {:?}",
+        component_name_for_log,
+        render_start.elapsed()
+    );
+
+    result
 }
 
 pub fn create_router() -> axum::Router<AppState> {

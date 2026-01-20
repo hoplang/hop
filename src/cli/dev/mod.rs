@@ -81,12 +81,27 @@ async fn create_file_watcher(
                     let is_hop_file = path.extension().and_then(|e| e.to_str()) == Some("hop");
 
                     if is_hop_file {
+                        let total_start = std::time::Instant::now();
+
                         // Reload all modules from scratch
+                        let load_start = std::time::Instant::now();
                         if let Ok(modules) = local_root.load_all_hop_modules() {
+                            let load_elapsed = load_start.elapsed();
+
+                            let program_start = std::time::Instant::now();
                             let new_program = Program::new(modules);
+                            let program_elapsed = program_start.elapsed();
+
                             if let Ok(mut program) = state_clone.program.write() {
                                 *program = new_program;
                             }
+
+                            eprintln!(
+                                "[hot-reload] load_modules: {:?}, create_program: {:?}, total: {:?}",
+                                load_elapsed,
+                                program_elapsed,
+                                total_start.elapsed()
+                            );
                         }
                         // Tell the client to hot reload
                         let _ = state_clone.reload_channel.send(());
