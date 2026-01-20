@@ -87,7 +87,7 @@ impl Default for TsTranspiler {
 
 impl Transpiler for TsTranspiler {
     fn transpile_module(&self, module: &IrModule) -> String {
-        let entrypoints = &module.components;
+        let entrypoints = &module.entrypoints;
         let records = &module.records;
 
         let mut needs_escape_html = false;

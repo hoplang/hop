@@ -16,7 +16,7 @@ pub struct IrModuleBuilder {
     /// Enums with their variants. Each variant has a name and optional fields.
     enums: BTreeMap<String, Vec<(String, Vec<(String, Type)>)>>,
     records: BTreeMap<String, Vec<(String, Type)>>,
-    components: Vec<IrComponentDeclaration>,
+    entrypoints: Vec<IrComponentDeclaration>,
 }
 
 impl IrModuleBuilder {
@@ -24,7 +24,7 @@ impl IrModuleBuilder {
         Self {
             enums: BTreeMap::new(),
             records: BTreeMap::new(),
-            components: Vec::new(),
+            entrypoints: Vec::new(),
         }
     }
 
@@ -86,7 +86,7 @@ impl IrModuleBuilder {
 
         let mut builder = IrBuilder::new(params_owned, records_map, self.enums.clone());
         body_fn(&mut builder);
-        self.components.push(builder.build(name));
+        self.entrypoints.push(builder.build(name));
         self
     }
 
@@ -124,7 +124,7 @@ impl IrModuleBuilder {
             .collect();
 
         IrModule {
-            components: self.components,
+            entrypoints: self.entrypoints,
             records: record_declarations,
             enums: enum_declarations,
         }

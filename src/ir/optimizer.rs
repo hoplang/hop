@@ -5,16 +5,16 @@ use super::syntax::transform::{
 };
 
 pub fn optimize(mut module: IrModule) -> IrModule {
-    module.components = module
-        .components
+    module.entrypoints = module
+        .entrypoints
         .into_iter()
-        .map(|component| {
-            let component = ConstantPropagationPass::run(component);
-            let component = UnusedLetEliminationPass::run(component);
-            let component = UnusedIfEliminationPass::run(component);
-            let component = WriteExprSimplificationPass::run(component);
-            let component = WriteCoalescingPass::with_limit(60).run_with_limit(component);
-            component
+        .map(|entrypoint| {
+            let entrypoint = ConstantPropagationPass::run(entrypoint);
+            let entrypoint = UnusedLetEliminationPass::run(entrypoint);
+            let entrypoint = UnusedIfEliminationPass::run(entrypoint);
+            let entrypoint = WriteExprSimplificationPass::run(entrypoint);
+            let entrypoint = WriteCoalescingPass::with_limit(60).run_with_limit(entrypoint);
+            entrypoint
         })
         .collect();
     module

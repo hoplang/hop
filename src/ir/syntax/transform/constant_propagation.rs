@@ -1444,7 +1444,7 @@ mod tests {
             .build();
 
         check(
-            module.components.into_iter().next().unwrap(),
+            module.entrypoints.into_iter().next().unwrap(),
             expect![[r#"
                 -- before --
                 Test() {
@@ -2032,7 +2032,7 @@ mod tests {
             .build();
 
         check(
-            module.components.into_iter().next().unwrap(),
+            module.entrypoints.into_iter().next().unwrap(),
             expect![[r#"
                 -- before --
                 Test() {
@@ -2081,7 +2081,7 @@ mod tests {
             .build();
 
         check(
-            module.components.into_iter().next().unwrap(),
+            module.entrypoints.into_iter().next().unwrap(),
             expect![[r#"
                 -- before --
                 Test() {
@@ -2135,7 +2135,7 @@ mod tests {
             .build();
 
         check(
-            module.components.into_iter().next().unwrap(),
+            module.entrypoints.into_iter().next().unwrap(),
             expect![[r#"
                 -- before --
                 Test() {
@@ -2189,7 +2189,7 @@ mod tests {
             .build();
 
         check(
-            module.components.into_iter().next().unwrap(),
+            module.entrypoints.into_iter().next().unwrap(),
             expect![[r#"
                 -- before --
                 Test() {
@@ -2253,7 +2253,7 @@ mod tests {
             .build();
 
         check(
-            module.components.into_iter().next().unwrap(),
+            module.entrypoints.into_iter().next().unwrap(),
             expect![[r#"
                 -- before --
                 Test() {
@@ -2313,7 +2313,7 @@ mod tests {
             .build();
 
         check(
-            module.components.into_iter().next().unwrap(),
+            module.entrypoints.into_iter().next().unwrap(),
             expect![[r#"
                 -- before --
                 Test() {
@@ -2388,7 +2388,7 @@ mod tests {
             .build();
 
         check(
-            module.components.into_iter().next().unwrap(),
+            module.entrypoints.into_iter().next().unwrap(),
             expect![[r#"
                 -- before --
                 Test() {
@@ -2602,7 +2602,7 @@ mod tests {
             .build();
 
         check(
-            module.components.into_iter().next().unwrap(),
+            module.entrypoints.into_iter().next().unwrap(),
             expect![[r#"
                 -- before --
                 Test() {

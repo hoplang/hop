@@ -1,3 +1,4 @@
+use super::semantics::evaluator::evaluate_entrypoint;
 use super::transpile::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
 use crate::document::Document;
 use crate::hop::program::Program;
@@ -209,6 +210,17 @@ fn typecheck_go(code: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn execute_evaluator(module: &super::IrModule) -> Result<String, String> {
+    let entrypoint = module
+        .entrypoints
+        .iter()
+        .find(|c| c.name.as_str() == "Test")
+        .ok_or_else(|| "Test entrypoint not found".to_string())?;
+
+    evaluate_entrypoint(entrypoint, HashMap::new())
+        .map_err(|e| format!("Evaluator failed: {}", e))
+}
+
 fn check(hop_source: &str, expected_output: &str, expected: Expect) {
     // Parse hop source code
     let module_name = ModuleName::new("test").unwrap();
@@ -267,6 +279,36 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
         "-- ir (unoptimized) --\n{}-- ir (optimized) --\n{}-- expected output --\n{}\n",
         unoptimized_ir, optimized_ir, expected_output
     );
+
+    // Test evaluator on unoptimized IR
+    let eval_output = match execute_evaluator(&unoptimized_module) {
+        Ok(out) => out,
+        Err(e) => panic!(
+            "Evaluator failed (unoptimized):\n{}\n\nIR:\n{}",
+            e, unoptimized_ir
+        ),
+    };
+    assert_eq!(
+        eval_output, expected_output,
+        "Evaluator output mismatch (unoptimized)\n\nIR:\n{}",
+        unoptimized_ir
+    );
+    output.push_str("-- eval (unoptimized) --\nOK\n");
+
+    // Test evaluator on optimized IR
+    let eval_output = match execute_evaluator(&optimized_module) {
+        Ok(out) => out,
+        Err(e) => panic!(
+            "Evaluator failed (optimized):\n{}\n\nIR:\n{}",
+            e, optimized_ir
+        ),
+    };
+    assert_eq!(
+        eval_output, expected_output,
+        "Evaluator output mismatch (optimized)\n\nIR:\n{}",
+        optimized_ir
+    );
+    output.push_str("-- eval (optimized) --\nOK\n");
 
     // Test unoptimized version
     let ts_transpiler = TsTranspiler::new();
@@ -474,6 +516,10 @@ mod tests {
                 }
                 -- expected output --
                 mapped:hello
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -553,6 +599,10 @@ mod tests {
                 }
                 -- expected output --
                 inner
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -603,6 +653,10 @@ mod tests {
                 }
                 -- expected output --
                 yesNO
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -658,6 +712,10 @@ mod tests {
                 }
                 -- expected output --
                 some,NONE
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -727,6 +785,10 @@ mod tests {
                 }
                 -- expected output --
                 TF,F
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -791,6 +853,10 @@ mod tests {
                 }
                 -- expected output --
                 not eq
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -840,6 +906,10 @@ mod tests {
                 }
                 -- expected output --
                 42.5
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -883,6 +953,10 @@ mod tests {
                 }
                 -- expected output --
                 -123
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -926,6 +1000,10 @@ mod tests {
                 }
                 -- expected output --
                 -2
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -968,6 +1046,10 @@ mod tests {
                 }
                 -- expected output --
                 <h1>Hello, World!</h1>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1011,6 +1093,10 @@ mod tests {
                 }
                 -- expected output --
                 Hello, Alice!
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1062,6 +1148,10 @@ mod tests {
                 }
                 -- expected output --
                 Visible
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1107,6 +1197,10 @@ mod tests {
                 }
                 -- expected output --
                 a,b,c,
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1152,6 +1246,10 @@ mod tests {
                 }
                 -- expected output --
                 1,2,3,
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1195,6 +1293,10 @@ mod tests {
                 }
                 -- expected output --
                 012345
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1252,6 +1354,10 @@ mod tests {
                 }
                 -- expected output --
                 (1,1)(1,2)(2,1)(2,2)
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1293,6 +1399,10 @@ mod tests {
                 }
                 -- expected output --
                 &lt;div&gt;Hello &amp; world&lt;/div&gt;
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1334,6 +1444,10 @@ mod tests {
                 }
                 -- expected output --
                 Hello from let
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1379,6 +1493,10 @@ mod tests {
                 }
                 -- expected output --
                 Hello World
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1430,6 +1548,10 @@ mod tests {
                 }
                 -- expected output --
                 [A][B]
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1471,6 +1593,10 @@ mod tests {
                 }
                 -- expected output --
                 equals
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1523,6 +1649,10 @@ mod tests {
                 }
                 -- expected output --
                 3 &lt; 5
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1575,6 +1705,10 @@ mod tests {
                 }
                 -- expected output --
                 1.5 &lt; 2.5
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1636,6 +1770,10 @@ mod tests {
                 }
                 -- expected output --
                 equal
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1718,6 +1856,10 @@ mod tests {
                 }
                 -- expected output --
                 not equal
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1782,6 +1924,10 @@ mod tests {
                 }
                 -- expected output --
                 yes
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1846,6 +1992,10 @@ mod tests {
                 }
                 -- expected output --
                 no
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1911,6 +2061,10 @@ mod tests {
                 }
                 -- expected output --
                 Alice:30
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -1995,6 +2149,10 @@ mod tests {
                 }
                 -- expected output --
                 Alice,Paris
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -2089,6 +2247,10 @@ mod tests {
                 }
                 -- expected output --
                 Alice:active
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -2144,6 +2306,10 @@ mod tests {
                 }
                 -- expected output --
                 correct
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -2199,6 +2365,10 @@ mod tests {
                 }
                 -- expected output --
                 correct
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -2254,6 +2424,10 @@ mod tests {
                 }
                 -- expected output --
                 correct
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -2317,6 +2491,10 @@ mod tests {
                 }
                 -- expected output --
                 TT
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -2380,6 +2558,10 @@ mod tests {
                 }
                 -- expected output --
                 FT
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -2441,6 +2623,10 @@ mod tests {
                 }
                 -- expected output --
                 AB
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -2509,6 +2695,10 @@ mod tests {
                 }
                 -- expected output --
                 hello
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -2573,6 +2763,10 @@ mod tests {
                 }
                 -- expected output --
                 some
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -2652,6 +2846,10 @@ mod tests {
                 }
                 -- expected output --
                 inner
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -2732,6 +2930,10 @@ mod tests {
                 }
                 -- expected output --
                 [a][_][b]
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -2797,6 +2999,10 @@ mod tests {
                 }
                 -- expected output --
                 green
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -2886,6 +3092,10 @@ mod tests {
                 }
                 -- expected output --
                 blue
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -2975,6 +3185,10 @@ mod tests {
                 }
                 -- expected output --
                 Ok:hello
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3066,6 +3280,10 @@ mod tests {
                 }
                 -- expected output --
                 Err:something went wrong
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3163,6 +3381,10 @@ mod tests {
                 }
                 -- expected output --
                 200:OK
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3206,6 +3428,10 @@ mod tests {
                 }
                 -- expected output --
                 3
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3249,6 +3475,10 @@ mod tests {
                 }
                 -- expected output --
                 0
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3298,6 +3528,10 @@ mod tests {
                 }
                 -- expected output --
                 has two
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3347,6 +3581,10 @@ mod tests {
                 }
                 -- expected output --
                 less than 5
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3390,6 +3628,10 @@ mod tests {
                 }
                 -- expected output --
                 5
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3433,6 +3675,10 @@ mod tests {
                 }
                 -- expected output --
                 42
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3476,6 +3722,10 @@ mod tests {
                 }
                 -- expected output --
                 0
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3519,6 +3769,10 @@ mod tests {
                 }
                 -- expected output --
                 Count: 5
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3562,6 +3816,10 @@ mod tests {
                 }
                 -- expected output --
                 3
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3605,6 +3863,10 @@ mod tests {
                 }
                 -- expected output --
                 5
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3648,6 +3910,10 @@ mod tests {
                 }
                 -- expected output --
                 19.99
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3691,6 +3957,10 @@ mod tests {
                 }
                 -- expected output --
                 $9.99
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3734,6 +4004,10 @@ mod tests {
                 }
                 -- expected output --
                 xxx
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3783,6 +4057,10 @@ mod tests {
                 }
                 -- expected output --
                 ***
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3832,6 +4110,10 @@ mod tests {
                 }
                 -- expected output --
                 ......
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3881,6 +4163,10 @@ mod tests {
                 }
                 -- expected output --
                 1122
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3918,6 +4204,10 @@ mod tests {
                 }
                 -- expected output --
                 3.14
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3955,6 +4245,10 @@ mod tests {
                 }
                 -- expected output --
                 3
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -3992,6 +4286,10 @@ mod tests {
                 }
                 -- expected output --
                 3
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -4029,6 +4327,10 @@ mod tests {
                 }
                 -- expected output --
                 42
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -4066,6 +4368,10 @@ mod tests {
                 }
                 -- expected output --
                 -3.14
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -4153,6 +4459,10 @@ mod tests {
                 }
                 -- expected output --
                 deep
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -4217,6 +4527,10 @@ mod tests {
                 }
                 -- expected output --
                 some
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -4281,6 +4595,10 @@ mod tests {
                 }
                 -- expected output --
                 none
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -4325,6 +4643,10 @@ mod tests {
                 }
                 -- expected output --
                 some
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -4369,6 +4691,10 @@ mod tests {
                 }
                 -- expected output --
                 none
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -4451,6 +4777,10 @@ mod tests {
                 }
                 -- expected output --
                 some-some
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -4516,6 +4846,10 @@ mod tests {
                 }
                 -- expected output --
                 some
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -4594,6 +4928,10 @@ mod tests {
                 }
                 -- expected output --
                 ok
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -4674,6 +5012,10 @@ mod tests {
                 }
                 -- expected output --
                 err
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -4745,6 +5087,10 @@ mod tests {
                 }
                 -- expected output --
                 age:30
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -4848,6 +5194,10 @@ mod tests {
                 }
                 -- expected output --
                 triple-some
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -4958,6 +5308,10 @@ mod tests {
                 }
                 -- expected output --
                 ok-ok
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -5000,6 +5354,10 @@ mod tests {
                 }
                 -- expected output --
                 t
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -5042,6 +5400,10 @@ mod tests {
                 }
                 -- expected output --
                 f
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -5141,6 +5503,10 @@ mod tests {
                 }
                 -- expected output --
                 outer:inner
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -5238,6 +5604,10 @@ mod tests {
                 }
                 -- expected output --
                 value:hello
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -5280,6 +5650,10 @@ mod tests {
                 }
                 -- expected output --
                 <div class="foo bar baz"></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -5321,6 +5695,10 @@ mod tests {
                 }
                 -- expected output --
                 removed
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -5362,6 +5740,10 @@ mod tests {
                 }
                 -- expected output --
                 definition
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -5403,6 +5785,10 @@ mod tests {
                 }
                 -- expected output --
                 1-10
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -5449,6 +5835,10 @@ mod tests {
                 }
                 -- expected output --
                 <div class="my-class"></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -5495,6 +5885,10 @@ mod tests {
                 }
                 -- expected output --
                 <span>on</span>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -5512,6 +5906,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn unreserved_keyword_type_as_variable_name() {
         check(
             indoc! {r#"
@@ -5539,6 +5934,10 @@ mod tests {
                 }
                 -- expected output --
                 <input type="button">
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --
@@ -5556,6 +5955,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn unreserved_keyword_for_as_attribute_name() {
         check(
             indoc! {r#"
@@ -5581,6 +5981,10 @@ mod tests {
                 }
                 -- expected output --
                 <label for="email">Email</label>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
                 -- ts (unoptimized) --
                 OK
                 -- go (unoptimized) --

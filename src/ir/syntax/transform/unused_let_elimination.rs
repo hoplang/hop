@@ -881,7 +881,7 @@ mod tests {
             })
             .build();
 
-        let entrypoint = module.components.into_iter().next().unwrap();
+        let entrypoint = module.entrypoints.into_iter().next().unwrap();
         check(
             entrypoint,
             expect![[r#"
@@ -951,7 +951,7 @@ mod tests {
             })
             .build();
 
-        let entrypoint = module.components.into_iter().next().unwrap();
+        let entrypoint = module.entrypoints.into_iter().next().unwrap();
         check(
             entrypoint,
             expect![[r#"
@@ -1032,7 +1032,7 @@ mod tests {
             })
             .build();
 
-        let entrypoint = module.components.into_iter().next().unwrap();
+        let entrypoint = module.entrypoints.into_iter().next().unwrap();
         check(
             entrypoint,
             expect![[r#"

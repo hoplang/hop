@@ -124,7 +124,7 @@ impl PythonTranspiler {
 
 impl Transpiler for PythonTranspiler {
     fn transpile_module(&self, module: &IrModule) -> String {
-        let entrypoints = &module.components;
+        let entrypoints = &module.entrypoints;
         let records = &module.records;
 
         let mut needs_html_escape = false;

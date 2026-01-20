@@ -39,7 +39,7 @@ pub fn orchestrate(
         .collect();
     enums.sort_by(|a, b| a.name.cmp(&b.name));
 
-    let components = Inliner::inline_ast_entrypoints(typed_asts)
+    let entrypoints = Inliner::inline_ast_entrypoints(typed_asts)
         .into_iter()
         // transform ASTs (skip if options.skip_html_structure is set)
         .map(|e| if options.skip_html_structure { e } else { DoctypeInjector::run(e) })
@@ -58,7 +58,7 @@ pub fn orchestrate(
         .collect();
 
     let module = IrModule {
-        components,
+        entrypoints,
         records,
         enums,
     };

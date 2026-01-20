@@ -572,7 +572,7 @@ impl Program {
 
         // Find the requested entrypoint in the compiled module
         let entrypoint = ir_module
-            .components
+            .entrypoints
             .iter()
             .find(|c| c.name.as_str() == component_name.as_str())
             .ok_or_else(|| {
@@ -583,8 +583,14 @@ impl Program {
                 )
             })?;
 
+        // Convert serde_json::Value args to evaluator::Value
+        let converted_args: HashMap<String, ir::semantics::evaluator::Value> = args
+            .into_iter()
+            .map(|(k, v)| (k, ir::semantics::evaluator::Value::from_json(v)))
+            .collect();
+
         // Evaluate the entrypoint
-        ir::semantics::evaluator::evaluate_component(entrypoint, args)
+        ir::semantics::evaluator::evaluate_entrypoint(entrypoint, converted_args)
     }
 
     /// Get all typed modules for compilation

@@ -76,7 +76,7 @@ impl GoTranspiler {
     }
 
     fn scan_for_options(&self, module: &IrModule) -> bool {
-        for entrypoint in &module.components {
+        for entrypoint in &module.entrypoints {
             // Check parameters
             for (_, param_type) in &entrypoint.parameters {
                 if Self::type_contains_option(param_type) {
@@ -133,7 +133,7 @@ impl GoTranspiler {
 
 impl Transpiler for GoTranspiler {
     fn transpile_module(&self, module: &IrModule) -> String {
-        let entrypoints = &module.components;
+        let entrypoints = &module.entrypoints;
         let records = &module.records;
 
         let mut imports = BTreeSet::new();

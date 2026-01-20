@@ -25,7 +25,7 @@ pub enum IrForSource {
 
 #[derive(Debug, Clone)]
 pub struct IrModule {
-    pub components: Vec<IrComponentDeclaration>,
+    pub entrypoints: Vec<IrComponentDeclaration>,
     pub records: Vec<IrRecordDeclaration>,
     pub enums: Vec<IrEnumDeclaration>,
 }
@@ -1451,8 +1451,8 @@ impl fmt::Display for IrModule {
         for record_decl in &self.records {
             writeln!(f, "{}", record_decl)?;
         }
-        for component in &self.components {
-            write!(f, "{}", component)?;
+        for entrypoint in &self.entrypoints {
+            write!(f, "{}", entrypoint)?;
         }
         Ok(())
     }

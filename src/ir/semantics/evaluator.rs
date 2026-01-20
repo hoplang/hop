@@ -5,20 +5,169 @@ use crate::{
     dop::semantics::r#type::{ComparableType, EquatableType, NumericType},
 };
 use anyhow::{Result, anyhow};
-use serde_json::Value;
 use std::collections::HashMap;
 
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::ir::syntax::ast::{IrComponentDeclaration, IrForSource, IrStatement};
 
+/// Runtime value for the Hop evaluator.
+/// This enum properly represents all Hop types, unlike serde_json::Value.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Value {
+    String(String),
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    Array(Vec<Value>),
+    Record(HashMap<String, Value>),
+    /// Option::Some with inner value
+    Some(Box<Value>),
+    /// Option::None
+    None,
+    /// Enum variant with name and optional fields
+    Enum {
+        variant_name: String,
+        fields: HashMap<String, Value>,
+    },
+}
+
+impl Value {
+    /// Convert from serde_json::Value to our Value type
+    pub fn from_json(json: serde_json::Value) -> Self {
+        match json {
+            serde_json::Value::Null => Value::None,
+            serde_json::Value::Bool(b) => Value::Bool(b),
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Value::Int(i)
+                } else if let Some(f) = n.as_f64() {
+                    Value::Float(f)
+                } else {
+                    Value::Int(0)
+                }
+            }
+            serde_json::Value::String(s) => Value::String(s),
+            serde_json::Value::Array(arr) => {
+                Value::Array(arr.into_iter().map(Value::from_json).collect())
+            }
+            serde_json::Value::Object(obj) => {
+                let rec: HashMap<String, Value> = obj
+                    .into_iter()
+                    .map(|(k, v)| (k, Value::from_json(v)))
+                    .collect();
+                Value::Record(rec)
+            }
+        }
+    }
+
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Value::String(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            Value::Bool(b) => Some(*b),
+            _ => None,
+        }
+    }
+
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            Value::Int(i) => Some(*i),
+            _ => None,
+        }
+    }
+
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            Value::Float(f) => Some(*f),
+            // Allow Int to be read as f64 for convenience
+            Value::Int(i) => Some(*i as f64),
+            _ => None,
+        }
+    }
+
+    pub fn as_array(&self) -> Option<&Vec<Value>> {
+        match self {
+            Value::Array(arr) => Some(arr),
+            _ => None,
+        }
+    }
+
+    pub fn as_record(&self) -> Option<&HashMap<String, Value>> {
+        match self {
+            Value::Record(rec) => Some(rec),
+            _ => None,
+        }
+    }
+
+    /// Convert Value to a display string for output
+    pub fn to_output_string(&self) -> String {
+        match self {
+            Value::String(s) => s.clone(),
+            Value::Bool(b) => b.to_string(),
+            Value::Int(i) => i.to_string(),
+            Value::Float(f) => f.to_string(),
+            Value::Array(_) => "[array]".to_string(),
+            Value::Record(_) => "[record]".to_string(),
+            Value::Some(inner) => inner.to_output_string(),
+            Value::None => "".to_string(),
+            Value::Enum { variant_name, .. } => variant_name.clone(),
+        }
+    }
+
+    /// Convert Value to serde_json::Value for JSON encoding
+    pub fn to_json(&self) -> serde_json::Value {
+        match self {
+            Value::String(s) => serde_json::Value::String(s.clone()),
+            Value::Bool(b) => serde_json::Value::Bool(*b),
+            Value::Int(i) => serde_json::Value::Number((*i).into()),
+            Value::Float(f) => serde_json::Value::Number(
+                serde_json::Number::from_f64(*f).unwrap_or_else(|| serde_json::Number::from(0)),
+            ),
+            Value::Array(arr) => {
+                serde_json::Value::Array(arr.iter().map(|v| v.to_json()).collect())
+            }
+            Value::Record(rec) => {
+                let obj: serde_json::Map<String, serde_json::Value> =
+                    rec.iter().map(|(k, v)| (k.clone(), v.to_json())).collect();
+                serde_json::Value::Object(obj)
+            }
+            Value::Some(inner) => inner.to_json(),
+            Value::None => serde_json::Value::Null,
+            Value::Enum {
+                variant_name,
+                fields,
+            } => {
+                if fields.is_empty() {
+                    serde_json::Value::String(variant_name.clone())
+                } else {
+                    let mut obj = serde_json::Map::new();
+                    obj.insert(
+                        "_variant".to_string(),
+                        serde_json::Value::String(variant_name.clone()),
+                    );
+                    for (k, v) in fields {
+                        obj.insert(k.clone(), v.to_json());
+                    }
+                    serde_json::Value::Object(obj)
+                }
+            }
+        }
+    }
+}
+
 /// Evaluate an IR entrypoint with the given arguments
-pub fn evaluate_component(
-    component: &IrComponentDeclaration,
+pub fn evaluate_entrypoint(
+    entrypoint: &IrComponentDeclaration,
     args: HashMap<String, Value>,
 ) -> Result<String> {
     let mut env = Environment::new();
 
-    for (param_name, _param_type) in &component.parameters {
+    for (param_name, _param_type) in &entrypoint.parameters {
         if let Some(value) = args.get(param_name.as_str()) {
             let _ = env.push(param_name.to_string(), value.clone());
         }
@@ -26,7 +175,7 @@ pub fn evaluate_component(
 
     // Execute body
     let mut output = String::new();
-    eval_statements(&component.body, &mut env, &mut output)?;
+    eval_statements(&entrypoint.body, &mut env, &mut output)?;
 
     Ok(output)
 }
@@ -61,11 +210,11 @@ fn eval_statement(
             escape,
         } => {
             let value = evaluate_expr(expr, env)?;
-            let s = value.as_str().unwrap_or("");
+            let s = value.to_output_string();
             if *escape {
-                output.push_str(&escape_html(s));
+                output.push_str(&escape_html(&s));
             } else {
-                output.push_str(s);
+                output.push_str(&s);
             }
             Ok(())
         }
@@ -114,7 +263,7 @@ fn eval_statement(
 
                     for i in start_int..=end_int {
                         if let Some(var) = var {
-                            let _ = env.push(var.to_string(), Value::Number(i.into()));
+                            let _ = env.push(var.to_string(), Value::Int(i));
                         }
                         eval_statements(body, env, output)?;
                         if var.is_some() {
@@ -166,14 +315,21 @@ fn eval_statement(
                     .lookup(subject.0.as_str())
                     .cloned()
                     .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
-                if subject_value.is_null() {
-                    eval_statements(none_arm_body, env, output)?;
-                } else if let Some(var) = some_arm_binding {
-                    let _ = env.push(var.to_string(), subject_value);
-                    eval_statements(some_arm_body, env, output)?;
-                    let _ = env.pop();
-                } else {
-                    eval_statements(some_arm_body, env, output)?;
+
+                match subject_value {
+                    Value::Some(inner) => {
+                        if let Some(var) = some_arm_binding {
+                            let _ = env.push(var.to_string(), *inner);
+                            eval_statements(some_arm_body, env, output)?;
+                            let _ = env.pop();
+                        } else {
+                            eval_statements(some_arm_body, env, output)?;
+                        }
+                    }
+                    Value::None => {
+                        eval_statements(none_arm_body, env, output)?;
+                    }
+                    _ => return Err(anyhow!("Expected Option value in match")),
                 }
                 Ok(())
             }
@@ -182,18 +338,36 @@ fn eval_statement(
                     .lookup(subject.0.as_str())
                     .cloned()
                     .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
-                let variant = subject_value
-                    .as_str()
-                    .ok_or_else(|| anyhow!("Expected enum variant string"))?;
+
+                let (variant_name, fields) = match &subject_value {
+                    Value::Enum {
+                        variant_name,
+                        fields,
+                    } => (variant_name.as_str(), fields),
+                    _ => return Err(anyhow!("Expected Enum value in match")),
+                };
 
                 for arm in arms {
-                    let EnumPattern::Variant { variant_name, .. } = &arm.pattern;
-                    if variant == variant_name {
+                    let EnumPattern::Variant {
+                        variant_name: pattern_variant,
+                        ..
+                    } = &arm.pattern;
+                    if variant_name == pattern_variant {
+                        // Bind fields to variables
+                        let bindings_count = arm.bindings.len();
+                        for (field_name, var_name) in &arm.bindings {
+                            if let Some(field_val) = fields.get(field_name.as_str()) {
+                                let _ = env.push(var_name.to_string(), field_val.clone());
+                            }
+                        }
                         eval_statements(&arm.body, env, output)?;
+                        for _ in 0..bindings_count {
+                            let _ = env.pop();
+                        }
                         return Ok(());
                     }
                 }
-                Err(anyhow!("No matching arm for enum variant: {}", variant))
+                Err(anyhow!("No matching arm for enum variant: {}", variant_name))
             }
         },
     }
@@ -211,18 +385,16 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             ..
         } => {
             let obj_value = evaluate_expr(object, env)?;
-            if let Some(obj) = obj_value.as_object() {
-                Ok(obj.get(field.as_str()).cloned().unwrap_or(Value::Null))
+            if let Some(rec) = obj_value.as_record() {
+                Ok(rec.get(field.as_str()).cloned().unwrap_or(Value::None))
             } else {
-                Ok(Value::Null)
+                Err(anyhow!("Expected record for field access"))
             }
         }
         IrExpr::StringLiteral { value: s, .. } => Ok(Value::String(s.to_string())),
         IrExpr::BooleanLiteral { value: b, .. } => Ok(Value::Bool(*b)),
-        IrExpr::FloatLiteral { value: f, .. } => {
-            Ok(Value::Number(serde_json::Number::from_f64(*f).unwrap()))
-        }
-        IrExpr::IntLiteral { value: i, .. } => Ok(Value::Number(serde_json::Number::from(*i))),
+        IrExpr::FloatLiteral { value: f, .. } => Ok(Value::Float(*f)),
+        IrExpr::IntLiteral { value: i, .. } => Ok(Value::Int(*i)),
         IrExpr::ArrayLiteral { elements, .. } => {
             let mut array = Vec::new();
             for elem in elements {
@@ -231,16 +403,15 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             Ok(Value::Array(array))
         }
         IrExpr::RecordLiteral { fields, .. } => {
-            // Record literal evaluates to an object
-            let mut obj = serde_json::Map::new();
+            let mut rec = HashMap::new();
             for (key, value) in fields {
-                obj.insert(key.as_str().to_string(), evaluate_expr(value, env)?);
+                rec.insert(key.as_str().to_string(), evaluate_expr(value, env)?);
             }
-            Ok(Value::Object(obj))
+            Ok(Value::Record(rec))
         }
         IrExpr::JsonEncode { value, .. } => {
             let val = evaluate_expr(value, env)?;
-            let json_str = serde_json::to_string(&val)?;
+            let json_str = serde_json::to_string(&val.to_json())?;
             Ok(Value::String(json_str))
         }
         IrExpr::EnvLookup { key, .. } => {
@@ -257,7 +428,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
 
             match (left_val, right_val) {
                 (Value::String(l), Value::String(r)) => Ok(Value::String(format!("{}{}", l, r))),
-                _ => panic!("String concatenation requires two strings"),
+                _ => Err(anyhow!("String concatenation requires two strings")),
             }
         }
         IrExpr::BooleanNegation { operand, .. } => {
@@ -274,14 +445,11 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             match operand_type {
                 NumericType::Int => {
                     let int_val = val.as_i64().unwrap_or(0);
-                    Ok(Value::Number(serde_json::Number::from(-int_val)))
+                    Ok(Value::Int(-int_val))
                 }
                 NumericType::Float => {
                     let float_val = val.as_f64().unwrap_or(0.0);
-                    Ok(Value::Number(
-                        serde_json::Number::from_f64(-float_val)
-                            .expect("Invalid float for negation"),
-                    ))
+                    Ok(Value::Float(-float_val))
                 }
             }
         }
@@ -305,8 +473,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
         } => {
             let left_val = evaluate_expr(left, env)?;
             let right_val = evaluate_expr(right, env)?;
-            let left_str = left_val.as_str().unwrap();
-            let right_str = right_val.as_str().unwrap();
+            let left_str = left_val.as_str().unwrap_or("");
+            let right_str = right_val.as_str().unwrap_or("");
             Ok(Value::Bool(left_str == right_str))
         }
         IrExpr::Equals {
@@ -341,9 +509,8 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
         } => {
             let left_val = evaluate_expr(left, env)?;
             let right_val = evaluate_expr(right, env)?;
-            let left_str = left_val.as_str().unwrap();
-            let right_str = right_val.as_str().unwrap();
-            Ok(Value::Bool(left_str == right_str))
+            // Compare enum variants by their variant name (unit enums for now)
+            Ok(Value::Bool(left_val == right_val))
         }
         IrExpr::Equals {
             left,
@@ -353,7 +520,6 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
         } => {
             let left_val = evaluate_expr(left, env)?;
             let right_val = evaluate_expr(right, env)?;
-            // Options are equal if both are null or both have equal values
             Ok(Value::Bool(left_val == right_val))
         }
         IrExpr::LessThan {
@@ -433,17 +599,12 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 NumericType::Int => {
                     let left_int = left_val.as_i64().unwrap_or(0);
                     let right_int = right_val.as_i64().unwrap_or(0);
-                    Ok(Value::Number(serde_json::Number::from(
-                        left_int + right_int,
-                    )))
+                    Ok(Value::Int(left_int + right_int))
                 }
                 NumericType::Float => {
                     let left_float = left_val.as_f64().unwrap_or(0.0);
                     let right_float = right_val.as_f64().unwrap_or(0.0);
-                    Ok(Value::Number(
-                        serde_json::Number::from_f64(left_float + right_float)
-                            .unwrap_or_else(|| serde_json::Number::from(0)),
-                    ))
+                    Ok(Value::Float(left_float + right_float))
                 }
             }
         }
@@ -461,17 +622,12 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 NumericType::Int => {
                     let left_int = left_val.as_i64().unwrap_or(0);
                     let right_int = right_val.as_i64().unwrap_or(0);
-                    Ok(Value::Number(serde_json::Number::from(
-                        left_int - right_int,
-                    )))
+                    Ok(Value::Int(left_int - right_int))
                 }
                 NumericType::Float => {
                     let left_float = left_val.as_f64().unwrap_or(0.0);
                     let right_float = right_val.as_f64().unwrap_or(0.0);
-                    Ok(Value::Number(
-                        serde_json::Number::from_f64(left_float - right_float)
-                            .unwrap_or_else(|| serde_json::Number::from(0)),
-                    ))
+                    Ok(Value::Float(left_float - right_float))
                 }
             }
         }
@@ -489,49 +645,67 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 NumericType::Int => {
                     let left_int = left_val.as_i64().unwrap_or(0);
                     let right_int = right_val.as_i64().unwrap_or(0);
-                    Ok(Value::Number(serde_json::Number::from(
-                        left_int * right_int,
-                    )))
+                    Ok(Value::Int(left_int * right_int))
                 }
                 NumericType::Float => {
                     let left_float = left_val.as_f64().unwrap_or(0.0);
                     let right_float = right_val.as_f64().unwrap_or(0.0);
-                    Ok(Value::Number(
-                        serde_json::Number::from_f64(left_float * right_float)
-                            .unwrap_or_else(|| serde_json::Number::from(0)),
-                    ))
+                    Ok(Value::Float(left_float * right_float))
                 }
             }
         }
-        IrExpr::EnumLiteral { variant_name, .. } => {
-            // Enum variants evaluate to their string name
-            Ok(Value::String(variant_name.clone()))
+        IrExpr::EnumLiteral {
+            variant_name,
+            fields,
+            ..
+        } => {
+            let mut field_values = HashMap::new();
+            for (field_name, field_expr) in fields {
+                let field_val = evaluate_expr(field_expr, env)?;
+                field_values.insert(field_name.as_str().to_string(), field_val);
+            }
+            Ok(Value::Enum {
+                variant_name: variant_name.clone(),
+                fields: field_values,
+            })
         }
-        IrExpr::OptionLiteral { .. } => {
-            todo!("Option literal evaluation not yet implemented")
-        }
+        IrExpr::OptionLiteral { value, .. } => match value {
+            Some(inner) => Ok(Value::Some(Box::new(evaluate_expr(inner, env)?))),
+            None => Ok(Value::None),
+        },
         IrExpr::Match { match_, .. } => match match_ {
             Match::Enum { subject, arms } => {
-                // Look up the subject variable to get the variant name
                 let subject_val = env
                     .lookup(subject.0.as_str())
                     .cloned()
                     .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
-                let variant_name = subject_val.as_str().ok_or_else(|| {
-                    anyhow!("Match subject must evaluate to a string (enum variant)")
-                })?;
 
-                // Find the matching arm
+                let (variant_name, fields) = match &subject_val {
+                    Value::Enum {
+                        variant_name,
+                        fields,
+                    } => (variant_name.as_str(), fields),
+                    _ => return Err(anyhow!("Expected Enum value in match expression")),
+                };
+
                 for arm in arms {
-                    match &arm.pattern {
-                        EnumPattern::Variant {
-                            variant_name: pattern_variant,
-                            ..
-                        } => {
-                            if pattern_variant == variant_name {
-                                return evaluate_expr(&arm.body, env);
+                    let EnumPattern::Variant {
+                        variant_name: pattern_variant,
+                        ..
+                    } = &arm.pattern;
+                    if variant_name == pattern_variant {
+                        // Bind fields to variables
+                        let bindings_count = arm.bindings.len();
+                        for (field_name, var_name) in &arm.bindings {
+                            if let Some(field_val) = fields.get(field_name.as_str()) {
+                                let _ = env.push(var_name.to_string(), field_val.clone());
                             }
                         }
+                        let result = evaluate_expr(&arm.body, env);
+                        for _ in 0..bindings_count {
+                            let _ = env.pop();
+                        }
+                        return result;
                     }
                 }
 
@@ -545,7 +719,6 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 true_body,
                 false_body,
             } => {
-                // Look up the subject variable to get the boolean value
                 let subject_val = env
                     .lookup(subject.0.as_str())
                     .cloned()
@@ -566,26 +739,24 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 some_arm_body,
                 none_arm_body,
             } => {
-                // Look up the subject variable to get the option value
                 let subject_val = env
                     .lookup(subject.0.as_str())
                     .cloned()
                     .ok_or_else(|| anyhow!("Undefined variable: {}", subject.0))?;
 
-                // Check if it's Some or None
-                let is_some = !subject_val.is_null();
-
-                if is_some {
-                    // If there's a binding, add the inner value to the environment
-                    if let Some(var_name) = some_arm_binding {
-                        let _ = env.push(var_name.to_string(), subject_val.clone());
-                        let result = evaluate_expr(some_arm_body, env);
-                        env.pop();
-                        return result;
+                match subject_val {
+                    Value::Some(inner) => {
+                        if let Some(var_name) = some_arm_binding {
+                            let _ = env.push(var_name.to_string(), *inner);
+                            let result = evaluate_expr(some_arm_body, env);
+                            env.pop();
+                            result
+                        } else {
+                            evaluate_expr(some_arm_body, env)
+                        }
                     }
-                    evaluate_expr(some_arm_body, env)
-                } else {
-                    evaluate_expr(none_arm_body, env)
+                    Value::None => evaluate_expr(none_arm_body, env),
+                    _ => Err(anyhow!("Expected Option value in match expression")),
                 }
             }
         },
@@ -613,44 +784,37 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
         IrExpr::ArrayLength { array, .. } => {
             let array_val = evaluate_expr(array, env)?;
             match array_val {
-                Value::Array(arr) => Ok(Value::Number(serde_json::Number::from(arr.len() as i64))),
+                Value::Array(arr) => Ok(Value::Int(arr.len() as i64)),
                 _ => Err(anyhow!("ArrayLength requires an array argument")),
             }
         }
         IrExpr::IntToString { value, .. } => {
             let int_val = evaluate_expr(value, env)?;
             match int_val {
-                Value::Number(n) => Ok(Value::String(n.to_string())),
+                Value::Int(n) => Ok(Value::String(n.to_string())),
                 _ => Err(anyhow!("IntToString requires an integer argument")),
             }
         }
         IrExpr::FloatToInt { value, .. } => {
             let float_val = evaluate_expr(value, env)?;
             match float_val {
-                Value::Number(n) => {
-                    let int_val = n.as_f64().unwrap_or(0.0) as i64;
-                    Ok(Value::Number(serde_json::Number::from(int_val)))
-                }
+                Value::Float(f) => Ok(Value::Int(f as i64)),
+                Value::Int(i) => Ok(Value::Int(i)), // Already an int
                 _ => Err(anyhow!("FloatToInt requires a float argument")),
             }
         }
         IrExpr::FloatToString { value, .. } => {
             let float_val = evaluate_expr(value, env)?;
             match float_val {
-                Value::Number(n) => Ok(Value::String(n.to_string())),
+                Value::Float(f) => Ok(Value::String(f.to_string())),
+                Value::Int(i) => Ok(Value::String((i as f64).to_string())),
                 _ => Err(anyhow!("FloatToString requires a float argument")),
             }
         }
         IrExpr::IntToFloat { value, .. } => {
             let int_val = evaluate_expr(value, env)?;
             match int_val {
-                Value::Number(n) => {
-                    let float_val = n.as_i64().unwrap_or(0) as f64;
-                    Ok(Value::Number(
-                        serde_json::Number::from_f64(float_val)
-                            .unwrap_or(serde_json::Number::from(0)),
-                    ))
-                }
+                Value::Int(i) => Ok(Value::Float(i as f64)),
                 _ => Err(anyhow!("IntToFloat requires an integer argument")),
             }
         }
@@ -663,13 +827,12 @@ mod tests {
     use crate::dop::Type;
     use crate::ir::syntax::builder::{build_ir, build_ir_with_enums};
     use expect_test::{Expect, expect};
-    use serde_json::json;
 
     fn check(entrypoint: IrComponentDeclaration, args: Vec<(&str, Value)>, expected: Expect) {
         let before = entrypoint.to_string();
         let args_map: HashMap<String, Value> =
             args.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
-        let after = evaluate_component(&entrypoint, args_map).expect("Evaluation should succeed");
+        let after = evaluate_entrypoint(&entrypoint, args_map).expect("Evaluation should succeed");
 
         let output = format!("-- before --\n{}\n-- after --\n{}\n", before, after);
         expected.assert_eq(&output);
@@ -700,7 +863,7 @@ mod tests {
             build_ir("Test", [("content", Type::String)], |t| {
                 t.write_expr_escaped(t.var("content"));
             }),
-            vec![("content", json!("<script>alert('xss')</script>"))],
+            vec![("content", Value::String("<script>alert('xss')</script>".to_string()))],
             expect![[r#"
                 -- before --
                 Test(content: String) {
@@ -721,7 +884,7 @@ mod tests {
                     t.write("<div>Visible</div>");
                 });
             }),
-            vec![("show", json!(true))],
+            vec![("show", Value::Bool(true))],
             expect![[r#"
                 -- before --
                 Test(show: Bool) {
@@ -744,7 +907,7 @@ mod tests {
                     t.write("<div>Hidden</div>");
                 });
             }),
-            vec![("show", json!(false))],
+            vec![("show", Value::Bool(false))],
             expect![[r#"
                 -- before --
                 Test(show: Bool) {
@@ -773,7 +936,11 @@ mod tests {
                     });
                 },
             ),
-            vec![("items", json!(["Apple", "Banana", "Cherry"]))],
+            vec![("items", Value::Array(vec![
+                Value::String("Apple".to_string()),
+                Value::String("Banana".to_string()),
+                Value::String("Cherry".to_string()),
+            ]))],
             expect![[r#"
                 -- before --
                 Test(items: Array[String]) {
