@@ -143,15 +143,15 @@ pub fn next(
                     // Reserved keywords
                     "let" | "fn" | "func" | "if" | "else" | "return" | "struct" | "type"
                     | "var" | "const" | "for" | "assert" | "comp" | "component" | "and"
-                    | "or" | "not" | "while" | "loop" | "break" | "continue"
+                    | "or" | "not" | "of" | "while" | "loop" | "break" | "continue"
                     | "case" | "default" | "try" | "catch" | "throw" | "finally" | "async"
                     | "await" | "yield" | "pub" | "private" | "mut" | "impl" | "trait"
                     | "interface" | "as" | "is" | "where" | "self" | "this"
                     | "super" | "use" | "from" | "export" | "mod" | "null" | "nil" | "new"
-                    | "static" | "defer" | "extends" | "implements" | "namespace" | "include"
+                    | "static" | "defer" | "extends" | "implements" | "namespace" | "include" | "newtype"
                     | "package" | "internal" | "undefined" | "void" | "final" | "when"
                     | "out" | "priv" | "public" | "val" | "elif" | "readonly" | "get"
-                    | "set" | "auto" | "constructor"
+                    | "set" | "auto" | "constructor" | "alias"
                     // Uppercase reserved keywords
                     | "Any" | "Arr" | "Async" | "Auto" | "Box" | "CSS" | "Class"
                     | "Classes" | "Client" | "Comp" | "Computed" | "Dyn" | "Dynamic"
@@ -1712,6 +1712,7 @@ mod tests {
     fn should_accept_reserved_keywords() {
         check(
             indoc! {"
+                alias
                 and
                 as
                 assert
@@ -1752,9 +1753,11 @@ mod tests {
                 mut
                 namespace
                 new
+                newtype
                 nil
                 not
                 null
+                of
                 or
                 out
                 package
@@ -1785,6 +1788,10 @@ mod tests {
                 yield
             "},
             expect![[r#"
+                token: Reserved("alias")
+                alias
+                ^^^^^
+
                 token: Reserved("and")
                 and
                 ^^^
@@ -1945,6 +1952,10 @@ mod tests {
                 new
                 ^^^
 
+                token: Reserved("newtype")
+                newtype
+                ^^^^^^^
+
                 token: Reserved("nil")
                 nil
                 ^^^
@@ -1956,6 +1967,10 @@ mod tests {
                 token: Reserved("null")
                 null
                 ^^^^
+
+                token: Reserved("of")
+                of
+                ^^
 
                 token: Reserved("or")
                 or
