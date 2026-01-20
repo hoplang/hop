@@ -1,6 +1,7 @@
 use crate::hop::semantics::typed_ast::TypedAst;
 use crate::hop::symbols::module_name::ModuleName;
 use crate::inlined::{DoctypeInjector, HtmlStructureInjector, Inliner, MetaInjector, TailwindInjector};
+use crate::ir::syntax::transform::{Pass, VariableRenamingPass};
 use crate::ir::{optimize, Compiler, IrEnumDeclaration, IrModule, IrRecordDeclaration};
 use std::collections::HashMap;
 
@@ -53,6 +54,7 @@ pub fn orchestrate(
                 Compiler::compile(e)
             }
         })
+        .map(VariableRenamingPass::run)
         .collect();
 
     let module = IrModule {

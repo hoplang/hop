@@ -146,7 +146,7 @@ pub fn next(
                     | "or" | "not" | "while" | "loop" | "break" | "continue" | "switch"
                     | "case" | "default" | "try" | "catch" | "throw" | "finally" | "async"
                     | "await" | "yield" | "pub" | "private" | "mut" | "impl" | "trait"
-                    | "interface" | "class" | "as" | "is" | "where" | "self" | "this"
+                    | "interface" | "as" | "is" | "where" | "self" | "this"
                     | "super" | "use" | "from" | "export" | "mod" | "null" | "nil" | "new"
                     | "static" | "defer" | "extends" | "implements" | "namespace" | "include"
                     | "package" | "internal" | "undefined" | "void" | "final" | "when"
@@ -253,6 +253,7 @@ mod tests {
     use super::*;
     use crate::document::{DocumentAnnotator, Ranged as _, SimpleAnnotation};
     use expect_test::{Expect, expect};
+    use indoc::indoc;
 
     fn check(input: &str, expected: Expect) {
         let mut cursor = DocumentCursor::new(input.to_string()).peekable();
@@ -1710,299 +1711,368 @@ mod tests {
     #[test]
     fn should_accept_reserved_keywords() {
         check(
-            "let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor",
+            indoc! {"
+                let
+                fn
+                func
+                if
+                else
+                return
+                struct
+                type
+                var
+                const
+                for
+                assert
+                comp
+                component
+                and
+                or
+                not
+                while
+                loop
+                break
+                continue
+                switch
+                case
+                default
+                try
+                catch
+                throw
+                finally
+                async
+                await
+                yield
+                pub
+                private
+                mut
+                impl
+                trait
+                interface
+                as
+                is
+                where
+                self
+                this
+                super
+                use
+                from
+                export
+                mod
+                null
+                nil
+                new
+                static
+                defer
+                extends
+                implements
+                namespace
+                include
+                package
+                internal
+                undefined
+                void
+                final
+                when
+                out
+                priv
+                public
+                val
+                elif
+                readonly
+                get
+                set
+                auto
+                constructor
+            "},
             expect![[r#"
                 token: Reserved("let")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
+                let
                 ^^^
 
                 token: Reserved("fn")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                    ^^
+                fn
+                ^^
 
                 token: Reserved("func")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                       ^^^^
+                func
+                ^^^^
 
                 token: Reserved("if")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                            ^^
+                if
+                ^^
 
                 token: Reserved("else")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                               ^^^^
+                else
+                ^^^^
 
                 token: Reserved("return")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                    ^^^^^^
+                return
+                ^^^^^^
 
                 token: Reserved("struct")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                           ^^^^^^
+                struct
+                ^^^^^^
 
                 token: Reserved("type")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                  ^^^^
+                type
+                ^^^^
 
                 token: Reserved("var")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                       ^^^
+                var
+                ^^^
 
                 token: Reserved("const")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                           ^^^^^
+                const
+                ^^^^^
 
                 token: Reserved("for")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                 ^^^
+                for
+                ^^^
 
                 token: Reserved("assert")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                     ^^^^^^
+                assert
+                ^^^^^^
 
                 token: Reserved("comp")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                            ^^^^
+                comp
+                ^^^^
 
                 token: Reserved("component")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                 ^^^^^^^^^
+                component
+                ^^^^^^^^^
 
                 token: Reserved("and")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                           ^^^
+                and
+                ^^^
 
                 token: Reserved("or")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                               ^^
+                or
+                ^^
 
                 token: Reserved("not")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                  ^^^
+                not
+                ^^^
 
                 token: Reserved("while")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                      ^^^^^
+                while
+                ^^^^^
 
                 token: Reserved("loop")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                            ^^^^
+                loop
+                ^^^^
 
                 token: Reserved("break")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                 ^^^^^
+                break
+                ^^^^^
 
                 token: Reserved("continue")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                       ^^^^^^^^
+                continue
+                ^^^^^^^^
 
                 token: Reserved("switch")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                ^^^^^^
+                switch
+                ^^^^^^
 
                 token: Reserved("case")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                       ^^^^
+                case
+                ^^^^
 
                 token: Reserved("default")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                            ^^^^^^^
+                default
+                ^^^^^^^
 
                 token: Reserved("try")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                    ^^^
+                try
+                ^^^
 
                 token: Reserved("catch")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                        ^^^^^
+                catch
+                ^^^^^
 
                 token: Reserved("throw")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                              ^^^^^
+                throw
+                ^^^^^
 
                 token: Reserved("finally")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                    ^^^^^^^
+                finally
+                ^^^^^^^
 
                 token: Reserved("async")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                            ^^^^^
+                async
+                ^^^^^
 
                 token: Reserved("await")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                  ^^^^^
+                await
+                ^^^^^
 
                 token: Reserved("yield")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                        ^^^^^
+                yield
+                ^^^^^
 
                 token: Reserved("pub")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                              ^^^
+                pub
+                ^^^
 
                 token: Reserved("private")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                  ^^^^^^^
+                private
+                ^^^^^^^
 
                 token: Reserved("mut")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                          ^^^
+                mut
+                ^^^
 
                 token: Reserved("impl")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                              ^^^^
+                impl
+                ^^^^
 
                 token: Reserved("trait")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                   ^^^^^
+                trait
+                ^^^^^
 
                 token: Reserved("interface")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                         ^^^^^^^^^
-
-                token: Reserved("class")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                   ^^^^^
+                interface
+                ^^^^^^^^^
 
                 token: Reserved("as")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                         ^^
+                as
+                ^^
 
                 token: Reserved("is")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                            ^^
+                is
+                ^^
 
                 token: Reserved("where")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                               ^^^^^
+                where
+                ^^^^^
 
                 token: Reserved("self")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                     ^^^^
+                self
+                ^^^^
 
                 token: Reserved("this")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                          ^^^^
+                this
+                ^^^^
 
                 token: Reserved("super")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                               ^^^^^
+                super
+                ^^^^^
 
                 token: Reserved("use")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                     ^^^
+                use
+                ^^^
 
                 token: Reserved("from")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                         ^^^^
+                from
+                ^^^^
 
                 token: Reserved("export")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                              ^^^^^^
+                export
+                ^^^^^^
 
                 token: Reserved("mod")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                     ^^^
+                mod
+                ^^^
 
                 token: Reserved("null")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                         ^^^^
+                null
+                ^^^^
 
                 token: Reserved("nil")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                              ^^^
+                nil
+                ^^^
 
                 token: Reserved("new")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                  ^^^
+                new
+                ^^^
 
                 token: Reserved("static")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                      ^^^^^^
+                static
+                ^^^^^^
 
                 token: Reserved("defer")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                             ^^^^^
+                defer
+                ^^^^^
 
                 token: Reserved("extends")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                   ^^^^^^^
+                extends
+                ^^^^^^^
 
                 token: Reserved("implements")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                           ^^^^^^^^^^
+                implements
+                ^^^^^^^^^^
 
                 token: Reserved("namespace")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                                      ^^^^^^^^^
+                namespace
+                ^^^^^^^^^
 
                 token: Reserved("include")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                                                ^^^^^^^
+                include
+                ^^^^^^^
 
                 token: Reserved("package")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                                                        ^^^^^^^
+                package
+                ^^^^^^^
 
                 token: Reserved("internal")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                                                                ^^^^^^^^
+                internal
+                ^^^^^^^^
 
                 token: Reserved("undefined")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                                                                         ^^^^^^^^^
+                undefined
+                ^^^^^^^^^
 
                 token: Reserved("void")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                                                                                   ^^^^
+                void
+                ^^^^
 
                 token: Reserved("final")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                                                                                        ^^^^^
+                final
+                ^^^^^
 
                 token: Reserved("when")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                                                                                              ^^^^
+                when
+                ^^^^
 
                 token: Reserved("out")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                                                                                                   ^^^
+                out
+                ^^^
 
                 token: Reserved("priv")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                                                                                                       ^^^^
+                priv
+                ^^^^
 
                 token: Reserved("public")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                                                                                                            ^^^^^^
+                public
+                ^^^^^^
 
                 token: Reserved("val")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                                                                                                                   ^^^
+                val
+                ^^^
 
                 token: Reserved("elif")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                                                                                                                       ^^^^
+                elif
+                ^^^^
 
                 token: Reserved("readonly")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                                                                                                                            ^^^^^^^^
+                readonly
+                ^^^^^^^^
 
                 token: Reserved("get")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                                                                                                                                     ^^^
+                get
+                ^^^
 
                 token: Reserved("set")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                                                                                                                                         ^^^
+                set
+                ^^^
 
                 token: Reserved("auto")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                                                                                                                                             ^^^^
+                auto
+                ^^^^
 
                 token: Reserved("constructor")
-                let fn func if else return struct type var const for assert comp component and or not while loop break continue switch case default try catch throw finally async await yield pub private mut impl trait interface class as is where self this super use from export mod null nil new static defer extends implements namespace include package internal undefined void final when out priv public val elif readonly get set auto constructor
-                                                                                                                                                                                                                                                                                                                                                                                                                                                  ^^^^^^^^^^^
+                constructor
+                ^^^^^^^^^^^
             "#]],
         );
     }

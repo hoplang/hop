@@ -5295,4 +5295,173 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn reserved_keyword_as_variable_name_typescript() {
+        check(
+            indoc! {r#"
+                entrypoint Test() {
+                  <let {delete: String = "removed"}>
+                    {delete}
+                  </let>
+                }
+            "#},
+            "removed",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let delete_1 = "removed" in {
+                    write_escaped(delete_1)
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  write("removed")
+                }
+                -- expected output --
+                removed
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn reserved_keyword_as_variable_name_python() {
+        check(
+            indoc! {r#"
+                entrypoint Test() {
+                  <let {def: String = "definition"}>
+                    {def}
+                  </let>
+                }
+            "#},
+            "definition",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let def_1 = "definition" in {
+                    write_escaped(def_1)
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  write("definition")
+                }
+                -- expected output --
+                definition
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn reserved_keyword_as_variable_name_go() {
+        check(
+            indoc! {r#"
+                entrypoint Test() {
+                  <let {range: String = "1-10"}>
+                    {range}
+                  </let>
+                }
+            "#},
+            "1-10",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let range_1 = "1-10" in {
+                    write_escaped(range_1)
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  write("1-10")
+                }
+                -- expected output --
+                1-10
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn reserved_keyword_class_as_variable_name() {
+        check(
+            indoc! {r#"
+                entrypoint Test() {
+                  <let {class: String = "my-class"}>
+                    <div class={class}></div>
+                  </let>
+                }
+            "#},
+            r#"<div class="my-class"></div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let class_1 = "my-class" in {
+                    write("<div")
+                    write(" class=\"")
+                    write_escaped(class_1)
+                    write("\"")
+                    write(">")
+                    write("</div>")
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  write("<div class=\"my-class\"></div>")
+                }
+                -- expected output --
+                <div class="my-class"></div>
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
 }

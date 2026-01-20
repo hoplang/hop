@@ -7,9 +7,114 @@ use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrForSource, IrStatement};
 
 use super::Pass;
 
-/// Alpha renaming pass for the IR AST.
-/// This ensures all variable names are unique to avoid conflicts and shadowing.
-pub struct AlphaRenamingPass {
+// Reserved keywords across all target languages
+const RESERVED_KEYWORDS: &[&str] = &[
+    // JavaScript/TypeScript
+    "await",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "debugger",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "export",
+    "extends",
+    "false",
+    "finally",
+    "for",
+    "function",
+    "if",
+    "import",
+    "in",
+    "instanceof",
+    "let",
+    "new",
+    "null",
+    "return",
+    "static",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typeof",
+    "var",
+    "void",
+    "while",
+    "with",
+    "yield",
+    // Go
+    "break",
+    "case",
+    "chan",
+    "const",
+    "continue",
+    "default",
+    "defer",
+    "else",
+    "fallthrough",
+    "for",
+    "func",
+    "go",
+    "goto",
+    "if",
+    "import",
+    "interface",
+    "map",
+    "package",
+    "range",
+    "return",
+    "select",
+    "struct",
+    "switch",
+    "type",
+    "var",
+    // Python
+    "and",
+    "as",
+    "assert",
+    "break",
+    "class",
+    "continue",
+    "def",
+    "del",
+    "elif",
+    "else",
+    "except",
+    "finally",
+    "for",
+    "from",
+    "global",
+    "if",
+    "import",
+    "in",
+    "is",
+    "lambda",
+    "nonlocal",
+    "not",
+    "or",
+    "pass",
+    "raise",
+    "return",
+    "try",
+    "while",
+    "with",
+    "yield",
+];
+
+/// Variable renaming pass for the IR AST.
+///
+/// This pass ensures:
+/// 1. All variable names are unique to avoid conflicts and shadowing
+/// 2. Variables with names that are reserved keywords in target languages
+///    (TypeScript, Python, Go) are renamed to avoid invalid generated code
+pub struct VariableRenamingPass {
     /// Counter for generating unique variable names
     var_counter: usize,
     /// Stack of scopes mapping original names to renamed names
@@ -18,7 +123,7 @@ pub struct AlphaRenamingPass {
     all_used_names: HashSet<String>,
 }
 
-impl AlphaRenamingPass {
+impl VariableRenamingPass {
     pub fn new() -> Self {
         Self {
             var_counter: 0,
@@ -502,11 +607,18 @@ impl AlphaRenamingPass {
         VarName::try_from(format!("{}_{}", name, self.var_counter)).unwrap()
     }
 
+    /// Check if a name is a reserved keyword in any target language
+    fn is_reserved_keyword(name: &str) -> bool {
+        RESERVED_KEYWORDS.contains(&name)
+    }
+
     /// Bind a variable in the current scope, renaming if necessary
     fn bind_var(&mut self, name: &VarName) -> VarName {
-        // Check if this name would shadow an existing binding OR has been used before
-        let needs_renaming =
-            self.is_name_in_scope(name) || self.all_used_names.contains(name.as_str());
+        // Check if this name would shadow an existing binding, has been used before,
+        // or is a reserved keyword in a target language
+        let needs_renaming = self.is_name_in_scope(name)
+            || self.all_used_names.contains(name.as_str())
+            || Self::is_reserved_keyword(name.as_str());
 
         let renamed = if needs_renaming {
             self.fresh_var(name)
@@ -549,9 +661,9 @@ impl AlphaRenamingPass {
     }
 }
 
-impl Pass for AlphaRenamingPass {
+impl Pass for VariableRenamingPass {
     fn run(mut comp_decl: IrComponentDeclaration) -> IrComponentDeclaration {
-        let mut pass = AlphaRenamingPass::new();
+        let mut pass = VariableRenamingPass::new();
 
         pass.push_scope();
 
@@ -600,7 +712,7 @@ mod tests {
 
     fn check(input_entrypoint: IrComponentDeclaration, expected: Expect) {
         let before = input_entrypoint.to_string();
-        let renamed = AlphaRenamingPass::run(input_entrypoint);
+        let renamed = VariableRenamingPass::run(input_entrypoint);
         let after = renamed.to_string();
         let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
         expected.assert_eq(&output);
@@ -866,8 +978,74 @@ mod tests {
             };
         }
 
-        let mut pass = AlphaRenamingPass::new();
+        let mut pass = VariableRenamingPass::new();
         let _result = pass.rename_expr(&expr);
         // If we get here without stack overflow, the test passes
+    }
+
+    #[test]
+    fn should_rename_reserved_keywords() {
+        // Test that reserved keywords from target languages are renamed
+        check(
+            build_ir("Test", [], |t| {
+                // `delete` is reserved in TypeScript
+                t.let_stmt("delete", t.str("value"), |t| {
+                    t.write_expr_escaped(t.var("delete"));
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let delete = "value" in {
+                    write_escaped(delete)
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let delete_1 = "value" in {
+                    write_escaped(delete_1)
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_rename_multiple_reserved_keywords() {
+        // Test multiple reserved keywords from different target languages
+        check(
+            build_ir("Test", [], |t| {
+                // `def` is reserved in Python
+                t.let_stmt("def", t.str("python"), |t| {
+                    t.write_expr_escaped(t.var("def"));
+                    // `range` is reserved in Go
+                    t.let_stmt("range", t.str("go"), |t| {
+                        t.write_expr_escaped(t.var("range"));
+                    });
+                });
+            }),
+            expect![[r#"
+                -- before --
+                Test() {
+                  let def = "python" in {
+                    write_escaped(def)
+                    let range = "go" in {
+                      write_escaped(range)
+                    }
+                  }
+                }
+
+                -- after --
+                Test() {
+                  let def_1 = "python" in {
+                    write_escaped(def_1)
+                    let range_2 = "go" in {
+                      write_escaped(range_2)
+                    }
+                  }
+                }
+            "#]],
+        );
     }
 }

@@ -1,7 +1,7 @@
 use super::syntax::ast::IrModule;
 use super::syntax::transform::{
-    AlphaRenamingPass, ConstantPropagationPass, Pass, UnusedIfEliminationPass,
-    UnusedLetEliminationPass, WriteCoalescingPass, WriteExprSimplificationPass,
+    ConstantPropagationPass, Pass, UnusedIfEliminationPass, UnusedLetEliminationPass,
+    WriteCoalescingPass, WriteExprSimplificationPass,
 };
 
 pub fn optimize(mut module: IrModule) -> IrModule {
@@ -9,7 +9,6 @@ pub fn optimize(mut module: IrModule) -> IrModule {
         .components
         .into_iter()
         .map(|component| {
-            let component = AlphaRenamingPass::run(component);
             let component = ConstantPropagationPass::run(component);
             let component = UnusedLetEliminationPass::run(component);
             let component = UnusedIfEliminationPass::run(component);
