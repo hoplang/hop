@@ -522,10 +522,10 @@ impl Program {
     }
 
     /// Evaluate an entrypoint given module and entrypoint name.
-    pub fn evaluate_component(
+    pub fn evaluate_entrypoint(
         &self,
         module_name: &ModuleName,
-        component_name: &ComponentName,
+        entrypoint_name: &ComponentName,
         args: HashMap<String, serde_json::Value>,
         generated_tailwind_css: Option<&str>,
     ) -> Result<String> {
@@ -546,7 +546,7 @@ impl Program {
         let entrypoint_exists = module
             .get_entrypoint_declarations()
             .iter()
-            .any(|ep| ep.name.as_str() == component_name.as_str());
+            .any(|ep| ep.name.as_str() == entrypoint_name.as_str());
 
         if !entrypoint_exists {
             let available_entrypoints: Vec<_> = module
@@ -557,7 +557,7 @@ impl Program {
 
             anyhow::bail!(
                 "Entrypoint '{}' not found in module '{}'. Available entrypoints: {}",
-                component_name,
+                entrypoint_name,
                 module_name,
                 available_entrypoints.join(", ")
             );
@@ -574,12 +574,12 @@ impl Program {
         let entrypoint = ir_module
             .entrypoints
             .iter()
-            .find(|c| c.name.as_str() == component_name.as_str())
+            .find(|c| c.name.as_str() == entrypoint_name.as_str())
             .ok_or_else(|| {
                 anyhow::anyhow!(
                     "Entrypoint '{}/{}' not found after compilation",
                     module_name,
-                    component_name
+                    entrypoint_name
                 )
             })?;
 
@@ -1788,7 +1788,7 @@ mod tests {
         let main_module = ModuleName::new("main").unwrap();
         let hello_world = ComponentName::new("HelloWorld".to_string()).unwrap();
         let result = program
-            .evaluate_component(&main_module, &hello_world, args, None)
+            .evaluate_entrypoint(&main_module, &hello_world, args, None)
             .expect("Should evaluate successfully");
 
         assert!(result.contains("<h1>Hello Alice!</h1>"));
@@ -1796,14 +1796,14 @@ mod tests {
         // Test evaluating another-comp entrypoint without parameters
         let another_comp = ComponentName::new("AnotherComp".to_string()).unwrap();
         let result = program
-            .evaluate_component(&main_module, &another_comp, HashMap::new(), None)
+            .evaluate_entrypoint(&main_module, &another_comp, HashMap::new(), None)
             .expect("Should evaluate successfully");
 
         assert!(result.contains("<p>Static content</p>"));
 
         // Test error when entrypoint doesn't exist
         let non_existent = ComponentName::new("NonExistent".to_string()).unwrap();
-        let result = program.evaluate_component(&main_module, &non_existent, HashMap::new(), None);
+        let result = program.evaluate_entrypoint(&main_module, &non_existent, HashMap::new(), None);
         assert!(result.is_err());
         assert!(
             result
