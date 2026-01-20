@@ -141,7 +141,7 @@ pub fn next(
                     "Array" => Token::TypeArray,
                     "Option" => Token::TypeOption,
                     // Reserved keywords
-                    "let" | "fn" | "func" | "if" | "else" | "return" | "struct" | "type"
+                    "let" | "fn" | "func" | "if" | "else" | "return" | "struct"
                     | "var" | "const" | "for" | "assert" | "comp" | "component" | "and"
                     | "or" | "not" | "of" | "while" | "loop" | "break" | "continue"
                     | "case" | "default" | "try" | "catch" | "throw" | "finally" | "async"
@@ -1776,7 +1776,6 @@ mod tests {
                 throw
                 trait
                 try
-                type
                 undefined
                 use
                 val
@@ -2043,10 +2042,6 @@ mod tests {
                 token: Reserved("try")
                 try
                 ^^^
-
-                token: Reserved("type")
-                type
-                ^^^^
 
                 token: Reserved("undefined")
                 undefined

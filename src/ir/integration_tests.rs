@@ -5510,4 +5510,48 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn unreserved_keyword_type_as_variable_name() {
+        check(
+            indoc! {r#"
+                entrypoint Test() {
+                  <let {type: String = "button"}>
+                    <input type={type}>
+                  </let>
+                }
+            "#},
+            r#"<input type="button">"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let type_1 = "button" in {
+                    write("<input")
+                    write(" type=\"")
+                    write_escaped(type_1)
+                    write("\"")
+                    write(">")
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  write("<input type=\"button\">")
+                }
+                -- expected output --
+                <input type="button">
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
 }
