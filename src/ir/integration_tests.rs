@@ -5464,4 +5464,50 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    #[ignore]
+    fn reserved_keyword_switch_as_variable_name() {
+        check(
+            indoc! {r#"
+                entrypoint Test() {
+                  <let {switch: String = "on"}>
+                    <span>
+                      {switch}
+                    </span>
+                  </let>
+                }
+            "#},
+            r#"<span>on</span>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let switch_1 = "on" in {
+                    write("<span")
+                    write(">")
+                    write_escaped(switch_1)
+                    write("</span>")
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  write("<span>on</span>")
+                }
+                -- expected output --
+                <span>on</span>
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
 }

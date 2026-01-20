@@ -143,7 +143,7 @@ pub fn next(
                     // Reserved keywords
                     "let" | "fn" | "func" | "if" | "else" | "return" | "struct" | "type"
                     | "var" | "const" | "for" | "assert" | "comp" | "component" | "and"
-                    | "or" | "not" | "while" | "loop" | "break" | "continue" | "switch"
+                    | "or" | "not" | "while" | "loop" | "break" | "continue"
                     | "case" | "default" | "try" | "catch" | "throw" | "finally" | "async"
                     | "await" | "yield" | "pub" | "private" | "mut" | "impl" | "trait"
                     | "interface" | "as" | "is" | "where" | "self" | "this"
@@ -1733,7 +1733,6 @@ mod tests {
                 loop
                 break
                 continue
-                switch
                 case
                 default
                 try
@@ -1869,10 +1868,6 @@ mod tests {
                 token: Reserved("continue")
                 continue
                 ^^^^^^^^
-
-                token: Reserved("switch")
-                switch
-                ^^^^^^
 
                 token: Reserved("case")
                 case
