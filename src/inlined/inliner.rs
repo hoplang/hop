@@ -1,7 +1,9 @@
 use crate::dop::VarName;
 use crate::dop::patterns::{EnumMatchArm, Match};
 use crate::dop::{Type, TypedExpr};
-use crate::hop::semantics::typed_ast::{TypedAst, TypedComponentDeclaration, TypedEntrypointDeclaration};
+use crate::hop::semantics::typed_ast::{
+    TypedAst, TypedComponentDeclaration, TypedEntrypointDeclaration,
+};
 use crate::hop::semantics::typed_node::{TypedAttribute, TypedAttributeValue, TypedNode};
 use crate::hop::symbols::module_name::ModuleName;
 use crate::inlined::inlined_ast::{

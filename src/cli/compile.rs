@@ -294,7 +294,9 @@ mod tests {
              Expected: {:?}\n\
              Actual: {:?}\n\
              TypeScript output:\n{}",
-            expected_order, actual_order, generated_code
+            expected_order,
+            actual_order,
+            generated_code
         );
 
         // Clean up

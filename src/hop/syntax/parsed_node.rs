@@ -144,7 +144,6 @@ pub enum ParsedNode {
         children: Vec<ParsedNode>,
         range: DocumentRange,
     },
-
 }
 
 impl ParsedNode {

@@ -173,7 +173,9 @@ impl ParsedAst {
     }
 
     /// Returns an iterator over all entrypoint declarations in the AST.
-    pub fn get_entrypoint_declarations(&self) -> impl Iterator<Item = &ParsedEntrypointDeclaration> {
+    pub fn get_entrypoint_declarations(
+        &self,
+    ) -> impl Iterator<Item = &ParsedEntrypointDeclaration> {
         self.declarations.iter().filter_map(|d| match d {
             ParsedDeclaration::Entrypoint(e) => Some(e),
             _ => None,
@@ -451,10 +453,7 @@ impl ParsedEntrypointDeclaration {
             .append(if self.params.is_empty() {
                 BoxDoc::nil()
             } else {
-                BoxDoc::intersperse(
-                    self.params.iter().map(|p| p.to_doc()),
-                    BoxDoc::text(", "),
-                )
+                BoxDoc::intersperse(self.params.iter().map(|p| p.to_doc()), BoxDoc::text(", "))
             })
             .append(BoxDoc::text(")"))
             .append(BoxDoc::space())

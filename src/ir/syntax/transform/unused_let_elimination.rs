@@ -36,54 +36,49 @@ impl UnusedLetEliminationPass {
 
         // First collect all let statement IDs and match bindings
         for stmt in &entrypoint.body {
-            stmt.traverse(&mut |s| {
-                match s {
-                    IrStatement::Let { id, .. } => {
-                        all_lets.insert(*id);
+            stmt.traverse(&mut |s| match s {
+                IrStatement::Let { id, .. } => {
+                    all_lets.insert(*id);
+                }
+                IrStatement::Match { id, match_ } => match match_ {
+                    Match::Option {
+                        some_arm_binding: Some(binding),
+                        ..
+                    } => {
+                        option_bindings.push((*id, binding.to_string()));
                     }
-                    IrStatement::Match { id, match_ } => {
-                        match match_ {
-                            Match::Option {
-                                some_arm_binding: Some(binding),
-                                ..
-                            } => {
-                                option_bindings.push((*id, binding.to_string()));
+                    Match::Enum { arms, .. } => {
+                        for arm in arms {
+                            for (field_name, var_name) in &arm.bindings {
+                                enum_bindings
+                                    .push(((*id, field_name.to_string()), var_name.to_string()));
                             }
-                            Match::Enum { arms, .. } => {
-                                for arm in arms {
-                                    for (field_name, var_name) in &arm.bindings {
-                                        enum_bindings.push((
-                                            (*id, field_name.to_string()),
-                                            var_name.to_string(),
-                                        ));
-                                    }
-                                }
-                            }
-                            _ => {}
                         }
                     }
                     _ => {}
-                }
+                },
+                _ => {}
             });
         }
 
         // Helper to check if a variable name is an Option or Enum binding use
-        let check_binding_use = |name_str: &str,
-                                 option_bindings: &[(StatementId, String)],
-                                 enum_bindings: &[((StatementId, String), String)],
-                                 used_option_bindings: &mut HashSet<StatementId>,
-                                 used_enum_bindings: &mut HashSet<(StatementId, String)>| {
-            for (stmt_id, binding_name) in option_bindings {
-                if binding_name == name_str {
-                    used_option_bindings.insert(*stmt_id);
+        let check_binding_use =
+            |name_str: &str,
+             option_bindings: &[(StatementId, String)],
+             enum_bindings: &[((StatementId, String), String)],
+             used_option_bindings: &mut HashSet<StatementId>,
+             used_enum_bindings: &mut HashSet<(StatementId, String)>| {
+                for (stmt_id, binding_name) in option_bindings {
+                    if binding_name == name_str {
+                        used_option_bindings.insert(*stmt_id);
+                    }
                 }
-            }
-            for ((stmt_id, field_name), binding_name) in enum_bindings {
-                if binding_name == name_str {
-                    used_enum_bindings.insert((*stmt_id, field_name.clone()));
+                for ((stmt_id, field_name), binding_name) in enum_bindings {
+                    if binding_name == name_str {
+                        used_enum_bindings.insert((*stmt_id, field_name.clone()));
+                    }
                 }
-            }
-        };
+            };
 
         // Now traverse with scope tracking to find used variables
         for stmt in &entrypoint.body {
@@ -214,7 +209,11 @@ impl UnusedLetEliminationPass {
     }
 
     /// Remove unused bindings from a Match. Returns true if any changes were made.
-    fn transform_match_bindings(match_: &mut Match<Vec<IrStatement>>, id: StatementId, unused_vars: &UnusedVars) -> bool {
+    fn transform_match_bindings(
+        match_: &mut Match<Vec<IrStatement>>,
+        id: StatementId,
+        unused_vars: &UnusedVars,
+    ) -> bool {
         match match_ {
             Match::Option {
                 some_arm_binding, ..
@@ -261,23 +260,24 @@ impl Pass for UnusedLetEliminationPass {
                     IrStatement::If {
                         body, else_body, ..
                     } => {
-                        let (new_body, changed) = Self::transform_statements(std::mem::take(body), &unused_vars);
+                        let (new_body, changed) =
+                            Self::transform_statements(std::mem::take(body), &unused_vars);
                         *body = new_body;
                         if changed {
                             made_changes = true;
                         }
-                        *else_body = else_body
-                            .take()
-                            .map(|else_body| {
-                                let (new_body, changed) = Self::transform_statements(else_body, &unused_vars);
-                                if changed {
-                                    made_changes = true;
-                                }
-                                new_body
-                            })
+                        *else_body = else_body.take().map(|else_body| {
+                            let (new_body, changed) =
+                                Self::transform_statements(else_body, &unused_vars);
+                            if changed {
+                                made_changes = true;
+                            }
+                            new_body
+                        })
                     }
                     IrStatement::For { body, .. } | IrStatement::Let { body, .. } => {
-                        let (new_body, changed) = Self::transform_statements(std::mem::take(body), &unused_vars);
+                        let (new_body, changed) =
+                            Self::transform_statements(std::mem::take(body), &unused_vars);
                         *body = new_body;
                         if changed {
                             made_changes = true;

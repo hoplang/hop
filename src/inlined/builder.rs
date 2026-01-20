@@ -20,7 +20,11 @@ fn extract_var_subject(expr: &TypedExpr) -> (VarName, Type) {
     }
 }
 
-pub fn build_inlined<F, P>(tag_name: &str, params: P, children_fn: F) -> InlinedEntrypointDeclaration
+pub fn build_inlined<F, P>(
+    tag_name: &str,
+    params: P,
+    children_fn: F,
+) -> InlinedEntrypointDeclaration
 where
     F: FnOnce(&mut InlinedBuilder),
     P: IntoIterator<Item = (&'static str, Type)>,

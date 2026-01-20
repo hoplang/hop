@@ -59,9 +59,7 @@ impl IrModuleBuilder {
     where
         F: FnOnce(&mut RecordBuilder),
     {
-        let mut builder = RecordBuilder {
-            fields: Vec::new(),
-        };
+        let mut builder = RecordBuilder { fields: Vec::new() };
         f(&mut builder);
         self.records.insert(name.to_string(), builder.fields);
         self

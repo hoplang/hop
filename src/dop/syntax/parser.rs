@@ -675,9 +675,13 @@ pub fn parse_primary(
             return Err(ParseError::UnexpectedToken {
                 token,
                 range: token_range,
-            })
+            });
         }
-        None => return Err(ParseError::UnexpectedEof { range: range.clone() }),
+        None => {
+            return Err(ParseError::UnexpectedEof {
+                range: range.clone(),
+            });
+        }
     };
 
     // Handle postfix field access (.field) and method calls (.method())

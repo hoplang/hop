@@ -397,14 +397,13 @@ fn parse_attribute(
     };
 
     // consume: ('-' | '_' | ':' | '.' | [a-zA-Z0-9])*
-    let attr_name =
-        initial.extend(iter.peeking_take_while(|s| {
-            s.ch() == '-'
-                || s.ch() == '_'
-                || s.ch() == ':'
-                || s.ch() == '.'
-                || s.ch().is_ascii_alphanumeric()
-        }));
+    let attr_name = initial.extend(iter.peeking_take_while(|s| {
+        s.ch() == '-'
+            || s.ch() == '_'
+            || s.ch() == ':'
+            || s.ch() == '.'
+            || s.ch().is_ascii_alphanumeric()
+    }));
 
     // consume: whitespace
     skip_whitespace(iter);

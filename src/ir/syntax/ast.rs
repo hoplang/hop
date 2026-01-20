@@ -1152,8 +1152,7 @@ impl IrExpr {
                     value.traverse(f);
                 }
             }
-            IrExpr::BooleanNegation { operand, .. }
-            | IrExpr::NumericNegation { operand, .. } => {
+            IrExpr::BooleanNegation { operand, .. } | IrExpr::NumericNegation { operand, .. } => {
                 operand.traverse(f);
             }
             IrExpr::JsonEncode { value, .. } => {
@@ -1258,8 +1257,7 @@ impl IrExpr {
                     value.traverse_mut(f);
                 }
             }
-            IrExpr::BooleanNegation { operand, .. }
-            | IrExpr::NumericNegation { operand, .. } => {
+            IrExpr::BooleanNegation { operand, .. } | IrExpr::NumericNegation { operand, .. } => {
                 operand.traverse_mut(f);
             }
             IrExpr::JsonEncode { value, .. } => {
