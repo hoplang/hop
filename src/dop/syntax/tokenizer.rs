@@ -1712,126 +1712,114 @@ mod tests {
     fn should_accept_reserved_keywords() {
         check(
             indoc! {"
-                let
-                fn
-                func
-                if
-                else
-                return
-                struct
-                type
-                var
-                const
-                for
+                and
+                as
                 assert
+                async
+                auto
+                await
+                break
+                case
+                catch
                 comp
                 component
-                and
-                or
-                not
-                while
-                loop
-                break
-                continue
-                case
-                default
-                try
-                catch
-                throw
-                finally
-                async
-                await
-                yield
-                pub
-                private
-                mut
-                impl
-                trait
-                interface
-                as
-                is
-                where
-                self
-                this
-                super
-                use
-                from
-                export
-                mod
-                null
-                nil
-                new
-                static
-                defer
-                extends
-                implements
-                namespace
-                include
-                package
-                internal
-                undefined
-                void
-                final
-                when
-                out
-                priv
-                public
-                val
-                elif
-                readonly
-                get
-                set
-                auto
+                const
                 constructor
+                continue
+                default
+                defer
+                elif
+                else
+                export
+                extends
+                final
+                finally
+                fn
+                for
+                from
+                func
+                get
+                if
+                impl
+                implements
+                include
+                interface
+                internal
+                is
+                let
+                loop
+                mod
+                mut
+                namespace
+                new
+                nil
+                not
+                null
+                or
+                out
+                package
+                priv
+                private
+                pub
+                public
+                readonly
+                return
+                self
+                set
+                static
+                struct
+                super
+                this
+                throw
+                trait
+                try
+                type
+                undefined
+                use
+                val
+                var
+                void
+                when
+                where
+                while
+                yield
             "},
             expect![[r#"
-                token: Reserved("let")
-                let
+                token: Reserved("and")
+                and
                 ^^^
 
-                token: Reserved("fn")
-                fn
+                token: Reserved("as")
+                as
                 ^^
-
-                token: Reserved("func")
-                func
-                ^^^^
-
-                token: Reserved("if")
-                if
-                ^^
-
-                token: Reserved("else")
-                else
-                ^^^^
-
-                token: Reserved("return")
-                return
-                ^^^^^^
-
-                token: Reserved("struct")
-                struct
-                ^^^^^^
-
-                token: Reserved("type")
-                type
-                ^^^^
-
-                token: Reserved("var")
-                var
-                ^^^
-
-                token: Reserved("const")
-                const
-                ^^^^^
-
-                token: Reserved("for")
-                for
-                ^^^
 
                 token: Reserved("assert")
                 assert
                 ^^^^^^
+
+                token: Reserved("async")
+                async
+                ^^^^^
+
+                token: Reserved("auto")
+                auto
+                ^^^^
+
+                token: Reserved("await")
+                await
+                ^^^^^
+
+                token: Reserved("break")
+                break
+                ^^^^^
+
+                token: Reserved("case")
+                case
+                ^^^^
+
+                token: Reserved("catch")
+                catch
+                ^^^^^
 
                 token: Reserved("comp")
                 comp
@@ -1841,233 +1829,245 @@ mod tests {
                 component
                 ^^^^^^^^^
 
-                token: Reserved("and")
-                and
-                ^^^
-
-                token: Reserved("or")
-                or
-                ^^
-
-                token: Reserved("not")
-                not
-                ^^^
-
-                token: Reserved("while")
-                while
+                token: Reserved("const")
+                const
                 ^^^^^
 
-                token: Reserved("loop")
-                loop
-                ^^^^
-
-                token: Reserved("break")
-                break
-                ^^^^^
+                token: Reserved("constructor")
+                constructor
+                ^^^^^^^^^^^
 
                 token: Reserved("continue")
                 continue
                 ^^^^^^^^
 
-                token: Reserved("case")
-                case
-                ^^^^
-
                 token: Reserved("default")
                 default
                 ^^^^^^^
 
-                token: Reserved("try")
-                try
-                ^^^
-
-                token: Reserved("catch")
-                catch
+                token: Reserved("defer")
+                defer
                 ^^^^^
 
-                token: Reserved("throw")
-                throw
-                ^^^^^
-
-                token: Reserved("finally")
-                finally
-                ^^^^^^^
-
-                token: Reserved("async")
-                async
-                ^^^^^
-
-                token: Reserved("await")
-                await
-                ^^^^^
-
-                token: Reserved("yield")
-                yield
-                ^^^^^
-
-                token: Reserved("pub")
-                pub
-                ^^^
-
-                token: Reserved("private")
-                private
-                ^^^^^^^
-
-                token: Reserved("mut")
-                mut
-                ^^^
-
-                token: Reserved("impl")
-                impl
+                token: Reserved("elif")
+                elif
                 ^^^^
 
-                token: Reserved("trait")
-                trait
-                ^^^^^
-
-                token: Reserved("interface")
-                interface
-                ^^^^^^^^^
-
-                token: Reserved("as")
-                as
-                ^^
-
-                token: Reserved("is")
-                is
-                ^^
-
-                token: Reserved("where")
-                where
-                ^^^^^
-
-                token: Reserved("self")
-                self
-                ^^^^
-
-                token: Reserved("this")
-                this
-                ^^^^
-
-                token: Reserved("super")
-                super
-                ^^^^^
-
-                token: Reserved("use")
-                use
-                ^^^
-
-                token: Reserved("from")
-                from
+                token: Reserved("else")
+                else
                 ^^^^
 
                 token: Reserved("export")
                 export
                 ^^^^^^
 
+                token: Reserved("extends")
+                extends
+                ^^^^^^^
+
+                token: Reserved("final")
+                final
+                ^^^^^
+
+                token: Reserved("finally")
+                finally
+                ^^^^^^^
+
+                token: Reserved("fn")
+                fn
+                ^^
+
+                token: Reserved("for")
+                for
+                ^^^
+
+                token: Reserved("from")
+                from
+                ^^^^
+
+                token: Reserved("func")
+                func
+                ^^^^
+
+                token: Reserved("get")
+                get
+                ^^^
+
+                token: Reserved("if")
+                if
+                ^^
+
+                token: Reserved("impl")
+                impl
+                ^^^^
+
+                token: Reserved("implements")
+                implements
+                ^^^^^^^^^^
+
+                token: Reserved("include")
+                include
+                ^^^^^^^
+
+                token: Reserved("interface")
+                interface
+                ^^^^^^^^^
+
+                token: Reserved("internal")
+                internal
+                ^^^^^^^^
+
+                token: Reserved("is")
+                is
+                ^^
+
+                token: Reserved("let")
+                let
+                ^^^
+
+                token: Reserved("loop")
+                loop
+                ^^^^
+
                 token: Reserved("mod")
                 mod
+                ^^^
+
+                token: Reserved("mut")
+                mut
+                ^^^
+
+                token: Reserved("namespace")
+                namespace
+                ^^^^^^^^^
+
+                token: Reserved("new")
+                new
+                ^^^
+
+                token: Reserved("nil")
+                nil
+                ^^^
+
+                token: Reserved("not")
+                not
                 ^^^
 
                 token: Reserved("null")
                 null
                 ^^^^
 
-                token: Reserved("nil")
-                nil
+                token: Reserved("or")
+                or
+                ^^
+
+                token: Reserved("out")
+                out
                 ^^^
 
-                token: Reserved("new")
-                new
+                token: Reserved("package")
+                package
+                ^^^^^^^
+
+                token: Reserved("priv")
+                priv
+                ^^^^
+
+                token: Reserved("private")
+                private
+                ^^^^^^^
+
+                token: Reserved("pub")
+                pub
+                ^^^
+
+                token: Reserved("public")
+                public
+                ^^^^^^
+
+                token: Reserved("readonly")
+                readonly
+                ^^^^^^^^
+
+                token: Reserved("return")
+                return
+                ^^^^^^
+
+                token: Reserved("self")
+                self
+                ^^^^
+
+                token: Reserved("set")
+                set
                 ^^^
 
                 token: Reserved("static")
                 static
                 ^^^^^^
 
-                token: Reserved("defer")
-                defer
+                token: Reserved("struct")
+                struct
+                ^^^^^^
+
+                token: Reserved("super")
+                super
                 ^^^^^
 
-                token: Reserved("extends")
-                extends
-                ^^^^^^^
+                token: Reserved("this")
+                this
+                ^^^^
 
-                token: Reserved("implements")
-                implements
-                ^^^^^^^^^^
+                token: Reserved("throw")
+                throw
+                ^^^^^
 
-                token: Reserved("namespace")
-                namespace
-                ^^^^^^^^^
+                token: Reserved("trait")
+                trait
+                ^^^^^
 
-                token: Reserved("include")
-                include
-                ^^^^^^^
+                token: Reserved("try")
+                try
+                ^^^
 
-                token: Reserved("package")
-                package
-                ^^^^^^^
-
-                token: Reserved("internal")
-                internal
-                ^^^^^^^^
+                token: Reserved("type")
+                type
+                ^^^^
 
                 token: Reserved("undefined")
                 undefined
                 ^^^^^^^^^
 
-                token: Reserved("void")
-                void
-                ^^^^
-
-                token: Reserved("final")
-                final
-                ^^^^^
-
-                token: Reserved("when")
-                when
-                ^^^^
-
-                token: Reserved("out")
-                out
+                token: Reserved("use")
+                use
                 ^^^
-
-                token: Reserved("priv")
-                priv
-                ^^^^
-
-                token: Reserved("public")
-                public
-                ^^^^^^
 
                 token: Reserved("val")
                 val
                 ^^^
 
-                token: Reserved("elif")
-                elif
-                ^^^^
-
-                token: Reserved("readonly")
-                readonly
-                ^^^^^^^^
-
-                token: Reserved("get")
-                get
+                token: Reserved("var")
+                var
                 ^^^
 
-                token: Reserved("set")
-                set
-                ^^^
-
-                token: Reserved("auto")
-                auto
+                token: Reserved("void")
+                void
                 ^^^^
 
-                token: Reserved("constructor")
-                constructor
-                ^^^^^^^^^^^
+                token: Reserved("when")
+                when
+                ^^^^
+
+                token: Reserved("where")
+                where
+                ^^^^^
+
+                token: Reserved("while")
+                while
+                ^^^^^
+
+                token: Reserved("yield")
+                yield
+                ^^^^^
             "#]],
         );
     }
