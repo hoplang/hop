@@ -968,13 +968,13 @@ fn typecheck_match(
     let subject_type = typed_subject.as_type().clone();
 
     // If subject is already a variable, use it directly; otherwise wrap in a let
-    let (subject_name, initial_var_counter, needs_wrapper) = match &typed_subject {
-        TypedExpr::Var { value, .. } => (value.as_str().to_string(), 0, false),
-        _ => ("v0".to_string(), 1, true),
+    let (subject_name, needs_wrapper) = match &typed_subject {
+        TypedExpr::Var { value, .. } => (value.as_str().to_string(), false),
+        _ => (var_env.fresh_var(), true),
     };
 
     let patterns: Vec<_> = arms.iter().map(|arm| arm.pattern.clone()).collect();
-    let tree = Compiler::new(initial_var_counter).compile(
+    let tree = Compiler::new(var_env).compile(
         &patterns,
         &subject_name,
         &subject_type,
@@ -990,7 +990,7 @@ fn typecheck_match(
     // Wrap in let if subject was not a simple variable reference
     if needs_wrapper {
         result = TypedExpr::Let {
-            var: VarName::new("v0").unwrap(),
+            var: VarName::new(&subject_name).unwrap(),
             value: Box::new(typed_subject),
             body: Box::new(result),
             kind: result_type,

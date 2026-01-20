@@ -1,8 +1,8 @@
 use super::transpile::{GoTranspiler, PythonTranspiler, Transpiler, TsTranspiler};
 use crate::document::Document;
 use crate::hop::program::Program;
-use crate::hop::syntax::format;
 use crate::hop::symbols::module_name::ModuleName;
+use crate::hop::syntax::format;
 use crate::orchestrator::{OrchestrateOptions, orchestrate};
 use expect_test::Expect;
 use std::collections::HashMap;
@@ -218,7 +218,9 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
     let program = Program::new(modules);
 
     // Verify input is properly formatted
-    let parsed_ast = program.get_parsed_ast(&module_name).expect("Failed to get parsed AST");
+    let parsed_ast = program
+        .get_parsed_ast(&module_name)
+        .expect("Failed to get parsed AST");
     let formatted = format(parsed_ast.clone());
     assert_eq!(
         formatted.trim(),
@@ -270,71 +272,131 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
     let ts_transpiler = TsTranspiler::new();
     let ts_code = ts_transpiler.transpile_module(&unoptimized_module);
     if let Err(e) = typecheck_typescript(&ts_code) {
-        panic!("TypeScript typecheck failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, unoptimized_ir, ts_code);
+        panic!(
+            "TypeScript typecheck failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
+            e, unoptimized_ir, ts_code
+        );
     }
     let ts_output = match execute_typescript(&ts_code) {
         Ok(out) => out,
-        Err(e) => panic!("TypeScript execution failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, unoptimized_ir, ts_code),
+        Err(e) => panic!(
+            "TypeScript execution failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
+            e, unoptimized_ir, ts_code
+        ),
     };
-    assert_eq!(ts_output, expected_output, "TypeScript output mismatch (unoptimized)\n\nIR:\n{}\nGenerated code:\n{}", unoptimized_ir, ts_code);
+    assert_eq!(
+        ts_output, expected_output,
+        "TypeScript output mismatch (unoptimized)\n\nIR:\n{}\nGenerated code:\n{}",
+        unoptimized_ir, ts_code
+    );
     output.push_str("-- ts (unoptimized) --\nOK\n");
 
     let go_transpiler = GoTranspiler::new("components".to_string());
     let go_code = go_transpiler.transpile_module(&unoptimized_module);
     if let Err(e) = typecheck_go(&go_code) {
-        panic!("Go typecheck failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, unoptimized_ir, go_code);
+        panic!(
+            "Go typecheck failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
+            e, unoptimized_ir, go_code
+        );
     }
     let go_output = match execute_go(&go_code) {
         Ok(out) => out,
-        Err(e) => panic!("Go execution failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, unoptimized_ir, go_code),
+        Err(e) => panic!(
+            "Go execution failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
+            e, unoptimized_ir, go_code
+        ),
     };
-    assert_eq!(go_output, expected_output, "Go output mismatch (unoptimized)\n\nIR:\n{}\nGenerated code:\n{}", unoptimized_ir, go_code);
+    assert_eq!(
+        go_output, expected_output,
+        "Go output mismatch (unoptimized)\n\nIR:\n{}\nGenerated code:\n{}",
+        unoptimized_ir, go_code
+    );
     output.push_str("-- go (unoptimized) --\nOK\n");
 
     let python_transpiler = PythonTranspiler::new();
     let python_code = python_transpiler.transpile_module(&unoptimized_module);
     if let Err(e) = typecheck_python(&python_code) {
-        panic!("Python typecheck failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, unoptimized_ir, python_code);
+        panic!(
+            "Python typecheck failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
+            e, unoptimized_ir, python_code
+        );
     }
     let python_output = match execute_python(&python_code) {
         Ok(out) => out,
-        Err(e) => panic!("Python execution failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, unoptimized_ir, python_code),
+        Err(e) => panic!(
+            "Python execution failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
+            e, unoptimized_ir, python_code
+        ),
     };
-    assert_eq!(python_output, expected_output, "Python output mismatch (unoptimized)\n\nIR:\n{}\nGenerated code:\n{}", unoptimized_ir, python_code);
+    assert_eq!(
+        python_output, expected_output,
+        "Python output mismatch (unoptimized)\n\nIR:\n{}\nGenerated code:\n{}",
+        unoptimized_ir, python_code
+    );
     output.push_str("-- python (unoptimized) --\nOK\n");
 
     // Test optimized version
     let ts_code = ts_transpiler.transpile_module(&optimized_module);
     if let Err(e) = typecheck_typescript(&ts_code) {
-        panic!("TypeScript typecheck failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, optimized_ir, ts_code);
+        panic!(
+            "TypeScript typecheck failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
+            e, optimized_ir, ts_code
+        );
     }
     let ts_output = match execute_typescript(&ts_code) {
         Ok(out) => out,
-        Err(e) => panic!("TypeScript execution failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, optimized_ir, ts_code),
+        Err(e) => panic!(
+            "TypeScript execution failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
+            e, optimized_ir, ts_code
+        ),
     };
-    assert_eq!(ts_output, expected_output, "TypeScript output mismatch (optimized)\n\nIR:\n{}\nGenerated code:\n{}", optimized_ir, ts_code);
+    assert_eq!(
+        ts_output, expected_output,
+        "TypeScript output mismatch (optimized)\n\nIR:\n{}\nGenerated code:\n{}",
+        optimized_ir, ts_code
+    );
     output.push_str("-- ts (optimized) --\nOK\n");
 
     let go_code = go_transpiler.transpile_module(&optimized_module);
     if let Err(e) = typecheck_go(&go_code) {
-        panic!("Go typecheck failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, optimized_ir, go_code);
+        panic!(
+            "Go typecheck failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
+            e, optimized_ir, go_code
+        );
     }
     let go_output = match execute_go(&go_code) {
         Ok(out) => out,
-        Err(e) => panic!("Go execution failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, optimized_ir, go_code),
+        Err(e) => panic!(
+            "Go execution failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
+            e, optimized_ir, go_code
+        ),
     };
-    assert_eq!(go_output, expected_output, "Go output mismatch (optimized)\n\nIR:\n{}\nGenerated code:\n{}", optimized_ir, go_code);
+    assert_eq!(
+        go_output, expected_output,
+        "Go output mismatch (optimized)\n\nIR:\n{}\nGenerated code:\n{}",
+        optimized_ir, go_code
+    );
     output.push_str("-- go (optimized) --\nOK\n");
 
     let python_code = python_transpiler.transpile_module(&optimized_module);
     if let Err(e) = typecheck_python(&python_code) {
-        panic!("Python typecheck failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, optimized_ir, python_code);
+        panic!(
+            "Python typecheck failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
+            e, optimized_ir, python_code
+        );
     }
     let python_output = match execute_python(&python_code) {
         Ok(out) => out,
-        Err(e) => panic!("Python execution failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}", e, optimized_ir, python_code),
+        Err(e) => panic!(
+            "Python execution failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
+            e, optimized_ir, python_code
+        ),
     };
-    assert_eq!(python_output, expected_output, "Python output mismatch (optimized)\n\nIR:\n{}\nGenerated code:\n{}", optimized_ir, python_code);
+    assert_eq!(
+        python_output, expected_output,
+        "Python output mismatch (optimized)\n\nIR:\n{}\nGenerated code:\n{}",
+        optimized_ir, python_code
+    );
     output.push_str("-- python (optimized) --\nOK\n");
 
     expected.assert_eq(&output);
@@ -377,12 +439,12 @@ mod tests {
                 Test() {
                   let inner = Option[String]::Some("hello") in {
                     let mapped = match inner {
-                      Some(v0) => let x = v0 in Option[String]::Some(x),
+                      Some(v_0) => let x = v_0 in Option[String]::Some(x),
                       None => Option[String]::None,
                     } in {
                       match mapped {
-                        Some(v0) => {
-                          let result = v0 in {
+                        Some(v_1) => {
+                          let result = v_1 in {
                             write("mapped:")
                             write_escaped(result)
                           }
@@ -398,8 +460,11 @@ mod tests {
                 Test() {
                   let mapped = Option[String]::Some("hello") in {
                     match mapped {
-                      Some(_) => {
-                        write("mapped:hello")
+                      Some(v_1) => {
+                        let result = v_1 in {
+                          write("mapped:")
+                          write_escaped(result)
+                        }
                       }
                       None => {
                         write("was-none")
@@ -455,12 +520,12 @@ mod tests {
                 Test() {
                   let inner_opt = Option[String]::Some("inner") in {
                     let outer = Option[String]::Some(match inner_opt {
-                      Some(v0) => let x = v0 in x,
+                      Some(v_0) => let x = v_0 in x,
                       None => "default",
                     }) in {
                       match outer {
-                        Some(v0) => {
-                          let val = v0 in {
+                        Some(v_1) => {
+                          let val = v_1 in {
                             write_escaped(val)
                           }
                         }
@@ -475,8 +540,10 @@ mod tests {
                 Test() {
                   let outer = Option[String]::Some("inner") in {
                     match outer {
-                      Some(_) => {
-                        write("inner")
+                      Some(v_1) => {
+                        let val = v_1 in {
+                          write_escaped(val)
+                        }
                       }
                       None => {
                         write("none")
@@ -1619,8 +1686,8 @@ mod tests {
                 }
                 Test() {
                   let color = Color::Red in {
-                    let match_subject = (color == Color::Green) in {
-                      match match_subject {
+                    let v_0 = (color == Color::Green) in {
+                      match v_0 {
                         true => {
                           write("equal")
                         }
@@ -1638,8 +1705,8 @@ mod tests {
                   Blue,
                 }
                 Test() {
-                  let match_subject = false in {
-                    match match_subject {
+                  let v_0 = false in {
+                    match v_0 {
                       true => {
                         write("equal")
                       }
@@ -2414,8 +2481,8 @@ mod tests {
                 Test() {
                   let some_val = Option[String]::Some("hello") in {
                     match some_val {
-                      Some(v0) => {
-                        let val = v0 in {
+                      Some(v_0) => {
+                        let val = v_0 in {
                           write_escaped(val)
                         }
                       }
@@ -2429,8 +2496,8 @@ mod tests {
                 Test() {
                   let some_val = Option[String]::Some("hello") in {
                     match some_val {
-                      Some(v0) => {
-                        let val = v0 in {
+                      Some(v_0) => {
+                        let val = v_0 in {
                           write_escaped(val)
                         }
                       }
@@ -2552,12 +2619,12 @@ mod tests {
                 Test() {
                   let inner_opt = Option[String]::Some("inner") in {
                     let outer = Option[String]::Some(match inner_opt {
-                      Some(v0) => let x = v0 in x,
+                      Some(v_0) => let x = v_0 in x,
                       None => "default",
                     }) in {
                       match outer {
-                        Some(v0) => {
-                          let val = v0 in {
+                        Some(v_1) => {
+                          let val = v_1 in {
                             write_escaped(val)
                           }
                         }
@@ -2572,8 +2639,10 @@ mod tests {
                 Test() {
                   let outer = Option[String]::Some("inner") in {
                     match outer {
-                      Some(_) => {
-                        write("inner")
+                      Some(v_1) => {
+                        let val = v_1 in {
+                          write_escaped(val)
+                        }
                       }
                       None => {
                         write("none")
@@ -2627,8 +2696,8 @@ mod tests {
                     Option[String]::Some("b"),
                   ] {
                     match item {
-                      Some(v0) => {
-                        let val = v0 in {
+                      Some(v_0) => {
+                        let val = v_0 in {
                           write("[")
                           write_escaped(val)
                           write("]")
@@ -2648,8 +2717,8 @@ mod tests {
                     Option[String]::Some("b"),
                   ] {
                     match item {
-                      Some(v0) => {
-                        let val = v0 in {
+                      Some(v_0) => {
+                        let val = v_0 in {
                           write("[")
                           write_escaped(val)
                           write("]")
@@ -2866,14 +2935,14 @@ mod tests {
                 Test() {
                   let result = Result::Ok(value: "hello") in {
                     match result {
-                      Result::Ok(value: v0) => {
-                        let v = v0 in {
+                      Result::Ok(value: v_0) => {
+                        let v = v_0 in {
                           write("Ok:")
                           write_escaped(v)
                         }
                       }
-                      Result::Err(message: v1) => {
-                        let m = v1 in {
+                      Result::Err(message: v_1) => {
+                        let m = v_1 in {
                           write("Err:")
                           write_escaped(m)
                         }
@@ -2889,14 +2958,14 @@ mod tests {
                 Test() {
                   let result = Result::Ok(value: "hello") in {
                     match result {
-                      Result::Ok(value: v0) => {
-                        let v = v0 in {
+                      Result::Ok(value: v_0) => {
+                        let v = v_0 in {
                           write("Ok:")
                           write_escaped(v)
                         }
                       }
-                      Result::Err(message: v1) => {
-                        let m = v1 in {
+                      Result::Err(message: v_1) => {
+                        let m = v_1 in {
                           write("Err:")
                           write_escaped(m)
                         }
@@ -2957,14 +3026,14 @@ mod tests {
                 Test() {
                   let result = Result::Err(message: "something went wrong") in {
                     match result {
-                      Result::Ok(value: v0) => {
-                        let v = v0 in {
+                      Result::Ok(value: v_0) => {
+                        let v = v_0 in {
                           write("Ok:")
                           write_escaped(v)
                         }
                       }
-                      Result::Err(message: v1) => {
-                        let m = v1 in {
+                      Result::Err(message: v_1) => {
+                        let m = v_1 in {
                           write("Err:")
                           write_escaped(m)
                         }
@@ -2980,14 +3049,14 @@ mod tests {
                 Test() {
                   let result = Result::Err(message: "something went wrong") in {
                     match result {
-                      Result::Ok(value: v0) => {
-                        let v = v0 in {
+                      Result::Ok(value: v_0) => {
+                        let v = v_0 in {
                           write("Ok:")
                           write_escaped(v)
                         }
                       }
-                      Result::Err(message: v1) => {
-                        let m = v1 in {
+                      Result::Err(message: v_1) => {
+                        let m = v_1 in {
                           write("Err:")
                           write_escaped(m)
                         }
@@ -3048,17 +3117,17 @@ mod tests {
                 Test() {
                   let resp = Response::Success(code: "200", body: "OK") in {
                     match resp {
-                      Response::Success(code: v0, body: v1) => {
-                        let c = v0 in {
-                          let b = v1 in {
+                      Response::Success(code: v_0, body: v_1) => {
+                        let c = v_0 in {
+                          let b = v_1 in {
                             write_escaped(c)
                             write(":")
                             write_escaped(b)
                           }
                         }
                       }
-                      Response::Error(reason: v2) => {
-                        let r = v2 in {
+                      Response::Error(reason: v_2) => {
+                        let r = v_2 in {
                           write("Error:")
                           write_escaped(r)
                         }
@@ -3074,17 +3143,17 @@ mod tests {
                 Test() {
                   let resp = Response::Success(code: "200", body: "OK") in {
                     match resp {
-                      Response::Success(code: v0, body: v1) => {
-                        let c = v0 in {
-                          let b = v1 in {
+                      Response::Success(code: v_0, body: v_1) => {
+                        let c = v_0 in {
+                          let b = v_1 in {
                             write_escaped(c)
                             write(":")
                             write_escaped(b)
                           }
                         }
                       }
-                      Response::Error(reason: v2) => {
-                        let r = v2 in {
+                      Response::Error(reason: v_2) => {
+                        let r = v_2 in {
                           write("Error:")
                           write_escaped(r)
                         }
@@ -4042,10 +4111,10 @@ mod tests {
                 Test() {
                   let nested = Option[Option[String]]::Some(Option[String]::Some("deep")) in {
                     match nested {
-                      Some(v0) => {
-                        match v0 {
-                          Some(v1) => {
-                            let x = v1 in {
+                      Some(v_0) => {
+                        match v_0 {
+                          Some(v_1) => {
+                            let x = v_1 in {
                               write_escaped(x)
                             }
                           }
@@ -4064,10 +4133,10 @@ mod tests {
                 Test() {
                   let nested = Option[Option[String]]::Some(Option[String]::Some("deep")) in {
                     match nested {
-                      Some(v0) => {
-                        match v0 {
-                          Some(v1) => {
-                            let x = v1 in {
+                      Some(v_0) => {
+                        match v_0 {
+                          Some(v_1) => {
+                            let x = v_1 in {
                               write_escaped(x)
                             }
                           }
@@ -4344,8 +4413,8 @@ mod tests {
                 Test() {
                   let nested = Option[Option[String]]::Some(Option[String]::Some("x")) in {
                     match nested {
-                      Some(v0) => {
-                        match v0 {
+                      Some(v_0) => {
+                        match v_0 {
                           Some(_) => {
                             write("some-some")
                           }
@@ -4364,8 +4433,8 @@ mod tests {
                 Test() {
                   let nested = Option[Option[String]]::Some(Option[String]::Some("x")) in {
                     match nested {
-                      Some(v0) => {
-                        match v0 {
+                      Some(v_0) => {
+                        match v_0 {
                           Some(_) => {
                             write("some-some")
                           }
@@ -4649,8 +4718,8 @@ mod tests {
                 }
                 Test() {
                   let person = Person(name: "Alice", age: 30) in {
-                    let v1 = person.age in {
-                      let a = v1 in {
+                    let v_1 = person.age in {
+                      let a = v_1 in {
                         write("age:")
                         write_escaped(a.to_string())
                       }
@@ -4664,8 +4733,8 @@ mod tests {
                 }
                 Test() {
                   let person = Person(name: "Alice", age: 30) in {
-                    let v1 = person.age in {
-                      let a = v1 in {
+                    let v_1 = person.age in {
+                      let a = v_1 in {
                         write("age:")
                         write_escaped(a.to_string())
                       }
@@ -4725,10 +4794,10 @@ mod tests {
                 Test() {
                   let deep = Option[Option[Option[String]]]::Some(Option[Option[String]]::Some(Option[String]::Some("value"))) in {
                     match deep {
-                      Some(v0) => {
-                        match v0 {
-                          Some(v1) => {
-                            match v1 {
+                      Some(v_0) => {
+                        match v_0 {
+                          Some(v_1) => {
+                            match v_1 {
                               Some(_) => {
                                 write("triple-some")
                               }
@@ -4752,10 +4821,10 @@ mod tests {
                 Test() {
                   let deep = Option[Option[Option[String]]]::Some(Option[Option[String]]::Some(Option[String]::Some("value"))) in {
                     match deep {
-                      Some(v0) => {
-                        match v0 {
-                          Some(v1) => {
-                            match v1 {
+                      Some(v_0) => {
+                        match v_0 {
+                          Some(v_1) => {
+                            match v_1 {
                               Some(_) => {
                                 write("triple-some")
                               }
@@ -4841,8 +4910,8 @@ mod tests {
                 Test() {
                   let result = Outer::Ok(value: Inner::Ok(value: "deep")) in {
                     match result {
-                      Outer::Ok(value: v0) => {
-                        match v0 {
+                      Outer::Ok(value: v_0) => {
+                        match v_0 {
                           Inner::Ok => {
                             write("ok-ok")
                           }
@@ -4869,8 +4938,8 @@ mod tests {
                 Test() {
                   let result = Outer::Ok(value: Inner::Ok(value: "deep")) in {
                     match result {
-                      Outer::Ok(value: v0) => {
-                        match v0 {
+                      Outer::Ok(value: v_0) => {
+                        match v_0 {
                           Inner::Ok => {
                             write("ok-ok")
                           }
@@ -4987,4 +5056,199 @@ mod tests {
         );
     }
 
+    #[test]
+    #[ignore]
+    fn nested_match_statements_with_literal_subjects() {
+        check(
+            indoc! {r#"
+                entrypoint Test() {
+                  <match {Some("outer")}>
+                    <case {Some(x)}>
+                      <match {Some("inner")}>
+                        <case {Some(y)}>
+                          {x}:{y}
+                        </case>
+                        <case {None}>
+                          inner-none
+                        </case>
+                      </match>
+                    </case>
+                    <case {None}>
+                      outer-none
+                    </case>
+                  </match>
+                }
+            "#},
+            "outer:inner",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let v_0 = Option[String]::Some("outer") in {
+                    match v_0 {
+                      Some(v_1) => {
+                        let x = v_1 in {
+                          let v_2 = Option[String]::Some("inner") in {
+                            match v_2 {
+                              Some(v_3) => {
+                                let y = v_3 in {
+                                  write_escaped(x)
+                                  write(":")
+                                  write_escaped(y)
+                                }
+                              }
+                              None => {
+                                write("inner-none")
+                              }
+                            }
+                          }
+                        }
+                      }
+                      None => {
+                        write("outer-none")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  let v_0 = Option[String]::Some("outer") in {
+                    match v_0 {
+                      Some(v_1) => {
+                        let x = v_1 in {
+                          let v_2 = Option[String]::Some("inner") in {
+                            match v_2 {
+                              Some(v_3) => {
+                                let y = v_3 in {
+                                  write_escaped(x)
+                                  write(":")
+                                  write_escaped(y)
+                                }
+                              }
+                              None => {
+                                write("inner-none")
+                              }
+                            }
+                          }
+                        }
+                      }
+                      None => {
+                        write("outer-none")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                outer:inner
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn nested_match_statements_with_variable_subjects() {
+        check(
+            indoc! {r#"
+                entrypoint Test() {
+                  <let {
+                    outer: Option[Option[String]] = Some(Some("hello")),
+                  }>
+                    <match {outer}>
+                      <case {Some(inner)}>
+                        <match {inner}>
+                          <case {Some(value)}>
+                            value:{value}
+                          </case>
+                          <case {None}>
+                            inner-none
+                          </case>
+                        </match>
+                      </case>
+                      <case {None}>
+                        outer-none
+                      </case>
+                    </match>
+                  </let>
+                }
+            "#},
+            "value:hello",
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  let outer = Option[Option[String]]::Some(Option[String]::Some("hello")) in {
+                    match outer {
+                      Some(v_0) => {
+                        let inner = v_0 in {
+                          match inner {
+                            Some(v_1) => {
+                              let value = v_1 in {
+                                write("value:")
+                                write_escaped(value)
+                              }
+                            }
+                            None => {
+                              write("inner-none")
+                            }
+                          }
+                        }
+                      }
+                      None => {
+                        write("outer-none")
+                      }
+                    }
+                  }
+                }
+                -- ir (optimized) --
+                Test() {
+                  let outer = Option[Option[String]]::Some(Option[String]::Some("hello")) in {
+                    match outer {
+                      Some(v_0) => {
+                        let inner = v_0 in {
+                          match inner {
+                            Some(v_1) => {
+                              let value = v_1 in {
+                                write("value:")
+                                write_escaped(value)
+                              }
+                            }
+                            None => {
+                              write("inner-none")
+                            }
+                          }
+                        }
+                      }
+                      None => {
+                        write("outer-none")
+                      }
+                    }
+                  }
+                }
+                -- expected output --
+                value:hello
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
 }

@@ -5,6 +5,8 @@ use std::collections::HashMap;
 pub struct Environment<T> {
     entries: HashMap<String, EnvironmentEntry<T>>,
     operations: Vec<String>,
+    /// Counter for generating fresh variable names.
+    fresh_var_counter: usize,
 }
 
 /// Environment entry that holds both value and a boolean indicating
@@ -20,7 +22,16 @@ impl<V> Environment<V> {
         Environment {
             entries: HashMap::new(),
             operations: Vec::new(),
+            fresh_var_counter: 0,
         }
+    }
+
+    /// Generate a fresh variable name.
+    /// Returns names like "v_0", "v_1", "v_2", etc.
+    pub fn fresh_var(&mut self) -> String {
+        let name = format!("v_{}", self.fresh_var_counter);
+        self.fresh_var_counter += 1;
+        name
     }
 
     /// Bind the key to the given value in the environment.

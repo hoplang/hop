@@ -962,10 +962,10 @@ fn typecheck_node(
             // If subject is already a variable, use it directly; otherwise we'll wrap in a let
             let (subject_name, needs_wrapper) = match &typed_subject {
                 dop::TypedExpr::Var { value, .. } => (value.as_str().to_string(), false),
-                _ => ("match_subject".to_string(), true),
+                _ => (var_env.fresh_var(), true),
             };
 
-            let decision = match PatMatchCompiler::new(0).compile(
+            let decision = match PatMatchCompiler::new(var_env).compile(
                 &patterns,
                 &subject_name,
                 &subject_type,
@@ -3315,7 +3315,7 @@ mod tests {
 
                 <Main {user: main::User}>
                   <div>
-                    {let v0 = user.status in match v0 {
+                    {let v_0 = user.status in match v_0 {
                       Status::Active => "active",
                       Status::Inactive => "inactive",
                     }}
@@ -3762,8 +3762,8 @@ mod tests {
                 -- main.hop --
                 <Main {x: Option[String]}>
                   <match {x}>
-                    <case {Some(v0)}>
-                      <let {y = v0}>
+                    <case {Some(v_0)}>
+                      <let {y = v_0}>
                         found 
                         {y}
                       </let>
@@ -3841,10 +3841,10 @@ mod tests {
                 }
 
                 <Main>
-                  <let {match_subject = Status::Active(name: "test")}>
-                    <match {match_subject}>
-                      <case {Status::Active(name: v0)}>
-                        <let {n = v0}>
+                  <let {v_0 = Status::Active(name: "test")}>
+                    <match {v_0}>
+                      <case {Status::Active(name: v_1)}>
+                        <let {n = v_1}>
                           {n}
                         </let>
                       </case>
@@ -3927,8 +3927,8 @@ mod tests {
                 -- main.hop --
                 <Main {x: Option[String]}>
                   <match {x}>
-                    <case {Some(v0)}>
-                      <let {name = v0}>
+                    <case {Some(v_0)}>
+                      <let {name = v_0}>
                         <div class={name}></div>
                       </let>
                     </case>
@@ -4220,11 +4220,11 @@ mod tests {
                 -- main.hop --
                 <Main {x: Option[Option[String]]}>
                   <match {x}>
-                    <case {Some(v0)}>
-                      <let {inner = v0}>
+                    <case {Some(v_0)}>
+                      <let {inner = v_0}>
                         <match {inner}>
-                          <case {Some(v0)}>
-                            <let {val = v0}>
+                          <case {Some(v_1)}>
+                            <let {val = v_1}>
                               {val}
                             </let>
                           </case>
@@ -4262,8 +4262,8 @@ mod tests {
                 <Main {items: Array[Option[String]]}>
                   <for {item in items}>
                     <match {item}>
-                      <case {Some(v0)}>
-                        <let {val = v0}>
+                      <case {Some(v_0)}>
+                        <let {val = v_0}>
                           {val}
                         </let>
                       </case>
@@ -4330,15 +4330,15 @@ mod tests {
                 -- main.hop --
                 <Main {r1: Option[String], r2: Option[Bool]}>
                   <match {r1}>
-                    <case {Some(v0)}>
-                      <let {val = v0}>
+                    <case {Some(v_0)}>
+                      <let {val = v_0}>
                         {val}
                       </let>
                     </case>
                     <case {None}>
                       <match {r2}>
-                        <case {Some(v0)}>
-                          <let {val = v0}>
+                        <case {Some(v_1)}>
+                          <let {val = v_1}>
                             <if {val}>
                               yes
                             </if>
@@ -4375,10 +4375,10 @@ mod tests {
                 }
 
                 <Main {user: main::User}>
-                  <let {match_subject = user.name}>
-                    <match {match_subject}>
-                      <case {Some(v0)}>
-                        <let {n = v0}>
+                  <let {v_0 = user.name}>
+                    <match {v_0}>
+                      <case {Some(v_1)}>
+                        <let {n = v_1}>
                           {n}
                         </let>
                       </case>
@@ -4432,8 +4432,8 @@ mod tests {
                 <Main {show: Bool, x: Option[String]}>
                   <if {show}>
                     <match {x}>
-                      <case {Some(v0)}>
-                        <let {v = v0}>
+                      <case {Some(v_0)}>
+                        <let {v = v_0}>
                           {v}
                         </let>
                       </case>
@@ -4466,8 +4466,8 @@ mod tests {
                 <Main {x: Option[String]}>
                   <div>
                     <match {x}>
-                      <case {Some(v0)}>
-                        <let {v = v0}>
+                      <case {Some(v_0)}>
+                        <let {v = v_0}>
                           <span>
                             {v}
                           </span>
@@ -4621,8 +4621,8 @@ mod tests {
                 <Separator {children: Option[TrustedHTML] = None}>
                   <li>
                     <match {children}>
-                      <case {Some(v0)}>
-                        <let {c = v0}>
+                      <case {Some(v_0)}>
+                        <let {c = v_0}>
                           {c}
                         </let>
                       </case>
@@ -4666,8 +4666,8 @@ mod tests {
                 <Separator {children: Option[TrustedHTML] = None}>
                   <li>
                     <match {children}>
-                      <case {Some(v0)}>
-                        <let {c = v0}>
+                      <case {Some(v_0)}>
+                        <let {c = v_0}>
                           {c}
                         </let>
                       </case>
