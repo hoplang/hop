@@ -5554,4 +5554,46 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn unreserved_keyword_for_as_attribute_name() {
+        check(
+            indoc! {r#"
+                entrypoint Test() {
+                  <label for="email">
+                    Email
+                  </label>
+                }
+            "#},
+            r#"<label for="email">Email</label>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                Test() {
+                  write("<label")
+                  write(" for=\"email\"")
+                  write(">")
+                  write("Email")
+                  write("</label>")
+                }
+                -- ir (optimized) --
+                Test() {
+                  write("<label for=\"email\">Email</label>")
+                }
+                -- expected output --
+                <label for="email">Email</label>
+                -- ts (unoptimized) --
+                OK
+                -- go (unoptimized) --
+                OK
+                -- python (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- go (optimized) --
+                OK
+                -- python (optimized) --
+                OK
+            "#]],
+        );
+    }
 }

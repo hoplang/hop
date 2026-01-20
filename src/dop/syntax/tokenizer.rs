@@ -142,7 +142,7 @@ pub fn next(
                     "Option" => Token::TypeOption,
                     // Reserved keywords
                     "let" | "fn" | "func" | "if" | "else" | "return" | "struct"
-                    | "var" | "const" | "for" | "assert" | "comp" | "component" | "and"
+                    | "var" | "const" | "assert" | "comp" | "component" | "and"
                     | "or" | "not" | "of" | "while" | "loop" | "break" | "continue"
                     | "case" | "default" | "try" | "catch" | "throw" | "finally" | "async"
                     | "await" | "yield" | "pub" | "private" | "mut" | "impl" | "trait"
@@ -1736,7 +1736,6 @@ mod tests {
                 final
                 finally
                 fn
-                for
                 from
                 func
                 get
@@ -1882,10 +1881,6 @@ mod tests {
                 token: Reserved("fn")
                 fn
                 ^^
-
-                token: Reserved("for")
-                for
-                ^^^
 
                 token: Reserved("from")
                 from
