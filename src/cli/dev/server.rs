@@ -2,6 +2,7 @@ use crate::document::DocumentAnnotator;
 use crate::hop::program::Program;
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
+use crate::log_info;
 use axum::body::Body;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -35,11 +36,21 @@ async fn handle_event_source(
     impl tokio_stream::Stream<Item = Result<axum::response::sse::Event, axum::Error>>,
 > {
     use axum::response::sse::{Event, Sse};
+    use std::sync::atomic::{AtomicU64, Ordering};
     use tokio_stream::StreamExt;
 
+    static CONNECTION_ID: AtomicU64 = AtomicU64::new(0);
+    let id = CONNECTION_ID.fetch_add(1, Ordering::Relaxed);
+
+    log_info!("sse", event = "connected", client_id = id);
+
     Sse::new(
-        tokio_stream::wrappers::BroadcastStream::new(state.reload_channel.subscribe())
-            .map(|_| Ok::<Event, axum::Error>(Event::default().data("reload"))),
+        tokio_stream::wrappers::BroadcastStream::new(state.reload_channel.subscribe()).map(
+            move |_| {
+                log_info!("sse", event = "reload", client_id = id);
+                Ok::<Event, axum::Error>(Event::default().data("reload"))
+            },
+        ),
     )
 }
 
@@ -62,7 +73,7 @@ async fn handle_render(
     let css = state.tailwind_css.read().unwrap();
     let css_content = css.as_deref();
 
-    let component_name_for_log = body.component.clone();
+    let entrypoint_name_for_log = body.component.clone();
 
     // Parse module name
     let module_name = match ModuleName::new(&body.module) {
@@ -134,10 +145,10 @@ async fn handle_render(
             .unwrap(),
     };
 
-    eprintln!(
-        "[render] component: {}, total: {:?}",
-        component_name_for_log,
-        render_start.elapsed()
+    log_info!(
+        "render",
+        entrypoint = entrypoint_name_for_log,
+        duration = format!("{:?}", render_start.elapsed()),
     );
 
     result
