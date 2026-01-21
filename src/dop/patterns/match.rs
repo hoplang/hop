@@ -1,5 +1,6 @@
 //! Generic match types that can be used across different AST representations.
 
+use crate::document::CheapString;
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::var_name::VarName;
@@ -8,8 +9,8 @@ use crate::dop::symbols::var_name::VarName;
 #[derive(Debug, Clone, PartialEq)]
 pub enum EnumPattern {
     Variant {
-        enum_name: String,
-        variant_name: String,
+        enum_name: CheapString,
+        variant_name: CheapString,
     },
 }
 

@@ -838,8 +838,8 @@ pub fn typecheck_expr(
             };
 
             Ok(TypedExpr::EnumLiteral {
-                enum_name: enum_name.to_string(),
-                variant_name: variant_name.to_string(),
+                enum_name: enum_name.clone(),
+                variant_name: variant_name.clone(),
                 fields: typed_fields,
                 kind: enum_type,
             })
@@ -1239,8 +1239,8 @@ fn decision_to_typed_expr(
                 .iter()
                 .map(|case| {
                     let pattern = EnumPattern::Variant {
-                        enum_name: case.enum_name.to_string(),
-                        variant_name: case.variant_name.to_string(),
+                        enum_name: case.enum_name.to_cheap_string(),
+                        variant_name: case.variant_name.clone(),
                     };
 
                     let mut body =

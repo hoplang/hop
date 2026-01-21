@@ -487,8 +487,8 @@ impl IrBuilder {
 
         let test_module = ModuleName::new("test").unwrap();
         IrExpr::EnumLiteral {
-            enum_name: enum_name.to_string(),
-            variant_name: variant_name.to_string(),
+            enum_name: CheapString::new(enum_name.to_string()),
+            variant_name: CheapString::new(variant_name.to_string()),
             fields: field_values
                 .into_iter()
                 .map(|(k, v)| (FieldName::new(k).unwrap(), v))
@@ -543,7 +543,7 @@ impl IrBuilder {
                     .first()
                     .map(|(_, body)| body.as_type().clone())
                     .unwrap_or(Type::String);
-                (name.as_str().to_string(), result_type)
+                (name.to_cheap_string(), result_type)
             }
             _ => panic!("Match subject must be an enum type"),
         };
@@ -553,7 +553,7 @@ impl IrBuilder {
             .map(|(variant_name, body)| EnumMatchArm {
                 pattern: EnumPattern::Variant {
                     enum_name: enum_name.clone(),
-                    variant_name: variant_name.to_string(),
+                    variant_name: CheapString::new(variant_name.to_string()),
                 },
                 bindings: vec![],
                 body,
@@ -659,7 +659,7 @@ impl IrBuilder {
         let Type::Enum { name, variants, .. } = subject.as_type() else {
             panic!("Match subject must be an enum type")
         };
-        let enum_name = name.as_str().to_string();
+        let enum_name = name.to_cheap_string();
 
         // Use the type of the first arm's body as the result type (computed after building arms)
         let mut result_type: Option<Type> = None;
@@ -709,7 +709,7 @@ impl IrBuilder {
                 EnumMatchArm {
                     pattern: EnumPattern::Variant {
                         enum_name: enum_name.clone(),
-                        variant_name: variant_name.to_string(),
+                        variant_name: CheapString::new(variant_name.to_string()),
                     },
                     bindings,
                     body,
@@ -1061,7 +1061,7 @@ impl IrBuilder {
         use crate::dop::patterns::Match;
 
         let enum_name = match subject.as_type() {
-            Type::Enum { name, .. } => name.as_str().to_string(),
+            Type::Enum { name, .. } => name.to_cheap_string(),
             _ => panic!("Match subject must be an enum type"),
         };
 
@@ -1073,7 +1073,7 @@ impl IrBuilder {
                 EnumMatchArm {
                     pattern: EnumPattern::Variant {
                         enum_name: enum_name.clone(),
-                        variant_name: variant_name.to_string(),
+                        variant_name: CheapString::new(variant_name.to_string()),
                     },
                     bindings: vec![],
                     body: arm_builder.statements,
@@ -1103,7 +1103,7 @@ impl IrBuilder {
         let Type::Enum { name, variants, .. } = subject.as_type() else {
             panic!("Match subject must be an enum type")
         };
-        let enum_name = name.as_str().to_string();
+        let enum_name = name.to_cheap_string();
 
         let ir_arms: Vec<EnumMatchArm<Vec<IrStatement>>> = arms
             .into_iter()
@@ -1146,7 +1146,7 @@ impl IrBuilder {
                 EnumMatchArm {
                     pattern: EnumPattern::Variant {
                         enum_name: enum_name.clone(),
-                        variant_name: variant_name.to_string(),
+                        variant_name: CheapString::new(variant_name.to_string()),
                     },
                     bindings,
                     body: arm_builder.statements,

@@ -434,7 +434,7 @@ impl<'a> Compiler<'a> {
                     (
                         Constructor::EnumVariant {
                             enum_name: name.clone(),
-                            variant_name: CheapString::new(variant_name.to_string()),
+                            variant_name: variant_name.to_cheap_string(),
                         },
                         field_vars,
                         Vec::new(),

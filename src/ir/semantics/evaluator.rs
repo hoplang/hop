@@ -665,7 +665,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 field_values.insert(field_name.as_str().to_string(), field_val);
             }
             Ok(Value::Enum {
-                variant_name: variant_name.clone(),
+                variant_name: variant_name.as_str().to_string(),
                 fields: field_values,
             })
         }

@@ -44,8 +44,8 @@ pub enum TypedExpr {
 
     /// An enum literal expression, e.g. Color::Red or Result::Ok(value: 42)
     EnumLiteral {
-        enum_name: String,
-        variant_name: String,
+        enum_name: CheapString,
+        variant_name: CheapString,
         /// Field values for variants with fields (empty for unit variants)
         fields: Vec<(FieldName, Self)>,
         kind: Type,

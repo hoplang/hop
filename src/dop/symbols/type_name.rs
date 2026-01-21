@@ -65,6 +65,11 @@ impl TypeName {
     pub fn as_str(&self) -> &str {
         self.value.as_str()
     }
+
+    /// Get a clone of the inner CheapString
+    pub fn to_cheap_string(&self) -> CheapString {
+        self.value.clone()
+    }
 }
 
 impl Display for TypeName {

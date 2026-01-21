@@ -28,8 +28,8 @@ enum Const {
     Bool(bool),
     String(CheapString),
     Enum {
-        enum_name: String,
-        variant_name: String,
+        enum_name: CheapString,
+        variant_name: CheapString,
         /// Field expression IDs for reconstructing the enum literal.
         /// Empty for unit variants.
         fields: Vec<(FieldName, ExprId)>,
@@ -427,7 +427,7 @@ impl Pass for ConstantPropagationPass {
 
         // Enum matches with known subjects: ((match_id, enum_name, variant_name) => match_id)
         let match_with_const_enum =
-            iteration.variable::<((ExprId, String, String), ExprId)>("match_with_enum");
+            iteration.variable::<((ExprId, CheapString, CheapString), ExprId)>("match_with_enum");
 
         // Selected arm bodies for all match types: (arm_body_id => match_id)
         let selected_arm = iteration.variable::<(ExprId, ExprId)>("selected_arm");
@@ -634,7 +634,7 @@ impl Pass for ConstantPropagationPass {
                 selected_arm.from_join(
                     &match_with_const_enum,
                     &enum_match_arms,
-                    |_key: &(ExprId, String, String), match_id: &ExprId, arm_body: &ExprId| {
+                    |_key: &(ExprId, CheapString, CheapString), match_id: &ExprId, arm_body: &ExprId| {
                         (*arm_body, *match_id)
                     },
                 );

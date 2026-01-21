@@ -1201,8 +1201,8 @@ fn decision_to_typed_nodes(decision: &Decision, typed_bodies: &[Vec<TypedNode>])
                 .iter()
                 .map(|case| {
                     let pattern = EnumPattern::Variant {
-                        enum_name: case.enum_name.to_string(),
-                        variant_name: case.variant_name.to_string(),
+                        enum_name: case.enum_name.to_cheap_string(),
+                        variant_name: case.variant_name.clone(),
                     };
 
                     // Filter out wildcard bindings (bound_name is None)
