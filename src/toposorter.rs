@@ -21,6 +21,25 @@ impl<N> TopoSorter<N>
 where
     N: Eq + std::hash::Hash + Clone + std::cmp::Ord,
 {
+    /// Remove a node from the graph.
+    ///
+    /// Returns the set of nodes that directly depended on the removed node
+    /// (i.e., nodes that had the removed node in their dependencies).
+    /// These nodes may need to be re-processed since their dependency is gone.
+    ///
+    /// Time complexity: O(V)
+    pub fn remove_node(&mut self, node: &N) -> HashSet<N> {
+        // Get the nodes that depend on this node (reverse dependencies)
+        let dependents = self.reverse_dependencies.remove(node).unwrap_or_default();
+
+        // Remove this node from all reverse dependency sets
+        for reverse_deps in self.reverse_dependencies.values_mut() {
+            reverse_deps.remove(node);
+        }
+
+        dependents
+    }
+
     /// Update the state of a given node in the graph by adding it to the
     /// graph if it doesn't exist and updating its dependencies.
     ///

@@ -36,6 +36,14 @@ pub struct TypeChecker {
 }
 
 impl TypeChecker {
+    /// Remove all data associated with a module.
+    pub fn remove_module(&mut self, module_name: &ModuleName) {
+        self.state.remove(module_name);
+        self.type_errors.remove(module_name);
+        self.type_annotations.remove(module_name);
+        self.typed_asts.remove(module_name);
+    }
+
     pub fn typecheck(&mut self, modules: &[&ParsedAst]) {
         for module in modules {
             let type_errors = self.type_errors.entry(module.name.clone()).or_default();

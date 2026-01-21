@@ -68,6 +68,29 @@ impl Program {
         program
     }
 
+    /// Remove a module from the program.
+    ///
+    /// This cleans up all state associated with the module and re-typechecks
+    /// any modules that depended on it (since their imports are now broken).
+    pub fn remove_module(&mut self, module_name: &ModuleName) {
+        // Remove from parse errors and parsed ASTs
+        self.parse_errors.remove(module_name);
+        self.parsed_asts.remove(module_name);
+
+        // Remove from topo sorter and get modules that depended on this one
+        let dependents = self.topo_sorter.remove_node(module_name);
+
+        // Remove from type checker
+        self.type_checker.remove_module(module_name);
+
+        // Re-typecheck dependent modules (they now have broken imports)
+        for dependent in dependents {
+            if let Some(ast) = self.parsed_asts.get(&dependent) {
+                self.type_checker.typecheck(&[ast]);
+            }
+        }
+    }
+
     pub fn update_module(
         &mut self,
         module_name: ModuleName,

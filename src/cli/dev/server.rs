@@ -132,7 +132,12 @@ async fn handle_render(
             .unwrap();
     }
 
-    let result = match program.evaluate_entrypoint(&module_name, &component_name, body.params, css_content) {
+    let result = match program.evaluate_entrypoint(
+        &module_name,
+        &component_name,
+        body.params,
+        css_content,
+    ) {
         Ok(html) => Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "text/html")

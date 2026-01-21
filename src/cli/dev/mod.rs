@@ -5,10 +5,12 @@ use crate::filesystem::project_root::ProjectRoot;
 use crate::hop::program::Program;
 use crate::log_info;
 use server::{AppState, create_router};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use tailwind_runner::TailwindRunner;
 use tokio::process::Child;
+use tokio::time::{Duration, Instant, sleep_until};
 
 pub struct DevServer {
     pub router: axum::Router,
@@ -69,78 +71,100 @@ async fn create_file_watcher(
 
     let adaptive_watcher = AdaptiveWatcher::new(root.get_path(), ignored_folders).await?;
 
-    // Spawn task to handle watch events from the adaptive watcher
+    // Spawn task to handle watch events from the adaptive watcher with debouncing
     let mut rx = adaptive_watcher.subscribe();
     let state_clone = state.clone();
     tokio::spawn(async move {
-        while let Ok(event) = rx.recv().await {
-            match event {
-                WatchEvent::Created(ref path) | WatchEvent::Modified(ref path) => {
-                    // Check if it's a .hop file
-                    let is_hop_file = path.extension().and_then(|e| e.to_str()) == Some("hop");
+        enum ChangeKind {
+            Modified,
+            Deleted,
+        }
 
-                    if is_hop_file {
-                        let total_start = std::time::Instant::now();
+        let debounce_duration = Duration::from_millis(50);
+        let mut pending_changes: HashMap<PathBuf, ChangeKind> = HashMap::new();
+        let mut deadline: Option<Instant> = None;
 
-                        // Incrementally update just the changed module
-                        if let Ok((module_name, document)) = local_root.load_hop_module(path) {
-                            let load_elapsed = total_start.elapsed();
+        loop {
+            tokio::select! {
+                biased;
 
-                            let update_start = std::time::Instant::now();
-                            if let Ok(mut program) = state_clone.program.write() {
-                                program.update_module(module_name, document);
-                            }
-                            let update_elapsed = update_start.elapsed();
-
-                            let event_type = if matches!(event, WatchEvent::Created(_)) {
-                                "created"
-                            } else {
-                                "modified"
+                // Receive new events and accumulate them
+                result = rx.recv() => {
+                    match result {
+                        Ok(event) => {
+                            let (path, kind) = match &event {
+                                WatchEvent::Created(p) => (p.clone(), "created"),
+                                WatchEvent::Modified(p) => (p.clone(), "modified"),
+                                WatchEvent::Deleted(p) => (p.clone(), "deleted"),
                             };
-                            log_info!(
-                                "watch_event",
-                                kind = event_type,
-                                path = path.display(),
-                                load = format!("{:?}", load_elapsed),
-                                update = format!("{:?}", update_elapsed),
-                                total = format!("{:?}", total_start.elapsed()),
-                            );
+
+                            let is_hop_file = path.extension().and_then(|e| e.to_str()) == Some("hop");
+                            if is_hop_file {
+                                let change_kind = if matches!(event, WatchEvent::Deleted(_)) {
+                                    ChangeKind::Deleted
+                                } else {
+                                    ChangeKind::Modified
+                                };
+                                pending_changes.insert(path.clone(), change_kind);
+                                deadline = Some(Instant::now() + debounce_duration);
+                                log_info!(
+                                    "watch_event",
+                                    kind = kind,
+                                    path = path.display(),
+                                    pending = pending_changes.len(),
+                                );
+                            }
                         }
-                        // Tell the client to hot reload
-                        let _ = state_clone.reload_channel.send(());
+                        Err(_) => break, // Channel closed or lagged
                     }
                 }
-                WatchEvent::Deleted(path) => {
-                    // Check if it's a .hop file
-                    let is_hop_file = path.extension().and_then(|e| e.to_str()) == Some("hop");
 
-                    if is_hop_file {
-                        let total_start = std::time::Instant::now();
-
-                        // For deleted files, do a full reload since we don't have remove_module
-                        if let Ok(modules) = local_root.load_all_hop_modules() {
-                            let load_elapsed = total_start.elapsed();
-
-                            let program_start = std::time::Instant::now();
-                            let new_program = Program::new(modules);
-                            let program_elapsed = program_start.elapsed();
-
-                            if let Ok(mut program) = state_clone.program.write() {
-                                *program = new_program;
-                            }
-
-                            log_info!(
-                                "watch_event",
-                                kind = "deleted",
-                                path = path.display(),
-                                load = format!("{:?}", load_elapsed),
-                                rebuild = format!("{:?}", program_elapsed),
-                                total = format!("{:?}", total_start.elapsed()),
-                            );
-                        }
-                        // Tell the client to hot reload
-                        let _ = state_clone.reload_channel.send(());
+                // Timer fires when debounce period elapses
+                _ = async {
+                    match deadline {
+                        Some(d) => sleep_until(d).await,
+                        None => std::future::pending().await,
                     }
+                }, if deadline.is_some() => {
+                    let change_count = pending_changes.len();
+                    log_info!(
+                        "debounce",
+                        event = "triggered",
+                        changes = change_count,
+                    );
+
+                    let total_start = std::time::Instant::now();
+
+                    if let Ok(mut program) = state_clone.program.write() {
+                        for (path, kind) in &pending_changes {
+                            match kind {
+                                ChangeKind::Deleted => {
+                                    if let Ok(module_name) = local_root.path_to_module_name(path) {
+                                        program.remove_module(&module_name);
+                                    }
+                                }
+                                ChangeKind::Modified => {
+                                    if let Ok((module_name, document)) = local_root.load_hop_module(path) {
+                                        program.update_module(module_name, document);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    log_info!(
+                        "program",
+                        event = "update_complete",
+                        changes = change_count,
+                        total = format!("{:?}", total_start.elapsed()),
+                    );
+
+                    // Send single reload signal for all accumulated changes
+                    let _ = state_clone.reload_channel.send(());
+
+                    // Reset state
+                    pending_changes.clear();
+                    deadline = None;
                 }
             }
         }
