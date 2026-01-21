@@ -128,6 +128,12 @@ impl Display for FieldName {
     }
 }
 
+impl std::hash::Hash for FieldName {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.as_str().hash(state);
+    }
+}
+
 impl PartialEq for FieldName {
     fn eq(&self, other: &Self) -> bool {
         self.as_str() == other.as_str()

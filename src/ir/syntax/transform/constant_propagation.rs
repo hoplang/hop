@@ -32,7 +32,7 @@ enum Const {
         variant_name: String,
         /// Field expression IDs for reconstructing the enum literal.
         /// Empty for unit variants.
-        fields: Vec<(String, ExprId)>,
+        fields: Vec<(FieldName, ExprId)>,
     },
     Option(Option<ExprId>),
 }
@@ -71,11 +71,11 @@ impl Const {
                     .map(|(field_name, field_id)| {
                         let field_type = variant_fields
                             .iter()
-                            .find(|(f, _)| f.as_str() == field_name)
+                            .find(|(f, _)| f.as_str() == field_name.as_str())
                             .map(|(_, t)| t)?;
                         let field_const = const_map.get(field_id)?;
                         let field_expr = field_const.to_expr(*field_id, field_type, const_map)?;
-                        Some((FieldName::new(field_name).ok()?, field_expr))
+                        Some((field_name.clone(), field_expr))
                     })
                     .collect();
 
@@ -136,9 +136,9 @@ impl Pass for ConstantPropagationPass {
         let mut option_binding_uses: Vec<(ExprId, ExprId)> = Vec::new();
         let mut let_expr_bodies: Vec<(ExprId, ExprId)> = Vec::new();
         // Enum field values: (enum_expr_id => (field_name, field_expr_id))
-        let mut enum_fields: Vec<(ExprId, (String, ExprId))> = Vec::new();
+        let mut enum_fields: Vec<(ExprId, (FieldName, ExprId))> = Vec::new();
         // Enum binding uses: ((subject_def_id, field_name) => binding_var_expr_id)
-        let mut enum_binding_uses: Vec<((ExprId, String), ExprId)> = Vec::new();
+        let mut enum_binding_uses: Vec<((ExprId, FieldName), ExprId)> = Vec::new();
 
         // SSA form guarantees unique variable names, so we can collect all bindings
         // into a single HashMap without worrying about shadowing or scoping.
@@ -152,7 +152,7 @@ impl Pass for ConstantPropagationPass {
         // Enum match bindings map binding name -> (subject's defining expression id, field name).
         // These are handled separately because the binding refers to a field value,
         // not the enum itself.
-        let mut enum_bindings: HashMap<String, (ExprId, String)> = HashMap::new();
+        let mut enum_bindings: HashMap<String, (ExprId, FieldName)> = HashMap::new();
 
         for stmt in &entrypoint.body {
             stmt.traverse(&mut |s| {
@@ -257,9 +257,9 @@ impl Pass for ConstantPropagationPass {
                             ..
                         } => {
                             // Track enum as constant (variant info for match selection + field IDs for reconstruction)
-                            let field_ids: Vec<(String, ExprId)> = fields
+                            let field_ids: Vec<(FieldName, ExprId)> = fields
                                 .iter()
-                                .map(|(name, expr)| (name.as_str().to_string(), expr.id()))
+                                .map(|(name, expr)| (name.clone(), expr.id()))
                                 .collect();
                             initial_constants.push((
                                 expr.id(),
@@ -284,7 +284,7 @@ impl Pass for ConstantPropagationPass {
                                         for (field_name, binding_name) in &arm.bindings {
                                             enum_bindings.insert(
                                                 binding_name.as_str().to_string(),
-                                                (*def_expr_id, field_name.as_str().to_string()),
+                                                (*def_expr_id, field_name.clone()),
                                             );
                                         }
                                     }
@@ -461,12 +461,12 @@ impl Pass for ConstantPropagationPass {
 
         // Enum field expression ids: (enum_expr_id => (field_name, field_expr_id))
         // Used for propagating through variable bindings
-        let enum_field = iteration.variable::<(ExprId, (String, ExprId))>("enum_field");
+        let enum_field = iteration.variable::<(ExprId, (FieldName, ExprId))>("enum_field");
         enum_field.extend(enum_fields.clone());
 
         // Enum field keyed by (expr_id, field_name): ((enum_expr_id, field_name) => field_expr_id)
         // Used for joining with binding uses
-        let enum_field_keyed = iteration.variable::<((ExprId, String), ExprId)>("enum_field_keyed");
+        let enum_field_keyed = iteration.variable::<((ExprId, FieldName), ExprId)>("enum_field_keyed");
         enum_field_keyed.extend(
             enum_fields
                 .into_iter()
@@ -570,7 +570,7 @@ impl Pass for ConstantPropagationPass {
                 propagate_to.from_join(
                     &enum_field_keyed,
                     &enum_binding_use,
-                    |_key: &(ExprId, String), field_id: &ExprId, binding_use_id: &ExprId| {
+                    |_key: &(ExprId, FieldName), field_id: &ExprId, binding_use_id: &ExprId| {
                         (*field_id, *binding_use_id)
                     },
                 );
@@ -578,7 +578,7 @@ impl Pass for ConstantPropagationPass {
                     &enum_field,
                     &propagate_to,
                     |_source: &ExprId,
-                     (field_name, field_id): &(String, ExprId),
+                     (field_name, field_id): &(FieldName, ExprId),
                      target: &ExprId| {
                         (*target, (field_name.clone(), *field_id))
                     },
