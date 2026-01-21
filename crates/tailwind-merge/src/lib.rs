@@ -317,12 +317,14 @@ impl ClassMerger {
 /// Merge Tailwind CSS classes, removing conflicting classes
 pub fn tw_merge(input: &str) -> String {
     let mut merger = ClassMerger::default();
-    // Process in reverse order (last class wins), then reverse to restore order
-    let mut result: Vec<_> = input
-        .split_whitespace()
-        .rev()
-        .filter(|class| merger.should_keep(class))
-        .collect();
+    let mut result: Vec<&str> = Vec::new();
+
+    for class in input.split_whitespace().rev() {
+        if merger.should_keep(class) {
+            result.push(class);
+        }
+    }
+
     result.reverse();
     result.join(" ")
 }
