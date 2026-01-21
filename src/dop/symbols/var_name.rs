@@ -100,6 +100,10 @@ impl VarName {
         self.value.as_str()
     }
 
+    pub fn as_cheap_string(&self) -> &CheapString {
+        &self.value
+    }
+
     /// Convert the variable name to PascalCase
     pub fn to_pascal_case(&self) -> String {
         self.value

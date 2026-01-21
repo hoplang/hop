@@ -1,5 +1,4 @@
 use crate::document::CheapString;
-use crate::environment::Environment;
 use crate::ir::IrExpr;
 use crate::{
     common::escape_html,
@@ -10,6 +9,34 @@ use std::collections::HashMap;
 
 use crate::dop::patterns::{EnumPattern, Match};
 use crate::ir::syntax::ast::{IrComponentDeclaration, IrForSource, IrStatement};
+
+/// Fast stack-based environment for the evaluator.
+/// Uses a Vec instead of HashMap for better performance with small scopes.
+struct Env {
+    stack: Vec<(CheapString, Value)>,
+}
+
+impl Env {
+    fn new() -> Self {
+        Self { stack: Vec::new() }
+    }
+
+    fn push(&mut self, key: CheapString, value: Value) {
+        self.stack.push((key, value));
+    }
+
+    fn pop(&mut self) {
+        self.stack.pop();
+    }
+
+    fn lookup(&self, key: &str) -> Option<&Value> {
+        self.stack
+            .iter()
+            .rev()
+            .find(|(k, _)| k.as_str() == key)
+            .map(|(_, v)| v)
+    }
+}
 
 /// Runtime value for the Hop evaluator.
 /// This enum properly represents all Hop types, unlike serde_json::Value.
@@ -166,11 +193,11 @@ pub fn evaluate_entrypoint(
     entrypoint: &IrComponentDeclaration,
     args: HashMap<String, Value>,
 ) -> Result<String> {
-    let mut env = Environment::new();
+    let mut env = Env::new();
 
     for (param_name, _param_type) in &entrypoint.parameters {
         if let Some(value) = args.get(param_name.as_str()) {
-            let _ = env.push(param_name.to_string(), value.clone());
+            env.push(param_name.as_cheap_string().clone(), value.clone());
         }
     }
 
@@ -182,11 +209,7 @@ pub fn evaluate_entrypoint(
 }
 
 /// Evaluate a slice of IR statements
-fn eval_statements(
-    statements: &[IrStatement],
-    env: &mut Environment<Value>,
-    output: &mut String,
-) -> Result<()> {
+fn eval_statements(statements: &[IrStatement], env: &mut Env, output: &mut String) -> Result<()> {
     for statement in statements {
         eval_statement(statement, env, output)?;
     }
@@ -194,11 +217,7 @@ fn eval_statements(
 }
 
 /// Evaluate a single IR node
-fn eval_statement(
-    node: &IrStatement,
-    env: &mut Environment<Value>,
-    output: &mut String,
-) -> Result<()> {
+fn eval_statement(node: &IrStatement, env: &mut Env, output: &mut String) -> Result<()> {
     match node {
         IrStatement::Write { id: _, content } => {
             output.push_str(content);
@@ -248,11 +267,11 @@ fn eval_statement(
 
                     for item in items {
                         if let Some(var) = var {
-                            let _ = env.push(var.to_string(), item);
+                            env.push(var.as_cheap_string().clone(), item);
                         }
                         eval_statements(body, env, output)?;
                         if var.is_some() {
-                            let _ = env.pop();
+                            env.pop();
                         }
                     }
                 }
@@ -264,11 +283,11 @@ fn eval_statement(
 
                     for i in start_int..=end_int {
                         if let Some(var) = var {
-                            let _ = env.push(var.to_string(), Value::Int(i));
+                            env.push(var.as_cheap_string().clone(), Value::Int(i));
                         }
                         eval_statements(body, env, output)?;
                         if var.is_some() {
-                            let _ = env.pop();
+                            env.pop();
                         }
                     }
                 }
@@ -283,9 +302,9 @@ fn eval_statement(
             body,
         } => {
             let val = evaluate_expr(value, env)?;
-            let _ = env.push(var.to_string(), val);
+            env.push(var.as_cheap_string().clone(), val);
             eval_statements(body, env, output)?;
-            let _ = env.pop();
+            env.pop();
             Ok(())
         }
 
@@ -320,9 +339,9 @@ fn eval_statement(
                 match subject_value {
                     Value::Some(inner) => {
                         if let Some(var) = some_arm_binding {
-                            let _ = env.push(var.to_string(), *inner);
+                            env.push(var.as_cheap_string().clone(), *inner);
                             eval_statements(some_arm_body, env, output)?;
-                            let _ = env.pop();
+                            env.pop();
                         } else {
                             eval_statements(some_arm_body, env, output)?;
                         }
@@ -358,23 +377,26 @@ fn eval_statement(
                         let bindings_count = arm.bindings.len();
                         for (field_name, var_name) in &arm.bindings {
                             if let Some(field_val) = fields.get(field_name.as_str()) {
-                                let _ = env.push(var_name.to_string(), field_val.clone());
+                                env.push(var_name.as_cheap_string().clone(), field_val.clone());
                             }
                         }
                         eval_statements(&arm.body, env, output)?;
                         for _ in 0..bindings_count {
-                            let _ = env.pop();
+                            env.pop();
                         }
                         return Ok(());
                     }
                 }
-                Err(anyhow!("No matching arm for enum variant: {}", variant_name))
+                Err(anyhow!(
+                    "No matching arm for enum variant: {}",
+                    variant_name
+                ))
             }
         },
     }
 }
 
-fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
+fn evaluate_expr(expr: &IrExpr, env: &mut Env) -> Result<Value> {
     match expr {
         IrExpr::Var { value: name, .. } => env
             .lookup(name.as_str())
@@ -699,12 +721,12 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                         let bindings_count = arm.bindings.len();
                         for (field_name, var_name) in &arm.bindings {
                             if let Some(field_val) = fields.get(field_name.as_str()) {
-                                let _ = env.push(var_name.to_string(), field_val.clone());
+                                env.push(var_name.as_cheap_string().clone(), field_val.clone());
                             }
                         }
                         let result = evaluate_expr(&arm.body, env);
                         for _ in 0..bindings_count {
-                            let _ = env.pop();
+                            env.pop();
                         }
                         return result;
                     }
@@ -748,7 +770,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 match subject_val {
                     Value::Some(inner) => {
                         if let Some(var_name) = some_arm_binding {
-                            let _ = env.push(var_name.to_string(), *inner);
+                            env.push(var_name.as_cheap_string().clone(), *inner);
                             let result = evaluate_expr(some_arm_body, env);
                             env.pop();
                             result
@@ -765,9 +787,9 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
             var, value, body, ..
         } => {
             let val = evaluate_expr(value, env)?;
-            let _ = env.push(var.to_string(), val);
+            env.push(var.as_cheap_string().clone(), val);
             let result = evaluate_expr(body, env)?;
-            let _ = env.pop();
+            env.pop();
             Ok(result)
         }
         IrExpr::MergeClasses { left, right, .. } => {
@@ -864,7 +886,10 @@ mod tests {
             build_ir("Test", [("content", Type::String)], |t| {
                 t.write_expr_escaped(t.var("content"));
             }),
-            vec![("content", Value::String("<script>alert('xss')</script>".to_string()))],
+            vec![(
+                "content",
+                Value::String("<script>alert('xss')</script>".to_string()),
+            )],
             expect![[r#"
                 -- before --
                 Test(content: String) {
@@ -937,11 +962,14 @@ mod tests {
                     });
                 },
             ),
-            vec![("items", Value::Array(vec![
-                Value::String("Apple".to_string()),
-                Value::String("Banana".to_string()),
-                Value::String("Cherry".to_string()),
-            ]))],
+            vec![(
+                "items",
+                Value::Array(vec![
+                    Value::String("Apple".to_string()),
+                    Value::String("Banana".to_string()),
+                    Value::String("Cherry".to_string()),
+                ]),
+            )],
             expect![[r#"
                 -- before --
                 Test(items: Array[String]) {
