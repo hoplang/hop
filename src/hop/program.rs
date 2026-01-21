@@ -551,6 +551,7 @@ impl Program {
         entrypoint_name: &ComponentName,
         args: HashMap<String, serde_json::Value>,
         generated_tailwind_css: Option<&str>,
+        skip_optimization: bool,
     ) -> Result<String> {
         // Validate that the module exists
         let module = self.get_typed_modules().get(module_name).ok_or_else(|| {
@@ -590,7 +591,10 @@ impl Program {
         let ir_module = orchestrate(
             self.get_typed_modules(),
             generated_tailwind_css,
-            OrchestrateOptions::default(),
+            OrchestrateOptions {
+                skip_optimization,
+                ..Default::default()
+            },
         );
 
         // Find the requested entrypoint in the compiled module
@@ -1811,7 +1815,7 @@ mod tests {
         let main_module = ModuleName::new("main").unwrap();
         let hello_world = ComponentName::new("HelloWorld".to_string()).unwrap();
         let result = program
-            .evaluate_entrypoint(&main_module, &hello_world, args, None)
+            .evaluate_entrypoint(&main_module, &hello_world, args, None, false)
             .expect("Should evaluate successfully");
 
         assert!(result.contains("<h1>Hello Alice!</h1>"));
@@ -1819,14 +1823,14 @@ mod tests {
         // Test evaluating another-comp entrypoint without parameters
         let another_comp = ComponentName::new("AnotherComp".to_string()).unwrap();
         let result = program
-            .evaluate_entrypoint(&main_module, &another_comp, HashMap::new(), None)
+            .evaluate_entrypoint(&main_module, &another_comp, HashMap::new(), None, false)
             .expect("Should evaluate successfully");
 
         assert!(result.contains("<p>Static content</p>"));
 
         // Test error when entrypoint doesn't exist
         let non_existent = ComponentName::new("NonExistent".to_string()).unwrap();
-        let result = program.evaluate_entrypoint(&main_module, &non_existent, HashMap::new(), None);
+        let result = program.evaluate_entrypoint(&main_module, &non_existent, HashMap::new(), None, false);
         assert!(result.is_err());
         assert!(
             result

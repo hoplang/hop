@@ -137,6 +137,7 @@ async fn handle_render(
         &component_name,
         body.params,
         css_content,
+        true, // skip_optimization for faster hot-reload
     ) {
         Ok(html) => Response::builder()
             .status(StatusCode::OK)
