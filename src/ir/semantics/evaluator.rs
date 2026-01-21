@@ -1,3 +1,4 @@
+use crate::document::CheapString;
 use crate::environment::Environment;
 use crate::ir::IrExpr;
 use crate::{
@@ -26,7 +27,7 @@ pub enum Value {
     None,
     /// Enum variant with name and optional fields
     Enum {
-        variant_name: String,
+        variant_name: CheapString,
         fields: HashMap<String, Value>,
     },
 }
@@ -115,7 +116,7 @@ impl Value {
             Value::Record(_) => "[record]".to_string(),
             Value::Some(inner) => inner.to_output_string(),
             Value::None => "".to_string(),
-            Value::Enum { variant_name, .. } => variant_name.clone(),
+            Value::Enum { variant_name, .. } => variant_name.to_string(),
         }
     }
 
@@ -143,12 +144,12 @@ impl Value {
                 fields,
             } => {
                 if fields.is_empty() {
-                    serde_json::Value::String(variant_name.clone())
+                    serde_json::Value::String(variant_name.to_string())
                 } else {
                     let mut obj = serde_json::Map::new();
                     obj.insert(
                         "_variant".to_string(),
-                        serde_json::Value::String(variant_name.clone()),
+                        serde_json::Value::String(variant_name.to_string()),
                     );
                     for (k, v) in fields {
                         obj.insert(k.clone(), v.to_json());
@@ -665,7 +666,7 @@ fn evaluate_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
                 field_values.insert(field_name.as_str().to_string(), field_val);
             }
             Ok(Value::Enum {
-                variant_name: variant_name.as_str().to_string(),
+                variant_name: variant_name.clone(),
                 fields: field_values,
             })
         }
