@@ -26,7 +26,7 @@ enum BinaryOp {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 enum Const {
     Bool(bool),
-    String(String),
+    String(CheapString),
     Enum {
         enum_name: String,
         variant_name: String,
@@ -49,7 +49,7 @@ impl Const {
         Some(match self {
             Const::Bool(b) => IrExpr::BooleanLiteral { value: *b, id },
             Const::String(s) => IrExpr::StringLiteral {
-                value: CheapString::new(s.clone()),
+                value: s.clone(),
                 id,
             },
             Const::Enum {
@@ -232,7 +232,7 @@ impl Pass for ConstantPropagationPass {
                             initial_constants.push((expr.id(), Const::Bool(*value)));
                         }
                         IrExpr::StringLiteral { value, .. } => {
-                            initial_constants.push((expr.id(), Const::String(value.to_string())));
+                            initial_constants.push((expr.id(), Const::String(value.clone())));
                         }
                         IrExpr::BooleanNegation { operand, .. } => {
                             not_operands.push((operand.id(), expr.id()));
@@ -521,16 +521,16 @@ impl Pass for ConstantPropagationPass {
                             BinaryOp::Equals => Const::Bool(left_val == right_val),
                             BinaryOp::StringConcat => match (left_val, right_val) {
                                 (Const::String(l), Const::String(r)) => {
-                                    let mut s = l.clone();
+                                    let mut s = l.to_string();
                                     s.push_str(r);
-                                    Const::String(s)
+                                    Const::String(CheapString::new(s))
                                 }
                                 _ => unreachable!("StringConcat can only have string operands"),
                             },
                             BinaryOp::MergeClasses => match (left_val, right_val) {
                                 (Const::String(l), Const::String(r)) => {
                                     let combined = format!("{} {}", l, r);
-                                    Const::String(tw_merge(&combined))
+                                    Const::String(CheapString::new(tw_merge(&combined)))
                                 }
                                 _ => unreachable!("MergeClasses can only have string operands"),
                             },
