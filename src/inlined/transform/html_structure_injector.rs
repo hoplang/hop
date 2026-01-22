@@ -2,7 +2,6 @@ use crate::{
     document::CheapString,
     inlined::{InlinedEntrypointDeclaration, InlinedNode},
 };
-use std::collections::BTreeMap;
 
 /// Transform that injects proper HTML structure (<html>, <head>, <body>)
 /// if they are missing from entrypoints
@@ -76,7 +75,7 @@ impl HtmlStructureInjector {
     fn create_html_element(tag_name: &str, children: Vec<InlinedNode>) -> InlinedNode {
         InlinedNode::Html {
             tag_name: CheapString::new(tag_name.to_string()),
-            attributes: BTreeMap::new(),
+            attributes: Vec::new(),
             children,
         }
     }

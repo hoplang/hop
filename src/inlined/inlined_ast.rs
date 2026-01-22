@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fmt};
+use std::fmt;
 
 use crate::document::CheapString;
 use crate::dop::Type;
@@ -59,7 +59,7 @@ pub enum InlinedNode {
     },
     Html {
         tag_name: CheapString,
-        attributes: BTreeMap<String, InlinedAttribute>,
+        attributes: Vec<InlinedAttribute>,
         children: Vec<Self>,
     },
     Let {
@@ -210,7 +210,7 @@ impl InlinedNode {
                     tag_doc = tag_doc
                         .append(BoxDoc::text(" "))
                         .append(BoxDoc::intersperse(
-                            attributes.values().map(|attr| attr.to_doc()),
+                            attributes.iter().map(|attr| attr.to_doc()),
                             BoxDoc::text(" "),
                         ));
                 }

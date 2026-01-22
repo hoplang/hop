@@ -2,7 +2,6 @@ use crate::{
     document::CheapString,
     inlined::{InlinedAttribute, InlinedAttributeValue, InlinedEntrypointDeclaration, InlinedNode},
 };
-use std::collections::BTreeMap;
 
 /// Transform that injects meta tags into the <head> element
 /// Assumes HtmlStructureInjector has already run, so <head> exists
@@ -10,14 +9,11 @@ pub struct MetaInjector;
 
 impl MetaInjector {
     /// Create an attribute with a string value
-    fn create_attribute(name: &str, value: &str) -> (String, InlinedAttribute) {
-        (
-            name.to_string(),
-            InlinedAttribute {
-                name: name.to_string(),
-                value: Some(InlinedAttributeValue::String(value.to_string())),
-            },
-        )
+    fn create_attribute(name: &str, value: &str) -> InlinedAttribute {
+        InlinedAttribute {
+            name: name.to_string(),
+            value: Some(InlinedAttributeValue::String(value.to_string())),
+        }
     }
 
     /// Create the standard meta elements
@@ -26,16 +22,16 @@ impl MetaInjector {
             // <meta charset="utf-8">
             InlinedNode::Html {
                 tag_name: CheapString::new("meta".to_string()),
-                attributes: BTreeMap::from([Self::create_attribute("charset", "utf-8")]),
+                attributes: vec![Self::create_attribute("charset", "utf-8")],
                 children: vec![],
             },
             // <meta name="viewport" content="width=device-width,initial-scale=1">
             InlinedNode::Html {
                 tag_name: CheapString::new("meta".to_string()),
-                attributes: BTreeMap::from([
-                    Self::create_attribute("name", "viewport"),
+                attributes: vec![
                     Self::create_attribute("content", "width=device-width, initial-scale=1"),
-                ]),
+                    Self::create_attribute("name", "viewport"),
+                ],
                 children: vec![],
             },
         ]

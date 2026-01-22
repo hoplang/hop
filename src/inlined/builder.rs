@@ -173,17 +173,17 @@ impl InlinedBuilder {
         let mut inner_builder = self.new_scoped();
         children_fn(&mut inner_builder);
 
-        let attr_map = attributes
+        let attrs: Vec<InlinedAttribute> = attributes
             .into_iter()
             .map(|(k, mut v)| {
                 v.name = k.to_string();
-                (k.to_string(), v)
+                v
             })
             .collect();
 
         self.children.push(InlinedNode::Html {
             tag_name: CheapString::new(tag_name.to_string()),
-            attributes: attr_map,
+            attributes: attrs,
             children: inner_builder.children,
         });
     }

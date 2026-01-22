@@ -8,7 +8,6 @@ use crate::hop::semantics::typed_node::TypedLoopSource;
 use crate::inlined::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypointDeclaration, InlinedNode,
 };
-use std::collections::BTreeMap;
 
 use super::ast::{ExprId, IrComponentDeclaration, IrExpr, IrForSource, IrStatement, StatementId};
 
@@ -346,13 +345,15 @@ impl Compiler {
     fn compile_html_node(
         &mut self,
         tag_name: &CheapString,
-        attributes: BTreeMap<String, InlinedAttribute>,
+        attributes: Vec<InlinedAttribute>,
         children: Vec<InlinedNode>,
         slot_content: Option<&Vec<IrStatement>>,
         output: &mut Vec<IrStatement>,
     ) {
         // Skip script tags without src
-        if tag_name.as_str() == "script" && !attributes.contains_key("src") {
+        if tag_name.as_str() == "script"
+            && !attributes.iter().any(|attr| attr.name == "src")
+        {
             return;
         }
 
@@ -363,14 +364,14 @@ impl Compiler {
         });
 
         // Push attributes
-        for (name, attr) in attributes {
+        for attr in attributes {
             if let Some(val) = attr.value {
-                self.compile_attribute(name, val, output);
+                self.compile_attribute(attr.name, val, output);
             } else {
                 // Boolean attribute
                 output.push(IrStatement::Write {
                     id: self.next_node_id(),
-                    content: format!(" {}", name),
+                    content: format!(" {}", attr.name),
                 });
             }
         }

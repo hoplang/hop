@@ -10,7 +10,7 @@ use crate::inlined::inlined_ast::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypointDeclaration, InlinedNode,
     InlinedParameter,
 };
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 /// Context for inlining, carrying slot content and variable bindings.
 #[derive(Debug, Clone)]
@@ -128,11 +128,8 @@ impl Inliner {
     }
 
     /// Convert a Vec of TypedAttributes to InlinedAttributes
-    fn convert_attributes(attrs: &[TypedAttribute]) -> BTreeMap<String, InlinedAttribute> {
-        attrs
-            .iter()
-            .map(|attr| (attr.name.clone(), Self::convert_attribute(attr)))
-            .collect()
+    fn convert_attributes(attrs: &[TypedAttribute]) -> Vec<InlinedAttribute> {
+        attrs.iter().map(Self::convert_attribute).collect()
     }
 
     /// Get the children parameter type if present

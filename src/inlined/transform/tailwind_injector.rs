@@ -2,7 +2,6 @@ use crate::{
     document::CheapString,
     inlined::{InlinedEntrypointDeclaration, InlinedNode},
 };
-use std::collections::BTreeMap;
 
 /// Transform that injects <style> tags with Tailwind CSS into the <head> element
 /// Assumes HtmlStructureInjector has already run, so <head> exists
@@ -17,7 +16,7 @@ impl TailwindInjector {
 
         InlinedNode::Html {
             tag_name: CheapString::new("style".to_string()),
-            attributes: BTreeMap::new(),
+            attributes: Vec::new(),
             children: vec![css_text],
         }
     }
