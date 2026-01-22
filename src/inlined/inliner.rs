@@ -11,6 +11,7 @@ use crate::inlined::inlined_ast::{
     InlinedParameter,
 };
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// The Inliner transforms ASTs by replacing ComponentReference nodes with their
 /// inlined component declarations, using Let nodes for parameter binding and
@@ -97,14 +98,14 @@ impl Inliner {
         component: &TypedComponentDeclaration,
         args: &[(VarName, TypedExpr)],
         slot_children: &[TypedNode],
-        parent_slot_content: Option<&[InlinedNode]>,
+        parent_slot_content: Option<&[Arc<InlinedNode>]>,
         parent_children_vars: &mut Vec<String>,
         asts: &HashMap<ModuleName, TypedAst>,
-        output: &mut Vec<InlinedNode>,
+        output: &mut Vec<Arc<InlinedNode>>,
     ) {
         // Inline slot_children in parent context
         let children_type = Self::get_children_param_type(component);
-        let inlined_slot_content: Option<Vec<InlinedNode>> =
+        let inlined_slot_content: Option<Vec<Arc<InlinedNode>>> =
             if children_type.is_some() && !slot_children.is_empty() {
                 let mut content = Vec::new();
                 Self::inline_nodes(
@@ -166,10 +167,10 @@ impl Inliner {
         if bindings.is_empty() {
             output.extend(inlined_children);
         } else {
-            output.push(InlinedNode::Let {
+            output.push(Arc::new(InlinedNode::Let {
                 bindings,
                 children: inlined_children,
-            });
+            }));
         }
     }
 
@@ -177,9 +178,9 @@ impl Inliner {
     fn inline_nodes(
         nodes: &[TypedNode],
         asts: &HashMap<ModuleName, TypedAst>,
-        slot_content: Option<&[InlinedNode]>,
+        slot_content: Option<&[Arc<InlinedNode>]>,
         children_vars: &mut Vec<String>,
-        output: &mut Vec<InlinedNode>,
+        output: &mut Vec<Arc<InlinedNode>>,
     ) {
         for node in nodes {
             Self::inline_node(node, asts, slot_content, children_vars, output);
@@ -190,9 +191,9 @@ impl Inliner {
     fn inline_node(
         node: &TypedNode,
         asts: &HashMap<ModuleName, TypedAst>,
-        slot_content: Option<&[InlinedNode]>,
+        slot_content: Option<&[Arc<InlinedNode>]>,
         children_vars: &mut Vec<String>,
-        output: &mut Vec<InlinedNode>,
+        output: &mut Vec<Arc<InlinedNode>>,
     ) {
         match node {
             TypedNode::ComponentReference {
@@ -228,11 +229,11 @@ impl Inliner {
             } => {
                 let mut child_output = Vec::new();
                 Self::inline_nodes(children, asts, slot_content, children_vars, &mut child_output);
-                output.push(InlinedNode::Html {
+                output.push(Arc::new(InlinedNode::Html {
                     tag_name: tag_name.clone(),
                     attributes: Self::convert_attributes(attributes),
                     children: child_output,
-                });
+                }));
             }
 
             TypedNode::If {
@@ -241,10 +242,10 @@ impl Inliner {
             } => {
                 let mut child_output = Vec::new();
                 Self::inline_nodes(children, asts, slot_content, children_vars, &mut child_output);
-                output.push(InlinedNode::If {
+                output.push(Arc::new(InlinedNode::If {
                     condition: condition.clone(),
                     children: child_output,
-                });
+                }));
             }
 
             TypedNode::For {
@@ -254,17 +255,17 @@ impl Inliner {
             } => {
                 let mut child_output = Vec::new();
                 Self::inline_nodes(children, asts, slot_content, children_vars, &mut child_output);
-                output.push(InlinedNode::For {
+                output.push(Arc::new(InlinedNode::For {
                     var_name: var_name.clone(),
                     source: source.clone(),
                     children: child_output,
-                });
+                }));
             }
 
             TypedNode::Text { value } => {
-                output.push(InlinedNode::Text {
+                output.push(Arc::new(InlinedNode::Text {
                     value: value.clone(),
-                });
+                }));
             }
 
             TypedNode::TextExpression { expression } => {
@@ -281,15 +282,15 @@ impl Inliner {
                         return;
                     }
                 }
-                output.push(InlinedNode::TextExpression {
+                output.push(Arc::new(InlinedNode::TextExpression {
                     expression: expression.clone(),
-                });
+                }));
             }
 
             TypedNode::Doctype { value } => {
-                output.push(InlinedNode::Doctype {
+                output.push(Arc::new(InlinedNode::Doctype {
                     value: value.clone(),
-                });
+                }));
             }
 
             TypedNode::Match { match_ } => {
@@ -366,9 +367,9 @@ impl Inliner {
                         }
                     }
                 };
-                output.push(InlinedNode::Match {
+                output.push(Arc::new(InlinedNode::Match {
                     match_: inlined_match,
-                });
+                }));
             }
 
             TypedNode::Let {
@@ -391,10 +392,10 @@ impl Inliner {
 
                 let mut child_output = Vec::new();
                 Self::inline_nodes(children, asts, slot_content, children_vars, &mut child_output);
-                output.push(InlinedNode::Let {
+                output.push(Arc::new(InlinedNode::Let {
                     bindings: vec![(var.clone(), value.clone())],
                     children: child_output,
-                });
+                }));
             }
         }
     }

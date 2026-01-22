@@ -56,7 +56,7 @@ where
 pub struct InlinedBuilder {
     var_stack: RefCell<Vec<(String, Arc<Type>)>>,
     params: Vec<InlinedParameter>,
-    children: Vec<InlinedNode>,
+    children: Vec<Arc<InlinedNode>>,
 }
 
 impl InlinedBuilder {
@@ -121,15 +121,15 @@ impl InlinedBuilder {
     }
 
     pub fn text(&mut self, s: &str) {
-        self.children.push(InlinedNode::Text {
+        self.children.push(Arc::new(InlinedNode::Text {
             value: CheapString::new(s.to_string()),
-        });
+        }));
     }
 
     pub fn text_expr(&mut self, expr: TypedExpr) {
         assert_eq!(*expr.as_type(), Type::String, "{}", expr);
         self.children
-            .push(InlinedNode::TextExpression { expression: expr });
+            .push(Arc::new(InlinedNode::TextExpression { expression: expr }));
     }
 
     pub fn if_node<F>(&mut self, cond: TypedExpr, children_fn: F)
@@ -139,10 +139,10 @@ impl InlinedBuilder {
         assert_eq!(*cond.as_type(), Type::Bool, "{}", cond);
         let mut inner_builder = self.new_scoped();
         children_fn(&mut inner_builder);
-        self.children.push(InlinedNode::If {
+        self.children.push(Arc::new(InlinedNode::If {
             condition: cond,
             children: inner_builder.children,
-        });
+        }));
     }
 
     pub fn for_node<F>(&mut self, var: &str, array: TypedExpr, body_fn: F)
@@ -164,17 +164,17 @@ impl InlinedBuilder {
 
         self.var_stack.borrow_mut().pop();
 
-        self.children.push(InlinedNode::For {
+        self.children.push(Arc::new(InlinedNode::For {
             var_name: Some(VarName::try_from(var.to_string()).unwrap()),
             source: TypedLoopSource::Array(array),
             children,
-        });
+        }));
     }
 
     pub fn doctype(&mut self, value: &str) {
-        self.children.push(InlinedNode::Doctype {
+        self.children.push(Arc::new(InlinedNode::Doctype {
             value: CheapString::new(value.to_string()),
-        });
+        }));
     }
 
     pub fn html<F>(
@@ -196,11 +196,11 @@ impl InlinedBuilder {
             })
             .collect();
 
-        self.children.push(InlinedNode::Html {
+        self.children.push(Arc::new(InlinedNode::Html {
             tag_name: CheapString::new(tag_name.to_string()),
             attributes: attrs,
             children: inner_builder.children,
-        });
+        }));
     }
 
     pub fn div<F>(&mut self, attributes: Vec<(&str, InlinedAttribute)>, children_fn: F)
@@ -254,13 +254,13 @@ impl InlinedBuilder {
         let mut false_builder = self.new_scoped();
         false_children_fn(&mut false_builder);
 
-        self.children.push(InlinedNode::Match {
+        self.children.push(Arc::new(InlinedNode::Match {
             match_: Match::Bool {
                 subject: extract_var_subject(&subject),
                 true_body: Box::new(true_builder.children),
                 false_body: Box::new(false_builder.children),
             },
-        });
+        }));
     }
 }
 

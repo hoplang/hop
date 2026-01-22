@@ -35,7 +35,7 @@ pub struct InlinedEntrypointDeclaration {
     pub module_name: ModuleName,
     pub component_name: ComponentName,
     pub params: Vec<InlinedParameter>,
-    pub children: Vec<InlinedNode>,
+    pub children: Vec<Arc<InlinedNode>>,
 }
 
 #[derive(Debug, Clone)]
@@ -48,12 +48,12 @@ pub enum InlinedNode {
     },
     If {
         condition: TypedExpr,
-        children: Vec<Self>,
+        children: Vec<Arc<Self>>,
     },
     For {
         var_name: Option<VarName>,
         source: TypedLoopSource,
-        children: Vec<Self>,
+        children: Vec<Arc<Self>>,
     },
     Doctype {
         value: CheapString,
@@ -61,14 +61,14 @@ pub enum InlinedNode {
     Html {
         tag_name: CheapString,
         attributes: Vec<InlinedAttribute>,
-        children: Vec<Self>,
+        children: Vec<Arc<Self>>,
     },
     Let {
         bindings: Vec<(VarName, TypedExpr)>,
-        children: Vec<Self>,
+        children: Vec<Arc<Self>>,
     },
     Match {
-        match_: Match<Vec<InlinedNode>>,
+        match_: Match<Vec<Arc<InlinedNode>>>,
     },
 }
 
@@ -258,7 +258,7 @@ impl InlinedNode {
                     .append(BoxDoc::text("</let>"))
             }
             InlinedNode::Match { match_ } => {
-                fn children_to_doc<'a>(children: &'a [InlinedNode]) -> BoxDoc<'a> {
+                fn children_to_doc<'a>(children: &'a [Arc<InlinedNode>]) -> BoxDoc<'a> {
                     if children.is_empty() {
                         BoxDoc::nil()
                     } else {
@@ -272,7 +272,7 @@ impl InlinedNode {
                     }
                 }
 
-                fn case_doc<'a>(pattern: &str, children: &'a [InlinedNode]) -> BoxDoc<'a> {
+                fn case_doc<'a>(pattern: &str, children: &'a [Arc<InlinedNode>]) -> BoxDoc<'a> {
                     BoxDoc::text("<case {")
                         .append(BoxDoc::text(pattern.to_string()))
                         .append(BoxDoc::text("}>"))

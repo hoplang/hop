@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{
     document::CheapString,
     inlined::{InlinedEntrypointDeclaration, InlinedNode},
@@ -9,9 +11,9 @@ pub struct DoctypeInjector;
 
 impl DoctypeInjector {
     /// Check if a list of nodes starts with a DOCTYPE declaration (ignoring leading whitespace)
-    fn has_doctype(nodes: &[InlinedNode]) -> bool {
+    fn has_doctype(nodes: &[Arc<InlinedNode>]) -> bool {
         for node in nodes {
-            match node {
+            match node.as_ref() {
                 InlinedNode::Doctype { .. } => return true,
                 InlinedNode::Text { value, .. } if value.as_str().trim().is_empty() => {
                     // Skip whitespace-only text nodes
@@ -30,9 +32,9 @@ impl DoctypeInjector {
         // Only inject DOCTYPE for entrypoints
         if !Self::has_doctype(&entrypoint.children) {
             // Create a synthetic DOCTYPE node
-            let doctype_node = InlinedNode::Doctype {
+            let doctype_node = Arc::new(InlinedNode::Doctype {
                 value: CheapString::new("<!DOCTYPE html>".to_string()),
-            };
+            });
 
             // Always insert DOCTYPE at the beginning (position 0)
             entrypoint.children.insert(0, doctype_node);

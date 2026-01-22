@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{
     document::CheapString,
     inlined::{InlinedEntrypointDeclaration, InlinedNode},
@@ -9,16 +11,16 @@ pub struct HtmlStructureInjector;
 
 impl HtmlStructureInjector {
     /// Check if nodes contain an HTML element
-    fn has_html_element(nodes: &[InlinedNode]) -> bool {
+    fn has_html_element(nodes: &[Arc<InlinedNode>]) -> bool {
         nodes.iter().any(|node| {
-            matches!(node, InlinedNode::Html { tag_name, .. } if tag_name.as_str() == "html")
+            matches!(node.as_ref(), InlinedNode::Html { tag_name, .. } if tag_name.as_str() == "html")
         })
     }
 
     /// Check if nodes contain a head element (recursive search)
-    fn has_head_element(nodes: &[InlinedNode]) -> bool {
+    fn has_head_element(nodes: &[Arc<InlinedNode>]) -> bool {
         for node in nodes {
-            match node {
+            match node.as_ref() {
                 InlinedNode::Html {
                     tag_name, children, ..
                 } => {
@@ -44,9 +46,9 @@ impl HtmlStructureInjector {
     }
 
     /// Check if nodes contain a body element (recursive search)
-    fn has_body_element(nodes: &[InlinedNode]) -> bool {
+    fn has_body_element(nodes: &[Arc<InlinedNode>]) -> bool {
         for node in nodes {
-            match node {
+            match node.as_ref() {
                 InlinedNode::Html {
                     tag_name, children, ..
                 } => {
@@ -72,19 +74,19 @@ impl HtmlStructureInjector {
     }
 
     /// Create an empty HTML element
-    fn create_html_element(tag_name: &str, children: Vec<InlinedNode>) -> InlinedNode {
-        InlinedNode::Html {
+    fn create_html_element(tag_name: &str, children: Vec<Arc<InlinedNode>>) -> Arc<InlinedNode> {
+        Arc::new(InlinedNode::Html {
             tag_name: CheapString::new(tag_name.to_string()),
             attributes: Vec::new(),
             children,
-        }
+        })
     }
 
     /// Find position after DOCTYPE and leading whitespace
-    fn find_insert_position(nodes: &[InlinedNode]) -> usize {
+    fn find_insert_position(nodes: &[Arc<InlinedNode>]) -> usize {
         let mut pos = 0;
         for (i, node) in nodes.iter().enumerate() {
-            match node {
+            match node.as_ref() {
                 InlinedNode::Doctype { .. } => {
                     pos = i + 1;
                 }
@@ -152,11 +154,11 @@ impl HtmlStructureInjector {
     }
 
     /// Recursively ensure head and body exist within HTML elements
-    fn ensure_head_and_body_in_html(nodes: Vec<InlinedNode>) -> Vec<InlinedNode> {
+    fn ensure_head_and_body_in_html(nodes: Vec<Arc<InlinedNode>>) -> Vec<Arc<InlinedNode>> {
         nodes
             .into_iter()
             .map(|node| {
-                match node {
+                match node.as_ref() {
                     InlinedNode::Html {
                         tag_name,
                         attributes,
@@ -166,52 +168,53 @@ impl HtmlStructureInjector {
                             let mut new_children = Vec::new();
 
                             // Add head if missing
-                            if !Self::has_head_element(&children) {
+                            if !Self::has_head_element(children) {
                                 new_children.push(Self::create_html_element("head", vec![]));
                             }
 
                             // Add existing children or wrap in body if no body exists
-                            if Self::has_body_element(&children) {
-                                new_children.extend(children);
+                            if Self::has_body_element(children) {
+                                new_children.extend(children.clone());
                             } else {
-                                new_children.push(Self::create_html_element("body", children));
+                                new_children
+                                    .push(Self::create_html_element("body", children.clone()));
                             }
 
-                            InlinedNode::Html {
-                                tag_name,
-                                attributes,
+                            Arc::new(InlinedNode::Html {
+                                tag_name: tag_name.clone(),
+                                attributes: attributes.clone(),
                                 children: new_children,
-                            }
+                            })
                         } else {
                             // Recursively process other HTML elements
-                            InlinedNode::Html {
-                                tag_name,
-                                attributes,
-                                children: Self::ensure_head_and_body_in_html(children),
-                            }
+                            Arc::new(InlinedNode::Html {
+                                tag_name: tag_name.clone(),
+                                attributes: attributes.clone(),
+                                children: Self::ensure_head_and_body_in_html(children.clone()),
+                            })
                         }
                     }
                     InlinedNode::If {
                         condition,
                         children,
-                    } => InlinedNode::If {
-                        condition,
-                        children: Self::ensure_head_and_body_in_html(children),
-                    },
+                    } => Arc::new(InlinedNode::If {
+                        condition: condition.clone(),
+                        children: Self::ensure_head_and_body_in_html(children.clone()),
+                    }),
                     InlinedNode::For {
                         var_name,
                         source,
                         children,
-                    } => InlinedNode::For {
-                        var_name,
-                        source,
-                        children: Self::ensure_head_and_body_in_html(children),
-                    },
-                    InlinedNode::Let { bindings, children } => InlinedNode::Let {
-                        bindings,
-                        children: Self::ensure_head_and_body_in_html(children),
-                    },
-                    other => other,
+                    } => Arc::new(InlinedNode::For {
+                        var_name: var_name.clone(),
+                        source: source.clone(),
+                        children: Self::ensure_head_and_body_in_html(children.clone()),
+                    }),
+                    InlinedNode::Let { bindings, children } => Arc::new(InlinedNode::Let {
+                        bindings: bindings.clone(),
+                        children: Self::ensure_head_and_body_in_html(children.clone()),
+                    }),
+                    _ => node,
                 }
             })
             .collect()

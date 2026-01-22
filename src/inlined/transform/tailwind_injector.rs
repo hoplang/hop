@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{
     document::CheapString,
     inlined::{InlinedEntrypointDeclaration, InlinedNode},
@@ -9,24 +11,27 @@ pub struct TailwindInjector;
 
 impl TailwindInjector {
     /// Create a <style> element with the given CSS content
-    fn create_style_element(css_content: &str) -> InlinedNode {
-        let css_text = InlinedNode::Text {
+    fn create_style_element(css_content: &str) -> Arc<InlinedNode> {
+        let css_text = Arc::new(InlinedNode::Text {
             value: CheapString::new(css_content.to_string()),
-        };
+        });
 
-        InlinedNode::Html {
+        Arc::new(InlinedNode::Html {
             tag_name: CheapString::new("style".to_string()),
             attributes: Vec::new(),
             children: vec![css_text],
-        }
+        })
     }
 
     /// Recursively find and inject CSS into <head> elements
-    fn inject_css_into_head(nodes: Vec<InlinedNode>, css_content: &str) -> Vec<InlinedNode> {
+    fn inject_css_into_head(
+        nodes: Vec<Arc<InlinedNode>>,
+        css_content: &str,
+    ) -> Vec<Arc<InlinedNode>> {
         nodes
             .into_iter()
             .map(|node| {
-                match node {
+                match node.as_ref() {
                     InlinedNode::Html {
                         tag_name,
                         attributes,
@@ -34,45 +39,45 @@ impl TailwindInjector {
                     } => {
                         if tag_name.as_str() == "head" {
                             // Found <head> - inject <style> as last child
-                            let mut new_children = children;
+                            let mut new_children = children.clone();
                             let style_element = Self::create_style_element(css_content);
                             new_children.push(style_element);
 
-                            InlinedNode::Html {
-                                tag_name,
-                                attributes,
+                            Arc::new(InlinedNode::Html {
+                                tag_name: tag_name.clone(),
+                                attributes: attributes.clone(),
                                 children: new_children,
-                            }
+                            })
                         } else {
                             // Recursively search other HTML elements
-                            InlinedNode::Html {
-                                tag_name,
-                                attributes,
-                                children: Self::inject_css_into_head(children, css_content),
-                            }
+                            Arc::new(InlinedNode::Html {
+                                tag_name: tag_name.clone(),
+                                attributes: attributes.clone(),
+                                children: Self::inject_css_into_head(children.clone(), css_content),
+                            })
                         }
                     }
                     InlinedNode::If {
                         condition,
                         children,
-                    } => InlinedNode::If {
-                        condition,
-                        children: Self::inject_css_into_head(children, css_content),
-                    },
+                    } => Arc::new(InlinedNode::If {
+                        condition: condition.clone(),
+                        children: Self::inject_css_into_head(children.clone(), css_content),
+                    }),
                     InlinedNode::For {
                         var_name,
                         source,
                         children,
-                    } => InlinedNode::For {
-                        var_name,
-                        source,
-                        children: Self::inject_css_into_head(children, css_content),
-                    },
-                    InlinedNode::Let { bindings, children } => InlinedNode::Let {
-                        bindings,
-                        children: Self::inject_css_into_head(children, css_content),
-                    },
-                    other => other,
+                    } => Arc::new(InlinedNode::For {
+                        var_name: var_name.clone(),
+                        source: source.clone(),
+                        children: Self::inject_css_into_head(children.clone(), css_content),
+                    }),
+                    InlinedNode::Let { bindings, children } => Arc::new(InlinedNode::Let {
+                        bindings: bindings.clone(),
+                        children: Self::inject_css_into_head(children.clone(), css_content),
+                    }),
+                    _ => node,
                 }
             })
             .collect()

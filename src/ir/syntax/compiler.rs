@@ -198,19 +198,19 @@ impl Compiler {
 
     fn compile_nodes(
         &mut self,
-        nodes: Vec<InlinedNode>,
+        nodes: Vec<Arc<InlinedNode>>,
         slot_content: Option<Vec<IrStatement>>,
     ) -> Vec<IrStatement> {
         let mut result = Vec::new();
         for node in nodes {
-            self.compile_node(node, slot_content.as_ref(), &mut result);
+            self.compile_node(&node, slot_content.as_ref(), &mut result);
         }
         result
     }
 
     fn compile_node(
         &mut self,
-        node: InlinedNode,
+        node: &InlinedNode,
         slot_content: Option<&Vec<IrStatement>>,
         output: &mut Vec<IrStatement>,
     ) {
@@ -237,7 +237,7 @@ impl Compiler {
                 attributes,
                 children,
             } => {
-                self.compile_html_node(&tag_name, attributes, children, slot_content, output);
+                self.compile_html_node(tag_name, attributes, children, slot_content, output);
             }
 
             InlinedNode::If {
@@ -247,8 +247,8 @@ impl Compiler {
             } => {
                 output.push(IrStatement::If {
                     id: self.next_node_id(),
-                    condition: self.compile_expr(&condition),
-                    body: self.compile_nodes(children, slot_content.cloned()),
+                    condition: self.compile_expr(condition),
+                    body: self.compile_nodes(children.clone(), slot_content.cloned()),
                     else_body: None,
                 });
             }
@@ -261,18 +261,18 @@ impl Compiler {
             } => {
                 let ir_source = match source {
                     TypedLoopSource::Array(array_expr) => {
-                        IrForSource::Array(self.compile_expr(&array_expr))
+                        IrForSource::Array(self.compile_expr(array_expr))
                     }
                     TypedLoopSource::RangeInclusive { start, end } => IrForSource::RangeInclusive {
-                        start: self.compile_expr(&start),
-                        end: self.compile_expr(&end),
+                        start: self.compile_expr(start),
+                        end: self.compile_expr(end),
                     },
                 };
                 output.push(IrStatement::For {
                     id: self.next_node_id(),
-                    var: var_name,
+                    var: var_name.clone(),
                     source: ir_source,
-                    body: self.compile_nodes(children, slot_content.cloned()),
+                    body: self.compile_nodes(children.clone(), slot_content.cloned()),
                 });
             }
 
@@ -285,7 +285,7 @@ impl Compiler {
 
             InlinedNode::Let { bindings, children } => {
                 // Compile children first, then wrap in nested Let statements
-                let mut body = self.compile_nodes(children, slot_content.cloned());
+                let mut body = self.compile_nodes(children.clone(), slot_content.cloned());
                 for (var, value) in bindings.iter().rev() {
                     body = vec![IrStatement::Let {
                         id: self.next_node_id(),
@@ -304,10 +304,10 @@ impl Compiler {
                         true_body,
                         false_body,
                     } => Match::Bool {
-                        subject,
-                        true_body: Box::new(self.compile_nodes(*true_body, slot_content.cloned())),
+                        subject: subject.clone(),
+                        true_body: Box::new(self.compile_nodes(true_body.to_vec(), slot_content.cloned())),
                         false_body: Box::new(
-                            self.compile_nodes(*false_body, slot_content.cloned()),
+                            self.compile_nodes(false_body.to_vec(), slot_content.cloned()),
                         ),
                     },
                     Match::Option {
@@ -316,23 +316,23 @@ impl Compiler {
                         some_arm_body,
                         none_arm_body,
                     } => Match::Option {
-                        subject,
-                        some_arm_binding,
+                        subject: subject.clone(),
+                        some_arm_binding: some_arm_binding.clone(),
                         some_arm_body: Box::new(
-                            self.compile_nodes(*some_arm_body, slot_content.cloned()),
+                            self.compile_nodes(some_arm_body.to_vec(), slot_content.cloned()),
                         ),
                         none_arm_body: Box::new(
-                            self.compile_nodes(*none_arm_body, slot_content.cloned()),
+                            self.compile_nodes(none_arm_body.to_vec(), slot_content.cloned()),
                         ),
                     },
                     Match::Enum { subject, arms } => Match::Enum {
-                        subject,
+                        subject: subject.clone(),
                         arms: arms
-                            .into_iter()
+                            .iter()
                             .map(|arm| EnumMatchArm {
-                                pattern: arm.pattern,
-                                bindings: arm.bindings,
-                                body: self.compile_nodes(arm.body, slot_content.cloned()),
+                                pattern: arm.pattern.clone(),
+                                bindings: arm.bindings.clone(),
+                                body: self.compile_nodes(arm.body.clone(), slot_content.cloned()),
                             })
                             .collect(),
                     },
@@ -348,8 +348,8 @@ impl Compiler {
     fn compile_html_node(
         &mut self,
         tag_name: &CheapString,
-        attributes: Vec<InlinedAttribute>,
-        children: Vec<InlinedNode>,
+        attributes: &[InlinedAttribute],
+        children: &[Arc<InlinedNode>],
         slot_content: Option<&Vec<IrStatement>>,
         output: &mut Vec<IrStatement>,
     ) {
@@ -368,7 +368,7 @@ impl Compiler {
 
         // Push attributes
         for attr in attributes {
-            if let Some(val) = attr.value {
+            if let Some(val) = &attr.value {
                 self.compile_attribute(&attr.name, val, output);
             } else {
                 // Boolean attribute
@@ -386,7 +386,7 @@ impl Compiler {
 
         // Compile children
         if !is_void_element(tag_name.as_str()) {
-            let child_nodes = self.compile_nodes(children, slot_content.cloned());
+            let child_nodes = self.compile_nodes(children.to_vec(), slot_content.cloned());
             output.extend(child_nodes);
             output.push(IrStatement::Write {
                 id: self.next_node_id(),
@@ -411,7 +411,7 @@ impl Compiler {
     fn compile_attribute(
         &mut self,
         name: &CheapString,
-        value: InlinedAttributeValue,
+        value: &InlinedAttributeValue,
         output: &mut Vec<IrStatement>,
     ) {
         match value {
