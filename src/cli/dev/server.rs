@@ -66,6 +66,12 @@ async fn handle_render(
     axum::Json(body): axum::Json<RenderParams>,
 ) -> Response<Body> {
     let render_start = std::time::Instant::now();
+    log_info!(
+        "render",
+        step = "enter",
+        module = body.module.clone(),
+        entrypoint = body.component.clone(),
+    );
 
     let program = state.program.read().unwrap();
 
@@ -153,6 +159,7 @@ async fn handle_render(
 
     log_info!(
         "render",
+        step = "exit",
         entrypoint = entrypoint_name_for_log,
         duration = format!("{:?}", render_start.elapsed()),
     );

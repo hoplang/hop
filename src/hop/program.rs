@@ -553,6 +553,14 @@ impl Program {
         generated_tailwind_css: Option<&str>,
         skip_optimization: bool,
     ) -> Result<String> {
+        let fn_start = std::time::Instant::now();
+        crate::log_info!(
+            "evaluate_entrypoint",
+            step = "enter",
+            module = module_name.to_string(),
+            entrypoint = entrypoint_name.to_string(),
+        );
+
         // Validate that the module exists
         let module = self.get_typed_modules().get(module_name).ok_or_else(|| {
             anyhow::anyhow!(
@@ -589,6 +597,7 @@ impl Program {
 
         // Use orchestrate to handle inlining and compilation
         // Pass the entrypoint filter to only compile the requested entrypoint
+        let orchestrate_start = std::time::Instant::now();
         let ir_module = orchestrate(
             self.get_typed_modules(),
             generated_tailwind_css,
@@ -597,6 +606,11 @@ impl Program {
                 entrypoint_filter: Some((module_name.clone(), entrypoint_name.clone())),
                 ..Default::default()
             },
+        );
+        crate::log_info!(
+            "evaluate_entrypoint",
+            step = "orchestrate",
+            duration = format!("{:?}", orchestrate_start.elapsed()),
         );
 
         // The filtered module should contain exactly the requested entrypoint
@@ -618,7 +632,19 @@ impl Program {
             .collect();
 
         // Evaluate the entrypoint
-        ir::semantics::evaluator::evaluate_entrypoint(entrypoint, converted_args)
+        let evaluate_start = std::time::Instant::now();
+        let result = ir::semantics::evaluator::evaluate_entrypoint(entrypoint, converted_args);
+        crate::log_info!(
+            "evaluate_entrypoint",
+            step = "evaluate",
+            duration = format!("{:?}", evaluate_start.elapsed()),
+        );
+        crate::log_info!(
+            "evaluate_entrypoint",
+            step = "exit",
+            duration = format!("{:?}", fn_start.elapsed()),
+        );
+        result
     }
 
     /// Get all typed modules for compilation
