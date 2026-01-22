@@ -9,10 +9,10 @@ use pretty::BoxDoc;
 use std::{collections::HashMap, fmt};
 
 /// Unique identifier for each expression in the IR
-pub type ExprId = u32;
+pub type ExprId = usize;
 
 /// Unique identifier for each statement in the IR
-pub type StatementId = u32;
+pub type StatementId = usize;
 
 /// The source of iteration in a for loop - either an array or an inclusive range.
 #[derive(Debug, Clone, PartialEq)]

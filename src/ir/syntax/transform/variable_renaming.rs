@@ -972,9 +972,9 @@ mod tests {
                 left: Box::new(expr),
                 right: Box::new(IrExpr::StringLiteral {
                     value: CheapString::new(format!("{}", i)),
-                    id: (i + 1) as u32,
+                    id: i + 1,
                 }),
-                id: (i + 1000) as u32,
+                id: i + 1000,
             };
         }
 

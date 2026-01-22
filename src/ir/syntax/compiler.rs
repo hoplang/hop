@@ -13,10 +13,10 @@ use super::ast::{ExprId, IrComponentDeclaration, IrExpr, IrForSource, IrStatemen
 
 pub struct Compiler {
     // Expression ID generation
-    expr_id_counter: u32,
+    expr_id_counter: usize,
 
     // Node ID generation
-    node_id_counter: u32,
+    node_id_counter: usize,
 }
 
 impl Compiler {
