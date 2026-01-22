@@ -6,7 +6,7 @@ use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement};
+use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrForSource, IrModule, IrStatement};
 
 pub struct PythonTranspiler {}
 
@@ -15,7 +15,7 @@ impl PythonTranspiler {
         Self {}
     }
 
-    fn scan_for_imports(&self, entrypoint: &IrComponentDeclaration) -> (bool, bool, bool) {
+    fn scan_for_imports(&self, entrypoint: &IrEntrypointDeclaration) -> (bool, bool, bool) {
         let mut needs_html_escape = false;
         let mut needs_json = false;
         let mut needs_os = false;
@@ -47,7 +47,7 @@ impl PythonTranspiler {
         (needs_html_escape, needs_json, needs_os)
     }
 
-    fn scan_for_trusted_html(&self, entrypoints: &[IrComponentDeclaration]) -> bool {
+    fn scan_for_trusted_html(&self, entrypoints: &[IrEntrypointDeclaration]) -> bool {
         for entrypoint in entrypoints {
             for (_, param_type) in &entrypoint.parameters {
                 if Self::type_contains_trusted_html(param_type) {
@@ -66,7 +66,7 @@ impl PythonTranspiler {
         }
     }
 
-    fn scan_for_options(&self, entrypoint: &IrComponentDeclaration) -> bool {
+    fn scan_for_options(&self, entrypoint: &IrEntrypointDeclaration) -> bool {
         // Check parameters for Option types
         for (_, param_type) in &entrypoint.parameters {
             if Self::type_contains_option(param_type) {
@@ -384,7 +384,7 @@ impl Transpiler for PythonTranspiler {
     fn transpile_entrypoint<'a>(
         &self,
         name: &'a ComponentName,
-        entrypoint: &'a IrComponentDeclaration,
+        entrypoint: &'a IrEntrypointDeclaration,
     ) -> BoxDoc<'a> {
         // Convert PascalCase to snake_case for Python function name
         let func_name = name.to_snake_case();
@@ -1132,10 +1132,10 @@ impl TypeTranspiler for PythonTranspiler {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use super::*;
     use crate::ir::syntax::builder::IrModuleBuilder;
     use expect_test::{Expect, expect};
+    use std::sync::Arc;
 
     fn check(module: IrModule, expected: Expect) {
         let before = module.to_string();

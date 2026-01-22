@@ -12,7 +12,7 @@ pub use variable_renaming::VariableRenamingPass;
 pub use write_coalescing::WriteCoalescingPass;
 pub use write_expr_simplification::WriteExprSimplificationPass;
 
-use super::ast::IrComponentDeclaration;
+use super::ast::IrEntrypointDeclaration;
 
 /// Trait for IR optimization passes that operate on individual entrypoints
 ///
@@ -21,5 +21,5 @@ use super::ast::IrComponentDeclaration;
 /// no need for cross-entrypoint analysis.
 pub trait Pass {
     /// Run the pass on a single IR entrypoint, mutating it in place
-    fn run(entrypoint: &mut IrComponentDeclaration);
+    fn run(entrypoint: &mut IrEntrypointDeclaration);
 }

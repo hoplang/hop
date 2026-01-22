@@ -9,7 +9,7 @@ use crate::dop::symbols::field_name::FieldName;
 use crate::ir::{
     IrExpr,
     ast::ExprId,
-    ast::{IrComponentDeclaration, IrForSource, IrStatement},
+    ast::{IrEntrypointDeclaration, IrForSource, IrStatement},
 };
 use datafrog::{Iteration, Relation};
 use tailwind_merge::tw_merge;
@@ -119,7 +119,7 @@ impl Const {
 pub struct ConstantPropagationPass;
 
 impl Pass for ConstantPropagationPass {
-    fn run(entrypoint: &mut IrComponentDeclaration) {
+    fn run(entrypoint: &mut IrEntrypointDeclaration) {
         let mut iteration = Iteration::new();
 
         let mut initial_constants = Vec::new();
@@ -468,7 +468,8 @@ impl Pass for ConstantPropagationPass {
 
         // Enum field keyed by (expr_id, field_name): ((enum_expr_id, field_name) => field_expr_id)
         // Used for joining with binding uses
-        let enum_field_keyed = iteration.variable::<((ExprId, FieldName), ExprId)>("enum_field_keyed");
+        let enum_field_keyed =
+            iteration.variable::<((ExprId, FieldName), ExprId)>("enum_field_keyed");
         enum_field_keyed.extend(
             enum_fields
                 .into_iter()
@@ -636,9 +637,9 @@ impl Pass for ConstantPropagationPass {
                 selected_arm.from_join(
                     &match_with_const_enum,
                     &enum_match_arms,
-                    |_key: &(ExprId, CheapString, CheapString), match_id: &ExprId, arm_body: &ExprId| {
-                        (*arm_body, *match_id)
-                    },
+                    |_key: &(ExprId, CheapString, CheapString),
+                     match_id: &ExprId,
+                     arm_body: &ExprId| { (*arm_body, *match_id) },
                 );
             }
 
@@ -669,7 +670,8 @@ impl Pass for ConstantPropagationPass {
                 if let Some(expr) = s.expr_mut() {
                     expr.traverse_mut(&mut |e| {
                         if let Some(const_val) = const_map.get(&e.id()) {
-                            if let Some(expr) = const_val.to_expr(e.id(), e.get_type(), &const_map) {
+                            if let Some(expr) = const_val.to_expr(e.id(), e.get_type(), &const_map)
+                            {
                                 *e = expr;
                             }
                         }
@@ -687,7 +689,7 @@ mod tests {
 
     use super::*;
 
-    fn check(mut entrypoint: IrComponentDeclaration, expected: Expect) {
+    fn check(mut entrypoint: IrEntrypointDeclaration, expected: Expect) {
         let before = entrypoint.to_string();
         ConstantPropagationPass::run(&mut entrypoint);
         let after = entrypoint.to_string();

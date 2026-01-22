@@ -5,7 +5,7 @@ use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement};
+use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrForSource, IrModule, IrStatement};
 
 pub struct TsTranspiler {
     /// Internal flag to use template literals instead of double quotes
@@ -19,7 +19,7 @@ impl TsTranspiler {
         }
     }
 
-    fn scan_for_escape_html(&self, entrypoint: &IrComponentDeclaration) -> bool {
+    fn scan_for_escape_html(&self, entrypoint: &IrEntrypointDeclaration) -> bool {
         let mut needs_escape = false;
         for stmt in &entrypoint.body {
             stmt.traverse(&mut |s| {
@@ -34,7 +34,7 @@ impl TsTranspiler {
         needs_escape
     }
 
-    fn scan_for_trusted_html(&self, entrypoints: &[IrComponentDeclaration]) -> bool {
+    fn scan_for_trusted_html(&self, entrypoints: &[IrEntrypointDeclaration]) -> bool {
         for entrypoint in entrypoints {
             for (_, param_type) in &entrypoint.parameters {
                 if Self::type_contains_trusted_html(param_type) {
@@ -328,7 +328,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_entrypoint<'a>(
         &self,
         name: &'a ComponentName,
-        entrypoint: &'a IrComponentDeclaration,
+        entrypoint: &'a IrEntrypointDeclaration,
     ) -> BoxDoc<'a> {
         let mut result = BoxDoc::text("export function ")
             .append(BoxDoc::text(name.as_ref()))
@@ -2129,7 +2129,8 @@ mod tests {
 
     #[test]
     fn nested_option_match_expression() {
-        let outer_option_type = Arc::new(Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool)))));
+        let outer_option_type =
+            Arc::new(Type::Option(Arc::new(Type::Option(Arc::new(Type::Bool)))));
 
         check(
             IrModuleBuilder::new()

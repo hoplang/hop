@@ -4,7 +4,7 @@ use crate::document::CheapString;
 use crate::dop::VarName;
 
 use crate::dop::patterns::Match;
-use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrForSource, IrStatement};
+use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrForSource, IrStatement};
 
 use super::Pass;
 
@@ -366,7 +366,8 @@ impl VariableRenamingPass {
         };
 
         // Track this name as used
-        self.all_used_names.insert(renamed.as_cheap_string().clone());
+        self.all_used_names
+            .insert(renamed.as_cheap_string().clone());
 
         self.scope_stack
             .last_mut()
@@ -401,7 +402,7 @@ impl VariableRenamingPass {
 }
 
 impl Pass for VariableRenamingPass {
-    fn run(comp_decl: &mut IrComponentDeclaration) {
+    fn run(comp_decl: &mut IrEntrypointDeclaration) {
         let mut pass = VariableRenamingPass::new();
 
         pass.push_scope();
@@ -447,7 +448,7 @@ mod tests {
     use crate::{document::CheapString, dop::Type};
     use expect_test::{Expect, expect};
 
-    fn check(mut input_entrypoint: IrComponentDeclaration, expected: Expect) {
+    fn check(mut input_entrypoint: IrEntrypointDeclaration, expected: Expect) {
         let before = input_entrypoint.to_string();
         VariableRenamingPass::run(&mut input_entrypoint);
         let after = input_entrypoint.to_string();

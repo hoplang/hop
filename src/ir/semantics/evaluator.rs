@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use tailwind_merge::tw_merge;
 
 use crate::dop::patterns::{EnumPattern, Match};
-use crate::ir::syntax::ast::{IrComponentDeclaration, IrForSource, IrStatement};
+use crate::ir::syntax::ast::{IrEntrypointDeclaration, IrForSource, IrStatement};
 
 /// Fast stack-based environment for the evaluator.
 /// Uses a Vec instead of HashMap for better performance with small scopes.
@@ -191,7 +191,7 @@ impl Value {
 
 /// Evaluate an IR entrypoint with the given arguments
 pub fn evaluate_entrypoint(
-    entrypoint: &IrComponentDeclaration,
+    entrypoint: &IrEntrypointDeclaration,
     args: HashMap<String, Value>,
 ) -> Result<String> {
     let mut env = Env::new();
@@ -852,7 +852,7 @@ mod tests {
     use expect_test::{Expect, expect};
     use std::sync::Arc;
 
-    fn check(entrypoint: IrComponentDeclaration, args: Vec<(&str, Value)>, expected: Expect) {
+    fn check(entrypoint: IrEntrypointDeclaration, args: Vec<(&str, Value)>, expected: Expect) {
         let before = entrypoint.to_string();
         let args_map: HashMap<String, Value> =
             args.into_iter().map(|(k, v)| (k.to_string(), v)).collect();

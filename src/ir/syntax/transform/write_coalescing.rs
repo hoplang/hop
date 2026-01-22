@@ -1,4 +1,4 @@
-use crate::ir::ast::{IrComponentDeclaration, IrStatement, StatementId};
+use crate::ir::ast::{IrEntrypointDeclaration, IrStatement, StatementId};
 
 use super::Pass;
 
@@ -183,7 +183,7 @@ impl WriteCoalescingPass {
     }
 
     /// Run the pass on a component with the configured limit (mutates in place)
-    pub fn run_with_limit_mut(&self, entrypoint: &mut IrComponentDeclaration) {
+    pub fn run_with_limit_mut(&self, entrypoint: &mut IrEntrypointDeclaration) {
         entrypoint.body = self.transform_statements(std::mem::take(&mut entrypoint.body));
     }
 }
@@ -195,18 +195,22 @@ impl Default for WriteCoalescingPass {
 }
 
 impl Pass for WriteCoalescingPass {
-    fn run(entrypoint: &mut IrComponentDeclaration) {
-        entrypoint.body = Self::default().transform_statements(std::mem::take(&mut entrypoint.body));
+    fn run(entrypoint: &mut IrEntrypointDeclaration) {
+        entrypoint.body =
+            Self::default().transform_statements(std::mem::take(&mut entrypoint.body));
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{dop::Type, ir::syntax::builder::{build_ir, build_ir_no_params}};
+    use crate::{
+        dop::Type,
+        ir::syntax::builder::{build_ir, build_ir_no_params},
+    };
     use expect_test::{Expect, expect};
 
-    fn check(mut entrypoint: IrComponentDeclaration, expected: Expect) {
+    fn check(mut entrypoint: IrEntrypointDeclaration, expected: Expect) {
         let before = entrypoint.to_string();
         WriteCoalescingPass::run(&mut entrypoint);
         let after = entrypoint.to_string();
@@ -490,7 +494,7 @@ mod tests {
         );
     }
 
-    fn check_with_limit(mut entrypoint: IrComponentDeclaration, limit: usize, expected: Expect) {
+    fn check_with_limit(mut entrypoint: IrEntrypointDeclaration, limit: usize, expected: Expect) {
         let before = entrypoint.to_string();
         let pass = WriteCoalescingPass::with_limit(limit);
         pass.run_with_limit_mut(&mut entrypoint);

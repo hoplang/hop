@@ -11,7 +11,7 @@ use crate::inlined::{
     InlinedAttribute, InlinedAttributeValue, InlinedEntrypointDeclaration, InlinedNode,
 };
 
-use super::ast::{ExprId, IrComponentDeclaration, IrExpr, IrForSource, IrStatement, StatementId};
+use super::ast::{ExprId, IrEntrypointDeclaration, IrExpr, IrForSource, IrStatement, StatementId};
 
 pub struct Compiler {
     // Expression ID generation
@@ -22,7 +22,7 @@ pub struct Compiler {
 }
 
 impl Compiler {
-    pub fn compile(entrypoint: InlinedEntrypointDeclaration) -> IrComponentDeclaration {
+    pub fn compile(entrypoint: InlinedEntrypointDeclaration) -> IrEntrypointDeclaration {
         let mut compiler = Compiler {
             expr_id_counter: 0,
             node_id_counter: 0,
@@ -74,7 +74,7 @@ impl Compiler {
             else_body: Some(prod_body),
         }];
 
-        IrComponentDeclaration {
+        IrEntrypointDeclaration {
             name: component_name,
             parameters: param_info,
             body,
@@ -84,7 +84,7 @@ impl Compiler {
     /// Compile without the development mode wrapper (useful for tests)
     pub fn compile_without_dev_wrapper(
         entrypoint: InlinedEntrypointDeclaration,
-    ) -> IrComponentDeclaration {
+    ) -> IrEntrypointDeclaration {
         let mut compiler = Compiler {
             expr_id_counter: 0,
             node_id_counter: 0,
@@ -101,7 +101,7 @@ impl Compiler {
 
         let body = compiler.compile_nodes(children, None);
 
-        IrComponentDeclaration {
+        IrEntrypointDeclaration {
             name: component_name,
             parameters: param_info,
             body,
@@ -305,7 +305,9 @@ impl Compiler {
                         false_body,
                     } => Match::Bool {
                         subject: subject.clone(),
-                        true_body: Box::new(self.compile_nodes(true_body.to_vec(), slot_content.cloned())),
+                        true_body: Box::new(
+                            self.compile_nodes(true_body.to_vec(), slot_content.cloned()),
+                        ),
                         false_body: Box::new(
                             self.compile_nodes(false_body.to_vec(), slot_content.cloned()),
                         ),
@@ -354,9 +356,7 @@ impl Compiler {
         output: &mut Vec<IrStatement>,
     ) {
         // Skip script tags without src
-        if tag_name.as_str() == "script"
-            && !attributes.iter().any(|attr| attr.name == "src")
-        {
+        if tag_name.as_str() == "script" && !attributes.iter().any(|attr| attr.name == "src") {
             return;
         }
 

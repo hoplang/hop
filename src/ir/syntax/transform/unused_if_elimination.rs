@@ -1,7 +1,7 @@
 use super::Pass;
 use crate::ir::{
     IrExpr,
-    ast::{IrComponentDeclaration, IrStatement},
+    ast::{IrEntrypointDeclaration, IrStatement},
 };
 
 /// A pass that eliminates unused if branches with constant conditions
@@ -34,7 +34,7 @@ impl UnusedIfEliminationPass {
 }
 
 impl Pass for UnusedIfEliminationPass {
-    fn run(comp_decl: &mut IrComponentDeclaration) {
+    fn run(comp_decl: &mut IrEntrypointDeclaration) {
         // First, recursively process all nested bodies using visit_mut
         for stmt in &mut comp_decl.body {
             stmt.traverse_mut(&mut |s| match s {
@@ -64,7 +64,7 @@ mod tests {
     use crate::ir::syntax::builder::{build_ir, build_ir_no_params};
     use expect_test::{Expect, expect};
 
-    fn check(mut entrypoint: IrComponentDeclaration, expected: Expect) {
+    fn check(mut entrypoint: IrEntrypointDeclaration, expected: Expect) {
         let before = entrypoint.to_string();
         UnusedIfEliminationPass::run(&mut entrypoint);
         let after = entrypoint.to_string();

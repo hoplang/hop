@@ -1,14 +1,14 @@
 use super::Pass;
 use crate::common::escape_html;
 use crate::ir::IrExpr;
-use crate::ir::ast::{IrComponentDeclaration, IrStatement};
+use crate::ir::ast::{IrEntrypointDeclaration, IrStatement};
 
 /// A pass that simplifies WriteExpr statements with constant string expressions into a Write
 /// statement
 pub struct WriteExprSimplificationPass;
 
 impl Pass for WriteExprSimplificationPass {
-    fn run(entrypoint: &mut IrComponentDeclaration) {
+    fn run(entrypoint: &mut IrEntrypointDeclaration) {
         // Use visit_mut to transform all statements in the tree
         for stmt in &mut entrypoint.body {
             stmt.traverse_mut(&mut |statement| {
@@ -35,10 +35,13 @@ impl Pass for WriteExprSimplificationPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{dop::Type, ir::syntax::builder::{build_ir, build_ir_no_params}};
+    use crate::{
+        dop::Type,
+        ir::syntax::builder::{build_ir, build_ir_no_params},
+    };
     use expect_test::{Expect, expect};
 
-    fn check(mut entrypoint: IrComponentDeclaration, expected: Expect) {
+    fn check(mut entrypoint: IrEntrypointDeclaration, expected: Expect) {
         let before = entrypoint.to_string();
         WriteExprSimplificationPass::run(&mut entrypoint);
         let after = entrypoint.to_string();

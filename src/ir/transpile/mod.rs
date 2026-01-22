@@ -12,13 +12,13 @@ use crate::dop::semantics::r#type::{ComparableType, EquatableType, NumericType, 
 use crate::dop::symbols::field_name::FieldName;
 use crate::dop::symbols::var_name::VarName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement};
+use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrForSource, IrModule, IrStatement};
 
 pub trait Transpiler {
     fn transpile_entrypoint<'a>(
         &self,
         name: &'a ComponentName,
-        entrypoint: &'a IrComponentDeclaration,
+        entrypoint: &'a IrEntrypointDeclaration,
     ) -> BoxDoc<'a>;
     fn transpile_module(&self, module: &IrModule) -> String;
 }

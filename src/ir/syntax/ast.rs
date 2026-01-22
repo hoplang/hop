@@ -27,14 +27,14 @@ pub enum IrForSource {
 
 #[derive(Debug, Clone)]
 pub struct IrModule {
-    pub entrypoints: Vec<IrComponentDeclaration>,
+    pub entrypoints: Vec<IrEntrypointDeclaration>,
     pub records: Vec<IrRecordDeclaration>,
     pub enums: Vec<IrEnumDeclaration>,
 }
 
 #[derive(Debug, Clone)]
-pub struct IrComponentDeclaration {
-    /// Component name (e.g. MyComponent)
+pub struct IrEntrypointDeclaration {
+    /// Entrypoint name (e.g. Index)
     pub name: ComponentName,
     /// Original parameter names with their types (for function signature)
     pub parameters: Vec<(VarName, Arc<Type>)>,
@@ -1391,7 +1391,7 @@ impl IrExpr {
     }
 }
 
-impl<'a> IrComponentDeclaration {
+impl<'a> IrEntrypointDeclaration {
     pub fn to_doc(&'a self) -> BoxDoc<'a> {
         BoxDoc::text(self.name.as_str())
             .append(BoxDoc::text("("))
@@ -1442,7 +1442,7 @@ impl fmt::Display for IrExpr {
     }
 }
 
-impl fmt::Display for IrComponentDeclaration {
+impl fmt::Display for IrEntrypointDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.to_doc().pretty(60))
     }

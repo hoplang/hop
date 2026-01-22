@@ -2,7 +2,7 @@ use super::Pass;
 use crate::dop::patterns::Match;
 use crate::ir::{
     IrExpr,
-    ast::{IrComponentDeclaration, IrForSource, IrStatement, StatementId},
+    ast::{IrEntrypointDeclaration, IrForSource, IrStatement, StatementId},
 };
 use std::collections::HashSet;
 
@@ -24,7 +24,7 @@ struct UnusedVars {
 
 impl UnusedLetEliminationPass {
     /// Collect which let statements and match bindings have unused variables
-    fn collect_unused_vars(entrypoint: &IrComponentDeclaration) -> UnusedVars {
+    fn collect_unused_vars(entrypoint: &IrEntrypointDeclaration) -> UnusedVars {
         let mut all_lets = HashSet::new();
         let mut used_lets = HashSet::new();
         // Track Option match bindings: stmt_id -> binding_name
@@ -246,7 +246,7 @@ impl UnusedLetEliminationPass {
 }
 
 impl Pass for UnusedLetEliminationPass {
-    fn run(entrypoint: &mut IrComponentDeclaration) {
+    fn run(entrypoint: &mut IrEntrypointDeclaration) {
         // Iterate until no more changes are made.
         // This is necessary because removing a let statement may make another
         // variable unused (e.g., removing `let val = v0` makes `v0` unused).
@@ -369,7 +369,7 @@ mod tests {
     };
     use expect_test::{Expect, expect};
 
-    fn check(mut entrypoint: IrComponentDeclaration, expected: Expect) {
+    fn check(mut entrypoint: IrEntrypointDeclaration, expected: Expect) {
         let before = entrypoint.to_string();
         UnusedLetEliminationPass::run(&mut entrypoint);
         let after = entrypoint.to_string();

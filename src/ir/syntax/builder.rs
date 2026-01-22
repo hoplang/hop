@@ -7,7 +7,7 @@ use crate::dop::{Type, VarName};
 use crate::hop::symbols::component_name::ComponentName;
 use crate::hop::symbols::module_name::ModuleName;
 use crate::ir::ast::{ExprId, IrExpr, IrForSource, IrStatement, StatementId};
-use crate::ir::ast::{IrComponentDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration};
+use crate::ir::ast::{IrEntrypointDeclaration, IrEnumDeclaration, IrModule, IrRecordDeclaration};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -17,7 +17,7 @@ pub struct IrModuleBuilder {
     /// Enums with their variants. Each variant has a name and optional fields.
     enums: BTreeMap<String, Vec<(String, Vec<(String, Arc<Type>)>)>>,
     records: BTreeMap<String, Vec<(String, Arc<Type>)>>,
-    entrypoints: Vec<IrComponentDeclaration>,
+    entrypoints: Vec<IrEntrypointDeclaration>,
 }
 
 impl IrModuleBuilder {
@@ -74,7 +74,8 @@ impl IrModuleBuilder {
             .records
             .iter()
             .map(|(name, fields)| {
-                let fields_map: BTreeMap<String, Arc<Type>> = fields.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                let fields_map: BTreeMap<String, Arc<Type>> =
+                    fields.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                 (name.clone(), fields_map)
             })
             .collect();
@@ -100,7 +101,8 @@ impl IrModuleBuilder {
             .records
             .iter()
             .map(|(name, fields)| {
-                let fields_map: BTreeMap<String, Arc<Type>> = fields.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                let fields_map: BTreeMap<String, Arc<Type>> =
+                    fields.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                 (name.clone(), fields_map)
             })
             .collect();
@@ -182,7 +184,11 @@ impl EnumBuilder {
     }
 
     /// Add a variant with fields
-    pub fn variant_with_fields<T: Into<Arc<Type>>>(&mut self, name: &str, fields: Vec<(&str, T)>) -> &mut Self {
+    pub fn variant_with_fields<T: Into<Arc<Type>>>(
+        &mut self,
+        name: &str,
+        fields: Vec<(&str, T)>,
+    ) -> &mut Self {
         self.variants.push((
             name.to_string(),
             fields
@@ -203,7 +209,7 @@ fn extract_var_subject(expr: &IrExpr) -> (VarName, Arc<Type>) {
     }
 }
 
-pub fn build_ir_no_params<F>(name: &str, body_fn: F) -> IrComponentDeclaration
+pub fn build_ir_no_params<F>(name: &str, body_fn: F) -> IrEntrypointDeclaration
 where
     F: FnOnce(&mut IrBuilder),
 {
@@ -212,7 +218,7 @@ where
     builder.build(name)
 }
 
-pub fn build_ir<F, P, T>(name: &str, params: P, body_fn: F) -> IrComponentDeclaration
+pub fn build_ir<F, P, T>(name: &str, params: P, body_fn: F) -> IrEntrypointDeclaration
 where
     F: FnOnce(&mut IrBuilder),
     P: IntoIterator<Item = (&'static str, T)>,
@@ -231,7 +237,7 @@ pub fn build_ir_with_enums_no_params<F>(
     name: &str,
     enums: Vec<(&str, Vec<&str>)>,
     body_fn: F,
-) -> IrComponentDeclaration
+) -> IrEntrypointDeclaration
 where
     F: FnOnce(&mut IrBuilder),
 {
@@ -299,8 +305,8 @@ impl IrBuilder {
         }
     }
 
-    fn build(self, name: &str) -> IrComponentDeclaration {
-        IrComponentDeclaration {
+    fn build(self, name: &str) -> IrEntrypointDeclaration {
+        IrEntrypointDeclaration {
             name: ComponentName::new(name.to_string())
                 .expect("Test component name should be valid"),
             parameters: self.params,
@@ -423,10 +429,9 @@ impl IrBuilder {
     }
 
     pub fn array(&self, elements: Vec<IrExpr>) -> IrExpr {
-        let element_type = elements
-            .first()
-            .map(|first| first.get_type())
-            .expect("Cannot create empty array literal in test builder - use typed_array for empty arrays");
+        let element_type = elements.first().map(|first| first.get_type()).expect(
+            "Cannot create empty array literal in test builder - use typed_array for empty arrays",
+        );
 
         IrExpr::ArrayLiteral {
             elements,

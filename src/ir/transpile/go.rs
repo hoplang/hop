@@ -6,7 +6,7 @@ use crate::dop::patterns::{EnumPattern, Match};
 use crate::dop::semantics::r#type::Type;
 use crate::dop::symbols::field_name::FieldName;
 use crate::hop::symbols::component_name::ComponentName;
-use crate::ir::ast::{IrComponentDeclaration, IrExpr, IrForSource, IrModule, IrStatement};
+use crate::ir::ast::{IrEntrypointDeclaration, IrExpr, IrForSource, IrModule, IrStatement};
 use std::collections::BTreeSet;
 
 pub struct GoTranspiler {
@@ -18,7 +18,7 @@ impl GoTranspiler {
         Self { package_name }
     }
 
-    fn scan_for_imports(imports: &mut BTreeSet<String>, entrypoint: &IrComponentDeclaration) {
+    fn scan_for_imports(imports: &mut BTreeSet<String>, entrypoint: &IrEntrypointDeclaration) {
         // Use visitor pattern to scan statements for imports
         for stmt in &entrypoint.body {
             // Check for HTML escaping and Int types in WriteExpr statements
@@ -56,7 +56,7 @@ impl GoTranspiler {
         }
     }
 
-    fn scan_for_trusted_html(&self, entrypoints: &[IrComponentDeclaration]) -> bool {
+    fn scan_for_trusted_html(&self, entrypoints: &[IrEntrypointDeclaration]) -> bool {
         for entrypoint in entrypoints {
             for (_, param_type) in &entrypoint.parameters {
                 if Self::type_contains_trusted_html(param_type) {
@@ -412,7 +412,7 @@ impl Transpiler for GoTranspiler {
     fn transpile_entrypoint<'a>(
         &self,
         name: &'a ComponentName,
-        entrypoint: &'a IrComponentDeclaration,
+        entrypoint: &'a IrEntrypointDeclaration,
     ) -> BoxDoc<'a> {
         let func_name = name.to_pascal_case();
 
@@ -1654,10 +1654,7 @@ mod tests {
             IrModuleBuilder::new()
                 .component(
                     "TestAuthCheck",
-                    [
-                        ("user_role", Type::String),
-                        ("expected_role", Type::String),
-                    ],
+                    [("user_role", Type::String), ("expected_role", Type::String)],
                     |t| {
                         t.if_stmt(t.eq(t.var("user_role"), t.var("expected_role")), |t| {
                             t.write("<div>Access granted</div>\n");
@@ -1820,8 +1817,7 @@ mod tests {
                         .field("active", Type::Bool);
                 })
                 .record("Address", |r| {
-                    r.field("street", Type::String)
-                        .field("city", Type::String);
+                    r.field("street", Type::String).field("city", Type::String);
                 })
                 .component("UserProfile", [("user", user_type)], |t| {
                     t.write("<div>");
@@ -1884,8 +1880,7 @@ mod tests {
         check(
             IrModuleBuilder::new()
                 .record("User", |r| {
-                    r.field("name", Type::String)
-                        .field("age", Type::Int);
+                    r.field("name", Type::String).field("age", Type::Int);
                 })
                 .component_no_params("CreateUser", |t| {
                     t.write("<div>");
