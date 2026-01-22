@@ -64,8 +64,7 @@ pub enum InlinedNode {
         children: Vec<Self>,
     },
     Let {
-        var: VarName,
-        value: TypedExpr,
+        bindings: Vec<(VarName, TypedExpr)>,
         children: Vec<Self>,
     },
     Match {
@@ -233,27 +232,31 @@ impl InlinedNode {
                         .append(BoxDoc::text(">"))
                 }
             }
-            InlinedNode::Let {
-                var,
-                value,
-                children,
-            } => BoxDoc::text("<let {")
-                .append(BoxDoc::text(var.as_str()))
-                .append(BoxDoc::text(" = "))
-                .append(value.to_doc())
-                .append(BoxDoc::text("}>"))
-                .append(if children.is_empty() {
-                    BoxDoc::nil()
-                } else {
-                    BoxDoc::line()
-                        .append(BoxDoc::intersperse(
-                            children.iter().map(|child| child.to_doc()),
-                            BoxDoc::line(),
-                        ))
-                        .append(BoxDoc::line())
-                        .nest(2)
-                })
-                .append(BoxDoc::text("</let>")),
+            InlinedNode::Let { bindings, children } => {
+                let bindings_doc = BoxDoc::intersperse(
+                    bindings.iter().map(|(var, value)| {
+                        BoxDoc::text(var.as_str())
+                            .append(BoxDoc::text(" = "))
+                            .append(value.to_doc())
+                    }),
+                    BoxDoc::text(", "),
+                );
+                BoxDoc::text("<let {")
+                    .append(bindings_doc)
+                    .append(BoxDoc::text("}>"))
+                    .append(if children.is_empty() {
+                        BoxDoc::nil()
+                    } else {
+                        BoxDoc::line()
+                            .append(BoxDoc::intersperse(
+                                children.iter().map(|child| child.to_doc()),
+                                BoxDoc::line(),
+                            ))
+                            .append(BoxDoc::line())
+                            .nest(2)
+                    })
+                    .append(BoxDoc::text("</let>"))
+            }
             InlinedNode::Match { match_ } => {
                 fn children_to_doc<'a>(children: &'a [InlinedNode]) -> BoxDoc<'a> {
                     if children.is_empty() {

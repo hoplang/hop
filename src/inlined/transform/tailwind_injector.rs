@@ -68,13 +68,8 @@ impl TailwindInjector {
                         source,
                         children: Self::inject_css_into_head(children, css_content),
                     },
-                    InlinedNode::Let {
-                        var,
-                        value,
-                        children,
-                    } => InlinedNode::Let {
-                        var,
-                        value,
+                    InlinedNode::Let { bindings, children } => InlinedNode::Let {
+                        bindings,
                         children: Self::inject_css_into_head(children, css_content),
                     },
                     other => other,

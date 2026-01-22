@@ -82,13 +82,8 @@ impl MetaInjector {
                     source,
                     children: Self::inject_meta_into_head(children),
                 },
-                InlinedNode::Let {
-                    var,
-                    value,
-                    children,
-                } => InlinedNode::Let {
-                    var,
-                    value,
+                InlinedNode::Let { bindings, children } => InlinedNode::Let {
+                    bindings,
                     children: Self::inject_meta_into_head(children),
                 },
                 other => other,

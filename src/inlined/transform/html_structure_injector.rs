@@ -207,13 +207,8 @@ impl HtmlStructureInjector {
                         source,
                         children: Self::ensure_head_and_body_in_html(children),
                     },
-                    InlinedNode::Let {
-                        var,
-                        value,
-                        children,
-                    } => InlinedNode::Let {
-                        var,
-                        value,
+                    InlinedNode::Let { bindings, children } => InlinedNode::Let {
+                        bindings,
                         children: Self::ensure_head_and_body_in_html(children),
                     },
                     other => other,

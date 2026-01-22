@@ -141,36 +141,36 @@ impl Inliner {
         );
 
         // Build parameter bindings (excluding children - handled via slot mechanism)
-        let mut body = inlined_children;
-        for (var_name, _var_type, default_value) in component.params.iter().rev() {
-            if var_name.as_str() == "children" {
-                continue;
-            }
+        let bindings: Vec<(VarName, TypedExpr)> = component
+            .params
+            .iter()
+            .filter(|(var_name, _, _)| var_name.as_str() != "children")
+            .map(|(var_name, _var_type, default_value)| {
+                let value = args
+                    .iter()
+                    .find(|(name, _)| name.as_str() == var_name.as_str())
+                    .map(|(_, expr)| expr.clone())
+                    .or_else(|| default_value.clone())
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "Missing required parameter '{}' for component '{}' in module '{}'.",
+                            var_name,
+                            component.component_name.as_str(),
+                            module_name
+                        )
+                    });
+                (var_name.clone(), value)
+            })
+            .collect();
 
-            let param_name = var_name.clone();
-
-            let value = args
-                .iter()
-                .find(|(name, _)| name.as_str() == param_name.as_str())
-                .map(|(_, expr)| expr.clone())
-                .or_else(|| default_value.clone())
-                .unwrap_or_else(|| {
-                    panic!(
-                        "Missing required parameter '{}' for component '{}' in module '{}'.",
-                        param_name,
-                        component.component_name.as_str(),
-                        module_name
-                    )
-                });
-
-            body = vec![InlinedNode::Let {
-                var: param_name,
-                value,
-                children: body,
-            }];
+        if bindings.is_empty() {
+            output.extend(inlined_children);
+        } else {
+            output.push(InlinedNode::Let {
+                bindings,
+                children: inlined_children,
+            });
         }
-
-        output.extend(body);
     }
 
     /// Inline nodes, pushing results to output
@@ -392,8 +392,7 @@ impl Inliner {
                 let mut child_output = Vec::new();
                 Self::inline_nodes(children, asts, slot_content, children_vars, &mut child_output);
                 output.push(InlinedNode::Let {
-                    var: var.clone(),
-                    value: value.clone(),
+                    bindings: vec![(var.clone(), value.clone())],
                     children: child_output,
                 });
             }

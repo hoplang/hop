@@ -283,17 +283,18 @@ impl Compiler {
                 });
             }
 
-            InlinedNode::Let {
-                var,
-                value,
-                children,
-            } => {
-                output.push(IrStatement::Let {
-                    id: self.next_node_id(),
-                    var,
-                    value: self.compile_expr(&value),
-                    body: self.compile_nodes(children, slot_content.cloned()),
-                });
+            InlinedNode::Let { bindings, children } => {
+                // Compile children first, then wrap in nested Let statements
+                let mut body = self.compile_nodes(children, slot_content.cloned());
+                for (var, value) in bindings.iter().rev() {
+                    body = vec![IrStatement::Let {
+                        id: self.next_node_id(),
+                        var: var.clone(),
+                        value: self.compile_expr(value),
+                        body,
+                    }];
+                }
+                output.extend(body);
             }
 
             InlinedNode::Match { match_ } => {
