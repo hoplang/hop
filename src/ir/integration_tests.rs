@@ -261,6 +261,7 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
         skip_html_structure: true,
         skip_dev_mode_wrapper: true,
         skip_optimization: true,
+        ..Default::default()
     };
     let unoptimized_module = orchestrate(typed_asts, None, unoptimized_options);
 
@@ -269,6 +270,7 @@ fn check(hop_source: &str, expected_output: &str, expected: Expect) {
         skip_html_structure: true,
         skip_dev_mode_wrapper: true,
         skip_optimization: false,
+        ..Default::default()
     };
     let optimized_module = orchestrate(typed_asts, None, optimized_options);
 

@@ -85,14 +85,14 @@ impl Inliner {
                 let ast = asts.get(module_name).unwrap();
                 ast.get_entrypoint_declarations()
                     .iter()
-                    .map(|entrypoint| Self::inline_entrypoint(module_name, entrypoint, asts))
+                    .map(|entrypoint| Self::inline_single_entrypoint(module_name, entrypoint, asts))
                     .collect::<Vec<_>>()
             })
             .collect()
     }
 
-    /// Inline a single entrypoint declaration
-    fn inline_entrypoint(
+    /// Inline a single entrypoint declaration.
+    pub fn inline_single_entrypoint(
         module_name: &ModuleName,
         entrypoint: &TypedEntrypointDeclaration,
         asts: &HashMap<ModuleName, TypedAst>,

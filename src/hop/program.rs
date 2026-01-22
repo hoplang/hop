@@ -588,20 +588,21 @@ impl Program {
         }
 
         // Use orchestrate to handle inlining and compilation
+        // Pass the entrypoint filter to only compile the requested entrypoint
         let ir_module = orchestrate(
             self.get_typed_modules(),
             generated_tailwind_css,
             OrchestrateOptions {
                 skip_optimization,
+                entrypoint_filter: Some((module_name.clone(), entrypoint_name.clone())),
                 ..Default::default()
             },
         );
 
-        // Find the requested entrypoint in the compiled module
+        // The filtered module should contain exactly the requested entrypoint
         let entrypoint = ir_module
             .entrypoints
-            .iter()
-            .find(|c| c.name.as_str() == entrypoint_name.as_str())
+            .first()
             .ok_or_else(|| {
                 anyhow::anyhow!(
                     "Entrypoint '{}/{}' not found after compilation",
